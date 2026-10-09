@@ -1,6 +1,6 @@
 import type { HttpClient } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
-import { type Context, Effect, type Layer } from 'effect'
+import { Cause, type Context, Effect, Exit, type Layer } from 'effect'
 import { TauriInvoke } from 'servers-core'
 
 /**
@@ -44,11 +44,21 @@ interface RouterContext {
   readonly defaultLauncherUrl: string
 }
 
+/**
+ * Run `effect`, resolving with its value and rejecting with the error it
+ * failed with, or its defect, rather than `Effect.runPromise`'s
+ * `FiberFailure` wrapping either, so a caller can branch on the error.
+ */
+const runRejectingWithError = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
+  Effect.runPromiseExit(effect).then((exit) =>
+    Exit.isSuccess(exit) ? exit.value : Promise.reject(Cause.squash(exit.cause))
+  )
+
 /** A {@link RunHostCommand} over `invoke`: the app's `@tauri-apps/api/core` `invoke`, or a test's fake. */
 const runHostCommandWith =
   (invoke: Context.Tag.Service<TauriInvoke>): RunHostCommand =>
   (command) =>
-    Effect.runPromise(Effect.provideService(command, TauriInvoke, invoke))
+    runRejectingWithError(Effect.provideService(command, TauriInvoke, invoke))
 
 /**
  * A {@link RunHttpRequest} over `layer`: `@effect/platform`'s
@@ -57,7 +67,7 @@ const runHostCommandWith =
 const runHttpRequestWith =
   (layer: Layer.Layer<HttpClient.HttpClient>): RunHttpRequest =>
   (request) =>
-    Effect.runPromise(Effect.provide(request, layer))
+    runRejectingWithError(Effect.provide(request, layer))
 
 export { runHostCommandWith, runHttpRequestWith }
 export type { ListenToHostEvent, RouterContext, RunHostCommand, RunHttpRequest }

@@ -379,7 +379,9 @@ describe('the server list', () => {
     // Assert
     expect(await screen.findByText('No servers yet')).toBeDefined()
     expect(screen.getByText(/^A server keeps your health records on this device/)).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Add server' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('link', { name: 'Add new server' }).getAttribute('href')).toBe(
+      '/servers/new'
+    )
     expect(screen.queryByRole('listitem')).toBeNull()
   })
 
@@ -399,6 +401,9 @@ describe('the server list', () => {
       expect(within(card).getByRole('button', { name: 'Launch' })).toHaveProperty('disabled', false)
       expect(within(card).getByRole('link', { name: 'Edit' })).toBeDefined()
     }
+    expect(screen.getByRole('link', { name: 'Add new server' }).getAttribute('href')).toBe(
+      '/servers/new'
+    )
   })
 
   it.each([
@@ -422,6 +427,28 @@ describe('the server list', () => {
       expect(ruth.dataset['tone']).toBe(tone)
     }
   )
+
+  it.each([
+    ['runningAndReachable', null],
+    ['startingUnchecked', 'Starting'],
+    ['runningUnreachable', 'Running, not reachable yet: the relay answered 502'],
+    ['runningRenewalFailed', 'Running, checking it can be reached'],
+    ['neverRun', null],
+    ['stoppedWithAnError', null],
+  ] as const)('should note a %s status under the picker as %j', async (statusName, note) => {
+    // Act
+    renderListed([
+      { ...golden.listedServers[0], status: golden.serverStatuses[statusName] },
+      golden.listedServers[1],
+    ])
+
+    // Assert
+    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+    const notes = within(ruth)
+      .queryAllByText(/^(Running|Starting|Stopped)/, { selector: 'p' })
+      .map((paragraph) => paragraph.textContent)
+    expect(notes).toEqual(note === null ? [] : [note])
+  })
 
   it.each([
     [{ kind: 'off' }, /^Off$/],
@@ -799,6 +826,11 @@ describe('the server page', () => {
     return section
   }
 
+  /** Open the server page's tab named `name`. */
+  const openTab = async (name: string): Promise<void> => {
+    await userEvent.click(await screen.findByRole('tab', { name }))
+  }
+
   /** The open confirm dialog. */
   const confirmDialog = (): HTMLDialogElement => {
     const dialog = openDialog()
@@ -822,14 +854,27 @@ describe('the server page', () => {
     // Assert
     expect(await screen.findByRole('heading', { name: 'Server' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'ruth.relay.example.com' })).toBeDefined()
-    expect(
-      screen.getByText('Self-hosted Wildflower relay at https://relay.example.com/')
-    ).toBeDefined()
-    expect(screen.getByText('ruth')).toBeDefined()
+    expect(screen.getByRole('tab', { name: 'Status', selected: true })).toBeDefined()
     expect(screen.getByLabelText('Launcher')).toHaveProperty(
       'value',
       'https://wildflowerhealth.io/app'
     )
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
+
+    // Act
+    await user.click(screen.getByRole('tab', { name: 'Relay' }))
+
+    // Assert
+    expect(
+      screen.getByText('Self-hosted Wildflower relay at https://relay.example.com/')
+    ).toBeDefined()
+    expect(screen.getByText('ruth')).toBeDefined()
+    expect(screen.queryByLabelText('Launcher')).toBeNull()
+
+    // Act
+    await user.click(screen.getByRole('tab', { name: 'Certificate' }))
+
+    // Assert
     expect(screen.getByText("Let's Encrypt")).toBeDefined()
 
     // Act
@@ -1036,6 +1081,7 @@ describe('the server page', () => {
         domain: 'ruth.relay.example.com',
         servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
       })
+      await openTab('Certificate')
 
       // Assert
       expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1051,6 +1097,7 @@ describe('the server page', () => {
 
     // Act
     renderServerPage({ domain: 'ruth.relay.example.com' })
+    await openTab('Certificate')
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1075,12 +1122,12 @@ describe('the server page', () => {
       storage: storageAnswered({ crashReports: false, performance: false }),
       path: '/servers/ruth.relay.example.com',
     })
-    await screen.findByRole('heading', { name: 'Certificate' })
 
     // Act
-    await user.clear(screen.getByLabelText('Launcher'))
+    await user.clear(await screen.findByLabelText('Launcher'))
     await user.type(screen.getByLabelText('Launcher'), 'https://launcher.example.com/')
     await user.click(screen.getByRole('button', { name: 'Save launcher' }))
+    await openTab('Certificate')
 
     // Assert
     expect(certificateRow('Certificate authority').textContent).toMatch(/Let's Encrypt$/)
@@ -1103,6 +1150,7 @@ describe('the server page', () => {
       domain: 'ruth.relay.example.com',
       servers: listedWithRuthStatus(golden.serverStatuses.neverRun),
     })
+    await openTab('Certificate')
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1153,6 +1201,7 @@ describe('the server page', () => {
   ] as const)('should describe %s as the last error', async (_, status, text) => {
     // Act
     renderServerPage({ domain: 'ruth.relay.example.com', servers: listedWithRuthStatus(status) })
+    await openTab('Certificate')
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Certificate' })).toBeDefined()
@@ -1171,6 +1220,7 @@ describe('the server page', () => {
         domain: 'ruth.relay.example.com',
         servers: listedWithRuthStatus(golden.serverStatuses.runningUnreachable),
       })
+      await openTab('Certificate')
       expect(await screen.findByText(`${said}.`)).toBeDefined()
 
       // Act
@@ -1189,6 +1239,7 @@ describe('the server page', () => {
     // Arrange
     const events = fakeEvents()
     renderServerPage({ domain: 'ruth.relay.example.com', events })
+    await openTab('Certificate')
     await screen.findByRole('heading', { name: 'Certificate' })
 
     // Act
@@ -1211,6 +1262,7 @@ describe('the server page', () => {
       domain: 'ruth.relay.example.com',
       answers: { server_set_credentials: () => Promise.resolve(null) },
     })
+    await openTab('Relay')
     const field = await screen.findByLabelText('New tunnel token')
     expect(field).toHaveProperty('value', '')
     expect(field).toHaveProperty('type', 'password')
@@ -1241,6 +1293,7 @@ describe('the server page', () => {
       domain: 'ruth.relay.example.com',
       answers: { server_set_credentials: () => Promise.reject(refusal) },
     })
+    await openTab('Relay')
 
     // Act
     await user.type(await screen.findByLabelText('New tunnel token'), 'wrong-token')
@@ -1249,6 +1302,29 @@ describe('the server page', () => {
     // Assert
     expect((await screen.findByRole('alert')).textContent).toContain(refusal.message)
     expect(document.body.textContent).not.toContain('wrong-token')
+  })
+
+  it("should warn that the relay's identity changed, with the host's message and no retry", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const refusal = golden.enrolmentErrors.relayIdentityChanged
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      answers: { server_set_credentials: () => Promise.reject(refusal) },
+    })
+    await openTab('Relay')
+
+    // Act
+    await user.type(await screen.findByLabelText('New tunnel token'), 'tunnel-token-123')
+    await user.click(screen.getByRole('button', { name: 'Save token' }))
+
+    // Assert
+    const warning = await screen.findByRole('alert')
+    expect(within(warning).getByText("The relay's identity has changed")).toBeDefined()
+    expect(within(warning).getByText(/remove this server and add it again/)).toBeDefined()
+    expect(within(warning).getByText(refusal.message)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull()
+    expect(document.body.textContent).not.toContain('tunnel-token-123')
   })
 
   it('should save an edited launcher with the certificate authority unchanged', async () => {
@@ -1406,6 +1482,432 @@ describe('the server page', () => {
       golden.commandErrors[2].message
     )
     expect(screen.getByRole('heading', { name: 'Server' })).toBeDefined()
+  })
+})
+
+describe('Add server', () => {
+  const TOKEN = 'tunnel-token-123'
+
+  /** What `server_add` answers: the domain, or the host's refusal. */
+  type AddAnswer = () => Promise<unknown>
+
+  /**
+   * Render Add server on a host whose `server_add` answers `add`, listing
+   * no servers until one is added and the golden file's once one is, and
+   * answering `server_set_run_policy` with `setRunPolicy`.
+   */
+  const renderAddServer = ({
+    add = () => Promise.resolve('ruth.relay.example.com'),
+    setRunPolicy = () => Promise.resolve({ kind: 'whileOpen' }),
+  }: {
+    readonly add?: AddAnswer
+    readonly setRunPolicy?: () => Promise<unknown>
+  } = {}): FakeHost => {
+    let added = false
+    const host = hostWith({
+      servers: () => Promise.resolve(added ? golden.listedServers : []),
+      answers: {
+        server_add: () =>
+          add().then((domain) => {
+            added = true
+            return domain
+          }),
+        server_set_run_policy: setRunPolicy,
+      },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: '/servers/new',
+    })
+    return host
+  }
+
+  /** The step titled `title`, once it shows. */
+  const stepTitled = async (title: string): Promise<HTMLElement> => {
+    const heading = await screen.findByRole('heading', { name: title })
+    const step = heading.closest('form, section')
+    if (!(step instanceof HTMLElement)) throw new Error(`no ${title} step`)
+    return step
+  }
+
+  /** The invokes of `command` the host saw. */
+  const invokesOf = (host: FakeHost, command: string): readonly SeenInvoke[] =>
+    host.seen.filter((invoke) => invoke.command === command)
+
+  type User = ReturnType<typeof userEvent.setup>
+
+  /** A custom relay's settings, as the relay step takes them; each one left out stays empty. */
+  interface CustomRelay {
+    readonly baseUrl?: string
+    readonly rathole?: boolean
+    readonly remoteAddr?: string
+    readonly publicKey?: string
+    readonly domain?: string
+  }
+
+  /**
+   * Pick a different reverse proxy for a rathole `custom`, or else a
+   * self-hosted Wildflower relay with Advanced open, on the relay step
+   * `relay`, and enter `custom`.
+   */
+  const enterCustomRelay = async (
+    user: User,
+    relay: HTMLElement,
+    custom: CustomRelay
+  ): Promise<void> => {
+    if (custom.rathole === true) {
+      await user.click(within(relay).getByRole('radio', { name: 'A different reverse proxy' }))
+    } else {
+      await user.click(within(relay).getByRole('radio', { name: 'A self-hosted Wildflower relay' }))
+      await user.click(within(relay).getByText('Advanced'))
+    }
+    const fields = [
+      ['Wildflower Relay URL', custom.baseUrl],
+      ['Server address', custom.remoteAddr],
+      ['Public key', custom.publicKey],
+      ['Tunnel domain', custom.domain],
+    ] as const
+    for (const [label, value] of fields) {
+      // oxlint-disable-next-line no-await-in-loop -- a person fills one field after another
+      if (value !== undefined) await user.type(within(relay).getByLabelText(label), value)
+    }
+  }
+
+  /** Enter `custom`, or keep the Wildflower relay without it, then Continue. */
+  const enterRelay = async (user: User, custom?: CustomRelay): Promise<void> => {
+    const relay = await stepTitled('Relay')
+    if (custom !== undefined) await enterCustomRelay(user, relay, custom)
+    await user.click(within(relay).getByRole('button', { name: 'Continue' }))
+  }
+
+  /** Enter the tunnel `ruth` and {@link TOKEN} on the tunnel step, then Add server. */
+  const enterCredentials = async (user: User): Promise<void> => {
+    const tunnel = await stepTitled('Tunnel')
+    await user.type(within(tunnel).getByLabelText('Tunnel name'), 'ruth')
+    await user.type(within(tunnel).getByLabelText('Tunnel token'), TOKEN)
+    await user.click(within(tunnel).getByRole('button', { name: 'Add server' }))
+  }
+
+  it('should open from the empty list', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderBase({
+      invoke: hostWith().invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+
+    // Act
+    await user.click(await screen.findByRole('link', { name: 'Add new server' }))
+
+    // Assert
+    const relay = await stepTitled('Relay')
+    expect(within(relay).getByRole('radio', { name: 'Wildflower official relay' })).toHaveProperty(
+      'checked',
+      true
+    )
+    expect(within(relay).queryByLabelText('Wildflower Relay URL')).toBeNull()
+  })
+
+  it('should add a server on the Wildflower relay, show its domain, and drop the token', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderAddServer()
+
+    // Act
+    await enterRelay(user)
+    const tunnel = await stepTitled('Tunnel')
+    expect(within(tunnel).getByLabelText('Tunnel token')).toHaveProperty('type', 'password')
+    await enterCredentials(user)
+
+    // Assert
+    const done = await stepTitled('Server added')
+    expect(within(done).getByText('ruth.relay.example.com')).toBeDefined()
+    expect(within(done).getByText(/without being able to read it/)).toBeDefined()
+    expect(invokesOf(host, 'server_add')).toEqual([
+      {
+        command: 'server_add',
+        args: { relay: { kind: 'wildflowerOfficial' }, tunnelName: 'ruth', token: TOKEN },
+      },
+    ])
+    expect(screen.queryByDisplayValue(TOKEN)).toBeNull()
+    expect(document.body.textContent).not.toContain(TOKEN)
+  })
+
+  it.each([
+    [
+      'a self-hosted Wildflower relay',
+      { baseUrl: 'https://relay.example.com' },
+      golden.enteredRelays.selfHostedWildflower,
+    ],
+    [
+      'a pinned self-hosted Wildflower relay',
+      {
+        baseUrl: 'https://relay.example.com',
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: golden.enteredRelays.selfHostedWildflowerPinned.pin.publicKey,
+      },
+      golden.enteredRelays.selfHostedWildflowerPinned,
+    ],
+    [
+      'a rathole relay',
+      {
+        rathole: true,
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: golden.enteredRelays.rathole.publicKey,
+        domain: 'relay.example.com',
+      },
+      golden.enteredRelays.rathole,
+    ],
+  ] as const)('should send server_add %s as entered', async (_, custom, relay) => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderAddServer()
+
+    // Act
+    await enterRelay(user, custom)
+    await enterCredentials(user)
+
+    // Assert
+    await stepTitled('Server added')
+    expect(invokesOf(host, 'server_add').map((invoke) => invoke.args?.['relay'])).toEqual([relay])
+  })
+
+  it('should lowercase the tunnel name and relay domain as they are typed', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderAddServer()
+
+    // Act
+    await enterRelay(user, {
+      rathole: true,
+      remoteAddr: 'relay.example.com:2333',
+      publicKey: golden.enteredRelays.rathole.publicKey,
+      domain: 'Relay.Example.COM',
+    })
+    const tunnel = await stepTitled('Tunnel')
+    await user.type(within(tunnel).getByLabelText('Tunnel name'), 'Ruth')
+    await user.type(within(tunnel).getByLabelText('Tunnel token'), TOKEN)
+    await user.click(within(tunnel).getByRole('button', { name: 'Add server' }))
+
+    // Assert
+    await stepTitled('Server added')
+    const [added] = invokesOf(host, 'server_add')
+    expect(added?.args?.['relay']).toEqual(golden.enteredRelays.rathole)
+    expect(added?.args?.['tunnelName']).toBe('ruth')
+  })
+
+  it.each([
+    ['the Wildflower official relay', undefined, 'ruth.relay.wildflowerhealth.io'],
+    [
+      'a self-hosted Wildflower relay',
+      { baseUrl: 'https://relay.example.com' },
+      "ruth.[your relay's domain]",
+    ],
+    [
+      'a rathole relay',
+      { rathole: true, remoteAddr: 'r:2333', publicKey: 'k', domain: 'tunnels.example.com' },
+      'ruth.tunnels.example.com',
+    ],
+  ] as const)('should say where the server will be for %s', async (_, custom, address) => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    await enterRelay(user, custom)
+    const tunnel = await stepTitled('Tunnel')
+    expect(
+      within(tunnel).getByText(/^Your server will be available at \[tunnel name\]\./)
+    ).toBeDefined()
+
+    // Act
+    await user.type(within(tunnel).getByLabelText('Tunnel name'), 'ruth')
+
+    // Assert
+    expect(within(tunnel).getByText(`Your server will be available at ${address}`)).toBeDefined()
+  })
+
+  it('should say a rathole relay is tested when the server starts', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    const relay = await stepTitled('Relay')
+
+    // Act
+    await enterCustomRelay(user, relay, { rathole: true })
+
+    // Assert
+    expect(within(relay).getByText(/will be tested when the server starts/)).toBeDefined()
+    expect(within(relay).getByRole('link', { name: 'rathole' })).toHaveProperty(
+      'href',
+      'https://github.com/rathole-org/rathole'
+    )
+    expect(within(relay).queryByLabelText('Wildflower Relay URL')).toBeNull()
+  })
+
+  it.each([
+    ['no base URL', {}],
+    ['a pin without its key', { baseUrl: 'https://relay.example.com', remoteAddr: 'r:2333' }],
+    ['a rathole relay without its domain', { rathole: true, remoteAddr: 'r:2333', publicKey: 'k' }],
+  ] as const)('should not continue from a custom relay with %s', async (_, custom) => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    const relay = await stepTitled('Relay')
+
+    // Act
+    await enterCustomRelay(user, relay, custom)
+
+    // Assert
+    expect(within(relay).getByRole('button', { name: 'Continue' })).toHaveProperty('disabled', true)
+  })
+
+  it('should not add a server with a blank token', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    await enterRelay(user)
+    const tunnel = await stepTitled('Tunnel')
+    const add = within(tunnel).getByRole('button', { name: 'Add server' })
+
+    // Act
+    await user.type(within(tunnel).getByLabelText('Tunnel name'), 'ruth')
+    await user.type(within(tunnel).getByLabelText('Tunnel token'), '   ')
+
+    // Assert
+    expect(add).toHaveProperty('disabled', true)
+  })
+
+  it('should show Checking while the host checks with the relay', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    let answer: (domain: string) => void = () => undefined
+    renderAddServer({
+      add: () =>
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+    })
+    await enterRelay(user)
+
+    // Act
+    await enterCredentials(user)
+
+    // Assert
+    const checking = await stepTitled('Checking')
+    expect(within(checking).getByRole('status').textContent).toContain('Checking with the relay')
+
+    // Act
+    answer('ruth.relay.example.com')
+
+    // Assert
+    expect(await stepTitled('Server added')).toBeDefined()
+  })
+
+  it.each(
+    Object.values(golden.enrolmentErrors).filter((error) => error.kind !== 'relayIdentityChanged')
+  )("should stay on Checking with the host's $kind refusal", async (refusal) => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer({ add: () => Promise.reject(refusal) })
+    await enterRelay(user)
+
+    // Act
+    await enterCredentials(user)
+
+    // Assert
+    const checking = await stepTitled('Checking')
+    expect(within(checking).getByRole('alert').textContent).toContain(refusal.message)
+    expect(within(checking).getByRole('button', { name: 'Back' })).toBeDefined()
+    expect(within(checking).getByRole('button', { name: 'Retry' })).toBeDefined()
+  })
+
+  it('should go Back from a refusal with every entry kept', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer({ add: () => Promise.reject(golden.enrolmentErrors.relayUnreachable) })
+    await enterRelay(user, { baseUrl: 'https://relay.example.com' })
+    await enterCredentials(user)
+
+    // Act
+    await user.click(within(await stepTitled('Checking')).getByRole('button', { name: 'Back' }))
+
+    // Assert
+    const tunnel = await stepTitled('Tunnel')
+    expect(within(tunnel).getByLabelText('Tunnel name')).toHaveProperty('value', 'ruth')
+    expect(within(tunnel).getByLabelText('Tunnel token')).toHaveProperty('value', TOKEN)
+
+    // Act
+    await user.click(within(tunnel).getByRole('button', { name: 'Back' }))
+
+    // Assert
+    const relay = await stepTitled('Relay')
+    expect(
+      within(relay).getByRole('radio', { name: 'A self-hosted Wildflower relay' })
+    ).toHaveProperty('checked', true)
+    expect(within(relay).getByLabelText('Wildflower Relay URL')).toHaveProperty(
+      'value',
+      'https://relay.example.com'
+    )
+  })
+
+  it('should send server_add again on Retry, and reach the server added', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    let add: AddAnswer = () => Promise.reject(golden.enrolmentErrors.relayUnreachable)
+    const host = renderAddServer({ add: () => add() })
+    await enterRelay(user)
+    await enterCredentials(user)
+    const checking = await stepTitled('Checking')
+    await within(checking).findByRole('alert')
+
+    // Act
+    add = () => Promise.resolve('ruth.relay.example.com')
+    await user.click(within(checking).getByRole('button', { name: 'Retry' }))
+
+    // Assert
+    expect(await stepTitled('Server added')).toBeDefined()
+    expect(invokesOf(host, 'server_add')).toHaveLength(2)
+  })
+
+  it.each([
+    ['Start now', { kind: 'whileOpen' }],
+    ['Start later', { kind: 'off' }],
+  ] as const)('should set the run policy on %s, then open the server', async (label, choice) => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderAddServer({ setRunPolicy: () => Promise.resolve(choice) })
+    await enterRelay(user)
+    await enterCredentials(user)
+
+    // Act
+    await user.click(within(await stepTitled('Server added')).getByRole('button', { name: label }))
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Server' })).toBeDefined()
+    expect(invokesOf(host, 'server_set_run_policy')).toEqual([
+      { command: 'server_set_run_policy', args: { domain: 'ruth.relay.example.com', choice } },
+    ])
+  })
+
+  it("should stay on the server added with the host's refusal to start it", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer({ setRunPolicy: () => Promise.reject(golden.commandErrors[2]) })
+    await enterRelay(user)
+    await enterCredentials(user)
+    const done = await stepTitled('Server added')
+
+    // Act
+    await user.click(within(done).getByRole('button', { name: 'Start now' }))
+
+    // Assert
+    expect((await within(done).findByRole('alert')).textContent).toContain(
+      golden.commandErrors[2].message
+    )
+    expect(within(done).getByRole('button', { name: 'Start now' })).toHaveProperty(
+      'disabled',
+      false
+    )
   })
 })
 

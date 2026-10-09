@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vite-plus/test'
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import { enableBackgroundSessionRecovery } from './background-session-recovery.ts'
 import * as CertificateState from './certificate-state.ts'
+import * as EnteredRelay from './entered-relay.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
 import * as RunPolicyChoice from './run-policy-choice.ts'
 import * as RunPolicy from './run-policy.ts'
 import {
+  addServer,
   listServers,
   removeServer,
   setServerCredentials,
@@ -204,6 +206,80 @@ describe('listServers', () => {
     const refusal = error instanceof HostCommandFailed ? error.refusal : Option.none()
     expect(refusal).toEqual(Option.some(golden.commandErrors[1]))
   })
+})
+
+describe('EnteredRelay', () => {
+  it('should take each relay the host decodes, a pin included', () => {
+    // Act
+    const relays = Object.values(golden.enteredRelays).map((relay) =>
+      Schema.decodeUnknownSync(EnteredRelay.Schema)(relay)
+    )
+
+    // Assert
+    expect(relays).toEqual(Object.values(golden.enteredRelays))
+  })
+
+  it('should refuse a rathole relay without its domain, and a pin without its key', () => {
+    // Arrange
+    const { domain: _domain, ...ratholeWithoutDomain } = golden.enteredRelays.rathole
+    const pinWithoutKey = {
+      ...golden.enteredRelays.selfHostedWildflowerPinned,
+      pin: { remoteAddr: 'relay.example.com:2333' },
+    }
+
+    // Act
+    const decoded = [ratholeWithoutDomain, pinWithoutKey].map((relay) =>
+      Schema.decodeUnknownEither(EnteredRelay.Schema)(relay)
+    )
+
+    // Assert
+    for (const either of decoded) expect(Either.isLeft(either)).toBe(true)
+  })
+})
+
+describe('addServer', () => {
+  it.each(Object.entries(golden.enteredRelays))(
+    'should send server_add the %s relay as the host reads it, and answer the domain',
+    async (_name, entered) => {
+      // Arrange
+      const relay = Schema.decodeUnknownSync(EnteredRelay.Schema)(entered)
+
+      // Act
+      const { exit, seen } = await runAgainstHostAnswering(
+        addServer({ relay, tunnelName: 'ruth', token: 'tunnel-token' }),
+        () => Promise.resolve('ruth.relay.example.com')
+      )
+
+      // Assert
+      expect(seen).toEqual([
+        {
+          command: 'server_add',
+          args: { relay: entered, tunnelName: 'ruth', token: 'tunnel-token' },
+        },
+      ])
+      expect(exit).toEqual(Exit.succeed('ruth.relay.example.com'))
+    }
+  )
+
+  it.each(Object.values(golden.enrolmentErrors))(
+    "should fail with the host's $kind refusal",
+    async (error) => {
+      // Act
+      const { exit } = await runAgainstHostAnswering(
+        addServer({
+          relay: { kind: 'wildflowerOfficial' },
+          tunnelName: 'ruth',
+          token: 'tunnel-token',
+        }),
+        () => Promise.reject(error)
+      )
+
+      // Assert
+      const failure = failureOf(exit)
+      const refusal = failure instanceof HostCommandFailed ? failure.refusal : Option.none()
+      expect(refusal).toEqual(Option.some(error))
+    }
+  )
 })
 
 describe('the server commands', () => {

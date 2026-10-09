@@ -5,14 +5,15 @@ import { type ListedServer, ServerStatus } from 'servers-core'
 
 import type { RunHostCommand } from './router-context.ts'
 import { RunPolicyPicker } from './run-policy-picker.tsx'
-import { lastStopText, statusSummary } from './server-status-text.ts'
+import { lastStopText, statusNote, statusSummary } from './server-status-text.ts'
 import styles from './server-card.module.css'
 
 /**
  * One server's card in the base's list: its domain and a status dot; a
  * run-policy field that says when it runs, outlined in its status's tone,
  * over the native picker that changes it; the host's refusal of the latest
- * change; why its latest run stopped; and Launch and Edit.
+ * change; what its status says beyond running or stopped; why its latest
+ * run stopped; and Launch and Edit.
  *
  * @remarks
  * The picker is disabled while a change is pending. Launch does nothing yet:
@@ -41,9 +42,17 @@ const ServerCard = ({
         />
       </div>
       <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
+      {statusNote(server.status).pipe(
+        Option.map((note) => (
+          <p key="status-note" className={`text-body-3 ${styles['server-card__note']}`}>
+            {note}
+          </p>
+        )),
+        Option.getOrNull
+      )}
       {ServerStatus.lastStopOf(server.status).pipe(
         Option.map((stop) => (
-          <p key="last-stop" className={`text-body-3 ${styles['server-card__last-stop']}`}>
+          <p key="last-stop" className={`text-body-3 ${styles['server-card__note']}`}>
             {lastStopText(stop)}
           </p>
         )),

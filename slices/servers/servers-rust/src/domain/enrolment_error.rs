@@ -244,4 +244,80 @@ mod tests {
             );
         }
     }
+
+    /// The errors the base shows when adding a server, or re-entering a
+    /// token, fails are the ones the golden file holds.
+    #[test]
+    fn the_enrolment_errors_are_as_the_golden_file_says() {
+        let golden = crate::domain::golden();
+        let errors = [
+            (
+                "invalidRelaySetting",
+                EnrolmentError::InvalidRelaySetting {
+                    setting: "baseUrl",
+                    reason: r#""http://relay.example.com" is not an https URL"#.to_owned(),
+                },
+            ),
+            (
+                "relayUnreachable",
+                EnrolmentError::RelayUnreachable {
+                    relay_base: Url::parse("https://relay.example.com").unwrap(),
+                    source: "connection refused".into(),
+                },
+            ),
+            (
+                "badRelayResponse",
+                EnrolmentError::BadRelayResponse {
+                    path: "/rathole",
+                    reason: "status 404 Not Found".to_owned(),
+                },
+            ),
+            (
+                "pinMismatch",
+                EnrolmentError::PinMismatch {
+                    setting: "remoteAddr",
+                    pinned: "relay.example.com:2333".to_owned(),
+                    served: "relay.example.com:2334".to_owned(),
+                },
+            ),
+            (
+                "invalidTunnelName",
+                TunnelName::parse("Ruth").unwrap_err().into(),
+            ),
+            ("emptyToken", EnrolmentError::EmptyToken),
+            (
+                "signedRequestRejected",
+                EnrolmentError::SignedRequestRejected {
+                    tunnel_name: TunnelName::parse("ruth").unwrap(),
+                },
+            ),
+            (
+                "alreadyRegistered",
+                RegistryError::AlreadyRegistered {
+                    domain: "ruth.relay.example.com".to_owned(),
+                }
+                .into(),
+            ),
+            (
+                "relayIdentityChanged",
+                EnrolmentError::RelayIdentityChanged {
+                    setting: "publicKey",
+                    registered: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
+                    served: "Ny0NYH8cmCUs1ZpKr9ezG2UKq1z8f9UWRUXvJ7Ql1yI=".to_owned(),
+                },
+            ),
+        ];
+        for (name, error) in &errors {
+            assert_eq!(
+                serde_json::to_value(error).unwrap(),
+                golden["enrolmentErrors"][name],
+                "{name}"
+            );
+        }
+        assert_eq!(
+            golden["enrolmentErrors"].as_object().unwrap().len(),
+            errors.len(),
+            "every golden enrolment error is checked"
+        );
+    }
 }

@@ -1455,4 +1455,36 @@ mod tests {
         .unwrap();
         assert_eq!(record.public_settings, served_settings());
     }
+
+    /// The relays the base sends `server_add` decode as the golden file
+    /// names them.
+    #[test]
+    fn the_entered_relays_decode_as_the_golden_file_says() {
+        let golden = crate::domain::golden();
+        let relays = [
+            ("wildflowerOfficial", EnteredRelay::WildflowerOfficial),
+            ("selfHostedWildflower", self_hosted_relay(None)),
+            (
+                "selfHostedWildflowerPinned",
+                self_hosted_relay(Some(RelayIdentity {
+                    remote_addr: format!("{RELAY_DOMAIN}:2333"),
+                    public_key: PUBLIC_KEY.to_owned(),
+                })),
+            ),
+            ("rathole", rathole_relay()),
+        ];
+        for (name, relay) in &relays {
+            assert_eq!(
+                &serde_json::from_value::<EnteredRelay>(golden["enteredRelays"][name].clone())
+                    .unwrap(),
+                relay,
+                "{name}"
+            );
+        }
+        assert_eq!(
+            golden["enteredRelays"].as_object().unwrap().len(),
+            relays.len(),
+            "every golden relay is checked"
+        );
+    }
 }
