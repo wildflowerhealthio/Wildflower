@@ -1236,13 +1236,6 @@ describe('Launch', () => {
       "Ordering the server's certificate is failing.",
     ],
     [
-      'it is unreachable with a valid certificate',
-      labStatus('runningUnreachable', {
-        certificate: golden.serverStatuses.runningAndReachable.certificate,
-      }),
-      "The server can't be reached through its relay: the relay answered 502",
-    ],
-    [
       "its certificate is one browsers don't trust",
       labStatus('runningAndReachableOnStaging'),
       "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
@@ -1271,6 +1264,128 @@ describe('Launch', () => {
       expect(launchOn(LAB).disabled).toBe(false)
     })
     expect(launchesSeen(host)).toEqual([])
+  })
+
+  describe('while a started server is unreachable with a valid certificate', () => {
+    const UNREACHABLE = "The server can't be reached through its relay: the relay answered 502"
+
+    const unreachableWithAValidCertificate = labStatus('runningUnreachable', {
+      certificate: golden.serverStatuses.runningAndReachable.certificate,
+    })
+
+    /** The reason under Starting… on lab's card. */
+    const waitingReason = (): string | null | undefined => {
+      const starting = within(serverRow(LAB)).getByRole('button', { name: 'Starting…' })
+      return document.getElementById(starting.getAttribute('aria-describedby') ?? '')?.textContent
+    }
+
+    /** Move the device's clock and timers on by `millis`. */
+    const advance = (millis: number): void => {
+      act(() => {
+        vi.advanceTimersByTime(millis)
+      })
+    }
+
+    /** Send lab's status as unreachable with a valid certificate, and wait for Starting… to say so. */
+    const becomeUnreachable = async (events: FakeEvents): Promise<void> => {
+      events.emit('server-status', unreachableWithAValidCertificate)
+      await waitFor(() => {
+        expect(waitingReason()).toBe(UNREACHABLE)
+      })
+    }
+
+    /** Lab's card, waiting on a started lab, with fake timers from `NOW`. */
+    const startWaiting = async (): Promise<{
+      readonly host: FakeHost
+      readonly events: FakeEvents
+    }> => {
+      vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.parse(NOW) })
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      const launching = renderLaunching({
+        answers: {
+          server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+          server_launch: () => Promise.resolve(null),
+        },
+      })
+      await startAndLaunch(user, LAB)
+      return launching
+    }
+
+    it('should keep waiting through a 502 shorter than the grace, then launch once reachable', async () => {
+      // Arrange
+      const { host, events } = await startWaiting()
+
+      // Act
+      await becomeUnreachable(events)
+      advance(4_000)
+
+      // Assert
+      expect(waitingReason()).toBe(UNREACHABLE)
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+
+      // Act
+      events.emit('server-status', launchableStatus(LAB))
+
+      // Assert
+      await waitFor(() => {
+        expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
+      })
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+    })
+
+    it('should stop waiting, saying why, once it has been unreachable for the grace', async () => {
+      // Arrange
+      const { host, events } = await startWaiting()
+      await becomeUnreachable(events)
+
+      // Act
+      advance(5_000)
+
+      // Assert
+      const banner = await within(serverRow(LAB)).findByRole('alert')
+      expect(banner.textContent).toContain(UNREACHABLE)
+      expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+      expect(launchesSeen(host)).toEqual([])
+    })
+
+    it.each([
+      [
+        'reachable',
+        labStatus('runningAndReachable', {
+          certificate: golden.serverStatuses.runningCacheFailed.certificate,
+        }),
+      ],
+      ['not yet reached', labStatus('runningRenewalFailed')],
+    ] as const)(
+      'should start the grace again after a status that is %s',
+      async (_state, between) => {
+        // Arrange
+        const { host, events } = await startWaiting()
+        await becomeUnreachable(events)
+        advance(4_000)
+
+        // Act
+        events.emit('server-status', between)
+        await waitFor(() => {
+          expect(waitingReason()).not.toBe(UNREACHABLE)
+        })
+        await becomeUnreachable(events)
+        advance(4_000)
+
+        // Assert
+        expect(waitingReason()).toBe(UNREACHABLE)
+        expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+
+        // Act
+        advance(1_000)
+
+        // Assert
+        expect((await within(serverRow(LAB)).findByRole('alert')).textContent).toContain(
+          UNREACHABLE
+        )
+        expect(launchesSeen(host)).toEqual([])
+      }
+    )
   })
 
   it("should show the host's refusal of a started server's launch, and Launch again", async () => {

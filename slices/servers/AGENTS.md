@@ -141,10 +141,13 @@ changing how servers run or what the host notifies about them.
   once. The wait gives up, showing why, with Launch back, once waiting
   can't help: the server's run stopped with an error during the wait, its
   certificate order is failing, its certificate is one browsers don't
-  trust, or it is unreachable while its certificate is valid. The wait is
-  held in the router context's `pendingLaunches`, a store keyed by domain,
-  so it carries on when Edit opens the server's page, whose Launch shows
-  the same wait. Launching never changes an active policy or extends an `until`.
+  trust, or it has been unreachable while its certificate is valid for 5
+  seconds without a break (any other status starts that again: its probe
+  runs every 400 ms, and a server with a valid cached certificate can
+  answer 502 before its tunnel is up). The wait is held in the router
+  context's `pendingLaunches`, a store keyed by domain, so it carries on
+  when Edit opens the server's page, whose Launch shows the same wait.
+  Launching never changes an active policy or extends an `until`.
   Over every screen, `ConsentSheet` asks about the consents waiting on the
   running servers, one server at a time, with where it stands in the queue ("1
   of 3"), kept current by the `pending-consent` event: the server's domain, the

@@ -6,8 +6,13 @@ import { ConfirmDialog, ErrorBanner } from 'react-tundraish'
 import { LaunchError, type ListedServer, launchServer, RunPolicy } from 'servers-core'
 
 import { failureText } from './failure-text.ts'
-import { REFUSAL_REASON, waitOutcomeOf } from './launch-wait.ts'
-import { type PendingLaunches, usePendingLaunch } from './pending-launches.ts'
+import {
+  REFUSAL_REASON,
+  unreachableGraceEndOf,
+  unreachableSinceOf,
+  waitOutcomeOf,
+} from './launch-wait.ts'
+import { type PendingLaunches, usePendingLaunch, type WaitingLaunch } from './pending-launches.ts'
 import { useLaunchServer, useSetServerRunPolicy } from './queries.ts'
 import type { RouterContext, RunHostCommand } from './router-context.ts'
 import { useHasPassed } from './use-has-passed.ts'
@@ -28,10 +33,17 @@ const notRunningReason = (server: ListedServer.Type): string =>
  * status is launchable and the webview is online, or end the wait with the
  * failure once waiting can't help (see `waitOutcomeOf`). The launch's outcome
  * ends it too, unless it was cancelled meanwhile.
+ *
+ * @remarks
+ * It keeps the wait's `unreachableSince` current from each status, and looks
+ * again when `unreachableGraceHasPassed` turns true at the end of that
+ * grace: the host sends a status only when it changes, so a server still
+ * unreachable sends none then.
  */
 const useDriveStartAndLaunch = (
   server: ListedServer.Type,
   online: boolean,
+  unreachableGraceHasPassed: boolean,
   pendingLaunches: PendingLaunches,
   runHostCommand: RunHostCommand
 ): void => {
@@ -40,7 +52,16 @@ const useDriveStartAndLaunch = (
   const { domain, status } = server
   useEffect(() => {
     if (pending?.kind !== 'waiting') return
-    const outcome = waitOutcomeOf(status, pending.confirmedAt)
+    const unreachableSince = unreachableSinceOf(
+      status,
+      pending.unreachableSince,
+      DateTime.unsafeNow()
+    )
+    if (Option.isSome(unreachableSince) !== Option.isSome(pending.unreachableSince)) {
+      pendingLaunches.set(domain, Option.some({ ...pending, unreachableSince }))
+      return
+    }
+    const outcome = waitOutcomeOf(status, pending.confirmedAt, unreachableGraceHasPassed)
     if (outcome.kind === 'gaveUp') {
       pendingLaunches.set(domain, Option.some({ kind: 'failed', failure: outcome.failure }))
       return
@@ -68,7 +89,7 @@ const useDriveStartAndLaunch = (
         settle(Option.some(`Launching failed: ${String(defect)}`))
       }
     )
-  }, [pending, status, online, domain, pendingLaunches, runHostCommand])
+  }, [pending, status, online, domain, pendingLaunches, runHostCommand, unreachableGraceHasPassed])
 }
 
 /**
@@ -117,7 +138,13 @@ const LaunchButton = ({
   const setRunPolicy = useSetServerRunPolicy(runHostCommand)
   const [confirmingStart, setConfirmingStart] = useState(false)
   const pending = usePendingLaunch(pendingLaunches, server.domain)
-  useDriveStartAndLaunch(server, online, pendingLaunches, runHostCommand)
+  const unreachableGraceHasPassed = useHasPassed(
+    pending.pipe(
+      Option.filter((launching): launching is WaitingLaunch => launching.kind === 'waiting'),
+      Option.flatMap(({ unreachableSince }) => unreachableGraceEndOf(unreachableSince))
+    )
+  )
+  useDriveStartAndLaunch(server, online, unreachableGraceHasPassed, pendingLaunches, runHostCommand)
   const policyHasEnded = useHasPassed(RunPolicy.deadlineOf(server.runPolicy))
   const policyIsInactive = server.runPolicy.kind === 'off' || policyHasEnded
   const refusal = Option.getOrNull(LaunchError.statusRefusalOf(server.status))
@@ -127,7 +154,7 @@ const LaunchButton = ({
   const waitingReason = pending.pipe(
     Option.flatMap((launching) => {
       if (launching.kind !== 'waiting') return Option.none()
-      const outcome = waitOutcomeOf(server.status, launching.confirmedAt)
+      const outcome = waitOutcomeOf(server.status, launching.confirmedAt, unreachableGraceHasPassed)
       return outcome.kind === 'waiting' ? Option.some(outcome.reason) : Option.none()
     })
   )
@@ -152,7 +179,10 @@ const LaunchButton = ({
   const waitForStart = (confirmedAt: DateTime.Utc): void => {
     launch.reset()
     setConfirmingStart(false)
-    pendingLaunches.set(domain, Option.some({ kind: 'waiting', confirmedAt }))
+    pendingLaunches.set(
+      domain,
+      Option.some({ kind: 'waiting', confirmedAt, unreachableSince: Option.none() })
+    )
   }
   const pendingFailure = pending.pipe(
     Option.flatMap((launching) =>

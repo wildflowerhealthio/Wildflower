@@ -1,7 +1,15 @@
-import { DateTime, Option } from 'effect'
+import { DateTime, Duration, Option } from 'effect'
 import { LaunchError, ServerStatus } from 'servers-core'
 
 import { lastStopText } from './server-status-text.ts'
+
+/**
+ * How long a started server may stay unreachable through its relay while
+ * its certificate is valid before the wait gives up. Its reachability probe
+ * runs every 400 ms, and a server with a valid cached certificate can answer
+ * 502 before its tunnel is up, so a few seconds of it are part of starting.
+ */
+const UNREACHABLE_GRACE = Duration.seconds(5)
 
 /**
  * Why a running server can't be launched yet, for each refusal the host
@@ -41,6 +49,38 @@ const unreachableReason = (status: ServerStatus.Type): string =>
   )
 
 /**
+ * Whether the server whose status is `status` can't be reached through its
+ * relay while its certificate is valid and from a CA browsers trust. Until
+ * its certificate is valid, an unreachable server is still getting one.
+ */
+const isUnreachableWithValidCertificate = (status: ServerStatus.Type): boolean =>
+  Option.contains(LaunchError.statusRefusalOf(status), 'unreachable') &&
+  Option.isNone(LaunchError.certificateRefusalOf(status.certificate))
+
+/**
+ * When the wait's server, whose status is now `status`, has been unreachable
+ * with a valid certificate since, without a break: `unreachableSince` while
+ * it still is, `now` once it first is, and none once it isn't.
+ */
+const unreachableSinceOf = (
+  status: ServerStatus.Type,
+  unreachableSince: Option.Option<DateTime.Utc>,
+  now: DateTime.Utc
+): Option.Option<DateTime.Utc> =>
+  isUnreachableWithValidCertificate(status)
+    ? Option.orElse(unreachableSince, () => Option.some(now))
+    : Option.none()
+
+/**
+ * When the unreachable grace of a server unreachable with a valid
+ * certificate since `unreachableSince` ends: {@link UNREACHABLE_GRACE} later.
+ */
+const unreachableGraceEndOf = (
+  unreachableSince: Option.Option<DateTime.Utc>
+): Option.Option<DateTime.Utc> =>
+  Option.map(unreachableSince, DateTime.addDuration(UNREACHABLE_GRACE))
+
+/**
  * How the server's latest run stopped, when it stopped after the wait began
  * at `confirmedAt`; a stop at that same instant was before it.
  */
@@ -57,10 +97,14 @@ const stopDuringWait = (
  * can't help: its run stopped with an error during the wait (a server
  * retrying after one shows that stop while it waits to start again), its
  * certificate order is failing, its certificate is from a CA browsers don't
- * trust, or it can't be reached through its relay while its certificate is
- * valid; none while waiting still can.
+ * trust, or it is still unreachable through its relay with a valid
+ * certificate once `unreachableGraceHasPassed`; none while waiting still can.
  */
-const failureOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): Option.Option<string> => {
+const failureOf = (
+  status: ServerStatus.Type,
+  confirmedAt: DateTime.Utc,
+  unreachableGraceHasPassed: boolean
+): Option.Option<string> => {
   const stopError = stopDuringWait(status, confirmedAt).pipe(Option.flatMap((stop) => stop.error))
   if (Option.isSome(stopError)) {
     return Option.some(`The server stopped with an error: ${stopError.value}`)
@@ -68,15 +112,13 @@ const failureOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): Option
   if (status.certificate.status === 'orderFailing') {
     return Option.some("Ordering the server's certificate is failing.")
   }
-  const refusal = Option.getOrNull(LaunchError.statusRefusalOf(status))
-  if (refusal === 'untrustedCertificate') return Option.some(REFUSAL_REASON.untrustedCertificate)
-  if (refusal !== 'unreachable') return Option.none()
-  // Until its certificate is valid, an unreachable server is still getting
-  // one.
-  return Option.match(LaunchError.certificateRefusalOf(status.certificate), {
-    onNone: () => Option.some(unreachableReason(status)),
-    onSome: () => Option.none(),
-  })
+  if (Option.contains(LaunchError.statusRefusalOf(status), 'untrustedCertificate')) {
+    return Option.some(REFUSAL_REASON.untrustedCertificate)
+  }
+  if (!unreachableGraceHasPassed || !isUnreachableWithValidCertificate(status)) {
+    return Option.none()
+  }
+  return Option.some(unreachableReason(status))
 }
 
 /**
@@ -107,8 +149,12 @@ const waitingReasonOf = (
  * waits while the server can't be launched yet (`waitingReasonOf`), and is
  * otherwise launchable.
  */
-const waitOutcomeOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): WaitOutcome =>
-  failureOf(status, confirmedAt).pipe(
+const waitOutcomeOf = (
+  status: ServerStatus.Type,
+  confirmedAt: DateTime.Utc,
+  unreachableGraceHasPassed: boolean
+): WaitOutcome =>
+  failureOf(status, confirmedAt, unreachableGraceHasPassed).pipe(
     Option.map((failure): WaitOutcome => ({ kind: 'gaveUp', failure })),
     Option.orElse(() =>
       waitingReasonOf(status, confirmedAt).pipe(
@@ -118,5 +164,5 @@ const waitOutcomeOf = (status: ServerStatus.Type, confirmedAt: DateTime.Utc): Wa
     Option.getOrElse((): WaitOutcome => ({ kind: 'launchable' }))
   )
 
-export { REFUSAL_REASON, waitOutcomeOf }
+export { REFUSAL_REASON, unreachableGraceEndOf, unreachableSinceOf, waitOutcomeOf }
 export type { WaitOutcome }

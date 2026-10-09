@@ -2,20 +2,29 @@ import type { DateTime } from 'effect'
 import { Option } from 'effect'
 import { useSyncExternalStore } from 'react'
 
+/** A start-and-launch waiting for the started server to become launchable. */
+interface WaitingLaunch {
+  readonly kind: 'waiting'
+  /**
+   * When "Start and launch" was confirmed, by this device's clock, which
+   * also stamps the host's stops: a stop after it is one during the wait.
+   */
+  readonly confirmedAt: DateTime.Utc
+  /**
+   * Since when, by this device's clock, the server has been unreachable
+   * through its relay while its certificate is valid, without a break; none
+   * while it isn't.
+   */
+  readonly unreachableSince: Option.Option<DateTime.Utc>
+}
+
 /**
  * A server's start-and-launch, from the confirmed "Start and launch" until it
  * launches or gives up: waiting for the started server to become launchable,
  * launching it, or the failure that ended it.
  */
 type PendingLaunch =
-  | {
-      readonly kind: 'waiting'
-      /**
-       * When "Start and launch" was confirmed, by this device's clock, which
-       * also stamps the host's stops: a stop after it is one during the wait.
-       */
-      readonly confirmedAt: DateTime.Utc
-    }
+  | WaitingLaunch
   | { readonly kind: 'launching' }
   | { readonly kind: 'failed'; readonly failure: string }
 
@@ -65,4 +74,4 @@ const usePendingLaunch = (
   )
 
 export { makeEmptyPendingLaunches, usePendingLaunch }
-export type { PendingLaunch, PendingLaunches }
+export type { PendingLaunch, PendingLaunches, WaitingLaunch }
