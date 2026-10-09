@@ -56,7 +56,7 @@ const MEDICATIONS_SCOPE =
  * here, and `redirectUri` (the app root) is computed at launch time from the
  * current origin.
  */
-const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'medications-app-dev' : 'medications-app',
   scope: MEDICATIONS_SCOPE,
 }
@@ -71,4 +71,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'medications-app',
 }
 
-export { MEDICATIONS_SCOPE, smartAppTelemetry, smartConfig }
+export { MEDICATIONS_SCOPE, smartAppTelemetry, smartRegistration }

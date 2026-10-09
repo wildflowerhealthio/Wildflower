@@ -46,7 +46,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * in `gatekeeper-rust`'s `db/clients.rs`, and the dev client in `seeding.rs`.
  * Change one, change all four.
  */
-const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'fhir-sync-pebble-dev' : 'fhir-sync-pebble',
   scope: 'openid fhirUser system/Patient.rs system/Observation.cu',
 }
@@ -68,4 +68,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'fhir-sync-pebble-web',
 }
 
-export { RETURN_TO_STORAGE_KEY, smartAppTelemetry, standaloneSmartConfig }
+export { RETURN_TO_STORAGE_KEY, smartAppTelemetry, smartRegistration }

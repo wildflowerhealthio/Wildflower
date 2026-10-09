@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
-import { smartAppTelemetry, smartConfig } from './config.ts'
+import { smartAppTelemetry, smartRegistration } from './config.ts'
 
 /**
  * The hybrid seam for `wildflower-importer`: the shared `SmartAppRoot` around
@@ -20,7 +20,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
   return (
     <SmartAppRoot
       app="importer"
-      standalone={smartConfig}
+      registration={smartRegistration}
       telemetry={smartAppTelemetry}
       launched={launched}
     >

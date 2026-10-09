@@ -19,7 +19,7 @@ boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
 JS entry), completes a GitHub Pages 404 redirect, installs the OS colour-scheme
 listener, and renders `<AppRoot />`. `AppRoot` (from `app-root.tsx`) is
-`<SmartAppRoot app="webTrace" standalone={smartConfig} telemetry={smartAppTelemetry}>`
+`<SmartAppRoot app="webTrace" registration={smartRegistration} telemetry={smartAppTelemetry}>`
 around `<App />`; `SmartAppRoot` holds every branch behind the telemetry
 consent dialog, then starts a launch the URL carries under a loading line (`smartAppTelemetry` in `config.ts` names the app's Sentry
 project through the `VITE_SENTRY_DSN_WEB_TRACE` build variable; see

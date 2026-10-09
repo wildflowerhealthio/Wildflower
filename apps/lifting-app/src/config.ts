@@ -52,7 +52,7 @@ const LIFTING_CLIENT_ID = import.meta.env.DEV ? 'lifting-app-dev' : 'lifting-app
  * not set here, and `redirectUri` (the app root) is computed at launch time
  * from the current origin.
  */
-const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: LIFTING_CLIENT_ID,
   scope: LIFTING_SCOPE,
 }
@@ -68,4 +68,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'lifting-app',
 }
 
-export { LIFTING_SCOPE, smartAppTelemetry, smartConfig }
+export { LIFTING_SCOPE, smartAppTelemetry, smartRegistration }

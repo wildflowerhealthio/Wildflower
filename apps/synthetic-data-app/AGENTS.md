@@ -19,7 +19,7 @@ its authed runner from route context. Like the Importer, **this app writes.**
   completes a GitHub Pages 404 redirect (`restoreRedirectedUrl`), starts the
   OS colour-scheme listener and renders `<AppRoot />`.
 - `src/app-root.tsx` — `AppRoot`: `SmartAppRoot` (`app="syntheticData"`,
-  `smartConfig` and `smartAppTelemetry`) around `<App />`. The shell's
+  `smartRegistration` and `smartAppTelemetry`) around `<App />`. The shell's
   telemetry consent dialog comes first: until the visitor answers, no launch
   starts, neither the connect menu nor the app mounts, and nothing loads. A
   launch the URL carries then starts under a loading line. `smartAppTelemetry` names the app's own Sentry project through the

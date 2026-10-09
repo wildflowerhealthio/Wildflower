@@ -51,7 +51,7 @@ const HEALTH_VIEWER_CLIENT_ID = import.meta.env.DEV ? 'health-viewer-app-dev' : 
  * not set here, and `redirectUri` (the app root) is computed at launch time
  * from the current origin.
  */
-const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: HEALTH_VIEWER_CLIENT_ID,
   scope: HEALTH_VIEWER_SCOPE,
 }
@@ -66,4 +66,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'health-viewer',
 }
 
-export { HEALTH_VIEWER_SCOPE, smartAppTelemetry, smartConfig }
+export { HEALTH_VIEWER_SCOPE, smartAppTelemetry, smartRegistration }

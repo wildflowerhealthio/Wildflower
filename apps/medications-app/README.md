@@ -18,7 +18,7 @@ completes a GitHub Pages 404 redirect, wires the OS colour-scheme listener, and
 renders `<AppRoot />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
-standalone={smartConfig} telemetry={smartAppTelemetry}>` around
+registration={smartRegistration} telemetry={smartAppTelemetry}>` around
 `<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 latches on mount which of three cases the URL is:
 

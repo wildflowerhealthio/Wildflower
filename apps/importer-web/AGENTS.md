@@ -80,7 +80,7 @@ completion path serves both.
 
 ## Scopes: this app writes, and the two sides must match exactly
 
-`src/config.ts` requests (in `smartConfig`, for either launch):
+`src/config.ts` requests (in `smartRegistration`, for either launch):
 
 ```text
 launch openid fhirUser system/DocumentReference.cruds
@@ -227,7 +227,7 @@ tundra → tundraish → fonts; branding's tokens arrive through `branding-react
 JS entry), completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListener()`, and
 renders `<AppRoot />`. `AppRoot` (exported from `app-root.tsx` and from the
 package's `"."` export as a `source`-only seam) is
-`<SmartAppRoot app="importer" standalone={smartConfig} telemetry={smartAppTelemetry}>`
+`<SmartAppRoot app="importer" registration={smartRegistration} telemetry={smartAppTelemetry}>`
 around `<App />`; `SmartAppRoot` holds every branch behind the telemetry
 consent dialog and owns the `QueryClientProvider` and the chrome gate:
 

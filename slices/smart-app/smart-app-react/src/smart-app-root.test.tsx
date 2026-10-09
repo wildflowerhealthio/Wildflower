@@ -78,7 +78,7 @@ vi.mock('./authorize-from-launch-page.ts', () => ({
 const connectMenuRenderFailure: { current: Error | undefined } = { current: undefined }
 
 // The stub echoes the props it was handed as data attributes so the wiring
-// (the SMART target, `clientId` / `scope` from the `standalone` prop,
+// (the SMART target, `clientId` / `scope` from the `registration` prop,
 // `redirectUri` from the URL, the latched launch failure as `arrivalProblem`)
 // is observable. The branding chrome renders for real; the menu's own banner is
 // `connect-menu.test.tsx`'s.
@@ -102,7 +102,7 @@ vi.mock('./connect-menu.tsx', () => ({
   },
 }))
 
-const STANDALONE = {
+const REGISTRATION = {
   clientId: 'medications-app',
   scope: 'launch openid fhirUser system/MedicationRequest.rs',
 }
@@ -178,7 +178,7 @@ describe('SmartAppRoot', () => {
     expect(screen.queryByTestId('app')).toBeNull()
   })
 
-  it('should hand the connect menu the SMART target, the standalone config and this root as its redirect', () => {
+  it('should hand the connect menu the SMART target, the registration and this root as its redirect', () => {
     // Arrange — served from a subpath, with a query that must not leak into the redirect
     setUrl('/importer-app/index.html?utm_source=email')
 
@@ -188,8 +188,8 @@ describe('SmartAppRoot', () => {
     // Assert
     const menu = screen.getByTestId('connect-menu-stub')
     expect(menu.getAttribute('data-target')).toBe('fhir-r4')
-    expect(menu.getAttribute('data-client-id')).toBe(STANDALONE.clientId)
-    expect(menu.getAttribute('data-scope')).toBe(STANDALONE.scope)
+    expect(menu.getAttribute('data-client-id')).toBe(REGISTRATION.clientId)
+    expect(menu.getAttribute('data-scope')).toBe(REGISTRATION.scope)
     expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer-app/`)
   })
 
@@ -280,14 +280,14 @@ describe('SmartAppRoot', () => {
     // Act — rendered twice (StrictMode) and then re-rendered
     const { rerender } = render(
       <StrictMode>
-        <SmartAppRoot app="medications" standalone={STANDALONE} telemetry={TELEMETRY} launched>
+        <SmartAppRoot app="medications" registration={REGISTRATION} telemetry={TELEMETRY} launched>
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
     )
     rerender(
       <StrictMode>
-        <SmartAppRoot app="medications" standalone={STANDALONE} telemetry={TELEMETRY} launched>
+        <SmartAppRoot app="medications" registration={REGISTRATION} telemetry={TELEMETRY} launched>
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
@@ -371,7 +371,7 @@ describe('SmartAppRoot on a launch', () => {
         expect(authorizeMock).toHaveBeenCalledTimes(1)
       })
       expect(authorizeMock).toHaveBeenCalledWith({
-        ...STANDALONE,
+        ...REGISTRATION,
         redirectUri: `${window.location.origin}/importer-app/`,
       })
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
@@ -400,13 +400,13 @@ describe('SmartAppRoot on a launch', () => {
       // authorize effect, so only the guard keeps the launch from being spent
       // twice
       setUrl(`/${EHR_LAUNCH}`)
-      const { rerender } = render(<Shell standalone={{ ...STANDALONE }} />)
+      const { rerender } = render(<Shell registration={{ ...REGISTRATION }} />)
       await waitFor(() => {
         expect(authorizeMock).toHaveBeenCalledTimes(1)
       })
 
       // Act
-      rerender(<Shell standalone={{ ...STANDALONE }} />)
+      rerender(<Shell registration={{ ...REGISTRATION }} />)
 
       // Assert
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
@@ -715,7 +715,7 @@ describe('SmartAppRoot telemetry consent', () => {
       render(
         <SmartAppRoot
           app="medications"
-          standalone={STANDALONE}
+          registration={REGISTRATION}
           telemetry={{ dsn: appDsn, app: TELEMETRY.app }}
           launched={false}
         >
@@ -756,18 +756,18 @@ function setUrl(url: string): void {
   window.history.replaceState({}, '', url)
 }
 
-/** The shell around a stub app, with the test's standalone config unless given another. */
+/** The shell around a stub app, with the test's registration unless given another. */
 function Shell({
   launched,
-  standalone = STANDALONE,
+  registration = REGISTRATION,
 }: {
   readonly launched?: boolean
-  readonly standalone?: typeof STANDALONE
+  readonly registration?: typeof REGISTRATION
 }): JSX.Element {
   return (
     <SmartAppRoot
       app="medications"
-      standalone={standalone}
+      registration={registration}
       telemetry={TELEMETRY}
       launched={launched}
     >
@@ -788,7 +788,7 @@ function renderShell({
 }): void {
   render(
     <StrictMode>
-      <SmartAppRoot app={app} standalone={STANDALONE} telemetry={TELEMETRY} launched={launched}>
+      <SmartAppRoot app={app} registration={REGISTRATION} telemetry={TELEMETRY} launched={launched}>
         {children}
       </SmartAppRoot>
     </StrictMode>

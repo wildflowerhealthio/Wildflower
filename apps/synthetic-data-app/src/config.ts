@@ -47,7 +47,7 @@ const SYNTHETIC_DATA_CLIENT_ID = import.meta.env.DEV
  * not set here, and `redirectUri` (the app root) is computed at launch time
  * from the current origin.
  */
-const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: SYNTHETIC_DATA_CLIENT_ID,
   scope: SYNTHETIC_DATA_SCOPE,
 }
@@ -69,4 +69,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'synthetic-data-app',
 }
 
-export { PUBLISHED_SNAPSHOT_ADDRESS, smartAppTelemetry, smartConfig, SYNTHETIC_DATA_SCOPE }
+export { PUBLISHED_SNAPSHOT_ADDRESS, smartAppTelemetry, smartRegistration, SYNTHETIC_DATA_SCOPE }

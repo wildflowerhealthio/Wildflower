@@ -86,7 +86,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * deliberately per the app's scope set. If a server rejects the authorize
  * request over it, dropping `launch` is the first thing to try.
  */
-const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
   scope:
     'launch openid fhirUser system/DocumentReference.cruds system/Patient.cruds system/Observation.cruds system/Practitioner.cruds system/DiagnosticReport.cruds system/Medication.cruds system/MedicationRequest.cruds system/MedicationDispense.cruds system/ServiceRequest.cruds system/ImagingStudy.cruds',
@@ -102,4 +102,4 @@ const smartAppTelemetry: SmartAppTelemetry = {
   app: 'importer-web',
 }
 
-export { smartAppTelemetry, smartConfig }
+export { smartAppTelemetry, smartRegistration }

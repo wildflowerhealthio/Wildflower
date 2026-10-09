@@ -71,7 +71,7 @@ interface SmartAppRootProps {
    * page's root and the FHIR server is the launch's `iss` or the user's pick,
    * so neither is part of it.
    */
-  readonly standalone: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>
+  readonly registration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>
   /** Where the app's telemetry goes once the visitor consents to it. */
   readonly telemetry: SmartAppTelemetry
   /**
@@ -103,16 +103,16 @@ function ConsentStatusControl(): JSX.Element {
  */
 function LaunchingApp({
   app,
-  standalone,
-}: Pick<SmartAppRootProps, 'app' | 'standalone'>): JSX.Element {
+  registration,
+}: Pick<SmartAppRootProps, 'app' | 'registration'>): JSX.Element {
   const launchAuthorized = useRef(false)
   useEffect(() => {
     if (launchAuthorized.current) return
     launchAuthorized.current = true
-    void authorizeFromLaunchPage(standalone, window.location.href).then((failure) => {
+    void authorizeFromLaunchPage(registration, window.location.href).then((failure) => {
       if (failure !== null) window.location.replace(failure)
     })
-  }, [standalone])
+  }, [registration])
   return <LaunchPage message={`Launching ${APP_DESCRIPTIONS[app].name}…`} />
 }
 
@@ -123,7 +123,7 @@ function LaunchingApp({
  *
  * - **Launch** (the URL carries `iss`, with or without an EHR's `launch`, and
  *   no callback): {@link LaunchPage} while the root authorizes the launch with
- *   `standalone`, once, in an error boundary that reports what it catches. A
+ *   `registration`, once, in an error boundary that reports what it catches. A
  *   launch that fails before it leaves comes back to this root as
  *   `?launchError`.
  * - **Launched** (the URL carries an OAuth callback): `BrandBar`, with the
@@ -161,7 +161,7 @@ function LaunchingApp({
  */
 function SmartAppRoot({
   app,
-  standalone,
+  registration,
   telemetry,
   launched,
   children,
@@ -237,7 +237,7 @@ function SmartAppRoot({
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
       {arrival === 'launch' ? (
         <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-          <LaunchingApp app={app} standalone={standalone} />
+          <LaunchingApp app={app} registration={registration} />
         </CrashReportingBoundary>
       ) : (
         <QueryClientProvider client={queryClient}>
@@ -253,8 +253,8 @@ function SmartAppRoot({
               <CrashReportingBoundary extraContext={{ app: telemetry.app }} headingLevel={2}>
                 <ConnectMenu
                   target="fhir-r4"
-                  clientId={standalone.clientId}
-                  scope={standalone.scope}
+                  clientId={registration.clientId}
+                  scope={registration.scope}
                   redirectUri={redirectUri}
                   arrivalProblem={launchFailure ?? undefined}
                 />

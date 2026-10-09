@@ -26,7 +26,7 @@ redirect, wires the OS colour-scheme listener, and renders `<AppRoot />` inside
 `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="healthViewer"
-standalone={smartConfig} telemetry={smartAppTelemetry}>` around
+registration={smartRegistration} telemetry={smartAppTelemetry}>` around
 `<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 starts a launch the URL carries under a loading line or renders one of the
 other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project

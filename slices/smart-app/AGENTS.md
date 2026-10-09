@@ -10,10 +10,10 @@ slice is where the two meet, so neither has to know about the other.
 
 - **`smart-app-react`** — the only package. There is no `-core`: everything
   here is UI or DOM boot code.
-  - `SmartAppRoot({ app, standalone, telemetry, launched?, children })` — the
-    app root, and the app's one page: it starts a SMART launch its URL carries,
-    completes the callback, and shows the landing on a plain visit. `standalone`
-    is the app's SMART registration, for a launch the URL carries and for the
+  - `SmartAppRoot({ app, registration, telemetry, launched?, children })` —
+    the app root, and the app's one page: it starts a SMART launch its URL
+    carries, completes the callback, and shows the landing on a plain visit.
+    `registration` is the app's SMART registration (`clientId` and `scope`), for a launch the URL carries and for the
     connect menu alike. `telemetry` (`SmartAppTelemetry`: `dsn`, `app`) names
     where the app reports once the visitor consents: its own Sentry project's
     DSN and the id its events are tagged with.
@@ -64,8 +64,8 @@ An app has one entry, `index.html`, and it is a few lines:
 - `main.tsx` imports `react-tundraish/styles` (the design-system stylesheet
   stack, fonts included) before anything else, completes a GitHub Pages 404
   redirect (`restoreRedirectedUrl`), starts `addOsColorSchemeListener()`, and
-  renders `<SmartAppRoot app="…" standalone={smartConfig} telemetry={smartAppTelemetry}><App /></SmartAppRoot>`.
-  `config.ts` holds the app's SMART registration (`smartConfig`), and pairs
+  renders `<SmartAppRoot app="…" registration={smartRegistration} telemetry={smartAppTelemetry}><App /></SmartAppRoot>`.
+  `config.ts` holds the app's SMART registration (`smartRegistration`), and pairs
   the DSN, read from the app's own `VITE_SENTRY_DSN_<APP>` build variable
   (typed in `env.d.ts`, named in `.env.example`), with the app's id as
   `smartAppTelemetry`.
