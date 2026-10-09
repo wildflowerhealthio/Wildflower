@@ -79,7 +79,7 @@ describe('sectionHref', () => {
 
   it('should match SECTION_PATHS on marketing and sectionUrl from an app', () => {
     const sectionArb = fc.constantFrom(
-      ...(['medications', 'importer', 'webTrace', 'serverDocs', 'ohifViewer'] as const)
+      ...(['medications', 'importer', 'serverDocs', 'ohifViewer'] as const)
     )
     fc.assert(
       fc.property(sectionArb, (section) => {

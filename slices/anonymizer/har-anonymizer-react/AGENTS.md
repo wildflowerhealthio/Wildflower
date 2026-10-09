@@ -30,13 +30,9 @@ An adapter. Depends on `har-anonymizer-core` (the redactor),
 `http-archive` (the `HttpArchive` projection and `emitHarFromLog` emitter),
 `effect`, `react`, `react-kitchen-sink`, `react-tundraish`. Never imports `web-trace-core`
 (the redactor and emitter are HAR-native here — this package does not speak
-`TraceExchange`), `web-trace-react`, `importer-react`, or `slices/collector`.
+`TraceExchange`), `importer-react`, or `slices/collector`.
 
 ## Traps
-
-The traps carry over verbatim from the export flow this panel used to be in
-`web-trace-react`; every one still holds against `HttpArchive.Log` because the
-core's decision rules are unchanged.
 
 - **The preview is the pseudonymizer's output, not a second implementation.**
   `buildAnonymizePreview` runs `redactLog` and samples the `after` values from
@@ -127,9 +123,7 @@ URL)` / `Auto — hidden (schema URLs off)`. Those paths are exempt from the
 Property-based where there is an invariant, example-based where there is a
 behaviour to document.
 
-- `anonymize-panel.test.tsx` — the acceptance tests, ported from
-  `web-trace-react`'s `export-panel.test.tsx` with the input re-typed. The
-  single-patient case, the twenty-MRN case, the FHIR bundle case, all
+- `anonymize-panel.test.tsx` — the acceptance tests. The single-patient case, the twenty-MRN case, the FHIR bundle case, all
   asserted against the **downloaded archive** with its bodies base64-decoded
   first (HAR carries a body as base64 in `content.text`, so searching the raw
   file finds nothing whether or not it was redacted). Also a

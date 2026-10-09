@@ -74,10 +74,9 @@ const subtitleFor = (tab: Tab): string =>
  * [AGENTS.md](../AGENTS.md) for why splitting a flow across the app boundary is
  * the mistake this shape exists to avoid.
  *
- * The unselected screen is **unmounted**, not hidden — the same lesson
- * `apps/web-trace` records about split surfaces (an accessibility tree only
- * carries the surface the user is on, and the screen holds its own state so a
- * flip-back opens fresh at the picker).
+ * The unselected screen is **unmounted**, not hidden: an accessibility tree
+ * only carries the surface the user is on, and the screen holds its own state
+ * so a flip-back opens fresh at the picker.
  */
 const ImporterHome = (): JSX.Element => {
   // Tab state lives inside `ImporterHome` — a per-render local — so the router

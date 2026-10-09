@@ -70,7 +70,7 @@ describe('APP_DESCRIPTIONS', () => {
 })
 
 describe('smartAppLaunchPages', () => {
-  it('should list the six first-party SMART apps, at their roots on the canonical site', () => {
+  it('should list the five first-party SMART apps, at their roots on the canonical site', () => {
     // Act
     const launchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
 
@@ -81,7 +81,6 @@ describe('smartAppLaunchPages', () => {
         launchPageUrl: 'https://wildflowerhealth.io/medications-app/',
       },
       { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer-app/' },
-      { app: 'webTrace', launchPageUrl: 'https://wildflowerhealth.io/web-trace-app/' },
       {
         app: 'healthViewer',
         launchPageUrl: 'https://wildflowerhealth.io/health-viewer-app/',

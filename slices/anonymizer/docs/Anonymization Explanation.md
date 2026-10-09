@@ -2,7 +2,7 @@
 
 Why the pseudonymizer is shaped the way it is, and — more importantly — what it
 does not protect. This is the privacy boundary of the Web Trace feature: capture
-is lossless and the viewer shows raw data, so this module is the only thing
+is lossless, so this module is the only thing
 standing between a recorded browsing session and a collector author's inbox.
 
 For the module layout and its traps, see
@@ -202,7 +202,7 @@ the per-path override the code carve-out's residue uses.
 
 This is why redaction is two steps. `buildRedactionPolicy` walks the session and
 counts; `redactExchange` rewrites one exchange against the result. The split lets
-the viewer render the decisions it made, lets a reviewer override one path, and
+the preview render the decisions it made, lets a reviewer override one path, and
 lets a single exchange be re-redacted after an override without recounting.
 
 Paths are keyed so that counting is meaningful: body leaves by JSON path with

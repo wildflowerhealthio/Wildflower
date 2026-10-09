@@ -13,7 +13,7 @@ public origin.
 
 An app's assets are served from its own origin, never the host's. Growth Chart,
 Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
-Medications (`medications-app`), Web Trace (`web-trace-app`), the Server Docs
+Medications (`medications-app`), the Server Docs
 console (`web-server-docs`), Importer (`importer-app`), the OHIF imaging viewer
 (`ohif-viewer`), Lifting (`lifting`) and the Synthesized Health Viewer
 (`health-viewer-app`) — are published to

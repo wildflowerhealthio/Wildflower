@@ -63,8 +63,8 @@ vp build    # production build to dist/
   branding slice. The shared `SiteHeader`/`SiteFooter` in `branding-react`
   remain the chrome for the _apps_, which link back to this page's anchors.
 - **App copy is shared with the apps.** The Synthesized Health Viewer,
-  Medication Viewer, FHIR Sync for Pebble, Lifting, Importer and Web Trace
-  Viewer rows read their status line, paragraphs and launcher text from
+  Medication Viewer, FHIR Sync for Pebble, Lifting, Importer and Synthetic
+  Data Loader rows read their status line, paragraphs and launcher text from
   `branding-core`'s `APP_DESCRIPTIONS`; each app's standalone landing page
   renders the same entry. Edit the copy there, not in the section components.
   The server rows stay inline.

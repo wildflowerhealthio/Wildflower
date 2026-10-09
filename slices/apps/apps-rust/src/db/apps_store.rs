@@ -369,7 +369,7 @@ mod tests {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let inserted = store.insert_app(&registration("app-x")).expect("inserted");
         assert_eq!(store.find_app("app-x").unwrap(), Some(inserted.clone()));
-        assert_eq!(inserted.position, 10, "the store assigns the tail position");
+        assert_eq!(inserted.position, 9, "the store assigns the tail position");
         assert!(inserted.on_homescreen);
         assert!(!inserted.is_smart(), "inserted app has no client_id");
         assert_eq!(inserted.url, launch_url("https://example.com/launch"));
@@ -396,7 +396,7 @@ mod tests {
         );
         let stored = store.find_app("app-x").unwrap().unwrap();
         assert_eq!(stored.name, "app-x", "the existing row is untouched");
-        assert_eq!(stored.position, 10);
+        assert_eq!(stored.position, 9);
     }
 
     #[test]
@@ -580,7 +580,7 @@ mod migration_tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 10, "exactly the ten seeded default apps");
+        assert_eq!(row_count, 9, "exactly the nine seeded default apps");
     }
 
     /// The port hands back the seeded registry, in display order.
@@ -695,29 +695,21 @@ mod migration_tests {
     fn first_party_apps_launch_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
-        for (id, url) in [
-            (
-                "medications-app",
-                "https://wildflowerhealth.io/medications-app/?launch={launch}&iss={origin}/fhir-r4",
-            ),
-            (
-                "web-trace-app",
-                "https://wildflowerhealth.io/web-trace-app/?launch={launch}&iss={origin}/fhir-r4",
-            ),
-        ] {
-            let registration = store
-                .find_app(id)
-                .unwrap()
-                .unwrap_or_else(|| panic!("{id} must exist under its renamed id"));
-            // A first-party app's client_id equals its id.
-            assert_eq!(registration.client_id.as_deref(), Some(id));
-            assert!(
-                registration.requires_tunnel,
-                "{id} is launched from the published site, so its `iss={{origin}}` FHIR \
-                 target must resolve to the server's public origin",
-            );
-            assert_eq!(registration.url.to_string(), url);
-        }
+        let registration = store
+            .find_app("medications-app")
+            .unwrap()
+            .expect("medications-app must exist under its renamed id");
+        // A first-party app's client_id equals its id.
+        assert_eq!(registration.client_id.as_deref(), Some("medications-app"));
+        assert!(
+            registration.requires_tunnel,
+            "medications-app is launched from the published site, so its `iss={{origin}}` \
+             FHIR target must resolve to the server's public origin",
+        );
+        assert_eq!(
+            registration.url.to_string(),
+            "https://wildflowerhealth.io/medications-app/?launch={launch}&iss={origin}/fhir-r4",
+        );
 
         // The old ids are fully retired.
         for old in ["wildflower-medication", "wildflower-web-trace"] {
@@ -871,7 +863,8 @@ mod migration_tests {
             Some("bdf9fc5cb5a28c6683b49896b0ef8a75")
         );
         assert!(!lifting.on_homescreen, "the user's placement stays");
-        assert_eq!(lifting.position, before.position);
+        // Less one: `0018` removes the Web Trace row ahead of it.
+        assert_eq!(lifting.position, before.position - 1);
         assert_eq!(
             stored_url(&store, "lifting"),
             "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}/fhir-r4",
@@ -1015,8 +1008,8 @@ mod migration_tests {
         sql_query(
             "INSERT INTO app_registrations \
              (id, position, on_homescreen, name, url, client_id, requires_tunnel) \
-             VALUES ('web-trace-app-dev', (SELECT MAX(position) + 1 FROM app_registrations), \
-                     1, 'Web Trace (Dev)', ?, 'web-trace-app-dev', 0)",
+             VALUES ('importer-app-dev', (SELECT MAX(position) + 1 FROM app_registrations), \
+                     1, 'Importer (Dev)', ?, 'importer-app-dev', 0)",
         )
         .bind::<Text, _>(edited_dev)
         .execute(&mut conn)
@@ -1024,12 +1017,7 @@ mod migration_tests {
         drop(conn);
 
         let store = SqliteAppsStore::new(pool).expect("0016 must apply");
-        for id in [
-            "medications-app",
-            "web-trace-app",
-            "importer-app",
-            "health-viewer-app",
-        ] {
+        for id in ["medications-app", "importer-app", "health-viewer-app"] {
             assert_eq!(
                 stored_url(&store, id),
                 format!(
@@ -1047,7 +1035,7 @@ mod migration_tests {
             "http://localhost:5191/?launch={launch}&iss={origin}/fhir-r4",
         );
         assert_eq!(
-            stored_url(&store, "web-trace-app-dev"),
+            stored_url(&store, "importer-app-dev"),
             edited_dev,
             "a dev row off the old seed's shape stays"
         );
@@ -1364,7 +1352,8 @@ mod migration_tests {
             .find_app("my-app")
             .unwrap()
             .expect("the user's app survives");
-        assert_eq!(user_app.position, 9);
+        // Less one: `0018` removes the Web Trace row ahead of it.
+        assert_eq!(user_app.position, 8);
         assert!(!user_app.on_homescreen);
         assert_eq!(user_app.url.to_string(), "https://example.com/launch");
         assert_eq!(
@@ -1441,5 +1430,52 @@ mod migration_tests {
         let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
         let dense: Vec<i64> = (0..).take(positions.len()).collect();
         assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
+    }
+
+    /// Insert a registration at the tail in the `0012`-onward layout.
+    fn insert_registration(conn: &mut SqliteConnection, id: &str, client_id: Option<&str>) {
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, client_id, requires_tunnel) \
+             VALUES (?, (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, \
+                     'http://localhost:5191/?launch={launch}&iss={origin}/fhir-r4', ?, 0)",
+        )
+        .bind::<Text, _>(id)
+        .bind::<Text, _>(id)
+        .bind::<diesel::sql_types::Nullable<Text>, _>(client_id)
+        .execute(conn)
+        .expect("a registration insert must succeed");
+    }
+
+    /// An install already at `0017` loses the Web Trace app and the dev seed's
+    /// `web-trace-app-dev` row when it upgrades, and the rest keep their order.
+    #[test]
+    fn an_install_already_at_0017_loses_the_web_trace_app() {
+        let pool = pool_migrated_through("0017");
+        let mut conn = pool.get().unwrap();
+        insert_registration(&mut conn, "web-trace-app-dev", Some("web-trace-app-dev"));
+        insert_registration(&mut conn, "my-app", None);
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0018 must apply");
+        let registrations = store.list_registrations().unwrap();
+        let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
+        let mut expected = SEEDED_IDS.to_vec();
+        expected.push("my-app");
+        assert_eq!(ids, expected, "both Web Trace rows are gone");
+        let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
+        let dense: Vec<i64> = (0..).take(positions.len()).collect();
+        assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
+    }
+
+    /// A user's own app that holds the `web-trace-app-dev` id, without the dev
+    /// seed's client, is not the seed's row, so `0018` leaves it.
+    #[test]
+    fn upgrading_past_0017_keeps_a_user_app_under_the_dev_id() {
+        let pool = pool_migrated_through("0017");
+        insert_registration(&mut pool.get().unwrap(), "web-trace-app-dev", None);
+
+        let store = SqliteAppsStore::new(pool).expect("0018 must apply");
+        assert!(store.find_app("web-trace-app-dev").unwrap().is_some());
     }
 }

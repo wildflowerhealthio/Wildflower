@@ -10,7 +10,6 @@ const SECTION_PATHS = {
   marketing: '',
   medications: 'medications-app',
   importer: 'importer-app',
-  webTrace: 'web-trace-app',
   serverDocs: 'wildflower-server-docs',
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',

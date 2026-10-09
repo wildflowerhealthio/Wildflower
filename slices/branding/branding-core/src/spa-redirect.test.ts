@@ -59,11 +59,11 @@ describe('restoredUrl', () => {
   it('should restore the route the 404 page carried, under the app basename', () => {
     expect(
       restoredUrl({
-        pathname: '/web-trace-app/',
+        pathname: '/importer-app/',
         search: '?redirect=/trace&iss=https%3A%2F%2Fexample.com',
         hash: '#t',
       })
-    ).toBe('/web-trace-app/trace?iss=https%3A%2F%2Fexample.com#t')
+    ).toBe('/importer-app/trace?iss=https%3A%2F%2Fexample.com#t')
   })
 
   it('should strip a leading copy of the basename from the redirect path', () => {

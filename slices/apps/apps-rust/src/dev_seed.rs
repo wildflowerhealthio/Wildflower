@@ -1,7 +1,7 @@
 //! Debug-only seeding of the `…-dev` app rows that point at the first-party
 //! apps' local vite dev servers.
 //!
-//! The first-party apps (Medications, Web Trace, Importer, the OHIF imaging
+//! The first-party apps (Medications, Importer, the OHIF imaging
 //! viewer, Server Docs, the Synthesized Health Viewer, the Synthetic Data
 //! Loader, Lifting) ship as rows served from
 //! <https://wildflowerhealth.io> (apps migration
@@ -89,8 +89,6 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
 struct DevAppPorts {
     #[serde(rename = "medications-app-dev")]
     medications_app_dev: i32,
-    #[serde(rename = "web-trace-app-dev")]
-    web_trace_app_dev: i32,
     #[serde(rename = "web-server-docs-dev")]
     web_server_docs_dev: i32,
     #[serde(rename = "importer-app-dev")]
@@ -113,7 +111,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 8] {
+fn dev_apps() -> [DevApp; 7] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -123,13 +121,6 @@ fn dev_apps() -> [DevApp; 8] {
             name: "Medications (Dev)",
             subtitle: "Local vite dev server for apps/medications-app",
             url: dev_launch_url(ports.medications_app_dev),
-        },
-        DevApp {
-            id: "web-trace-app-dev",
-            client_id: "web-trace-app-dev",
-            name: "Web Trace (Dev)",
-            subtitle: "Local vite dev server for apps/web-trace",
-            url: dev_launch_url(ports.web_trace_app_dev),
         },
         DevApp {
             id: "web-server-docs-dev",
@@ -428,7 +419,6 @@ mod tests {
 
         for (id, client_id) in [
             ("medications-app", "medications-app"),
-            ("web-trace-app", "web-trace-app"),
             ("importer-app", "importer-app"),
             ("ohif-viewer", "ohif-viewer"),
             ("lifting", "bdf9fc5cb5a28c6683b49896b0ef8a75"),
@@ -510,7 +500,7 @@ mod tests {
         // unaffected by its neighbour's collision.
         seed_dev_apps(pool).unwrap();
         assert_eq!(dev_row(&store, "medications-app-dev").name, "My Meds");
-        let sibling = dev_row(&store, "web-trace-app-dev");
+        let sibling = dev_row(&store, "web-server-docs-dev");
         assert_eq!(sibling.url.to_string(), dev_apps()[1].url);
     }
 }

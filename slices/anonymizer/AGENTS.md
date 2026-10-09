@@ -44,8 +44,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   server-held archives (the shell itself never talks to a server).
 
 A host mounts `AnonymizerScreen` directly — the Importer web app pairs it with
-`ImporterScreen` under one Import | Anonymize tabstrip. `web-trace-react`
-mounts `AnonymizePanel` directly inside its recordings surface.
+`ImporterScreen` under one Import | Anonymize tabstrip.
 
 ## Layering
 

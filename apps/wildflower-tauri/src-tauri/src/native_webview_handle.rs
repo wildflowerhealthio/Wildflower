@@ -140,7 +140,7 @@ mod tests {
     /// app never navigates another's (or the sniffer's) webview.
     #[test]
     fn each_app_gets_its_own_launch_instance() {
-        assert_eq!(launch_webview_id("web-trace-app"), "launch-web-trace-app");
+        assert_eq!(launch_webview_id("importer-app"), "launch-importer-app");
         assert_ne!(launch_webview_id("a"), launch_webview_id("b"));
         assert_ne!(launch_webview_id("sniffer"), "sniffer");
     }

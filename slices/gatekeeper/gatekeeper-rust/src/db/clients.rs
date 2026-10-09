@@ -286,8 +286,8 @@ mod tests {
     }
 
     /// Every SMART client is seeded by a migration (not Rust) — the sample apps by
-    /// `0003`, the two first-party apps by `0004` / `0005` (renamed and given
-    /// their published-site redirect by `0006`), the server-docs API console by
+    /// `0003`, Medications by `0004` (renamed and given its published-site
+    /// redirect by `0006`), the server-docs API console by
     /// `0007`, the Importer by `0008`, the OHIF imaging viewer by `0009`
     /// (re-seeded by `0016` on an install that skipped it), FHIR Sync for
     /// Pebble by `0017` (its Observation scope widened by `0018`), Lifting by
@@ -305,7 +305,6 @@ mod tests {
             "my_web_app",
             "cc344727-6f90-496c-94fd-c7829aa9a51d",
             "medications-app",
-            "web-trace-app",
             "wildflower-server-docs",
             "03a513940b52f8c2649a5366d1a26d19",
             "importer-app",
@@ -353,35 +352,15 @@ mod tests {
             ],
         );
 
-        // `web-trace-app` (the Web Trace viewer) pins two decisions across its
-        // seed (`0005`) and the rename (`0006`): the published-site redirect the
-        // app launches from, and a read-only `system/` resource scope, because trace
-        // `DocumentReference`s carry no `subject` and so aren't reachable through
-        // patient context.
-        let web_trace = store.client_by_id("web-trace-app").unwrap().unwrap();
-        assert_eq!(
-            web_trace.redirect_uris,
-            vec![
-                url::Url::parse("https://wildflowerhealth.io/web-trace-app/")
-                    .expect("a valid absolute redirect")
-            ],
-        );
-        assert_eq!(
-            web_trace.allowed_scopes,
-            vec![
-                "launch".to_string(),
-                "openid".to_string(),
-                "fhirUser".to_string(),
-                "system/DocumentReference.read".to_string(),
-            ],
-        );
-
-        // The old `medication_viewer` id is gone — replaced by `my_web_app`, and
-        // the pre-rename first-party ids are gone with `0006`.
+        // The old `medication_viewer` id is gone — replaced by `my_web_app` —
+        // the pre-rename first-party ids are gone with `0006`, and the Web Trace
+        // clients with `0027`.
         for retired in [
             "medication_viewer",
             "wildflower-medication",
             "wildflower-web-trace",
+            "web-trace-app",
+            "web-trace-app-dev",
         ] {
             assert!(
                 store.client_by_id(retired).unwrap().is_none(),

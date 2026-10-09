@@ -268,7 +268,7 @@ That is the whole wiring. The framework owns everything else:
   runtime, so one runtime instance is one run and a second sync can never
   upsert its traces over the first's. The prefix you pass
   (`makeFhirProvenanceCapture('my-collector')`) names the collector in every
-  session id, so a run is legible in the Web Trace viewer.
+  session id, so a run is legible in its recorded traces.
 - **The hook fires only for a parse that produced resources.** A failed parse
   is never captured, and neither is an empty one — that rule is the line
   between provenance collection and bulk recording (a recorder is its own

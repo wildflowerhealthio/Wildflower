@@ -1204,4 +1204,68 @@ mod tests {
             "store b must not see store a's key",
         );
     }
+
+    /// An install already at `0026` loses both Web Trace clients when it
+    /// upgrades, with every grant and refresh token they hold, under the
+    /// foreign key `refresh_tokens` keeps on its family.
+    #[test]
+    fn an_install_already_at_0026_loses_the_web_trace_clients() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        diesel::sql_query("PRAGMA foreign_keys = ON")
+            .execute(&mut conn)
+            .expect("enforce foreign keys, as the pool does");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0026"),
+        )
+        .expect("migrate to 0026");
+        for statement in [
+            "INSERT INTO clients \
+             (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+              secret_hash, registered_at, disabled_at) \
+             VALUES ('web-trace-app-dev', 'Web Trace (Dev)', 'public', \
+                     '[\"http://localhost:5191/\"]', '[\"launch\"]', \
+                     '[\"authorization_code\"]', NULL, '2024-01-01 00:00:00+00:00', NULL)",
+            "INSERT INTO refresh_token_families \
+             (family_id, client_id, scopes, issued_at, expires_at) \
+             VALUES ('web-trace-family', 'web-trace-app', '[]', '2024-01-01', '2099-01-01')",
+            "INSERT INTO refresh_token_families \
+             (family_id, client_id, scopes, issued_at, expires_at) \
+             VALUES ('importer-family', 'importer-app', '[]', '2024-01-01', '2099-01-01')",
+            "INSERT INTO refresh_tokens (token_hash, family_id, issued_at) \
+             VALUES ('web-trace-token', 'web-trace-family', '2024-01-01')",
+            "INSERT INTO refresh_tokens (token_hash, family_id, issued_at) \
+             VALUES ('importer-token', 'importer-family', '2024-01-01')",
+        ] {
+            diesel::sql_query(statement)
+                .execute(&mut conn)
+                .expect("plant a 0026 row");
+        }
+
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0027"),
+        )
+        .expect("upgrade through 0027");
+
+        for client_id in ["web-trace-app", "web-trace-app-dev"] {
+            assert!(column_for_client(&mut conn, "client_id", client_id).is_empty());
+        }
+        assert_eq!(
+            column_for_client(&mut conn, "client_id", "importer-app").len(),
+            1
+        );
+        let token_hashes: Vec<Name> =
+            diesel::sql_query("SELECT token_hash AS name FROM refresh_tokens ORDER BY token_hash")
+                .load(&mut conn)
+                .expect("query refresh_tokens");
+        let token_hashes: Vec<&str> = token_hashes.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(
+            token_hashes,
+            ["importer-token"],
+            "another client's tokens stay"
+        );
+    }
 }

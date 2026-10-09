@@ -55,8 +55,8 @@ lowest tier, so a real source kind always out-ranks it in a mixed pool.
 
 ### 2. Redaction never happens on the write path
 
-What is stored is what was seen. Redaction is an export-time concern (the viewer
-app), and that asymmetry is what lets a better redactor be applied retroactively
+What is stored is what was seen. Redaction is an export-time concern (the
+anonymizer), and that asymmetry is what lets a better redactor be applied retroactively
 to sessions already recorded. Nothing under `src/` may import
 `web-trace-core/pseudonymizer`.
 

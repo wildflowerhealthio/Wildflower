@@ -109,7 +109,7 @@ type ConnectOrigin = 'chosen-server' | 'pick'
  *
  * @remarks
  * A plain `useState` discriminated union — the repo's local-state-machine
- * pattern (see `apps/web-trace`'s `LoadState`). `error` covers an
+ * pattern (see `synthetic-data-react`'s `LoadState`). `error` covers an
  * `unreachable` probe, a failed connect and a problem the caller's sign-in
  * reports; all stay retryable because the menu is still rendered underneath
  * the banner. A rejected entry is not a connect state: it is the entry's own,

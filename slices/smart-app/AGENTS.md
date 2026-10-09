@@ -51,7 +51,7 @@ slice is where the two meet, so neither has to know about the other.
       read) or "All patients", and a "Change patient" link.
 
 Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting/lifting-web`,
-`apps/importer-web`, `apps/web-trace` and `apps/synthetic-data-app` mount
+`apps/importer-web` and `apps/synthetic-data-app` mount
 `SmartAppRoot`, which an EHR launches at the app root; the first three speak
 the read-status lines, as does `synthetic-data-react`'s screen, and pick the
 patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts

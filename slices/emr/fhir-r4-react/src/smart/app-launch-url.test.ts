@@ -126,7 +126,7 @@ const launchPageUrlArb = fc
       'https://wildflowerhealth.io/',
       'https://wildflowerhealthio.github.io/staging/pr-7/'
     ),
-    fc.constantFrom('medications-app', 'importer-app', 'web-trace-app', 'health-viewer-app')
+    fc.constantFrom('medications-app', 'importer-app', 'health-viewer-app')
   )
   .map(([siteRoot, section]) => `${siteRoot}${section}/`)
 

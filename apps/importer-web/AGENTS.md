@@ -14,16 +14,14 @@ one adapter the anonymizer's `serverSource` slot asks of a host (it passes
 carry `{ fileName, bytes }`, so the adapter is the identity). The unselected
 screen is unmounted, not hidden.
 
-`apps/web-trace` is the template for this shape (one HTML entry, a relative
-`base`, a build into the package's own `dist/`, a memory
-router carrying a SMART-built context, and a standalone `ConnectMenu` beside the
-EHR launch). **One thing is deliberately different: this app writes.** Everything
-that follows from that is called out below.
+The app has one HTML entry, a relative `base`, a build into the package's own
+`dist/`, a memory router carrying a SMART-built context, and a standalone
+`ConnectMenu` beside the EHR launch. **Unlike the read-only SMART apps, this app
+writes.** Everything that follows from that is called out below.
 
-The npm package is `wildflower-importer` (the web-trace naming convention — its
-package is `wildflower-web-trace` while its app id is `web-trace-app`). The app
+The npm package is `wildflower-importer`. The app
 id and the OAuth `client_id` are both `importer-app` — the published path
-segment, matching `medications-app` / `web-trace-app`. The debug-only dev row
+segment, matching `medications-app`. The debug-only dev row
 is `importer-app-dev`. Those identities
 are load-bearing — see [Seeded registration](#seeded-registration).
 
@@ -156,10 +154,9 @@ accepts the writes and the set has room to grow.
   no props; `AnonymizerScreen` takes only the `serverSource` slot. Each owns
   every level below it (source pick → preview → confirm/download → results).
   This app renders a heading, the Import | Anonymize tabstrip, and the one
-  screen the picked tab mounts. Splitting a flow across that boundary is the mistake `apps/web-trace`
-  made with its exchange detail and had to undo: both surfaces opened at once
-  and the accessibility tree hid it. Re-creating any of the four levels here
-  re-creates that.
+  screen the picked tab mounts. Splitting a flow across that boundary opens
+  two surfaces at once, and the accessibility tree hides it. Don't re-create any
+  of the four levels here.
 - **The tabstrip state lives inside `ImporterHome`, not `ImporterApp`.** The
   router memo above is keyed on the context; lifting `tab` into `ImporterApp`
   would rebuild the router (and its mounted tree) on every tab switch. Keep the
@@ -194,7 +191,7 @@ registered client cannot launch:
   `importer-app` registration and its launch URL
   (`https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}/fhir-r4`
   since `0016_launch_first_party_apps_at_root`), `requires_tunnel = 1` (like
-  `medications-app` / `web-trace-app`).
+  `medications-app`).
 - `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
   — the `importer-app` OAuth client. Its one registered redirect is
   `https://wildflowerhealth.io/importer-app/`, the page it launches from.
@@ -285,8 +282,6 @@ workspace `source` condition at bundle time.
   the screen this app mounts, and its traps.
 - [importer slice AGENTS.md](../../slices/importer/AGENTS.md) — the
   preview-then-confirm opt-in seam.
-- [apps/web-trace AGENTS.md](../web-trace/AGENTS.md) — the read-only twin this
-  app is cloned from.
 - [Apps Explanation](../../docs/Apps/Explanation.md) — how a first-party app is
   registered and launched from the published site, and how the debug-only `-dev`
   rows work.

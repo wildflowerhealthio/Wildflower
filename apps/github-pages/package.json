@@ -26,7 +26,6 @@
     "vite-plus": "catalog:",
     "watch-lifts-web": "workspace:*",
     "wildflower-importer": "workspace:*",
-    "wildflower-server-docs": "workspace:*",
-    "wildflower-web-trace": "workspace:*"
+    "wildflower-server-docs": "workspace:*"
   }
 }

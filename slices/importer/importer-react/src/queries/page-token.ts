@@ -8,11 +8,6 @@
  * parameter, so the picker's job is to pull that one parameter back out of the
  * link rather than to follow the URL — following it would bypass the client's
  * schema and its auth.
- *
- * A copy of `web-trace-react`'s `page-token.ts` rather than an import of it: the
- * two slices page the same FHIR server the same way, but the importer must not
- * depend on the web-trace viewer to do it — a shared paging primitive belongs
- * below both, not in one adapter reaching into the other.
  */
 
 /** The `Bundle.link.relation` value FHIR gives the continuation link. */

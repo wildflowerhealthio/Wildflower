@@ -52,9 +52,7 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   (`slices/file-formats/http-archive`); it left this slice in M1 of #578 for
   `har-importer-core/har` and was later hoisted into the `file-formats` slice.
   The format definition and the `HttpArchive` projection now live there.
-  `emitHar` still takes `TraceExchange` (its one
-  caller, `web-trace-react`'s export flow, still speaks that vocabulary until
-  R2 dissolves it), and reaches back here for the type.
+  `emitHar` still takes `TraceExchange`, and reaches back here for the type.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -103,11 +101,10 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   its own components — a `-` join would make `('s-req', '77')` and
   `('s', 'req-77')` the same exchange.
 - **`traceResourceId` is two hash lanes, not a concatenation — keep it out of
-  render paths.** It belongs at a write or a decode. The viewer keys its rows and
-  its selection with `web-trace-react`'s `exchangeKey` (the same encoded pair,
-  unhashed) because a React `key` needs identity within one list, not the
-  resource id. Calling this per row per render cost ~24 ms per keystroke on a
-  thousand-exchange session, against ~0.04 ms for the pair.
+  render paths.** It belongs at a write or a decode. A React `key` needs
+  identity within one list, not the resource id, so key rows by the same
+  encoded pair, unhashed. Calling this per row per render cost ~24 ms per
+  keystroke on a thousand-exchange session, against ~0.04 ms for the pair.
 - **The encoding has exactly one definition — import it, never reimplement it.**
   A second copy drifts, and already-recorded sessions stop decoding. The private
   systems and extension URLs in `src/codec/systems.ts` are part of the persisted
@@ -169,8 +166,8 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   a `har-archive` document is an opaque `.har` file someone uploaded. They sit
   on the same `category` axis under different codes, so `isWebTrace` and
   `isHarArchive` never both hold and each decoder rejects the other's documents
-  rather than reading nonsense out of them — the viewer must never list an
-  archive, and the importer's server list must never list a trace. A property
+  rather than reading nonsense out of them — the importer's server list must
+  never list a trace. A property
   over both generated corpora fails if that ever stops being true.
 - **The archive codec stores bytes, never text, and does not parse HAR.** A
   `HarArchive.bytes` is base64 of the file exactly as uploaded, so a truncated or
@@ -259,7 +256,7 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   archive, `Schema.encode` writes one, `HarFromJson` does both from a file's
   text, and every failure is a `ParseError`. `emitHar` builds the **decoded**
   form — instants as `DateTime`, headers as pairs, bodies as a `HarBody` union
-  — so anything writing a file has to encode first. `web-trace-react`'s
+  — so anything writing a file has to encode first. `har-anonymizer-react`'s
   `harBlob` is the one place that matters; stringifying the decoded form
   directly writes a file no HAR reader accepts.
 - **Decoding is forgiving, encoding is canonical.** Fields the spec requires but

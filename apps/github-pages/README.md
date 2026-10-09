@@ -10,7 +10,6 @@ that owns it, and this package places those outputs at their public URLs.
 | `/medications-app`        | `medications-app` (`apps/medications-app`)                            |
 | `/importer-app`           | `wildflower-importer` (`apps/importer-web`)                           |
 | `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`)              |
-| `/web-trace-app`          | `wildflower-web-trace` (`apps/web-trace`)                             |
 | `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                                    |
 | `/fhir-sync-pebble`       | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble/fhir-sync-pebble-web`) |
 | `/health-viewer-app`      | `health-viewer-app` (`apps/health-viewer`)                            |
@@ -29,7 +28,7 @@ matches `Object.values(SECTION_PATHS)` and pins the literal values.
 ## The 404 redirect
 
 GitHub Pages serves one `404.html` for every path it has no file for, so a deep
-link into any section (`/web-trace-app/captures`, `/ohif-viewer/fhir-viewer?iss=…`)
+link into any section (`/ohif-viewer/fhir-viewer?iss=…`)
 would otherwise land on an error page. `404.html` — staged into the artifact
 root by `assemble.ts`, not by any section — probes ancestor directories for an
 `index.html`, redirects to the deepest one that answers, and hands the requested
@@ -61,7 +60,7 @@ workspace `devDependency` of this package, so the workspace's own build ordering
 (`vp run pack`, i.e. `vp run --cache -r build`) builds every section before this
 package's build stages them. Doing that here keeps each app's own build config
 untouched: every section builds into its own package — the medications app, the
-Web Trace app, the Importer, FHIR Sync for Pebble, the lifting app and the
+Importer, FHIR Sync for Pebble, the lifting app and the
 server-docs console into their default `dist/`, the launcher into `dist-web/` — and this package only copies
 from there. The OHIF viewer's `dist/` is a downloaded prebuilt bundle (or a stub
 page while none is pinned) rather than a Vite build, and is copied verbatim too.

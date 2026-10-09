@@ -181,8 +181,8 @@ the server returns is discarded: there is no session to refresh into.
 The console does not carry a list of addresses it is allowed to sign in from.
 It **derives** its `redirect_uri` from where the page is being served, with
 `gatekeeper-core/smart-client`'s `redirectUriForPage` — the page's own directory
-URL, which is what the fhirclient-based apps (`apps/web-trace`,
-`apps/medications-app`, `apps/importer-web`) have always done. One build
+URL, which is what the fhirclient-based apps (`apps/medications-app`,
+`apps/importer-web`) have always done. One build
 therefore signs in from the published site, from a PR preview under
 `https://wildflowerhealthio.github.io/staging/pr-<n>/wildflower-server-docs/`,
 and from `vp run -F wildflower-server-docs dev`, with nothing to keep in step.

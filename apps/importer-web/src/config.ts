@@ -5,7 +5,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * SMART registration for this app.
  *
  * The scope set **carries writes**, which is what separates this app from the
- * Medications and Web Trace viewers it is otherwise shaped like: importing means
+ * Medications viewer it is otherwise shaped like: importing means
  * persisting the resources a captured session contained, each stamped with the
  * HAR archive it came from. The auto-extracted write set is the archive
  * `DocumentReference` the confirm step uploads, plus the `Patient` and

@@ -80,9 +80,9 @@ values for `--content-max-width`, `--page-padding-x`, `--header-height`, and
 `--radius-pill` must be removed — they are now supplied by `branding-react` and
 duplicating them risks silent drift.
 
-## `web-trace`'s `customConditions: ["source"]` blocks a `tsc` build step
+## A SMART app's `customConditions: ["source"]` blocks a `tsc` build step
 
-`apps/web-trace`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
+`apps/importer-web`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
 bundler agree on which copy of `QueryClient` a slice's router context refers to.
 Under that condition a package-local `tsc` also re-typechecks other workspace
 packages' sources under this app's strict compiler options (notably

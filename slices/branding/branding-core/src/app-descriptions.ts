@@ -10,7 +10,6 @@ type AppSectionId = Extract<
   | 'medications'
   | 'fhirSyncPebble'
   | 'importer'
-  | 'webTrace'
   | 'healthViewer'
   | 'syntheticData'
   | 'lifting'
@@ -19,16 +18,15 @@ type AppSectionId = Extract<
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
- * hosted launcher app and the Synthetic Data Loader, which have no homepage row.
+ * hosted launcher app, which has no homepage row.
  */
-type HomepageAppSectionId = Exclude<AppSectionId, 'launcher' | 'syntheticData'>
+type HomepageAppSectionId = Exclude<AppSectionId, 'launcher'>
 
 /**
  * The six SMART app sections with a homepage row, grouped by the homepage
  * section the row sits in: the patient-facing apps (`built`), then the Importer
- * (`try`), then the Web Trace Viewer (`developers`). The launcher and
- * the Synthetic Data Loader have a landing page but no homepage row, so they
- * are not among them.
+ * (`try`), then the Synthetic Data Loader (`developers`). The launcher has a
+ * landing page but no homepage row, so it is not among them.
  */
 const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'medications',
@@ -36,7 +34,7 @@ const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'fhirSyncPebble',
   'lifting',
   'importer',
-  'webTrace',
+  'syntheticData',
 ]
 
 /**
@@ -200,26 +198,6 @@ const APP_DESCRIPTIONS: {
     },
     launchesFromUrl: true,
   },
-  webTrace: {
-    name: 'Web Trace Viewer',
-    tagline:
-      'Views the browser traces the Importer captures, stored as records on your FHIR server, ' +
-      'and scrubs them so the shapes can be shared.',
-    paragraphs: [
-      'The Importer is built so that writing a module for a new site is easy. ' +
-        'This app stores the traces you capture as records on your FHIR server, ' +
-        'where you can view and edit them. ' +
-        "If you can scrub your data on device, it's easy enough to share the data shape " +
-        'with a developer or coding LLM. ' +
-        'It replaces all your identifiers and data, with request and response shapes intact.',
-    ],
-    anchor: 'developers',
-    launch: {
-      label: 'Open the Web Trace Viewer',
-      note: 'Load a capture against the demo server — no account, nothing uploaded',
-    },
-    launchesFromUrl: true,
-  },
   healthViewer: {
     name: 'Synthesized Health Viewer',
     tagline:
@@ -263,6 +241,10 @@ const APP_DESCRIPTIONS: {
       note: 'Load it into a demo or test server, not one holding real records.',
     },
     anchor: 'developers',
+    launch: {
+      label: 'Open the Synthetic Data Loader',
+      note: 'Load fictional patients into a demo or test server',
+    },
     launchesFromUrl: true,
   },
   lifting: {

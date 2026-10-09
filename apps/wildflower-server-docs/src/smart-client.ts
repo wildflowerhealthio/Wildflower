@@ -9,7 +9,7 @@
  * request to the row's `allowed_scopes`, so a value that drifts from the seed
  * fails the flow at `/oauth/authorize` rather than degrading quietly. The
  * migration is the authority; this module is the browser-side reading of it
- * (the same arrangement `apps/web-trace/src/config.ts` uses).
+ * (the same arrangement `apps/importer-web/src/config.ts` uses).
  *
  * The **redirect URI is not written down here** — it is derived from where the
  * page is served, by `gatekeeper-core/smart-client`'s `redirectUriForPage`.

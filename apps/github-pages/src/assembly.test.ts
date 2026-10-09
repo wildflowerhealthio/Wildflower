@@ -97,12 +97,6 @@ describe('site layout', () => {
     expect(ohif?.requiredPaths).toEqual([join(outDir, 'ohif-viewer', 'index.html')])
   })
 
-  it('serves the web trace app from /web-trace-app with its one SMART entry', () => {
-    const [webTrace] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-web-trace')])
-    expect(webTrace?.to).toBe(join(outDir, 'web-trace-app'))
-    expect(webTrace?.requiredPaths).toEqual([join(outDir, 'web-trace-app', 'index.html')])
-  })
-
   it('serves the health viewer from /health-viewer-app with its one SMART entry', () => {
     const [healthViewer] = resolveSections(repoRoot, outDir, [sectionFor('health-viewer-app')])
     expect(healthViewer?.from).toBe(join(repoRoot, 'apps', 'health-viewer', 'dist'))
@@ -201,7 +195,6 @@ describe('site layout', () => {
         'medications-app',
         'ohif-viewer',
         'synthetic-data-app',
-        'web-trace-app',
         'watch-lifts',
         'wildflower-server-docs',
       ].toSorted()
@@ -240,14 +233,13 @@ describe('site-wide files', () => {
 
 describe('layout reconciliation with the packages it assembles', () => {
   /**
-   * Five of the first-party SMART apps and the WatchLifts settings page: each
+   * Four of the first-party SMART apps and the WatchLifts settings page: each
    * builds into its own package's default `dist/` and the site copies it from
    * there. `appDir` is the folder
-   * under `apps/`, which differs from the package name for five of them.
+   * under `apps/`, which differs from the package name for four of them.
    */
   const firstPartyApps = [
     { packageName: 'medications-app', appDir: 'medications-app' },
-    { packageName: 'wildflower-web-trace', appDir: 'web-trace' },
     { packageName: 'wildflower-importer', appDir: 'importer-web' },
     { packageName: 'fhir-sync-pebble-web', appDir: 'fhir-sync-pebble/fhir-sync-pebble-web' },
     { packageName: 'watch-lifts-web', appDir: 'watch-lifts/watch-lifts-web' },

@@ -2,7 +2,7 @@ name: Deploy GitHub Pages
 
 # Builds the published static site (apps/github-pages, which assembles the
 # marketing site at /, the medications app at /medications-app, the server-docs
-# API console at /wildflower-server-docs, the Web Trace app at /web-trace-app, the
+# API console at /wildflower-server-docs, the
 # Importer at /importer-app, FHIR Sync for Pebble at /fhir-sync-pebble, the
 # lifting app at /lifting, the WatchLifts settings page at /watch-lifts,
 # the prebuilt OHIF viewer at /ohif-viewer and the launcher at /app)

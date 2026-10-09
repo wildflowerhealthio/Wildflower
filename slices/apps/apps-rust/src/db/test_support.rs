@@ -5,12 +5,11 @@
 use crate::domain::AppsError;
 
 /// The migration-seeded registry, in display order.
-pub(crate) const SEEDED_IDS: [&str; 10] = [
+pub(crate) const SEEDED_IDS: [&str; 9] = [
     "growth-chart",
     "medication-viewer",
     "precise-hbr",
     "medications-app",
-    "web-trace-app",
     "web-server-docs",
     "importer-app",
     "ohif-viewer",

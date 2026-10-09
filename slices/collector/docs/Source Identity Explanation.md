@@ -307,11 +307,11 @@ given above: both halves are arbitrary non-empty strings, so `('s-req', '77')`
 and `('s', 'req-77')` would be the same exchange, one silently upserting over the
 other.
 
-**The derivation is not free, and the viewer must not pay it per render.** It is
+**The derivation is not free, and a render must not pay it per row.** It is
 two hash lanes over the encoded pair, ~600× the cost of the string concatenation
-it replaced. `web-trace-react` keys its list rows and its open-exchange selection
-with `exchangeKey` — the same encoded pair, unhashed — because a React `key` and
-a selection key need identity within one list, not the resource id. Calling
+it replaced. A list keys its rows and its selection with the same encoded pair,
+unhashed, because a React `key` and a selection key need identity within one
+list, not the resource id. Calling
 `traceResourceId` in a render body costs ~24 ms per keystroke over a
 thousand-exchange session.
 

@@ -70,7 +70,6 @@ export default defineConfig({
       'apps/watch-lifts/watch-lifts-watchapp/pkjs/vite.config.ts',
       'apps/watch-lifts/watch-lifts-watchapp/test/vite.config.ts',
       'apps/watch-lifts/watch-lifts-web/vite.config.ts',
-      'apps/web-trace/vite.config.ts',
       'apps/marketing-website/vite.config.ts',
       'apps/launcher/*/vite.config.ts',
       'apps/wildflower-server-docs/vite.config.ts',

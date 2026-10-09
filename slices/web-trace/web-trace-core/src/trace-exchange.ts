@@ -209,8 +209,7 @@ type TraceSessionId = typeof TraceSessionId.Type
  * routed through `adoptUnderRecognizedRoot` — that would hash this hash.
  *
  * **Not free** — two hash lanes, not a concatenation — so it belongs at a write
- * or a decode, never in a React render body. A list or selection key wants
- * `web-trace-react`'s `exchangeKey`.
+ * or a decode, never in a React render body.
  */
 const traceResourceId = (exchange: Pick<TraceExchange, 'sessionId' | 'requestId'>): string =>
   localResourceId(

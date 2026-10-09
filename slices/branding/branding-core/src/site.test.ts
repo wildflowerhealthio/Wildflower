@@ -15,7 +15,6 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'marketing',
   'medications',
   'importer',
-  'webTrace',
   'serverDocs',
   'ohifViewer',
   'fhirSyncPebble',
@@ -27,12 +26,11 @@ const sectionIdArb = fc.constantFrom<SectionId>(
 )
 
 describe('SECTION_PATHS', () => {
-  it('should contain exactly eleven sections with the correct deploy-contract paths', () => {
+  it('should contain exactly ten sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
       medications: 'medications-app',
       importer: 'importer-app',
-      webTrace: 'web-trace-app',
       serverDocs: 'wildflower-server-docs',
       ohifViewer: 'ohif-viewer',
       fhirSyncPebble: 'fhir-sync-pebble',

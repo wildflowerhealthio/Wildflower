@@ -68,7 +68,6 @@ describe('App', () => {
       './health-viewer-app',
       './lifting',
       './importer-app',
-      './web-trace-app',
       './wildflower-server-docs',
       './ohif-viewer',
     ])
@@ -116,8 +115,8 @@ describe('App', () => {
       screen.getByRole('link', { name: /Open FHIR Sync for Pebble/ }).getAttribute('href')
     ).toBe('./fhir-sync-pebble')
     expect(
-      screen.getByRole('link', { name: /Open the Web Trace Viewer/ }).getAttribute('href')
-    ).toBe('./web-trace-app')
+      screen.getByRole('link', { name: /Open the Synthetic Data Loader/ }).getAttribute('href')
+    ).toBe('./synthetic-data-app')
     expect(
       screen.getByRole('link', { name: /Open the Synthesized Health Viewer/ }).getAttribute('href')
     ).toBe('./health-viewer-app')

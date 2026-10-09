@@ -198,9 +198,9 @@ describe('appRootRedirectUri', () => {
     // Act / Assert — the EHR launch starts at the app root itself
     expect(
       appRootRedirectUri(
-        'https://wildflowerhealth.io/web-trace-app/?iss=https%3A%2F%2Fehr.example&launch=xyz'
+        'https://wildflowerhealth.io/importer-app/?iss=https%3A%2F%2Fehr.example&launch=xyz'
       )
-    ).toBe('https://wildflowerhealth.io/web-trace-app/')
+    ).toBe('https://wildflowerhealth.io/importer-app/')
   })
 
   it('should name the app root itself from a page at the root, dropping its query and fragment', () => {

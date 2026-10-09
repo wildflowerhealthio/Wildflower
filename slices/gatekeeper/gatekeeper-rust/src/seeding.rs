@@ -105,7 +105,7 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
     "/../../apps/dev-app-ports.json"
 ));
 
-/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the eight first-party
+/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the seven first-party
 /// apps that register an OAuth client. The file also carries `web-server-docs-dev`
 /// and `watch-lifts-web-dev`, which are not SMART apps and so have no client
 /// here; serde ignores them.
@@ -114,8 +114,6 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
 struct DevAppPorts {
     #[serde(rename = "medications-app-dev")]
     medications_app_dev: u16,
-    #[serde(rename = "web-trace-app-dev")]
-    web_trace_app_dev: u16,
     #[serde(rename = "importer-app-dev")]
     importer_app_dev: u16,
     #[serde(rename = "ohif-viewer-dev")]
@@ -219,7 +217,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// The debug-only OAuth clients for the first-party apps' vite dev servers — the
 /// gatekeeper half of `apps_rust::seed_dev_apps`.
 ///
-/// The first-party SMART apps (Medications, Web Trace, Importer, the OHIF
+/// The first-party SMART apps (Medications, Importer, the OHIF
 /// imaging viewer, Lifting) ship as rows served from
 /// <https://wildflowerhealth.io> (apps migrations `0005_first_party_apps_to_cloud`
 /// onward), whose clients register the published-site redirect URI. A debug
@@ -267,26 +265,13 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            "web-trace-app-dev",
-            "Web Trace (Dev)",
-            [
-                "launch",
-                "openid",
-                "fhirUser",
-                "system/DocumentReference.rs",
-            ]
-            .as_slice(),
-            ports.web_trace_app_dev,
-            DEV_ROOT_REDIRECT_PATH,
-        ),
-        (
             "importer-app-dev",
             "Importer (Dev)",
             // Mirrors the production `importer-app` client's write-carrying set
             // (`apps/importer-web/src/config.ts`, as widened by gatekeeper
             // migration `0009_widen_importer_client_write_scopes`, re-applied by
             // `0015` on an install that skipped it) — a dev build
-            // requests the same scopes, and unlike the two viewers above the
+            // requests the same scopes, and unlike the medications viewer above the
             // Importer writes. Full `.cruds` (create + read + update + delete +
             // search) on each handled type.
             [

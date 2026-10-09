@@ -67,15 +67,6 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'wildflower-web-trace',
-    sourceDir: 'apps/web-trace/dist',
-    destPath: SECTION_PATHS.webTrace,
-    // One entry: the app root starts a SMART launch its URL carries, is the
-    // OAuth redirect target, and serves the standalone connect menu on a bare
-    // visit.
-    requiredFiles: ['index.html'],
-  },
-  {
     packageName: 'fhir-sync-pebble-web',
     // The package lives in `apps/fhir-sync-pebble/fhir-sync-pebble-web`; its
     // published path is `/${SECTION_PATHS.fhirSyncPebble}`.

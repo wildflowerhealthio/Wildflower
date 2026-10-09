@@ -78,8 +78,8 @@ const appRelativeRoute = (redirected: string, basename: string): string => {
  *
  * @example
  * ```ts
- * restoredUrl({ pathname: '/web-trace-app/', search: '?redirect=/trace&iss=x', hash: '#t' })
- * // → '/web-trace-app/trace?iss=x#t'
+ * restoredUrl({ pathname: '/importer-app/', search: '?redirect=/trace&iss=x', hash: '#t' })
+ * // → '/importer-app/trace?iss=x#t'
  * ```
  */
 const restoredUrl = (location: RestorableLocation): string | undefined => {

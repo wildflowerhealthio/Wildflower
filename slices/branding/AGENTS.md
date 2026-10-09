@@ -44,7 +44,7 @@ site-absolute, as `?redirect=<path>` (an app-relative route named like the
 app's own directory, `/launcher` below `/launcher/`, would read as the app root).
 `restoreRedirectedUrl(window)` is the other half: each
 first-party SPA entry (`apps/medications-app`, `apps/importer-web`,
-`apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/lifting/lifting-web`, `apps/watch-lifts/watch-lifts-web`, `apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
+`apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/lifting/lifting-web`, `apps/watch-lifts/watch-lifts-web`, `apps/wildflower-server-docs`) calls it as its first statement,
 before the router, the SMART callback check, or the `?server=` read — it puts
 the route back in the address bar with `history.replaceState` and drops the
 `redirect` parameter, leaving every other parameter and the fragment alone.
@@ -64,7 +64,7 @@ the same `?redirect=` detour as the published site.
 ## The app landing page
 
 A SMART app visited without a launch (`apps/medications-app`,
-`apps/importer-web`, `apps/fhir-sync-pebble/fhir-sync-pebble-web` and `apps/web-trace`, all
+`apps/importer-web` and `apps/fhir-sync-pebble/fhir-sync-pebble-web`, all
 through `smart-app-react`'s `SmartAppRoot`) renders `AppLandingPage`. So does
 the hosted launcher's landing (`apps/launcher/launcher-web`'s `routes/index.tsx`,
 `app="app"`), whose connect menu also carries its "Sign in to …" row for a
@@ -131,16 +131,15 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   rows (`built`, `infrastructure`, `dev-tools`) and the apps' landing pages
   render the same entries; editing the copy in one component would fork the
   story. The server-docs row is not a SMART app with a landing page, so its
-  copy stays inline on the homepage. The launcher's entry (`app`) and the
-  Synthetic Data Loader's (`syntheticData`) are the reverse: each has a
-  landing page but no homepage row, so it is described but left out of
-  `APP_SECTION_IDS`, the homepage's list.
+  copy stays inline on the homepage. The launcher's entry (`launcher`) is the
+  reverse: it has a landing page but no homepage row, so it is described but
+  left out of `APP_SECTION_IDS`, the homepage's list.
 - **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
   apps.** `apps/marketing-website` consumes them just like the apps do (passing
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
   the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
   this slice, and every surface picks it up. Both the homepage and the apps show
-  `HEADER_NAV_LINKS` (direct links into the seven apps); only href resolution
+  `HEADER_NAV_LINKS` (direct links into the six apps); only href resolution
   differs by `NavContext`. The `SiteFooter` is the minimal "not a company"
   footer (paragraph + contact + mono stamp) carrying `id="note"`; the homepage's
   `app.test.tsx` asserts an element exists for every `MARKETING_ANCHORS` id

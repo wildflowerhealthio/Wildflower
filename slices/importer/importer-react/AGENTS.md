@@ -202,7 +202,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   format's constants, which both a row selection and the preview modal read
   through.
   `page-token.ts` pulls the continuation cursor out of a bundle's `next`
-  link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
+  link (see the trap); `keys.ts` holds
   the query-key roots.
 - **The source file is a reviewed resource the format minted.** Every pick's
   source file `DocumentReference` is minted inside that format's
@@ -294,10 +294,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   classified in registry order through `PickedFile.isSourceFile`; the predicates
   are disjoint by construction (each tests a different `system|code`),
   so at most one claims any row and a row no predicate claims is
-  dropped. The web-trace viewer lists traces under a different category
-  code on the same system; `isWebTrace` and any format's source-file predicate
-  never both hold. The list must never surface a trace, and the trace
-  viewer must never surface a source file.
+  dropped. Web traces sit under a different category code on the same
+  system; `isWebTrace` and any format's source-file predicate never both
+  hold. The list must never surface a trace.
 - **The picker identifies each local file syntactically through the
   registered formats' `detect`, not a full parse.** `acceptLocalFile`
   runs `importer-fundamentals`' `identify` over the registered importers,
@@ -309,12 +308,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   still runs in that format's `decode` one step downstream, so a file the
   picker accepted whose bytes are malformed lands in the preview as its own
   unreadable row rather than a batch-wide error.
-- **`page-token.ts` is a copy of `web-trace-react`'s, deliberately.** The two
-  slices page the same FHIR server the same way, but the importer must not depend
-  on the web-trace viewer to do it — an adapter reaching into another adapter is
-  the wrong layer. A shared paging primitive would belong below both, not in one.
-  A present-but-empty `_pageToken=` reads as token-less: `''` is not `null`, so
-  TanStack Query would take it for a real cursor and re-request page one forever.
+- **`page-token.ts` reads a present-but-empty `_pageToken=` as token-less.**
+  `''` is not `null`, so TanStack Query would take it for a real cursor and
+  re-request page one forever.
 - **The list carries rows, not source files.** A source file's bytes are the whole
   file, potentially megabytes (a multi-MB HAR, a PDF); `SourceFileRow` holds
   only the id, its classified format, the title, what it is a source of, and
@@ -379,7 +375,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   `useRunAuthed()`; the query also exposes
   `sourceFilesInfiniteQueryOptions(runAuthed, options)` taking the runner as
   its first argument, for a loader or a test that drives the query itself.
-  There is no prop-threaded second way in — this mirrors `web-trace-react`.
+  There is no prop-threaded second way in.
 
 ## Testing
 
@@ -437,8 +433,6 @@ TextEncoder().encode(text)`).
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the
   coding a HAR source file shares an axis with, and the disjointness of traces
   and source files (a test-fixture dependency here, nothing at runtime).
-- [web-trace-react AGENTS.md](../../web-trace/web-trace-react/AGENTS.md) — the
-  paged-read and router-seam patterns this package clones.
 - [emr AGENTS.md](../../emr/AGENTS.md) — `fhir-r4`'s typed client and
   `fhir-r4-react`'s SMART runtime and authed runner.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)

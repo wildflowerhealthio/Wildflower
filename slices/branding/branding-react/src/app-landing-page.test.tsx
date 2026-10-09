@@ -57,7 +57,7 @@ describe('AppLandingPage', () => {
   it("should resolve the header's app links absolutely, as from an app", () => {
     // Arrange / Act
     render(
-      <AppLandingPage app="webTrace">
+      <AppLandingPage app="syntheticData">
         <div />
       </AppLandingPage>
     )

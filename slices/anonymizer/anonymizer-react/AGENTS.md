@@ -45,8 +45,7 @@ The slice's shell. Depends on `anonymizer-fundamentals` (the contract and
 routing helpers), `har-anonymizer-core` (the HAR descriptor),
 `har-anonymizer-react` (the HAR panel), `pdf-anonymizer-core` (the PDF
 schema), `pdf-anonymizer-react` (the PDF descriptor and panel), `effect`,
-`react`, `react-tundraish`. Never imports `importer-react`,
-`web-trace-react`, or a FHIR client.
+`react`, `react-tundraish`. Never imports `importer-react` or a FHIR client.
 
 ## Traps
 

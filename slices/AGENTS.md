@@ -142,7 +142,7 @@ effect-messaging bridge.
 
 `smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
-`web-trace` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace/AGENTS.md](./web-trace/AGENTS.md). Its `web-trace-core` sits below both a collector and a React app (`web-trace-react`, the on-device viewer), which is why it is a slice of its own rather than a package inside either. The collector that consumes it, [`web-trace-collector`](./collector/web-trace-collector/AGENTS.md), lives in the `collector` slice — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
+`web-trace` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace/AGENTS.md](./web-trace/AGENTS.md). Its `web-trace-core` sits below both the collectors and the HAR packages (`http-archive`, `har-importer-core`, `har-recorder-core`, `har-anonymizer-core`), which is why it is a slice of its own rather than a package inside any of them. The collector that consumes it, [`web-trace-collector`](./collector/web-trace-collector/AGENTS.md), lives in the `collector` slice — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
 
 ## Rules
 
