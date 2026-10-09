@@ -30,11 +30,11 @@ interface RelayEntries {
   readonly remoteAddr: string
   /** A pin's or a rathole relay's noise public key. */
   readonly publicKey: string
-  /** A rathole relay's relay domain. */
+  /** A rathole relay's relay domain, lowercased as typed. */
   readonly ratholeDomain: string
 }
 
-/** The credentials step's fields, as typed. */
+/** The credentials step's fields, as typed, the tunnel name lowercased. */
 interface CredentialsEntries {
   readonly tunnelName: string
   readonly token: string
@@ -171,7 +171,7 @@ const AdvancedRelaySettings = ({
             label="Relay domain"
             value={entries.ratholeDomain}
             onChange={(ratholeDomain) => {
-              onChange({ ...entries, ratholeDomain })
+              onChange({ ...entries, ratholeDomain: ratholeDomain.toLowerCase() })
             }}
             placeholder="relay.example.com"
             description="The domain this server's address ends in."
@@ -278,7 +278,7 @@ const CredentialsStep = ({
         label="Tunnel name"
         value={entries.tunnelName}
         onChange={(tunnelName) => {
-          onChange({ ...entries, tunnelName })
+          onChange({ ...entries, tunnelName: tunnelName.toLowerCase() })
         }}
         description="It names this server's address."
       />

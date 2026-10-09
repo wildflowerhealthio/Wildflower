@@ -56,6 +56,19 @@ const statusSummary = (status: ServerStatus.Type): StatusSummary => {
   return { tone: failed ? 'danger' : 'neutral', label: 'Stopped' }
 }
 
+/**
+ * What the status says beyond the run state, with the host's reason a
+ * running server isn't reachable when it has one; nothing for a server
+ * that is plainly running or stopped, which the dot says alone.
+ */
+const statusNote = (status: ServerStatus.Type): Option.Option<string> => {
+  if (status.runState === 'stopped') return Option.none()
+  const health = Option.getOrNull(ServerStatus.healthOf(status))
+  if (health?.kind === 'reachable' && health.status === 'pass') return Option.none()
+  const { label } = statusSummary(status)
+  return Option.some(health?.kind === 'unreachable' ? `${label}: ${health.error}` : label)
+}
+
 /** Why a run stopped, as a sentence, for every reason but a failure. */
 const STOP_REASON_TEXT: Readonly<
   Record<Exclude<ServerStatus.RunStop['reason'], 'endedOnItsOwn'>, string>
@@ -100,6 +113,7 @@ export {
   REACHABLE_STATUS,
   runningStatus,
   STOP_REASON_TEXT,
+  statusNote,
   statusSummary,
 }
 export type { StatusSummary }

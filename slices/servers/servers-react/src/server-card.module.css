@@ -89,7 +89,7 @@
   }
 }
 
-.server-card__last-stop {
+.server-card__note {
   margin: 0;
   color: var(--color-neutral-3);
 }

@@ -429,6 +429,28 @@ describe('the server list', () => {
   )
 
   it.each([
+    ['runningAndReachable', null],
+    ['startingUnchecked', 'Starting'],
+    ['runningUnreachable', 'Running, not reachable yet: the relay answered 502'],
+    ['runningRenewalFailed', 'Running, checking it can be reached'],
+    ['neverRun', null],
+    ['stoppedWithAnError', null],
+  ] as const)('should note a %s status under the picker as %j', async (statusName, note) => {
+    // Act
+    renderListed([
+      { ...golden.listedServers[0], status: golden.serverStatuses[statusName] },
+      golden.listedServers[1],
+    ])
+
+    // Assert
+    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+    const notes = within(ruth)
+      .queryAllByText(/^(Running|Starting|Stopped)/, { selector: 'p' })
+      .map((paragraph) => paragraph.textContent)
+    expect(notes).toEqual(note === null ? [] : [note])
+  })
+
+  it.each([
     [{ kind: 'off' }, /^Off$/],
     [{ kind: 'whileOpen' }, /^On while Wildflower is open$/],
     [{ kind: 'until', at: '2999-01-01T00:00:00Z' }, /^On until \S/],
@@ -1615,6 +1637,30 @@ describe('Add server', () => {
     // Assert
     await stepTitled('Server added')
     expect(invokesOf(host, 'server_add').map((invoke) => invoke.args?.['relay'])).toEqual([relay])
+  })
+
+  it('should lowercase the tunnel name and relay domain as they are typed', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderAddServer()
+
+    // Act
+    await enterRelay(user, {
+      rathole: true,
+      remoteAddr: 'relay.example.com:2333',
+      publicKey: golden.enteredRelays.rathole.publicKey,
+      domain: 'Relay.Example.COM',
+    })
+    const tunnel = await stepTitled('Tunnel')
+    await user.type(within(tunnel).getByLabelText('Tunnel name'), 'Ruth')
+    await user.type(within(tunnel).getByLabelText('Tunnel token'), TOKEN)
+    await user.click(within(tunnel).getByRole('button', { name: 'Add server' }))
+
+    // Assert
+    await stepTitled('Server added')
+    const [added] = invokesOf(host, 'server_add')
+    expect(added?.args?.['relay']).toEqual(golden.enteredRelays.rathole)
+    expect(added?.args?.['tunnelName']).toBe('ruth')
   })
 
   it('should say nothing is checked for a rathole relay until it comes up', async () => {
