@@ -23,6 +23,7 @@ export {
 } from './background-session-recovery.ts'
 export * as CertificateAuthority from './certificate-authority.ts'
 export * as CertificateState from './certificate-state.ts'
+export * as EnteredRelay from './entered-relay.ts'
 export * as HealthReport from './health-report.ts'
 export * as ListedServer from './listed-server.ts'
 export {
@@ -34,6 +35,7 @@ export * as PendingConsent from './pending-consent.ts'
 export * as RunPolicy from './run-policy.ts'
 export * as RunPolicyChoice from './run-policy-choice.ts'
 export {
+  addServer,
   listServers,
   removeServer,
   setServerCredentials,

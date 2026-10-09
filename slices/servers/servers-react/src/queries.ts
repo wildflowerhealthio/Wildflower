@@ -10,7 +10,9 @@ import {
 import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
 import { useEffect } from 'react'
 import {
+  addServer,
   type CertificateAuthority,
+  type EnteredRelay,
   type HealthReport,
   type HostCommandError,
   ListedServer,
@@ -143,6 +145,38 @@ const useServerStatusEvents = (listenToHostEvent: ListenToHostEvent): void => {
       stopListening?.()
     }
   }, [listenToHostEvent, queryClient])
+}
+
+/**
+ * Adds a server, answering with its domain, then reads the server list again,
+ * the cached list included while no page shows it, before the mutation
+ * settles.
+ *
+ * @remarks
+ * Reading the list before settling puts the new server in the cache before
+ * its run policy is set or its page opens, so neither starts from a list
+ * without it. The mutation holds the token among its variables, so it is
+ * dropped from the mutation cache as soon as nothing observes it
+ * (`gcTime: 0`); a caller resets it once the server is added.
+ */
+const useAddServer = (
+  runHostCommand: RunHostCommand
+): UseMutationResult<
+  string,
+  HostCommandError,
+  {
+    readonly relay: EnteredRelay.Type
+    readonly tunnelName: string
+    readonly token: string
+  }
+> => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (enrolment) => runHostCommand(addServer(enrolment)),
+    gcTime: 0,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY, refetchType: 'all' }),
+  })
 }
 
 /** `servers` with the server `domain`'s run policy set to `runPolicy`. */
@@ -370,6 +404,7 @@ export {
   notificationPermissionQueryOptions,
   serverHealthQueryOptions,
   serversQueryOptions,
+  useAddServer,
   useRemoveServer,
   useRequestNotificationPermission,
   useServerStatusEvents,

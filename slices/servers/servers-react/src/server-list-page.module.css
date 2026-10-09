@@ -49,3 +49,8 @@
   background: var(--color-warning-background);
   color: var(--color-warning-foreground);
 }
+
+/* Add server, the page's one action, across the page's width. */
+.server-list-page__add {
+  align-self: stretch;
+}

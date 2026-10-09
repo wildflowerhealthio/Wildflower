@@ -2,6 +2,7 @@ import type { Effect } from 'effect'
 import { Schema } from 'effect'
 
 import type * as CertificateAuthority from './certificate-authority.ts'
+import type * as EnteredRelay from './entered-relay.ts'
 import { type HostCommandError, invokeHostCommand, type TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
 import type * as RunPolicyChoice from './run-policy-choice.ts'
@@ -17,6 +18,31 @@ import * as RunPolicy from './run-policy.ts'
  */
 const listServers: Effect.Effect<readonly ListedServer.Type[], HostCommandError, TauriInvoke> =
   invokeHostCommand('servers_list', Schema.Array(ListedServer.Schema))
+
+/**
+ * Enrol the tunnel `tunnelName` at `relay` with `token` and register the
+ * server, answering with its domain. The host checks before it writes:
+ * nothing is registered when it refuses.
+ *
+ * @remarks
+ * A Wildflower relay must serve the identity `relay` pins, if any, and
+ * accept the tunnel name and token on a signed `GET /me`; a rathole relay is
+ * not asked. The host refuses as `invalidRelaySetting`, `relayUnreachable`,
+ * `badRelayResponse`, `pinMismatch`, `invalidTunnelName`, `emptyToken`,
+ * `signedRequestRejected`, `alreadyRegistered` or `registry`. The new
+ * server's run policy is `whileOpen` when no other server's is active, and
+ * `off` otherwise. The answer never carries the token.
+ */
+const addServer = ({
+  relay,
+  tunnelName,
+  token,
+}: {
+  readonly relay: EnteredRelay.Type
+  readonly tunnelName: string
+  readonly token: string
+}): Effect.Effect<string, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_add', Schema.String, { relay, tunnelName, token })
 
 /**
  * Set when the server `domain` runs to `choice`, answering with the run
@@ -77,4 +103,11 @@ const removeServer = ({
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
   invokeHostCommand('server_remove', Schema.Null, { domain })
 
-export { listServers, removeServer, setServerCredentials, setServerRunPolicy, updateServer }
+export {
+  addServer,
+  listServers,
+  removeServer,
+  setServerCredentials,
+  setServerRunPolicy,
+  updateServer,
+}

@@ -58,15 +58,23 @@ describe('RadioGroup', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('renders the legend in a <legend> element when provided', () => {
-    // Arrange
+  it('names the group by its legend when provided', () => {
     // Act
     render(
       <RadioGroup name="fruit" value="a" onChange={vi.fn()} options={options} legend="Pick one" />
     )
 
     // Assert
-    const legend = screen.getByText('Pick one')
-    expect(legend.tagName).toBe('LEGEND')
+    expect(screen.getByRole('radiogroup', { name: 'Pick one' })).toBeDefined()
+    expect(screen.getByText('Pick one').className).toBe('text-label-3')
+  })
+
+  it('renders each option as a label-3 row around its radio-3 input', () => {
+    // Act
+    render(<RadioGroup name="fruit" value="a" onChange={vi.fn()} options={options} />)
+
+    // Assert
+    expect(getRadio('Apple').className).toBe('radio-3')
+    expect(getRadio('Apple').parentElement?.className).toBe('label-3 radio-row')
   })
 })

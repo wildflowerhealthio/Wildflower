@@ -10,10 +10,7 @@ import { ServerCard } from './server-card.tsx'
 import { useOnline } from './use-online.ts'
 import styles from './server-list-page.module.css'
 
-/** Why the Add server button is disabled. */
-const ADD_SERVER_UNAVAILABLE = "Adding a server isn't available yet."
-
-/** The body of a list with no servers: what a server is, and Add server. */
+/** The body of a list with no servers: what a server is, and Add new server. */
 const NoServers = (): JSX.Element => (
   <div className={styles['server-list-page__empty']}>
     <p className={`text-heading-4 ${styles['server-list-page__empty-title']}`}>No servers yet</p>
@@ -21,13 +18,13 @@ const NoServers = (): JSX.Element => (
       A server keeps your health records on this device, and the apps you open from the web reach
       them at its own address, through a relay.
     </p>
-    <button type="button" className="button-2 filled" disabled title={ADD_SERVER_UNAVAILABLE}>
-      Add server
-    </button>
+    <Link to="/servers/new" className={`button button-3 filled ${styles['server-list-page__add']}`}>
+      Add new server
+    </Link>
   </div>
 )
 
-/** The servers, a card each. */
+/** The servers, a card each, and Add new server under them. */
 const ServerCards = ({
   servers,
   runHostCommand,
@@ -35,11 +32,19 @@ const ServerCards = ({
   readonly servers: readonly ListedServer.Type[]
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => (
-  <ul className={styles['server-list-page__servers']}>
-    {servers.map((server) => (
-      <ServerCard key={server.domain} server={server} runHostCommand={runHostCommand} />
-    ))}
-  </ul>
+  <>
+    <ul className={styles['server-list-page__servers']}>
+      {servers.map((server) => (
+        <ServerCard key={server.domain} server={server} runHostCommand={runHostCommand} />
+      ))}
+    </ul>
+    <Link
+      to="/servers/new"
+      className={`button button-3 outline ${styles['server-list-page__add']}`}
+    >
+      Add new server
+    </Link>
+  </>
 )
 
 /** A gear, the Host Settings link's icon. */
@@ -76,7 +81,7 @@ const ServerListBody = ({
 /**
  * The base's home, `/`: a card for each server on this device, kept current
  * by the host's `server-status` events, or what a server is when there are
- * none; and the way to the base's Host Settings.
+ * none; Add new server either way; and the way to the base's Host Settings.
  *
  * @remarks
  * When the host can't read `servers.json`, the page shows the host's error,
