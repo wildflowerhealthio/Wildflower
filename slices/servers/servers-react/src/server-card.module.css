@@ -94,9 +94,10 @@
   color: var(--color-neutral-3);
 }
 
+/* Launch can say under itself why it is disabled, so the actions align at the top. */
 .server-card__actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-4);
 }
 

@@ -40,7 +40,10 @@
 //! run, and the unit reports its health and the oldest consent waiting on it
 //! ([`PendingConsent`]) as its [`ServerDetail`], with the
 //! [`ServerConsentDecider`] through which the base reads, approves and denies
-//! the run's consents in-process. What the host
+//! the run's consents in-process, and the [`ServerLaunchMinter`] through which
+//! it mints the launch it opens the server's launcher with, once
+//! [`ensure_launchable`] says the server can be launched, at its
+//! [`launch_url`]. What the host
 //! notifies about its servers is decided here too: the per-caller request
 //! notifications ([`RequestNotificationCoalescer`]) and the notifications for
 //! each stop of a server's run ([`StopNotificationCoalescer`]).
@@ -49,14 +52,15 @@
 //!    [`RunPolicy`], [`RegistryError`], enrolment with its [`EnteredRelay`],
 //!    [`RelayIdentity`] and [`EnrolmentError`], and the changes to a
 //!    registered server with [`RunPolicyChoice`] and [`ServerChangeError`];
-//!    [`ServerDetail`]; [`PendingConsent`] with its [`ConsentKey`] and
+//!    [`ServerDetail`]; launching, with [`ensure_launchable`], [`launch_url`]
+//!    and [`LaunchError`]; [`PendingConsent`] with its [`ConsentKey`] and
 //!    [`PendingConsentTracker`]; the wire shapes the consent commands answer
 //!    in ([`ConsentDetails`], [`ApprovalOutcome`], [`ConsentError`]) and take
 //!    ([`ConsentApproval`]); and the [`notifications`](domain::notifications)
 //!    the host posts: [`LocalNotification`], the request coalescer and the
 //!    stop notifications. The token is a secret: its `Debug` and `Serialize`
 //!    write a redaction marker, and only `servers.json` holds it in full.
-//!  - `ports` — the [`ServerRegistry`] port (read all, insert, modify,
+//!  - `ports` — the [`ServerRegistry`] port (read all or one, insert, modify,
 //!    remove) and the [`RelayClient`] port (`GET /rathole`, signed
 //!    `GET /me`).
 //!  - `adapters` — [`JsonServerRegistry`], which replaces `servers.json`
@@ -66,7 +70,8 @@
 //!    never sent.
 //!  - `live_bindings` — [`ServerUnit`], a server bound to
 //!    `wildflower-server-rust` as a unit `UnitRunner` runs, and
-//!    [`ServerConsentDecider`], a run's consents bound to `gatekeeper-rust`.
+//!    [`ServerConsentDecider`] and [`ServerLaunchMinter`], a run's consents
+//!    and launches bound to `gatekeeper-rust`.
 
 pub mod domain;
 
@@ -83,14 +88,15 @@ pub use domain::notifications::stop_notifications::{
     ServerStop, StopCause, StopNotificationCoalescer,
 };
 pub use domain::{
-    add_server, remove_server, set_run_policy, set_server_credentials, update_server,
-    ApprovalOutcome, CertificateAuthority, ConsentApproval, ConsentDetails, ConsentError,
-    ConsentKey, EnrolmentError, EnteredRelay, ListedServer, PendingConsent, PendingConsentChange,
-    PendingConsentTracker, Registration, RegistryError, RelayIdentity, RelayKind, RunPolicyChoice,
-    ServerChangeError, ServerDetail, ServerRecord, ServerStatus, ServerStatusTracker, ServerUpdate,
-    TunnelToken, SERVERS_DIR_NAME,
+    add_server, ensure_launchable, launch_url, remove_server, set_run_policy,
+    set_server_credentials, update_server, ApprovalOutcome, CertificateAuthority, ConsentApproval,
+    ConsentDetails, ConsentError, ConsentKey, EnrolmentError, EnteredRelay, LaunchError,
+    ListedServer, PendingConsent, PendingConsentChange, PendingConsentTracker, Registration,
+    RegistryError, RelayIdentity, RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail,
+    ServerRecord, ServerStatus, ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_consent_decider::ServerConsentDecider;
+pub use live_bindings::server_launch_minter::ServerLaunchMinter;
 pub use live_bindings::server_unit::ServerUnit;
 pub use ports::{NewRecord, RegistryChange, RelayClient, ServerRegistry};
 pub use unit_runner::RunPolicy;

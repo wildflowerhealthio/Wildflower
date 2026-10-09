@@ -30,6 +30,19 @@ pub trait ServerRegistry: Send + Sync {
     /// when the stored registry can't be read.
     fn read_all(&self) -> Result<Vec<ServerRecord>, RegistryError>;
 
+    /// The registered server with `domain`.
+    ///
+    /// # Errors
+    ///
+    /// [`RegistryError::NotRegistered`] when no server has `domain`, or a read
+    /// failure.
+    fn read(&self, domain: &str) -> Result<ServerRecord, RegistryError> {
+        self.read_all()?
+            .into_iter()
+            .find(|record| record.domain() == domain)
+            .ok_or_else(|| RegistryError::not_registered(domain))
+    }
+
     /// Add the record `new_record` builds from the servers already registered,
     /// and return it. Reading those servers and adding the record are one
     /// change, so no other change lands between them.
@@ -59,4 +72,19 @@ pub trait ServerRegistry: Send + Sync {
     /// [`RegistryError::NotRegistered`] when no server has `domain`, or a read
     /// or write failure.
     fn remove(&self, domain: &str) -> Result<(), RegistryError>;
+}
+
+/// The server with `domain` among `servers`, for a [`RegistryChange`] to edit.
+///
+/// # Errors
+///
+/// [`RegistryError::NotRegistered`] when no server has `domain`.
+pub(crate) fn registered_mut<'a>(
+    servers: &'a mut [ServerRecord],
+    domain: &str,
+) -> Result<&'a mut ServerRecord, RegistryError> {
+    servers
+        .iter_mut()
+        .find(|record| record.domain() == domain)
+        .ok_or_else(|| RegistryError::not_registered(domain))
 }

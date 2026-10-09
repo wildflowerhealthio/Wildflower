@@ -246,6 +246,13 @@ afterEach(() => {
 /** The consent `<dialog>` while it is open, or `null`. */
 const openDialog = (): HTMLDialogElement | null => document.querySelector('dialog[open]')
 
+/** The `<dialog>` that is open. */
+const openDialogOrThrow = (): HTMLDialogElement => {
+  const dialog = openDialog()
+  if (dialog === null) throw new Error('no dialog is open')
+  return dialog
+}
+
 describe('BaseRoot', () => {
   it('should show only the consent dialog, and call no host command, until the user answers', async () => {
     // Arrange
@@ -758,6 +765,706 @@ describe('the server list', () => {
     expect(banner.closest('li')).toBe(serverRow('lab.rathole.example.com'))
     expect(runPolicyOf('lab.rathole.example.com').shown).toBe('Off')
     expect(runPolicyOf('lab.rathole.example.com').control.disabled).toBe(false)
+  })
+})
+
+describe('Launch', () => {
+  const RUTH = 'ruth.relay.example.com'
+  const LAB = 'lab.rathole.example.com'
+
+  /**
+   * The device's clock while these tests run, so the time "Start and launch"
+   * is confirmed: after every golden status's stop, and before the stops the
+   * tests send during a wait.
+   */
+  const NOW = '2026-10-06T17:50:00Z'
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse(NOW) })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** The list item of the server `domain`. */
+  const serverRow = (domain: string): HTMLElement => screen.getByRole('listitem', { name: domain })
+
+  /** The Launch button on the server `domain`'s card. */
+  const launchOn = (domain: string): HTMLButtonElement => {
+    const button = within(serverRow(domain)).getByRole('button', { name: 'Launch' })
+    if (!(button instanceof HTMLButtonElement)) throw new Error('Launch is no <button>')
+    return button
+  }
+
+  /** `golden.serverStatuses.runningAndReachable`, for the server `domain`. */
+  const launchableStatus = (domain: string): Readonly<Record<string, unknown>> => ({
+    ...golden.serverStatuses.runningAndReachable,
+    domain,
+  })
+
+  /** `golden.listedServers` with lab's run policy and status replaced. */
+  const listedWithLab = ({
+    runPolicy = golden.listedServers[1].runPolicy,
+    status = golden.listedServers[1].status,
+  }: {
+    readonly runPolicy?: unknown
+    readonly status?: { readonly certificate: unknown; readonly [key: string]: unknown }
+  }): readonly unknown[] => [
+    golden.listedServers[0],
+    { ...golden.listedServers[1], runPolicy, status, certificate: status.certificate },
+  ]
+
+  /** The servers' list, and the host and events they were rendered with. */
+  const renderLaunching = ({
+    servers = golden.listedServers,
+    answers = {},
+    events = fakeEvents(),
+  }: {
+    readonly servers?: readonly unknown[]
+    readonly answers?: Readonly<Record<string, () => Promise<unknown>>>
+    readonly events?: FakeEvents
+  }): { readonly host: FakeHost; readonly events: FakeEvents } => {
+    const host = hostWith({ servers: () => Promise.resolve(servers), answers })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      events,
+    })
+    return { host, events }
+  }
+
+  const launchesSeen = (host: FakeHost): readonly SeenInvoke[] =>
+    host.seen.filter(({ command }) => command === 'server_launch')
+
+  it("should launch a launchable server, and show the host's refusal", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host } = renderLaunching({
+      answers: { server_launch: () => Promise.reject(golden.launchErrors[2]) },
+    })
+    await screen.findByRole('listitem', { name: RUTH })
+
+    // Act
+    await user.click(launchOn(RUTH))
+
+    // Assert
+    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: RUTH } }])
+    const banner = await within(serverRow(RUTH)).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[2].message)
+    expect(launchOn(RUTH).disabled).toBe(false)
+  })
+
+  it('should be disabled while the webview is offline, saying why', async () => {
+    // Arrange
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    try {
+      // Act
+      renderLaunching({})
+      await screen.findByRole('listitem', { name: RUTH })
+
+      // Assert
+      expect(launchOn(RUTH).disabled).toBe(true)
+      expect(
+        within(serverRow(RUTH)).getByText(
+          'Apps open from the web, so launching needs a connection.'
+        )
+      ).toBeDefined()
+    } finally {
+      onLine.mockRestore()
+      // TanStack Query's online manager hears the window's events.
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+    }
+  })
+
+  it.each([
+    ['runningRenewalFailed', "The server hasn't been reached through its relay yet."],
+    ['runningUnreachable', "The server can't be reached through its relay."],
+  ] as const)(
+    'should be disabled for a running server that is %s, saying why',
+    async (statusName, reason) => {
+      // Arrange
+      const events = fakeEvents()
+      renderLaunching({ events })
+      await screen.findByRole('listitem', { name: RUTH })
+
+      // Act
+      events.emit('server-status', golden.serverStatuses[statusName])
+
+      // Assert
+      expect(await within(serverRow(RUTH)).findByText(reason)).toBeDefined()
+      expect(launchOn(RUTH).disabled).toBe(true)
+    }
+  )
+
+  it('should be disabled for a running server with no valid certificate, saying why', async () => {
+    // Arrange
+    const events = fakeEvents()
+    renderLaunching({ events })
+    await screen.findByRole('listitem', { name: RUTH })
+
+    // Act
+    events.emit('server-status', {
+      ...golden.serverStatuses.runningAndReachable,
+      certificate: golden.serverStatuses.runningCacheFailed.certificate,
+    })
+
+    // Assert
+    expect(
+      await within(serverRow(RUTH)).findByText('The server has no valid certificate yet.')
+    ).toBeDefined()
+    expect(launchOn(RUTH).disabled).toBe(true)
+  })
+
+  it("should be disabled for a running server whose certificate browsers don't trust, saying why", async () => {
+    // Arrange
+    const events = fakeEvents()
+    renderLaunching({ events })
+    await screen.findByRole('listitem', { name: RUTH })
+
+    // Act
+    events.emit('server-status', golden.serverStatuses.runningAndReachableOnStaging)
+
+    // Assert
+    expect(
+      await within(serverRow(RUTH)).findByText(
+        "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust."
+      )
+    ).toBeDefined()
+    expect(launchOn(RUTH).disabled).toBe(true)
+  })
+
+  it.each([
+    ['starting', golden.serverStatuses.startingUnchecked, 'The server is starting.'],
+    [
+      'stopped',
+      golden.serverStatuses.stoppedWithAnError,
+      "The server isn't running yet. It starts again on its own.",
+    ],
+  ] as const)(
+    'should be disabled for a %s server whose policy wants it running, without changing the policy',
+    async (_runState, status, reason) => {
+      // Arrange
+      const { host } = renderLaunching({
+        servers: listedWithLab({
+          runPolicy: { kind: 'whileOpen' },
+          status: { ...status, domain: LAB },
+        }),
+      })
+      await screen.findByRole('listitem', { name: LAB })
+
+      // Assert
+      expect(within(serverRow(LAB)).getByText(reason)).toBeDefined()
+      expect(launchOn(LAB).disabled).toBe(true)
+      expect(host.seen.map(({ command }) => command)).not.toContain('server_set_run_policy')
+    }
+  )
+
+  it("should start an off server once confirmed, then launch it once it's launchable", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await screen.findByRole('listitem', { name: LAB })
+
+    // Act
+    await user.click(launchOn(LAB))
+
+    // Assert
+    expect(within(openDialogOrThrow()).getByText('Start server and launch?')).toBeDefined()
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_set_run_policy')
+
+    // Act
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_set_run_policy',
+      args: { domain: LAB, choice: { kind: 'whileOpen' } },
+    })
+    expect(await within(serverRow(LAB)).findByRole('button', { name: 'Starting…' })).toBeDefined()
+    expect(launchesSeen(host)).toEqual([])
+
+    // Act
+    events.emit('server-status', { ...golden.serverStatuses.runningRenewalFailed, domain: LAB })
+
+    // Assert
+    expect(within(serverRow(LAB)).getByRole('button', { name: 'Starting…' })).toBeDefined()
+    expect(launchesSeen(host)).toEqual([])
+
+    // Act
+    events.emit('server-status', launchableStatus(LAB))
+    events.emit('server-status', launchableStatus(LAB))
+
+    // Assert
+    await waitFor(() => {
+      expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+    })
+    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
+  })
+
+  it('should ask to start a server whose until has ended, as for one that is off', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderLaunching({
+      servers: listedWithLab({ runPolicy: { kind: 'until', at: '2026-10-06T17:42:00Z' } }),
+    })
+    await screen.findByRole('listitem', { name: LAB })
+
+    // Act
+    await user.click(launchOn(LAB))
+
+    // Assert
+    expect(within(openDialogOrThrow()).getByText('Start server and launch?')).toBeDefined()
+  })
+
+  it('should be disabled for a stopped server whose until has not ended, without changing the policy', async () => {
+    // Arrange
+    const { host } = renderLaunching({
+      servers: listedWithLab({ runPolicy: { kind: 'until', at: '2099-01-01T00:00:00Z' } }),
+    })
+    await screen.findByRole('listitem', { name: LAB })
+
+    // Assert
+    expect(
+      within(serverRow(LAB)).getByText("The server isn't running yet. It starts again on its own.")
+    ).toBeDefined()
+    expect(launchOn(LAB).disabled).toBe(true)
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_set_run_policy')
+  })
+
+  it('should change nothing when the question to start is cancelled', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host } = renderLaunching({})
+    await screen.findByRole('listitem', { name: LAB })
+    await user.click(launchOn(LAB))
+
+    // Act
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Cancel' }))
+
+    // Assert
+    expect(openDialog()).toBeNull()
+    expect(launchOn(LAB).disabled).toBe(false)
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_set_run_policy')
+    expect(launchesSeen(host)).toEqual([])
+  })
+
+  it("should show the host's refusal to start the server, and launch nothing", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.reject(golden.launchErrors[4]),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await screen.findByRole('listitem', { name: LAB })
+    await user.click(launchOn(LAB))
+
+    // Act
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+
+    // Assert
+    const banner = await within(serverRow(LAB)).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[4].message)
+    expect(openDialog()).toBeNull()
+    expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+    expect(launchesSeen(host)).toEqual([])
+
+    // Act
+    await user.click(launchOn(LAB))
+
+    // Assert
+    expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+  })
+
+  it('should leave a policy that became active while asking as it is, and wait for the start', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'always' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await screen.findByRole('listitem', { name: LAB })
+    await user.click(launchOn(LAB))
+    await user.selectOptions(within(serverRow(LAB)).getByRole('combobox'), 'Always')
+    await waitFor(() => {
+      expect(host.seen.filter(({ command }) => command === 'server_set_run_policy')).toHaveLength(1)
+    })
+
+    // Act
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+
+    // Assert
+    expect(await within(serverRow(LAB)).findByRole('button', { name: 'Starting…' })).toBeDefined()
+    expect(host.seen.filter(({ command }) => command === 'server_set_run_policy')).toEqual([
+      { command: 'server_set_run_policy', args: { domain: LAB, choice: { kind: 'always' } } },
+    ])
+  })
+
+  it('should launch nothing once the wait for a started server is cancelled', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await screen.findByRole('listitem', { name: LAB })
+    await user.click(launchOn(LAB))
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+
+    // Act
+    await user.click(await within(serverRow(LAB)).findByRole('button', { name: 'Cancel' }))
+    events.emit('server-status', launchableStatus(LAB))
+
+    // Assert
+    await waitFor(() => {
+      expect(launchOn(LAB).disabled).toBe(false)
+    })
+    expect(launchesSeen(host)).toEqual([])
+  })
+
+  /** Confirm Start and launch on the server `domain`'s card, and wait for Starting…. */
+  const startAndLaunch = async (
+    user: ReturnType<typeof userEvent.setup>,
+    domain: string
+  ): Promise<void> => {
+    await screen.findByRole('listitem', { name: domain })
+    await user.click(launchOn(domain))
+    await user.click(within(openDialogOrThrow()).getByRole('button', { name: 'Start and launch' }))
+    await within(serverRow(domain)).findByRole('button', { name: 'Starting…' })
+  }
+
+  /** Lab's status, as the golden `name` status of ruth's. */
+  const labStatus = (
+    name: keyof typeof golden.serverStatuses,
+    changes: Readonly<Record<string, unknown>> = {}
+  ): Readonly<Record<string, unknown>> => ({
+    ...golden.serverStatuses[name],
+    domain: LAB,
+    ...changes,
+  })
+
+  it.each([
+    ['starting', labStatus('startingUnchecked'), 'The server is starting.'],
+    [
+      'running, not yet reached',
+      labStatus('runningRenewalFailed'),
+      "The server hasn't been reached through its relay yet.",
+    ],
+    [
+      'running, unreachable, still getting a certificate',
+      labStatus('runningUnreachable', {
+        certificate: golden.serverStatuses.runningCacheFailed.certificate,
+      }),
+      "The server can't be reached through its relay: the relay answered 502",
+    ],
+    [
+      'running, reachable, still getting a certificate',
+      labStatus('runningAndReachable', {
+        certificate: golden.serverStatuses.runningCacheFailed.certificate,
+      }),
+      'The server has no valid certificate yet.',
+    ],
+    [
+      'stopped with the error it had before the start',
+      labStatus('stoppedWithAnError'),
+      "The server hasn't started yet.",
+    ],
+    [
+      'stopped to start again',
+      labStatus('stoppedAsItsPolicyEnded', {
+        lastStop: { reason: 'stoppedForRestart', stoppedAt: '2026-10-06T18:00:00Z' },
+      }),
+      'It stopped to start again.',
+    ],
+  ] as const)(
+    "should say why a started server that is %s isn't launched yet, under Starting…",
+    async (_state, status, reason) => {
+      // Arrange
+      const user = userEvent.setup()
+      const { host, events } = renderLaunching({
+        answers: {
+          server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+          server_launch: () => Promise.resolve(null),
+        },
+      })
+      await startAndLaunch(user, LAB)
+
+      // Act
+      events.emit('server-status', status)
+
+      // Assert
+      const starting = await within(serverRow(LAB)).findByRole('button', { name: 'Starting…' })
+      await waitFor(() => {
+        expect(starting.getAttribute('aria-describedby')).not.toBeNull()
+      })
+      const describedBy = document.getElementById(starting.getAttribute('aria-describedby') ?? '')
+      expect(describedBy?.textContent).toBe(reason)
+      expect(within(serverRow(LAB)).getByRole('button', { name: 'Cancel' })).toBeDefined()
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+      expect(launchesSeen(host)).toEqual([])
+    }
+  )
+
+  it.each([
+    [
+      'its run stops with an error',
+      labStatus('stoppedWithAnError', {
+        lastStop: {
+          reason: 'endedOnItsOwn',
+          error: 'the address is in use',
+          stoppedAt: '2026-10-06T18:00:00Z',
+        },
+      }),
+      'The server stopped with an error: the address is in use',
+    ],
+    [
+      'its certificate order is failing',
+      labStatus('startingCaUnreachable'),
+      "Ordering the server's certificate is failing.",
+    ],
+    [
+      "its certificate is one browsers don't trust",
+      labStatus('runningAndReachableOnStaging'),
+      "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
+    ],
+  ] as const)('should stop waiting, saying why, once %s', async (_cause, status, failure) => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await startAndLaunch(user, LAB)
+
+    // Act
+    events.emit('server-status', status)
+
+    // Assert
+    const banner = await within(serverRow(LAB)).findByRole('alert')
+    expect(banner.textContent).toContain(failure)
+    expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+    expect(within(serverRow(LAB)).getByRole('button', { name: 'Launch' })).toBeDefined()
+    events.emit('server-status', launchableStatus(LAB))
+    await waitFor(() => {
+      expect(launchOn(LAB).disabled).toBe(false)
+    })
+    expect(launchesSeen(host)).toEqual([])
+  })
+
+  describe('while a started server is unreachable with a valid certificate', () => {
+    const UNREACHABLE = "The server can't be reached through its relay: the relay answered 502"
+
+    const unreachableWithAValidCertificate = labStatus('runningUnreachable', {
+      certificate: golden.serverStatuses.runningAndReachable.certificate,
+    })
+
+    /** The reason under Starting… on lab's card. */
+    const waitingReason = (): string | null | undefined => {
+      const starting = within(serverRow(LAB)).getByRole('button', { name: 'Starting…' })
+      return document.getElementById(starting.getAttribute('aria-describedby') ?? '')?.textContent
+    }
+
+    /** Move the device's clock and timers on by `millis`. */
+    const advance = (millis: number): void => {
+      act(() => {
+        vi.advanceTimersByTime(millis)
+      })
+    }
+
+    /** Send lab's status as unreachable with a valid certificate, and wait for Starting… to say so. */
+    const becomeUnreachable = async (events: FakeEvents): Promise<void> => {
+      events.emit('server-status', unreachableWithAValidCertificate)
+      await waitFor(() => {
+        expect(waitingReason()).toBe(UNREACHABLE)
+      })
+    }
+
+    /** Lab's card, waiting on a started lab, with fake timers from `NOW`. */
+    const startWaiting = async (): Promise<{
+      readonly host: FakeHost
+      readonly events: FakeEvents
+    }> => {
+      vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.parse(NOW) })
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      const launching = renderLaunching({
+        answers: {
+          server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+          server_launch: () => Promise.resolve(null),
+        },
+      })
+      await startAndLaunch(user, LAB)
+      return launching
+    }
+
+    it('should keep waiting through a 502 shorter than the grace, then launch once reachable', async () => {
+      // Arrange
+      const { host, events } = await startWaiting()
+
+      // Act
+      await becomeUnreachable(events)
+      advance(4_000)
+
+      // Assert
+      expect(waitingReason()).toBe(UNREACHABLE)
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+
+      // Act
+      events.emit('server-status', launchableStatus(LAB))
+
+      // Assert
+      await waitFor(() => {
+        expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
+      })
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+    })
+
+    it('should stop waiting, saying why, once it has been unreachable for the grace', async () => {
+      // Arrange
+      const { host, events } = await startWaiting()
+      await becomeUnreachable(events)
+
+      // Act
+      advance(5_000)
+
+      // Assert
+      const banner = await within(serverRow(LAB)).findByRole('alert')
+      expect(banner.textContent).toContain(UNREACHABLE)
+      expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+      expect(launchesSeen(host)).toEqual([])
+    })
+
+    it.each([
+      [
+        'reachable',
+        labStatus('runningAndReachable', {
+          certificate: golden.serverStatuses.runningCacheFailed.certificate,
+        }),
+      ],
+      ['not yet reached', labStatus('runningRenewalFailed')],
+    ] as const)(
+      'should start the grace again after a status that is %s',
+      async (_state, between) => {
+        // Arrange
+        const { host, events } = await startWaiting()
+        await becomeUnreachable(events)
+        advance(4_000)
+
+        // Act
+        events.emit('server-status', between)
+        await waitFor(() => {
+          expect(waitingReason()).not.toBe(UNREACHABLE)
+        })
+        await becomeUnreachable(events)
+        advance(4_000)
+
+        // Assert
+        expect(waitingReason()).toBe(UNREACHABLE)
+        expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+
+        // Act
+        advance(1_000)
+
+        // Assert
+        expect((await within(serverRow(LAB)).findByRole('alert')).textContent).toContain(
+          UNREACHABLE
+        )
+        expect(launchesSeen(host)).toEqual([])
+      }
+    )
+  })
+
+  it("should show the host's refusal of a started server's launch, and Launch again", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.reject(golden.launchErrors[3]),
+      },
+    })
+    await startAndLaunch(user, LAB)
+
+    // Act
+    events.emit('server-status', launchableStatus(LAB))
+
+    // Assert
+    const banner = await within(serverRow(LAB)).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[3].message)
+    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
+    expect(launchOn(LAB).disabled).toBe(false)
+
+    // Act
+    await user.click(launchOn(LAB))
+
+    // Assert
+    await waitFor(() => {
+      expect(launchesSeen(host)).toHaveLength(2)
+    })
+  })
+
+  it("should keep waiting on the server's page once Edit opens it, and launch from there", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const { host, events } = renderLaunching({
+      answers: {
+        server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+        server_launch: () => Promise.resolve(null),
+      },
+    })
+    await startAndLaunch(user, LAB)
+
+    // Act
+    await user.click(within(serverRow(LAB)).getByRole('link', { name: 'Edit' }))
+
+    // Assert
+    const hero = await screen.findByRole('region', { name: 'Status' })
+    expect(within(hero).getByRole('button', { name: 'Starting…' })).toBeDefined()
+    expect(launchesSeen(host)).toEqual([])
+
+    // Act
+    events.emit('server-status', launchableStatus(LAB))
+
+    // Assert
+    await waitFor(() => {
+      expect(within(hero).queryByRole('button', { name: 'Starting…' })).toBeNull()
+    })
+    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
+  })
+
+  it("should launch from the server page's status", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = hostWith({
+      servers: () => Promise.resolve(golden.listedServers),
+      answers: { server_launch: () => Promise.resolve(null) },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: `/servers/${RUTH}`,
+    })
+    const hero = await screen.findByRole('region', { name: 'Status' })
+
+    // Act
+    await user.click(within(hero).getByRole('button', { name: 'Launch' }))
+
+    // Assert
+    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: RUTH } }])
   })
 })
 

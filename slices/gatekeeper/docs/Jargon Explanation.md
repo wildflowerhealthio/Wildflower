@@ -197,13 +197,15 @@ app's launch URL; the app forwards it to `/oauth/authorize`.
 - **Table:** `launch_contexts`, owned by gatekeeper. No other slice touches it.
 - **Identifier:** `nonce`, the opaque `launch` value (32 CSPRNG bytes,
   base64url).
-- **Binds:** the app's `client_id`, and a nullable `patient`. Nothing sets the
-  patient yet: apps pick it in-app.
+- **Binds:** the app's `client_id`, or no client (the base's launch: a
+  server's launcher can be any app, so the first client to present the value
+  takes it), and a nullable `patient`. Only a launch that names its client can
+  bind a patient. Nothing sets the patient yet: apps pick it in-app.
 - **TTL:** 5 minutes, the same as an `AuthorizationRequest`.
 - **Single use:** `/oauth/authorize` consumes it with one conditional `UPDATE`
-  (unconsumed, unexpired, minted for the presenting client), so of two racing
-  authorizes only one wins. Expired rows are pruned when the next one is
-  minted.
+  (unconsumed, unexpired, minted for the presenting client or for any client),
+  so of two racing authorizes only one wins. Expired rows are pruned when the
+  next one is minted.
 - **Refusals:** an unknown, expired, consumed or other client's `launch` is
   `invalid_request`, the same for every reason. A request with no `launch` is
   plain OAuth.

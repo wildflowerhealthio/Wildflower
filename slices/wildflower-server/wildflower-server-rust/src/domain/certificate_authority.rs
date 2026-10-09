@@ -39,6 +39,30 @@ impl CertificateAuthority {
         };
         Url::parse(directory_url).expect("rustls-acme's Let's Encrypt directories are URLs")
     }
+
+    /// Whether browsers trust the CA's certificates: an app's browser
+    /// accepts a server's certificate only from a CA they trust. Only Let's
+    /// Encrypt's production CA is.
+    #[must_use]
+    pub fn is_browser_trusted(self) -> bool {
+        match self {
+            Self::LetsEncrypt => true,
+            Self::LetsEncryptStaging => false,
+            #[cfg(feature = "test-support")]
+            Self::UnreachableForTests => false,
+        }
+    }
+
+    /// The CA's name in a sentence, such as "Let's Encrypt's staging CA".
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::LetsEncryptStaging => "Let's Encrypt's staging CA",
+            Self::LetsEncrypt => "Let's Encrypt",
+            #[cfg(feature = "test-support")]
+            Self::UnreachableForTests => "the tests' unreachable CA",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -63,6 +87,13 @@ mod tests {
                 .as_str(),
             "https://127.0.0.1:9/directory"
         );
+    }
+
+    #[test]
+    fn only_let_s_encrypt_s_production_ca_is_browser_trusted() {
+        assert!(CertificateAuthority::LetsEncrypt.is_browser_trusted());
+        assert!(!CertificateAuthority::LetsEncryptStaging.is_browser_trusted());
+        assert!(!CertificateAuthority::UnreachableForTests.is_browser_trusted());
     }
 
     #[test]

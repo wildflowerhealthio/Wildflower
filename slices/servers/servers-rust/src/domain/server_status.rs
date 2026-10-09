@@ -318,6 +318,7 @@ pub(crate) mod tests {
                 }),
                 pending_consent: None,
                 consent_decider: None,
+                launch_minter: None,
             }),
         }
     }
@@ -356,6 +357,32 @@ pub(crate) mod tests {
         vec![
             ("runningAndReachable", status(running_and_reachable())),
             (
+                "runningAndReachableOnStaging",
+                status({
+                    let mut on_staging = running_and_reachable();
+                    on_staging
+                        .detail
+                        .as_mut()
+                        .unwrap()
+                        .certificate
+                        .as_mut()
+                        .unwrap()
+                        .issuer = CertificateAuthority::LetsEncryptStaging;
+                    on_staging
+                }),
+            ),
+            (
+                "runningAndReachableWithACachedCertificate",
+                with_cached(
+                    {
+                        let mut unreported = running_and_reachable();
+                        unreported.detail.as_mut().unwrap().certificate = None;
+                        unreported
+                    },
+                    cached(CertificateStatus::NoRenewalNeeded),
+                ),
+            ),
+            (
                 "startingUnchecked",
                 with_cached(
                     UnitStatus {
@@ -384,6 +411,7 @@ pub(crate) mod tests {
                         }),
                         pending_consent: None,
                         consent_decider: None,
+                        launch_minter: None,
                     }),
                 }),
             ),
@@ -406,6 +434,7 @@ pub(crate) mod tests {
                         }),
                         pending_consent: None,
                         consent_decider: None,
+                        launch_minter: None,
                     }),
                 }),
             ),
@@ -426,6 +455,7 @@ pub(crate) mod tests {
                         }),
                         pending_consent: None,
                         consent_decider: None,
+                        launch_minter: None,
                     }),
                 }),
             ),
@@ -446,6 +476,7 @@ pub(crate) mod tests {
                         }),
                         pending_consent: None,
                         consent_decider: None,
+                        launch_minter: None,
                     }),
                 }),
             ),

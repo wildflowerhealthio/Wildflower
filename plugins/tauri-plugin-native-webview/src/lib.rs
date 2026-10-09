@@ -18,7 +18,9 @@
 //! Usage (Rust caller — the canonical path; the native webview bridge stays Rust-side):
 //! ```ignore
 //! use tauri::ipc::Channel;
-//! use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewEvent, NativeWebviewExt, OpenRequest};
+//! use tauri_plugin_native_webview::{
+//!     DismissalAction, EvaluateJsRequest, NativeWebviewEvent, NativeWebviewExt, OpenRequest,
+//! };
 //!
 //! // Long-lived channel: clones share the same handler (Arc-backed).
 //! let native_webview_event_channel: Channel<NativeWebviewEvent> = Channel::new(move |body| {
@@ -39,6 +41,8 @@
 //!     initial_message: None,
 //!     cookies: vec![],
 //!     download_dir: None,
+//!     // A user dismissal hides the instance (kept alive); `Dispose` tears it down.
+//!     on_dismiss: DismissalAction::Hide,
 //! })?;
 //! // `open_url` navigates without presenting; reveal it with `show()`.
 //! app.native_webview().show(id)?;
@@ -57,6 +61,7 @@ use tauri::{
     Manager, Runtime,
 };
 
+pub use dismissal::DismissalAction;
 pub use error::{Error, Result};
 pub use models::{
     CookieSameSite, CookieSpec, DisposeResponse, EvaluateJsRequest, EvaluateJsResponse,
@@ -65,6 +70,7 @@ pub use models::{
 };
 
 mod commands;
+mod dismissal;
 mod error;
 mod models;
 mod url_scheme;
@@ -115,6 +121,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             #[cfg(desktop)]
             let native = desktop::init(app, api)?;
             app.manage(native);
+            app.manage(dismissal::DisposingOnDismissal::default());
             Ok(())
         });
     // Desktop signals the chrome bar's clicks/height reports through the

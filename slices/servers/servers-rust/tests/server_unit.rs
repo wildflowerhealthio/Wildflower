@@ -5,9 +5,10 @@
 //! pending-consent channel alone while nothing of its own waits. Once its
 //! policy turns it off, it stops with the detail cleared. Turned back on, the
 //! next run binds the same port, so the previous run's runtime is gone, and
-//! serves again. A consent its gatekeeper parks is the run's detail, and is
-//! read and decided through the `ServerConsentDecider` the run's detail holds
-//! until the run ends.
+//! serves again. Its detail holds the run's launch minter, and an unreachable
+//! server isn't launchable. A consent its gatekeeper parks is the run's
+//! detail, and is read and decided through the `ServerConsentDecider` the
+//! run's detail holds until the run ends.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,8 +16,8 @@ use std::time::Duration;
 
 use gatekeeper_rust::{NoLoopbackConsentPrompt, PendingConsentHead};
 use servers_rust::{
-    ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, RunPolicy,
-    ServerConsentDecider, ServerDetail, ServerUnit,
+    ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
+    RunPolicy, ServerConsentDecider, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
 use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
@@ -24,7 +25,8 @@ use tokio::sync::{mpsc, watch};
 use unit_runner::{RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus};
 use url::Url;
 use wildflower_server_rust::{
-    CertificateAuthority, DeviceCertificateConfig, HostPorts, WildflowerServerConfig,
+    CertificateAuthority, CertificateState, DeviceCertificateConfig, HostPorts,
+    WildflowerServerConfig,
 };
 
 /// How long a run may take to come up or wind down before the test fails
@@ -216,6 +218,34 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         Some(other_servers_head),
         "a run with nothing waiting leaves another server's head alone"
     );
+    // The run's detail holds its launch minter, which mints through the
+    // run's gatekeeper; an unreachable server isn't launchable.
+    let launch_minter = unit_runner.statuses()[&UnitId::from(DOMAIN)]
+        .detail
+        .as_ref()
+        .and_then(|detail| detail.launch_minter.clone())
+        .expect("the run's detail holds its launch minter");
+    let launch = tokio::task::block_in_place(|| launch_minter.mint()).expect("a launch");
+    assert!(!launch.is_empty());
+    let unit_status = unit_runner.statuses()[&UnitId::from(DOMAIN)].clone();
+    // Unreachable is refused before the certificate is looked at, so a run
+    // that hasn't reported one yet is given any.
+    let status = ServerStatus {
+        domain: DOMAIN.to_owned(),
+        certificate: ServerStatus::run_certificate(&unit_status)
+            .cloned()
+            .unwrap_or_else(|| {
+                CertificateState::of_unreadable_cache(
+                    CertificateAuthority::UnreachableForTests,
+                    "not read".to_owned(),
+                )
+            }),
+        unit_status,
+    };
+    assert!(matches!(
+        ServerLaunchMinter::of_launchable_server(&status),
+        Err(LaunchError::Unreachable { .. })
+    ));
 
     unit_runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Off);
     let stopped = wait_for(unit_runner, "stopped", |status| {

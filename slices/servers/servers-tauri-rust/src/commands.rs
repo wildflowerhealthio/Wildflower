@@ -1269,6 +1269,7 @@ mod tests {
                 }),
                 pending_consent: None,
                 consent_decider: None,
+                launch_minter: None,
             }),
         };
 

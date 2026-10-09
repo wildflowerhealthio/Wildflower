@@ -56,7 +56,9 @@ port and on the tunnel. Rust-only, no `-core`.
     built from the server's record: its `certificate_authority` (Let's
     Encrypt's staging or production CA), ordered from at the directory the
     CA names (`CertificateAuthority::directory_url`), so the issuer a state
-    or history reports is always the CA ordered from. Tests order from
+    or history reports is always the CA ordered from. Only the production
+    CA's certificates are browser-trusted
+    (`CertificateAuthority::is_browser_trusted`). Tests order from
     `CertificateAuthority::UnreachableForTests`, which only the
     `test-support` feature has: nothing answers at its directory. The order
     has no contact.

@@ -4,6 +4,7 @@
 
 use tauri::{ipc::Channel, AppHandle, Runtime};
 
+use crate::dismissal::DismissalAction;
 use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
 use crate::{NativeWebviewExt, Result};
 
@@ -44,6 +45,9 @@ pub(crate) async fn open_url<R: Runtime>(
             // where its own downloads land. `None` blocks them; a Rust caller
             // opts in by going through the backend directly.
             download_dir: None,
+            // A JS-opened instance keeps the plugin's default: a user dismissal
+            // hides it.
+            on_dismiss: DismissalAction::Hide,
         },
     )
 }

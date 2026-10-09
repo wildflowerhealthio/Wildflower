@@ -10,6 +10,7 @@ use wildflower_server_rust::{
 
 use crate::domain::ServerDetail;
 use crate::live_bindings::server_consent_decider::ServerConsentDecider;
+use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
 
 /// One run of one server: the Wildflower server `wildflower-server-rust` sets
 /// up and serves, as a unit `UnitRunner` runs.
@@ -49,8 +50,9 @@ impl Unit for ServerUnit {
 
     /// Set the server up, announce it running, and serve it until
     /// `UnitRunner` stops the run. Its health, its certificate's state, the
-    /// head of its pending-consent queue and the [`ServerConsentDecider`] over
-    /// its gatekeeper go out as the run's [`ServerDetail`].
+    /// head of its pending-consent queue, and the [`ServerConsentDecider`] and
+    /// [`ServerLaunchMinter`] over its gatekeeper go out as the run's
+    /// [`ServerDetail`].
     ///
     /// The run's gatekeeper publishes its queue's head on a channel of the
     /// run's own, so each server's head is its own; each head is forwarded to
@@ -78,6 +80,7 @@ impl Unit for ServerUnit {
                 consent_decider: ServerConsentDecider::new(
                     server.consent_decider_for_host().clone(),
                 ),
+                launch_minter: ServerLaunchMinter::new(server.launch_context_minter()),
                 server_health_rx,
                 certificate_rx,
                 pending_consent_rx,
@@ -94,6 +97,8 @@ impl Unit for ServerUnit {
 struct DetailSources {
     /// The run's consent decider, the same in every detail the run sets.
     consent_decider: ServerConsentDecider,
+    /// The run's launch minter, the same in every detail the run sets.
+    launch_minter: ServerLaunchMinter,
     /// The run's reachability monitor's health.
     server_health_rx: watch::Receiver<Option<ServerHealth>>,
     /// The run's certificate's state.
@@ -106,8 +111,8 @@ struct DetailSources {
 
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
 /// run's health, its certificate's state, the head of its gatekeeper's
-/// pending-consent queue and its consent decider into the detail, now and
-/// each time the health, the certificate state or the head changes. It also
+/// pending-consent queue, its consent decider and its launch minter into the
+/// detail, now and each time the health, the certificate state or the head changes. It also
 /// forwards each change of its head to the host's shared
 /// `active_pending_consent_tx`, which the legacy bridge reads until #965
 /// deletes it. The task dies with the run's runtime, and `UnitRunner` clears
@@ -133,6 +138,7 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
             certificate: sources.certificate_rx.borrow_and_update().clone(),
             pending_consent,
             consent_decider: Some(sources.consent_decider.clone()),
+            launch_minter: Some(sources.launch_minter.clone()),
         });
         tokio::select! {
             changed = sources.server_health_rx.changed(), if health_open => {

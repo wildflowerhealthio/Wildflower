@@ -15,6 +15,7 @@ import {
   type EnteredRelay,
   type HealthReport,
   type HostCommandError,
+  launchServer,
   ListedServer,
   listServers,
   type NotificationPermission,
@@ -271,6 +272,20 @@ const useSetServerCredentials = (
     mutationFn: (credentials) => runHostCommand(setServerCredentials(credentials)),
   })
 
+/**
+ * Opens a server's launcher.
+ *
+ * @remarks
+ * Nothing is written to the cache: a launch changes nothing the base lists,
+ * the server's run policy included.
+ */
+const useLaunchServer = (
+  runHostCommand: RunHostCommand
+): UseMutationResult<null, HostCommandError, { readonly domain: string }> =>
+  useMutation({
+    mutationFn: (server) => runHostCommand(launchServer(server)),
+  })
+
 /** `servers` with the server `domain`'s launcher set to `launcherUrl`. */
 const withLauncherUrl =
   (domain: string, launcherUrl: string) =>
@@ -405,6 +420,7 @@ export {
   serverHealthQueryOptions,
   serversQueryOptions,
   useAddServer,
+  useLaunchServer,
   useRemoveServer,
   useRequestNotificationPermission,
   useServerStatusEvents,

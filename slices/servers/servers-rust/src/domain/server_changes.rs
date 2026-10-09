@@ -12,10 +12,8 @@ use chrono::{DateTime, Utc};
 use unit_runner::RunPolicy;
 use url::Url;
 
-use crate::domain::{
-    CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError, ServerRecord,
-};
-use crate::ports::ServerRegistry;
+use crate::domain::{CertificateAuthority, RunPolicyChoice, ServerChangeError, ServerRecord};
+use crate::ports::{registered_mut, ServerRegistry};
 
 /// Set the run policy of the server with `domain` to `choice`, applied at
 /// `now`, and return the policy stored. Every other server keeps its own
@@ -24,7 +22,7 @@ use crate::ports::ServerRegistry;
 /// # Errors
 ///
 /// The [`ServerChangeError`] [`RunPolicyChoice::into_run_policy_at`] refuses
-/// `choice` with, [`RegistryError::NotRegistered`] when no server has
+/// `choice` with, [`RegistryError::NotRegistered`](crate::RegistryError::NotRegistered) when no server has
 /// `domain`, or a registry failure. Nothing is written on any of them.
 pub fn set_run_policy(
     registry: &dyn ServerRegistry,
@@ -34,10 +32,7 @@ pub fn set_run_policy(
 ) -> Result<RunPolicy, ServerChangeError> {
     let run_policy = choice.into_run_policy_at(now)?;
     registry.modify(Box::new(|servers| {
-        let server = servers
-            .iter_mut()
-            .find(|server| server.domain() == domain)
-            .ok_or_else(|| not_registered(domain))?;
+        let server = registered_mut(servers, domain)?;
         server.run_policy = run_policy;
         Ok(())
     }))?;
@@ -63,7 +58,7 @@ pub struct ServerUpdate {
 ///
 /// [`ServerChangeError::InvalidLauncherUrl`] unless `launcher_url` is an
 /// absolute `http` or `https` URL with a host and no credentials,
-/// [`RegistryError::NotRegistered`] when no server has `domain`, or a registry
+/// [`RegistryError::NotRegistered`](crate::RegistryError::NotRegistered) when no server has `domain`, or a registry
 /// failure. Nothing is written on any of them.
 pub fn update_server(
     registry: &dyn ServerRegistry,
@@ -74,10 +69,7 @@ pub fn update_server(
     let launcher_url = parse_launcher_url(launcher_url)?;
     let mut update = None;
     registry.modify(Box::new(|servers| {
-        let server = servers
-            .iter_mut()
-            .find(|server| server.domain() == domain)
-            .ok_or_else(|| not_registered(domain))?;
+        let server = registered_mut(servers, domain)?;
         let before = server.clone();
         server.launcher_url = launcher_url;
         server.certificate_authority = certificate_authority;
@@ -104,7 +96,7 @@ pub fn update_server(
 ///
 /// # Errors
 ///
-/// [`RegistryError::NotRegistered`] when no server has `domain`,
+/// [`RegistryError::NotRegistered`](crate::RegistryError::NotRegistered) when no server has `domain`,
 /// [`ServerChangeError::DeletingFolder`] when its folder can't be deleted, or
 /// a registry failure.
 pub fn remove_server(
@@ -114,10 +106,7 @@ pub fn remove_server(
 ) -> Result<(), ServerChangeError> {
     let mut server_dir = None;
     registry.modify(Box::new(|servers| {
-        let server = servers
-            .iter_mut()
-            .find(|server| server.domain() == domain)
-            .ok_or_else(|| not_registered(domain))?;
+        let server = registered_mut(servers, domain)?;
         server.run_policy = RunPolicy::Off;
         server_dir = Some(server.server_dir(data_root));
         Ok(())
@@ -155,12 +144,6 @@ fn parse_launcher_url(entered: &str) -> Result<Url, ServerChangeError> {
     Ok(launcher_url)
 }
 
-fn not_registered(domain: &str) -> RegistryError {
-    RegistryError::NotRegistered {
-        domain: domain.to_owned(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -169,7 +152,7 @@ mod tests {
 
     use super::*;
     use crate::domain::fixtures::{official_record, self_hosted_record};
-    use crate::JsonServerRegistry;
+    use crate::{JsonServerRegistry, RegistryError};
 
     fn now() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 10, 6, 17, 0, 0).unwrap()

@@ -23,7 +23,7 @@ the backends' inline comments point there rather than re-deriving them.
 - `show()` — present the native webview (a freshly-created or previously-hidden instance).
 - `evaluate_js(script)` — evaluate JS inside the open native webview.
 - `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
-- `hide()` — remove the native webview from view but keep it **alive and running** in the background. Emits `NativeWebviewEvent::Hidden`. A user dismissal (chrome Close, back, desktop titlebar X) routes here.
+- `hide()` — remove the native webview from view but keep it **alive and running** in the background. Emits `NativeWebviewEvent::Hidden`. A user dismissal (chrome Close, back, desktop titlebar X) routes here; an instance opened with `on_dismiss: DismissalAction::Dispose` is then disposed (see "Dismissal action" below).
 - `dispose()` — tear the native webview down and free its resources. Emits `NativeWebviewEvent::Disposed`. Also reached by the teardown backstop (app teardown, or 5-minutes-hidden idle timeout on mobile).
 
 | Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                                      |
@@ -132,6 +132,7 @@ plugins/tauri-plugin-native-webview/
 │   ├── models.rs              — OpenRequest/OpenResponse, EvaluateJsRequest/EvaluateJsResponse, PatchWindowTextRequest/PatchWindowTextResponse, NativeWebviewEvent + tests
 │   ├── error.rs               — Error (PluginInvoke on mobile / Internal on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
+│   ├── dismissal.rs           — DismissalAction: wraps a Dispose instance's event channel to dispose on a user dismissal, on every platform
 │   ├── download_name.rs       — tauri-free sanitise + de-duplicate of a page-suggested download file name (desktop)
 │   ├── desktop.rs             — parent Window + chrome/content child webviews, initialization_script on content, eval for evaluate_js/patch_window_text
 │   └── mobile.rs              — registers + forwards each command (keyed by instance id via WithId/IdOnly) to the Swift (iOS) / Kotlin (Android) plugin
@@ -202,6 +203,15 @@ serialises as `"__CHANNEL__:<id>"` into the `open` invoke payload; Swift's
 `Channel: Decodable` / Kotlin's `ChannelDeserializer` re-wires it on the native
 side; `channel.send(...)` from native flows back through the `sendChannelData`
 callback into the Rust closure. No JS detour, transport-agnostic.
+
+## Dismissal action
+
+Each `open_url` request chooses what a user dismissal does to its instance, `OpenRequest::on_dismiss`:
+
+- **`Hide`** (the default) — the dismissal hides the instance, kept alive, as in [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "User dismissal hides; only `dispose` tears down". The browser sniffer uses it: a dismissed scrape keeps running until the SPA disposes it.
+- **`Dispose`** — the dismissal hides the instance, then disposes it, so the caller hears `Hidden` then `Disposed`. A host `hide()` still only hides. The host's app-launch popups (`launch-<app-id>`) and each server's launcher (`launcher-<domain>`, its dots as `_`) use it: a closed desktop window is destroyed, so it stops counting as an open window for the unit runner's `WhileOpen` run policy, which a hidden window still would.
+
+It lives in the plugin's Rust layer on every platform (`src/dismissal.rs`); no backend, desktop, Swift or Kotlin, knows the setting, and it never rides the mobile wire. Every backend emits the same `Hidden` for a user dismissal and a host `hide()`, so a `Dispose` instance's event channel is wrapped: it forwards every event to the caller's channel, and on a `Hidden` disposes the instance unless a host `hide()` of it is in flight. The backends' `hide` marks the instance before hiding; its `Hidden` consumes the mark (desktop and Android send it before `hide` returns, iOS from the dismiss animation's completion after), and a hide that found nothing visible clears it. The dispose runs on a blocking thread, off the event path that delivered the `Hidden`, and only while no open of the instance has come since the dismissal: an open that lands first keeps the instance, and one that lands while the dispose is calling the backend waits for that call, so the backend defers it as an open after a dispose (see [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "The dispose→open \"switch-demo\" race"). Rust-caller only: the JS `open_url` command always opens with `Hide`.
 
 ## Downloads (desktop)
 

@@ -16,7 +16,9 @@ changing how servers run or what the host notifies about them.
   and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
   `ServerDetail`, what its runs report (health and certificate state), its
   `ServerConsentDecider` included, through which the base reads and decides a
-  running server's consents; `ServerStatus`, a server's status on `UnitRunner`
+  running server's consents, and its `ServerLaunchMinter`, through which it
+  mints a running server's launches; launching (`ensure_launchable`,
+  `launch_url`, `LaunchError`); `ServerStatus`, a server's status on `UnitRunner`
   as the base receives it, and `ListedServer`, with the certificate state its
   run reported or its cache holds; `PendingConsent`, the oldest consent
   waiting on a server, with `PendingConsentTracker`; and the notification
@@ -31,13 +33,15 @@ changing how servers run or what the host notifies about them.
     certificate state's wire shape (`certificate_state_wire`),
     `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, the
     consent commands' wire (`ConsentDetails`, `ConsentApproval`,
-    `ApprovalOutcome`, `ConsentError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
+    `ApprovalOutcome`, `ConsentError`), launching (`ensure_launchable`,
+    `launch_url`, `LaunchError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
     `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
-    `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`, and
-    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`.
+    `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
+    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`;
+    and `ServerLaunchMinter`, bound to its `LaunchContextMinter`.
     `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.
 - **`servers-tauri-rust`** — the host side. `host_servers`, called from the
@@ -49,22 +53,27 @@ changing how servers run or what the host notifies about them.
   `server_add`, `server_set_credentials`, `server_set_run_policy`,
   `server_update` and `server_remove`, each writing the registry and then
   pushing what it wrote; and the consent commands, `pending_consents_list`,
-  `server_consent_get`, `server_consent_approve` and `server_consent_deny`. Only glue; every decision and
+  `server_consent_get`, `server_consent_approve` and `server_consent_deny`;
+  and `server_launch`, which opens a server's launcher in a native web view
+  behind the `LauncherWindows` port. Only glue; every decision and
   its tests are in `servers-rust`, except the commands' own order of write and
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core`** — the host commands the base calls, as Effects over the
   `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
   Schema: the server commands (`listServers`, `addServer`,
   `setServerCredentials`, `setServerRunPolicy`, `updateServer`,
-  `removeServer`), the background session's recovery
+  `removeServer`, `launchServer`), the background session's recovery
   (`enableBackgroundSessionRecovery`), the app's version and the notification
   permission, and the consent commands (`listPendingConsents`, `readConsent`,
   `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
   `ServerStatus` (with the `server-status` event's name and decoder),
   `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
   `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
-  `ConsentApproval`, `ApprovalOutcome` and `EnteredRelay`, `server_add`'s
-  relay, each a `Schema` and its `Type` with getters. A refused
+  `ConsentApproval`, `ApprovalOutcome`, `EnteredRelay`, `server_add`'s
+  relay, each a `Schema` and its `Type` with getters; and `LaunchError`'s
+  `statusRefusalOf`, the refusal `server_launch` answers from a status, with
+  `certificateRefusalOf`, its certificate's part, held to the host's by the
+  golden file. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. Besides the host, `readServerHealth` reads a server's
   `/health` at its public origin, an Effect over `@effect/platform`'s
@@ -84,10 +93,10 @@ changing how servers run or what the host notifies about them.
   a native picker that changes it at once, putting the previous policy back
   if the host refuses (the refusal shows under the field); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
-  running server isn't reachable; why its latest run stopped; Launch; and
+  running server isn't reachable; why its latest run stopped; Launch (`LaunchButton`); and
   Edit, which opens the server's page, kept current by the `server-status`
-  event too: its domain with Copy, its status badge, when its run started and
-  the run-policy field, over three tabs in component state. Status holds the
+  event too: its domain with Copy, its status badge, when its run started, the
+  run-policy field and Launch, over three tabs in component state. Status holds the
   host's last check of its connection or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
   itself, with Refresh; its launcher, with Reset to the default launcher; and
@@ -114,10 +123,31 @@ changing how servers run or what the host notifies about them.
   Back (every entry kept) and Retry; and the server added, its domain, a
   privacy note, and Start now or Start later (`whileOpen` or `off`), which
   opens its page. The token is dropped from state once the host saves it.
-  Launch does nothing until the base launches apps. While the
-  webview is offline (`navigator.onLine`), the list says that launching needs
-  a connection; the host commands themselves need none, so the base's query
-  client runs them offline too (`networkMode: 'always'`).
+  Launch opens the server's launcher through `server_launch`. It is
+  disabled, saying why: while the webview is offline (`navigator.onLine`),
+  that launching needs a connection (the host commands themselves need none,
+  so the base's query client runs them offline too:
+  `networkMode: 'always'`); for a running server the host would refuse (not
+  yet reached, unreachable, no valid certificate, a certificate browsers
+  don't trust);
+  and for a server that isn't running while its run policy still wants it
+  running. For a server that isn't running whose policy is `off` or an
+  ended `until`, it asks "Start server and launch?"; confirming sets
+  `whileOpen`, then it shows "Starting…", with Cancel, over why the server
+  can't be launched yet (starting, not yet reached, unreachable with the
+  host's reason, no valid certificate, or how its run stopped during the
+  wait: after the confirm, by the device's clock that stamps the host's
+  stops too), until the server's status is launchable, and launches it
+  once. The wait gives up, showing why, with Launch back, once waiting
+  can't help: the server's run stopped with an error during the wait, its
+  certificate order is failing, its certificate is one browsers don't
+  trust, or it has been unreachable while its certificate is valid for 5
+  seconds without a break (any other status starts that again: its probe
+  runs every 400 ms, and a server with a valid cached certificate can
+  answer 502 before its tunnel is up). The wait is held in the router
+  context's `pendingLaunches`, a store keyed by domain, so it carries on
+  when Edit opens the server's page, whose Launch shows the same wait.
+  Launching never changes an active policy or extends an `until`.
   Over every screen, `ConsentSheet` asks about the consents waiting on the
   running servers, one server at a time, with where it stands in the queue ("1
   of 3"), kept current by the `pending-consent` event: the server's domain, the
@@ -134,14 +164,13 @@ changing how servers run or what the host notifies about them.
   keyed by the domain, and each server runs from its own folder,
   `<data root>/servers/<domain>/` (`ServerRecord::server_dir`), which holds
   its databases and, in `certificates/`, its certificates and their keys.
-- **New servers get staging certificates.** A record's
+- **New servers get production certificates.** A record's
   `certificate_authority`, a `CertificateAuthority` (`LetsEncryptStaging` or
   `LetsEncrypt`, from `wildflower-server-rust`, re-exported here), is the
   ACME CA its runs order from.
-  `ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY` is `LetsEncryptStaging`,
-  because all of a relay's servers share its registered domain and its limit
-  of 50 certificates in 7 days until the limit increase (#899). Setting it to
-  `LetsEncrypt` is the switch to production.
+  `ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY` is `LetsEncrypt`. All of a
+  relay's servers share its registered domain, and with it Let's Encrypt's
+  limit of 50 certificates per registered domain per week.
 - **One ACME account per install.** Every server orders its certificates
   with the account whose key is in `<data root>/acme-account/`, one key per
   CA, created by the first order.
@@ -324,6 +353,26 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   is remembered as a standing grant, as one in the Owner UI is. Errors are
   `{kind, message}`: `serverNotRunning`, `notPending`,
   `registrationNotAcknowledged` or `gatekeeper`.
+- **Launching opens the launcher with a launch for any client.**
+  `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
+  once unless `ensure_launchable` passes for the server's status, the one
+  the base receives (its run is up, its `health` `reachable`, its
+  `certificate`, the run's or else the cache's, `noRenewalNeeded` or
+  `renewalDue` and from a CA browsers trust,
+  `CertificateAuthority::is_browser_trusted`), mints a launch through the `ServerLaunchMinter` in the
+  run's detail on a blocking thread, and opens `launch_url`: the launcher
+  URL with `iss=https://<domain>/fhir-r4` and `launch` in its query, any
+  earlier `iss` or `launch` dropped and its other parameters kept as
+  written. The launch binds no OAuth client, so
+  any app can be a launcher. The launcher opens in a native web view of its
+  own, `launcher-<domain>` with its dots as `_`, titled with the domain; a
+  user dismissal disposes it, so it stops counting as an open window for
+  `WhileOpen`. It never changes the run policy. Errors are
+  `{kind, message}`: `serverNotRunning`, `notYetProbed`, `unreachable`,
+  `noValidCertificate`, `untrustedCertificate` (a valid certificate from
+  Let's Encrypt's staging CA), `gatekeeper`, `openingLauncher`, or the registry's
+  `notRegistered` or `registry`. The golden file pins the refusals the base
+  shows and which CAs browsers trust.
 - **One `pending-consent` per change.** A run's gatekeeper publishes its
   queue's head on the run's own channel; the run sets it as
   `ServerDetail::pending_consent` (and forwards it to the host's shared
