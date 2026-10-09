@@ -89,9 +89,12 @@ changing how servers run or what the host notifies about them.
   while it runs its `/health` report with each check, read by the webview
   itself, with Refresh; a new tunnel token (`server_set_credentials`), in a
   password field that starts empty; its launcher, with Reset to the default
-  launcher; its certificate authority, read-only; and its removal, behind a
-  confirm that asks for the domain to be typed. With no servers it says what a
-  server is, beside Add server. Launch does nothing and Add server is disabled
+  launcher; its certificate's state (its `certificate`): the status in words,
+  shown as a failure only for `orderFailing` and `cacheUnreadable`, the
+  certificate authority, the held certificate's validity and SHA-256
+  fingerprint, and the latest error, described by its kind; and its removal,
+  behind a confirm that asks for the domain to be typed. With no servers it
+  says what a server is, beside Add server. Launch does nothing and Add server is disabled
   until the base launches apps and adds servers. While the
   webview is offline (`navigator.onLine`), the list says that launching needs
   a connection; the host commands themselves need none, so the base's query
