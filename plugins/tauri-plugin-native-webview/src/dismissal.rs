@@ -69,7 +69,16 @@ struct Instances {
 /// the disposes their dismissals queued. Managed plugin state on every
 /// platform; cheap to clone (the state is shared).
 #[derive(Clone, Default)]
-pub(crate) struct DisposingOnDismissal(Arc<(Mutex<Instances>, Condvar)>);
+pub(crate) struct DisposingOnDismissal(Arc<Shared>);
+
+/// What every clone of a [`DisposingOnDismissal`] shares: the instances, and
+/// the signal an open waiting on a starting dispose wakes on.
+#[derive(Default)]
+struct Shared {
+    instances: Mutex<Instances>,
+    /// Notified when a queued dispose's call to the backend returns.
+    dispose_finished: Condvar,
+}
 
 /// The open of an instance a user dismissal disposes: the count of its opens
 /// when it was dismissed.
@@ -78,7 +87,10 @@ struct DismissedOpen(u64);
 
 impl DisposingOnDismissal {
     fn lock(&self) -> MutexGuard<'_, Instances> {
-        self.0 .0.lock().unwrap_or_else(PoisonError::into_inner)
+        self.0
+            .instances
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Record the dismissal action of the open of `id` now starting: a
@@ -89,7 +101,7 @@ impl DisposingOnDismissal {
     fn record_open(&self, id: &str, on_dismiss: DismissalAction) {
         let mut instances = self
             .0
-             .1
+            .dispose_finished
             .wait_while(self.lock(), |instances| {
                 instances.dispose_starting.contains(id)
             })
@@ -166,7 +178,7 @@ impl DisposingOnDismissal {
         }
         dispose(id);
         self.lock().dispose_starting.remove(id);
-        self.0 .1.notify_all();
+        self.0.dispose_finished.notify_all();
     }
 }
 
