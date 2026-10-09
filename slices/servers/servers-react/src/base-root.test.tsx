@@ -1265,6 +1265,25 @@ describe('the server page', () => {
     expect(screen.queryByRole('button', { name: 'Reset to default' })).toBeNull()
   })
 
+  it.each([
+    ['the default with its host in another case', 'https://WildflowerHealth.IO/app', false],
+    ['the default with its default port', 'https://wildflowerhealth.io:443/app', false],
+    ['a launcher that is not a URL', 'not a url', true],
+  ] as const)(
+    'should compare a launcher with the default as URLs: %s',
+    async (_, launcherUrl, offersReset) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: [{ ...golden.listedServers[0], launcherUrl }, golden.listedServers[1]],
+      })
+
+      // Assert
+      expect(await screen.findByLabelText('Launcher')).toHaveProperty('value', launcherUrl)
+      expect(screen.queryByRole('button', { name: 'Reset to default' }) !== null).toBe(offersReset)
+    }
+  )
+
   it('should remove the server only once its domain is typed and confirmed, then return to the list', async () => {
     // Arrange
     const user = userEvent.setup()

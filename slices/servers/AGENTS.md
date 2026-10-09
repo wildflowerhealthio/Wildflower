@@ -156,15 +156,15 @@ changing how servers run or what the host notifies about them.
   `GET /rathole` returned, or that were entered for a rathole relay.
   `RelayKind::SelfHostedWildflower` holds only the relay's `base_url`, and `RelayKind::Rathole`
   nothing.
-- **A new server launches from the app's default launcher**, the
-  `default_launcher_url` in `apps/wildflower-tauri/tauri-shared-config.json`,
-  the hosted owner UI's app section. The host reads it at compile time and
-  `add_server` gives it to each server it adds (`ServersState`, from
-  `host_servers`); the app hands the same value to `BaseRoot`
-  (`defaultLauncherUrl`), so the server page offers Reset to default only
-  while the saved launcher differs from it, and saves it through
-  `server_update`. The host stores it as the file spells it, so the two
-  compare equal.
+- **A new server launches from the hosted owner UI**, the release
+  `owner_ui_base_url` in `apps/wildflower-tauri/tauri-shared-config.json`, in
+  every build: a debug build's own owner UI links go to the dev server, but
+  its new servers still launch from the published UI. The host reads it at
+  compile time and `add_server` gives it to each server it adds
+  (`ServersState`, from `host_servers`); the app hands the same value to
+  `BaseRoot` (`defaultLauncherUrl`), so the server page offers Reset to
+  default only while the saved launcher differs from it, compared as parsed
+  URLs, and saves it through `server_update`.
 - **The token is a secret.** `TunnelToken`'s `Debug` and `Serialize` write
   `<redacted>`, and it has no `Deserialize`. `JsonServerRegistry`'s own file
   representation is the only place the token is written in full, and the file

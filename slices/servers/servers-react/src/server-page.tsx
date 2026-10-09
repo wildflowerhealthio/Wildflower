@@ -423,11 +423,25 @@ const certificateItems = (certificate: CertificateState.Type): readonly ItemList
   ),
 ]
 
+/** A URL as the URL parser normalises it, or nothing when it doesn't parse. */
+const normalisedUrl = (url: string): Option.Option<string> =>
+  URL.canParse(url) ? Option.some(new URL(url).href) : Option.none()
+
+/**
+ * Whether `launcherUrl` is `defaultLauncherUrl`, compared as URLs, so a
+ * spelling the parser normalises (a host's case, a default port) still
+ * matches; a launcher or default that doesn't parse matches nothing.
+ */
+const isDefaultLauncher = (launcherUrl: string, defaultLauncherUrl: string): boolean =>
+  Option.all([normalisedUrl(launcherUrl), normalisedUrl(defaultLauncherUrl)]).pipe(
+    Option.exists(([launcher, defaultLauncher]) => launcher === defaultLauncher)
+  )
+
 /**
  * The launcher the server opens apps from: a field starting at the saved
  * URL, Save once it is changed, and, while the saved URL isn't
- * `defaultLauncherUrl`, the one the host gives a new server, Reset to
- * default, which saves the default at once. The certificate authority is
+ * `defaultLauncherUrl`, the one the host gives a new server, compared as
+ * URLs, Reset to default, which saves the default at once. The certificate authority is
  * saved unchanged, and the host's refusal shows under the field.
  */
 const Launcher = ({
@@ -475,7 +489,7 @@ const Launcher = ({
         >
           Save launcher
         </button>
-        {server.launcherUrl === defaultLauncherUrl ? null : (
+        {isDefaultLauncher(server.launcherUrl, defaultLauncherUrl) ? null : (
           <button
             type="button"
             className={`button-2 ghost ${styles['server-page__form-action']}`}

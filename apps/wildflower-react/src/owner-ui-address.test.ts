@@ -3,7 +3,6 @@ import { SERVER_QUERY_PARAM } from 'gatekeeper-core/smart-client'
 import { describe, expect, it } from 'vite-plus/test'
 import ownerUiRs from '../../../slices/shared-structures/shared-structures-rust/src/owner_ui.rs?raw'
 import {
-  default_launcher_url as defaultLauncherUrl,
   owner_ui_base_url as ownerUiBaseUrl,
   owner_ui_dev_base_url as ownerUiDevBaseUrl,
 } from '../../wildflower-tauri/tauri-shared-config.json'
@@ -20,17 +19,6 @@ describe('tauri-shared-config.json owner UI address', () => {
 
     // Act
     const configured = ownerUiBaseUrl
-
-    // Assert
-    expect(configured).toBe(published)
-  })
-
-  it('should give a new server the published /app section as its launcher', () => {
-    // Arrange
-    const published = sectionUrl('app')
-
-    // Act
-    const configured = defaultLauncherUrl
 
     // Assert
     expect(configured).toBe(published)

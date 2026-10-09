@@ -46,11 +46,13 @@ const OWNER_UI_BASE_URL: &str = if cfg!(debug_assertions) {
     env!("WILDFLOWER_OWNER_UI_BASE_URL")
 };
 
-// The launcher a new server gets, the hosted owner UI's app section, from the
-// same `tauri-shared-config.json` (re-emitted by `build.rs`). The TS shell
-// imports the same value from that file for the server page's Reset to default
-// (`src/main.tsx`).
-const DEFAULT_LAUNCHER_URL: &str = env!("WILDFLOWER_DEFAULT_LAUNCHER_URL");
+// The launcher a new server gets: the hosted owner UI, the release
+// `owner_ui_base_url` from the same `tauri-shared-config.json` (re-emitted by
+// `build.rs`), in every build, so a server added on a debug build still
+// launches from the published UI rather than the local dev server. The TS
+// shell imports the same value from that file for the server page's Reset to
+// default (`src/main.tsx`).
+const DEFAULT_LAUNCHER_URL: &str = env!("WILDFLOWER_OWNER_UI_BASE_URL");
 
 // How the unit runner starts its background session, the background-service
 // plugin's one service, from the same `tauri-shared-config.json` (re-emitted by
@@ -384,7 +386,7 @@ pub fn run() {
             // which gives a new server `DEFAULT_LAUNCHER_URL`. Each run of a
             // server builds its config from its record here.
             let default_launcher_url = Url::parse(DEFAULT_LAUNCHER_URL).context(
-                "default_launcher_url (from tauri-shared-config.json) must be an absolute URL",
+                "owner_ui_base_url (from tauri-shared-config.json) must be an absolute URL",
             )?;
             let config_app_handle = app.handle().clone();
             let config_data_root = data_root.clone();
@@ -440,15 +442,11 @@ mod tests {
         );
     }
 
-    /// The base offers Reset to default while a server's launcher, as the host
-    /// stores it, differs from the default it imports from
-    /// `tauri-shared-config.json`, so the host must store the default exactly as
-    /// the file spells it.
+    /// `setup()` parses the default launcher before any server is pushed, so
+    /// one that isn't an absolute URL would stop the app starting.
     #[test]
-    fn the_default_launcher_is_stored_as_the_shared_config_spells_it() {
-        let default_launcher_url = url::Url::parse(super::DEFAULT_LAUNCHER_URL)
-            .expect("default_launcher_url is an absolute URL");
-        assert_eq!(default_launcher_url.as_str(), super::DEFAULT_LAUNCHER_URL);
+    fn the_default_launcher_is_an_absolute_url() {
+        url::Url::parse(super::DEFAULT_LAUNCHER_URL).expect("owner_ui_base_url is an absolute URL");
     }
 
     /// The plugin checks the type `TauriUnitRunner`'s background session starts
