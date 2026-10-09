@@ -38,7 +38,31 @@ impl<'a, S: GatekeeperStore> LaunchContexts<'a, S> {
         nonce: String,
         now: DateTime<Utc>,
     ) -> Result<LaunchContext, GatekeeperError> {
-        let launch_context = LaunchContext::new(nonce, client_id, now);
+        self.insert_pruning_expired(LaunchContext::for_client(nonce, client_id, None, now), now)
+    }
+
+    /// Persist a fresh launch context `nonce` that any client may consume, and
+    /// return it. Otherwise as [`LaunchContexts::mint`]: no patient, the same
+    /// expiry, the same prune.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] on a store failure.
+    pub(crate) fn mint_for_any_client(
+        &self,
+        nonce: String,
+        now: DateTime<Utc>,
+    ) -> Result<LaunchContext, GatekeeperError> {
+        self.insert_pruning_expired(LaunchContext::for_any_client(nonce, now), now)
+    }
+
+    /// Insert `launch_context`, deleting the contexts expired at `now` in the
+    /// same transaction, and return it.
+    fn insert_pruning_expired(
+        &self,
+        launch_context: LaunchContext,
+        now: DateTime<Utc>,
+    ) -> Result<LaunchContext, GatekeeperError> {
         self.store.transaction(|tx| {
             tx.delete_launch_contexts_expired_by(now)?;
             tx.insert_launch_context(&launch_context)
@@ -47,9 +71,10 @@ impl<'a, S: GatekeeperStore> LaunchContexts<'a, S> {
     }
 
     /// Consume the launch `nonce` for `client_id` at `now`: the context, now
-    /// stamped consumed, iff it was minted for `client_id` and is unconsumed
-    /// and unexpired; otherwise `None` and nothing changes. A context presented
-    /// by the wrong client therefore stays consumable by its own.
+    /// stamped consumed, iff it was minted for `client_id` or for any client
+    /// and is unconsumed and unexpired; otherwise `None` and nothing changes. A
+    /// context presented by the wrong client therefore stays consumable by its
+    /// own.
     ///
     /// # Errors
     ///
@@ -83,8 +108,8 @@ mod tests {
         let minted = launch_contexts
             .mint("app", "nonce-1".to_owned(), now)
             .expect("mint");
-        assert_eq!(minted.client_id, "app");
-        assert_eq!(minted.patient, None);
+        assert_eq!(minted.client_id(), Some("app"));
+        assert_eq!(minted.patient(), None);
         assert_eq!(minted.expires_at, now + LAUNCH_CONTEXT_TTL);
 
         assert_eq!(
@@ -103,6 +128,32 @@ mod tests {
             launch_contexts.consume("nonce-1", "app", now).unwrap(),
             None,
             "a replay is refused"
+        );
+    }
+
+    /// A context minted for any client binds no patient and is consumed once,
+    /// by whichever client presents it first.
+    #[test]
+    fn a_context_for_any_client_is_consumed_once_by_any_client() {
+        let store = FakeGatekeeperStore::default();
+        let launch_contexts = LaunchContexts::over(&store);
+        let now = Utc::now();
+        let minted = launch_contexts
+            .mint_for_any_client("nonce-1".to_owned(), now)
+            .expect("mint");
+        assert_eq!(minted.client_id(), None);
+        assert_eq!(minted.patient(), None);
+        assert_eq!(minted.expires_at, now + LAUNCH_CONTEXT_TTL);
+
+        let consumed = launch_contexts
+            .consume("nonce-1", "other-app", now)
+            .unwrap()
+            .expect("any client consumes it");
+        assert_eq!(consumed.consumed_at, Some(now));
+        assert_eq!(
+            launch_contexts.consume("nonce-1", "app", now).unwrap(),
+            None,
+            "a second client is refused"
         );
     }
 

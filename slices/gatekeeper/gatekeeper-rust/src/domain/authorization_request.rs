@@ -169,7 +169,8 @@ impl AuthorizationRequest {
     pub fn new_code_authorization(input: StartCodeAuthorizationArgs) -> Self {
         let now = Utc::now();
         let (launch, launch_bound_patient) = input.launch_context.map_or((None, None), |context| {
-            (Some(context.nonce), context.patient)
+            let launch_bound_patient = context.patient().map(str::to_owned);
+            (Some(context.nonce), launch_bound_patient)
         });
         AuthorizationRequest {
             id: input.id,
