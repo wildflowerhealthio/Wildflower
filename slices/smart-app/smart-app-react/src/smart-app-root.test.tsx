@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
 
+import type * as AuthorizeFromLaunchPage from './authorize-from-launch-page.ts'
 import type { ConnectMenuProps } from './connect-menu.tsx'
 import { SmartAppRoot, type SmartAppTelemetry } from './smart-app-root.tsx'
 
@@ -58,6 +59,18 @@ const { tokenExchangeMock, authorizeMock } = vi.hoisted(() => ({
 }))
 vi.mock('fhirclient', () => ({
   default: { oauth2: { ready: tokenExchangeMock, authorize: authorizeMock } },
+}))
+
+// The root's own authorize entry, spied through to the real one: it counts
+// every authorize the root starts. Under StrictMode's second effect run the
+// mocked fhirclient import above can resolve to the real package, whose
+// `oauth2` is absent under jsdom, so a second authorize would fail before it
+// reached `authorizeMock`; this count sees it either way.
+const { authorizeFromLaunchPageSpy } = vi.hoisted(() => ({
+  authorizeFromLaunchPageSpy: vi.fn<typeof AuthorizeFromLaunchPage.authorizeFromLaunchPage>(),
+}))
+vi.mock('./authorize-from-launch-page.ts', () => ({
+  authorizeFromLaunchPage: authorizeFromLaunchPageSpy,
 }))
 
 // The stubbed connect menu throws this from render when it is set, as a
@@ -326,9 +339,13 @@ describe('SmartAppRoot', () => {
 })
 
 describe('SmartAppRoot on a launch', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // Discovery never settles, as while the authorize redirect is pending
     authorizeMock.mockReturnValue(new Promise<never>(() => undefined))
+    const actual = await vi.importActual<typeof AuthorizeFromLaunchPage>(
+      './authorize-from-launch-page.ts'
+    )
+    authorizeFromLaunchPageSpy.mockImplementation(actual.authorizeFromLaunchPage)
   })
 
   // The tests below run as a returning visitor, whose stored answer skips the
@@ -357,6 +374,7 @@ describe('SmartAppRoot on a launch', () => {
         ...STANDALONE,
         redirectUri: `${window.location.origin}/importer-app/`,
       })
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     })
 
     it('should show the launch page, naming the app, with no dialog', async () => {
@@ -377,19 +395,21 @@ describe('SmartAppRoot on a launch', () => {
       })
     })
 
-    it('should not authorize again on a later render', async () => {
-      // Arrange
+    it('should not authorize again on a later render with a new registration object', async () => {
+      // Arrange — a fresh, equal registration on every render re-runs the
+      // authorize effect, so only the guard keeps the launch from being spent
+      // twice
       setUrl(`/${EHR_LAUNCH}`)
-      const { rerender } = render(<Shell />)
+      const { rerender } = render(<Shell standalone={{ ...STANDALONE }} />)
       await waitFor(() => {
         expect(authorizeMock).toHaveBeenCalledTimes(1)
       })
 
       // Act
-      rerender(<Shell />)
+      rerender(<Shell standalone={{ ...STANDALONE }} />)
 
       // Assert
-      expect(authorizeMock).toHaveBeenCalledTimes(1)
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     })
 
     it.each([
@@ -410,7 +430,7 @@ describe('SmartAppRoot on a launch', () => {
       // Assert — the callback or the landing, and no authorize
       expect(screen.queryByTestId('app') !== null).toBe(expectApp)
       expect(screen.queryByTestId('connect-menu-stub') !== null).toBe(!expectApp)
-      expect(authorizeMock).not.toHaveBeenCalled()
+      expect(authorizeFromLaunchPageSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -422,7 +442,7 @@ describe('SmartAppRoot on a launch', () => {
     // Assert — the dialog alone, and the launch not yet spent
     expect(openDialog()).not.toBeNull()
     expect(screen.queryByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeNull()
-    expect(authorizeMock).not.toHaveBeenCalled()
+    expect(authorizeFromLaunchPageSpy).not.toHaveBeenCalled()
 
     // Act
     answerDialog({ crashReports: true, performance: false })
@@ -431,6 +451,7 @@ describe('SmartAppRoot on a launch', () => {
     await waitFor(() => {
       expect(authorizeMock).toHaveBeenCalledTimes(1)
     })
+    expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     expect(screen.getByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeDefined()
     expect(initConsentedTelemetryMock.mock.calls[0]?.[0].tags).toStrictEqual({
       app: TELEMETRY.app,
@@ -735,12 +756,18 @@ function setUrl(url: string): void {
   window.history.replaceState({}, '', url)
 }
 
-/** The shell around a stub app, with the test's standalone config. */
-function Shell({ launched }: { readonly launched?: boolean }): JSX.Element {
+/** The shell around a stub app, with the test's standalone config unless given another. */
+function Shell({
+  launched,
+  standalone = STANDALONE,
+}: {
+  readonly launched?: boolean
+  readonly standalone?: typeof STANDALONE
+}): JSX.Element {
   return (
     <SmartAppRoot
       app="medications"
-      standalone={STANDALONE}
+      standalone={standalone}
       telemetry={TELEMETRY}
       launched={launched}
     >
