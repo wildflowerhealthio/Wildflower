@@ -123,27 +123,27 @@ changing how servers run or what the host notifies about them.
   Back (every entry kept) and Retry; and the server added, its domain, a
   privacy note, and Start now or Start later (`whileOpen` or `off`), which
   opens its page. The token is dropped from state once the host saves it.
-  Launch opens the server's launcher through `server_launch`. It
-  is disabled, saying why, while the webview is offline (`navigator.onLine`),
-  for a running server the host would refuse (not yet reached, unreachable,
-  no valid certificate, a certificate browsers don't trust), and for a server that isn't running while its run
-  policy still wants it running. For a server that isn't running whose
-  policy is `off` or an ended `until`, it asks "Start server and launch?";
-  confirming sets `whileOpen`, then it shows "Starting…", with Cancel, over
-  why the server can't be launched yet (starting, not yet reached,
-  unreachable with the host's reason, no valid certificate, or how its run
-  stopped since), until the server's status is launchable, and launches it
-  once. The wait gives up, showing why, with Launch back, once waiting can't
-  help: the server's run stopped with an error since the start, its
-  certificate order is failing, its certificate is one browsers don't trust,
-  or it is unreachable while its certificate is valid. The wait is the
-  router context's `pendingLaunches`, a store keyed by domain, rather than
-  the button's own state, so it carries on when Edit opens the server's
-  page, whose Launch shows the same wait. Launching never changes an active
-  policy or extends an `until`. While the webview is
-  offline, the list says that launching needs a connection; the host
-  commands themselves need none, so the base's query client runs them
-  offline too (`networkMode: 'always'`).
+  Launch opens the server's launcher through `server_launch`. It is
+  disabled, saying why: while the webview is offline (`navigator.onLine`),
+  that launching needs a connection (the host commands themselves need none,
+  so the base's query client runs them offline too:
+  `networkMode: 'always'`); for a running server the host would refuse (not
+  yet reached, unreachable, no valid certificate, a certificate browsers
+  don't trust);
+  and for a server that isn't running while its run policy still wants it
+  running. For a server that isn't running whose policy is `off` or an
+  ended `until`, it asks "Start server and launch?"; confirming sets
+  `whileOpen`, then it shows "Starting…", with Cancel, over why the server
+  can't be launched yet (starting, not yet reached, unreachable with the
+  host's reason, no valid certificate, or how its run stopped since), until
+  the server's status is launchable, and launches it once. The wait gives
+  up, showing why, with Launch back, once waiting can't help: the server's
+  run stopped with an error since the start, its certificate order is
+  failing, its certificate is one browsers don't trust, or it is
+  unreachable while its certificate is valid. The wait is held in the
+  router context's `pendingLaunches`, a store keyed by domain, so it
+  carries on when Edit opens the server's page, whose Launch shows the same
+  wait. Launching never changes an active policy or extends an `until`.
   Over every screen, `ConsentSheet` asks about the consents waiting on the
   running servers, one server at a time, with where it stands in the queue ("1
   of 3"), kept current by the `pending-consent` event: the server's domain, the
