@@ -69,4 +69,16 @@ describe('RadioGroup', () => {
     const legend = screen.getByText('Pick one')
     expect(legend.tagName).toBe('LEGEND')
   })
+
+  it.each([
+    [undefined, 'radio-2', 'text-body-2'],
+    [3, 'radio-3', 'text-body-3'],
+  ] as const)('sizes the radios and labels for size %s', (size, radio, text) => {
+    // Act
+    render(<RadioGroup name="fruit" value="a" onChange={vi.fn()} options={options} size={size} />)
+
+    // Assert
+    expect(getRadio('Apple').className).toBe(radio)
+    expect(screen.getByText('Apple').className).toBe(text)
+  })
 })

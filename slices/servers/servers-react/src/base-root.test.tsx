@@ -1546,20 +1546,27 @@ describe('Add server', () => {
     readonly domain?: string
   }
 
-  /** Pick Custom relay on the relay step `relay`, open Advanced, and enter `custom`. */
+  /**
+   * Pick a different reverse proxy for a rathole `custom`, or else a
+   * self-hosted Wildflower relay with Advanced open, on the relay step
+   * `relay`, and enter `custom`.
+   */
   const enterCustomRelay = async (
     user: User,
     relay: HTMLElement,
     custom: CustomRelay
   ): Promise<void> => {
-    await user.click(within(relay).getByRole('radio', { name: 'Custom relay' }))
-    await user.click(within(relay).getByText('Advanced'))
-    if (custom.rathole === true) await user.click(within(relay).getByRole('switch'))
+    if (custom.rathole === true) {
+      await user.click(within(relay).getByRole('radio', { name: 'A different reverse proxy' }))
+    } else {
+      await user.click(within(relay).getByRole('radio', { name: 'A self-hosted Wildflower relay' }))
+      await user.click(within(relay).getByText('Advanced'))
+    }
     const fields = [
-      ['Relay base URL', custom.baseUrl],
-      ['Remote address', custom.remoteAddr],
-      ['Noise public key', custom.publicKey],
-      ['Relay domain', custom.domain],
+      ['Wildflower Relay URL', custom.baseUrl],
+      ['Server address', custom.remoteAddr],
+      ['Public key', custom.publicKey],
+      ['Tunnel domain', custom.domain],
     ] as const
     for (const [label, value] of fields) {
       // oxlint-disable-next-line no-await-in-loop -- a person fills one field after another
@@ -1595,11 +1602,11 @@ describe('Add server', () => {
 
     // Assert
     const relay = await stepTitled('Relay')
-    expect(within(relay).getByRole('radio', { name: 'Wildflower relay' })).toHaveProperty(
+    expect(within(relay).getByRole('radio', { name: 'Wildflower official relay' })).toHaveProperty(
       'checked',
       true
     )
-    expect(within(relay).queryByLabelText('Relay base URL')).toBeNull()
+    expect(within(relay).queryByLabelText('Wildflower Relay URL')).toBeNull()
   })
 
   it('should add a server on the Wildflower relay, show its domain, and drop the token', async () => {
@@ -1616,7 +1623,7 @@ describe('Add server', () => {
     // Assert
     const done = await stepTitled('Server added')
     expect(within(done).getByText('ruth.relay.example.com')).toBeDefined()
-    expect(within(done).getByText(/can't read your records/)).toBeDefined()
+    expect(within(done).getByText(/without being able to read it/)).toBeDefined()
     expect(invokesOf(host, 'server_add')).toEqual([
       {
         command: 'server_add',
@@ -1690,7 +1697,36 @@ describe('Add server', () => {
     expect(added?.args?.['tunnelName']).toBe('ruth')
   })
 
-  it('should say nothing is checked for a rathole relay until it comes up', async () => {
+  it.each([
+    ['the Wildflower official relay', undefined, 'ruth.relay.wildflowerhealth.io'],
+    [
+      'a self-hosted Wildflower relay',
+      { baseUrl: 'https://relay.example.com' },
+      "ruth.[your relay's domain]",
+    ],
+    [
+      'a rathole relay',
+      { rathole: true, remoteAddr: 'r:2333', publicKey: 'k', domain: 'tunnels.example.com' },
+      'ruth.tunnels.example.com',
+    ],
+  ] as const)('should say where the server will be for %s', async (_, custom, address) => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    await enterRelay(user, custom)
+    const tunnel = await stepTitled('Tunnel')
+    expect(
+      within(tunnel).getByText(/^Your server will be available at \[tunnel name\]\./)
+    ).toBeDefined()
+
+    // Act
+    await user.type(within(tunnel).getByLabelText('Tunnel name'), 'ruth')
+
+    // Assert
+    expect(within(tunnel).getByText(`Your server will be available at ${address}`)).toBeDefined()
+  })
+
+  it('should say a rathole relay is tested when the server starts', async () => {
     // Arrange
     const user = userEvent.setup()
     renderAddServer()
@@ -1700,8 +1736,12 @@ describe('Add server', () => {
     await enterCustomRelay(user, relay, { rathole: true })
 
     // Assert
-    expect(within(relay).getByText(/nothing is checked until the tunnel comes up/)).toBeDefined()
-    expect(within(relay).queryByLabelText('Relay base URL')).toBeNull()
+    expect(within(relay).getByText(/the connection is tested when the server starts/)).toBeDefined()
+    expect(within(relay).getByRole('link', { name: 'rathole' })).toHaveProperty(
+      'href',
+      'https://github.com/rathole-org/rathole'
+    )
+    expect(within(relay).queryByLabelText('Wildflower Relay URL')).toBeNull()
   })
 
   it.each([
@@ -1801,11 +1841,10 @@ describe('Add server', () => {
 
     // Assert
     const relay = await stepTitled('Relay')
-    expect(within(relay).getByRole('radio', { name: 'Custom relay' })).toHaveProperty(
-      'checked',
-      true
-    )
-    expect(within(relay).getByLabelText('Relay base URL')).toHaveProperty(
+    expect(
+      within(relay).getByRole('radio', { name: 'A self-hosted Wildflower relay' })
+    ).toHaveProperty('checked', true)
+    expect(within(relay).getByLabelText('Wildflower Relay URL')).toHaveProperty(
       'value',
       'https://relay.example.com'
     )

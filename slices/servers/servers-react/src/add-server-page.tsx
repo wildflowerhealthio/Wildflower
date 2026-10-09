@@ -1,14 +1,7 @@
 import { useNavigate, useRouteContext } from '@tanstack/react-router'
 import { Match, Option } from 'effect'
 import { type JSX, type ReactNode, useId, useState } from 'react'
-import {
-  ErrorBanner,
-  GateCard,
-  PageHeader,
-  RadioGroup,
-  TextField,
-  ToggleSwitch,
-} from 'react-tundraish'
+import { ErrorBanner, GateCard, PageHeader, RadioGroup, TextField } from 'react-tundraish'
 import type { EnteredRelay, RunPolicyChoice } from 'servers-core'
 
 import { failureText } from './failure-text.ts'
@@ -16,16 +9,11 @@ import { useAddServer, useSetServerRunPolicy } from './queries.ts'
 import type { RouterContext, RunHostCommand } from './router-context.ts'
 import styles from './add-server-page.module.css'
 
-/** Whether the relay is the Wildflower relay or one the user names. */
-type RelayChoice = 'wildflowerOfficial' | 'custom'
-
 /** The relay step's fields, as typed. */
 interface RelayEntries {
-  readonly choice: RelayChoice
-  /** A custom relay's Wildflower relay site, unless it is a rathole relay. */
+  readonly choice: EnteredRelay.Type['kind']
+  /** A self-hosted Wildflower relay's base URL. */
   readonly baseUrl: string
-  /** Whether a custom relay is a rathole relay, with no relay site. */
-  readonly isRatholeRelay: boolean
   /** A pin's or a rathole relay's `host:port`. */
   readonly remoteAddr: string
   /** A pin's or a rathole relay's noise public key. */
@@ -53,7 +41,6 @@ type Step =
 const NO_RELAY_ENTRIES: RelayEntries = {
   choice: 'wildflowerOfficial',
   baseUrl: '',
-  isRatholeRelay: false,
   remoteAddr: '',
   publicKey: '',
   ratholeDomain: '',
@@ -61,11 +48,15 @@ const NO_RELAY_ENTRIES: RelayEntries = {
 
 const NO_CREDENTIALS_ENTRIES: CredentialsEntries = { tunnelName: '', token: '' }
 
-/** The relay step's two choices, by their {@link RelayChoice}. */
+/** The relay step's choices, by the kind of relay each enters. */
 const RELAY_CHOICES = [
-  { value: 'wildflowerOfficial', label: 'Wildflower relay' },
-  { value: 'custom', label: 'Custom relay' },
+  { value: 'wildflowerOfficial', label: 'Wildflower official relay' },
+  { value: 'selfHostedWildflower', label: 'A self-hosted Wildflower relay' },
+  { value: 'rathole', label: 'A different reverse proxy' },
 ] as const
+
+/** The domain the Wildflower official relay serves its tunnels under. */
+const WILDFLOWER_RELAY_DOMAIN = 'relay.wildflowerhealth.io'
 
 /**
  * The relay `entries` describe, each setting trimmed, or nothing while one
@@ -76,7 +67,7 @@ const enteredRelayOf = (entries: RelayEntries): Option.Option<EnteredRelay.Type>
   if (entries.choice === 'wildflowerOfficial') return Option.some({ kind: 'wildflowerOfficial' })
   const remoteAddr = entries.remoteAddr.trim()
   const publicKey = entries.publicKey.trim()
-  if (entries.isRatholeRelay) {
+  if (entries.choice === 'rathole') {
     const domain = entries.ratholeDomain.trim()
     return remoteAddr === '' || publicKey === '' || domain === ''
       ? Option.none()
@@ -105,87 +96,125 @@ const StepHeading = ({
     <h2 id={headingId} className={`text-heading-4 ${styles['add-server-page__title']}`}>
       {title}
     </h2>
-    <p className={`text-body-2 ${styles['add-server-page__lead']}`}>{children}</p>
+    <p className={`text-body-3 ${styles['add-server-page__lead']}`}>{children}</p>
+  </>
+)
+
+/** A rathole relay's `host:port` and noise public key fields. */
+const RelayIdentityFields = ({
+  entries,
+  onChange,
+}: {
+  readonly entries: RelayEntries
+  readonly onChange: (entries: RelayEntries) => void
+}): JSX.Element => (
+  <>
+    <TextField
+      label="Server address"
+      value={entries.remoteAddr}
+      onChange={(remoteAddr) => {
+        onChange({ ...entries, remoteAddr })
+      }}
+      placeholder="relay.example.com:2333"
+      description="The rathole server's host and port, which this device connects to."
+    />
+    <TextField
+      label="Public key"
+      value={entries.publicKey}
+      onChange={(publicKey) => {
+        onChange({ ...entries, publicKey })
+      }}
+      description="The rathole server's noise public key, as rathole --genkey prints it. It proves this device is talking to your server."
+    />
   </>
 )
 
 /**
- * The Advanced settings of a custom relay: its optional pin, or, switched to
- * a rathole relay, the rathole relay's identity and domain. Open while any
- * of them is entered.
+ * A self-hosted Wildflower relay's settings: its URL, and under Advanced its
+ * optional pin, open while either half of it is entered.
  */
-const AdvancedRelaySettings = ({
+const SelfHostedRelaySettings = ({
   entries,
   onChange,
 }: {
   readonly entries: RelayEntries
   readonly onChange: (entries: RelayEntries) => void
 }): JSX.Element => {
-  const ratholeNoteId = useId()
-  const [open, setOpen] = useState(
-    () => entries.isRatholeRelay || entries.remoteAddr !== '' || entries.publicKey !== ''
-  )
+  const [open, setOpen] = useState(() => entries.remoteAddr !== '' || entries.publicKey !== '')
   return (
-    <details
-      open={open}
-      onToggle={(event) => {
-        setOpen(event.currentTarget.open)
-      }}
-    >
-      <summary className={`text-label-2 ${styles['add-server-page__advanced-summary']}`}>
-        Advanced
-      </summary>
-      <div className={styles['add-server-page__fields']}>
-        <ToggleSwitch
-          label="A rathole relay, with no Wildflower relay site"
-          checked={entries.isRatholeRelay}
-          describedBy={ratholeNoteId}
-          onChange={(isRatholeRelay) => {
-            onChange({ ...entries, isRatholeRelay })
-          }}
-        />
-        <p id={ratholeNoteId} className={`text-body-3 ${styles['add-server-page__note']}`}>
-          {entries.isRatholeRelay
-            ? "There's no relay site to ask, so nothing is checked until the tunnel comes up."
-            : 'Optionally, pin the relay: it must present this address and key, which are checked and not stored.'}
-        </p>
-        <TextField
-          label="Remote address"
-          value={entries.remoteAddr}
-          onChange={(remoteAddr) => {
-            onChange({ ...entries, remoteAddr })
-          }}
-          placeholder="relay.example.com:2333"
-          description="The host:port the tunnel dials."
-        />
-        <TextField
-          label="Noise public key"
-          value={entries.publicKey}
-          onChange={(publicKey) => {
-            onChange({ ...entries, publicKey })
-          }}
-          description="The relay's X25519 key, in base64."
-        />
-        {entries.isRatholeRelay ? (
-          <TextField
-            label="Relay domain"
-            value={entries.ratholeDomain}
-            onChange={(ratholeDomain) => {
-              onChange({ ...entries, ratholeDomain: ratholeDomain.toLowerCase() })
-            }}
-            placeholder="relay.example.com"
-            description="The domain this server's address ends in."
-          />
-        ) : null}
-      </div>
-    </details>
+    <>
+      <TextField
+        label="Wildflower Relay URL"
+        type="url"
+        inputMode="url"
+        value={entries.baseUrl}
+        onChange={(baseUrl) => {
+          onChange({ ...entries, baseUrl })
+        }}
+        placeholder="https://relay.example.com"
+        description="The address of the Wildflower Relay."
+      />
+      <details
+        open={open}
+        onToggle={(event) => {
+          setOpen(event.currentTarget.open)
+        }}
+      >
+        <summary className={`text-label-2 ${styles['add-server-page__advanced-summary']}`}>
+          Advanced
+        </summary>
+        <div className={styles['add-server-page__fields']}>
+          <p className={`text-body-3 ${styles['add-server-page__note']}`}>
+            Optionally, pin the relay: it must present this address and key, which are checked and
+            not stored.
+          </p>
+          <RelayIdentityFields entries={entries} onChange={onChange} />
+        </div>
+      </details>
+    </>
   )
 }
 
 /**
- * Step 1, the relay: the Wildflower relay, preselected, or a custom one by
- * its relay site's base URL, with its Advanced settings. Continue waits for
- * every setting the relay needs.
+ * A rathole relay's settings, after what rathole is and what using it
+ * directly takes: its identity and the domain it serves the server at.
+ */
+const RatholeRelaySettings = ({
+  entries,
+  onChange,
+}: {
+  readonly entries: RelayEntries
+  readonly onChange: (entries: RelayEntries) => void
+}): JSX.Element => (
+  <>
+    <p className={`text-body-3 ${styles['add-server-page__note']}`}>
+      Wildflower internally uses an established open-source reverse proxy called{' '}
+      <a href="https://github.com/rathole-org/rathole" target="_blank" rel="noreferrer">
+        rathole
+      </a>
+      . You can use a rathole server you run yourself, without a Wildflower Relay. It takes more
+      setup by hand, and traffic is encrypted end to end just the same. With no Wildflower Relay to
+      ask, only the settings' format is checked here; the connection is tested when the server
+      starts.
+    </p>
+    <RelayIdentityFields entries={entries} onChange={onChange} />
+    <TextField
+      label="Tunnel domain"
+      value={entries.ratholeDomain}
+      onChange={(ratholeDomain) => {
+        onChange({ ...entries, ratholeDomain: ratholeDomain.toLowerCase() })
+      }}
+      placeholder="relay.example.com"
+      description="The domain your rathole server exposes tunnels at. Your server will be available at the tunnel name you enter next, followed by this domain."
+    />
+  </>
+)
+
+/**
+ * Step 1, the relay: the Wildflower official relay, preselected, a
+ * self-hosted Wildflower relay by its URL, with an optional pin, or a
+ * rathole relay by its settings; over what the relay can and can't see.
+ * Continue waits for every setting the relay needs.
  */
 const RelayStep = ({
   entries,
@@ -208,35 +237,31 @@ const RelayStep = ({
       }}
     >
       <StepHeading headingId={headingId} title="Relay">
-        Apps reach a server through a relay. Use Wildflower's, or one you run.
+        Apps on the web reach the server on this device through a relay.
       </StepHeading>
+      <p className={`text-body-3 ${styles['add-server-page__note']}`}>
+        Everything sent through the relay is encrypted end to end, between the app and your server,
+        so the relay can't read your records. It can see which server is being reached, from where
+        and when. For maximum security, you can host your own relay.
+      </p>
       <RadioGroup
         name="relay"
-        legend="Relay"
+        legend="Choose a relay"
+        size={3}
         value={entries.choice}
         options={RELAY_CHOICES}
         onChange={(choice) => {
           onChange({ ...entries, choice })
         }}
       />
-      {entries.choice === 'custom' ? (
-        <>
-          {entries.isRatholeRelay ? null : (
-            <TextField
-              label="Relay base URL"
-              type="url"
-              inputMode="url"
-              value={entries.baseUrl}
-              onChange={(baseUrl) => {
-                onChange({ ...entries, baseUrl })
-              }}
-              placeholder="https://relay.example.com"
-              description="The address of the relay's Wildflower site."
-            />
-          )}
-          <AdvancedRelaySettings entries={entries} onChange={onChange} />
-        </>
-      ) : null}
+      {Match.value(entries.choice).pipe(
+        Match.when('wildflowerOfficial', () => null),
+        Match.when('selfHostedWildflower', () => (
+          <SelfHostedRelaySettings entries={entries} onChange={onChange} />
+        )),
+        Match.when('rathole', () => <RatholeRelaySettings entries={entries} onChange={onChange} />),
+        Match.exhaustive
+      )}
       <div className={styles['add-server-page__actions']}>
         <button type="submit" className="button-2 filled" disabled={Option.isNone(relay)}>
           Continue
@@ -247,21 +272,38 @@ const RelayStep = ({
 }
 
 /**
- * Step 2, the tunnel: its name and its token, masked. Add server waits for
- * both.
+ * The domain the server is served under through `relay`: the official
+ * relay's, a rathole relay's as entered, or nothing for a self-hosted
+ * Wildflower relay, whose domain the host learns from it.
+ */
+const relayDomainOf = (relay: EnteredRelay.Type): Option.Option<string> =>
+  Match.value(relay).pipe(
+    Match.when({ kind: 'wildflowerOfficial' }, () => Option.some(WILDFLOWER_RELAY_DOMAIN)),
+    Match.when({ kind: 'selfHostedWildflower' }, () => Option.none()),
+    Match.when({ kind: 'rathole' }, ({ domain }) => Option.some(domain)),
+    Match.exhaustive
+  )
+
+/**
+ * Step 2, the tunnel: its name, with the address it gives the server
+ * through `relay`, and its token, masked. Add server waits for both.
  */
 const CredentialsStep = ({
+  relay,
   entries,
   onChange,
   onBack,
   onAdd,
 }: {
+  readonly relay: EnteredRelay.Type
   readonly entries: CredentialsEntries
   readonly onChange: (entries: CredentialsEntries) => void
   readonly onBack: () => void
   readonly onAdd: () => void
 }): JSX.Element => {
   const headingId = useId()
+  const name = entries.tunnelName.trim() === '' ? '[tunnel name]' : entries.tunnelName.trim()
+  const domain = relayDomainOf(relay).pipe(Option.getOrElse(() => "[your relay's domain]"))
   return (
     <form
       className={styles['add-server-page__step']}
@@ -272,7 +314,7 @@ const CredentialsStep = ({
       }}
     >
       <StepHeading headingId={headingId} title="Tunnel">
-        The relay gives you a tunnel name and its token.
+        Enter the tunnel name and token you were given for this relay.
       </StepHeading>
       <TextField
         label="Tunnel name"
@@ -280,7 +322,7 @@ const CredentialsStep = ({
         onChange={(tunnelName) => {
           onChange({ ...entries, tunnelName: tunnelName.toLowerCase() })
         }}
-        description="It names this server's address."
+        description={`Your server will be available at ${name}.${domain}`}
       />
       <TextField
         label="Tunnel token"
@@ -289,7 +331,7 @@ const CredentialsStep = ({
         onChange={(token) => {
           onChange({ ...entries, token })
         }}
-        description="It's saved on this device and never shown again."
+        description="The administrator of your relay should provide this to you. It's saved on this device and never shown again."
       />
       <div className={styles['add-server-page__actions']}>
         <button type="button" className="button-2 outline" onClick={onBack}>
@@ -337,7 +379,7 @@ const CheckingStep = ({
       {checking ? (
         <GateCard
           title={
-            relay.kind === 'rathole' ? 'Checking the relay settings…' : 'Checking with the relay…'
+            relay.kind === 'rathole' ? 'Checking the rathole settings…' : 'Checking with the relay…'
           }
         />
       ) : null}
@@ -392,9 +434,10 @@ const DoneStep = ({
         Server added
       </h2>
       <p className={styles['add-server-page__domain']}>{domain}</p>
-      <p className={`text-body-2 ${styles['add-server-page__lead']}`}>
-        Apps reach this server at this address through the relay. The relay passes traffic through
-        and can't read your records.
+      <p className={`text-body-3 ${styles['add-server-page__lead']}`}>
+        Apps reach your server at this address. The relay passes their traffic through without being
+        able to read it. Start it now to run while Wildflower is open, or start it later from its
+        page.
       </p>
       <ErrorBanner error={setRunPolicy.error === null ? null : failureText(setRunPolicy.error)} />
       <div className={styles['add-server-page__actions']}>
@@ -467,6 +510,7 @@ const AddServerPage = (): JSX.Element => {
     )),
     Match.when({ kind: 'credentials' }, ({ relay }) => (
       <CredentialsStep
+        relay={relay}
         entries={credentialsEntries}
         onChange={setCredentialsEntries}
         onBack={() => {

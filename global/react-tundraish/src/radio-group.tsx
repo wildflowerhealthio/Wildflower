@@ -13,6 +13,11 @@ type RadioGroupProps<T extends string> = {
   readonly onChange: (value: T) => void
   readonly options: readonly RadioOption<T>[]
   readonly legend?: string
+  /**
+   * The radios' and their labels' size, tundra's `radio-N` and
+   * `text-body-N`; 2 by default.
+   */
+  readonly size?: 2 | 3 | 4
   readonly className?: string
 }
 
@@ -22,6 +27,7 @@ const RadioGroup = <T extends string>({
   onChange,
   options,
   legend,
+  size = 2,
   className,
 }: RadioGroupProps<T>): JSX.Element => (
   <fieldset className={cn('radio-group', className)}>
@@ -30,14 +36,14 @@ const RadioGroup = <T extends string>({
       <label key={option.value} className="radio-row">
         <input
           type="radio"
-          className="radio-2"
+          className={`radio-${String(size)}`}
           name={name}
           value={option.value}
           checked={option.value === value}
           disabled={option.disabled}
           onChange={() => onChange(option.value)}
         />
-        <span className="text-body-2">{option.label}</span>
+        <span className={`text-body-${String(size)}`}>{option.label}</span>
       </label>
     ))}
   </fieldset>

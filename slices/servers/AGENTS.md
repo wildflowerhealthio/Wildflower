@@ -104,9 +104,12 @@ changing how servers run or what the host notifies about them.
   so once it has passed (one timer, set for it). With no servers it says what
   a server is, beside Add new server; with servers, Add new server is under
   the cards, across the page. Add server goes a step at a time, in component state rather than
-  the URL, so the token never reaches it: the relay (the Wildflower relay,
-  or a custom one by base URL, with an Advanced pin or a rathole relay
-  instead); the tunnel name, lowercased as typed as is a rathole relay's domain, and masked token; Checking, while `server_add`
+  the URL, so the token never reaches it: the relay, under what it can and
+  can't see (the Wildflower official relay, a self-hosted Wildflower relay
+  by URL with an Advanced pin, or a different reverse proxy, a rathole
+  server by its address, key and tunnel domain); the tunnel name, lowercased
+  as typed as is a rathole tunnel domain, with the address it gives the
+  server, and masked token; Checking, while `server_add`
   checks and registers, staying there on a refusal with the host's message,
   Back (every entry kept) and Retry; and the server added, its domain, a
   privacy note, and Start now or Start later (`whileOpen` or `off`), which
