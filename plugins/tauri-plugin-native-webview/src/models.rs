@@ -15,6 +15,8 @@
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 
+use crate::dismissal::DismissalAction;
+
 /// Arguments for opening the native webview.
 ///
 /// `OpenRequest` is `Serialize`-only (and so omits `PartialEq` / `Eq` /
@@ -71,6 +73,11 @@ pub struct OpenRequest {
     /// [Explanation.md](../docs/Explanation.md) § "Downloads (desktop)".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download_dir: Option<std::path::PathBuf>,
+    /// What a user dismissal does to the instance: hide it (the default) or
+    /// dispose it. Applied in the plugin's Rust layer on every platform, so it
+    /// never rides the wire to the native sides. See [`DismissalAction`].
+    #[serde(skip)]
+    pub on_dismiss: DismissalAction,
 }
 
 /// One cookie to seed into the native webview's store, expressed as the
@@ -362,6 +369,7 @@ mod tests {
             initial_message: None,
             cookies: vec![],
             download_dir: None,
+            on_dismiss: DismissalAction::Hide,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -400,6 +408,7 @@ mod tests {
             initial_message: None,
             cookies: vec![],
             download_dir: None,
+            on_dismiss: DismissalAction::Hide,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -423,6 +432,7 @@ mod tests {
             initial_message: None,
             cookies: vec![],
             download_dir: None,
+            on_dismiss: DismissalAction::Hide,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -461,6 +471,7 @@ mod tests {
                 max_age: Some(3600),
             }],
             download_dir: None,
+            on_dismiss: DismissalAction::Hide,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -516,6 +527,7 @@ mod tests {
             initial_message: None,
             cookies: vec![],
             download_dir: Some(std::path::PathBuf::from("/tmp/wf/saved_data")),
+            on_dismiss: DismissalAction::Hide,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -523,6 +535,29 @@ mod tests {
             parsed.get("downloadDir").and_then(|v| v.as_str()),
             Some("/tmp/wf/saved_data")
         );
+    }
+
+    /// The dismissal action is applied in Rust, so it never reaches the
+    /// native decoders, whichever action the open chose.
+    #[test]
+    fn open_request_keeps_the_dismissal_action_off_the_wire() {
+        let json = serde_json::to_string(&OpenRequest {
+            url: "https://example.test/x".to_owned(),
+            init_script: None,
+            native_webview_event_channel: noop_channel(),
+            initial_title: None,
+            initial_subtitle: None,
+            initial_message: None,
+            cookies: vec![],
+            download_dir: None,
+            on_dismiss: DismissalAction::Dispose,
+        })
+        .expect("serialize");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        assert!(!parsed
+            .as_object()
+            .expect("object")
+            .contains_key("onDismiss"));
     }
 
     /// `OpenResponse` decodes the native-side `{ "opened": true }` payload.

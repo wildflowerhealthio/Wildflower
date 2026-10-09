@@ -50,6 +50,7 @@ use serde::de::DeserializeOwned;
 use tauri::plugin::PluginApi;
 use tauri::{AppHandle, Manager, Runtime};
 
+use crate::dismissal::{event_channel_for, DisposingOnDismissal};
 use crate::models::{EvaluateJsRequest, NativeWebviewEvent, OpenRequest, PatchWindowTextRequest};
 
 mod chrome;
@@ -110,6 +111,12 @@ impl<R: Runtime> NativeWebview<R> {
         // re-parse. The build path already keys `about:blank` off the empty-cookie
         // case, so the target kind is not needed here.
         let target = crate::url_scheme::parse_target(&payload.url)?;
+        // The backend sends its events through the channel that applies the
+        // request's dismissal action (see [`crate::dismissal`]).
+        let payload = OpenRequest {
+            native_webview_event_channel: event_channel_for(&self.0, id, &payload),
+            ..payload
+        };
         // Keep a copy for the seed on the build/rewire path. The payload keeps its
         // OWN `cookies` so the deferred branch carries them into `pending_reopen`
         // for the replay to seed (see the method doc).
@@ -211,17 +218,27 @@ impl<R: Runtime> NativeWebview<R> {
     /// Site-specific: `window.hide()` fires no `CloseRequested`/`Destroyed`, so
     /// nothing is torn down (and `Hidden` must be emitted directly here — there
     /// is no `Destroyed` for the window listener to translate).
+    ///
+    /// The `Hidden` is a host hide, so an instance opened with
+    /// [`DismissalAction::Dispose`](crate::DismissalAction::Dispose) stays
+    /// alive: the hide is marked in flight before it is emitted, and the mark
+    /// cleared if nothing consumed it (see [`crate::dismissal`]).
     pub fn hide(&self, id: &str) -> crate::Result<()> {
         let Some(window) = self.0.get_window(&window_label(id)) else {
             return Ok(());
         };
-        window.hide()?;
-        if let Some(instance) = instance_state(&self.0, id) {
-            if let Ok(channel) = instance.current_channel.lock() {
-                let _ = channel.send(NativeWebviewEvent::Hidden);
+        let disposing_on_dismissal = self.0.state::<DisposingOnDismissal>();
+        disposing_on_dismissal.begin_host_hide(id);
+        let hidden = window.hide();
+        if hidden.is_ok() {
+            if let Some(instance) = instance_state(&self.0, id) {
+                if let Ok(channel) = instance.current_channel.lock() {
+                    let _ = channel.send(NativeWebviewEvent::Hidden);
+                }
             }
         }
-        Ok(())
+        disposing_on_dismissal.cancel_host_hide(id);
+        Ok(hidden?)
     }
 
     /// Dispose instance `id`'s native webview window — tear it down and free its

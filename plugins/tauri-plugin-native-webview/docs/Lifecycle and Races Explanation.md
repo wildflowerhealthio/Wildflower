@@ -110,6 +110,11 @@ a teardown backstop, destroys it. The affordances, per platform:
   Both call the shared hide path, which uses `dialog.hide()` (NOT `dismiss()`, so
   the dismiss listener — the teardown path — does not fire).
 
+An instance opened with `DismissalAction::Dispose` is disposed after the
+dismissal's hide, from the plugin's Rust layer rather than any backend; a host
+`hide()` of it still only hides. See [Explanation.md](./Explanation.md)
+§ "Dismissal action".
+
 A successful hide emits `NativeWebviewEvent::Hidden`; a teardown emits
 `Disposed`. The host's collector treats neither hide nor dispose as the sniff's
 terminal signal — the SPA owns `SniffingComplete` — so the bridge re-emits
