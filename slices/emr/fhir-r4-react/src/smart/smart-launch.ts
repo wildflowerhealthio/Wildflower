@@ -1,5 +1,6 @@
 import type Client from 'fhirclient/lib/Client'
 import type { fhirclient } from 'fhirclient/lib/types'
+import { arrivingSmartLaunchFrom, type ArrivingSmartLaunch } from 'gatekeeper-core/smart-client'
 
 /** The slice of fhirclient's `module.exports` this module actually uses. */
 interface FhirClientModule {
@@ -83,9 +84,10 @@ const readySmartClient = async (): Promise<Client> => {
  * {@link readySmartClient} (rather than showing the connect menu).
  *
  * @remarks
- * The app root serves both a fresh visit (no query → show the connect menu) and
- * the OAuth redirect target (has a callback → run the app). `code` marks a SMART
- * return and `state` an open-server one; either means there is a handshake to
+ * The app root serves a fresh visit (no query → show the connect menu), a
+ * launch it was opened to start ({@link arrivingSmartLaunchFrom}), and the OAuth
+ * redirect target (has a callback → run the app). `code` marks a SMART return
+ * and `state` an open-server one; either means there is a handshake to
  * complete.
  *
  * An `error=…` return is excluded deliberately: an OAuth error still carries
@@ -110,8 +112,9 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
  *
  * @remarks
  * The app root, which serves `index.html`, is the one redirect target for every
- * way in: the EHR launch from `launch.html`, a standalone launch from the
- * connect menu, and a failed launch sent back with `launchErrorRedirect`. It is
+ * way in: a launch it was opened to start ({@link arrivingSmartLaunchFrom}), a
+ * standalone launch from the connect menu, and a failed launch sent back with
+ * `launchErrorRedirect`. It is
  * the page that completes the handshake ({@link readySmartClient}) and the page
  * that can show a failure, so a launch always returns there. Every such page
  * sits in that directory, so each derives the same value, and the value is the
@@ -127,10 +130,19 @@ const appRootRedirectUri = (href: string): string => new URL('.', href).href
 
 export {
   appRootRedirectUri,
+  /**
+   * Re-exported from `gatekeeper-core/smart-client`, like `normalizeServerUrl`:
+   * the launch a page's URL asks it to start, which the app root reads to
+   * authorize a launch rather than show the connect menu. The pages that sign
+   * in with `gatekeeper-core` read launches the same way without depending on
+   * this package.
+   */
+  arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
   readySmartClient,
   shouldCompleteSmartLaunch,
+  type ArrivingSmartLaunch,
   type OpenServerConfig,
   type SmartLaunchConfig,
 }
