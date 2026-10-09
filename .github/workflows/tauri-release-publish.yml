@@ -18,6 +18,13 @@ name: Tauri Release — Publish
 # is sandboxed and signed with different certificates — see
 # docs/Rust/Apple Release Signing Explanation.md.
 #
+# Each Apple channel reads its certificates and profiles from its own GitHub
+# environment — `apple-macos-direct` for the macOS entry of `build`,
+# `apple-macos-appstore` for `build-macos-testflight`, `apple-ios` for
+# `build-ios` — which scripts/release/apple-signing-sync.sh creates and fills.
+# The notarization and App Store Connect upload credentials stay at
+# repository level.
+#
 # Also exposes `workflow_dispatch` for two manual cases:
 #   - Re-trigger a merge that never ran (e.g. a runner outage ate the original
 #     run): dispatch from the merged branch, leave `tag` blank. The tag step is
@@ -230,6 +237,9 @@ jobs:
         # (via libgit2-sys 0.14) needs it and doesn't link it itself — see
         # "Windows Tauri release links need advapi32.lib" in
         # docs/Agents/Learnings Inbox.md.
+        # `environment` is the GitHub environment holding the entry's signing
+        # credentials; an empty one gives that job no environment, so the
+        # Developer ID `.p12` reaches only the macOS runner.
         run: |
           set -euo pipefail
           platforms='${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}'
@@ -240,13 +250,13 @@ jobs:
                 { key: "macos",   name: "macOS (universal)", os: "macos-latest",
                   args: "--target universal-apple-darwin",
                   "rust-targets": "x86_64-apple-darwin,aarch64-apple-darwin",
-                  rustflags: "-D warnings" },
+                  rustflags: "-D warnings", environment: "apple-macos-direct" },
                 { key: "windows", name: "Windows", os: "windows-latest",
                   args: "", "rust-targets": "",
-                  rustflags: "-D warnings -C link-arg=advapi32.lib" },
+                  rustflags: "-D warnings -C link-arg=advapi32.lib", environment: "" },
                 { key: "linux",   name: "Linux", os: "ubuntu-22.04",
                   args: "", "rust-targets": "",
-                  rustflags: "-D warnings" }
+                  rustflags: "-D warnings", environment: "" }
               ] | map(. as $entry | select(($selected | index("all")) or ($selected | index($entry.key))))
             }' > /tmp/matrix.json
           if [[ "$(jq '.include | length' /tmp/matrix.json)" == 0 ]] && \
@@ -302,6 +312,8 @@ jobs:
       # Built by the prepare job's "Select platform matrix" step.
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
+    # The Developer ID certificate, for the macOS entry only — see the matrix.
+    environment: ${{ matrix.environment }}
     # The host's base reads its own `VITE_SENTRY_DSN_HOST_APP` (a public
     # identifier, so a repository variable) and reports nothing without one.
     # Job-wide, because `vp run pack` builds host-app's webview and the Tauri
@@ -412,6 +424,8 @@ jobs:
       contains(inputs.platforms, 'all') ||
       contains(inputs.platforms, 'ios')
     runs-on: macos-latest
+    # The Apple Distribution certificate and App Store profile.
+    environment: apple-ios
     # The host's base Sentry DSN; see the build job.
     env:
       VITE_SENTRY_DSN_HOST_APP: ${{ vars.VITE_SENTRY_DSN_HOST_APP }}
@@ -532,6 +546,9 @@ jobs:
       contains(inputs.platforms, 'all') ||
       contains(inputs.platforms, 'macos-testflight')
     runs-on: macos-latest
+    # The Apple Distribution and Mac Installer Distribution certificates and
+    # the Mac App Store profile.
+    environment: apple-macos-appstore
     # The host's base Sentry DSN; see the build job.
     env:
       VITE_SENTRY_DSN_HOST_APP: ${{ vars.VITE_SENTRY_DSN_HOST_APP }}
