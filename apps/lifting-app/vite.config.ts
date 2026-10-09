@@ -5,11 +5,11 @@ import base, { devAppServer } from '../../vite.config.base.ts'
 
 /**
  * A SMART-on-FHIR app built as a static bundle into this package's default
- * `dist/`, which `apps/github-pages` publishes. Two HTML entries:
- * `launch.html` (the EHR launch endpoint — kicks off the OAuth2 authorize
- * redirect) and `index.html` (the app root — the OAuth redirect target that
- * completes the handshake and renders the app when a callback is in the URL, and
- * the standalone connect menu otherwise). A relative `base` so the built assets
+ * `dist/`, which `apps/github-pages` publishes. One HTML entry, `index.html`:
+ * the app root, which starts a SMART launch its URL carries (an EHR's `iss` and
+ * `launch`, or a lone `iss`), completes the handshake and renders the app when
+ * a callback is in the URL, and shows the standalone connect menu otherwise.
+ * A relative `base` so the built assets
  * resolve from whatever origin / path the bundle is served at.
  */
 export default defineConfig({
@@ -17,14 +17,13 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   // The homescreen's "Lifting (Dev)" tile launches this port's
-  // `/launch.html`, so the dev server must hold exactly it. Run with
+  // root, so the dev server must hold exactly it. Run with
   // `vp run -F lifting-app dev`.
   server: devAppServer('lifting-app-dev'),
   build: {
     rolldownOptions: {
       input: {
         main: './index.html',
-        launch: './launch.html',
       },
     },
   },

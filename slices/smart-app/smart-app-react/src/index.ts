@@ -17,4 +17,3 @@ export { PatientChoiceLine, type PatientChoiceLineProps } from './patient-choice
 export { PatientPicker, type PatientPickerProps } from './patient-picker.tsx'
 export { type PatientChoosing, usePatientChoice } from './use-patient-choice.ts'
 export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'
-export { runSmartLaunchEntry, type SmartLaunchEntryConfig } from './smart-launch-entry.ts'

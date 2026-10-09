@@ -43,9 +43,10 @@ const siteSections: readonly SiteSection[] = [
     packageName: 'medications-app',
     sourceDir: 'apps/medications-app/dist',
     destPath: SECTION_PATHS.medications,
-    // Two entries: the EHR launch endpoint and the app root (the redirect target,
-    // which also serves the standalone connect menu on a bare visit).
-    requiredFiles: ['index.html', 'launch.html'],
+    // One entry: the app root starts a SMART launch its URL carries, is the
+    // OAuth redirect target, and serves the standalone connect menu on a bare
+    // visit.
+    requiredFiles: ['index.html'],
   },
   {
     packageName: 'wildflower-importer',
@@ -53,8 +54,10 @@ const siteSections: readonly SiteSection[] = [
     // `/${SECTION_PATHS.importer}`.
     sourceDir: 'apps/importer-web/dist',
     destPath: SECTION_PATHS.importer,
-    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
-    requiredFiles: ['index.html', 'launch.html'],
+    // One entry: the app root starts a SMART launch its URL carries, is the
+    // OAuth redirect target, and serves the standalone connect menu on a bare
+    // visit.
+    requiredFiles: ['index.html'],
   },
   {
     packageName: 'wildflower-server-docs',
@@ -67,9 +70,10 @@ const siteSections: readonly SiteSection[] = [
     packageName: 'wildflower-web-trace',
     sourceDir: 'apps/web-trace/dist',
     destPath: SECTION_PATHS.webTrace,
-    // Two entries: the EHR launch endpoint and the app root (the redirect target,
-    // which also serves the standalone connect menu on a bare visit).
-    requiredFiles: ['index.html', 'launch.html'],
+    // One entry: the app root starts a SMART launch its URL carries, is the
+    // OAuth redirect target, and serves the standalone connect menu on a bare
+    // visit.
+    requiredFiles: ['index.html'],
   },
   {
     packageName: 'fhir-sync-pebble-web',
@@ -78,8 +82,8 @@ const siteSections: readonly SiteSection[] = [
     sourceDir: 'apps/fhir-sync-pebble-web/dist',
     destPath: SECTION_PATHS.fhirSyncPebble,
     // One entry: the app is launched standalone only (from the Pebble phone
-    // app), so there is no `launch.html` — `index.html` is both the connect
-    // menu and the OAuth redirect target.
+    // app), so `index.html` is both the connect menu and the OAuth redirect
+    // target.
     requiredFiles: ['index.html'],
   },
   {
@@ -88,9 +92,10 @@ const siteSections: readonly SiteSection[] = [
     // `/${SECTION_PATHS.healthViewer}`.
     sourceDir: 'apps/health-viewer/dist',
     destPath: SECTION_PATHS.healthViewer,
-    // Two entries: the EHR launch endpoint and the app root (the redirect target,
-    // which also serves the standalone connect menu on a bare visit).
-    requiredFiles: ['index.html', 'launch.html'],
+    // One entry: the app root starts a SMART launch its URL carries, is the
+    // OAuth redirect target, and serves the standalone connect menu on a bare
+    // visit.
+    requiredFiles: ['index.html'],
   },
   {
     packageName: 'synthetic-data-app',
@@ -98,9 +103,10 @@ const siteSections: readonly SiteSection[] = [
     // `/${SECTION_PATHS.syntheticData}`.
     sourceDir: 'apps/synthetic-data-app/dist',
     destPath: SECTION_PATHS.syntheticData,
-    // Two entries: the EHR launch endpoint and the app root (the redirect target,
-    // which also serves the standalone connect menu on a bare visit).
-    requiredFiles: ['index.html', 'launch.html'],
+    // One entry: the app root starts a SMART launch its URL carries, is the
+    // OAuth redirect target, and serves the standalone connect menu on a bare
+    // visit.
+    requiredFiles: ['index.html'],
   },
   {
     packageName: 'lifting-app',
@@ -108,9 +114,10 @@ const siteSections: readonly SiteSection[] = [
     // `/${SECTION_PATHS.lifting}`.
     sourceDir: 'apps/lifting-app/dist',
     destPath: SECTION_PATHS.lifting,
-    // Two entries: the EHR launch endpoint and the app root (the redirect target,
-    // which also serves the standalone connect menu on a bare visit).
-    requiredFiles: ['index.html', 'launch.html'],
+    // One entry: the app root starts a SMART launch its URL carries, is the
+    // OAuth redirect target, and serves the standalone connect menu on a bare
+    // visit.
+    requiredFiles: ['index.html'],
   },
   {
     packageName: 'watch-lifts-web',

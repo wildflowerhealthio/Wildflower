@@ -8,8 +8,8 @@ import base, { devAppServer } from '../../vite.config.base.ts'
  * `dist/`, which `apps/github-pages` publishes. One HTML entry, `index.html`:
  * the standalone connect menu on a bare visit, and the OAuth redirect target
  * that completes the handshake and renders the Pebble settings page when a
- * callback is in the URL. There is no `launch.html` — the app is only ever
- * opened standalone, from the Pebble phone app's watchapp settings. A relative
+ * callback is in the URL. No EHR launches it — the app is only ever opened
+ * standalone, from the Pebble phone app's watchapp settings. A relative
  * `base` so the built assets resolve from whatever origin / path the bundle is
  * served at — on the GitHub Pages site that is the `/fhir-sync-pebble` subpath.
  */

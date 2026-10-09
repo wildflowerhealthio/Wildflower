@@ -7,22 +7,21 @@ The Web Trace viewer, a SMART-on-FHIR app published to
 itself holds no viewing logic, only the wiring a SMART app on its own origin
 needs.
 
-`apps/medications-app` is the template for the bundle shape (two HTML entries,
+`apps/medications-app` is the template for the bundle shape (one HTML entry,
 a relative `base`, a build into the package's own `dist/`).
 What is _not_ shared with it is the auth wiring below.
 
 ## Boot and branding
 
-Both entries run on `smart-app-react`, the chrome every first-party SMART app
+The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
 JS entry), completes a GitHub Pages 404 redirect, installs the OS colour-scheme
-listener, and renders `<AppRoot />`. `launch-main.tsx` imports the same module
-and makes one `runSmartLaunchEntry` call. `AppRoot` (from `app-root.tsx`) is
-`<SmartAppRoot app="webTrace" standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>`
-around `<App />`; `SmartAppRoot` holds both branches behind the telemetry
-consent dialog (`smartAppTelemetry` in `config.ts` names the app's Sentry
+listener, and renders `<AppRoot />`. `AppRoot` (from `app-root.tsx`) is
+`<SmartAppRoot app="webTrace" registration={smartRegistration} telemetry={smartAppTelemetry}>`
+around `<App />`; `SmartAppRoot` holds every branch behind the telemetry
+consent dialog, then starts a launch the URL carries under a loading line (`smartAppTelemetry` in `config.ts` names the app's Sentry
 project through the `VITE_SENTRY_DSN_WEB_TRACE` build variable; see
 `.env.example`), owns the one `QueryClientProvider`, and picks between
 the launched viewer (slim `BrandBar` + `App`) and the standalone landing,
@@ -178,7 +177,7 @@ than adopting it — you get no dev tile until that app is renamed.
   [`fhir-r4-react`'s `smart-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.test.ts).
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the Web
   Trace Viewer (the landing `h1` is `APP_DESCRIPTIONS.webTrace.name`). The
-  chrome gate itself — both branches, the latch, the `ConnectMenu` wiring, the
+  chrome gate itself — every branch, the latch, the `ConnectMenu` wiring, the
   launch-failure banner, the one shared `QueryClient` — is tested once, in
   `smart-app-react`'s `smart-app-root.test.tsx`.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and

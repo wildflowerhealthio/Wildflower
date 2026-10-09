@@ -1,12 +1,11 @@
 # lifting-app
 
-The first-party Lifting SMART-on-FHIR app: a lifter's strength-training
-program, the workout due today, and every set they lift, kept on their own
-FHIR record. Two HTML entries, `launch.html` (the EHR launch endpoint that
-starts the OAuth2 authorize redirect) and `index.html` (the app root — the
-redirect target that completes the handshake and renders the app when a
-callback is in the URL, and the standalone connect menu, where the user picks a
-FHIR server, on a bare visit).
+The first-party Lifting SMART-on-FHIR app: a lifter's strength-training program,
+the workout due today, and every set they lift, kept on their own FHIR record.
+One HTML entry, `index.html`: the app root, which starts a SMART launch its URL
+carries (an EHR's `iss` and `launch`, or a lone `iss`), completes the handshake
+and renders the app when a callback is in the URL, and shows the standalone
+connect menu, where the user picks a FHIR server, on a bare visit.
 
 The screens are [`lifting-react`](../../slices/lifting/AGENTS.md)'s; every
 lifting decision — the day due, whether an attempt met its request, where a
@@ -17,7 +16,7 @@ writes what core returns.
 
 ## Boot structure
 
-Both entries run on `smart-app-react`, the chrome every first-party SMART app
+The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)),
 exactly as `apps/health-viewer` does.
 
@@ -27,17 +26,15 @@ redirect, wires the OS colour-scheme listener, and renders `<AppRoot />` inside
 `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="lifting"
-standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>` around
-`<App />`. `SmartAppRoot` shows the telemetry consent dialog before either
-branch (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
+registration={smartRegistration} telemetry={smartAppTelemetry}>` around
+`<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+starts a launch the URL carries under a loading line or renders one of the
+other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
 through the `VITE_SENTRY_DSN_LIFTING_APP` build variable; see `.env.example`),
 owns the single `QueryClientProvider`, and branches, latched on mount, on
 whether a SMART callback is in the URL — the slim `BrandBar` above `<App />`
 when launched, the full Wildflower chrome with `APP_DESCRIPTIONS.lifting`'s
 `AppLanding` beside `ConnectMenu` on a bare visit.
-
-`src/launch-main.tsx` is the `launch.html` entry: the same stylesheet import,
-then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call.
 
 ## The page
 
@@ -138,8 +135,8 @@ order.
 
 ## Scopes
 
-The same scope string for the EHR launch (`smartConfig`) and the standalone
-connect (`standaloneSmartConfig`), in `src/config.ts`:
+One scope string for the EHR launch and the standalone connect
+(`smartRegistration`, in `src/config.ts`):
 
 ```text
 launch openid fhirUser system/Patient.rs system/PlanDefinition.crus system/ServiceRequest.crus system/Procedure.crus system/Observation.crus
@@ -178,9 +175,9 @@ that client's scopes, and `/authorize` matches the redirect against that
 client's registered URIs — and its scope string must equal the client's allowed
 scopes.
 
-- **`lifting-app`** is a row (apps migration `0010_seed_lifting_app`)
-  launching
-  `https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4`
+- **`lifting-app`** is a row (apps migration `0010_seed_lifting_app`, its URL
+  as `0016_launch_first_party_apps_at_root` left it) launching
+  `https://wildflowerhealth.io/lifting-app/?launch={launch}&iss={origin}/fhir-r4`
   with `requires_tunnel` set, as every first-party row has. Its public
   OAuth client (gatekeeper migration `0019_seed_lifting_app_client`, its
   scopes as `0020_first_party_apps_pick_the_patient` left them) redirects to

@@ -17,9 +17,9 @@ the homepage and absolute from an app.
   resolvers, and `APP_DESCRIPTIONS` — the per-app introduction copy
   (name, tagline, status, first-person "why" paragraphs, homepage anchor, and
   launch link text) that the homepage's app rows and each app's landing page
-  both render. An entry's `smartLaunchPage` names the page that starts the
-  app's SMART launch from `?iss=` (and `&launch=`); `smartAppLaunchPages` lists
-  the entries that have one, with that page's URL under a site root, and
+  both render. An entry's `launchesFromUrl` says the app's root starts its
+  SMART launch from `?iss=` (and `&launch=`); `smartAppLaunchPages` lists
+  the entries that set it, with the root's URL under a site root, and
   `siteRootFor` finds the root a section's copy is published under (a PR
   preview's `/staging/pr-<n>/`, or the canonical site). The owner UI's Home on
   a plain SMART server lists its apps from these. Beside it, `TELEMETRY_CONSENT_COPY` is the telemetry consent
@@ -115,9 +115,7 @@ importing them (the first-party SMART apps rely on this).
 
 `SECTION_PATHS` in `branding-core/src/site.ts` must match the `destPath` values
 in `apps/github-pages/src/assembly.ts`. A mismatch breaks cross-section links on
-the assembled GitHub Pages site. So must the `smartLaunchPage`s: the assembly
-test checks that the sections publishing a `launch.html` are exactly the
-described apps naming one. The core tests pin the exact five paths.
+the assembled GitHub Pages site. The core tests pin the exact five paths.
 
 ## Guardrails
 

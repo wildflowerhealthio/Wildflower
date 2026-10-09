@@ -5,14 +5,14 @@ Lifting, a SMART-on-FHIR strength-training app published to
 as `lifting-app-dev` under the vite dev server. See [README.md](./README.md)
 for the boot structure, the reads, the tabs, the writes and the scopes.
 
-`apps/health-viewer` is the template: the same two HTML entries, relative
+`apps/health-viewer` is the template: the same one HTML entry, relative
 `base`, build into the package's own `dist/`, `SmartAppRoot` shell with its own
 Sentry DSN, and read-status lines.
 
 ## Layout
 
-`src/` keeps the entries and the root at its top: `main.tsx` and
-`launch-main.tsx` (the `index.html` and `launch.html` entries), `config.ts`,
+`src/` keeps the entry and the root at its top: `main.tsx` (the `index.html`
+entry), `config.ts`,
 `app-root.tsx` (the package export), `app.tsx`, and the app-wide `clock.ts`
 and `smart-client.ts`. Everything else is a folder per screen or concern:
 

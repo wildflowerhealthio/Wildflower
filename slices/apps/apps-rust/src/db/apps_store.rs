@@ -683,7 +683,7 @@ mod migration_tests {
     }
 
     /// The first-party apps point at the published GitHub Pages site, under the
-    /// ids `0005` gave them.
+    /// ids `0005` gave them, launching at the app root (`0016`).
     #[test]
     fn first_party_apps_launch_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
@@ -691,11 +691,11 @@ mod migration_tests {
         for (id, url) in [
             (
                 "medications-app",
-                "https://wildflowerhealth.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+                "https://wildflowerhealth.io/medications-app/?launch={launch}&iss={origin}/fhir-r4",
             ),
             (
                 "web-trace-app",
-                "https://wildflowerhealth.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+                "https://wildflowerhealth.io/web-trace-app/?launch={launch}&iss={origin}/fhir-r4",
             ),
         ] {
             let registration = store
@@ -751,8 +751,8 @@ mod migration_tests {
     }
 
     /// The Importer ships as a first-party app (apps migration `0006`), launched
-    /// from its published Pages copy — a SMART EHR launch, unlike the server-docs
-    /// console's `?server=` target.
+    /// at its published Pages copy's root (`0016`) — a SMART EHR launch, unlike
+    /// the server-docs console's `?server=` target.
     #[test]
     fn importer_launches_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
@@ -770,13 +770,13 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 
     /// The OHIF imaging viewer ships as a first-party app (apps migration `0007`),
-    /// launched from its published Pages copy. Its launch URL is a route, not a
-    /// `launch.html`: OHIF reads the SMART parameters off whichever route it is
+    /// launched from its published Pages copy. Its launch URL is a route, not the
+    /// app root: OHIF reads the SMART parameters off whichever route it is
     /// opened on. `0008` moved that route from the viewer's root to the FHIR
     /// Viewer mode (`/fhir-viewer`) and added `clientId`, so the template asserted
     /// here is the composed end state of `0007` + `0008`.
@@ -801,12 +801,10 @@ mod migration_tests {
         );
     }
 
-    /// Lifting ships as a first-party app (apps migration `0010`), launched from
-    /// its published Pages copy's `launch.html` — a SMART EHR launch, with no slash
-    /// between `launch.html` and the query (GitHub Pages serves no file for
-    /// `launch.html/`).
+    /// Lifting ships as a first-party app (apps migration `0010`), launched at
+    /// its published Pages copy's root (`0016`) — a SMART EHR launch.
     #[test]
-    fn lifting_app_launches_at_its_launch_page() {
+    fn lifting_app_launches_at_its_root() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
         let registration = store
@@ -822,7 +820,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/lifting-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/lifting-app/?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 
@@ -851,10 +849,10 @@ mod migration_tests {
     }
 
     /// The Synthesized Health Viewer is seeded as a SMART app (`client_id ==
-    /// id`) launching at its published Pages copy's `launch.html` — a SMART EHR
-    /// launch, with no slash between `launch.html` and the query.
+    /// id`) launching at its published Pages copy's root (`0016`) — a SMART EHR
+    /// launch.
     #[test]
-    fn health_viewer_app_launches_at_its_launch_page() {
+    fn health_viewer_app_launches_at_its_root() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
         let registration = store
@@ -875,7 +873,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/health-viewer-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/health-viewer-app/?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 
@@ -923,6 +921,72 @@ mod migration_tests {
             store.list_registrations().unwrap().len(),
             SEEDED_IDS.len() - 1,
             "every other app stays",
+        );
+    }
+
+    /// An install already at `0015` moves its first-party launches from
+    /// `launch.html` to the app root when it upgrades, and a debug build's dev
+    /// rows with them, while a launch URL the user edited, production or dev,
+    /// is left as it is.
+    #[test]
+    fn an_install_already_at_0015_launches_first_party_apps_at_their_roots() {
+        let pool = pool_migrated_through("0015");
+        let mut conn = pool.get().unwrap();
+        let edited = "https://lifting.example/launch.html?launch={launch}&iss={origin}/fhir-r4";
+        sql_query("UPDATE app_registrations SET url = ? WHERE id = 'lifting-app'")
+            .bind::<Text, _>(edited)
+            .execute(&mut conn)
+            .expect("the user edits Lifting's launch URL");
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, client_id, requires_tunnel) \
+             VALUES ('medications-app-dev', (SELECT MAX(position) + 1 FROM app_registrations), \
+                     1, 'Medications (Dev)', \
+                     'http://localhost:5191/launch.html?launch={launch}&iss={origin}/fhir-r4', \
+                     'medications-app-dev', 0)",
+        )
+        .execute(&mut conn)
+        .expect("a dev row seeded before 0016");
+        let edited_dev =
+            "http://localhost:5192/launch.html?launch={launch}&iss=https://ehr.example/fhir";
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, client_id, requires_tunnel) \
+             VALUES ('web-trace-app-dev', (SELECT MAX(position) + 1 FROM app_registrations), \
+                     1, 'Web Trace (Dev)', ?, 'web-trace-app-dev', 0)",
+        )
+        .bind::<Text, _>(edited_dev)
+        .execute(&mut conn)
+        .expect("a dev row the user pointed elsewhere");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0016 must apply");
+        for id in [
+            "medications-app",
+            "web-trace-app",
+            "importer-app",
+            "health-viewer-app",
+        ] {
+            assert_eq!(
+                stored_url(&store, id),
+                format!(
+                    "https://wildflowerhealth.io/{id}/?launch={{launch}}&iss={{origin}}/fhir-r4"
+                ),
+            );
+        }
+        assert_eq!(
+            stored_url(&store, "lifting-app"),
+            edited,
+            "the user's edit stays"
+        );
+        assert_eq!(
+            stored_url(&store, "medications-app-dev"),
+            "http://localhost:5191/?launch={launch}&iss={origin}/fhir-r4",
+        );
+        assert_eq!(
+            stored_url(&store, "web-trace-app-dev"),
+            edited_dev,
+            "a dev row off the old seed's shape stays"
         );
     }
 

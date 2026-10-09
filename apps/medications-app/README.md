@@ -1,14 +1,14 @@
 # medications-app
 
-The first-party Medications SMART-on-FHIR app: two HTML entries, `launch.html`
-(the EHR launch endpoint that starts the OAuth2 authorize redirect) and
-`index.html` (the app root — the redirect target that completes the handshake
-and renders the app when a callback is in the URL, and the standalone connect
-menu, where the user picks a FHIR server, on a bare visit).
+The first-party Medications SMART-on-FHIR app. One HTML entry, `index.html`: the
+app root, which starts a SMART launch its URL carries (an EHR's `iss` and
+`launch`, or a lone `iss`), completes the handshake and renders the app when a
+callback is in the URL, and shows the standalone connect menu, where the user
+picks a FHIR server, on a bare visit.
 
 ## Boot structure
 
-Both entries run on `smart-app-react`, the chrome every first-party SMART app
+The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
 
 `src/main.tsx` is the `index.html` entry: it imports the design-system
@@ -18,11 +18,13 @@ completes a GitHub Pages 404 redirect, wires the OS colour-scheme listener, and
 renders `<AppRoot />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
-standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>` around
-`<App />`. `SmartAppRoot` shows the telemetry consent dialog before either
-branch, owns the single `QueryClientProvider`, and branches, latched on mount,
-on whether a SMART callback is in the URL:
+registration={smartRegistration} telemetry={smartAppTelemetry}>` around
+`<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+latches on mount which of three cases the URL is:
 
+- **Launch** (`iss`, with or without an EHR's `launch`, and no callback) —
+  shows a loading line under `BrandBar` and starts the authorize redirect,
+  sending a failed launch back to the app root as `?launchError`.
 - **Launched** (OAuth callback present) — renders `<BrandBar />` (a slim brand
   link back to the marketing site, with the telemetry status control at its
   end) above `<App />`.
@@ -31,18 +33,16 @@ on whether a SMART callback is in the URL:
   the telemetry status control, `<SiteFooter>`, with nav links resolving as
   absolute URLs back to `wildflowerhealth.io`.
 
+The launched and standalone branches share the root's single
+`QueryClientProvider`.
+
 `smartAppTelemetry` in `src/config.ts` names the app's Sentry project through
 the `VITE_SENTRY_DSN_MEDICATIONS_APP` build variable (see `.env.example`).
 Nothing is reported until the visitor says yes.
 
-`AppRoot` accepts an optional `launched` prop (defaults to the live URL check)
-so both branches are testable without URL manipulation. The package exports
+`AppRoot` accepts an optional `launched` prop (defaults to the live URL checks)
+so the launched and standalone branches are testable without URL manipulation. The package exports
 `AppRoot` via the `source` condition for future aggregator-shell composition.
-
-`src/launch-main.tsx` is the `launch.html` entry: the same stylesheet import,
-then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call,
-which shows a loading line under `BrandBar` and starts the authorize redirect,
-sending a failed launch back to the app root as `?launchError`.
 
 ## The patient
 

@@ -97,19 +97,19 @@ describe('FhirServerHome', () => {
     expect(screen.queryByRole('link', { name: /FHIR Sync for Pebble/ })).toBeNull()
   })
 
-  test("links each app's launch page on the site root it is given", async () => {
+  test("links each app's root on the site root it is given", async () => {
     // Act
     renderFhirServerHome()
 
     // Assert
     const appLinks = await findAppLinks()
     expect(appLinks.map((link) => link.href.split('?')[0])).toStrictEqual([
-      `${PREVIEW_SITE_ROOT}medications-app/launch.html`,
-      `${PREVIEW_SITE_ROOT}importer-app/launch.html`,
-      `${PREVIEW_SITE_ROOT}web-trace-app/launch.html`,
-      `${PREVIEW_SITE_ROOT}health-viewer-app/launch.html`,
-      `${PREVIEW_SITE_ROOT}synthetic-data-app/launch.html`,
-      `${PREVIEW_SITE_ROOT}lifting-app/launch.html`,
+      `${PREVIEW_SITE_ROOT}medications-app/`,
+      `${PREVIEW_SITE_ROOT}importer-app/`,
+      `${PREVIEW_SITE_ROOT}web-trace-app/`,
+      `${PREVIEW_SITE_ROOT}health-viewer-app/`,
+      `${PREVIEW_SITE_ROOT}synthetic-data-app/`,
+      `${PREVIEW_SITE_ROOT}lifting-app/`,
     ])
   })
 

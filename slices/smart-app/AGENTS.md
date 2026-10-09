@@ -10,12 +10,15 @@ slice is where the two meet, so neither has to know about the other.
 
 - **`smart-app-react`** — the only package. There is no `-core`: everything
   here is UI or DOM boot code.
-  - `SmartAppRoot({ app, standalone, telemetry, launched?, children })` — the
-    app root. `telemetry` (`SmartAppTelemetry`: `dsn`, `app`) names where the
-    app reports once the visitor consents: its own Sentry project's DSN and
-    the id its events are tagged with.
-  - `runSmartLaunchEntry({ launch, loadingMessage })` — the whole `launch.html`
-    entry.
+  - `SmartAppRoot({ app, registration, telemetry, launched?, replaceLocation?, children })`
+    — the app root, and the app's one page: it starts a SMART launch its URL
+    carries, completes the callback, and shows the landing on a plain visit.
+    `registration` is the app's SMART registration (`clientId` and `scope`),
+    for a launch the URL carries and for the connect menu alike. `telemetry`
+    (`SmartAppTelemetry`: `dsn`, `app`) names where the app reports once the
+    visitor consents: its own Sentry project's DSN and the id its events are
+    tagged with. `replaceLocation` replaces the page in the session history
+    when it leaves for the app root, and defaults to `window.location.replace`.
   - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
     standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
     base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
@@ -49,43 +52,63 @@ slice is where the two meet, so neither has to know about the other.
 
 Consumers: `apps/medications-app`, `apps/health-viewer`, `apps/lifting-app`,
 `apps/importer-web`, `apps/web-trace` and `apps/synthetic-data-app` mount
-`SmartAppRoot` and `runSmartLaunchEntry`; the first three speak the read-status
-lines, as does `synthetic-data-react`'s screen, and pick the patient with the
-patient choice; `apps/fhir-sync-pebble-web` is
-standalone-only, so it mounts `SmartAppRoot` with no launch entry;
+`SmartAppRoot`, which an EHR launches at the app root; the first three speak
+the read-status lines, as does `synthetic-data-react`'s screen, and pick the
+patient with the patient choice; `apps/fhir-sync-pebble-web` mounts
+`SmartAppRoot` too, but is only ever opened standalone;
 `apps/wildflower-react`'s landing uses only `ConnectMenu`, with
 `target: 'wildflower'`.
 
 ## Booting an app
 
-An app's two entries are each a few lines:
+An app has one entry, `index.html`, and it is a few lines:
 
 - `main.tsx` imports `react-tundraish/styles` (the design-system stylesheet
   stack, fonts included) before anything else, completes a GitHub Pages 404
   redirect (`restoreRedirectedUrl`), starts `addOsColorSchemeListener()`, and
-  renders `<SmartAppRoot app="…" standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}><App /></SmartAppRoot>`.
-  `config.ts` pairs the DSN, read from the app's own `VITE_SENTRY_DSN_<APP>`
-  build variable (typed in `env.d.ts`, named in `.env.example`), with the
-  app's id as `smartAppTelemetry`.
-- `launch-main.tsx` imports the same stylesheet module and calls
-  `runSmartLaunchEntry`.
+  renders `<SmartAppRoot app="…" registration={smartRegistration} telemetry={smartAppTelemetry}><App /></SmartAppRoot>`.
+  `config.ts` holds the app's SMART registration (`smartRegistration`), and pairs
+  the DSN, read from the app's own `VITE_SENTRY_DSN_<APP>` build variable
+  (typed in `env.d.ts`, named in `.env.example`), with the app's id as
+  `smartAppTelemetry`.
+
+The app root is the URL an EHR, the desktop base and the owner UI's plain
+SMART Home launch the app at (`?iss=…&launch=…`, or a lone `?iss=` for a
+standalone launch against that server), so there is no separate launch page.
 
 `branding-react`'s layout tokens arrive through its JS entry, so an app does not
 import `branding-react/styles.css` itself.
 
 ## Guardrails
 
+- **A launch waits for the consent answer, then starts once.** When
+  `arrivingSmartLaunchFrom` finds one (`iss`, with or without an EHR's
+  `launch`, and no callback), `SmartAppRoot` renders `LaunchPage`
+  (`Launching <app name>…` under `BrandBar`, the name from
+  `APP_DESCRIPTIONS`) inside the consent gate and a `CrashReportingBoundary`,
+  like the other branches, and authorizes with `authorizeFromLaunchPage` once
+  it mounts. A returning visitor's stored answer skips the dialog, so their
+  launch starts at once. A launch older than 5 minutes is refused, and the
+  failure lands on the connect menu. A ref guards the authorize, as
+  `ConnectMenu`'s `autoConnect` is guarded, so StrictMode's second effect run
+  cannot spend the launch twice. A page restored from the back-forward cache
+  after leaving for the authorization server does not re-run the authorize:
+  it replaces itself with the bare app root (`appRootRedirectUri`), a plain
+  visit with the connect menu. A launch that fails before it leaves replaces
+  the page with the app root carrying `?launchError`. Both navigations go
+  through `SmartAppRoot`'s `replaceLocation` prop, which defaults to
+  `window.location.replace` and lets the tests observe them.
 - **The consent dialog comes first, and nothing starts telemetry before a
-  yes.** `SmartAppRoot` renders both branches inside `telemetry-react`'s
-  `TelemetryConsentGate`, so until the visitor has answered the page is the
-  dialog alone: the connect menu does not mount, the app does not mount, and
-  no query runs. The answer goes to `telemetry-react`'s
+  yes.** `SmartAppRoot` renders every branch inside
+  `telemetry-react`'s `TelemetryConsentGate`, so until the visitor has
+  answered the page is the dialog alone: no launch is authorized, the connect
+  menu does not mount, the app does not mount, and no query runs. The answer goes to `telemetry-react`'s
   `useConsentedTelemetryStart`, which starts Sentry only when a switch is on;
   the owner UI's web entry starts through the same hook, so the start logic
   lives there, not here. The FHIR host tag waits for Sentry to run; the launch
   failure the page arrived with is reported once, from the hook's
   `onFirstStart`. The `CrashReportingBoundary`s (`telemetry-react`) around
-  the launched app and around the connect menu, and the `QueryClient`'s
+  the launch page, the launched app and the connect menu, and the `QueryClient`'s
   `onQueryError`, call `Sentry.captureException` unconditionally, which does
   nothing on an SDK that was never initialized.
   `onQueryError` skips the handshake query (`isSmartHandshakeQuery`): a failed
@@ -93,13 +116,13 @@ import `branding-react/styles.css` itself.
   there, so it is reported once. An app keeps the plain
   `FetchHttpClient.layer`. Tests cover each branch
   directly (`smart-app-root.test.tsx`).
-- **The telemetry status control is on both branches.** It sits in
+- **The telemetry status control is on the launched and standalone branches.** It sits in
   `BrandBar`'s `trailing` slot on the launched branch and in
   `AppLandingPage`'s `aboveFooter` row on the standalone branch, and reopens
   the dialog.
-- **The branch is latched on mount.** `SmartAppRoot` reads
-  `shouldCompleteSmartLaunch()` (or the `launched` prop) and `launchErrorFrom()`
-  once, in `useState` initializers. fhirclient's `oauth2.ready()` strips
+- **The case is latched on mount.** `SmartAppRoot` reads
+  `shouldCompleteSmartLaunch()` and `arrivingSmartLaunchFrom` (or the
+  `launched` prop) and `launchErrorFrom()` once, in `useState` initializers. fhirclient's `oauth2.ready()` strips
   `code`/`state` once the exchange completes, so re-reading the URL on a later
   render would flip a finished launch back to the connect menu under the
   authenticated app — and drop the failure banner a launch landed with.
@@ -111,12 +134,13 @@ import `branding-react/styles.css` itself.
   itself. See the `useSmartHandshake` guardrail in
   [slices/emr/AGENTS.md](../emr/AGENTS.md) for why the exchange must run once.
 - **Redirect targets are derived from the page URL, in render.** The shell's
-  `ConnectMenu` redirect, the launch page's, and a failed handshake's return
-  are all `fhir-r4-react/smart`'s `appRootRedirectUri(href)` (the page's
+  `ConnectMenu` redirect, a launch the URL carries, and a failed handshake's
+  return are all `fhir-r4-react/smart`'s `appRootRedirectUri(href)` (the page's
   directory), so the bundle works at whatever origin and path it is served
   from, and no module reads `window` as a side effect of being imported.
 - **A failed launch goes to the app root, never a dead end.** A rejected
-  `authorizeSmartLaunch` on the launch page is handed to the app root through
+  `authorizeSmartLaunch` on the launch page is handed to the app root, without
+  the launch, through
   `launchErrorRedirect`, where `SmartAppRoot` latches it and hands it to the
   `ConnectMenu` as its `arrivalProblem`; the contract is `fhir-r4-react/smart`'s
   `launch-error.ts`.

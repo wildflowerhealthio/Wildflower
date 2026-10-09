@@ -3,11 +3,10 @@
 The first-party Synthesized Health Viewer SMART-on-FHIR app: a patient's
 Observations and prescribed medication doses on one time axis, with up to four
 value axes, so a dose change can be read against the numbers it is meant to
-move. Two HTML entries, `launch.html` (the EHR launch endpoint that starts the
-OAuth2 authorize redirect) and `index.html` (the app root — the redirect target
-that completes the handshake and renders the app when a callback is in the URL,
-and the standalone connect menu, where the user picks a FHIR server, on a bare
-visit).
+move. One HTML entry, `index.html`: the app root, which starts a SMART launch
+its URL carries (an EHR's `iss` and `launch`, or a lone `iss`), completes the
+handshake and renders the app when a callback is in the URL, and shows the
+standalone connect menu, where the user picks a FHIR server, on a bare visit.
 
 The chart, the series panel, the range presets and the page layout are
 [`health-viewer-react`](../../slices/health-viewer/health-viewer-react/AGENTS.md)'s;
@@ -17,7 +16,7 @@ This package is the SMART shell around them and the wiring between them.
 
 ## Boot structure
 
-Both entries run on `smart-app-react`, the chrome every first-party SMART app
+The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)),
 exactly as `apps/medications-app` does.
 
@@ -27,18 +26,16 @@ redirect, wires the OS colour-scheme listener, and renders `<AppRoot />` inside
 `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="healthViewer"
-standalone={standaloneSmartConfig} telemetry={smartAppTelemetry}>` around
-`<App />`. `SmartAppRoot` shows the telemetry consent dialog before either
-branch (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
+registration={smartRegistration} telemetry={smartAppTelemetry}>` around
+`<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+starts a launch the URL carries under a loading line or renders one of the
+other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
 through the `VITE_SENTRY_DSN_HEALTH_VIEWER` build variable; see
 `.env.example`), owns the single `QueryClientProvider`, and branches, latched on mount, on whether a SMART
 callback is in the URL — the slim `BrandBar` above `<App />` when launched, the
 full Wildflower chrome with `APP_DESCRIPTIONS.healthViewer`'s `AppLanding`
 beside `ConnectMenu` on a bare visit. The package exports `AppRoot` via the
 `source` condition for future aggregator-shell composition.
-
-`src/launch-main.tsx` is the `launch.html` entry: the same stylesheet import,
-then one `runSmartLaunchEntry({ launch: smartConfig, loadingMessage })` call.
 
 ## The page
 
@@ -120,8 +117,9 @@ equal the client's allowed scopes; `gatekeeper-rust`'s `seeding.rs` test reads
 `config.ts` to hold both clients to it.
 
 - **`health-viewer-app`** is a row (apps migration
-  `0015_seed_health_viewer_app`) launching
-  `https://wildflowerhealth.io/health-viewer-app/launch.html?launch={launch}&iss={origin}/fhir-r4`
+  `0015_seed_health_viewer_app`, its URL as
+  `0016_launch_first_party_apps_at_root` left it) launching
+  `https://wildflowerhealth.io/health-viewer-app/?launch={launch}&iss={origin}/fhir-r4`
   with `requires_tunnel` set, as every first-party row has. Its public OAuth
   client (gatekeeper migration `0022_seed_health_viewer_app_client`) redirects
   to `https://wildflowerhealth.io/health-viewer-app/`.

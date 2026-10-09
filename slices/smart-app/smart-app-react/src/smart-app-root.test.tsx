@@ -6,14 +6,16 @@ import {
   TELEMETRY_CONSENT_COPY,
   type AppSectionId,
 } from 'branding-core'
+import { Option } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 import { StrictMode, type JSX } from 'react'
 import { type TelemetryConsent, writeConsent } from 'telemetry-core'
 import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
+import { decodeLaunchError, encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
 
+import type * as AuthorizeFromLaunchPage from './authorize-from-launch-page.ts'
 import type { ConnectMenuProps } from './connect-menu.tsx'
 import { SmartAppRoot, type SmartAppTelemetry } from './smart-app-root.tsx'
 
@@ -48,13 +50,28 @@ vi.mock('telemetry-web', async (importOriginal) => {
 
 // fhirclient's `oauth2.ready()` is the token exchange the app's handshake runs;
 // by default it resolves to a client connected to `FHIR_SERVER_URL`, and the
-// spy counts how often the single-use code would have been posted.
+// spy counts how often the single-use code would have been posted. Its
+// `oauth2.authorize()` is the redirect a launch the page arrives with starts;
+// the spy counts how often the single-use launch would have been spent.
 const FHIR_SERVER_URL = 'https://fhir.example:8443/r4'
-const { tokenExchangeMock } = vi.hoisted(() => ({
+const { tokenExchangeMock, authorizeMock } = vi.hoisted(() => ({
   tokenExchangeMock: vi.fn(() => Promise.resolve(clientConnectedTo(FHIR_SERVER_URL))),
+  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<void>>(),
 }))
 vi.mock('fhirclient', () => ({
-  default: { oauth2: { ready: tokenExchangeMock } },
+  default: { oauth2: { ready: tokenExchangeMock, authorize: authorizeMock } },
+}))
+
+// The root's own authorize entry, spied through to the real one: it counts
+// every authorize the root starts. Under StrictMode's second effect run the
+// mocked fhirclient import above can resolve to the real package, whose
+// `oauth2` is absent under jsdom, so a second authorize would fail before it
+// reached `authorizeMock`; this count sees it either way.
+const { authorizeFromLaunchPageSpy } = vi.hoisted(() => ({
+  authorizeFromLaunchPageSpy: vi.fn<typeof AuthorizeFromLaunchPage.authorizeFromLaunchPage>(),
+}))
+vi.mock('./authorize-from-launch-page.ts', () => ({
+  authorizeFromLaunchPage: authorizeFromLaunchPageSpy,
 }))
 
 // The stubbed connect menu throws this from render when it is set, as a
@@ -62,7 +79,7 @@ vi.mock('fhirclient', () => ({
 const connectMenuRenderFailure: { current: Error | undefined } = { current: undefined }
 
 // The stub echoes the props it was handed as data attributes so the wiring
-// (the SMART target, `clientId` / `scope` from the `standalone` prop,
+// (the SMART target, `clientId` / `scope` from the `registration` prop,
 // `redirectUri` from the URL, the latched launch failure as `arrivalProblem`)
 // is observable. The branding chrome renders for real; the menu's own banner is
 // `connect-menu.test.tsx`'s.
@@ -86,7 +103,7 @@ vi.mock('./connect-menu.tsx', () => ({
   },
 }))
 
-const STANDALONE = {
+const REGISTRATION = {
   clientId: 'medications-app',
   scope: 'launch openid fhirUser system/MedicationRequest.rs',
 }
@@ -99,6 +116,9 @@ const TELEMETRY: SmartAppTelemetry = {
 const MARKETING_ORIGIN = 'https://wildflowerhealth.io/'
 
 const STATUS_CONTROL_NAME = /change telemetry settings/
+
+/** An EHR launch, as the desktop base opens a server's launcher with it. */
+const EHR_LAUNCH = '?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4&launch=xyz'
 
 /** A launch the launch page could not start, as it lands in `?launchError=`. */
 const FAILED_LAUNCH = encodeLaunchError({
@@ -159,7 +179,7 @@ describe('SmartAppRoot', () => {
     expect(screen.queryByTestId('app')).toBeNull()
   })
 
-  it('should hand the connect menu the SMART target, the standalone config and this root as its redirect', () => {
+  it('should hand the connect menu the SMART target, the registration and this root as its redirect', () => {
     // Arrange — served from a subpath, with a query that must not leak into the redirect
     setUrl('/importer-app/index.html?utm_source=email')
 
@@ -169,8 +189,8 @@ describe('SmartAppRoot', () => {
     // Assert
     const menu = screen.getByTestId('connect-menu-stub')
     expect(menu.getAttribute('data-target')).toBe('fhir-r4')
-    expect(menu.getAttribute('data-client-id')).toBe(STANDALONE.clientId)
-    expect(menu.getAttribute('data-scope')).toBe(STANDALONE.scope)
+    expect(menu.getAttribute('data-client-id')).toBe(REGISTRATION.clientId)
+    expect(menu.getAttribute('data-scope')).toBe(REGISTRATION.scope)
     expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer-app/`)
   })
 
@@ -261,14 +281,14 @@ describe('SmartAppRoot', () => {
     // Act — rendered twice (StrictMode) and then re-rendered
     const { rerender } = render(
       <StrictMode>
-        <SmartAppRoot app="medications" standalone={STANDALONE} telemetry={TELEMETRY} launched>
+        <SmartAppRoot app="medications" registration={REGISTRATION} telemetry={TELEMETRY} launched>
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
     )
     rerender(
       <StrictMode>
-        <SmartAppRoot app="medications" standalone={STANDALONE} telemetry={TELEMETRY} launched>
+        <SmartAppRoot app="medications" registration={REGISTRATION} telemetry={TELEMETRY} launched>
           <HandshakeProbe seen={seen} />
         </SmartAppRoot>
       </StrictMode>
@@ -316,6 +336,178 @@ describe('SmartAppRoot', () => {
     // Assert
     expect(arrivalProblem()).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('SmartAppRoot on a launch', () => {
+  beforeEach(async () => {
+    // Discovery never settles, as while the authorize redirect is pending
+    authorizeMock.mockReturnValue(new Promise<never>(() => undefined))
+    const actual = await vi.importActual<typeof AuthorizeFromLaunchPage>(
+      './authorize-from-launch-page.ts'
+    )
+    authorizeFromLaunchPageSpy.mockImplementation(actual.authorizeFromLaunchPage)
+  })
+
+  // The tests below run as a returning visitor, whose stored answer skips the
+  // dialog, unless they say otherwise.
+  describe('with a stored consent answer', () => {
+    beforeEach(() => {
+      storeConsent({ crashReports: false, performance: false })
+    })
+
+    it.each([
+      { case: 'an EHR launch', search: EHR_LAUNCH },
+      { case: 'a lone iss', search: '?iss=https%3A%2F%2Ffhir.example%2Fr4' },
+    ])('should authorize $case once, from the app root, under StrictMode', async ({ search }) => {
+      // Arrange
+      setUrl(`/importer-app/${search}`)
+
+      // Act
+      renderShell({})
+
+      // Assert — the registration, with this root as the redirect; fhirclient
+      // reads `iss` and `launch` off the URL itself
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+      expect(authorizeMock).toHaveBeenCalledWith({
+        ...REGISTRATION,
+        redirectUri: `${window.location.origin}/importer-app/`,
+      })
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('should show the launch page, naming the app, with no dialog', async () => {
+      // Arrange
+      setUrl(`/${EHR_LAUNCH}`)
+
+      // Act
+      renderShell({ app: 'importer' })
+
+      // Assert — the launch page alone: no dialog, no app, no connect menu
+      expect(screen.getByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeDefined()
+      expect(screen.getByRole('link', { name: 'Wildflower, home' })).toBeDefined()
+      expect(openDialog()).toBeNull()
+      expect(screen.queryByTestId('app')).toBeNull()
+      expect(screen.queryByTestId('connect-menu-stub')).toBeNull()
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('should not authorize again on a later render with a new registration object', async () => {
+      // Arrange — a fresh, equal registration on every render re-runs the
+      // authorize effect, so only the guard keeps the launch from being spent
+      // twice
+      setUrl(`/${EHR_LAUNCH}`)
+      const { rerender } = render(<Shell registration={{ ...REGISTRATION }} />)
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+
+      // Act
+      rerender(<Shell registration={{ ...REGISTRATION }} />)
+
+      // Assert
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('should send a launch that fails to start to the app root as ?launchError, once', async () => {
+      // Arrange — discovery fails, as for an unreachable iss
+      authorizeMock.mockRejectedValue(new Error('Failed to fetch'))
+      const replaceLocation = vi.fn<(url: string) => void>()
+      setUrl(`/importer-app/${EHR_LAUNCH}`)
+
+      // Act
+      renderShell({ replaceLocation })
+
+      // Assert — one navigation, to the bare app root carrying the failure
+      await waitFor(() => {
+        expect(replaceLocation).toHaveBeenCalledTimes(1)
+      })
+      const target = new URL(replaceLocation.mock.calls[0]?.[0] ?? '')
+      expect(`${target.origin}${target.pathname}`).toBe(`${window.location.origin}/importer-app/`)
+      expect([...target.searchParams.keys()]).toStrictEqual(['launchError'])
+      expect(decodeLaunchError(target.searchParams.get('launchError') ?? '')).toStrictEqual(
+        Option.some({
+          error: 'AuthorizeFailed',
+          message: 'Failed to fetch',
+          iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
+        })
+      )
+    })
+
+    it('should leave for the bare app root when restored from the back-forward cache', async () => {
+      // Arrange — the launch has left for the authorization server
+      const replaceLocation = vi.fn<(url: string) => void>()
+      setUrl(`/importer-app/${EHR_LAUNCH}`)
+      renderShell({ replaceLocation })
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+
+      // Act — an ordinary `pageshow` (a fresh load) is not a restore
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }))
+
+      // Assert
+      expect(replaceLocation).not.toHaveBeenCalled()
+
+      // Act — Back from the authorization server restores the page
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+
+      // Assert — a plain visit to the app root, and the spent launch not reused
+      expect(replaceLocation.mock.calls).toStrictEqual([
+        [`${window.location.origin}/importer-app/`],
+      ])
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+      { case: 'a callback', search: `${EHR_LAUNCH}&code=abc&state=xyz`, expectApp: true },
+      {
+        case: 'an OAuth error return',
+        search: `${EHR_LAUNCH}&error=access_denied`,
+        expectApp: false,
+      },
+      { case: 'a lone launch', search: '?launch=xyz', expectApp: false },
+    ])('should not start a launch on $case', ({ search, expectApp }) => {
+      // Arrange
+      setUrl(`/${search}`)
+
+      // Act
+      renderShell({})
+
+      // Assert — the callback or the landing, and no authorize
+      expect(screen.queryByTestId('app') !== null).toBe(expectApp)
+      expect(screen.queryByTestId('connect-menu-stub') !== null).toBe(!expectApp)
+      expect(authorizeFromLaunchPageSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  it('should not authorize before the visitor answers, and authorize once after', async () => {
+    // Arrange — a first visit: no stored answer, under StrictMode
+    setUrl(`/${EHR_LAUNCH}`)
+    renderShell({ app: 'importer' })
+
+    // Assert — the dialog alone, and the launch not yet spent
+    expect(openDialog()).not.toBeNull()
+    expect(screen.queryByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeNull()
+    expect(authorizeFromLaunchPageSpy).not.toHaveBeenCalled()
+
+    // Act
+    answerDialog({ crashReports: true, performance: false })
+
+    // Assert — telemetry tagged for the launch, then one authorize
+    await waitFor(() => {
+      expect(authorizeMock).toHaveBeenCalledTimes(1)
+    })
+    expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeDefined()
+    expect(initConsentedTelemetryMock.mock.calls[0]?.[0].tags).toStrictEqual({
+      app: TELEMETRY.app,
+      launch: 'launching',
+    })
   })
 })
 
@@ -574,7 +766,7 @@ describe('SmartAppRoot telemetry consent', () => {
       render(
         <SmartAppRoot
           app="medications"
-          standalone={STANDALONE}
+          registration={REGISTRATION}
           telemetry={{ dsn: appDsn, app: TELEMETRY.app }}
           launched={false}
         >
@@ -615,12 +807,18 @@ function setUrl(url: string): void {
   window.history.replaceState({}, '', url)
 }
 
-/** The shell around a stub app, with the test's standalone config. */
-function Shell({ launched }: { readonly launched?: boolean }): JSX.Element {
+/** The shell around a stub app, with the test's registration unless given another. */
+function Shell({
+  launched,
+  registration = REGISTRATION,
+}: {
+  readonly launched?: boolean
+  readonly registration?: typeof REGISTRATION
+}): JSX.Element {
   return (
     <SmartAppRoot
       app="medications"
-      standalone={STANDALONE}
+      registration={registration}
       telemetry={TELEMETRY}
       launched={launched}
     >
@@ -633,15 +831,23 @@ function Shell({ launched }: { readonly launched?: boolean }): JSX.Element {
 function renderShell({
   app = 'medications',
   launched,
+  replaceLocation,
   children = <div data-testid="app" />,
 }: {
   readonly app?: AppSectionId
   readonly launched?: boolean
+  readonly replaceLocation?: (url: string) => void
   readonly children?: JSX.Element
 }): void {
   render(
     <StrictMode>
-      <SmartAppRoot app={app} standalone={STANDALONE} telemetry={TELEMETRY} launched={launched}>
+      <SmartAppRoot
+        app={app}
+        registration={REGISTRATION}
+        telemetry={TELEMETRY}
+        launched={launched}
+        replaceLocation={replaceLocation}
+      >
         {children}
       </SmartAppRoot>
     </StrictMode>
