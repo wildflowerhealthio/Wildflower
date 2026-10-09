@@ -1,5 +1,6 @@
 import { Option, Schema } from 'effect'
 
+import * as CertificateAuthority from './certificate-authority.ts'
 import type * as CertificateState from './certificate-state.ts'
 import type * as ServerStatus from './server-status.ts'
 
@@ -7,15 +8,17 @@ import type * as ServerStatus from './server-status.ts'
  * The refusals `server_launch` answers from the server's status alone, before
  * it mints anything: the server's run isn't up (`serverNotRunning`), its
  * `/health` hasn't been asked through its relay yet (`notYetProbed`) or didn't
- * answer (`unreachable`), or it holds no valid certificate
- * (`noValidCertificate`). {@link statusRefusalOf} decides the same from a
- * status.
+ * answer (`unreachable`), it holds no valid certificate
+ * (`noValidCertificate`), or its valid certificate is from a CA browsers don't
+ * trust, such as Let's Encrypt's staging CA (`untrustedCertificate`).
+ * {@link statusRefusalOf} decides the same from a status.
  */
 const StatusRefusalKindSchema = Schema.Literal(
   'serverNotRunning',
   'notYetProbed',
   'unreachable',
-  'noValidCertificate'
+  'noValidCertificate',
+  'untrustedCertificate'
 )
 
 /** A decoded {@link StatusRefusalKindSchema}. */
@@ -30,7 +33,8 @@ const VALID_CERTIFICATE_STATUSES: readonly CertificateState.Status[] = [
 /**
  * Why the server whose status is `status` can't be launched now, as
  * `server_launch` refuses it; none once it can: its run is up, its `/health`
- * answered through its relay, and its certificate is valid.
+ * answered through its relay, and its certificate is valid and from a CA
+ * browsers trust.
  *
  * @remarks
  * The host decides from the same status, its certificate included: the
@@ -42,9 +46,12 @@ const statusRefusalOf = (status: ServerStatus.Type): Option.Option<StatusRefusal
   if (status.runState !== 'running') return Option.some('serverNotRunning')
   if (Option.isNone(status.health)) return Option.some('notYetProbed')
   if (status.health.value.kind === 'unreachable') return Option.some('unreachable')
-  return VALID_CERTIFICATE_STATUSES.includes(status.certificate.status)
+  if (!VALID_CERTIFICATE_STATUSES.includes(status.certificate.status)) {
+    return Option.some('noValidCertificate')
+  }
+  return CertificateAuthority.isBrowserTrusted(status.certificate.issuer)
     ? Option.none()
-    : Option.some('noValidCertificate')
+    : Option.some('untrustedCertificate')
 }
 
 export { StatusRefusalKindSchema, statusRefusalOf }

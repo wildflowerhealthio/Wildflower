@@ -22,12 +22,26 @@ pub(crate) struct TestGatekeeper {
     pub(crate) store: SqliteGatekeeperStore,
     _pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     _owner_token_rx: watch::Receiver<Option<String>>,
-    _database_dir: tempfile::TempDir,
+    database_dir: tempfile::TempDir,
 }
+
+impl TestGatekeeper {
+    /// How many launches the gatekeeper has minted.
+    pub(crate) fn minted_launches(&self) -> i64 {
+        persistence_rust::Connection::open(&self.database_dir.path().join(DATABASE_FILE))
+            .unwrap()
+            .lock()
+            .query_row("SELECT COUNT(*) FROM launch_contexts", [], |row| row.get(0))
+            .unwrap()
+    }
+}
+
+/// The gatekeeper's database in its temporary folder.
+const DATABASE_FILE: &str = "wildflower.sqlite";
 
 pub(crate) fn test_gatekeeper() -> TestGatekeeper {
     let database_dir = tempfile::tempdir().unwrap();
-    let pool = persistence_rust::open_pool(&database_dir.path().join("wildflower.sqlite")).unwrap();
+    let pool = persistence_rust::open_pool(&database_dir.path().join(DATABASE_FILE)).unwrap();
     let revocation_store = token_revocation_rust::RevocationStore::new(
         persistence_rust::Connection::open_in_memory().unwrap(),
     )
@@ -55,6 +69,6 @@ pub(crate) fn test_gatekeeper() -> TestGatekeeper {
         store: SqliteGatekeeperStore::new(pool).unwrap(),
         _pending_consent_rx: pending_consent_rx,
         _owner_token_rx: owner_token_rx,
-        _database_dir: database_dir,
+        database_dir,
     }
 }

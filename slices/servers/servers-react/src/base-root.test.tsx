@@ -903,6 +903,24 @@ describe('Launch', () => {
     expect(launchOn(RUTH).disabled).toBe(true)
   })
 
+  it("should be disabled for a running server whose certificate browsers don't trust, saying why", async () => {
+    // Arrange
+    const events = fakeEvents()
+    renderLaunching({ events })
+    await screen.findByRole('listitem', { name: RUTH })
+
+    // Act
+    events.emit('server-status', golden.serverStatuses.runningAndReachableOnStaging)
+
+    // Assert
+    expect(
+      await within(serverRow(RUTH)).findByText(
+        "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust."
+      )
+    ).toBeDefined()
+    expect(launchOn(RUTH).disabled).toBe(true)
+  })
+
   it.each([
     ['starting', golden.serverStatuses.startingUnchecked, 'The server is starting.'],
     [

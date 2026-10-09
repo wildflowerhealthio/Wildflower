@@ -2,6 +2,7 @@ import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
+import * as CertificateAuthority from './certificate-authority.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as LaunchError from './launch-error.ts'
 import { launchServer } from './server-commands.ts'
@@ -41,6 +42,21 @@ describe('LaunchError.statusRefusalOf', () => {
 
       // Assert
       expect(refused).toEqual(Option.fromNullable(refusal))
+    }
+  )
+})
+
+describe('CertificateAuthority.isBrowserTrusted', () => {
+  it.each(Object.entries(golden.browserTrustedCertificateAuthorities))(
+    'should say whether browsers trust %s as the host does',
+    (authority, trusted) => {
+      // Act
+      const said = CertificateAuthority.isBrowserTrusted(
+        Schema.decodeUnknownSync(CertificateAuthority.Schema)(authority)
+      )
+
+      // Assert
+      expect(said).toBe(trusted)
     }
   )
 })

@@ -4,7 +4,7 @@ use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 
-use crate::domain::RegistryError;
+use crate::domain::{CertificateAuthority, RegistryError};
 
 /// Why a server's launcher couldn't be opened. Serialises as
 /// `{"kind", "message"}`.
@@ -20,10 +20,21 @@ pub enum LaunchError {
     /// The server's `/health` didn't answer through its relay.
     #[error("the server {domain} can't be reached through its relay: {error}")]
     Unreachable { domain: String, error: String },
-    /// The server holds no certificate an app's browser would accept: it is
-    /// ordering one, or its orders are failing.
+    /// The server's certificate isn't valid: none is issued yet, it is
+    /// being ordered, its orders are failing, it has expired, or its cache
+    /// can't be read.
     #[error("the server {domain} has no valid certificate")]
     NoValidCertificate { domain: String },
+    /// The server's certificate is valid, but from a CA browsers don't
+    /// trust, so an app's browser would refuse it.
+    #[error(
+        "the server {domain}'s certificate is from {}, which browsers don't trust",
+        issuer.name()
+    )]
+    UntrustedCertificate {
+        domain: String,
+        issuer: CertificateAuthority,
+    },
     /// The server's gatekeeper couldn't mint the launch.
     #[error("the server's gatekeeper failed: {0}")]
     Gatekeeper(#[from] GatekeeperError),
@@ -46,6 +57,7 @@ impl LaunchError {
             Self::NotYetProbed { .. } => "notYetProbed",
             Self::Unreachable { .. } => "unreachable",
             Self::NoValidCertificate { .. } => "noValidCertificate",
+            Self::UntrustedCertificate { .. } => "untrustedCertificate",
             Self::Gatekeeper(_) => "gatekeeper",
             Self::OpeningLauncher { .. } => "openingLauncher",
             Self::Registry(registry_error) => registry_error.kind(),
@@ -98,6 +110,13 @@ mod tests {
                 "noValidCertificate",
             ),
             (
+                LaunchError::UntrustedCertificate {
+                    domain: DOMAIN.to_owned(),
+                    issuer: CertificateAuthority::LetsEncryptStaging,
+                },
+                "untrustedCertificate",
+            ),
+            (
                 LaunchError::Gatekeeper(GatekeeperError::infrastructure(
                     "minting a launch",
                     "the database is locked",
@@ -143,6 +162,10 @@ mod tests {
             LaunchError::Registry(RegistryError::NotRegistered {
                 domain: DOMAIN.to_owned(),
             }),
+            LaunchError::UntrustedCertificate {
+                domain: DOMAIN.to_owned(),
+                issuer: CertificateAuthority::LetsEncryptStaging,
+            },
         ];
         assert_eq!(
             serde_json::to_value(errors).unwrap(),

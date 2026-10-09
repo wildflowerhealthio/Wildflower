@@ -229,10 +229,17 @@ mod tests {
         (data_root, Arc::new(registry))
     }
 
+    /// A change to a launchable run's detail.
+    type DetailChange = fn(&mut ServerDetail);
+
     /// The servers' statuses with the server's run up over `gatekeeper`,
-    /// reachable through its relay, with a valid certificate.
-    fn launchable(gatekeeper: &TestGatekeeper) -> UnitStatuses<ServerDetail> {
-        let detail = ServerDetail {
+    /// reachable through its relay, with a valid certificate from Let's
+    /// Encrypt, changed by `change`.
+    fn running_with(
+        gatekeeper: &TestGatekeeper,
+        change: impl FnOnce(&mut ServerDetail),
+    ) -> UnitStatuses<ServerDetail> {
+        let mut detail = ServerDetail {
             health: Some(ServerHealth::Reachable(HealthReport::pass())),
             certificate: Some(CertificateState {
                 status: CertificateStatus::NoRenewalNeeded,
@@ -246,12 +253,18 @@ mod tests {
                 gatekeeper.launch_context_minter.clone(),
             )),
         };
+        change(&mut detail);
         let status = UnitStatus {
             run_state: RunState::Running,
             running_since: None,
             detail: Some(detail),
         };
         [(UnitId::new(DOMAIN), status)].into()
+    }
+
+    /// The servers' statuses with the server launchable over `gatekeeper`.
+    fn launchable(gatekeeper: &TestGatekeeper) -> UnitStatuses<ServerDetail> {
+        running_with(gatekeeper, |_| {})
     }
 
     #[test]
@@ -298,6 +311,45 @@ mod tests {
         );
         assert_eq!(query[2].0, "launch");
         assert!(!query[2].1.is_empty(), "a minted launch: {launch_url}");
+        assert_eq!(gatekeeper.minted_launches(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_running_server_the_status_refuses_opens_nothing_and_mints_nothing() {
+        let unreachable = |detail: &mut ServerDetail| {
+            detail.health = Some(ServerHealth::Unreachable {
+                error: "the relay answered 502".to_owned(),
+            });
+        };
+        let ordering = |detail: &mut ServerDetail| {
+            detail.certificate.as_mut().unwrap().status = CertificateStatus::Ordering;
+        };
+        let on_staging = |detail: &mut ServerDetail| {
+            detail.certificate.as_mut().unwrap().issuer = CertificateAuthority::LetsEncryptStaging;
+        };
+        let changes: [(&str, DetailChange); 3] = [
+            ("unreachable", unreachable),
+            ("noValidCertificate", ordering),
+            ("untrustedCertificate", on_staging),
+        ];
+        for (kind, change) in changes {
+            let gatekeeper = test_gatekeeper();
+            let (data_root, registry) = registry();
+            let opened = OpenedLaunchers::default();
+
+            let refused = launch(
+                registry,
+                data_root.path(),
+                &running_with(&gatekeeper, change),
+                DOMAIN.to_owned(),
+                opened.clone(),
+            )
+            .await;
+
+            assert_eq!(refused.map_err(|error| error.kind()), Err(kind));
+            assert!(opened.0.lock().unwrap().is_empty(), "{kind}");
+            assert_eq!(gatekeeper.minted_launches(), 0, "{kind}");
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

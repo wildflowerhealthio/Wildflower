@@ -24,6 +24,8 @@ const REFUSAL_REASON: Readonly<
   notYetProbed: "The server hasn't been reached through its relay yet.",
   unreachable: "The server can't be reached through its relay.",
   noValidCertificate: 'The server has no valid certificate yet.',
+  untrustedCertificate:
+    "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
 }
 
 /** Why Launch is disabled for a server that isn't running while its policy wants it running. */
@@ -53,7 +55,8 @@ type LaunchPhase = 'idle' | 'confirmingStart' | 'starting'
  *   (starting, or waiting to start again), it is disabled and says so:
  *   launching never changes an active policy or extends an `until`.
  * - For a running server the host would refuse (not yet reached, unreachable,
- *   no valid certificate), it is disabled and says why.
+ *   no valid certificate, a certificate browsers don't trust), it is disabled
+ *   and says why.
  * - Otherwise it launches, and shows the host's refusal when there is one.
  *
  * The host refuses at once whenever a server isn't launchable; waiting for a

@@ -54,7 +54,7 @@ fn is_a_launch_param(param: &str) -> bool {
 /// The detail of the run of the server whose status is `status`, once the
 /// server can be launched: its run is up, its `/health` has answered through
 /// its relay, and its certificate is valid (no renewal needed, or renewal
-/// due). Nothing waits for any of them: the base waits, and asks again.
+/// due) and from a CA browsers trust. Nothing waits for any of them: the base waits, and asks again.
 ///
 /// The certificate is the status's, the state the base receives: its run's,
 /// once the run has reported one, or else what its cache says. So the base,
@@ -66,7 +66,9 @@ fn is_a_launch_param(param: &str) -> bool {
 /// - [`LaunchError::NotYetProbed`] when its `/health` hasn't been asked yet,
 ///   or its run hasn't reported a detail;
 /// - [`LaunchError::Unreachable`] when it didn't answer;
-/// - [`LaunchError::NoValidCertificate`] when its certificate isn't valid.
+/// - [`LaunchError::NoValidCertificate`] when its certificate isn't valid;
+/// - [`LaunchError::UntrustedCertificate`] when it is, but from a CA browsers
+///   don't trust, such as Let's Encrypt's staging CA.
 pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchError> {
     let domain = || status.domain.clone();
     if status.unit_status.run_state != RunState::Running {
@@ -95,6 +97,13 @@ pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchE
     ) {
         return Err(LaunchError::NoValidCertificate { domain: domain() });
     }
+    let issuer = status.certificate.issuer;
+    if !issuer.is_browser_trusted() {
+        return Err(LaunchError::UntrustedCertificate {
+            domain: domain(),
+            issuer,
+        });
+    }
     Ok(detail)
 }
 
@@ -103,10 +112,10 @@ mod tests {
     use super::*;
     use unit_runner::UnitStatus;
 
-    use crate::domain::golden;
     use crate::domain::server_status::tests::{
         cached, golden_statuses, running_and_reachable, RUTH,
     };
+    use crate::domain::{golden, CertificateAuthority};
 
     fn launcher(url: &str) -> Url {
         Url::parse(url).unwrap()
@@ -255,6 +264,54 @@ mod tests {
                 "{certificate_status:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_valid_certificate_from_a_ca_browsers_don_t_trust_is_refused() {
+        let mut on_staging = running_and_reachable_with(CertificateStatus::NoRenewalNeeded);
+        on_staging.certificate.issuer = CertificateAuthority::LetsEncryptStaging;
+        let refused = ensure_launchable(&on_staging);
+        assert!(
+            matches!(
+                &refused,
+                Err(LaunchError::UntrustedCertificate { issuer, .. })
+                    if *issuer == CertificateAuthority::LetsEncryptStaging
+            ),
+            "{refused:?}"
+        );
+        // A certificate that isn't valid is refused as that first.
+        on_staging.certificate.status = CertificateStatus::Ordering;
+        assert!(matches!(
+            ensure_launchable(&on_staging),
+            Err(LaunchError::NoValidCertificate { .. })
+        ));
+    }
+
+    /// Which CAs browsers trust is as the golden file says: `servers-core`
+    /// checks its own against the same entries.
+    #[test]
+    fn the_browser_trusted_cas_are_as_the_golden_file_says() {
+        let golden = golden();
+        let authorities = [
+            CertificateAuthority::LetsEncrypt,
+            CertificateAuthority::LetsEncryptStaging,
+        ];
+        for authority in authorities {
+            let wire_name = serde_json::to_value(authority).unwrap();
+            assert_eq!(
+                golden["browserTrustedCertificateAuthorities"][wire_name.as_str().unwrap()],
+                authority.is_browser_trusted(),
+                "{authority:?}"
+            );
+        }
+        assert_eq!(
+            golden["browserTrustedCertificateAuthorities"]
+                .as_object()
+                .unwrap()
+                .len(),
+            authorities.len(),
+            "every CA is checked"
+        );
     }
 
     #[test]

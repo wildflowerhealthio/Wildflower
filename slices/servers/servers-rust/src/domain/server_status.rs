@@ -357,6 +357,21 @@ pub(crate) mod tests {
         vec![
             ("runningAndReachable", status(running_and_reachable())),
             (
+                "runningAndReachableOnStaging",
+                status({
+                    let mut on_staging = running_and_reachable();
+                    on_staging
+                        .detail
+                        .as_mut()
+                        .unwrap()
+                        .certificate
+                        .as_mut()
+                        .unwrap()
+                        .issuer = CertificateAuthority::LetsEncryptStaging;
+                    on_staging
+                }),
+            ),
+            (
                 "runningAndReachableWithACachedCertificate",
                 with_cached(
                     {

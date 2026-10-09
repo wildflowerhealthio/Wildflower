@@ -125,7 +125,7 @@ changing how servers run or what the host notifies about them.
   Launch opens the server's launcher through `server_launch`. It
   is disabled, saying why, while the webview is offline (`navigator.onLine`),
   for a running server the host would refuse (not yet reached, unreachable,
-  no valid certificate), and for a server that isn't running while its run
+  no valid certificate, a certificate browsers don't trust), and for a server that isn't running while its run
   policy still wants it running. For a server that isn't running whose
   policy is `off` or an ended `until`, it asks "Start server and launch?";
   confirming sets `whileOpen`, then it shows "Starting…", with Cancel, until
@@ -344,7 +344,8 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   once unless `ensure_launchable` passes for the server's status, the one
   the base receives (its run is up, its `health` `reachable`, its
   `certificate`, the run's or else the cache's, `noRenewalNeeded` or
-  `renewalDue`), mints a launch through the `ServerLaunchMinter` in the
+  `renewalDue` and from a CA browsers trust,
+  `CertificateAuthority::is_browser_trusted`), mints a launch through the `ServerLaunchMinter` in the
   run's detail on a blocking thread, and opens `launch_url`: the launcher
   URL with `iss=https://<domain>/fhir-r4` and `launch` in its query, any
   earlier `iss` or `launch` dropped and its other parameters kept as
@@ -354,9 +355,10 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   user dismissal disposes it, so it stops counting as an open window for
   `WhileOpen`. It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `notYetProbed`, `unreachable`,
-  `noValidCertificate`, `gatekeeper`, `openingLauncher`, or the registry's
+  `noValidCertificate`, `untrustedCertificate` (a valid certificate from
+  Let's Encrypt's staging CA), `gatekeeper`, `openingLauncher`, or the registry's
   `notRegistered` or `registry`. The golden file pins the refusals the base
-  shows.
+  shows and which CAs browsers trust.
 - **One `pending-consent` per change.** A run's gatekeeper publishes its
   queue's head on the run's own channel; the run sets it as
   `ServerDetail::pending_consent` (and forwards it to the host's shared
