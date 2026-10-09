@@ -31,7 +31,7 @@ use unit_runner::RunPolicy;
 use url::Url;
 
 use crate::domain::{EnrolmentError, RegistryError, RelayKind, ServerRecord, TunnelToken};
-use crate::ports::{RelayClient, ServerRegistry};
+use crate::ports::{registered_mut, RelayClient, ServerRegistry};
 
 /// The relay as the user entered it.
 ///
@@ -256,13 +256,7 @@ pub async fn set_server_credentials<S: RelayClient>(
 ) -> Result<ServerRecord, EnrolmentError> {
     let wanted_domain = domain.to_owned();
     let registered = run_blocking(Arc::clone(&registry), move |registry| {
-        registry
-            .read_all()?
-            .into_iter()
-            .find(|record| record.domain() == wanted_domain)
-            .ok_or(RegistryError::NotRegistered {
-                domain: wanted_domain,
-            })
+        registry.read(&wanted_domain)
     })
     .await?;
     let public_settings = match registered.relay.site_base_url() {
@@ -295,23 +289,12 @@ pub async fn set_server_credentials<S: RelayClient>(
     let wanted_domain = domain.to_owned();
     let record = run_blocking(registry, move |registry| {
         registry.modify(Box::new(|servers| {
-            let current = servers
-                .iter_mut()
-                .find(|record| record.domain() == wanted_domain)
-                .ok_or(RegistryError::NotRegistered {
-                    domain: wanted_domain.clone(),
-                })?;
+            let current = registered_mut(servers, &wanted_domain)?;
             current.token = token;
             current.public_settings = public_settings;
             Ok(())
         }))?;
-        registry
-            .read_all()?
-            .into_iter()
-            .find(|record| record.domain() == wanted_domain)
-            .ok_or(RegistryError::NotRegistered {
-                domain: wanted_domain,
-            })
+        registry.read(&wanted_domain)
     })
     .await?;
     Ok(record)

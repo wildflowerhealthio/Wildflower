@@ -7,4 +7,5 @@ mod relay_client;
 mod server_registry;
 
 pub use relay_client::RelayClient;
+pub(crate) use server_registry::registered_mut;
 pub use server_registry::{NewRecord, RegistryChange, ServerRegistry};

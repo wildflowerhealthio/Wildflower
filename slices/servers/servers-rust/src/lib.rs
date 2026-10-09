@@ -60,7 +60,7 @@
 //!    the host posts: [`LocalNotification`], the request coalescer and the
 //!    stop notifications. The token is a secret: its `Debug` and `Serialize`
 //!    write a redaction marker, and only `servers.json` holds it in full.
-//!  - `ports` — the [`ServerRegistry`] port (read all, insert, modify,
+//!  - `ports` — the [`ServerRegistry`] port (read all or one, insert, modify,
 //!    remove) and the [`RelayClient`] port (`GET /rathole`, signed
 //!    `GET /me`).
 //!  - `adapters` — [`JsonServerRegistry`], which replaces `servers.json`

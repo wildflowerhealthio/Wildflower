@@ -98,17 +98,10 @@ async fn registered_launcher_url(
     registry: Arc<dyn ServerRegistry>,
     domain: String,
 ) -> Result<Url, LaunchError> {
-    tokio::task::spawn_blocking(move || {
-        registry
-            .read_all()?
-            .into_iter()
-            .find(|record| record.domain() == domain)
-            .map(|record| record.launcher_url)
-            .ok_or(RegistryError::NotRegistered { domain })
-    })
-    .await
-    .map_err(|error| RegistryError::storage("reading a server's launcher", error))?
-    .map_err(LaunchError::from)
+    tokio::task::spawn_blocking(move || registry.read(&domain).map(|record| record.launcher_url))
+        .await
+        .map_err(|error| RegistryError::storage("reading a server's launcher", error))?
+        .map_err(LaunchError::from)
 }
 
 /// The native web view instance id of the server `domain`'s launcher,
