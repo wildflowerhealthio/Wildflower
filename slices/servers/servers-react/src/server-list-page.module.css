@@ -49,3 +49,8 @@
   background: var(--color-warning-background);
   color: var(--color-warning-foreground);
 }
+
+/* Under the cards, at its own width rather than the page's. */
+.server-list-page__add {
+  align-self: flex-start;
+}

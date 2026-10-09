@@ -10,9 +10,6 @@ import { ServerCard } from './server-card.tsx'
 import { useOnline } from './use-online.ts'
 import styles from './server-list-page.module.css'
 
-/** Why the Add server button is disabled. */
-const ADD_SERVER_UNAVAILABLE = "Adding a server isn't available yet."
-
 /** The body of a list with no servers: what a server is, and Add server. */
 const NoServers = (): JSX.Element => (
   <div className={styles['server-list-page__empty']}>
@@ -21,13 +18,13 @@ const NoServers = (): JSX.Element => (
       A server keeps your health records on this device, and the apps you open from the web reach
       them at its own address, through a relay.
     </p>
-    <button type="button" className="button-2 filled" disabled title={ADD_SERVER_UNAVAILABLE}>
+    <Link to="/servers/new" className="button button-2 filled">
       Add server
-    </button>
+    </Link>
   </div>
 )
 
-/** The servers, a card each. */
+/** The servers, a card each, and Add server under them. */
 const ServerCards = ({
   servers,
   runHostCommand,
@@ -35,11 +32,19 @@ const ServerCards = ({
   readonly servers: readonly ListedServer.Type[]
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => (
-  <ul className={styles['server-list-page__servers']}>
-    {servers.map((server) => (
-      <ServerCard key={server.domain} server={server} runHostCommand={runHostCommand} />
-    ))}
-  </ul>
+  <>
+    <ul className={styles['server-list-page__servers']}>
+      {servers.map((server) => (
+        <ServerCard key={server.domain} server={server} runHostCommand={runHostCommand} />
+      ))}
+    </ul>
+    <Link
+      to="/servers/new"
+      className={`button button-2 outline ${styles['server-list-page__add']}`}
+    >
+      Add server
+    </Link>
+  </>
 )
 
 /** A gear, the Host Settings link's icon. */

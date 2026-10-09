@@ -17,6 +17,8 @@ import {
   type CertificateAuthority,
   CertificateState,
   type HealthReport,
+  HostCommandFailed,
+  type HostCommandError,
   type ListedServer,
   ServerStatus,
 } from 'servers-core'
@@ -304,10 +306,37 @@ const HealthReportList = ({
 }
 
 /**
+ * Whether the host refused a new token because the relay no longer presents
+ * the identity the server was added with.
+ */
+const isRelayIdentityChange = (error: HostCommandError): boolean =>
+  error instanceof HostCommandFailed &&
+  Option.exists(error.refusal, (refusal) => refusal.kind === 'relayIdentityChanged')
+
+/**
+ * The warning, in place of the host's refusal, that the relay's identity has
+ * changed since the server was added: the host's `message`, which names the
+ * setting and both values and says the relay may be impersonated, and what
+ * to do. It offers no retry, as a token sent again meets the same identity.
+ */
+const RelayIdentityWarning = ({ message }: { readonly message: string }): JSX.Element => (
+  <div className={styles['server-page__identity-warning']} role="alert">
+    <p className={`text-label-2 ${styles['server-page__identity-warning-title']}`}>
+      The relay's identity has changed
+    </p>
+    <p className={`text-body-3 ${styles['server-page__identity-warning-detail']}`}>{message}</p>
+    <p className="text-body-3">
+      If whoever runs the relay confirms it changed, remove this server and add it again.
+    </p>
+  </div>
+)
+
+/**
  * The form that replaces the token the server's tunnel signs in to its
  * relay with. The field starts empty and the stored token is never shown;
  * it clears once the host accepts the new one, and the host's refusal shows
- * under it.
+ * under it, or, when the relay's identity has changed, a warning that says
+ * so.
  */
 const CredentialsForm = ({
   domain,
@@ -341,9 +370,13 @@ const CredentialsForm = ({
         autoComplete="off"
         description="The relay checks it before it is saved, and the server starts again with it."
       />
-      <ErrorBanner
-        error={setCredentials.error === null ? null : failureText(setCredentials.error)}
-      />
+      {setCredentials.error !== null && isRelayIdentityChange(setCredentials.error) ? (
+        <RelayIdentityWarning message={failureText(setCredentials.error)} />
+      ) : (
+        <ErrorBanner
+          error={setCredentials.error === null ? null : failureText(setCredentials.error)}
+        />
+      )}
       <button
         type="submit"
         className={`button-2 outline ${styles['server-page__form-action']}`}

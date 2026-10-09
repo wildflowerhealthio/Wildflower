@@ -1,0 +1,48 @@
+/* A step: its heading, its fields and its buttons, stacked. */
+.add-server-page__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.add-server-page__title,
+.add-server-page__lead,
+.add-server-page__note {
+  margin: 0;
+}
+
+.add-server-page__note {
+  color: var(--color-neutral-3);
+}
+
+.add-server-page__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-block-start: var(--space-4);
+}
+
+.add-server-page__advanced > summary {
+  cursor: pointer;
+}
+
+.add-server-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/*
+ * The new server's domain, the step's point: a machine string, so set in
+ * mono, and wrapped anywhere rather than cut short, as it is read whole.
+ */
+.add-server-page__domain {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-3);
+  color: var(--color-neutral-1);
+}
