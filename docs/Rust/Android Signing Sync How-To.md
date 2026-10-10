@@ -50,6 +50,8 @@ The script needs a JDK's `keytool`, `openssl` and `python3`, on Linux or macOS. 
 
 ## Variations
 
+**First bundle from CI.** Instead of building the first bundle locally, run **Deploy Android to Google Play** for a release tag from the Actions tab (or `gh workflow run deploy-android-play.yml -f tag=v<version>`). It attaches the signed bundle, `wildflower-host-<version>.aab`, to the tag's GitHub Release before it tries Play, and that first Play upload fails because the app has no bundle yet. Download the bundle from the release and continue from step 4. Play then has that version code, so the next deploy needs the next release.
+
 **A service account key kept elsewhere.** Pass `--service-account <key.json>`.
 
 **Rotating the service account key.** Add a new JSON key to the service account in Google Cloud, re-run the script with it, then delete the old key there. The upload key is reused, so nothing else changes.
@@ -63,3 +65,4 @@ The script needs a JDK's `keytool`, `openssl` and `python3`, on Linux or macOS. 
 - [Android Release Signing Explanation](./Android%20Release%20Signing%20Explanation.md) — the upload and app signing keys, `keystore.properties`, and the environment
 - [Apple Signing Sync How-To](./Apple%20Signing%20Sync%20How-To.md) — the same job for the macOS and iOS channels
 - [`scripts/checks/android-play-preflight.sh`](../../scripts/checks/android-play-preflight.sh) — the check the script runs before storing anything
+- [`.github/workflows/deploy-android-play.yml`](../../.github/workflows/deploy-android-play.yml) — the deploy that reads the environment

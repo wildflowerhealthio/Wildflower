@@ -104,6 +104,62 @@ environment. What it relies on:
   created with its `main`-only branch rule; when it exists it is left as it is,
   since creating it again would reset any protection rules set by hand since.
 
+## How a release reaches Google Play
+
+`.github/workflows/deploy-android-play.yml` builds and uploads the bundle. It
+runs when Tauri Release — Publish completes successfully for a merged
+`release/v<version>` pull request, so Android ships only once every other
+platform of the release has built, and it can be dispatched by hand with a
+`tag`.
+
+**Which tag.** The `workflow_run` event that starts it says which Publish run
+finished, not which tag that run pushed. Publish tags the version in
+`tauri.conf.json` at the merged commit, so the deploy reads the same file at
+the run's head commit — the release branch's tip, which carries the same
+`tauri.conf.json` whichever way the pull request was merged. A release pull
+request closed without merging completes a Publish run too, one that skipped
+tagging; there is no tag, and the deploy stops there with a notice. A Publish
+that was itself dispatched — a re-trigger or a tag rebuild — does not start a
+deploy; dispatch the deploy for its tag instead.
+
+**Which version Play sees.** `tauri android build` writes
+`gen/android/app/tauri.properties`, which `build.gradle.kts` reads, from the
+`version` in `tauri.conf.json`:
+
+| Gradle property | Value                                                         |
+| --------------- | ------------------------------------------------------------- |
+| `versionName`   | the version as written, e.g. `0.4.0`                          |
+| `versionCode`   | `major * 1000000 + minor * 1000 + patch`, e.g. `4000` (0.4.0) |
+
+`bundle.android.versionCode` in the Tauri config would override the second,
+and `bundle.android.autoIncrementVersionCode` would replace it with a counter;
+neither is set. The formula has two consequences:
+
+- **A prerelease spends its release's version code.** The suffix is dropped,
+  so `0.4.0-beta.1` and `0.4.0` are both `4000`, and Play accepts each version
+  code once per app. A Publish run for a prerelease is therefore skipped, and
+  a dispatch for one refused, as the Pebble app store upload skips them for
+  the same reason.
+- **Minor and patch stay below 1000**, or one version's code runs into the
+  next's.
+
+Play refusing a version code it has been sent before also decides what a
+re-run does: the bundle is rebuilt and replaces the GitHub Release's copy, and
+the Play upload fails with Play's own reason.
+
+**Where it lands.** The bundle is uploaded to the `internal` testing track as
+a **draft** release, which a person rolls out to the track's testers from Play
+Console. Draft is also the only status the API accepts until the app has been
+published once. R8's `mapping.txt` goes with it, so Play can deobfuscate crash
+reports. The bundle is attached to the tag's GitHub Release first, before the
+Play upload, so it is there even when that upload fails.
+
+**What it builds.** One bundle for `aarch64` and `armv7`, the ABIs phones run;
+Play splits it per device. The Android SDK comes with the runner image, and
+the NDK is pinned to the version the Tauri CLI would install for itself, since
+the image's NDKs change with it and the CLI otherwise picks the newest it
+finds.
+
 ## The preflight
 
 `scripts/checks/android-play-preflight.sh` checks the four values together, in
@@ -125,13 +181,16 @@ the fingerprint of the upload key it expects on the app's App signing page,
 and the two matching is the only check of the key that can be made without an
 upload.
 
-The sync script runs the same preflight against what it is about to store, and
-stores nothing when it fails.
+The deploy runs it as soon as the JDK it needs is set up, before anything
+compiles. The sync script runs the same preflight against what it is about to
+store, and stores nothing when it fails.
 
 ## See Also
 
 - [Android Signing Sync How-To](./Android%20Signing%20Sync%20How-To.md) — the one-time Play Console setup, and creating and storing the upload key
 - [Apple Release Signing Explanation](./Apple%20Release%20Signing%20Explanation.md) — the macOS and iOS channels of the same release
+- [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the `release-android` cache key the deploy uses
+- `.github/workflows/deploy-android-play.yml` — the build and upload
 - `apps/host/host-app/src-tauri/gen/android/app/build.gradle.kts` — the `release` signing configuration
 - `scripts/checks/android-play-preflight.sh` — the check, and its tests beside it
 - `scripts/release/android-signing-sync.sh` — creates the upload key and fills the environment
