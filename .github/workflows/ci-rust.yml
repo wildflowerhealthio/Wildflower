@@ -6,8 +6,8 @@ on:
   #
   # It compiles, lints, and tests the ENTIRE Cargo workspace in one job,
   # including the crates that pull in `tauri = "2"` (host-app,
-  # browser-sniffer-tauri-rust, har-recorder-tauri, servers-tauri-rust,
-  # shared-structures-tauri-rust, tauri-plugin-native-webview,
+  # browser-sniffer-tauri, har-recorder-tauri, servers-tauri,
+  # shared-structures-tauri, tauri-plugin-native-webview,
   # tauri-unit-runner-rust). Those need GTK/webkit
   # system libs, so the job installs them and stubs the generated web bundles
   # the Tauri crates `include_str!` (and the relay's admin UI, which
@@ -52,7 +52,7 @@ jobs:
         with:
           filters: |
             bootstrap:
-              - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+              - 'slices/browser-sniffer/browser-sniffer-tauri-js/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
 
@@ -72,8 +72,8 @@ jobs:
         run: |
           set -euo pipefail
           corepack enable
-          pnpm install --frozen-lockfile --filter browser-sniffer-tauri...
-          pnpm --filter browser-sniffer-tauri run generate-tauri-bootstrap
+          pnpm install --frozen-lockfile --filter browser-sniffer-tauri-js...
+          pnpm --filter browser-sniffer-tauri-js run generate-tauri-bootstrap
       - name: Stub Sniffer bootstrap
         if: steps.filter.outputs.bootstrap != 'true'
         run: ./scripts/ci/stub-embedded-bundles.sh sniffer

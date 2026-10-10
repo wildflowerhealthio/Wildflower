@@ -182,10 +182,10 @@ apps/host/tauri-plugin-native-webview/
 
 `initScript` is **caller-supplied** — the plugin is content-agnostic. browser-sniffer
 passes its bundled `installSniffer` IIFE wrapped in a small adapter that posts
-to the platform bridge; `browser-sniffer-tauri-rust::native_webview_bridge` owns the
+to the platform bridge; `browser-sniffer-tauri::native_webview_bridge` owns the
 `Channel<NativeWebviewEvent>` and re-emits onto its `BRIDGE_EVENT` bus.
 
-`evaluate_js` is the reverse direction — `browser-sniffer-tauri-rust` calls it on
+`evaluate_js` is the reverse direction — `browser-sniffer-tauri` calls it on
 mobile when it sees `Click` / `CancelSnifferRequest` on `BRIDGE_EVENT`, wrapping
 the payload in a `window.__nativeWebviewReceive(...)` call the native-webview-side
 transport parses. JS host code never touches the plugin.

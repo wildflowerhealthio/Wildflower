@@ -11,8 +11,8 @@ slices/<name>/
 ├── <name>-core            # Pure logic: schemas, HttpApi definitions, business rules (no DOM/fs/platform imports)
 ├── <name>-react           # Browser UI adapter — the dominant web adapter
 ├── <name>-rust            # Native/server Rust adapter
-├── <name>-tauri           # Tauri host adapter (TS side)
-├── <name>-tauri-rust      # Tauri host adapter (Rust side)
+├── <name>-tauri           # Tauri host adapter (Rust side)
+├── <name>-tauri-js        # Tauri host adapter (TS side; `-tauri-react` if it renders React)
 ├── <name>-node            # Node.js adapter
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
@@ -136,7 +136,7 @@ unit runner (`apps/host/unit-runner/tauri-unit-runner-rust`), keyed by its domai
 pushes every record with its run policy and a factory that builds a fresh
 unit for each run, and the unit reports its health as its detail.
 `servers-rust` also decides what the host notifies: the per-caller request
-notifications and each new stop of a server's run. `servers-tauri-rust` is
+notifications and each new stop of a server's run. `servers-tauri` is
 the host side: it pushes the servers to `TauriUnitRunner`, emits each server's
 status to the base as the `server-status` event, posts the notifications,
 and holds the base's commands (list, add, re-enter credentials, set the run

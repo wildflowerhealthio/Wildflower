@@ -6,7 +6,7 @@ How to add or change a message that crosses the TS ⇄ Rust bridge boundary whil
 
 In the slice's `<name>-core/src/bridge.ts`, add a `Schema.parseJson(Schema.TaggedStruct('YourTag', { ... }))` entry with camelCase field names, and register it in the slice's `Bridge.make` record for the right direction. Document the exact wire string in the TSDoc (`Wire: {"_tag":"YourTag","someField":"…"}`).
 
-Before choosing the tag literal, confirm it is unused across every listener on the shared channel — the checklist is in the [effect-messaging-tauri README](../../global/effect-messaging/effect-messaging-tauri/README.md). Tag collisions dispatch silently on both listeners; no test catches them.
+Before choosing the tag literal, confirm it is unused across every listener on the shared channel — the checklist is in the [effect-messaging-tauri-js README](../../global/effect-messaging/effect-messaging-tauri-js/README.md). Tag collisions dispatch silently on both listeners; no test catches them.
 
 ## 2. Mirror the Rust type
 

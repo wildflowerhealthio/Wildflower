@@ -213,7 +213,7 @@ const FillAction = Schema.Struct({
  * rather than a whole new bridge tag with its own demux + drift-guard
  * rollout. Best-effort with no acknowledgement, like the actions it wraps.
  *
- * The host (`browser-sniffer-tauri-rust`) never decodes this payload — it
+ * The host (`browser-sniffer-tauri`) never decodes this payload — it
  * only forwards it by `_tag` into the native webview on mobile — so there is
  * no serde mirror; the schema here is the sole validator. See
  * `docs/Messaging/Wire Pinning How-To.md`.

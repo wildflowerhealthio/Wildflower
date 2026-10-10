@@ -38,5 +38,5 @@ The page-side transport is intentionally never torn down: its `BRIDGE_EVENT` lis
 
 - [Effect Patterns Reference](./Patterns%20Reference.md)
 - [Bridge Explanation](../Messaging/Bridge%20Explanation.md)
-- `global/effect-messaging/effect-messaging-tauri/src/tauri-transport.ts` — `makeTauriTransport` and its coordinator
+- `global/effect-messaging/effect-messaging-tauri-js/src/tauri-transport.ts` — `makeTauriTransport` and its coordinator
 - `global/effect-messaging/effect-messaging-react/src/handler-coordinator.ts` — `HandlerCoordinatorContext`, `useHandlerCoordinator`, `makeUseSliceRegister`

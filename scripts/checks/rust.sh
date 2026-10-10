@@ -44,18 +44,18 @@ fi
 # path — not to split CI into two jobs.
 non_tauri=(--workspace
   --exclude host-app
-  --exclude browser-sniffer-tauri-rust
+  --exclude browser-sniffer-tauri
   --exclude har-recorder-tauri
-  --exclude servers-tauri-rust
-  --exclude shared-structures-tauri-rust
+  --exclude servers-tauri
+  --exclude shared-structures-tauri
   --exclude tauri-plugin-native-webview
   --exclude tauri-unit-runner-rust)
-tauri=(-p host-app -p browser-sniffer-tauri-rust -p har-recorder-tauri -p servers-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview -p tauri-unit-runner-rust)
-tauri_names=" host-app browser-sniffer-tauri-rust har-recorder-tauri servers-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview tauri-unit-runner-rust "
+tauri=(-p host-app -p browser-sniffer-tauri -p har-recorder-tauri -p servers-tauri -p shared-structures-tauri -p tauri-plugin-native-webview -p tauri-unit-runner-rust)
+tauri_names=" host-app browser-sniffer-tauri har-recorder-tauri servers-tauri shared-structures-tauri tauri-plugin-native-webview tauri-unit-runner-rust "
 
 # Exact-match a crate name against the Tauri set. Iterating + string equality
 # avoids the substring ambiguity a `case "$tauri_names" in *" $n "*)` glob would
-# carry (e.g. shared-structures-rust vs shared-structures-tauri-rust).
+# carry (e.g. shared-structures-rust vs shared-structures-tauri).
 is_tauri_crate() {
   local n="$1" t
   for t in $tauri_names; do

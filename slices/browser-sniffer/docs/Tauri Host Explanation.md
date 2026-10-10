@@ -1,6 +1,6 @@
 # Tauri Host Explanation
 
-How `browser-sniffer-tauri-rust` (Rust) and `browser-sniffer-tauri` (TS) work together to run the sniffer inside a native webview presented by [`tauri-plugin-native-webview`](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md) — on iOS, Android, and desktop alike.
+How `browser-sniffer-tauri` (Rust) and `browser-sniffer-tauri-js` (TS) work together to run the sniffer inside a native webview presented by [`tauri-plugin-native-webview`](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md) — on iOS, Android, and desktop alike.
 
 ## What the crate is
 
@@ -23,7 +23,7 @@ The data plane is host-mediated on **both** platforms: the content webview loads
 
 ## `WebViewSource` accepts only real `http(s)` targets
 
-`Open` carries a `WebViewSource`, and there is no way to hand the host a blank or inline starting page through it. `WebViewSource.Uri` is restricted to `http(s)://` on **both** sides — TS (`HttpUriString` in [`collector-fundamentals/src/model/web-view-source.ts`](../../../apps/launcher/collector/collector-fundamentals/src/model/web-view-source.ts)) and Rust (`resolve_source` in [`model/web_view_source.rs`](../../../apps/host/browser-sniffer/browser-sniffer-tauri-rust/src/model/web_view_source.rs), which rejects a non-`http(s)` URI with `NonHttpUri`). The union's other variant, `Html`, is a **decode-and-drop placeholder**: `resolve_source` returns `HtmlNotSupported`, so the host renders no inline HTML today — the variant exists only to catch wire drift. `about:blank` is therefore **not** a mountable `WebViewSource`; it lives only inside the plugin ([`url_scheme.rs`](../../../apps/host/tauri-plugin-native-webview/src/url_scheme.rs)'s `parse_target` / `BLANK_URL`) as the cookie-seed transit, never as an `Open` target. This is why the leading `Open` builds the sniffer directly on its real target rather than mounting a blank page first — and the plugin's content webview [needs a real `http(s)` origin to run its IPC at all](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md).
+`Open` carries a `WebViewSource`, and there is no way to hand the host a blank or inline starting page through it. `WebViewSource.Uri` is restricted to `http(s)://` on **both** sides — TS (`HttpUriString` in [`collector-fundamentals/src/model/web-view-source.ts`](../../../apps/launcher/collector/collector-fundamentals/src/model/web-view-source.ts)) and Rust (`resolve_source` in [`model/web_view_source.rs`](../../../apps/host/browser-sniffer-tauri/src/model/web_view_source.rs), which rejects a non-`http(s)` URI with `NonHttpUri`). The union's other variant, `Html`, is a **decode-and-drop placeholder**: `resolve_source` returns `HtmlNotSupported`, so the host renders no inline HTML today — the variant exists only to catch wire drift. `about:blank` is therefore **not** a mountable `WebViewSource`; it lives only inside the plugin ([`url_scheme.rs`](../../../apps/host/tauri-plugin-native-webview/src/url_scheme.rs)'s `parse_target` / `BLANK_URL`) as the cookie-seed transit, never as an `Open` target. This is why the leading `Open` builds the sniffer directly on its real target rather than mounting a blank page first — and the plugin's content webview [needs a real `http(s)` origin to run its IPC at all](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md).
 
 ## Why the plugin and not `WebviewWindow`
 
@@ -98,11 +98,11 @@ Once the collector's automatic-navigation machine starts stepping, each step's `
 
 ## Crate layout
 
-The crate lives with the host, in `apps/host/browser-sniffer/`: the host is
+The crate lives with the host, in `apps/host/browser-sniffer-tauri/`: the host is
 its only consumer.
 
 ```text
-browser-sniffer-tauri-rust/
+browser-sniffer-tauri/
 ├── src/
 │   ├── lib.rs                       — public surface + `attach_browser_sniffer` glue
 │   ├── events.rs                    — event-name constants (drift guard against the TS side)
@@ -124,12 +124,12 @@ Doc-comments at the top of each file should be quick references useful on hover.
 
 ## Key file references
 
-- [`browser-sniffer-tauri-rust/src/lib.rs`](../../../apps/host/browser-sniffer/browser-sniffer-tauri-rust/src/lib.rs) — entry point; wires the single bridge listener.
-- [`browser-sniffer-tauri-rust/src/sniffer_window.rs`](../../../apps/host/browser-sniffer/browser-sniffer-tauri-rust/src/sniffer_window.rs) — the only file that calls `native_webview().open_url(...)`.
-- [`browser-sniffer-tauri-rust/src/native_webview_bridge.rs`](../../../apps/host/browser-sniffer/browser-sniffer-tauri-rust/src/native_webview_bridge.rs) — channel handler: validates inbound native-webview `Message`s and re-emits them on `BRIDGE_EVENT`; logs `Hidden` / `Disposed` lifecycle events (non-terminal — `SniffingComplete` is SPA-driven).
-- [`browser-sniffer-tauri/src/install-sniffer.ts`](../browser-sniffer-tauri/src/install-sniffer.ts) — fetch / XHR / console shim emitting on `BRIDGE_EVENT` via `eventBus.emit`.
-- [`browser-sniffer-tauri/src/native-bridge.ts`](../browser-sniffer-tauri/src/native-bridge.ts) — `makeNativeBridgeEventBus`, the `TauriEventApi`-shaped bus over the plugin's native bridge.
-- [`browser-sniffer-tauri/src/tauri-sniffer-entry.ts`](../browser-sniffer-tauri/src/tauri-sniffer-entry.ts) — desktop IIFE wrapper.
-- [`browser-sniffer-tauri/src/native-sniffer-entry.ts`](../browser-sniffer-tauri/src/native-sniffer-entry.ts) — mobile IIFE wrapper.
+- [`browser-sniffer-tauri/src/lib.rs`](../../../apps/host/browser-sniffer-tauri/src/lib.rs) — entry point; wires the single bridge listener.
+- [`browser-sniffer-tauri/src/sniffer_window.rs`](../../../apps/host/browser-sniffer-tauri/src/sniffer_window.rs) — the only file that calls `native_webview().open_url(...)`.
+- [`browser-sniffer-tauri/src/native_webview_bridge.rs`](../../../apps/host/browser-sniffer-tauri/src/native_webview_bridge.rs) — channel handler: validates inbound native-webview `Message`s and re-emits them on `BRIDGE_EVENT`; logs `Hidden` / `Disposed` lifecycle events (non-terminal — `SniffingComplete` is SPA-driven).
+- [`browser-sniffer-tauri-js/src/install-sniffer.ts`](../browser-sniffer-tauri-js/src/install-sniffer.ts) — fetch / XHR / console shim emitting on `BRIDGE_EVENT` via `eventBus.emit`.
+- [`browser-sniffer-tauri-js/src/native-bridge.ts`](../browser-sniffer-tauri-js/src/native-bridge.ts) — `makeNativeBridgeEventBus`, the `TauriEventApi`-shaped bus over the plugin's native bridge.
+- [`browser-sniffer-tauri-js/src/tauri-sniffer-entry.ts`](../browser-sniffer-tauri-js/src/tauri-sniffer-entry.ts) — desktop IIFE wrapper.
+- [`browser-sniffer-tauri-js/src/native-sniffer-entry.ts`](../browser-sniffer-tauri-js/src/native-sniffer-entry.ts) — mobile IIFE wrapper.
 - [`apps/launcher/collector/collector-fundamentals/src/bridge.ts`](../../../apps/launcher/collector/collector-fundamentals/src/bridge.ts) — consumer-side bridge schema; the Rust payload structs in `model/open.rs` and `model/set_sniffer_status.rs` mirror its shapes.
 - [`apps/host/tauri-plugin-native-webview/docs/Explanation.md`](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md) — plugin's own architecture write-up.

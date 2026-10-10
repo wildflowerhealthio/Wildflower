@@ -5,7 +5,7 @@ the `Bridge.make` factory for declaring typed bridges, the
 `BridgeTransport.makeHostTransport` Effect for wiring multiple bridges
 through a single dispatch fiber, the `TransportAdapter` Tag a platform
 adapter supplies, and the `HandlerCoordinator` contract the page-side
-transports (`effect-messaging-tauri`) implement.
+transports (`effect-messaging-tauri-js`) implement.
 
 ## Concepts
 
@@ -18,7 +18,7 @@ it has no `send`, no notion of a transport, and no endpoint identity. The
 `Bridge.Direction` (`'HostToWeb' | 'WebToHost'`) simply names the two
 records; the endpoint→direction mapping lives only at the transport
 entry points (`makeHostTransport` binds inbound `WebToHost` / outbound
-`HostToWeb`; `makeTauriTransport` in `effect-messaging-tauri` is the
+`HostToWeb`; `makeTauriTransport` in `effect-messaging-tauri-js` is the
 page-side mirror).
 
 The inbound side is served by a plain **handler record**

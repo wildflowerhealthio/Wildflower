@@ -177,7 +177,7 @@ type Violation =
 const CORE_SUFFIXES = ['-core', '-core-js']
 
 /** Name suffixes of a platform adapter, which a core package never depends on. */
-const ADAPTER_SUFFIXES = ['-react', '-rust', '-tauri', '-tauri-rust', '-node', '-web']
+const ADAPTER_SUFFIXES = ['-react', '-rust', '-tauri', '-tauri-js', '-node', '-web']
 
 const isCore = (workspacePackage: WorkspacePackage): boolean =>
   CORE_SUFFIXES.some((suffix) => workspacePackage.name.endsWith(suffix))

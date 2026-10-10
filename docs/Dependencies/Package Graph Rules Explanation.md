@@ -11,7 +11,7 @@ the manifests rather than the source, and what each exception is for.
 **A core never depends on an adapter.** A package named `<name>-core`, or an
 app's `<product>-core-js`, is the pure layer (see
 [slices/AGENTS.md](../../slices/AGENTS.md)). It may not depend on a package
-named for a platform: `-react`, `-rust`, `-tauri`, `-tauri-rust`, `-node` or
+named for a platform: `-react`, `-rust`, `-tauri`, `-tauri-js`, `-node` or
 `-web`. A package that needs one, as `lifelabs-pdf-importer` needs
 `positioned-text-web`'s pdfjs extraction, is not a core and doesn't take the
 suffix.

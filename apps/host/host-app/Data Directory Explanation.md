@@ -19,7 +19,7 @@ folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir` in
 
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
 root and hands it to the slices that keep install-wide files, among them
-`servers-tauri-rust`, which reads `servers.json` and pushes every server to the
+`servers-tauri`, which reads `servers.json` and pushes every server to the
 unit runner with its run policy (see the servers package group's
 [Server Runs Explanation](../servers/docs/Server%20Runs%20Explanation.md)).
 Each run of a server gets its folder as `ServerRuntimeConfig.server_dir`, and

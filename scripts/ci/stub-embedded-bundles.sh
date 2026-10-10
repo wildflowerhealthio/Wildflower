@@ -5,8 +5,8 @@
 # build outputs, absent in a fresh checkout, and the crates that embed them
 # don't compile without them.
 #
-#   sniffer  browser-sniffer-tauri-rust embeds the bootstrap IIFE generated
-#            from browser-sniffer-tauri. Padded to clear its
+#   sniffer  browser-sniffer-tauri embeds the bootstrap IIFE generated
+#            from browser-sniffer-tauri-js. Padded to clear its
 #            `bootstrap_is_non_empty` test. Only the desktop bundle needs a
 #            stand-in: `native-bootstrap.js` is behind a `cfg(ios|android)`
 #            gate, compiled out on desktop targets.
@@ -28,10 +28,10 @@ set -euo pipefail
 target="${1:?usage: stub-embedded-bundles.sh <sniffer|relay-admin-web|all>}"
 
 stub_sniffer() {
-  local out=slices/browser-sniffer/browser-sniffer-tauri/dist/tauri-bootstrap.js
+  local out=slices/browser-sniffer/browser-sniffer-tauri-js/dist/tauri-bootstrap.js
   mkdir -p "$(dirname "$out")"
   {
-    echo '// CI stub: the real IIFE is generated from browser-sniffer-tauri by'
+    echo '// CI stub: the real IIFE is generated from browser-sniffer-tauri-js by'
     echo '// its `generate-tauri-bootstrap` script. Padded to stay long enough'
     echo '// to satisfy bootstrap_is_non_empty.'
     for _ in $(seq 1 40); do

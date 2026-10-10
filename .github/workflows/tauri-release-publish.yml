@@ -347,9 +347,9 @@ jobs:
           cache: true
 
       - name: Install workspace dependencies
-        # `vp install` runs the browser-sniffer-tauri `prepare` hook, which
+        # `vp install` runs the browser-sniffer-tauri-js `prepare` hook, which
         # regenerates the tauri-bootstrap JS bundle that
-        # browser-sniffer-tauri-rust `include_str!`s at compile time.
+        # browser-sniffer-tauri `include_str!`s at compile time.
         run: vp install
 
       - name: Build workspace (vp run pack)

@@ -5,7 +5,7 @@ identifier = "allow-server-consents"
 description = """
 Grants the webview the right to invoke the app-defined
 `pending_consents_list`, `server_consent_get`, `server_consent_approve` and
-`server_consent_deny` commands (`servers-tauri-rust`): reading the consents
+`server_consent_deny` commands (`servers-tauri`): reading the consents
 waiting on the install's running servers, and approving or denying them as
 the host's Owner, through each server's gatekeeper in-process.
 

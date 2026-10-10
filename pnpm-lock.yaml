@@ -3851,7 +3851,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  global/effect-messaging/effect-messaging-tauri:
+  global/effect-messaging/effect-messaging-tauri-js:
     devDependencies:
       '@tauri-apps/api':
         specifier: 'catalog:'
@@ -4456,7 +4456,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/browser-sniffer/browser-sniffer-tauri:
+  slices/browser-sniffer/browser-sniffer-tauri-js:
     devDependencies:
       '@tauri-apps/api':
         specifier: 'catalog:'
@@ -4473,9 +4473,9 @@ importers:
       effect-messaging-core:
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-core
-      effect-messaging-tauri:
+      effect-messaging-tauri-js:
         specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-tauri
+        version: link:../../../global/effect-messaging/effect-messaging-tauri-js
       esbuild:
         specifier: 'catalog:'
         version: 0.28.2

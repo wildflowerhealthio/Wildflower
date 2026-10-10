@@ -4,7 +4,7 @@
 identifier = "allow-server-enrolment"
 description = """
 Grants the webview the right to invoke the app-defined `server_add` and
-`server_set_credentials` commands (`servers-tauri-rust`): enrolling a tunnel
+`server_set_credentials` commands (`servers-tauri`): enrolling a tunnel
 at a relay into the install's `servers.json`, and replacing a registered
 server's token. Both take the tunnel's token and never answer with it.
 

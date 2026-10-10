@@ -32,7 +32,7 @@ openssl = {version = "0.10.36", features = ["vendored"] }
 serde.workspace = true
 serde_json.workspace = true
 apps-rust = { path = "../../wildflower-server/apps-rust" }
-browser-sniffer-tauri-rust = { path = "../../browser-sniffer/browser-sniffer-tauri-rust" }
+browser-sniffer-tauri = { path = "../../browser-sniffer-tauri" }
 # Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
 # recorded archive into `<data root>/saved_data`.
 har-recorder-tauri = { path = "../../wildflower-server/har-recorder-tauri" }
@@ -40,7 +40,7 @@ har-recorder-tauri = { path = "../../wildflower-server/har-recorder-tauri" }
 # the base's commands for adding a server and re-entering its token, over the
 # install's `servers.json`. Hosted from `.setup()`; the commands registered in
 # `run()`.
-servers-tauri-rust = { path = "../../servers/servers-tauri-rust" }
+servers-tauri = { path = "../../servers/servers-tauri" }
 # `ServerRecord`, which the server config builder reads, the folder a server
 # runs from, and `ServerDetail`, `TauriUnitRunner`'s detail.
 servers-rust = { path = "../../servers/servers-rust" }
@@ -58,7 +58,7 @@ shared-structures-rust = { path = "../../../../slices/shared-structures/shared-s
 # Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
 # gates its `RequestSandboxedWebView { url }` on before handing the URL to the
 # native-webview plugin.
-shared-structures-tauri-rust = { path = "../../shared-structures-tauri-rust" }
+shared-structures-tauri = { path = "../../shared-structures-tauri" }
 # The `RelaySettings` the host builds from the server's record for its tunnel.
 tunnel-rust = { path = "../../wildflower-server/tunnel-rust" }
 # The Wildflower server's config and ports, which the host builds.

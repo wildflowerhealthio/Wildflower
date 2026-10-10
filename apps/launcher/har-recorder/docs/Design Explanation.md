@@ -34,7 +34,7 @@ hand-driven flow over time; it does not touch `slices/web-trace-core`.
 [HAR Recorder page, main SPA webview]         [Tauri host]                    [sniffer native webview]
   Start(url)
   ├─ register CollectorBridge handlers
-  └─ send Open { source: Uri(url) } ─────────▶ browser-sniffer-tauri-rust
+  └─ send Open { source: Uri(url) } ─────────▶ browser-sniffer-tauri
                                                open_or_navigate("sniffer",
                                                  download_dir = saved_data) ──▶ builds/navigates, injects sniffer
                                                                                  page fetch/XHR → ResponseStart /
@@ -47,7 +47,7 @@ hand-driven flow over time; it does not touch `slices/web-trace-core`.
   ├─ send SaveHar { fileName, text } ────────▶ har-recorder-tauri
   │                                             spawn_blocking(save_har) → tmp + rename
   │  HarSaved { path } / HarSaveFailed ◀─────── emit on BRIDGE_EVENT
-  ├─ send SniffingComplete ──────────────────▶ browser-sniffer-tauri-rust → dispose()
+  ├─ send SniffingComplete ──────────────────▶ browser-sniffer-tauri → dispose()
   └─ unregister handlers
 ```
 
@@ -95,7 +95,7 @@ entry's `request.comment`.
 ## Verification limits
 
 The desktop Tauri crates link `webkit2gtk`, which the Linux dev container does
-not have, so `tauri-plugin-native-webview`, `browser-sniffer-tauri-rust`,
+not have, so `tauri-plugin-native-webview`, `browser-sniffer-tauri`,
 `har-recorder-tauri` and the app crate are compiled only in CI
 (`ci-rust.yml`). Everything with logic worth testing was placed where a plain
 `cargo test` runs: `har-recorder-rust` has no `tauri` dependency, and the

@@ -30,7 +30,7 @@ use tauri_plugin_log::log;
 /// `HarSaveFailed` so the page does not wait forever.
 pub fn attach_har_recorder(app: &AppHandle, app_data_dir: PathBuf) {
     // The shared bridge channel has no automated cross-process tag guard, so
-    // the boot log records who dispatches what. See the effect-messaging-tauri
+    // the boot log records who dispatches what. See the effect-messaging-tauri-js
     // README ("Tag uniqueness across processes").
     log::info!(
         "[har-recorder] listening on '{BRIDGE_EVENT}' for tags: {:?}",
@@ -62,7 +62,7 @@ pub fn attach_har_recorder(app: &AppHandle, app_data_dir: PathBuf) {
 /// thread every other bridge message shares, so nothing here touches the
 /// filesystem. See [Review Standards][rs] rule 7.
 ///
-/// [rs]: ../../../../docs/Agents/Review%20Standards%20Reference.md
+/// [rs]: ../../../../../docs/Agents/Review%20Standards%20Reference.md
 fn handle_save_har(app: &AppHandle, directory: &Path, payload: &str) {
     let (file_name, text) = match serde_json::from_str::<HarRecorderWebToHost>(payload) {
         Ok(HarRecorderWebToHost::SaveHar { file_name, text }) => (file_name, text),

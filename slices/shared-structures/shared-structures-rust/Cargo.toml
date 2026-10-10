@@ -35,7 +35,7 @@ diesel-json-text = ["dep:diesel", "dep:serde_json"]
 [dependencies]
 # `serde` is non-optional: the always-on `bridge` module derives
 # `Deserialize` on its envelope shape, so every downstream crate
-# (`host-app`, `browser-sniffer-tauri-rust`, …) needs the
+# (`host-app`, `browser-sniffer-tauri`, …) needs the
 # trait available unconditionally.
 serde = { workspace = true }
 # `url` is non-optional: the always-on `ServerRuntimeConfig::loopback_origin`

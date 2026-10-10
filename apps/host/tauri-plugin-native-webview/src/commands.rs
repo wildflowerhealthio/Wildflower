@@ -15,7 +15,7 @@ use crate::{NativeWebviewExt, Result};
 /// caller constructed to receive [`NativeWebviewEvent`] payloads. Tauri maps the
 /// camelCase args to their snake_case parameters.
 ///
-/// The canonical Rust caller (`browser-sniffer-tauri-rust`'s
+/// The canonical Rust caller (`browser-sniffer-tauri`'s
 /// `sniffer_window::open_or_navigate`) goes through the backend directly so it
 /// owns the channel handler instead of round-tripping events through JS.
 #[tauri::command]

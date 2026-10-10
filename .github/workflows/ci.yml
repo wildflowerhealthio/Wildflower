@@ -86,11 +86,11 @@ jobs:
               # check, so match the generated JSON. Snapshots sit in `slices/`
               # and in `apps/host/wildflower-server/`.
               - '**/*-rust/openapi/*.openapi.json'
-              # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri-rust
+              # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri
               # `include_str!`s a JS bundle generated from this TS package, and
               # the lockfiles affect that bootstrap build — a change to either
               # can break the Tauri crates' compile/tests.
-              - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+              - 'slices/browser-sniffer/browser-sniffer-tauri-js/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               # wildflower-relay's signature test verifies the request the

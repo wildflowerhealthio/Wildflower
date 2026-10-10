@@ -179,7 +179,7 @@ pub struct BridgePublishers {
 ///   wakes `changed` regardless of whether the previous value was
 ///   marked seen. Each server's run forwards its own head here; the
 ///   window is brought forward for a new consent by
-///   `servers-tauri-rust`'s `pending-consent` event, not here.
+///   `servers-tauri`'s `pending-consent` event, not here.
 /// - `Log` tag: forwards the webview's intercepted `console.*` output
 ///   into the host's `log` facade. Logging is one-way — the log plugin
 ///   has no Webview target, so nothing here can echo back into the
@@ -197,7 +197,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 
     // The bridge channel is shared across listeners with no automated
     // cross-process tag guard; log this crate's tag set at attach time so
-    // the boot log shows who dispatches what. See the effect-messaging-tauri
+    // the boot log shows who dispatches what. See the effect-messaging-tauri-js
     // README ("Tag uniqueness across processes").
     log::info!("[bridge] listening on '{BRIDGE_EVENT}' for tags: [{READY_TAG}, {LOG_TAG}]");
 
@@ -317,7 +317,7 @@ mod tests {
     /// Drift guard for this crate's local tag literals. `BRIDGE_EVENT`
     /// is pinned by `shared_structures_rust::bridge` (one source of
     /// truth across every Rust bridge listener); the TS side pins the
-    /// same literals in `effect-messaging-tauri/src/event-names.test.ts`.
+    /// same literals in `effect-messaging-tauri-js/src/event-names.test.ts`.
     #[test]
     fn tag_literals_match_the_ts_convention() {
         assert_eq!(READY_TAG, "__Ready");

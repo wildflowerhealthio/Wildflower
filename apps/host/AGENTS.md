@@ -13,7 +13,7 @@ stores, and the packages beside it that only the host uses. The app itself is
   committed `src-tauri/gen/` holds its Xcode and Gradle projects.
 - [`servers/`](./servers/AGENTS.md) — the servers this install knows about, how
   the host runs them, and the **base**, the UI the host's webview mounts:
-  `servers-core-js`, `servers-react`, `servers-rust`, `servers-tauri-rust`,
+  `servers-core-js`, `servers-react`, `servers-rust`, `servers-tauri`,
   their docs and `servers-wire-golden.json`.
 - [`unit-runner/`](./unit-runner/unit-runner-rust/AGENTS.md) — the
   platform-neutral `unit-runner-rust`, which runs units under run policies, and
@@ -28,14 +28,14 @@ stores, and the packages beside it that only the host uses. The app itself is
   `fhir-r4-rust`, `apps-rust`, `tunnel-rust`, `collector-rust`,
   `databases-rust`, `request-log-rust`, and the HAR Recorder's
   `har-recorder-rust` and `har-recorder-tauri`.
-- [`shared-structures-tauri-rust`](./shared-structures-tauri-rust) — the host's
+- [`shared-structures-tauri`](./shared-structures-tauri) — the host's
   Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)
   — the native, JS-injectable web view plugin (iOS, Android, desktop).
-- `browser-sniffer/` — the browser sniffer's Tauri host adapter,
-  `browser-sniffer-tauri-rust`, which opens the sniffer in that plugin's web
+- [`browser-sniffer-tauri`](./browser-sniffer-tauri) — the browser
+  sniffer's Tauri host adapter, which opens the sniffer in that plugin's web
   view and embeds the bootstrap that `slices/browser-sniffer`'s
-  `browser-sniffer-tauri` builds. The slice keeps its TypeScript packages and
+  `browser-sniffer-tauri-js` builds. The slice keeps its TypeScript packages and
   docs: [Tauri Host Explanation](../../slices/browser-sniffer/docs/Tauri%20Host%20Explanation.md).
 
 ## Rules
@@ -46,7 +46,7 @@ stores, and the packages beside it that only the host uses. The app itself is
   second product needs moves back to `slices/` or `global/`
   ([What folds in](../AGENTS.md#what-folds-in)).
 - **Slice layering still applies inside a group.** `servers-react` imports
-  `servers-core-js`, never the reverse; `servers-tauri-rust` composes
+  `servers-core-js`, never the reverse; `servers-tauri` composes
   `servers-rust`; `tauri-unit-runner-rust` binds `unit-runner-rust`.
 
 ## References

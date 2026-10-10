@@ -43,7 +43,7 @@ const OpenMessage = Schema.parseJson(Schema.TaggedStruct('Open', { source: WebVi
  * step and asks the host to display that step's manually-authored `name` in
  * the built-in sniffer browser's native chrome, so the user can see what the
  * automation is doing ("Entering email", "Waiting for prescriptions to
- * load"). The Tauri host (`browser-sniffer-tauri-rust`) writes `name` to the
+ * load"). The Tauri host (`browser-sniffer-tauri`) writes `name` to the
  * sniffer webview's chrome **subtitle** via the native-webview plugin's
  * `patch_window_text` — replacing the static "Collecting Automatically" seed
  * as the run progresses. It is a pure chrome-label update: no page navigation,
@@ -55,7 +55,7 @@ const SetSnifferStatus = Schema.parseJson(
 
 /**
  * Web → Host: the collector SPA asks the host to (re-)present the existing
- * sniffer webview — `browser-sniffer-tauri-rust` maps it to
+ * sniffer webview — `browser-sniffer-tauri` maps it to
  * `native_webview().show(SNIFFER_WEBVIEW_ID)`. Unlike `Open` it does **not**
  * navigate: it re-presents a hidden-but-alive webview without reloading the page,
  * and no-ops if none exists. The automatic-navigation machine dispatches it for

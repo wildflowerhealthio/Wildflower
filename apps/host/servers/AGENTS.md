@@ -44,7 +44,7 @@ changing how servers run or what the host notifies about them.
     and `ServerLaunchMinter`, bound to its `LaunchContextMinter`.
     `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.
-- **`servers-tauri-rust`** — the host side. `host_servers`, called from the
+- **`servers-tauri`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
   `ServerUnits::push`, emits the `server-status` event, posts the stop and
   request notifications, emits the `pending-consent` event and brings the
@@ -407,7 +407,7 @@ lastError?: {kind, …}}`.
   (`wildflower_server_rust::read_certificate_history`), so it is deleted with
   the server.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
-  `domain/notifications/` with its tests; `servers-tauri-rust` only posts.
+  `domain/notifications/` with its tests; `servers-tauri` only posts.
 - **Configuration only.** `ServerRecord::run_policy` is when the user wants
   the server run. Whether a run is up, its reachability and its certificate
   are live state, held by whatever runs the server, never in a
@@ -504,7 +504,7 @@ lastError?: {kind, …}}`.
   non-Tauri partition of `scripts/checks/rust.sh`. Its one unit runner
   dependency is `unit-runner-rust`, the Tauri-free `UnitRunner`, and the
   server it runs is `wildflower-server-rust`, Tauri-free too.
-  `servers-tauri-rust` depends on `tauri-unit-runner-rust` and is in the Tauri
+  `servers-tauri` depends on `tauri-unit-runner-rust` and is in the Tauri
   partition.
 
 ## References

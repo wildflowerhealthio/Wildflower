@@ -94,7 +94,7 @@ fn open_app_in_native_webview(
     // `resolve_http_url` enforces http(s)-only (rejecting `file:` / `javascript:`
     // and unparseable URLs). We only need it to gate the string; the plugin
     // re-parses it.
-    shared_structures_tauri_rust::resolve_http_url(&url)
+    shared_structures_tauri::resolve_http_url(&url)
         .map_err(|error| anyhow::anyhow!("launch URL rejected: {error}"))?;
 
     // No popup events to consume: native chrome owns Close and the apps flow

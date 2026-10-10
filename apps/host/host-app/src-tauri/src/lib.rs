@@ -105,7 +105,7 @@ fn host_owner_scopes() -> Vec<String> {
 
 /// Resolves what the Wildflower server reads from this build, the platform's
 /// paths and `server`'s record into its [`WildflowerServerConfig`]: the server
-/// config builder `servers-tauri-rust` calls at the start of each run of a
+/// config builder `servers-tauri` calls at the start of each run of a
 /// server, so a failure here is a failed run.
 ///
 /// The server runs from its own folder under `data_root`, which also holds its
@@ -262,24 +262,24 @@ pub fn run() {
             // untrusted content webview — allowlists the inner `_tag` so the page
             // can't forge control tags it would otherwise reach via a bus `emit`
             // grant. See capabilities/native-webview-window.json.
-            browser_sniffer_tauri_rust::native_webview_data_plane_emit,
+            browser_sniffer_tauri::native_webview_data_plane_emit,
             // The base's enrolment commands, granted to the `main` webview
             // only (`allow-server-enrolment`, see capabilities/default.json).
-            servers_tauri_rust::server_add,
-            servers_tauri_rust::server_set_credentials,
+            servers_tauri::server_add,
+            servers_tauri::server_set_credentials,
             // The base's server management commands, granted to the `main`
             // webview only (`allow-server-management`).
-            servers_tauri_rust::servers_list,
-            servers_tauri_rust::server_set_run_policy,
-            servers_tauri_rust::server_update,
-            servers_tauri_rust::server_remove,
-            servers_tauri_rust::server_launch,
+            servers_tauri::servers_list,
+            servers_tauri::server_set_run_policy,
+            servers_tauri::server_update,
+            servers_tauri::server_remove,
+            servers_tauri::server_launch,
             // The base's consent commands, granted to the `main` webview only
             // (`allow-server-consents`).
-            servers_tauri_rust::pending_consents_list,
-            servers_tauri_rust::server_consent_get,
-            servers_tauri_rust::server_consent_approve,
-            servers_tauri_rust::server_consent_deny,
+            servers_tauri::pending_consents_list,
+            servers_tauri::server_consent_get,
+            servers_tauri::server_consent_approve,
+            servers_tauri::server_consent_deny,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -374,7 +374,7 @@ pub fn run() {
             // allowlists their inner `_tag` first (the mobile channel's
             // `validate_native_webview_message`, the desktop content webview's
             // `native_webview_data_plane_emit` command) and re-broadcasts.
-            browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
+            browser_sniffer_tauri::attach_browser_sniffer(app.handle());
 
             // Wire the HarRecorderBridge.webToHost listener that writes a
             // finished recording into `<data root>/saved_data`, shared by
@@ -391,7 +391,7 @@ pub fn run() {
             )?;
             let config_app_handle = app.handle().clone();
             let config_data_root = data_root.clone();
-            servers_tauri_rust::host_servers(
+            servers_tauri::host_servers(
                 app.handle(),
                 &data_root,
                 default_launcher_url,

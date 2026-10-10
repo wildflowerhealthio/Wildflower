@@ -31,9 +31,7 @@ describe('the workspace package graph', () => {
     // A TS package and a Rust crate each with a known workspace dependency:
     // reading either manifest wrong would drop the edge.
     expect(byName.get('npm:importer-react')?.runtimeDependencyNames).toContain('importer-core')
-    expect(byName.get('cargo:host-app')?.runtimeDependencyNames).toContain(
-      'browser-sniffer-tauri-rust'
-    )
+    expect(byName.get('cargo:host-app')?.runtimeDependencyNames).toContain('browser-sniffer-tauri')
   })
 })
 
@@ -140,7 +138,7 @@ describe('packageGraphViolations', () => {
     '-react',
     '-rust',
     '-tauri',
-    '-tauri-rust',
+    '-tauri-js',
     '-node',
     '-web'
   )
