@@ -1,7 +1,7 @@
 //! `SQLite` persistence for the gatekeeper — the `SqliteGatekeeperStore`
 //! adapter (the `SQLite` implementation of the
 //! [`GatekeeperStore`](crate::domain::GatekeeperStore) port: it holds the
-//! app-wide diesel r2d2 pool, `persistence_rust::DieselPool`, and applies the
+//! app-wide diesel r2d2 pool, `wildflowerhealthio_persistence::DieselPool`, and applies the
 //! gatekeeper migrations onto it under a per-slice namespace, mirroring
 //! collector's `SqliteRemotesStore`) plus one
 //! file per concern holding that concern's `table!` definition, row/column

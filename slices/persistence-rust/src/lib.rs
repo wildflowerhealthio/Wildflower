@@ -22,15 +22,15 @@
 //!    `TryFrom<&Row>`, named-param array, and column list from one field list.
 
 // Private modules: their public items are surfaced through the curated `pub use`
-// below, so there's exactly one path to each (`persistence_rust::Connection`,
-// not also `persistence_rust::connection::Connection`).
+// below, so there's exactly one path to each (`wildflowerhealthio_persistence::Connection`,
+// not also `wildflowerhealthio_persistence::connection::Connection`).
 mod connection;
 mod diesel_pool;
 mod json_column;
 mod migrations;
 mod namespaced_migrations;
 // `sql_row!` is `#[macro_export]`ed at the crate root (see `row_mapping`);
-// consumers reach it as `persistence_rust::sql_row`.
+// consumers reach it as `wildflowerhealthio_persistence::sql_row`.
 mod row_mapping;
 mod sql_builder;
 mod uri_column;

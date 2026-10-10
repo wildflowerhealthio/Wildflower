@@ -19,7 +19,7 @@ use axum::serve::IncomingStream;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_rustls::server::TlsStream;
-use tunnel_rust::TunnelStream;
+use wildflowerhealthio_tunnel::TunnelStream;
 
 use self::tls::TunnelTlsAcceptor;
 

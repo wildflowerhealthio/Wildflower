@@ -29,18 +29,18 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use chrono::{Duration, Utc};
-use scopes_rust::{
+use tokio::sync::watch;
+use tokio::time::{interval, MissedTickBehavior};
+use wildflowerhealthio_scopes::{
     ContextLevel, FhirResourceScope, Grant, KnownScope, Permission, ResourceType, Scope,
     WildflowerResourceScope, WildflowerResourceType,
 };
-use token_revocation_rust::RevocationStore;
-use tokio::sync::watch;
-use tokio::time::{interval, MissedTickBehavior};
+use wildflowerhealthio_token_revocation::RevocationStore;
 
 pub use config::GatekeeperConfig;
 pub use db::SqliteGatekeeperStore;
 // Debug builds only: the OAuth clients for the first-party apps' vite dev servers
-// (the gatekeeper half of `apps_rust::seed_dev_apps`). Gated so a release build
+// (the gatekeeper half of `wildflowerhealthio_apps::seed_dev_apps`). Gated so a release build
 // contains no code that could write them.
 #[cfg(debug_assertions)]
 pub use seeding::seed_dev_app_clients;
@@ -77,7 +77,7 @@ pub use http::{
     GatekeeperState, RequireLoopbackPeerMiddleware,
 };
 pub use live_bindings::LaunchContextMinter;
-pub use persistence_rust::DieselPool;
+pub use wildflowerhealthio_persistence::DieselPool;
 // The loopback-dialog seam: the host implements it with its native dialog
 // plugin and passes it into `setup_gatekeeper`, so its trait + types are public.
 pub use ports::{
@@ -151,7 +151,7 @@ pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
 /// [`GatekeeperConfig::host_owner_scopes`] from this; the live Tauri app sources
 /// the value from `tauri-shared-config.json` instead.
 pub fn default_local_granted_scopes() -> Vec<String> {
-    scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
+    wildflowerhealthio_scopes::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
 }
 
 /// The default first-party `client_id` — [`FIRST_PARTY_CLIENT_ID`]. Standalone
@@ -209,7 +209,7 @@ pub struct Gatekeeper {
 }
 
 /// Build the gatekeeper-rust HTTP surface over the host-owned diesel
-/// connection `pool` (the same app-wide `persistence_rust::open_pool` pool the
+/// connection `pool` (the same app-wide `wildflowerhealthio_persistence::open_pool` pool the
 /// collector rides). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
 /// the boot-time host owner token for `config.server_origin`, and:
@@ -289,7 +289,7 @@ pub fn setup_gatekeeper(
         &config.first_party_client_id,
     )?;
     let server_origin: Arc<str> =
-        shared_structures_rust::origin_string(&config.server_origin).into();
+        wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let host_owner_token = seeding::mint_host_owner_token(
         &store,
         &server_origin,

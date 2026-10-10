@@ -5,9 +5,9 @@
 //! approver was entitled to delegate.
 
 use chrono::{DateTime, Utc};
-use scopes_rust::widened_scopes;
 use url::Url;
 use uuid::Uuid;
+use wildflowerhealthio_scopes::widened_scopes;
 
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
@@ -222,12 +222,12 @@ fn new_registration(
 /// the row (its name, kind, secret, registration time) is left exactly as it
 /// was.
 ///
-/// The scope half is [`scopes_rust::widened_scopes`], not a string union: the
+/// The scope half is [`wildflowerhealthio_scopes::widened_scopes`], not a string union: the
 /// granted scopes are parsed, so an approval that grants
 /// `patient/Patient.cruds` **replaces** a registered `patient/Patient.r`
 /// instead of leaving the row carrying both, and granting again what the row
 /// already covers leaves it untouched. `allowed_scopes` is only ever read
-/// through [`scopes_rust::allowed_scope_covers`] (at `/authorize`, at
+/// through [`wildflowerhealthio_scopes::allowed_scope_covers`] (at `/authorize`, at
 /// `/device_authorization`, and in
 /// [`classify_registration`](crate::domain::client_registration::classify_registration)),
 /// so a collapsed row admits exactly the requests the un-collapsed one did.

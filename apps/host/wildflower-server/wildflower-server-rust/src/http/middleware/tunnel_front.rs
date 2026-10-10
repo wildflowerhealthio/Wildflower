@@ -1,7 +1,7 @@
 //! The tunnel listener's front: the layer of the tunnel router, outside all
 //! but CORS, that writes each tunnel request's `Forwarded` header from its `Host` and the
 //! visitor's PROXY address, so the layers and handlers that read `Forwarded`
-//! (`shared_structures_rust::served_origin`) see a tunnel request exactly as
+//! (`wildflowerhealthio_shared_structures::served_origin`) see a tunnel request exactly as
 //! they see one a trusted front relayed.
 
 use std::net::IpAddr;
@@ -12,8 +12,8 @@ use axum::http::header::{FORWARDED, HOST};
 use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use tunnel_rust::public_origin_url;
 use url::Url;
+use wildflowerhealthio_tunnel::public_origin_url;
 
 use crate::http::tunnel_listener::TunnelVisitor;
 
@@ -135,10 +135,10 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::routing::get;
     use axum::Router;
-    use shared_structures_rust::served_origin::{
+    use tower::ServiceExt;
+    use wildflowerhealthio_shared_structures::served_origin::{
         forwarded_client_address, request_provenance, RequestProvenance,
     };
-    use tower::ServiceExt;
 
     /// The domain most cases are served at.
     const DOMAIN: &str = "dev1.example.com";

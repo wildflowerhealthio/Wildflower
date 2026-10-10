@@ -1,6 +1,6 @@
 //! The scope-gated capability for the `/requests` surface — the request-log
 //! slice's copy of the default-safe authorization pattern (the generic
-//! machinery lives in [`scope_capabilities_rust`]; recipe in
+//! machinery lives in [`wildflowerhealthio_scope_capabilities`]; recipe in
 //! `docs/Authorization/Scope-Gated Endpoints How-To.md`). The capability is the
 //! only door to the store for its operations, so a handler that skips the scope
 //! check has no way to read the log.
@@ -15,7 +15,7 @@
 //! before `build` runs. It is **generic over the
 //! [`RequestLogStore`](crate::domain::RequestLogStore) port** and holds the
 //! store handle lifted from the state. The concrete
-//! [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability)
+//! [`FixedScopeCapability`](wildflowerhealthio_scope_capabilities::FixedScopeCapability)
 //! binding that names `SqliteRequestLogStore` lives beside the router state in
 //! `crate::live_bindings`, so `domain/` stays store-agnostic.
 //!
@@ -23,9 +23,9 @@
 //! capability's `*_scopes()` function — read by **both** its binding and
 //! [`grantable_request_log_scopes`], so *enforced* and *grantable* can't drift.
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
-pub(crate) use scope_capabilities_rust::Scoped;
+pub(crate) use wildflowerhealthio_scope_capabilities::Scoped;
 
 mod request_log_reader;
 
@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn grantable_request_log_scopes_are_the_request_log_read_scope() {
         assert_eq!(
-            scopes_rust::render_scopes(&grantable_request_log_scopes()),
+            wildflowerhealthio_scopes::render_scopes(&grantable_request_log_scopes()),
             vec!["wildflower/RequestLog.r".to_owned()],
         );
     }

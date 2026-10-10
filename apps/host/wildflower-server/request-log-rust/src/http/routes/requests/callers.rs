@@ -2,7 +2,7 @@
 
 use axum::Json;
 
-use scope_capabilities_rust::InsufficientScopeBody;
+use wildflowerhealthio_scope_capabilities::InsufficientScopeBody;
 
 use super::wire_representations::CallerSummaryBody;
 use crate::domain::capabilities::Scoped;

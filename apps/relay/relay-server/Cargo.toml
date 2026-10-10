@@ -1,5 +1,5 @@
 [package]
-name = "wildflower-relay"
+name = "wildflowerhealthio-relay-server"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -24,7 +24,7 @@ base64.workspace = true
 # noise implementation, still pulls in 4.x.
 curve25519-dalek = "5.0"
 # The tunnel store, `<state dir>/tunnels.db`: queries over the
-# `persistence_rust::DieselPool`, as the slices' stores do.
+# `wildflowerhealthio_persistence::DieselPool`, as the slices' stores do.
 diesel.workspace = true
 # Embeds the tunnel store's migrations (`migrations/`) at compile time.
 diesel_migrations.workspace = true
@@ -44,7 +44,7 @@ hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
 # The tunnel store's diesel connection pool and namespaced migration runner,
 # as the slices use them. The relay names the pool type but not rusqlite.
-persistence-rust = { path = "../../../slices/persistence-rust" }
+wildflowerhealthio-persistence = { path = "../../../slices/persistence-rust" }
 # OS randomness (`SysRng`) for created tunnels' tokens and default names. The
 # version the slices use.
 rand = "0.10"
@@ -59,7 +59,7 @@ rathole = { version = "0.5", default-features = false, features = [
 # `TunnelName`, the tunnel-name check the device's server registry shares.
 # `proxy-header`: the PROXY protocol v2 header ahead of each replayed
 # ClientHello, so the device sees the visitor's address instead of the relay's.
-rathole-settings-rust = { path = "../../../slices/rathole-settings-rust", features = [
+wildflowerhealthio-rathole-settings = { path = "../../../slices/rathole-settings-rust", features = [
   "proxy-header",
 ] }
 # `rustls::server::Acceptor` reads the ClientHello's server name for routing.
@@ -86,7 +86,7 @@ sha2 = "0.11"
 # structured fields (RFC 9651), and serializes `@signature-params`.
 sfv = "0.15"
 # `GET /health` on the site.
-shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
+wildflowerhealthio-shared-structures = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
 ] }
 # TCP keepalive on piped sockets (tokio has no setter); already in the tree

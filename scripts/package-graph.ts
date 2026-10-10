@@ -176,13 +176,20 @@ type Violation =
 /** Name suffixes of the pure layer: `<slice>-core`, and an app's `<app>-core-js`. */
 const CORE_SUFFIXES = ['-core', '-core-js']
 
-/** Name suffixes of a platform adapter, which a core package never depends on. */
-const ADAPTER_SUFFIXES = ['-react', '-rust', '-tauri', '-tauri-js', '-node', '-web']
+/** Name suffixes of a TS platform adapter, which a core package never depends on. */
+const ADAPTER_SUFFIXES = ['-react', '-tauri', '-tauri-js', '-node', '-web']
 
 const isCore = (workspacePackage: WorkspacePackage): boolean =>
   CORE_SUFFIXES.some((suffix) => workspacePackage.name.endsWith(suffix))
 
+/**
+ * Whether a package is a platform adapter: a TS package named for its
+ * platform, or any Rust crate. A crate is a slice's native half, named
+ * `wildflowerhealthio-<folder>` with no platform suffix, so it is told by its
+ * ecosystem rather than its name.
+ */
 const isAdapter = (workspacePackage: WorkspacePackage): boolean =>
+  workspacePackage.ecosystem === 'cargo' ||
   ADAPTER_SUFFIXES.some((suffix) => workspacePackage.name.endsWith(suffix))
 
 /** The `<name>` of the `apps/<name>/` folder a package sits in, if it is in one. */

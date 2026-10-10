@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client_registration::{

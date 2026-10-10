@@ -37,7 +37,7 @@ and asks for it again.
   No inline `<script>` or `<style>`, no `style="…"` in markup, no `data:`
   URLs, nothing from another origin. Vite's output (a module script, a
   stylesheet and the fonts, all under `assets/`) fits; keep it that way.
-- **`dist/` is embedded at compile time.** `cargo build -p wildflower-relay`
+- **`dist/` is embedded at compile time.** `cargo build -p wildflowerhealthio-relay-server`
   needs it: run `vp build` here first, or
   `scripts/ci/stub-embedded-bundles.sh relay-admin-web` for a placeholder. The
   relay's `build.rs` rebuilds the crate when `dist/` changes.

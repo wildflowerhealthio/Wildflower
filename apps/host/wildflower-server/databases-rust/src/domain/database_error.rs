@@ -1,7 +1,7 @@
 //! [`DatabaseError`] — the databases domain's failure vocabulary the HTTP layer
 //! renders.
 
-use scope_capabilities_rust::MissingScopes;
+use wildflowerhealthio_scope_capabilities::MissingScopes;
 
 /// The ways a databases operation can fail — the domain's failure vocabulary.
 /// [`NotFound`](DatabaseError::NotFound) is a **semantic**, client-facing
@@ -22,7 +22,7 @@ pub enum DatabaseError {
     /// download, `delete_scope` for a delete). Rendered as a `403` naming the
     /// missing scope(s) — the same shape gatekeeper's `/access` surface returns.
     /// Raised by the capabilities' per-database check. Their static gates are
-    /// empty, so the [`Scoped`](scope_capabilities_rust::Scoped) extractor never
+    /// empty, so the [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor never
     /// rejects them, but its rejection maps here too (`From<MissingScopes>`).
     InsufficientScope { missing_scopes: Vec<String> },
     /// An infrastructure failure in a file-level operation (a snapshot export or
@@ -49,7 +49,7 @@ impl DatabaseError {
     }
 }
 
-/// The [`Scoped`](scope_capabilities_rust::Scoped) extractor's rejection — the
+/// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's rejection — the
 /// caller's token doesn't cover the capability's required scopes — becomes
 /// [`InsufficientScope`](DatabaseError::InsufficientScope), so it reaches the wire
 /// through this error's rendering like any other failure.

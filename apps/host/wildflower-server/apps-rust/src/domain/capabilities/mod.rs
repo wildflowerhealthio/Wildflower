@@ -1,6 +1,6 @@
 //! Scope-gated capabilities for the `/apps` **admin** surface — the apps slice's
 //! copy of the default-safe authorization pattern (the generic machinery lives in
-//! [`scope_capabilities_rust`]; the pattern originated on gatekeeper's `/access`
+//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on gatekeeper's `/access`
 //! surface, recipe in `docs/Authorization/Scope-Gated Endpoints How-To.md`). They
 //! live in `domain/` beside the [`AppsStore`] port they operate through — never
 //! importing `crate::http` — so a forgotten permission check can't compile a
@@ -9,10 +9,10 @@
 //!
 //! Each capability is the **fixed-scope** flavour: one static
 //! `wildflower/Apps.<perm>` scope gates the whole capability, checked by the
-//! [`Scoped`](scope_capabilities_rust::Scoped) extractor before `build` runs. So the
+//! [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor before `build` runs. So the
 //! structs are generic over the store port and hold their dependencies **lifted
 //! from the state** — never an `Arc<AppsState>` they reach into. The concrete
-//! [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability) bindings
+//! [`FixedScopeCapability`](wildflowerhealthio_scope_capabilities::FixedScopeCapability) bindings
 //! that name the `SqliteAppsStore` adapter and build a capability from the router
 //! state live beside the state in [`crate::live_bindings`], so `domain/` stays
 //! store-agnostic.
@@ -38,7 +38,7 @@ mod apps_reader;
 
 use std::collections::HashSet;
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 pub(crate) use app_launcher::{app_launcher_scopes, AppLauncher};
 pub(crate) use apps_creator::{apps_creator_scopes, AppsCreator};
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn grantable_apps_scopes_are_the_expected_scopes() {
-        let rendered = scopes_rust::render_scopes(&grantable_apps_scopes());
+        let rendered = wildflowerhealthio_scopes::render_scopes(&grantable_apps_scopes());
         assert_eq!(
             rendered,
             vec![

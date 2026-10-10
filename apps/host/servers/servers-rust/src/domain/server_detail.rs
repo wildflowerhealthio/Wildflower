@@ -1,8 +1,8 @@
 //! [`ServerDetail`], what a server's run reports to `UnitRunner` beyond its
 //! run state.
 
-use gatekeeper_rust::PendingConsentHead;
-use wildflower_server_rust::{CertificateState, ServerHealth};
+use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
 use crate::live_bindings::server_consent_decider::ServerConsentDecider;
 use crate::live_bindings::server_launch_minter::ServerLaunchMinter;

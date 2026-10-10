@@ -20,7 +20,7 @@ use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
-use rathole_settings_rust::proxy_header::proxy_header;
+use wildflowerhealthio_rathole_settings::proxy_header::proxy_header;
 
 use super::hello::{read_client_hello, ClientHello};
 use super::Front;

@@ -1,15 +1,15 @@
 //! Tauri host glue for the servers: the install's servers on the unit
 //! runner, the notifications about them, the `server-status` and
 //! `pending-consent` events, and the base's commands, launching a server's
-//! launcher included. Every decision lives in [`servers_rust`], which needs no
+//! launcher included. Every decision lives in [`wildflowerhealthio_servers`], which needs no
 //! webview to be tested; this crate is only the glue.
 //!
 //! [`host_servers`], called once from the app's `setup()`:
 //!
 //! - pushes every server in `servers.json` to the app's
-//!   [`TauriUnitRunner`](tauri_unit_runner_rust::TauriUnitRunner) as a unit whose
+//!   [`TauriUnitRunner`](wildflowerhealthio_tauri_unit_runner::TauriUnitRunner) as a unit whose
 //!   id is its domain, with its run policy and a factory that builds a fresh
-//!   [`ServerUnit`](servers_rust::ServerUnit) for each run (see
+//!   [`ServerUnit`](wildflowerhealthio_servers::ServerUnit) for each run (see
 //!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
 //!   runs;
 //! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
@@ -28,20 +28,20 @@
 //!
 //! - [`servers_list`], invoked as `invoke('servers_list')`, answers with
 //!   every registered server, its status on `TauriUnitRunner` and its
-//!   certificate's state, as [`ListedServer`](servers_rust::ListedServer)s,
+//!   certificate's state, as [`ListedServer`](wildflowerhealthio_servers::ListedServer)s,
 //!   or with the error `servers.json` couldn't be read with.
 //! - [`server_add`], invoked as
 //!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
 //!   a relay and registers the server with the app's default launcher (see
-//!   [`servers_rust::add_server`]), answering with the server's domain.
+//!   [`wildflowerhealthio_servers::add_server`]), answering with the server's domain.
 //! - [`server_set_credentials`], invoked as
 //!   `invoke('server_set_credentials', { domain, token })`, replaces a
 //!   registered server's token, checked with its relay the same way, or
 //!   replaced at once for a rathole relay (see
-//!   [`servers_rust::set_server_credentials`]).
+//!   [`wildflowerhealthio_servers::set_server_credentials`]).
 //! - [`server_set_run_policy`], invoked as
 //!   `invoke('server_set_run_policy', { domain, choice })`, stores the
-//!   [`RunPolicyChoice`](servers_rust::RunPolicyChoice) as a run policy and
+//!   [`RunPolicyChoice`](wildflowerhealthio_servers::RunPolicyChoice) as a run policy and
 //!   gives `TauriUnitRunner` that policy, answering with it.
 //! - [`server_update`], invoked as
 //!   `invoke('server_update', { domain, launcherUrl, certificateAuthority })`,
@@ -56,12 +56,12 @@
 //!   [`server_consent_deny`], invoked with the server's `domain` and a
 //!   consent's key or approval, read a waiting consent and decide it as the
 //!   host's Owner, through the running server's gatekeeper in-process (see
-//!   [`servers_rust::ServerConsentDecider`]); a server that isn't running
+//!   [`wildflowerhealthio_servers::ServerConsentDecider`]); a server that isn't running
 //!   answers `serverNotRunning`.
 //! - [`server_launch`], invoked as `invoke('server_launch', { domain })`,
 //!   opens the server's launcher in a native web view of its own, at its
 //!   launcher URL with `iss` and a `launch` its running gatekeeper minted for
-//!   any client (see [`servers_rust::ServerLaunchMinter`]); a server that
+//!   any client (see [`wildflowerhealthio_servers::ServerLaunchMinter`]); a server that
 //!   isn't running, reachable through its relay and holding a valid
 //!   certificate answers why at once. It never changes the run policy.
 //!
@@ -69,7 +69,7 @@
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
 //! enrolment commands trim the token's surrounding whitespace, as the relay
 //! does, and refuse one left empty. Enrolment gets a
-//! [`ReqwestRelayClient`](servers_rust::ReqwestRelayClient) for a relay's site,
+//! [`ReqwestRelayClient`](wildflowerhealthio_servers::ReqwestRelayClient) for a relay's site,
 //! built when it asks for one.
 //!
 //! The token goes in and never comes back: no command answers with it or
@@ -98,13 +98,13 @@ mod test_gatekeeper;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use servers_rust::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log;
-use tauri_unit_runner_rust::TauriUnitRunner;
 use tokio::sync::{mpsc, Mutex};
 use url::Url;
-use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
+use wildflowerhealthio_servers::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
+use wildflowerhealthio_tauri_unit_runner::TauriUnitRunner;
+use wildflowerhealthio_wildflower_server::{HostPorts, WildflowerServerConfig};
 
 pub use commands::{
     server_add, server_remove, server_set_credentials, server_set_run_policy, server_update,
@@ -124,7 +124,7 @@ pub(crate) const BASE_WEBVIEW_LABEL: &str = "main";
 
 /// How many forwarded-request reports may wait for the request notifications
 /// before the servers start dropping them (see
-/// `wildflower_server_rust::ServerObservers`).
+/// `wildflowerhealthio_wildflower_server::ServerObservers`).
 pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
 /// What the servers commands work through: the install's registry and the

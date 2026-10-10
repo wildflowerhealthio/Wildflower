@@ -6,7 +6,7 @@
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer
-//! gates stamp both (see `shared_structures_rust::request_caller`). The host
+//! gates stamp both (see `wildflowerhealthio_shared_structures::request_caller`). The host
 //! turns the reports into "this app is using your server" notifications.
 
 mod reduced_path;
@@ -17,12 +17,14 @@ use axum::body::HttpBody;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
-use shared_structures_rust::health_check::HEALTH_PATH;
-use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, RequestRefusal};
-use shared_structures_rust::served_origin::{
+use tokio::sync::mpsc;
+use wildflowerhealthio_shared_structures::health_check::HEALTH_PATH;
+use wildflowerhealthio_shared_structures::request_caller::{
+    ForwardedRequest, RequestCaller, RequestRefusal,
+};
+use wildflowerhealthio_shared_structures::served_origin::{
     forwarded_client_address, is_forwarded, request_provenance, RequestProvenance,
 };
-use tokio::sync::mpsc;
 
 use reduced_path::reduced_path;
 
@@ -33,7 +35,7 @@ pub(crate) struct ForwardedRequestSenders {
     /// The host's channel (`ServerObservers::forwarded_request_tx`).
     pub(crate) host_tx: mpsc::Sender<ForwardedRequest>,
     /// The request-log writer's channel
-    /// (`request_log_rust::RequestLog::forwarded_request_tx`).
+    /// (`wildflowerhealthio_request_log::RequestLog::forwarded_request_tx`).
     pub(crate) request_log_tx: mpsc::Sender<ForwardedRequest>,
 }
 

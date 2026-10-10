@@ -26,12 +26,12 @@ use std::time::Duration;
 
 use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
-use rathole_settings_rust::PublicRatholeSettings;
 use rustls::server::ResolvesServerCert;
 use rustls::ServerConfig;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::broadcast;
 use tokio_rustls::TlsAcceptor;
+use wildflowerhealthio_rathole_settings::PublicRatholeSettings;
 
 use self::signature::Verifier;
 use crate::live_bindings::state::TunnelRegistry;
@@ -133,10 +133,10 @@ impl Site {
 
 #[cfg(test)]
 mod tests {
-    use rathole_settings_rust::{NoisePattern, Transport};
     use rustls::pki_types::ServerName;
     use rustls::{ClientConfig, RootCertStore};
     use tokio_rustls::TlsConnector;
+    use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
 
     use super::*;
     use crate::settings::AcmeSettings;

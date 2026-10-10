@@ -5,7 +5,7 @@
 //! exempts carries neither.
 
 use crate::common::*;
-use shared_structures_rust::request_caller::{RequestCaller, RequestRefusal};
+use wildflowerhealthio_shared_structures::request_caller::{RequestCaller, RequestRefusal};
 
 fn stamped_caller(response: &axum::response::Response) -> Option<RequestCaller> {
     response.extensions().get::<RequestCaller>().cloned()
@@ -24,7 +24,7 @@ fn revoke(db: &TestDb, token: &str) {
 
 fn bearer_gated_router(g: &Gatekeeper) -> axum::Router {
     use axum::routing::get;
-    use gatekeeper_rust::gatekeeper_auth_middleware;
+    use wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware;
 
     axum::Router::new()
         .route("/fhir-r4/metadata", get(|| async { "ok" }))
@@ -98,7 +98,7 @@ async fn the_session_gate_stamps_the_token_s_client() {
     assert_eq!(
         stamped_caller(&response),
         Some(RequestCaller {
-            client_id: gatekeeper_rust::default_first_party_client_id()
+            client_id: wildflowerhealthio_gatekeeper::default_first_party_client_id()
         })
     );
 }

@@ -17,7 +17,7 @@
 //!    that names the concrete store, kept out of [`http`] so `domain/` can build
 //!    capabilities from it without depending on the transport layer.
 //!  - [`db`] — the [`SqliteRequestLogStore`] adapter, built on Diesel over the
-//!    app-wide r2d2 connection pool (`persistence_rust::DieselPool`) onto the
+//!    app-wide r2d2 connection pool (`wildflowerhealthio_persistence::DieselPool`) onto the
 //!    shared database file.
 //!  - [`http`] — `GET /requests` and `GET /requests/callers`, gated by
 //!    `wildflower/RequestLog.r`; the wire contract is pinned from both sides by
@@ -33,9 +33,9 @@ use std::sync::Arc;
 use anyhow::Context;
 use axum::Router;
 use chrono::Utc;
-use shared_structures_rust::request_caller::ForwardedRequest;
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
+use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 
 pub use db::SqliteRequestLogStore;
 // The per-slice grantable-scope vocabulary (`wildflower/RequestLog.r`) — the
@@ -45,7 +45,7 @@ pub use live_bindings::state::RequestLogState;
 // Re-exported so the host can name the pool type at the `setup_request_log`
 // call site without a direct diesel dependency; the canonical home is
 // persistence-rust.
-pub use persistence_rust::DieselPool;
+pub use wildflowerhealthio_persistence::DieselPool;
 
 /// How many forwarded-request reports may wait for the writer before the
 /// server starts dropping them.
@@ -78,7 +78,7 @@ pub struct RequestLog {
 /// The returned router carries no middleware, but every endpoint is scope-gated
 /// (the handlers take a `Scoped<…>` capability). The consumer MUST still layer
 /// it with its auth gate (the server applies
-/// `gatekeeper_rust::gatekeeper_auth_middleware`), which inserts the
+/// `wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware`), which inserts the
 /// `ScopeClaims` the capability reads, so an ungated router fails closed with a
 /// 500 rather than admitting an unauthenticated caller.
 ///

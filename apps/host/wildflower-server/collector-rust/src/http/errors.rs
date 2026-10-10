@@ -16,16 +16,16 @@
 //! carries no body a client decodes.
 //!
 //! The `403` is a [`RemoteError::InsufficientScope`] — the scope-gated handlers'
-//! [`Scoped`](scope_capabilities_rust::Scoped) extractor rejects an under-scoped
+//! [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor rejects an under-scoped
 //! caller with it — rendered through the shared
-//! [`insufficient_scope`](scope_capabilities_rust::insufficient_scope) helper.
+//! [`insufficient_scope`](wildflowerhealthio_scope_capabilities::insufficient_scope) helper.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
-use shared_structures_rust::http_errors::InternalError;
 use utoipa::ToSchema;
+use wildflowerhealthio_shared_structures::http_errors::InternalError;
 
 use crate::domain::RemoteError;
 
@@ -89,7 +89,7 @@ impl IntoResponse for RemoteError {
             )
                 .into_response(),
             RemoteError::InsufficientScope { missing_scopes } => {
-                scope_capabilities_rust::insufficient_scope(missing_scopes)
+                wildflowerhealthio_scope_capabilities::insufficient_scope(missing_scopes)
             }
             RemoteError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()

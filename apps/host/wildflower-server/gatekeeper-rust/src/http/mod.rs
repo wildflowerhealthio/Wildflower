@@ -35,10 +35,10 @@ use crate::domain::capabilities::oauth::ClientScopesReader;
 
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 /// The shared `InsufficientScopeBody` is registered here so the
-/// [`InsufficientScopeResponses`](scope_capabilities_rust::InsufficientScopeResponses)
+/// [`InsufficientScopeResponses`](wildflowerhealthio_scope_capabilities::InsufficientScopeResponses)
 /// addon in `openapi_spec` can `$ref` it on the scope-gated `/access` paths.
 #[derive(OpenApi)]
-#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]
+#[openapi(components(schemas(wildflowerhealthio_scope_capabilities::InsufficientScopeBody)))]
 struct ApiDoc;
 
 /// The documented **pre-auth** surface — jwks + the OAuth group — as an
@@ -124,7 +124,7 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 pub fn client_allowed_scopes(
     state: &GatekeeperState,
     client_id: &str,
-) -> anyhow::Result<Vec<scopes_rust::Scope>> {
+) -> anyhow::Result<Vec<wildflowerhealthio_scopes::Scope>> {
     let reader = ClientScopesReader::new(state.store.clone());
     Ok(reader.registered_client_scopes(client_id)?)
 }
@@ -149,7 +149,8 @@ fn openapi_spec() -> utoipa::openapi::OpenApi {
         .filter(|path| path.starts_with("/access/"))
         .cloned()
         .collect();
-    scope_capabilities_rust::InsufficientScopeResponses::for_paths(gated_paths).modify(&mut spec);
+    wildflowerhealthio_scope_capabilities::InsufficientScopeResponses::for_paths(gated_paths)
+        .modify(&mut spec);
     spec
 }
 
@@ -163,10 +164,10 @@ mod openapi_tests {
 
     /// The generated `OpenAPI` document must match the committed snapshot. A wire
     /// type change flips this red; regenerate with
-    /// `UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date`.
+    /// `UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-gatekeeper openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        shared_structures_rust::openapi_snapshot::assert_up_to_date(
+        wildflowerhealthio_shared_structures::openapi_snapshot::assert_up_to_date(
             &super::openapi_spec(),
             SPEC_PATH,
         );

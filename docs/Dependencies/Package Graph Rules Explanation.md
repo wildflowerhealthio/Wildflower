@@ -11,10 +11,12 @@ the manifests rather than the source, and what each exception is for.
 **A core never depends on an adapter.** A package named `<name>-core`, or an
 app's `<product>-core-js`, is the pure layer (see
 [slices/AGENTS.md](../../slices/AGENTS.md)). It may not depend on a package
-named for a platform: `-react`, `-rust`, `-tauri`, `-tauri-js`, `-node` or
-`-web`. A package that needs one, as `lifelabs-pdf-importer` needs
-`positioned-text-web`'s pdfjs extraction, is not a core and doesn't take the
-suffix.
+named for a platform (`-react`, `-tauri`, `-tauri-js`, `-node` or `-web`) or
+on a Rust crate. Crates are named `wildflowerhealthio-<folder>`, without the
+folder's `-rust` suffix, so the check tells them by their ecosystem: every
+crate is a slice's native half, an adapter. A package that needs one, as
+`lifelabs-pdf-importer` needs `positioned-text-web`'s pdfjs extraction, is not
+a core and doesn't take the suffix.
 
 A core's own code is held pure the same way, below the package level. Each
 core's tsconfig has `lib: ["es2024"]` with no `"dom"`, so a `document` or
@@ -58,17 +60,17 @@ packages exist. An edge counts only when it names a workspace package (a
 ## The exceptions, and why
 
 - **A dev-dependency from one app to another is allowed.** An app's tests may
-  run against another app's real code, as the host's `servers-rust` enrols
-  against the real `wildflower-relay`. A slice or `global/` package gets no
-  such pass, even from its tests: a test that drives a slice together with a
-  host crate belongs in the host's own tests.
+  run against another app's real code, as the host's `wildflowerhealthio-servers`
+  enrols against the real `wildflowerhealthio-relay-server`. A slice or
+  `global/` package gets no such pass, even from its tests: a test that drives
+  a slice together with a host crate belongs in the host's own tests.
 - **`wildflower-site-web` may depend on other apps' `-web` packages.** It is
   the assembly that copies every app's build to its section of
   wildflowerhealth.io, so it depends on all of them by design.
 - **A package that depends on itself is not a cycle.** A crate lists itself
   as a dev-dependency to turn on its own test-only features
-  (`wildflower-server-rust`'s `test-support`), and a TS package may do the same
-  to import itself by name in tests.
+  (`wildflowerhealthio-wildflower-server`'s `test-support`), and a TS package
+  may do the same to import itself by name in tests.
 
 Every dependency kind counts toward cycles and the core rule; dev-dependencies
 are exempt only from the app-privacy rule, and only between apps.

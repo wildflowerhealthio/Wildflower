@@ -22,10 +22,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use shared_structures_rust::health_check::HealthReport;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use url::Url;
+use wildflowerhealthio_shared_structures::health_check::HealthReport;
 
 use crate::domain::server_health::ServerHealth;
 
@@ -137,8 +137,8 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::Mutex;
 
-    use shared_structures_rust::health_check::HealthStatus;
     use tokio::time::Instant;
+    use wildflowerhealthio_shared_structures::health_check::HealthStatus;
 
     use super::*;
 

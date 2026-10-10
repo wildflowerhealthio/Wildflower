@@ -44,7 +44,7 @@ A domain crate defines its units and stores their policies with this crate
 alone:
 
 ```rust,ignore
-use unit_runner_rust::{RunContext, RunPolicy, Unit};
+use wildflowerhealthio_unit_runner::{RunContext, RunPolicy, Unit};
 
 pub struct Sync;
 
@@ -66,12 +66,12 @@ pub struct SyncRecord {
 ```
 
 The app's Tauri crate hands the units to
-`tauri_unit_runner_rust::TauriUnitRunner`. A
+`wildflowerhealthio_tauri_unit_runner::TauriUnitRunner`. A
 test, or another host, calls `UnitRunner` directly:
 
 ```rust,ignore
 use std::sync::Arc;
-use unit_runner_rust::{RunPolicy, SystemClock, UnitId, UnitRunner};
+use wildflowerhealthio_unit_runner::{RunPolicy, SystemClock, UnitId, UnitRunner};
 
 let runner = UnitRunner::<String>::new(tokio::runtime::Handle::current(), Arc::new(SystemClock));
 runner.set_unit(UnitId::from("sync"), RunPolicy::Always, || Ok(Sync));

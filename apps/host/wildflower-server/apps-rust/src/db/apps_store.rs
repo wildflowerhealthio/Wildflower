@@ -1,7 +1,7 @@
 //! The `SqliteAppsStore` adapter — the `SQLite` implementation of the
 //! [`AppsStore`](crate::domain::AppsStore) port over the one `app_registrations`
 //! table. Holds the app-wide r2d2 pool of Diesel `SqliteConnection`s
-//! (`persistence_rust::DieselPool`) onto the shared database file, applies the
+//! (`wildflowerhealthio_persistence::DieselPool`) onto the shared database file, applies the
 //! embedded apps migrations once on construction, and implements the port's
 //! queries: the catalogue read, the by-id read, the insert / content replace /
 //! delete mutators, and the atomic homescreen placement rewrite (the single
@@ -26,7 +26,7 @@ use diesel::serialize::{IsNull, Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::sqlite::{Sqlite, SqliteValue};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use persistence_rust::{DieselPool, PooledDieselConnection};
+use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
 use crate::domain::{is_exact_registry_permutation, AppRegistration, AppUrl, AppsError, AppsStore};
 
@@ -78,14 +78,14 @@ impl ToSql<Text, Sqlite> for AppUrlColumn {
 }
 
 /// This slice's migration namespace in the shared database. Applied versions are
-/// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
+/// bookkept per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], so
 /// apps' `0001` and another diesel slice's `0001` never collide.
 const MIGRATION_NAMESPACE: &str = "apps";
 
 /// The apps migrations, embedded from the crate's `migrations/` tree at compile
 /// time (diesel layout: `<version>_<name>/up.sql` + `down.sql`). Applied once per
 /// database in [`SqliteAppsStore::new`] via
-/// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`] (see
+/// [`wildflowerhealthio_persistence::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`] (see
 /// that runner for why the stock diesel harness can't be used across slices).
 /// The table definition and each shipped app's seed are separate migrations
 /// (see `migrations/`); because each runs only once per database, a user-deleted
@@ -98,7 +98,7 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 /// the axum state.
 #[derive(Clone)]
 pub struct SqliteAppsStore {
-    // The host-owned app-wide r2d2 pool (`persistence_rust::open_pool`) onto the
+    // The host-owned app-wide r2d2 pool (`wildflowerhealthio_persistence::open_pool`) onto the
     // shared database file. Each query checks a connection out (diesel's API is
     // `&mut`); the pool is an `Arc` inside, so the store is cheap to clone into
     // the axum state. See docs/Persistence/Shared Diesel Pool Explanation.md for
@@ -109,7 +109,7 @@ pub struct SqliteAppsStore {
 impl SqliteAppsStore {
     /// Wrap the host-owned connection `pool` and apply pending apps migrations
     /// once, on a single checked-out connection. The host builds the app-wide pool
-    /// (via `persistence_rust::open_pool`) on the same file its rusqlite
+    /// (via `wildflowerhealthio_persistence::open_pool`) on the same file its rusqlite
     /// connection opens for the other slices; both coexist (SQLite permits
     /// multiple connections per file).
     ///
@@ -120,22 +120,26 @@ impl SqliteAppsStore {
         let mut conn = pool
             .get()
             .context("failed to check out a connection to run apps migrations")?;
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .context("failed to apply apps migrations")?;
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .context("failed to apply apps migrations")?;
         drop(conn);
         Ok(Self { pool })
     }
 
     /// Build a store over a private in-memory database — for tests. Each call is
     /// an independent, freshly-migrated database (see
-    /// `persistence_rust::open_in_memory_pool`).
+    /// `wildflowerhealthio_persistence::open_in_memory_pool`).
     ///
     /// # Errors
     ///
     /// Returns an error if the in-memory pool can't be built or migrated.
     #[cfg(test)]
     pub fn open_in_memory() -> anyhow::Result<Self> {
-        Self::new(persistence_rust::open_in_memory_pool()?)
+        Self::new(wildflowerhealthio_persistence::open_in_memory_pool()?)
     }
 
     /// Check a connection out of the pool, mapping an exhausted-pool failure to an
@@ -559,7 +563,7 @@ mod migration_tests {
     use diesel::sql_types::{BigInt, Integer, Text};
     use diesel::sqlite::{Sqlite, SqliteConnection};
     use diesel::{sql_query, QueryableByName};
-    use persistence_rust::DieselPool;
+    use wildflowerhealthio_persistence::DieselPool;
 
     use super::*;
     use crate::db::test_support::SEEDED_IDS;
@@ -570,12 +574,20 @@ mod migration_tests {
     /// errors.
     #[test]
     fn migrations_are_idempotent_and_seed_the_default_registry_once() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         let mut conn = pool.get().unwrap();
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .unwrap();
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .unwrap();
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .unwrap();
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .unwrap();
         let row_count: i64 = app_registrations::table
             .count()
             .get_result(&mut conn)
@@ -613,9 +625,9 @@ mod migration_tests {
     /// A fresh in-memory pool migrated through `version` — an install that has not
     /// yet run the migrations after it.
     fn pool_migrated_through(version: &'static str) -> DieselPool {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         let mut conn = pool.get().unwrap();
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough(version),
@@ -1377,7 +1389,7 @@ mod migration_tests {
         let mut conn = pool.get().unwrap();
         create_self_hosted_app(&mut conn, "my-upload", 8082);
         create_user_cloud_app(&mut conn, "my-cloud-app");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0011"),

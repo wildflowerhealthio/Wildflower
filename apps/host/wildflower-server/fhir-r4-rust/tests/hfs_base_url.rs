@@ -9,10 +9,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use axum::body::{to_bytes, Body};
 use axum::http::{HeaderMap, Request, StatusCode};
 use axum::Router;
-use fhir_r4_rust::{setup_fhir_r4, FhirR4Config, FhirR4Routers};
 use serde_json::{json, Value};
-use shared_structures_rust::ServerRuntimeConfig;
 use tower::ServiceExt;
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config, FhirR4Routers};
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 const PUBLIC_ORIGIN: &str = "https://abc.relay.example";
 const PUBLIC_BASE: &str = "https://abc.relay.example/fhir-r4";
@@ -52,7 +52,7 @@ fn build_routers() -> (FhirR4Routers, TempDb) {
         public_origin: PUBLIC_ORIGIN.parse().expect("parse public origin"),
     };
 
-    let revocation_store = token_revocation_rust::RevocationStore::always_allow();
+    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(&runtime, &config, revocation_store).expect("setup_fhir_r4");
     (routers, TempDb { dir })
 }

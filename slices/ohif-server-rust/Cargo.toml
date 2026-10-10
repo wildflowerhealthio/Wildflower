@@ -1,5 +1,5 @@
 [package]
-name = "ohif-server-rust"
+name = "wildflowerhealthio-ohif-server"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -7,7 +7,7 @@ publish.workspace = true
 # The OHIF server slice: a scope-gated endpoint that serves DICOM file bytes
 # decoded from FHIR DocumentReference attachments. HFS holds the clinical data;
 # this crate wraps one read path for the OHIF viewer's HTTP fetch. Layered like
-# `collector-rust` / `tunnel-rust`: pure `domain`, `hfs` adapter, and `http`.
+# `wildflowerhealthio-collector` / `wildflowerhealthio-tunnel`: pure `domain`, `hfs` adapter, and `http`.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -17,9 +17,9 @@ serde.workspace = true
 serde_json.workspace = true
 # In-process re-drive of HFS's router via `oneshot`.
 tower.workspace = true
-scopes-rust = { path = "../scopes/scopes-rust" }
-scope-capabilities-rust = { path = "../scopes/scope-capabilities-rust", features = ["openapi"] }
-shared-structures-rust = { path = "../shared-structures/shared-structures-rust", features = ["http-errors"] }
+wildflowerhealthio-scopes = { path = "../scopes/scopes-rust" }
+wildflowerhealthio-scope-capabilities = { path = "../scopes/scope-capabilities-rust", features = ["openapi"] }
+wildflowerhealthio-shared-structures = { path = "../shared-structures/shared-structures-rust", features = ["http-errors"] }
 utoipa.workspace = true
 utoipa-axum.workspace = true
 
@@ -27,6 +27,6 @@ utoipa-axum.workspace = true
 workspace = true
 
 [dev-dependencies]
-shared-structures-rust = { path = "../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+wildflowerhealthio-shared-structures = { path = "../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 http-body-util.workspace = true

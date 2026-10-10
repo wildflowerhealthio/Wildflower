@@ -2,11 +2,11 @@
 //! sent to the base whenever it changes, and the desktop window brought
 //! forward when a server gets one.
 
-use servers_rust::{PendingConsent, PendingConsentTracker, ServerDetail};
 use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_log::log;
-use tauri_unit_runner_rust::UnitStatuses;
 use tokio::sync::watch;
+use wildflowerhealthio_servers::{PendingConsent, PendingConsentTracker, ServerDetail};
+use wildflowerhealthio_tauri_unit_runner::UnitStatuses;
 
 use crate::BASE_WEBVIEW_LABEL;
 

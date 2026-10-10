@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;

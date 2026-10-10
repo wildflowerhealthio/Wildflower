@@ -13,19 +13,19 @@
 //! `#[utoipa::path]` responses.
 
 use axum::response::{IntoResponse, Response};
-use shared_structures_rust::http_errors::InternalError;
+use wildflowerhealthio_shared_structures::http_errors::InternalError;
 
 use crate::domain::RequestLogError;
 
 /// Render each [`RequestLogError`] onto the wire: the shared `403` naming the
-/// missing scope(s) (via [`scope_capabilities_rust::insufficient_scope`]), or an
+/// missing scope(s) (via [`wildflowerhealthio_scope_capabilities::insufficient_scope`]), or an
 /// opaque, empty 500 for an infrastructure failure — the operator sees the
 /// detail, the client doesn't.
 impl IntoResponse for RequestLogError {
     fn into_response(self) -> Response {
         match self {
             RequestLogError::InsufficientScope { missing_scopes } => {
-                scope_capabilities_rust::insufficient_scope(missing_scopes)
+                wildflowerhealthio_scope_capabilities::insufficient_scope(missing_scopes)
             }
             RequestLogError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()

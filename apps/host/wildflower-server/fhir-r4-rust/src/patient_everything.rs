@@ -60,7 +60,7 @@ use axum::response::{IntoResponse, Json, Response};
 use axum::Router;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use shared_structures_rust::served_origin::served_base_url_for;
+use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 use crate::delegate::{delegate_get, internal_error, read_json};
 use crate::FHIR_R4_PATH;

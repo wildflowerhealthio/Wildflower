@@ -30,9 +30,9 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use http_body_util::BodyExt;
-    use scope_capabilities_rust::ScopeClaims;
-    use shared_structures_rust::request_caller::RequestRefusal;
     use tower::ServiceExt;
+    use wildflowerhealthio_scope_capabilities::ScopeClaims;
+    use wildflowerhealthio_shared_structures::request_caller::RequestRefusal;
 
     use crate::db::logged_requests::test_support::forwarded_request;
     use crate::db::SqliteRequestLogStore;

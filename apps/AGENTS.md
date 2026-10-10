@@ -48,7 +48,7 @@ depends on its Rust half.
   fold into [`apps/host/wildflower-server/`](./host/wildflower-server/AGENTS.md)
   beside the server that composes them. No slice may depend on a folded crate,
   not even as a dev-dependency: a test that drives two slices together moves
-  into `wildflower-server-rust`'s tests.
+  into `wildflowerhealthio-wildflower-server`'s tests.
 - **Only a slice's Rust crates** fold in when the host is their only consumer
   but other products share the slice's TypeScript packages. The crates move to
   `apps/host/wildflower-server/`, with the docs about them; the slice keeps its
@@ -77,6 +77,7 @@ unscoped name:
 | Folder                                     | `apps/<product>/`                                                                                                                        | `apps/lifting/`                   |
 | The app's folder                           | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`; a store-shipped Tauri app: `<product>-app`) | `lifting-web`                     |
 | The app's npm package                      | `@wildflowerhealthio/<folder>`                                                                                                           | `@wildflowerhealthio/lifting-web` |
+| Rust crate (and binary)                    | `wildflowerhealthio-` + its folder's name, less a trailing `-rust`                                                                       | `wildflowerhealthio-relay-server` |
 | A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `lifting-core-js`                 |
 | Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `lifting-react`                   |
 | Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/lifting/`                       |
@@ -89,6 +90,17 @@ unscoped name:
 A client id is never a name: the host's loopback consent dialog shows the
 client's registered `name`, and nothing looks an app up by its client id, so a
 tile id and its client id are independent.
+
+A crate's name carries the `wildflowerhealthio-` prefix because crates.io has
+no namespaces; it stands in for the npm scope. The folder keeps `-rust`, which
+tells a slice's Rust half from its TypeScript half side by side, but the crate
+drops it (crates are Rust by definition), so `slices/scopes/scopes-rust` is
+the crate `wildflowerhealthio-scopes`. Two crates keep other names because
+Tauri derives something from them: `tauri-plugin-native-webview` (a plugin
+crate needs the `tauri-plugin-` prefix) and the host's `host-app` (Tauri
+names the iOS Xcode project and scheme, `gen/apple/host-app.xcodeproj`, the
+binary and the Linux AppImage after the package). No crate is published: the
+workspace sets `publish = false`.
 
 Ids that predate this are tracked in
 [#1042](https://github.com/wildflowerhealthio/Wildflower/issues/1042).

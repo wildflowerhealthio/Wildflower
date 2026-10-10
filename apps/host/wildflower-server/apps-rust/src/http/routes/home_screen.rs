@@ -14,7 +14,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
+use wildflowerhealthio_scope_capabilities::{InsufficientScopeBody, Scoped};
 
 use crate::domain::{AppRegistration, AppsError};
 use crate::http::errors::InvalidHomeScreenBody;

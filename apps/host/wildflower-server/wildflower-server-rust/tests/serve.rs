@@ -25,27 +25,29 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
-use gatekeeper_rust::{
-    GatekeeperStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
-};
 use rustls::pki_types::{CertificateDer, ServerName};
 use rustls_acme::caches::DirCache;
 use rustls_acme::CertCache;
 use serde_json::Value;
-use shared_structures_rust::health_check::{ComponentType, HealthReport, HealthStatus};
-use shared_structures_rust::launcher::LauncherBase;
-use shared_structures_rust::request_caller::ForwardedRequest;
-use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::TunnelStream;
 use url::Url;
-use wildflower_server_rust::{
+use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
+use wildflowerhealthio_gatekeeper::{
+    GatekeeperStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
+};
+use wildflowerhealthio_shared_structures::health_check::{
+    ComponentType, HealthReport, HealthStatus,
+};
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
+use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
+use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
+use wildflowerhealthio_tunnel::TunnelStream;
+use wildflowerhealthio_wildflower_server::{
     set_up, CertificateAuthority, DeviceCertificateConfig, HostPorts, ServerHealth,
     ServerObservers, WildflowerServerConfig,
 };
@@ -99,15 +101,15 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),
         // The owner-defining scopes gatekeeper requires the host owner token to cover.
-        host_owner_scopes: gatekeeper_rust::WILDFLOWER_WIDEST_SCOPES
+        host_owner_scopes: wildflowerhealthio_gatekeeper::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)
             .collect(),
-        first_party_client_id: gatekeeper_rust::FIRST_PARTY_CLIENT_ID.to_owned(),
+        first_party_client_id: wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // domain below never answers.
-        relay_settings: tunnel_rust::RelaySettings {
+        relay_settings: wildflowerhealthio_tunnel::RelaySettings {
             remote_addr: "127.0.0.1:9".to_owned(),
             token: "test-tunnel-token".to_owned(),
             public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),
@@ -328,7 +330,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
 fn client_token(app_data_dir: &Path, server_origin: &str, scopes: &[String]) -> String {
     // The server's shared database (`WILDFLOWER_DB` in `set_up`); a wrong name
     // opens an empty one, with no signing key to find.
-    let pool = persistence_rust::open_pool(&app_data_dir.join("wildflower.sqlite"))
+    let pool = wildflowerhealthio_persistence::open_pool(&app_data_dir.join("wildflower.sqlite"))
         .expect("open the server's database");
     let signing_key = SqliteGatekeeperStore::new(pool)
         .expect("gatekeeper store")
@@ -449,7 +451,7 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     )
     .await
     .expect("the server binds in time");
-    let request_log_scopes = request_log_rust::grantable_request_log_scopes()
+    let request_log_scopes = wildflowerhealthio_request_log::grantable_request_log_scopes()
         .iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
@@ -662,7 +664,7 @@ fn next_report(
 /// A PROXY protocol v2 header for the visitor at `source`, as the relay
 /// writes it.
 fn proxy_header(source: &str) -> Vec<u8> {
-    rathole_settings_rust::proxy_header::proxy_header(
+    wildflowerhealthio_rathole_settings::proxy_header::proxy_header(
         source.parse().expect("source address"),
         "198.51.100.1:443".parse().expect("relay address"),
     )
@@ -791,7 +793,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
 
     // A token for this server is accepted through the tunnel listener too, and
     // one another server minted is refused there as well.
-    let request_log_scopes = request_log_rust::grantable_request_log_scopes()
+    let request_log_scopes = wildflowerhealthio_request_log::grantable_request_log_scopes()
         .iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>();

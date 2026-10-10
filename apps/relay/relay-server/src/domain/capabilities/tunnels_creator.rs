@@ -10,7 +10,7 @@
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL;
 use base64::Engine;
 use rand::Rng;
-use rathole_settings_rust::is_dns_label;
+use wildflowerhealthio_rathole_settings::is_dns_label;
 
 use crate::domain::{names, StoredTunnel, Tunnel, TunnelError, TunnelStore};
 use crate::settings::{FrontSettings, Secret};

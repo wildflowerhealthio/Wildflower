@@ -4,7 +4,7 @@
 //! app-wide diesel r2d2 pool and applies the request-log migrations onto it)
 //! plus the `logged_requests` query bodies (`logged_requests`). The diesel
 //! `table!` schema lives in `schema`. Built on Diesel over
-//! `persistence_rust::DieselPool` onto the shared database file, mirroring
+//! `wildflowerhealthio_persistence::DieselPool` onto the shared database file, mirroring
 //! `collector-rust`'s `SqliteRemotesStore`.
 
 pub(crate) mod logged_requests;

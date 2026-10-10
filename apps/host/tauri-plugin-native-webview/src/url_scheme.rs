@@ -14,7 +14,7 @@
 //! `about:blank` (below) is only ever a transient cookie-seed transit — never a
 //! page the sniffer is expected to talk from. See the plugin's `docs/Explanation.md`.
 //!
-//! Mirrors `shared_structures_tauri::sandboxed_webview::resolve_http_url`;
+//! Mirrors `wildflowerhealthio_shared_structures_tauri::sandboxed_webview::resolve_http_url`;
 //! kept local so this self-contained plugin doesn't depend on an app-level slice
 //! adapter (the layering points the other way).
 

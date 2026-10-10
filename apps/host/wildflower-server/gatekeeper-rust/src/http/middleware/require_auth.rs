@@ -5,7 +5,7 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
-use shared_structures_rust::request_caller::{RequestCaller, RequestRefusal};
+use wildflowerhealthio_shared_structures::request_caller::{RequestCaller, RequestRefusal};
 
 use crate::domain::token::VerifiedClaims;
 use crate::http::errors;
@@ -56,7 +56,7 @@ pub async fn require_valid_session(
     req.extensions_mut().insert(claims);
     let mut response = next.run(req).await;
     // Name the verified caller on the response, for the host's forwarded-request
-    // observer (see `shared_structures_rust::request_caller`).
+    // observer (see `wildflowerhealthio_shared_structures::request_caller`).
     response.extensions_mut().insert(caller);
     response
 }

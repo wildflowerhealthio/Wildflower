@@ -1,26 +1,26 @@
 //! The `SqliteRemotesStore` adapter — the `SQLite` implementation of the
 //! [`RemotesStore`](crate::domain::RemotesStore) port. Holds the app-wide r2d2
-//! pool of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto the
+//! pool of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`) onto the
 //! shared database file, applies the embedded collector migrations once on
 //! construction, and implements the port by delegating to the per-concern query
 //! bodies in [`crate::db::remotes`].
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use persistence_rust::{DieselPool, PooledDieselConnection};
+use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
 use crate::db::remotes;
 use crate::domain::{Remote, RemoteError, RemotesStore};
 
 /// This slice's migration namespace in the shared database. Applied versions are
-/// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
+/// bookkept per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], so
 /// collector's `0001` and another diesel slice's `0001` never collide.
 const MIGRATION_NAMESPACE: &str = "collector";
 
 /// The collector migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
 /// Applied once per database in [`SqliteRemotesStore::new`] via
-/// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
+/// [`wildflowerhealthio_persistence::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
 /// (see that runner for why the stock diesel harness can't be used). Migration
 /// `0002` seeds the demo FHIR remote the retired api_stubs stub used to hardcode;
 /// because each migration runs only once per database, a user-deleted seed stays
@@ -31,7 +31,7 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 /// is an `Arc` inside), so it drops straight into the axum state.
 #[derive(Clone)]
 pub struct SqliteRemotesStore {
-    // The host-owned app-wide r2d2 pool (`persistence_rust::open_pool`) onto the
+    // The host-owned app-wide r2d2 pool (`wildflowerhealthio_persistence::open_pool`) onto the
     // shared database file. Each query checks a connection out (diesel's API is
     // `&mut`); the pool is an `Arc` inside, so the store is cheap to clone into
     // the axum state. See docs/Persistence/Shared Diesel Pool Explanation.md for
@@ -42,7 +42,7 @@ pub struct SqliteRemotesStore {
 impl SqliteRemotesStore {
     /// Wrap the host-owned connection `pool` and apply pending collector
     /// migrations once, on a single checked-out connection. The host builds the
-    /// app-wide pool (via `persistence_rust::open_pool`) on the same file its
+    /// app-wide pool (via `wildflowerhealthio_persistence::open_pool`) on the same file its
     /// rusqlite connection opens for the other slices; both coexist (see the
     /// `pool` field).
     ///
@@ -54,15 +54,19 @@ impl SqliteRemotesStore {
         let mut conn = pool
             .get()
             .context("failed to check out a connection to run collector migrations")?;
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .context("failed to apply collector migrations")?;
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .context("failed to apply collector migrations")?;
         drop(conn);
         Ok(Self { pool })
     }
 
     /// Build a store over a private in-memory database — for tests. Each call is
     /// an independent, freshly-migrated database. Uses
-    /// `persistence_rust::open_in_memory_pool`, whose shared-cache URI keeps the
+    /// `wildflowerhealthio_persistence::open_in_memory_pool`, whose shared-cache URI keeps the
     /// pooled connections on one in-memory database (a naive `:memory:` pool
     /// gives each connection its own empty db).
     ///
@@ -71,7 +75,7 @@ impl SqliteRemotesStore {
     /// Returns an error if the in-memory pool can't be built or migrated.
     #[cfg(test)]
     pub fn open_in_memory() -> anyhow::Result<Self> {
-        Self::new(persistence_rust::open_in_memory_pool()?)
+        Self::new(wildflowerhealthio_persistence::open_in_memory_pool()?)
     }
 
     /// Check a connection out of the pool, mapping a checkout failure to the
@@ -145,10 +149,18 @@ mod tests {
     #[test]
     fn migrations_are_idempotent_and_seed_once() {
         let mut conn = SqliteConnection::establish(":memory:").unwrap();
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .unwrap();
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .unwrap();
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .unwrap();
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .unwrap();
         let seed_count: i64 = collector_remotes::table
             .count()
             .get_result(&mut conn)

@@ -105,7 +105,7 @@ notAfter}`). A run appends each certificate it deploys unless the history
     records it already, replacing the file atomically;
     `read_certificate_history` reads it.
   - **`/health`** follows `draft-inadarei-api-health-check-06`
-    (`shared_structures_rust::health_check`): `application/health+json`,
+    (`wildflowerhealthio_shared_structures::health_check`): `application/health+json`,
     uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
     checks, a functional breakdown: `server` (a `wildflower.sqlite` pool
     connection answering `SELECT 1`) and `connectivity` (the tunnel daemon's

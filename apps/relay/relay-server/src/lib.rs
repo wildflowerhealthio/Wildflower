@@ -164,7 +164,7 @@
 //!    capabilities (`domain::capabilities`) that decide a read, create or
 //!    delete and drive the store through the port.
 //!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing that port with
-//!    Diesel over a `persistence_rust::DieselPool` onto `tunnels.db`, and its
+//!    Diesel over a `wildflowerhealthio_persistence::DieselPool` onto `tunnels.db`, and its
 //!    migrations (`migrations/`).
 //!  - [`live_bindings`] — the [`TunnelRegistry`] router state that holds the
 //!    store and what serves the stored tunnels, and the bindings that build

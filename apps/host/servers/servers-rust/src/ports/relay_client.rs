@@ -1,7 +1,7 @@
 //! The [`RelayClient`] port: the two requests enrolment makes to a Wildflower
 //! relay's own site.
 
-use rathole_settings_rust::{PublicRatholeSettings, TunnelHost, TunnelName};
+use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost, TunnelName};
 
 use crate::domain::{EnrolmentError, TunnelToken};
 

@@ -447,7 +447,7 @@ contract**, so the committed OpenAPI snapshot goes stale and the drift gate
 (`api-sync` CI) fails until you regenerate it:
 
 ```bash
-UPDATE_OPENAPI=1 cargo test -p collector-rust openapi_spec_snapshot_is_up_to_date
+UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-collector openapi_spec_snapshot_is_up_to_date
 vp test openapi-drift
 ```
 

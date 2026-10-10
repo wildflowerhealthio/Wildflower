@@ -2,14 +2,14 @@
 //!
 //! [`ReqwestHealthProbe`] GETs `https://{domain}/health` and decodes the
 //! server's `application/health+json` report (see
-//! [`shared_structures_rust::health_check`]). The draft answers `200` for
+//! [`wildflowerhealthio_shared_structures::health_check`]). The draft answers `200` for
 //! `pass`/`warn` and `503` for `fail`, so both carry a report; any other
 //! status, or a body that isn't a report, is an error.
 
 use anyhow::Context;
 use reqwest::StatusCode;
-use shared_structures_rust::health_check::HealthReport;
 use url::Url;
+use wildflowerhealthio_shared_structures::health_check::HealthReport;
 
 use crate::domain::reachability_monitor::{HealthProbe, PROBE_TIMEOUT};
 
@@ -65,7 +65,7 @@ mod tests {
     use axum::http::{header, StatusCode};
     use axum::routing::get;
     use axum::Router;
-    use shared_structures_rust::health_check::{
+    use wildflowerhealthio_shared_structures::health_check::{
         health_router, ComponentType, HealthCheck, HealthCheckService, HealthStatus,
     };
 

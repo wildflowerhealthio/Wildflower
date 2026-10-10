@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use gatekeeper_rust::bridge::{GatekeeperHostToWeb, PendingConsentHeadWire};
-use gatekeeper_rust::PendingConsentHead;
 use serde::Deserialize;
-use shared_structures_rust::bridge::{BRIDGE_EVENT, READY_TAG};
 use tauri::{AppHandle, Emitter, Listener};
 use tauri_plugin_log::log;
 use tokio::sync::{watch, Notify};
+use wildflowerhealthio_gatekeeper::bridge::{GatekeeperHostToWeb, PendingConsentHeadWire};
+use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_shared_structures::bridge::{BRIDGE_EVENT, READY_TAG};
 
 /// The `Log` tag literal the bridge listener dispatches on (`__Ready` is the
 /// shared [`READY_TAG`]). Matches the TS-side schema in
@@ -315,7 +315,7 @@ mod tests {
     use super::*;
 
     /// Drift guard for this crate's local tag literals. `BRIDGE_EVENT`
-    /// is pinned by `shared_structures_rust::bridge` (one source of
+    /// is pinned by `wildflowerhealthio_shared_structures::bridge` (one source of
     /// truth across every Rust bridge listener); the TS side pins the
     /// same literals in `effect-messaging-tauri-js/src/event-names.test.ts`.
     #[test]

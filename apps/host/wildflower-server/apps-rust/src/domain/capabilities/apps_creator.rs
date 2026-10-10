@@ -1,7 +1,7 @@
 //! The create capability — [`AppsCreator`], gated by `wildflower/Apps.c`
 //! ([`apps_creator_scopes`](super::apps_creator_scopes)).
 
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::actions::{self, AppPayload};
 use crate::domain::{AppRegistration, AppsError, AppsStore};

@@ -9,7 +9,7 @@ use helios_audit::{sinks::NullSink, AuditSink, ExclusionFilter};
 use helios_auth::error::AuthError;
 use helios_auth::{AuthConfig, AuthProvider, JwksBearerAuthProvider, JwksCache, Principal};
 use helios_rest::AuthMiddlewareState;
-use token_revocation_rust::RevocationStore;
+use wildflowerhealthio_token_revocation::RevocationStore;
 
 /// The FHIR-side revocation enforcement point: wraps helios's JWKS validator
 /// and rejects a validated token iff its `jti` is on the shared denylist. It
@@ -107,12 +107,12 @@ mod tests {
     use async_trait::async_trait;
     use axum::routing::get;
     use axum::{Json, Router};
-    use gatekeeper_rust::crypto_util::public_jwk::PublicJwk;
-    use gatekeeper_rust::domain::signing_key::SigningKey;
-    use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
     use helios_auth::error::AuthError;
     use helios_auth::{AuthProvider, Principal, ScopeSet};
-    use token_revocation_rust::RevocationStore;
+    use wildflowerhealthio_gatekeeper::crypto_util::public_jwk::PublicJwk;
+    use wildflowerhealthio_gatekeeper::domain::signing_key::SigningKey;
+    use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
+    use wildflowerhealthio_token_revocation::RevocationStore;
 
     /// This server's origin.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
@@ -295,7 +295,7 @@ mod tests {
     /// token.
     #[tokio::test]
     async fn revocation_provider_fails_closed_when_the_store_read_fails() {
-        let conn = persistence_rust::Connection::open_in_memory().expect("open");
+        let conn = wildflowerhealthio_persistence::Connection::open_in_memory().expect("open");
         let store = RevocationStore::new(conn.clone()).expect("migrate");
         conn.lock()
             .execute("DROP TABLE revoked_jtis", [])

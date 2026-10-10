@@ -9,11 +9,11 @@ use axum::http::{Request, StatusCode};
 use axum::Router;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use fhir_r4_rust::{setup_fhir_r4, FhirR4Config};
-use scope_capabilities_rust::ScopeClaims;
 use serde_json::{json, Value};
-use shared_structures_rust::ServerRuntimeConfig;
 use tower::ServiceExt;
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_scope_capabilities::ScopeClaims;
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -51,11 +51,11 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse public origin"),
     };
 
-    let revocation_store = token_revocation_rust::RevocationStore::always_allow();
+    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(&runtime, &config, revocation_store).expect("setup_fhir_r4");
-    let router = Router::new()
-        .merge(routers.augmented_fhir_r4_router)
-        .merge(ohif_server_rust::setup_ohif_server(routers.raw_hfs_router));
+    let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(
+        wildflowerhealthio_ohif_server::setup_ohif_server(routers.raw_hfs_router),
+    );
     (router, TempDb { dir })
 }
 

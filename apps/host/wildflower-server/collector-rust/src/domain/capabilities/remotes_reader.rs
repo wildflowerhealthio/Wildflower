@@ -3,7 +3,7 @@
 //! and [`grantable_collector_scopes`](super::grantable_collector_scopes) so
 //! enforced and grantable can't drift) and its store-focused tests.
 
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::{Remote, RemoteError, RemotesStore};
 

@@ -1,17 +1,19 @@
-//! Posting what [`servers_rust`] decides to notify about the servers: each
+//! Posting what [`wildflowerhealthio_servers`] decides to notify about the servers: each
 //! caller's requests through the tunnels, and each stop of a server's run
 //! `TauriUnitRunner` reports.
 
 use std::time::Instant;
 
-use servers_rust::{LocalNotification, RequestNotificationCoalescer, StopNotificationCoalescer};
-use shared_structures_rust::request_caller::ForwardedRequest;
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_log::log;
 use tauri_plugin_notification::Notification;
-use tauri_unit_runner_rust::RunStopped;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
+use wildflowerhealthio_servers::{
+    LocalNotification, RequestNotificationCoalescer, StopNotificationCoalescer,
+};
+use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
+use wildflowerhealthio_tauri_unit_runner::RunStopped;
 
 /// Post the per-caller request notifications the coalescer decides on, waking
 /// for each owed update when it comes due.

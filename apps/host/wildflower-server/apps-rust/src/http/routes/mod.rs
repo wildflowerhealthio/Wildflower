@@ -48,9 +48,9 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use http_body_util::BodyExt;
-    use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
-    use shared_structures_rust::OnDeviceWebviewHandle;
     use tower::ServiceExt;
+    use wildflowerhealthio_shared_structures::test_utils::RecordingStubWebviewHandle;
+    use wildflowerhealthio_shared_structures::OnDeviceWebviewHandle;
 
     // The port trait is in scope so the concrete store's `insert_app` /
     // `find_app` methods resolve in the fixtures.
@@ -63,7 +63,7 @@ mod tests {
     };
     use crate::live_bindings::state::AppsState;
     use crate::ports::NoAppLaunchScopes;
-    use scope_capabilities_rust::ScopeClaims;
+    use wildflowerhealthio_scope_capabilities::ScopeClaims;
 
     /// The owner-level scope claim the host's bearer gate would insert for the
     /// device owner — `wildflower/*.cruds` covers every `wildflower/Apps.<perm>` the

@@ -132,14 +132,14 @@ impl CumulativeConsent for DeviceGrant {
 
 /// Widen `standing` by `additional` — the shared half of [`CumulativeConsent`].
 ///
-/// [`scopes_rust::widened_scopes`], not a string union: the scopes are parsed,
+/// [`wildflowerhealthio_scopes::widened_scopes`], not a string union: the scopes are parsed,
 /// so re-approving `patient/Patient.cruds` over a standing `patient/Patient.r`
 /// records the one broader consent instead of accumulating both spellings, and
 /// re-approving what is already consented leaves the row byte-identical. The
 /// standing set still only ever grows — the widened list reaches every
 /// interaction it reached before.
 fn union_scopes_into(standing_ref: &mut Vec<String>, additional: &[String]) {
-    *standing_ref = scopes_rust::widened_scopes(standing_ref, additional);
+    *standing_ref = wildflowerhealthio_scopes::widened_scopes(standing_ref, additional);
 }
 
 /// The wire/list seam over the two concrete grant kinds — what cross-kind

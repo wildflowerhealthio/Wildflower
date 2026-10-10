@@ -7,7 +7,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller};
+use wildflowerhealthio_shared_structures::request_caller::{ForwardedRequest, RequestCaller};
 
 use crate::domain::notifications::local_notification::LocalNotification;
 

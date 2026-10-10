@@ -5,11 +5,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gatekeeper_rust::{LoopbackConsentPrompt, PendingConsentHead};
-use shared_structures_rust::launcher::LauncherBase;
-use shared_structures_rust::request_caller::ForwardedRequest;
-use shared_structures_rust::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use tokio::sync::{mpsc, watch};
+use wildflowerhealthio_gatekeeper::{LoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
+use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
+use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 
 use crate::{CertificateAuthority, CertificateState, ServerHealth};
 
@@ -23,19 +23,19 @@ pub struct WildflowerServerConfig {
     pub runtime: ServerRuntimeConfig,
     /// The directory holding the FHIR R4 SearchParameter bundle HFS indexes from
     /// (see
-    /// [`FhirR4Config::search_parameter_data_dir`](fhir_r4_rust::FhirR4Config::search_parameter_data_dir)).
+    /// [`FhirR4Config::search_parameter_data_dir`](wildflowerhealthio_fhir_r4::FhirR4Config::search_parameter_data_dir)).
     pub search_parameter_data_dir: PathBuf,
     /// The hosted launcher every browser-facing link points at.
     pub launcher_base: LauncherBase,
     /// The scopes gatekeeper seeds the first-party client with and mints the host
     /// owner token under (see
-    /// [`GatekeeperConfig::host_owner_scopes`](gatekeeper_rust::GatekeeperConfig::host_owner_scopes)).
+    /// [`GatekeeperConfig::host_owner_scopes`](wildflowerhealthio_gatekeeper::GatekeeperConfig::host_owner_scopes)).
     pub host_owner_scopes: Vec<String>,
     /// The host's first-party OAuth `client_id`.
     pub first_party_client_id: String,
     /// The relay connection the server's tunnel dials, from the server's
     /// record.
-    pub relay_settings: tunnel_rust::RelaySettings,
+    pub relay_settings: wildflowerhealthio_tunnel::RelaySettings,
     /// The server's domain, from its record: the bare host the relay serves
     /// the server at. The server's public origin, which HFS's links, app
     /// launches and the reachability monitor's `/health` use, and the one

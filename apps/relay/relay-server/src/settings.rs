@@ -38,7 +38,7 @@ use anyhow::Context;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use curve25519_dalek::MontgomeryPoint;
-use rathole_settings_rust::{
+use wildflowerhealthio_rathole_settings::{
     parse_public_addr, NoisePattern, PublicRatholeSettings, Transport, ADMIN_KEY_ID,
 };
 

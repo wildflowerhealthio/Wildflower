@@ -28,7 +28,7 @@ use std::sync::Arc;
 pub use config::TunnelConfig;
 pub use domain::{public_origin_url, InvalidDomain, RelaySettings, TunnelDaemon, TunnelStream};
 use relay_clients::RatholeRelayClient;
-pub use shared_structures_rust::health_check::HealthStatus;
+pub use wildflowerhealthio_shared_structures::health_check::HealthStatus;
 
 /// Spawn the tunnel daemon over an embedded rathole client. The daemon dials
 /// the relay in `config`, handing each visitor's stream to its sender, for as

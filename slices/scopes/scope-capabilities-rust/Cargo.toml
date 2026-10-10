@@ -1,5 +1,5 @@
 [package]
-name = "scope-capabilities-rust"
+name = "wildflowerhealthio-scope-capabilities"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -8,9 +8,9 @@ publish.workspace = true
 # extractors (`Scoped<F>`, `Capability`, `FixedScopeCapability`, `ScopeClaims`,
 # `MissingScopes`, the shared 403 `insufficient_scope`) every HTTP slice copies
 # to gate its endpoints. Lives in the scopes slice, beside the grammar it enforces
-# (`scopes-rust`), as its own crate rather than a feature of `scopes-rust`: the
+# (`wildflowerhealthio-scopes`), as its own crate rather than a feature of `wildflowerhealthio-scopes`: the
 # fail-closed 500 reuses shared-structures' `InternalError`, and shared-structures
-# already depends on `scopes-rust`, so folding this into `scopes-rust` would be a
+# already depends on `wildflowerhealthio-scopes`, so folding this into `wildflowerhealthio-scopes` would be a
 # dependency cycle. See `docs/Authorization/Scope-Gated Endpoints How-To.md`.
 
 [features]
@@ -24,10 +24,10 @@ serde.workspace = true
 utoipa = { workspace = true, optional = true }
 # The scope grammar (`Scope`, `Grant`, `render_scopes`) the extractors check
 # against. Tiny, pure value library — the other half of this slice.
-scopes-rust = { path = "../scopes-rust" }
+wildflowerhealthio-scopes = { path = "../scopes-rust" }
 # The shared opaque-500 `InternalError` template for the fail-closed
 # missing-claims path.
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+wildflowerhealthio-shared-structures = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
 
 [lints]
 workspace = true

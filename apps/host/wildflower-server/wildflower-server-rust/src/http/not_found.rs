@@ -17,9 +17,9 @@ use std::sync::Arc;
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use serde::Serialize;
-use shared_structures_rust::launcher::LauncherBase;
-use shared_structures_rust::served_origin::served_base_url_for;
 use url::Url;
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
+use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 /// Launcher routes a browser opening this server most likely wants: the root and
 /// the home screen. A browser `GET` of one redirects to the same route on the
@@ -63,7 +63,7 @@ fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &
     // Resolved per request, like every other served-origin consumer: over the
     // tunnel the links must name the public origin, not loopback.
     let served_origin = served_base_url_for(headers, &config.loopback_base_url)
-        .map(|served| shared_structures_rust::origin_string(&served));
+        .map(|served| wildflowerhealthio_shared_structures::origin_string(&served));
     let is_browser_navigation =
         (method == Method::GET || method == Method::HEAD) && accepts_html(headers);
     if let Some(origin) = served_origin.as_deref() {
@@ -170,8 +170,8 @@ mod tests {
     use super::{escape_html, respond, NotFoundConfig};
     use axum::body::to_bytes;
     use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
-    use shared_structures_rust::launcher::LauncherBase;
     use url::Url;
+    use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     fn config() -> NotFoundConfig {
         NotFoundConfig {

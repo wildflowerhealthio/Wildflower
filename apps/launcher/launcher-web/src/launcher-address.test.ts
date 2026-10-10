@@ -23,7 +23,7 @@ describe('tauri-shared-config.json launcher address', () => {
   })
 })
 
-// `shared_structures_rust::launcher` builds the URLs this app is opened with,
+// `wildflowerhealthio_shared_structures::launcher` builds the URLs this app is opened with,
 // so it has to spell the query parameters the app reads. Rust can't import
 // them, so this reads the Rust source and holds both sides to one value.
 describe('launcher.rs query parameters', () => {

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::Grant;

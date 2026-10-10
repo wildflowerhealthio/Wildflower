@@ -1,4 +1,4 @@
-//! [`UnitRunner`](unit_runner_rust::UnitRunner) bound to Tauri: the background
+//! [`UnitRunner`](wildflowerhealthio_unit_runner::UnitRunner) bound to Tauri: the background
 //! session as `tauri-plugin-background-service`'s one
 //! [`BackgroundService`](tauri_plugin_background_service::BackgroundService),
 //! and whether the app is present and returns to the foreground from its

@@ -8,10 +8,10 @@
 //! the base's commands answer a failure with; [`EnrolmentError::kind`] lists
 //! the kinds.
 
-use rathole_settings_rust::{InvalidTunnelName, TunnelName};
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use url::Url;
+use wildflowerhealthio_rathole_settings::{InvalidTunnelName, TunnelName};
 
 use crate::domain::RegistryError;
 

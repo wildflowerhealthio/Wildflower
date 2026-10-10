@@ -5,7 +5,7 @@ use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue};
 use axum::middleware::{FromFnLayer, Next};
-use shared_structures_rust::request_caller::RequestCaller;
+use wildflowerhealthio_shared_structures::request_caller::RequestCaller;
 
 use crate::http::middleware::require_auth::{try_bearer_token_from_headers, verify_request_claims};
 
@@ -29,7 +29,7 @@ pub type GatekeeperAuthMiddleware =
 /// path). Inserts `ScopeClaims` for downstream `Scoped<…>` capabilities, and
 /// stamps the response with the verified [`RequestCaller`] (an
 /// exempt path's response carries none; a `401` carries the
-/// [`RequestRefusal`](shared_structures_rust::request_caller::RequestRefusal)
+/// [`RequestRefusal`](wildflowerhealthio_shared_structures::request_caller::RequestRefusal)
 /// [`verify_request_claims`] stamped instead).
 /// `Clone` — build once, clone per router. See
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`.
@@ -58,7 +58,7 @@ pub fn gatekeeper_auth_middleware(
                 Err(response) => return *response,
             };
             req.extensions_mut()
-                .insert(scope_capabilities_rust::ScopeClaims::new(
+                .insert(wildflowerhealthio_scope_capabilities::ScopeClaims::new(
                     claims.scope.clone(),
                 ));
             let mut response = next.run(req).await;

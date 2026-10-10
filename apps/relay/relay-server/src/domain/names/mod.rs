@@ -73,7 +73,7 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
-    use rathole_settings_rust::is_dns_label;
+    use wildflowerhealthio_rathole_settings::is_dns_label;
 
     #[test]
     fn the_bundled_list_is_the_eff_short_wordlist_less_one_hyphenated_word() {

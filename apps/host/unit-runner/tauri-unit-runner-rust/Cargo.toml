@@ -1,10 +1,10 @@
 [package]
-name = "tauri-unit-runner-rust"
+name = "wildflowerhealthio-tauri-unit-runner"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# The Tauri bindings of `unit-runner-rust`: its background session as the
+# The Tauri bindings of `wildflowerhealthio-unit-runner`: its background session as the
 # background-service plugin's one service, and whether the app is present from
 # its window events, as two plugins. See `docs/Design Explanation.md`.
 [dependencies]
@@ -28,7 +28,7 @@ tauri-plugin-notification = "2"
 tokio = { workspace = true, features = ["sync", "time"] }
 # `UnitRunner` itself: units, policies, statuses, and starting and stopping
 # runs per policy, free of Tauri.
-unit-runner-rust = { path = "../unit-runner-rust" }
+wildflowerhealthio-unit-runner = { path = "../unit-runner-rust" }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]

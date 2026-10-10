@@ -4,7 +4,7 @@
 //! domain [`StoredTunnel`]; writes bind a [`NewTunnelRow`] borrowed from one.
 
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
+use wildflowerhealthio_persistence::PooledDieselConnection;
 
 use crate::db::schema::tunnels;
 use crate::domain::Tunnel;

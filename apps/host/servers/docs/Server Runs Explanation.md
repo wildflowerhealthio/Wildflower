@@ -43,7 +43,7 @@ alive in the background while any server should run. It never reads
   .plugin(runner.lifecycle_plugin())            // present/absent, iOS return to the foreground, session start/end
   setup():
     host_ports = consent dialog, webview handle, bridge publishers   // shared by every run of every server
-    servers_tauri::host_servers(app, data_root, &runner, host_ports, server_config)
+    wildflowerhealthio_servers_tauri::host_servers(app, data_root, &runner, host_ports, server_config)
       read servers.json ── unreadable ─▶ logged; no server runs
       for each record: ServerUnits::push(record)
         runner.set_unit(domain, record.run_policy, || ServerUnit::new(server_config(&record)?, host_ports, forwarded_request_tx))
@@ -74,7 +74,7 @@ alive in the background while any server should run. It never reads
 [UnitRunner] the policy wants it running ─▶ a run, on its own thread and runtime:
   factory: server_config(&record) ─▶ ServerUnit
   ServerUnit::run(ctx)
-    wildflower_server_rust::set_up(config, host_ports with the run's own pending-consent sender, observers)   // binds the loopback port
+    wildflowerhealthio_wildflower_server::set_up(config, host_ports with the run's own pending-consent sender, observers)   // binds the loopback port
     spawn: each health, certificate state or consent head ─▶ ctx.set_detail(ServerDetail { health, certificate, pending_consent, consent_decider })
                                          head ─▶ the host's active_pending_consent_tx
     ctx.announce_running()                                         // Starting ─▶ Running

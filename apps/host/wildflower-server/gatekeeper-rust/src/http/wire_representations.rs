@@ -46,7 +46,7 @@ pub(crate) struct TokenResponse {
     pub(crate) token_type: String,
     pub(crate) expires_in: i64,
     pub(crate) scope: String,
-    /// Present only when the grant carries [`scopes_rust::KnownScope::OfflineAccess`]
+    /// Present only when the grant carries [`wildflowerhealthio_scopes::KnownScope::OfflineAccess`]
     /// — the plaintext of the freshly-minted refresh-token generation (RFC 6749
     /// §5.1; only its hash is persisted).
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -4,9 +4,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use scopes_rust::Scope;
-use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 use url::Url;
+use wildflowerhealthio_scopes::Scope;
+use wildflowerhealthio_shared_structures::test_utils::RecordingStubWebviewHandle;
 
 use crate::db::SqliteAppsStore;
 use crate::domain::{AppRegistration, AppsError};

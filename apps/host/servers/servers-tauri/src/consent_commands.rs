@@ -10,13 +10,13 @@
 //! other commands.
 
 use chrono::Utc;
-use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
-use servers_rust::{
+use tauri_plugin_log::log;
+use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
+use wildflowerhealthio_servers::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, PendingConsent,
     ServerConsentDecider, ServerDetail,
 };
-use tauri_plugin_log::log;
-use tauri_unit_runner_rust::UnitStatuses;
+use wildflowerhealthio_tauri_unit_runner::UnitStatuses;
 
 use crate::ServersState;
 
@@ -140,12 +140,12 @@ async fn deny(
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
-    use gatekeeper_rust::domain::authorization_request::{
+    use url::Url;
+    use wildflowerhealthio_gatekeeper::domain::authorization_request::{
         AuthorizationRequest, GrantType, RequestStatus,
     };
-    use gatekeeper_rust::GatekeeperStore;
-    use tauri_unit_runner_rust::{RunState, UnitId, UnitStatus};
-    use url::Url;
+    use wildflowerhealthio_gatekeeper::GatekeeperStore;
+    use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
     use super::*;
     use crate::test_gatekeeper::{test_gatekeeper, TestGatekeeper, DOMAIN};
@@ -160,7 +160,7 @@ mod tests {
             .insert_authorization_request(&AuthorizationRequest {
                 id: id.to_owned(),
                 grant_type,
-                client_id: gatekeeper_rust::FIRST_PARTY_CLIENT_ID.to_owned(),
+                client_id: wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID.to_owned(),
                 requested_scopes: vec!["system/*.cruds".to_owned()],
                 code_challenge: (!is_device).then(|| "challenge".to_owned()),
                 code_challenge_method: (!is_device).then(|| "S256".to_owned()),

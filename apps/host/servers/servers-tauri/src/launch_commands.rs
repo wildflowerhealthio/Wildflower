@@ -1,10 +1,10 @@
 //! The launch command: the base opens a server's launcher, an app, as a SMART
 //! EHR launch against the server. The launcher's URL comes from the server's
 //! record; the server must be launchable now, by the status the base
-//! receives ([`ensure_launchable`](servers_rust::ensure_launchable)); its run's
+//! receives ([`ensure_launchable`](wildflowerhealthio_servers::ensure_launchable)); its run's
 //! gatekeeper mints a launch for any client on a blocking thread
 //! ([`ServerLaunchMinter`]); and the launcher opens at
-//! [`launch_url`](servers_rust::launch_url) in a native web view of its own,
+//! [`launch_url`](wildflowerhealthio_servers::launch_url) in a native web view of its own,
 //! [`LauncherWindows`]. The outcome is logged by domain.
 //!
 //! Launching never changes the server's run policy: a server that isn't
@@ -14,19 +14,19 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
-use servers_rust::{
-    LaunchError, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry,
-    ServerStatus,
-};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 use tauri_plugin_log::log;
 use tauri_plugin_native_webview::{
     DismissalAction, NativeWebviewEvent, NativeWebviewExt, OpenRequest,
 };
-use tauri_unit_runner_rust::{UnitId, UnitStatus, UnitStatuses};
 use url::Url;
+use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
+use wildflowerhealthio_servers::{
+    LaunchError, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry,
+    ServerStatus,
+};
+use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
 use crate::server_status::certificate_state;
 use crate::ServersState;
@@ -96,8 +96,11 @@ async fn launch(
             .map_err(|error| {
                 LaunchError::Gatekeeper(GatekeeperError::infrastructure("minting a launch", error))
             })??;
-        let launch_url =
-            servers_rust::launch_url(&record.launcher_url, &record.public_origin(), &launch);
+        let launch_url = wildflowerhealthio_servers::launch_url(
+            &record.launcher_url,
+            &record.public_origin(),
+            &launch,
+        );
         let opened_domain = domain.clone();
         tokio::task::spawn_blocking(move || launcher_windows.open(&opened_domain, launch_url))
             .await
@@ -179,13 +182,13 @@ impl LauncherWindows for NativeWebviewLauncherWindows {
 mod tests {
     use std::sync::Mutex;
 
-    use rathole_settings_rust::TunnelName;
-    use servers_rust::{
+    use wildflowerhealthio_rathole_settings::TunnelName;
+    use wildflowerhealthio_servers::{
         CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerRecord, TunnelToken,
     };
-    use shared_structures_rust::health_check::HealthReport;
-    use tauri_unit_runner_rust::RunState;
-    use wildflower_server_rust::{CertificateState, CertificateStatus, ServerHealth};
+    use wildflowerhealthio_shared_structures::health_check::HealthReport;
+    use wildflowerhealthio_tauri_unit_runner::RunState;
+    use wildflowerhealthio_wildflower_server::{CertificateState, CertificateStatus, ServerHealth};
 
     use super::*;
     use crate::test_gatekeeper::{test_gatekeeper, TestGatekeeper, DOMAIN};

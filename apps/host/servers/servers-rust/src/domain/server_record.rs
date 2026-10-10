@@ -10,11 +10,11 @@
 
 use std::path::{Path, PathBuf};
 
-use rathole_settings_rust::{PublicRatholeSettings, TunnelName};
 use serde::{Deserialize, Serialize, Serializer};
-use unit_runner_rust::RunPolicy;
 use url::Url;
-use wildflower_server_rust::DeviceCertificateConfig;
+use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelName};
+use wildflowerhealthio_unit_runner::RunPolicy;
+use wildflowerhealthio_wildflower_server::DeviceCertificateConfig;
 
 use crate::domain::CertificateAuthority;
 
@@ -84,7 +84,7 @@ impl ServerRecord {
     }
 
     /// The server's public origin, `https://<domain>`, as
-    /// [`tunnel_rust::public_origin_url`] builds it: the origin its run
+    /// [`wildflowerhealthio_tunnel::public_origin_url`] builds it: the origin its run
     /// serves, which its gatekeeper's tokens name as `iss` and `aud`.
     ///
     /// # Panics
@@ -93,7 +93,7 @@ impl ServerRecord {
     /// names, so it names an origin.
     #[must_use]
     pub fn public_origin(&self) -> Url {
-        tunnel_rust::public_origin_url(&self.domain())
+        wildflowerhealthio_tunnel::public_origin_url(&self.domain())
             .expect("a tunnel name under a relay domain names an origin")
     }
 
@@ -254,7 +254,7 @@ impl Serialize for TunnelToken {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use rathole_settings_rust::{NoisePattern, Transport};
+    use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
 
     use super::*;
 

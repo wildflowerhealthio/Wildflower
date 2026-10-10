@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use scope_capabilities_rust::{FixedScopeCapability, ScopeClaims};
-use scopes_rust::Scope;
+use wildflowerhealthio_scope_capabilities::{FixedScopeCapability, ScopeClaims};
+use wildflowerhealthio_scopes::Scope;
 
 use super::state::OhifServerState;
 use crate::domain::capabilities::{dicom_file_reader_scopes, DicomFileReader};

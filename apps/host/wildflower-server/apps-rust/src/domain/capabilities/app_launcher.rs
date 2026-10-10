@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use scopes_rust::{Grant, Scope};
+use wildflowerhealthio_scopes::{Grant, Scope};
 
 use crate::domain::{AppRegistration, AppsError};
 use crate::ports::AppLaunchScopes;
@@ -19,9 +19,9 @@ pub(crate) fn app_launcher_scopes() -> Vec<Scope> {
 
 /// Launch authorization — the **hybrid** capability behind `POST /apps/{id}`.
 /// Unlike the fixed-scope admin capabilities, its binding implements
-/// [`Capability`](scope_capabilities_rust::Capability) directly: the static umbrella
+/// [`Capability`](wildflowerhealthio_scope_capabilities::Capability) directly: the static umbrella
 /// `wildflower/launch` (from [`app_launcher_scopes`](super::app_launcher_scopes)) is
-/// enforced by the [`Scoped`](scope_capabilities_rust::Scoped) extractor, **and** the
+/// enforced by the [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor, **and** the
 /// builder stores the caller's [`Grant`] for the data-dependent per-app SMART
 /// check ([`missing_launch_scopes`](AppLauncher::missing_launch_scopes)).
 ///
@@ -136,7 +136,7 @@ mod tests {
             .missing_launch_scopes(&reg)
             .expect("resolve");
         assert_eq!(
-            scopes_rust::render_scopes(&missing),
+            wildflowerhealthio_scopes::render_scopes(&missing),
             vec!["patient/Observation.r".to_owned()],
         );
     }
@@ -178,7 +178,7 @@ mod tests {
             .missing_launch_scopes(&reg)
             .expect("resolve");
         assert_eq!(
-            scopes_rust::render_scopes(&missing),
+            wildflowerhealthio_scopes::render_scopes(&missing),
             vec!["patient/Observation.r".to_owned()],
             "the uncovered resource scope survives the filter",
         );

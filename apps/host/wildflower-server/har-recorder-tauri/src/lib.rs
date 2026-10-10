@@ -3,23 +3,25 @@
 //! answers. See the
 //! [Design Explanation](../../../../launcher/har-recorder/docs/Design%20Explanation.md).
 //!
-//! Every decision lives in [`har_recorder_rust`], which needs no webview to be
+//! Every decision lives in [`wildflowerhealthio_har_recorder`], which needs no webview to be
 //! tested; this module is only the glue.
 
 use std::path::{Path, PathBuf};
 
-use har_recorder_rust::bridge::{HarRecorderHostToWeb, HarRecorderWebToHost, SAVE_HAR, TAGS};
-use har_recorder_rust::save::{save_har, saved_data_dir};
-use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 use tauri::{AppHandle, Emitter, Listener};
 use tauri_plugin_log::log;
+use wildflowerhealthio_har_recorder::bridge::{
+    HarRecorderHostToWeb, HarRecorderWebToHost, SAVE_HAR, TAGS,
+};
+use wildflowerhealthio_har_recorder::save::{save_har, saved_data_dir};
+use wildflowerhealthio_shared_structures::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 
 /// Wire the recorder's listener on the multiplexed bridge event.
 ///
 /// `app_data_dir` is the directory the host already resolved and created in
 /// `setup()`, passed in rather than resolved a second way; the `saved_data`
 /// folder under it is named once, in
-/// [`har_recorder_rust::save::saved_data_dir`].
+/// [`wildflowerhealthio_har_recorder::save::saved_data_dir`].
 ///
 /// Registers synchronously, so a `setup()` call cannot miss a message — the
 /// webview's first `SaveHar` can only follow its own `__Ready`. Call once per

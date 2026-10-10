@@ -26,7 +26,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use wildflower_server_rust::{
+use wildflowerhealthio_wildflower_server::{
     CertificateAuthority, CertificateOrderError, CertificateState, CertificateStatus,
     IssuedCertificate,
 };

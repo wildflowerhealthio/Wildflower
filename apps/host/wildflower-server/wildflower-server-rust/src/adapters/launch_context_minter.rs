@@ -1,15 +1,15 @@
-//! The host's [`apps_rust::ports::LaunchContextMinter`], backed by gatekeeper's
+//! The host's [`wildflowerhealthio_apps::ports::LaunchContextMinter`], backed by gatekeeper's
 //! launch contexts.
 
-use apps_rust::domain::AppsError;
-use apps_rust::ports::LaunchContextMinter;
+use wildflowerhealthio_apps::domain::AppsError;
+use wildflowerhealthio_apps::ports::LaunchContextMinter;
 
-/// The host's [`apps_rust::ports::LaunchContextMinter`]: mints each SMART app
+/// The host's [`wildflowerhealthio_apps::ports::LaunchContextMinter`]: mints each SMART app
 /// launch's `launch` value through gatekeeper's
-/// [`gatekeeper_rust::LaunchContextMinter`], so the app's `/oauth/authorize`
+/// [`wildflowerhealthio_gatekeeper::LaunchContextMinter`], so the app's `/oauth/authorize`
 /// can consume it.
 pub(crate) struct GatekeeperLaunchContextMinter {
-    pub(crate) launch_context_minter: gatekeeper_rust::LaunchContextMinter,
+    pub(crate) launch_context_minter: wildflowerhealthio_gatekeeper::LaunchContextMinter,
 }
 
 impl LaunchContextMinter for GatekeeperLaunchContextMinter {

@@ -1,6 +1,6 @@
 //! Scope-gated capabilities for the `/databases` surface — the databases slice's
 //! copy of the default-safe authorization pattern (the generic machinery lives in
-//! [`scope_capabilities_rust`]; the pattern originated on gatekeeper's `/access`
+//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on gatekeeper's `/access`
 //! surface). They live in `domain/` and depend only on the
 //! [`DatabaseFiles`](crate::ports::DatabaseFiles) port + a catalogue and [`Grant`]
 //! handed to their constructors — never on `crate::http`, `std::fs`, `rusqlite`,
@@ -22,9 +22,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use scopes_rust::{Grant, Scope};
+use wildflowerhealthio_scopes::{Grant, Scope};
 
-pub(crate) use scope_capabilities_rust::Scoped;
+pub(crate) use wildflowerhealthio_scope_capabilities::Scoped;
 
 use crate::config::DatabaseDescriptor;
 use crate::domain::{DatabaseError, DatabaseMetadata};
@@ -55,7 +55,9 @@ fn authorized_descriptor<'c>(
         Ok(descriptor)
     } else {
         Err(DatabaseError::InsufficientScope {
-            missing_scopes: scopes_rust::render_scopes(std::slice::from_ref(required)),
+            missing_scopes: wildflowerhealthio_scopes::render_scopes(std::slice::from_ref(
+                required,
+            )),
         })
     }
 }
@@ -163,7 +165,7 @@ impl<F: DatabaseFiles> DatabasesDeleter<F> {
 mod tests {
     use std::collections::HashSet;
 
-    use scopes_rust::Permission;
+    use wildflowerhealthio_scopes::Permission;
 
     use super::*;
 

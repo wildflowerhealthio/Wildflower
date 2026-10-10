@@ -34,7 +34,7 @@ impl GrantCoverage {
     /// verdict is not [`Registered`](ClientRegistrationVerdict::Registered) never
     /// resolves past [`GrantCoverage::Uncovered`], whatever the grant says.
     ///
-    /// "Covers" is [`scopes_rust::allowed_scope_covers`], not string equality: a
+    /// "Covers" is [`wildflowerhealthio_scopes::allowed_scope_covers`], not string equality: a
     /// standing grant is a set of permissions, so `patient/*.cruds` answers for
     /// a later `patient/Observation.r`, and a grant the approval collapsed
     /// (`.r` + `.s` recorded as `.rs`) still answers for either half.
@@ -60,10 +60,9 @@ impl GrantCoverage {
         let pre_approved_scopes: Vec<String> = requested_scopes
             .iter()
             .filter(|requested| {
-                grant
-                    .scopes
-                    .iter()
-                    .any(|granted| scopes_rust::allowed_scope_covers(granted, requested))
+                grant.scopes.iter().any(|granted| {
+                    wildflowerhealthio_scopes::allowed_scope_covers(granted, requested)
+                })
             })
             .cloned()
             .collect();

@@ -1,4 +1,4 @@
-use scopes_rust::{ContextLevel, FhirResourceScope, Permission, ResourceType, Scope};
+use wildflowerhealthio_scopes::{ContextLevel, FhirResourceScope, Permission, ResourceType, Scope};
 
 use crate::domain::{DicomFile, DicomFileError, DicomFileStore};
 

@@ -10,7 +10,7 @@
  * request-log-specific scope.
  *
  * Regenerate the committed server spec after a wire-type change with:
- *   UPDATE_OPENAPI=1 cargo test -p request-log-rust openapi_spec_snapshot_is_up_to_date
+ *   UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-request-log openapi_spec_snapshot_is_up_to_date
  */
 
 import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/openapi-drift/testing'

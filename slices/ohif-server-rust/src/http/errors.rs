@@ -2,8 +2,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
-use shared_structures_rust::http_errors::InternalError;
 use utoipa::ToSchema;
+use wildflowerhealthio_shared_structures::http_errors::InternalError;
 
 use crate::domain::DicomFileError;
 
@@ -43,7 +43,7 @@ impl IntoResponse for DicomFileError {
             )
                 .into_response(),
             DicomFileError::InsufficientScope { missing_scopes } => {
-                scope_capabilities_rust::insufficient_scope(missing_scopes)
+                wildflowerhealthio_scope_capabilities::insufficient_scope(missing_scopes)
             }
             DicomFileError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()

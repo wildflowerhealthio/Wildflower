@@ -1,7 +1,7 @@
 //! The read capability — [`AppsReader`], gated by `wildflower/Apps.r`
 //! ([`apps_reader_scopes`](super::apps_reader_scopes)).
 
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::{AppRegistration, AppsError, AppsStore};
 

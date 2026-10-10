@@ -568,7 +568,11 @@ async fn device_authorization_happy_path() {
     );
     // The user_code is also a well-formed, human-typeable pairing code — a
     // relationship the opaque whole-value comparison above can't express.
-    assert!(gatekeeper_rust::crypto_util::oauth_user_code::is_valid_oauth_user_code(&user_code));
+    assert!(
+        wildflowerhealthio_gatekeeper::crypto_util::oauth_user_code::is_valid_oauth_user_code(
+            &user_code
+        )
+    );
 }
 
 #[tokio::test]

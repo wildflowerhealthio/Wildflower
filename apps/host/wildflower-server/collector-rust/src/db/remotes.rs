@@ -9,11 +9,11 @@
 //! [`Remote`] row type it maps (via [`JsonText`] for the `config` column).
 
 use diesel::prelude::*;
-use persistence_rust::PooledDieselConnection;
+use wildflowerhealthio_persistence::PooledDieselConnection;
 
 use crate::db::schema::collector_remotes;
 use crate::domain::{Remote, RemoteError};
-use shared_structures_rust::json_text::JsonText;
+use wildflowerhealthio_shared_structures::json_text::JsonText;
 
 /// Every remote, oldest first (ties broken by id so the order is total).
 pub(super) fn list(conn: &mut PooledDieselConnection) -> Result<Vec<Remote>, RemoteError> {

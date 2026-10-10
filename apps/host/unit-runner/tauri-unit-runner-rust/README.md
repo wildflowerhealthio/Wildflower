@@ -46,7 +46,7 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 ## Use
 
 ```rust,ignore
-use tauri_unit_runner_rust::{
+use wildflowerhealthio_tauri_unit_runner::{
     BackgroundServiceStartConfig, RunContext, RunPolicy, TauriUnitRunner, Unit, UnitId,
 };
 

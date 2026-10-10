@@ -11,7 +11,9 @@
 //! the `client_id` through gatekeeper.
 
 use chrono::{DateTime, Utc};
-use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, RequestRefusal};
+use wildflowerhealthio_shared_structures::request_caller::{
+    ForwardedRequest, RequestCaller, RequestRefusal,
+};
 
 use crate::domain::RequestLogError;
 

@@ -1,6 +1,6 @@
 //! Pure tunnel domain types — no rathole coupling beyond the
 //! [`TunnelStream`] it hands over — plus the [`TunnelDaemon`] that runs the
-//! tunnel and the [`HealthStatus`](shared_structures_rust::health_check::HealthStatus)
+//! tunnel and the [`HealthStatus`](wildflowerhealthio_shared_structures::health_check::HealthStatus)
 //! it publishes.
 
 mod public_origin;

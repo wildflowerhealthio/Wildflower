@@ -44,8 +44,8 @@ use axum::response::{IntoResponse, Json, Response};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
-use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
+use wildflowerhealthio_scope_capabilities::{InsufficientScopeBody, Scoped};
+use wildflowerhealthio_shared_structures::served_origin::{request_provenance, RequestProvenance};
 
 use crate::domain::{AppRegistration, AppsError, AppsStore, LaunchParams};
 use crate::http::errors::AppNotFoundBody;
@@ -110,7 +110,7 @@ pub(crate) async fn handle_launch_app(
     let missing = launcher.missing_launch_scopes(&registration)?;
     if !missing.is_empty() {
         return Err(AppsError::InsufficientScope {
-            missing_scopes: scopes_rust::render_scopes(&missing),
+            missing_scopes: wildflowerhealthio_scopes::render_scopes(&missing),
         });
     }
 

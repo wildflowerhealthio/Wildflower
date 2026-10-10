@@ -37,7 +37,7 @@ mod openapi_tests {
 
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        shared_structures_rust::openapi_snapshot::assert_up_to_date(
+        wildflowerhealthio_shared_structures::openapi_snapshot::assert_up_to_date(
             &super::openapi_spec(),
             SPEC_PATH,
         );

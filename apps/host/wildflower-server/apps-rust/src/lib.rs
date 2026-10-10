@@ -19,7 +19,7 @@
 //!    can build capabilities from it without depending on the transport layer.
 //!  - [`db`] — the `SQLite` store adapter ([`db::SqliteAppsStore`], the
 //!    implementation of the [`domain::AppsStore`] port) over the app-wide diesel
-//!    r2d2 pool (`persistence_rust::DieselPool`), migrated with embedded diesel
+//!    r2d2 pool (`wildflowerhealthio_persistence::DieselPool`), migrated with embedded diesel
 //!    migrations.
 //!  - [`http`] — the slice's router. `GET /apps` lists the registry in display
 //!    order; `POST /apps` creates an app; `GET`/`PUT`/`DELETE /apps/{id}` read,
@@ -62,7 +62,7 @@ use axum::Router;
 
 // Re-exported so the host can name the pool type at the `setup_apps` call site
 // without a direct diesel dependency; the canonical home is persistence-rust.
-pub use persistence_rust::DieselPool;
+pub use wildflowerhealthio_persistence::DieselPool;
 
 pub use config::AppsConfig;
 pub use db::SqliteAppsStore;
@@ -73,7 +73,7 @@ pub use live_bindings::state::AppsState;
 
 #[cfg(debug_assertions)]
 pub use dev_seed::seed_dev_apps;
-pub use shared_structures_rust::OnDeviceWebviewHandle;
+pub use wildflowerhealthio_shared_structures::OnDeviceWebviewHandle;
 
 pub mod ports;
 
@@ -95,7 +95,7 @@ pub struct Apps {
 
 /// Build the apps router over the host-owned diesel connection `pool`, mirroring
 /// `collector-rust`'s `setup_collector`. The host builds the app-wide diesel pool
-/// (via `persistence_rust::open_pool`) on the same shared database file its
+/// (via `wildflowerhealthio_persistence::open_pool`) on the same shared database file its
 /// rusqlite connection serves the other slices from, and passes a clone in — along
 /// with the `webview_handle` the on-device launch side-effect runs through.
 ///

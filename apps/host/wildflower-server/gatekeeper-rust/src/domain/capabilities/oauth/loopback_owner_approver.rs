@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use scopes_rust::Grant;
+use wildflowerhealthio_scopes::Grant;
 
 use crate::domain::authority::within_approver_grant;
 use crate::domain::capabilities::access::consents::{

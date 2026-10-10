@@ -1,11 +1,11 @@
 //! The token bindings — where the [`TokenRevoker`] capability meets the shared
-//! [`RevocationStore`](token_revocation_rust::RevocationStore) and the
+//! [`RevocationStore`](wildflowerhealthio_token_revocation::RevocationStore) and the
 //! `Arc<GatekeeperState>` router state. See the [module docs](super) for the
 //! binding seam.
 
 use std::sync::Arc;
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 use super::state::GatekeeperState;
 use crate::domain::capabilities::access::tokens::token_revoker_scopes;

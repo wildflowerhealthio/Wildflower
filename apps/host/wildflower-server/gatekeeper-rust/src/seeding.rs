@@ -13,7 +13,7 @@
 
 use anyhow::Context;
 use chrono::{Duration, Utc};
-use persistence_rust::DieselPool;
+use wildflowerhealthio_persistence::DieselPool;
 
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::authority::{HostOwnerEntitlement, TokenEntitlement};
@@ -129,7 +129,7 @@ struct DevAppPorts {
 }
 
 /// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
-/// tile ids (`medications-dev` and so on). `apps_rust::dev_seed` points each tile
+/// tile ids (`medications-dev` and so on). `wildflowerhealthio_apps::dev_seed` points each tile
 /// at its client, and each app's `src/config.ts` (the OHIF viewer's
 /// `config/app-config.js` and launch URL) launches as it under the dev server.
 #[cfg(debug_assertions)]
@@ -227,13 +227,13 @@ const LIFTING_DEV_SCOPES: &[&str] = &[
 const DEV_ROOT_REDIRECT_PATH: &str = "/";
 
 /// The debug-only OAuth clients for the first-party apps' vite dev servers — the
-/// gatekeeper half of `apps_rust::seed_dev_apps`.
+/// gatekeeper half of `wildflowerhealthio_apps::seed_dev_apps`.
 ///
 /// The first-party SMART apps (Medications, Importer, the OHIF
 /// imaging viewer, Lifting) ship as rows served from
 /// <https://wildflowerhealth.io> (apps migrations `0005_first_party_apps_to_cloud`
 /// onward), whose clients register the published-site redirect URI. A debug
-/// build also gets an `<app>-dev` row (`apps_rust::dev_seed`) whose launch
+/// build also gets an `<app>-dev` row (`wildflowerhealthio_apps::dev_seed`) whose launch
 /// URL points at the app's local vite dev server on the port
 /// `dev-app-ports.json` pins, and that row needs its own client — named after
 /// the dev app id for FHIR Sync, a random id for the rest —
@@ -337,7 +337,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // Mirrors the production `fhir-sync-pebble` client (migration
             // `0017_seed_fhir_sync_pebble_client`, widened by `0018`, the `scope` in
             // `apps/fhir-sync-pebble/fhir-sync-pebble-web/src/config.ts`). Standalone-only, so
-            // there is no `apps_rust::dev_seed` row; the loopback root carries
+            // there is no `wildflowerhealthio_apps::dev_seed` row; the loopback root carries
             // the `ConnectMenu`'s redirect.
             [
                 "openid",
@@ -472,7 +472,8 @@ mod tests {
             );
         }
 
-        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
@@ -521,7 +522,8 @@ mod tests {
             );
         }
 
-        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
@@ -566,7 +568,8 @@ mod tests {
             );
         }
 
-        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
@@ -617,7 +620,8 @@ mod tests {
             );
         }
 
-        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
@@ -651,7 +655,8 @@ mod tests {
     /// / the TS side) fails this test.
     #[test]
     fn seeds_first_party_client_under_the_configured_id() {
-        let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         let scopes = vec![
             "system/*.cruds".to_string(),
             "wildflower/*.cruds".to_string(),

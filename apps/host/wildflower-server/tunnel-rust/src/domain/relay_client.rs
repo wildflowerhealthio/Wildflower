@@ -9,9 +9,9 @@
 //! The client connects to no local port: it hands each visitor's connection,
 //! in process, to the sender it is given, as a [`TunnelStream`].
 
-use rathole_settings_rust::PublicRatholeSettings;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use wildflowerhealthio_rathole_settings::PublicRatholeSettings;
 
 /// One visitor's connection through the relay, as the rathole client hands it
 /// over: the bytes of exactly that visitor, from the relay.

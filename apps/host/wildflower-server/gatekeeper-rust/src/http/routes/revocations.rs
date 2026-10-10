@@ -10,7 +10,7 @@
 //!   sweep drop the row once the token would have expired anyway).
 //! - **Bulk, per subject** — `{ "subject": "<client_id>" }` bumps the subject's
 //!   revocation epoch to just past now (see
-//!   [`revoke_subject_as_of_now`](token_revocation_rust::RevocationStore::revoke_subject_as_of_now)),
+//!   [`revoke_subject_as_of_now`](wildflowerhealthio_token_revocation::RevocationStore::revoke_subject_as_of_now)),
 //!   invalidating every token that subject holds issued at or before the call —
 //!   including one minted in the current (second-granular) second. `subject` is
 //!   the `sub` claim (today the `client_id`); per-device granularity is future

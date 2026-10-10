@@ -5,10 +5,10 @@
 
 use anyhow::Context;
 use axum::Router;
-use fhir_r4_rust::{setup_fhir_r4, FhirR4Config};
-use shared_structures_rust::ServerRuntimeConfig;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,11 +36,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is
     // never consulted — the always-allow double satisfies the signature.
-    let revocation_store = token_revocation_rust::RevocationStore::always_allow();
+    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(&runtime, &config, revocation_store)?;
-    let router = Router::new()
-        .merge(routers.augmented_fhir_r4_router)
-        .merge(ohif_server_rust::setup_ohif_server(routers.raw_hfs_router));
+    let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(
+        wildflowerhealthio_ohif_server::setup_ohif_server(routers.raw_hfs_router),
+    );
     let addr: SocketAddr = runtime
         .loopback_base_url_ref()
         .authority()

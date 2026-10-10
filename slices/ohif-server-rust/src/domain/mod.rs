@@ -3,7 +3,7 @@ pub(crate) mod capabilities;
 use std::future::Future;
 
 use bytes::Bytes;
-use scope_capabilities_rust::MissingScopes;
+use wildflowerhealthio_scope_capabilities::MissingScopes;
 
 /// A decoded DICOM file — raw bytes and their MIME type.
 #[derive(Debug)]
@@ -21,7 +21,7 @@ pub(crate) enum DicomFileError {
     /// request carried no bearer token to forward).
     Forbidden { id: String, detail: String },
     /// The caller's token doesn't cover the scope(s) the DICOM file reader
-    /// requires — raised when the [`Scoped`](scope_capabilities_rust::Scoped)
+    /// requires — raised when the [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped)
     /// extractor rejects (via `From<MissingScopes>`). Rendered as the shared
     /// `403 InsufficientScope` body naming the rendered `missing_scopes`.
     InsufficientScope { missing_scopes: Vec<String> },
@@ -43,7 +43,7 @@ pub(crate) trait DicomFileStore: Clone + Send + Sync + 'static {
     ) -> impl Future<Output = Result<DicomFile, DicomFileError>> + Send;
 }
 
-/// The [`Scoped`](scope_capabilities_rust::Scoped) extractor's rejection — the
+/// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's rejection — the
 /// caller's token doesn't cover the capability's required scopes — becomes
 /// [`InsufficientScope`](DicomFileError::InsufficientScope), so it reaches the wire
 /// through this error's rendering like any other failure.

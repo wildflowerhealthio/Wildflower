@@ -17,9 +17,9 @@ mod sniffer_window;
 /// it.
 pub(crate) const SNIFFER_WEBVIEW_ID: &str = "sniffer";
 
-use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 use tauri::{AppHandle, Listener};
 use tauri_plugin_log::log;
+use wildflowerhealthio_shared_structures::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 
 /// The desktop content webview's gated web→host data-plane command. The app's
 /// `invoke_handler` registers it; `capabilities/native-webview-window.json`
@@ -85,7 +85,7 @@ mod tests {
 
     /// Drift guard for this crate's sniffer-specific tag literals. The
     /// shared `BRIDGE_EVENT` is drift-guarded in
-    /// `shared_structures_rust::bridge::tests`; this crate only owns
+    /// `wildflowerhealthio_shared_structures::bridge::tests`; this crate only owns
     /// the per-tag literals on the multiplexed channel.
     #[test]
     fn bridge_tags_match_the_ts_convention() {

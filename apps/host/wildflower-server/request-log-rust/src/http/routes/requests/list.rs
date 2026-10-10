@@ -5,7 +5,7 @@ use axum::Json;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-use scope_capabilities_rust::InsufficientScopeBody;
+use wildflowerhealthio_scope_capabilities::InsufficientScopeBody;
 
 use super::wire_representations::{RequestAuthParam, RequestLogPageBody};
 use crate::domain::capabilities::Scoped;

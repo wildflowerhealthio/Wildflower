@@ -89,7 +89,7 @@ pub(crate) struct PresentedClientRegistration<'a> {
 /// stepped outside the registration.
 ///
 /// Scope coverage is the same coverage-aware check the rest of the slice uses
-/// ([`scopes_rust::allowed_scope_covers`]): a client allowed a broad scope also
+/// ([`wildflowerhealthio_scopes::allowed_scope_covers`]): a client allowed a broad scope also
 /// covers a narrower same-grammar request. An unparseable scope parses to an
 /// `Unknown` scope that only covers itself, so it is reported as new unless the
 /// registration lists it verbatim — deliberately, since the Owner should see an
@@ -123,7 +123,7 @@ pub(crate) fn uncovered_scopes(allowed: &[String], requested: &[String]) -> Vec<
         .filter(|requested| {
             !allowed
                 .iter()
-                .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
+                .any(|allowed| wildflowerhealthio_scopes::allowed_scope_covers(allowed, requested))
         })
         .cloned()
         .collect()

@@ -5,10 +5,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use gatekeeper_rust::{
+use wildflowerhealthio_gatekeeper::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, HostConsentDecider,
 };
-use unit_runner_rust::{UnitId, UnitStatuses};
+use wildflowerhealthio_unit_runner::{UnitId, UnitStatuses};
 
 use crate::domain::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, ServerDetail,

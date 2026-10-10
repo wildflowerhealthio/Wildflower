@@ -1,5 +1,5 @@
 //! The servers commands: thin wrappers that parse their arguments, call
-//! [`servers_rust`] (with a [`ReqwestRelayClient`] for a Wildflower relay's
+//! [`wildflowerhealthio_servers`] (with a [`ReqwestRelayClient`] for a Wildflower relay's
 //! enrolment), push what they wrote to `TauriUnitRunner` through
 //! [`ServerUnits`](crate::ServerUnits), and log the outcome by domain.
 //!
@@ -25,13 +25,13 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use futures_util::future::join_all;
-use rathole_settings_rust::TunnelName;
-use servers_rust::{
+use tauri_plugin_log::log;
+use url::Url;
+use wildflowerhealthio_rathole_settings::TunnelName;
+use wildflowerhealthio_servers::{
     CertificateAuthority, EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayClient,
     ReqwestRelayClient, RunPolicy, RunPolicyChoice, ServerChangeError, ServerRegistry, TunnelToken,
 };
-use tauri_plugin_log::log;
-use url::Url;
 
 use crate::server_status::certificate_state;
 use crate::ServersState;
@@ -210,7 +210,7 @@ async fn add<S: RelayClient>(
     let result = async {
         let tunnel_name = TunnelName::parse(tunnel_name)?;
         let token = entered_token(&token)?;
-        servers_rust::add_server(
+        wildflowerhealthio_servers::add_server(
             Arc::clone(&servers.registry),
             relay,
             tunnel_name,
@@ -244,7 +244,7 @@ async fn set_credentials<S: RelayClient>(
 ) -> Result<(), EnrolmentError> {
     let _registry_write = servers.registry_writes.lock().await;
     let result = async {
-        servers_rust::set_server_credentials(
+        wildflowerhealthio_servers::set_server_credentials(
             Arc::clone(&servers.registry),
             &domain,
             entered_token(&token)?,
@@ -274,7 +274,7 @@ async fn set_run_policy(
     let _registry_write = servers.registry_writes.lock().await;
     let changed_domain = domain.clone();
     let result = on_registry(servers, move |registry| {
-        servers_rust::set_run_policy(registry, &changed_domain, choice, Utc::now())
+        wildflowerhealthio_servers::set_run_policy(registry, &changed_domain, choice, Utc::now())
     })
     .await;
     match result {
@@ -303,7 +303,7 @@ async fn update(
     let _registry_write = servers.registry_writes.lock().await;
     let changed_domain = domain.clone();
     let result = on_registry(servers, move |registry| {
-        servers_rust::update_server(
+        wildflowerhealthio_servers::update_server(
             registry,
             &changed_domain,
             &launcher_url,
@@ -337,7 +337,7 @@ async fn remove(servers: &ServersState, domain: String) -> Result<(), ServerChan
     let removed_domain = domain.clone();
     let data_root = servers.data_root.clone();
     let result = on_registry(servers, move |registry| {
-        servers_rust::remove_server(registry, &data_root, &removed_domain)
+        wildflowerhealthio_servers::remove_server(registry, &data_root, &removed_domain)
     })
     .await;
     match result {
@@ -378,20 +378,20 @@ mod tests {
     use std::sync::{Mutex, OnceLock};
     use std::time::Duration;
 
-    use gatekeeper_rust::NoLoopbackConsentPrompt;
-    use rathole_settings_rust::{PublicRatholeSettings, TunnelHost};
     use serde::Deserialize;
-    use servers_rust::{
+    use tokio::sync::{mpsc, watch};
+    use tokio_util::sync::CancellationToken;
+    use wildflowerhealthio_gatekeeper::NoLoopbackConsentPrompt;
+    use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost};
+    use wildflowerhealthio_servers::{
         JsonServerRegistry, RelayKind, ServerDetail, ServerRecord, SERVERS_FILE_NAME,
     };
-    use shared_structures_rust::OnDeviceWebviewHandle;
-    use tauri_unit_runner_rust::{
+    use wildflowerhealthio_shared_structures::OnDeviceWebviewHandle;
+    use wildflowerhealthio_tauri_unit_runner::{
         BackgroundServiceStartConfig, RunContext, RunState, RunStop, StopReason, TauriUnitRunner,
         Unit, UnitId, UnitStatus,
     };
-    use tokio::sync::{mpsc, watch};
-    use tokio_util::sync::CancellationToken;
-    use wildflower_server_rust::{CertificateState, CertificateStatus, HostPorts};
+    use wildflowerhealthio_wildflower_server::{CertificateState, CertificateStatus, HostPorts};
 
     use crate::ServerUnits;
 

@@ -2,7 +2,7 @@ use axum::extract::Path;
 use axum::http::{header, HeaderMap, HeaderValue};
 use axum::response::{IntoResponse, Response};
 
-use scope_capabilities_rust::Scoped;
+use wildflowerhealthio_scope_capabilities::Scoped;
 
 use crate::domain::DicomFileError;
 use crate::http::errors::{DicomFileForbiddenBody, DicomFileNotFoundBody};

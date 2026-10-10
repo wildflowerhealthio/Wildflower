@@ -32,11 +32,11 @@ use std::fmt;
 use serde::de::{self, MapAccess, Visitor};
 use serde::Deserialize;
 use serde_json::value::RawValue;
-use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_log::log;
 use tauri_plugin_native_webview::NativeWebviewEvent;
+use wildflowerhealthio_shared_structures::bridge::BRIDGE_EVENT;
 
 use crate::events;
 
@@ -421,8 +421,8 @@ pub fn native_webview_data_plane_emit(app: AppHandle, payload: serde_json::Value
 
 #[cfg(test)]
 mod tests {
-    use shared_structures_rust::bridge::BRIDGE_EVENT;
     use tauri_plugin_native_webview::NativeWebviewEvent;
+    use wildflowerhealthio_shared_structures::bridge::BRIDGE_EVENT;
 
     use super::{
         classify_event, data_plane_value_is_allowed, validate_native_webview_message, BridgeAction,

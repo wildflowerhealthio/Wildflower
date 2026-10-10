@@ -132,7 +132,7 @@ requested) scopes widen `allowedScopes`, so a later identical request is
 `allowedScopes ∪ requestedScopes`; the approving Owner still cannot delegate
 a scope they do not hold themselves.
 
-That widening is by scope, not by string (`scopes_rust::widened_scopes`):
+That widening is by scope, not by string (`wildflowerhealthio_scopes::widened_scopes`):
 granting `patient/Patient.cruds` over a registered `patient/Patient.r`
 records the one broader scope instead of both spellings, and `.r` plus a
 later `.s` is recorded as `.rs`. A row created by a first approval and one
@@ -245,7 +245,7 @@ re-authorizations.
   request never un-approves earlier consent. Revoking the grant is the
   way to withdraw consent (and also revokes the client's refresh
   tokens).
-- **The union is by scope, not by string** (`scopes_rust::widened_scopes`):
+- **The union is by scope, not by string** (`wildflowerhealthio_scopes::widened_scopes`):
   consenting to `patient/Patient.cruds` over a standing
   `patient/Patient.r` records the one broader scope rather than both
   spellings, and `.r` plus a later `.s` is recorded as `.rs`. The

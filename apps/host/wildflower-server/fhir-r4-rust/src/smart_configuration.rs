@@ -21,7 +21,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use serde::Serialize;
-use shared_structures_rust::served_origin::served_base_url_for;
+use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 /// State threaded to the discovery handler: the loopback origin it falls back
 /// to when a request arrives without forwarding headers (a typed
@@ -71,7 +71,7 @@ const SCOPES_SUPPORTED: &[&str] = &[
 fn build_smart_configuration(server_origin: &str, base_url: &url::Url) -> SmartConfiguration {
     // The advertised endpoints are per-request URL strings; derive the bare
     // origin (no trailing slash, no default port) once and interpolate.
-    let origin = shared_structures_rust::origin_string(base_url);
+    let origin = wildflowerhealthio_shared_structures::origin_string(base_url);
     let host = format!("{origin}/fhir-r4");
     SmartConfiguration {
         // `issuer` = the server's origin (minted tokens' `iss`); the endpoint

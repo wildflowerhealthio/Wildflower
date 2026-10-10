@@ -4,7 +4,7 @@
 //! runs the queries over the one `app_registrations` table).
 //!
 //! [`SqliteAppsStore::new`] applies the embedded migrations once on a pooled
-//! connection via [`persistence_rust::run_diesel_migrations`] under this slice's
+//! connection via [`wildflowerhealthio_persistence::run_diesel_migrations`] under this slice's
 //! namespace (`"apps"`), so its `0001` and another diesel slice's `0001` never
 //! collide in diesel's stock (un-namespaced) `__diesel_schema_migrations` — the
 //! two diesel slices coexist in the shared database.

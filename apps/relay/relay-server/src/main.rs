@@ -3,7 +3,7 @@
 
 use anyhow::Context;
 use tokio::sync::broadcast;
-use wildflower_relay::{run_relay, RelaySettings};
+use wildflowerhealthio_relay_server::{run_relay, RelaySettings};
 
 /// Resolve on SIGINT or (on unix) SIGTERM. A signal that cannot be listened
 /// for is logged and never fires, rather than stopping the relay at once.

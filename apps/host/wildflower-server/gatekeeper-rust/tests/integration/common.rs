@@ -3,10 +3,10 @@ pub use std::net::SocketAddr;
 pub use axum::body::{to_bytes, Body};
 pub use axum::extract::ConnectInfo;
 pub use axum::http::{Request, StatusCode};
-pub use gatekeeper_rust::{
+pub use tokio::sync::watch;
+pub use wildflowerhealthio_gatekeeper::{
     setup_gatekeeper, Gatekeeper, GatekeeperConfig, WILDFLOWER_LOCAL_GRANTED_SCOPES,
 };
-pub use tokio::sync::watch;
 
 pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
 
@@ -19,23 +19,25 @@ pub const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 /// can't pass by accident against a hard-coded one.
 pub const LAUNCHER_BASE: &str = "https://launcher.test/launcher/";
 pub use chrono::{Duration, Utc};
-pub use gatekeeper_rust::crypto_util::base64;
-pub use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
-pub use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
-pub use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
-pub use gatekeeper_rust::domain::authorization_code::IssuedAuthorizationCode;
-pub use gatekeeper_rust::domain::authorization_request::{
-    AuthorizationRequest, GrantType, RequestStatus,
-};
-pub use gatekeeper_rust::domain::client::{AllowedGrantType, Client, ClientKind};
-pub use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-pub use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
-pub use gatekeeper_rust::{GatekeeperStore, PendingConsentHead, SqliteGatekeeperStore};
-pub use persistence_rust::{Connection, DieselPool};
 pub use serde_json::Value;
-pub use shared_structures_rust::launcher::LauncherBase;
 pub use tower::ServiceExt;
 pub use url::Url;
+pub use wildflowerhealthio_gatekeeper::crypto_util::base64;
+pub use wildflowerhealthio_gatekeeper::crypto_util::client_secret::hash_client_secret;
+pub use wildflowerhealthio_gatekeeper::crypto_util::pkce::compute_code_challenge;
+pub use wildflowerhealthio_gatekeeper::crypto_util::random_token::token_storage_hash;
+pub use wildflowerhealthio_gatekeeper::domain::authorization_code::IssuedAuthorizationCode;
+pub use wildflowerhealthio_gatekeeper::domain::authorization_request::{
+    AuthorizationRequest, GrantType, RequestStatus,
+};
+pub use wildflowerhealthio_gatekeeper::domain::client::{AllowedGrantType, Client, ClientKind};
+pub use wildflowerhealthio_gatekeeper::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
+pub use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
+pub use wildflowerhealthio_gatekeeper::{
+    GatekeeperStore, PendingConsentHead, SqliteGatekeeperStore,
+};
+pub use wildflowerhealthio_persistence::{Connection, DieselPool};
+pub use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// The two database handles the running router uses, kept so tests can open
 /// second store handles onto the SAME databases: the diesel pool behind the
@@ -58,14 +60,14 @@ pub struct TestDb {
 
 pub fn spin_up() -> (Gatekeeper, String, TestDb) {
     // One shared in-memory diesel pool, built once and handed to the slice —
-    // mirrors how the host wires the app-wide `persistence_rust::open_pool`
+    // mirrors how the host wires the app-wide `wildflowerhealthio_persistence::open_pool`
     // pool into each diesel-backed slice. `db.pool` is that shared handle;
     // `store_handle` clones it to reach the same database.
-    let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+    let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
     spin_up_on(
         pool,
         None,
-        std::sync::Arc::new(gatekeeper_rust::NoLoopbackConsentPrompt),
+        std::sync::Arc::new(wildflowerhealthio_gatekeeper::NoLoopbackConsentPrompt),
     )
 }
 
@@ -78,24 +80,25 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
 /// spawns, and shared-cache `SQLite` fails such an overlap with "database table
 /// is locked" instead of waiting on `busy_timeout` as a file database does.
 pub fn spin_up_with_loopback_prompt(
-    loopback_prompt: std::sync::Arc<dyn gatekeeper_rust::LoopbackConsentPrompt>,
+    loopback_prompt: std::sync::Arc<dyn wildflowerhealthio_gatekeeper::LoopbackConsentPrompt>,
 ) -> (Gatekeeper, String, TestDb) {
     let database_dir = tempfile::tempdir().expect("temp database dir");
-    let pool = persistence_rust::open_pool(&database_dir.path().join("wildflower.db"))
-        .expect("open file-backed pool");
+    let pool =
+        wildflowerhealthio_persistence::open_pool(&database_dir.path().join("wildflower.db"))
+            .expect("open file-backed pool");
     spin_up_on(pool, Some(database_dir), loopback_prompt)
 }
 
 fn spin_up_on(
     pool: DieselPool,
     database_dir: Option<tempfile::TempDir>,
-    loopback_prompt: std::sync::Arc<dyn gatekeeper_rust::LoopbackConsentPrompt>,
+    loopback_prompt: std::sync::Arc<dyn wildflowerhealthio_gatekeeper::LoopbackConsentPrompt>,
 ) -> (Gatekeeper, String, TestDb) {
     let config = GatekeeperConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
-        host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
-        first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
+        host_owner_scopes: wildflowerhealthio_gatekeeper::default_local_granted_scopes(),
+        first_party_client_id: wildflowerhealthio_gatekeeper::default_first_party_client_id(),
         launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
@@ -106,8 +109,9 @@ fn spin_up_on(
     // the same connection (see `revocation_store_handle`) lets tests
     // plant/observe rows.
     let revocation_conn = Connection::open_in_memory().expect("open revocation db");
-    let revocation_store = token_revocation_rust::RevocationStore::new(revocation_conn.clone())
-        .expect("revocation store");
+    let revocation_store =
+        wildflowerhealthio_token_revocation::RevocationStore::new(revocation_conn.clone())
+            .expect("revocation store");
     let g = setup_gatekeeper(
         pool.clone(),
         revocation_store,
@@ -634,8 +638,10 @@ pub fn set_cookie_values(res: &axum::response::Response) -> Vec<String> {
 /// A second `RevocationStore` handle on the running router's shared connection,
 /// so a test can plant/observe revocations the way `store_handle` does for the
 /// gatekeeper store.
-pub fn revocation_store_handle(db: &TestDb) -> token_revocation_rust::RevocationStore {
-    token_revocation_rust::RevocationStore::new(db.revocation_conn.clone())
+pub fn revocation_store_handle(
+    db: &TestDb,
+) -> wildflowerhealthio_token_revocation::RevocationStore {
+    wildflowerhealthio_token_revocation::RevocationStore::new(db.revocation_conn.clone())
         .expect("revocation store handle")
 }
 

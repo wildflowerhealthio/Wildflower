@@ -34,7 +34,7 @@
 //!    that name the concrete store; kept out of [`http`] so `domain/` can build
 //!    capabilities from it without depending on the transport layer.
 //!  - [`db`] — the SQLite store ([`db::SqliteRemotesStore`]) built on Diesel over
-//!    the app-wide r2d2 connection pool (`persistence_rust::DieselPool`) onto the
+//!    the app-wide r2d2 connection pool (`wildflowerhealthio_persistence::DieselPool`) onto the
 //!    shared database file, migrated with embedded diesel migrations.
 //!  - [`http`] — the slice's router; the wire contract is pinned from both
 //!    sides by the committed OpenAPI snapshot (see [`http`]).
@@ -55,7 +55,7 @@ use axum::Router;
 // Re-exported so the host can name the pool type at the `setup_collector` call
 // site without a direct diesel dependency; the canonical home is
 // persistence-rust.
-pub use persistence_rust::DieselPool;
+pub use wildflowerhealthio_persistence::DieselPool;
 
 pub use db::SqliteRemotesStore;
 pub use live_bindings::state::CollectorState;
@@ -69,7 +69,7 @@ pub use domain::capabilities::grantable_collector_scopes;
 /// `tunnel-rust`'s `setup_tunnel` and `apps-rust`'s `setup_apps`. The host opens
 /// the shared database with its rusqlite `persistence-rust::Connection` for the
 /// other slices and builds the app-wide diesel pool (via
-/// `persistence_rust::open_pool`) as an additional opener onto the same file
+/// `wildflowerhealthio_persistence::open_pool`) as an additional opener onto the same file
 /// (SQLite permits multiple connections per file); constructing the store
 /// applies the embedded collector migrations (including the demo-remote seed)
 /// once. Because WAL is deliberately OFF repo-wide, SQLite allows a single
@@ -80,7 +80,7 @@ pub use domain::capabilities::grantable_collector_scopes;
 /// The returned router carries no middleware, but every endpoint is scope-gated
 /// per operation (the handlers take a `Scoped<…>` capability). The consumer MUST
 /// still layer it with its auth gate (the Tauri host applies
-/// `gatekeeper_rust::gatekeeper_auth_middleware`) — that gate inserts the
+/// `wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware`) — that gate inserts the
 /// `ScopeClaims` the capabilities read, so an ungated router fails closed with
 /// a 500 rather than admitting an unauthenticated caller.
 ///

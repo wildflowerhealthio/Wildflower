@@ -6,17 +6,17 @@
 
 use std::sync::Arc;
 
-use apps_rust::domain::AppsError;
-use apps_rust::ports::{LaunchContextMinter, NoAppLaunchScopes};
-use apps_rust::{setup_apps, Apps, AppsConfig};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
 use tower::ServiceExt;
 use url::Url;
+use wildflowerhealthio_apps::domain::AppsError;
+use wildflowerhealthio_apps::ports::{LaunchContextMinter, NoAppLaunchScopes};
+use wildflowerhealthio_apps::{setup_apps, Apps, AppsConfig};
 
-use scope_capabilities_rust::ScopeClaims;
-use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
+use wildflowerhealthio_scope_capabilities::ScopeClaims;
+use wildflowerhealthio_shared_structures::test_utils::RecordingStubWebviewHandle;
 
 /// Insert the owner `ScopeClaims` the host's bearer gate places in the request
 /// extensions before a scope-gated `/apps` handler reads them — `wildflower/*.cruds`
@@ -47,7 +47,8 @@ impl LaunchContextMinter for NamedLaunchContextMinter {
 /// No per-app SMART launch scopes ([`NoAppLaunchScopes`]); launches are minted
 /// by [`NamedLaunchContextMinter`].
 fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
-    let pool = persistence_rust::open_in_memory_pool().expect("open in-memory diesel pool");
+    let pool =
+        wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
         public_origin: Url::parse("https://dev1.example.com").expect("valid public origin"),
     };

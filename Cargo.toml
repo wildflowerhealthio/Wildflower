@@ -54,7 +54,7 @@ base64 = "0.23"
 diesel = { version = "~2.3.11", features = ["sqlite", "returning_clauses_for_sqlite_3_35", "r2d2"] }
 # Compile-time-embedded diesel migrations for that connection (records applied
 # versions in diesel's own `__diesel_schema_migrations`, disjoint from
-# persistence-rust's namespaced `schema_migrations`).
+# wildflowerhealthio-persistence's namespaced `schema_migrations`).
 diesel_migrations = "~2.3"
 # PROXY protocol v2 headers: the relay writes one ahead of each visitor's
 # connection, and the server's tunnel listener reads the visitor's address

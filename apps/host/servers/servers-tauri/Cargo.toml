@@ -1,12 +1,12 @@
 [package]
-name = "servers-tauri"
+name = "wildflowerhealthio-servers-tauri"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
 # Tauri host glue for the servers: the install's servers on
 # `TauriUnitRunner`, the notifications about them, and the base's commands over
-# `servers-rust`, which holds every decision and its tests.
+# `wildflowerhealthio-servers`, which holds every decision and its tests.
 [dependencies]
 # A server config builder's error, which fails the run it was building.
 anyhow.workspace = true
@@ -17,21 +17,21 @@ tauri-plugin-notification = "2"
 # Opening a server's launcher in a native web view of its own.
 tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
 # The app's `TauriUnitRunner`, which the servers are pushed to as units.
-tauri-unit-runner-rust = { path = "../../unit-runner/tauri-unit-runner-rust" }
+wildflowerhealthio-tauri-unit-runner = { path = "../../unit-runner/tauri-unit-runner-rust" }
 # The registry, enrolment and the relay client adapter the commands drive;
 # `ServerUnit`; and the notification decisions.
-servers-rust = { path = "../servers-rust" }
+wildflowerhealthio-servers = { path = "../servers-rust" }
 # The config and host ports each server's run reads, and a stopped server's
 # certificate state, read from its cache.
-wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
+wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflower-server-rust" }
 # The gatekeeper's failure a consent or launch command that couldn't run
 # answers with.
-gatekeeper-rust = { path = "../../wildflower-server/gatekeeper-rust" }
+wildflowerhealthio-gatekeeper = { path = "../../wildflower-server/gatekeeper-rust" }
 # `ForwardedRequest`, which the servers report and the request notifications
 # count.
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust" }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
 # `TunnelName`, which the commands parse the entered tunnel name into.
-rathole-settings-rust = { path = "../../../../slices/rathole-settings-rust" }
+wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust" }
 # The relay base URL enrolment builds a relay client for.
 url = "2"
 # `join_all`, to read several servers' certificate caches at once. Already in
@@ -53,8 +53,8 @@ workspace = true
 async-trait = "0.1"
 # A gatekeeper over a temporary database, whose consents the consent commands'
 # tests decide.
-persistence-rust = { path = "../../../../slices/persistence-rust" }
-token-revocation-rust = { path = "../../wildflower-server/token-revocation-rust" }
+wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
+wildflowerhealthio-token-revocation = { path = "../../wildflower-server/token-revocation-rust" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"

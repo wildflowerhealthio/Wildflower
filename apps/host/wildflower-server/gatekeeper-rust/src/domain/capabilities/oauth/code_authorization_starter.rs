@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
-use shared_structures_rust::FHIR_R4_PATH;
 use url::Url;
+use wildflowerhealthio_shared_structures::FHIR_R4_PATH;
 
 use super::LaunchContexts;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;

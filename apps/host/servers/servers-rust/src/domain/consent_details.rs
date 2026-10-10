@@ -1,9 +1,11 @@
 //! [`ConsentDetails`], a waiting consent as the base shows it, with its
 //! [`Registration`].
 
-use gatekeeper_rust::{ClientRegistrationVerdict, DeviceConsentView, OAuthConsentView};
 use serde::Serialize;
 use url::Url;
+use wildflowerhealthio_gatekeeper::{
+    ClientRegistrationVerdict, DeviceConsentView, OAuthConsentView,
+};
 
 /// A waiting consent as the base shows it, camelCase, `kind`-tagged as
 /// [`ConsentKey`] is, each optional member left out when absent.
@@ -118,7 +120,7 @@ impl From<ClientRegistrationVerdict> for Registration {
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
-    use gatekeeper_rust::domain::authorization_request::{
+    use wildflowerhealthio_gatekeeper::domain::authorization_request::{
         AuthorizationRequest, GrantType, RequestStatus,
     };
 

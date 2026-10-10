@@ -1,5 +1,5 @@
 [package]
-name = "har-recorder-rust"
+name = "wildflowerhealthio-har-recorder"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true

@@ -1,5 +1,5 @@
 //! The servers domain: [`ServerRecord`] and its parts, its
-//! [`CertificateAuthority`] and [`RunPolicy`](unit_runner_rust::RunPolicy)
+//! [`CertificateAuthority`] and [`RunPolicy`](wildflowerhealthio_unit_runner::RunPolicy)
 //! included, [`RegistryError`], the
 //! failure vocabulary of the
 //! [`ServerRegistry`](crate::ServerRegistry) port; enrolment: [`add_server`]
@@ -58,7 +58,7 @@ pub use server_detail::ServerDetail;
 pub use server_launch::{ensure_launchable, launch_url};
 pub use server_record::{RelayKind, ServerRecord, TunnelToken, SERVERS_DIR_NAME};
 pub use server_status::{ServerStatus, ServerStatusTracker};
-pub use wildflower_server_rust::CertificateAuthority;
+pub use wildflowerhealthio_wildflower_server::CertificateAuthority;
 
 #[cfg(test)]
 pub(crate) use server_record::tests as fixtures;

@@ -67,6 +67,6 @@ impl AppsState {
     /// The public origin string for a launch's `{origin}` —
     /// e.g. `https://ruth.relay.wildflowerhealth.io` (no trailing slash).
     pub(crate) fn public_origin(&self) -> String {
-        shared_structures_rust::origin_string(&self.public_origin)
+        wildflowerhealthio_shared_structures::origin_string(&self.public_origin)
     }
 }

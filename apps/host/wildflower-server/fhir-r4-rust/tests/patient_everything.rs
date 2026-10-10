@@ -12,10 +12,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use axum::Router;
-use fhir_r4_rust::{setup_fhir_r4, FhirR4Config};
 use serde_json::{json, Value};
-use shared_structures_rust::ServerRuntimeConfig;
 use tower::ServiceExt;
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 /// Unique temp dir per test so parallel tests don't share a sqlite file.
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -60,7 +60,7 @@ fn build_router() -> (Router, TempDb) {
     // Auth is off here (jwks_url is None), so the revocation store is never
     // consulted — the always-allow double satisfies the signature without
     // standing up a database.
-    let revocation_store = token_revocation_rust::RevocationStore::always_allow();
+    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let router = setup_fhir_r4(&runtime, &config, revocation_store)
         .expect("setup_fhir_r4")
         .augmented_fhir_r4_router;

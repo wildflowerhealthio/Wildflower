@@ -3,9 +3,9 @@
 //! the launcher-relative route; the `*_url` helpers resolve it on the hosted
 //! launcher ([`LauncherBase`]) pointed at `served_origin` — typically the
 //! per-request served origin from
-//! [`served_base_url_for`](shared_structures_rust::served_origin::served_base_url_for).
+//! [`served_base_url_for`](wildflowerhealthio_shared_structures::served_origin::served_base_url_for).
 
-use shared_structures_rust::launcher::LauncherBase;
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// Launcher route of the device-flow code-entry page.
 pub fn device_entry_path() -> &'static str {
@@ -39,7 +39,7 @@ pub fn device_entry_url_with_code(
 #[cfg(test)]
 mod tests {
     use super::{device_entry_url, device_entry_url_with_code};
-    use shared_structures_rust::launcher::LauncherBase;
+    use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     const SERVER: &str = "https://abc.tunnel.example";
 

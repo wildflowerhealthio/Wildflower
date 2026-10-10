@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use scope_capabilities_rust::{Capability, ScopeClaims};
-use scopes_rust::{Grant, Scope};
+use wildflowerhealthio_scope_capabilities::{Capability, ScopeClaims};
+use wildflowerhealthio_scopes::{Grant, Scope};
 
 use super::state::AppsState;
 use crate::domain::capabilities::{app_launcher_scopes, AppLauncher};

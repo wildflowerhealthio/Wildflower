@@ -10,7 +10,7 @@
 //! [`crate::domain::capabilities`]), gated by `wildflower/RequestLog.r` and
 //! answering a `403 InsufficientScope` when the caller's token doesn't cover
 //! it. The server still layers the built router with its bearer gate
-//! (`gatekeeper_rust::gatekeeper_auth_middleware`), which inserts the
+//! (`wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware`), which inserts the
 //! `ScopeClaims` the capability reads.
 
 mod errors;
@@ -62,10 +62,10 @@ mod openapi_tests {
 
     /// The generated `OpenAPI` document must match the committed snapshot. A wire
     /// type change flips this red; regenerate with
-    /// `UPDATE_OPENAPI=1 cargo test -p request-log-rust openapi_spec_snapshot_is_up_to_date`.
+    /// `UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-request-log openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        shared_structures_rust::openapi_snapshot::assert_up_to_date(
+        wildflowerhealthio_shared_structures::openapi_snapshot::assert_up_to_date(
             &super::openapi_spec(),
             SPEC_PATH,
         );

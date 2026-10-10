@@ -1,7 +1,7 @@
 //! The `SqliteTunnelStore` adapter — the `SQLite` implementation of the
 //! [`TunnelStore`] port. Opens the relay's own
 //! database file, `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`, as an r2d2 pool
-//! of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`), applies
+//! of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`), applies
 //! the embedded relay migrations once on construction, and implements the
 //! port by delegating to the query bodies in `tunnels`. Mirrors
 //! `collector-rust`'s `SqliteRemotesStore`.
@@ -14,13 +14,13 @@ use std::path::Path;
 
 use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use persistence_rust::{DieselPool, PooledDieselConnection};
+use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
 use crate::db::tunnels;
 use crate::domain::{StoredTunnel, TunnelError, TunnelStore};
 
 /// The relay's migration namespace. Applied versions are bookkept
-/// per-namespace by [`persistence_rust::run_diesel_migrations`], the same
+/// per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], the same
 /// runner the slices use, though the relay's database holds no other
 /// namespace.
 const MIGRATION_NAMESPACE: &str = "wildflower_relay";
@@ -28,7 +28,7 @@ const MIGRATION_NAMESPACE: &str = "wildflower_relay";
 /// The relay migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
 /// Applied once per database in [`SqliteTunnelStore::new`] via
-/// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`].
+/// [`wildflowerhealthio_persistence::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`].
 /// Append-only: never reorder or rewrite a shipped migration.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -62,7 +62,7 @@ impl SqliteTunnelStore {
     /// migration fails.
     pub fn open(path: &Path) -> anyhow::Result<Self> {
         create_private(path).with_context(|| format!("creating {}", path.display()))?;
-        Self::new(persistence_rust::open_pool(path)?)
+        Self::new(wildflowerhealthio_persistence::open_pool(path)?)
             .with_context(|| format!("migrating {}", path.display()))
     }
 
@@ -77,22 +77,26 @@ impl SqliteTunnelStore {
         let mut conn = pool
             .get()
             .context("failed to check out a connection to run relay migrations")?;
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .context("failed to apply relay migrations")?;
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .context("failed to apply relay migrations")?;
         drop(conn);
         Ok(Self { pool })
     }
 
     /// Build a store over a private in-memory database — for tests. Each call
     /// is an independent, freshly-migrated database (see
-    /// `persistence_rust::open_in_memory_pool`).
+    /// `wildflowerhealthio_persistence::open_in_memory_pool`).
     ///
     /// # Errors
     ///
     /// Returns an error if the in-memory pool can't be built or migrated.
     #[cfg(test)]
     pub fn open_in_memory() -> anyhow::Result<Self> {
-        Self::new(persistence_rust::open_in_memory_pool()?)
+        Self::new(wildflowerhealthio_persistence::open_in_memory_pool()?)
     }
 
     /// Check out a connection from the pool.
@@ -172,7 +176,7 @@ mod tests {
     /// namespaced runner skips already-applied versions).
     #[test]
     fn migrations_are_idempotent() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         let store = SqliteTunnelStore::new(pool.clone()).unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         let reopened = SqliteTunnelStore::new(pool).unwrap();

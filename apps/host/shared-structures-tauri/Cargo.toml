@@ -1,5 +1,5 @@
 [package]
-name = "shared-structures-tauri"
+name = "wildflowerhealthio-shared-structures-tauri"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true

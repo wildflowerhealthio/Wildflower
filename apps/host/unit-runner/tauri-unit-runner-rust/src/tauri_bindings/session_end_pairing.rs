@@ -11,7 +11,7 @@ use std::sync::{Mutex, PoisonError};
 use tauri_plugin_background_service::models::StopReason as TauriBackgroundServiceStopReason;
 use tauri_plugin_background_service::PluginEvent as BackgroundServicePluginEvent;
 use tokio::sync::oneshot;
-use unit_runner_rust::PlatformStopReason;
+use wildflowerhealthio_unit_runner::PlatformStopReason;
 
 /// The Tauri event the plugin emits its [`BackgroundServicePluginEvent`]s on.
 pub(crate) const BACKGROUND_SERVICE_EVENT: &str = "background-service://event";

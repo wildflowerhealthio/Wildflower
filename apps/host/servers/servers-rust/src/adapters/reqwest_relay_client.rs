@@ -12,9 +12,9 @@
 
 use std::time::Duration;
 
-use rathole_settings_rust::{PublicRatholeSettings, TunnelHost, TunnelName};
 use reqwest::StatusCode;
 use url::Url;
+use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost, TunnelName};
 
 use super::request_signature::RequestSignature;
 use crate::domain::{EnrolmentError, TunnelToken};
@@ -163,12 +163,12 @@ mod tests {
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex, OnceLock};
 
-    use rathole_settings_rust::{NoisePattern, Transport};
     use rustls::pki_types::{CertificateDer, PrivateKeyDer};
     use rustls::sign::{CertifiedKey, SingleCertAndKey};
     use tokio::net::TcpListener;
     use tokio::sync::broadcast;
-    use wildflower_relay::{Secret, ServedTunnels, Site, Tunnel, Verifier};
+    use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
+    use wildflowerhealthio_relay_server::{Secret, ServedTunnels, Site, Tunnel, Verifier};
 
     use super::*;
     use crate::domain::fixtures::launcher_url;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
 use tokio::sync::{broadcast, watch};
 
-use unit_runner_rust::{
+use wildflowerhealthio_unit_runner::{
     RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner, UnitStatuses,
 };
 

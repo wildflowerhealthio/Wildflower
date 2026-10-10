@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use scope_capabilities_rust::{Capability, ScopeClaims};
-use scopes_rust::{Grant, Scope};
+use wildflowerhealthio_scope_capabilities::{Capability, ScopeClaims};
+use wildflowerhealthio_scopes::{Grant, Scope};
 
 use super::state::DatabasesState;
 use crate::adapters::FilesystemDatabaseFiles;

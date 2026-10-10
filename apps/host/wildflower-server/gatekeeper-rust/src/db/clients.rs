@@ -447,9 +447,9 @@ mod tests {
             "offline_access",
         ] {
             assert!(
-                docs.allowed_scopes
-                    .iter()
-                    .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested)),
+                docs.allowed_scopes.iter().any(|allowed| {
+                    wildflowerhealthio_scopes::allowed_scope_covers(allowed, requested)
+                }),
                 "the console's allowed scopes must cover {requested}",
             );
         }

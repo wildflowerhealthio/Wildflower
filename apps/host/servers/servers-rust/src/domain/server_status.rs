@@ -37,11 +37,11 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Serializer};
-use shared_structures_rust::health_check::HealthStatus;
-use unit_runner_rust::{
+use wildflowerhealthio_shared_structures::health_check::HealthStatus;
+use wildflowerhealthio_unit_runner::{
     PlatformStopReason, RunState, RunStop, StopReason, UnitId, UnitStatus, UnitStatuses,
 };
-use wildflower_server_rust::{CertificateState, ServerHealth};
+use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
 use crate::domain::certificate_state_wire::CertificateStateWire;
 use crate::domain::ServerDetail;
@@ -276,9 +276,9 @@ impl ServerStatusTracker {
 #[cfg(test)]
 pub(crate) mod tests {
     use chrono::TimeZone;
-    use shared_structures_rust::health_check::HealthReport;
-    use unit_runner_rust::RunPolicy;
-    use wildflower_server_rust::{
+    use wildflowerhealthio_shared_structures::health_check::HealthReport;
+    use wildflowerhealthio_unit_runner::RunPolicy;
+    use wildflowerhealthio_wildflower_server::{
         CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
     };
 

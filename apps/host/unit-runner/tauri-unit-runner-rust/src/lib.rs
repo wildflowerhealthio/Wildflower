@@ -1,5 +1,5 @@
 //! Runs a Tauri app's long-lived background work as **units**: the Tauri
-//! bindings of [`unit_runner_rust`].
+//! bindings of [`wildflowerhealthio_unit_runner`].
 //!
 //! The app gives the [`TauriUnitRunner`] each unit's id, [`RunPolicy`] and
 //! factory. `TauriUnitRunner` starts and stops units to match their policies,
@@ -32,7 +32,7 @@ mod tauri_unit_runner;
 pub use tauri_bindings::{SESSION_END_REASON_WAIT, UNIT_RUNNER_PLUGIN_NAME};
 pub use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
 pub use tauri_unit_runner::TauriUnitRunner;
-pub use unit_runner_rust::{
+pub use wildflowerhealthio_unit_runner::{
     BackgroundSessionPlatform, PlatformStopReason, RunContext, RunPolicy, RunState, RunStop,
     RunStopped, SessionId, StopReason, SystemClock, Unit, UnitId, UnitRunner, UnitStatus,
     UnitStatuses, WallClock, FIRST_UNIT_RESTART_BACKOFF, MAX_UNIT_RESTART_BACKOFF,

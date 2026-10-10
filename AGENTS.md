@@ -10,7 +10,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Node.js 26+ required** (`engines` in `package.json`)
 - **Vite+ owns the toolchain** — drive everything through `vp`. Never invoke `pnpm`, `npm`, or `yarn` directly. See the Vite+ block at the bottom of this file for command surface and pitfalls.
 - **Test utilities import from `vite-plus/test`**, not `vitest`
-- **Slices must respect their layering** — `<name>-core` is the pure layer; adapters (`-react` browser UI, `-rust` native/server, `-tauri` Tauri host (Rust), `-tauri-js`/`-tauri-react` its TypeScript side, `-node`, `-web`) may import from `-core`, never the reverse. Some slices (`persistence`, `wildflower-server`) are Rust-only with no `-core`. See [slices/AGENTS.md](./slices/AGENTS.md).
+- **Slices must respect their layering** — `<name>-core` is the pure layer; adapters (`-react` browser UI, `-rust` native/server (folder; the crate is `wildflowerhealthio-<name>`), `-tauri` Tauri host (Rust), `-tauri-js`/`-tauri-react` its TypeScript side, `-node`, `-web`) may import from `-core`, never the reverse. Some slices (`persistence`, `wildflower-server`) are Rust-only with no `-core`. See [slices/AGENTS.md](./slices/AGENTS.md).
 - **Changes MUST include corresponding test updates**
 - **Vitest (via Vite+) is the test runner** — `vp test` runs the suite across all packages.
 
@@ -161,7 +161,7 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 - **markdownlint-cli2** on all `.md` — run locally via `vp run lint:docs`.
 - **actionlint** (`lint-actions.yml`) on `.github/` — workflow and action wiring, plus shellcheck (warnings and up) over `run:` scripts; settings in `.github/actionlint.yaml`.
 - **shellcheck** (`lint-shell.yml`, warnings and up) on every tracked `*.sh` and `.vite-hooks/`, pinned via `shellcheck-py` — run locally with `shellcheck --severity=warning -x <file>`.
-- **OpenAPI Rust↔TS drift** (`api-sync.yml`) — a committed snapshot per slice. Regenerate a stale one with `UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date`; the TS half is `vp test openapi-drift`.
+- **OpenAPI Rust↔TS drift** (`api-sync.yml`) — a committed snapshot per slice. Regenerate a stale one with `UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-<slice> openapi_spec_snapshot_is_up_to_date`; the TS half is `vp test openapi-drift`.
 
 ## Rust / Tauri
 

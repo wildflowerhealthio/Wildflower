@@ -24,7 +24,7 @@ type Check = typeof CheckSchema.Type
 
 /**
  * A server's `/health` body: the `draft-inadarei-api-health-check-06` report
- * `shared_structures_rust::health_check::HealthReport` serves, its overall
+ * `wildflowerhealthio_shared_structures::health_check::HealthReport` serves, its overall
  * status and the checks behind it, keyed `"componentName[:measurementName]"`
  * (`server`, `connectivity`, `fhir-r4`, ...).
  *

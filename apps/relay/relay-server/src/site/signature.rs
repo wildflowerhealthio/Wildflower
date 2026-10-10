@@ -43,9 +43,9 @@ use axum::http::{header, HeaderMap, HeaderName, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, KeyInit, Mac};
-use rathole_settings_rust::{TunnelName, ADMIN_KEY_ID};
 use sfv::{BareItem, Dictionary, FieldType, InnerList, ListEntry, Parser};
 use sha2::{Digest, Sha256};
+use wildflowerhealthio_rathole_settings::{TunnelName, ADMIN_KEY_ID};
 
 use crate::served::ServedTunnels;
 use crate::settings::Secret;

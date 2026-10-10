@@ -10,7 +10,7 @@
 //! zero trailing segments — so `POST /fhir-r4/` matched neither and escaped the
 //! nest entirely (in the full app it fell through to the SPA fallback; here, with
 //! no such fallback, it surfaced as a 404). `nest_service` claims the whole
-//! subtree instead, so the base reaches HFS. See `fhir_r4_rust::setup_fhir_r4`.
+//! subtree instead, so the base reaches HFS. See `wildflowerhealthio_fhir_r4::setup_fhir_r4`.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -18,10 +18,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use axum::Router;
-use fhir_r4_rust::{setup_fhir_r4, FhirR4Config};
 use serde_json::{json, Value};
-use shared_structures_rust::ServerRuntimeConfig;
 use tower::ServiceExt;
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 /// Unique temp dir per test so parallel tests don't share a sqlite file.
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -57,7 +57,7 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse public origin"),
     };
 
-    let revocation_store = token_revocation_rust::RevocationStore::always_allow();
+    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let router = setup_fhir_r4(&runtime, &config, revocation_store)
         .expect("setup_fhir_r4")
         .augmented_fhir_r4_router;

@@ -1,5 +1,5 @@
 [package]
-name = "databases-rust"
+name = "wildflowerhealthio-databases"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -10,8 +10,8 @@ publish.workspace = true
 # disk (`DELETE /databases/{id}`), plus a metadata listing (`GET /databases`)
 # for the settings screen. Unlike the other `-rust` slices it owns no store and
 # runs no migrations — it works at the file level on databases other slices own,
-# so the host passes it only the data directory. Layered like `apps-rust` /
-# `request-log-rust`: pure `catalog`/`metadata`/`files` helpers behind the `http`
+# so the host passes it only the data directory. Layered like `wildflowerhealthio-apps` /
+# `wildflowerhealthio-request-log`: pure `catalog`/`metadata`/`files` helpers behind the `http`
 # surface; authN comes from the consumer (the gatekeeper bearer gate) and
 # download/delete are scope-gated per database (`http::scoped`).
 [dependencies]
@@ -24,13 +24,13 @@ rusqlite.workspace = true
 # The scope grammar (`Scope`, `Grant`) the per-database read/delete gate checks
 # against — see `http::scoped`. Each database's governing scope is host policy
 # carried on its `DatabaseDescriptor`.
-scopes-rust = { path = "../../../../slices/scopes/scopes-rust" }
+wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 # The shared opaque-500 `InternalError` template (see `http::errors`).
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["http-errors"] }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["http-errors"] }
 # The generic scope-gated capability extractors (`Scoped<F>`, `Capability`,
 # `ScopeClaims`, `insufficient_scope`) the `/databases` surface gates on; the
 # `openapi` feature lets the 403 wire body appear in the documented responses.
-scope-capabilities-rust = { path = "../../../../slices/scopes/scope-capabilities-rust", features = ["openapi"] }
+wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust", features = ["openapi"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tracing = "0.1"
 # The export streams a temp snapshot off the async runtime: `spawn_blocking` for
@@ -50,7 +50,7 @@ workspace = true
 [dev-dependencies]
 # The shared OpenAPI snapshot helper (assert/regenerate the committed spec); only
 # the snapshot test uses it, so it's a dev-dependency with the opt-in feature.
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 http = "1"
 http-body-util = "0.1"

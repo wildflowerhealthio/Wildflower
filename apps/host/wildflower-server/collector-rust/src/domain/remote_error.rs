@@ -1,7 +1,7 @@
 //! [`RemoteError`] — the collector domain's failure vocabulary the HTTP layer
 //! renders.
 
-use scope_capabilities_rust::MissingScopes;
+use wildflowerhealthio_scope_capabilities::MissingScopes;
 
 /// The ways a remotes operation can fail — the domain's failure vocabulary. The
 /// first three are **semantic**, client-facing outcomes that are part of the
@@ -29,7 +29,7 @@ pub enum RemoteError {
     /// (already-rendered) scopes the caller must additionally hold.
     ///
     /// The scope-gated handlers acquire a
-    /// [`Scoped`](scope_capabilities_rust::Scoped) capability whose extractor
+    /// [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) capability whose extractor
     /// rejects an under-scoped caller with this variant (via
     /// `From<MissingScopes>`); the handler bodies never construct it.
     InsufficientScope { missing_scopes: Vec<String> },
@@ -57,7 +57,7 @@ impl RemoteError {
     }
 }
 
-/// The [`Scoped`](scope_capabilities_rust::Scoped) extractor's rejection — the
+/// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's rejection — the
 /// caller's token doesn't cover the capability's required scopes — becomes
 /// [`InsufficientScope`](RemoteError::InsufficientScope), so it reaches the wire
 /// through this error's rendering like any other failure.

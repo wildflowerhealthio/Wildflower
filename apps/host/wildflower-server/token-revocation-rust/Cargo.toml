@@ -1,5 +1,5 @@
 [package]
-name = "token-revocation-rust"
+name = "wildflowerhealthio-token-revocation"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -8,13 +8,13 @@ publish.workspace = true
 # per-subject not-before epoch, living in its own thin crate so *both*
 # enforcement points can read it without pulling in a heavier dependency. The
 # gatekeeper OAuth server (policy: mint, when-to-revoke, the HTTP control
-# surface) and fhir-r4-rust's HFS `JtiCache` adapter (per-jti denylist, in-process)
+# surface) and wildflowerhealthio-fhir-r4's HFS `JtiCache` adapter (per-jti denylist, in-process)
 # each depend on this crate — but neither depends on the other. Deliberately
 # helios-free: it owns storage only, no auth policy.
 [dependencies]
 anyhow.workspace = true
 rusqlite.workspace = true
-persistence-rust = { path = "../../../../slices/persistence-rust" }
+wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 # Timestamps are stored as Unix epoch seconds (INTEGER), matching the
 # second-precision of a JWT's `iat`/`exp` and sidestepping any TEXT-datetime
 # lexicographic-comparison pitfalls in the epoch `MAX` / purge range queries.

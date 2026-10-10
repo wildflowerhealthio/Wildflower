@@ -8,7 +8,7 @@ use utoipa::ToSchema;
 
 use crate::db::schema::collector_remotes;
 use crate::domain::RemoteError;
-use shared_structures_rust::json_text::JsonText;
+use wildflowerhealthio_shared_structures::json_text::JsonText;
 
 /// A stored remote — the wire shape the `/collector/remotes` endpoints serve
 /// (the TS `RemoteSchema` in

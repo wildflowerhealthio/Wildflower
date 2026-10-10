@@ -1,13 +1,13 @@
 //! [`Revocation`] — the token-revocation seam the domain calls out through, so
 //! the scope-gated capabilities (`GrantsRevoker`, `TokenRevoker`) and the logout
 //! session-revoke stay testable against a stub instead of the concrete
-//! [`RevocationStore`](token_revocation_rust::RevocationStore). Object-safe on
+//! [`RevocationStore`](wildflowerhealthio_token_revocation::RevocationStore). Object-safe on
 //! purpose: the capabilities hold an `Arc<dyn Revocation>` lifted from the state.
 
 use chrono::{DateTime, Utc};
 
 /// Revoke issued tokens. Both operations are implemented over the shared
-/// [`RevocationStore`](token_revocation_rust::RevocationStore); a test fake
+/// [`RevocationStore`](wildflowerhealthio_token_revocation::RevocationStore); a test fake
 /// records the calls (or fails, to prove a caller swallows or surfaces the
 /// error). Errors are stringified so the port stays free of the store's concrete
 /// error type.

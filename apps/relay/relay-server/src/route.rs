@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use rathole_settings_rust::is_dns_label;
+use wildflowerhealthio_rathole_settings::is_dns_label;
 
 use crate::served::ServedTunnels;
 

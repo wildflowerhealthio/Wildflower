@@ -177,7 +177,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
 /// still ⊆ the request, so `grantable_scopes` keeps it (coverage, not exact
 /// equality). The flow must approve — not deny — and the minted token must
 /// carry the narrowed `patient/Observation.s`. Guards the covers-based
-/// `is_requested` change in `scopes_rust::grantable_scopes`.
+/// `is_requested` change in `wildflowerhealthio_scopes::grantable_scopes`.
 #[tokio::test]
 async fn auth_code_grant_owner_narrows_requested_scope() {
     let (g, host_owner_token, db) = spin_up();

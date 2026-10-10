@@ -3,8 +3,8 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{DateTime, Duration, Utc};
-use scopes_rust::Grant;
 use url::Url;
+use wildflowerhealthio_scopes::Grant;
 
 use super::FakeGatekeeperStore;
 use crate::crypto_util::pkce::compute_code_challenge;

@@ -1,5 +1,5 @@
 [package]
-name = "browser-sniffer-tauri"
+name = "wildflowerhealthio-browser-sniffer-tauri"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -13,7 +13,7 @@ serde.workspace = true
 # `Value`, no deep clone — on the mobile streaming hot path. See
 # `native_webview_bridge.rs`.
 serde_json = { workspace = true, features = ["raw_value"] }
-shared-structures-rust = { path = "../../../slices/shared-structures/shared-structures-rust" }
+wildflowerhealthio-shared-structures = { path = "../../../slices/shared-structures/shared-structures-rust" }
 anyhow.workspace = true
 url = "2"
 # On iOS/Android the sniffer runs in the native-webview plugin (a real

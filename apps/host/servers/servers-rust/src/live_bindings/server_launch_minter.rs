@@ -5,7 +5,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::{ensure_launchable, LaunchError, ServerStatus};
-use gatekeeper_rust::LaunchContextMinter;
+use wildflowerhealthio_gatekeeper::LaunchContextMinter;
 
 /// Mints SMART App Launch `launch` values on one run of a server, through the
 /// run's gatekeeper. Each is for any OAuth client, since a server's launcher

@@ -34,7 +34,7 @@ The slice follows the same ports-and-adapters shape as `collector-rust`:
 
 Migrations are embedded diesel migrations (`apps-rust/migrations/`) applied once
 in `SqliteAppsStore::new` under this slice's **namespace** (`"apps"`) via
-`persistence_rust::run_diesel_migrations`, so the apps slice's `0001` and another
+`wildflowerhealthio_persistence::run_diesel_migrations`, so the apps slice's `0001` and another
 diesel slice's `0001` are tracked as distinct `(namespace, version)` rows and
 never collide in diesel's stock `__diesel_schema_migrations`. The table
 definition and the shipped apps' seeds are separate migrations, so the shipped
@@ -43,7 +43,7 @@ set versions independently of the schema.
 ## The store speaks registrations
 
 Persistence is one `app_registrations` table over the app-wide diesel pool
-(`persistence_rust::DieselPool`), and the domain's `AppRegistration` is
+(`wildflowerhealthio_persistence::DieselPool`), and the domain's `AppRegistration` is
 diesel-mapped straight to it. Reads are **typed diesel queries**: the catalogue
 is `app_registrations ORDER BY position` into `AppRegistration`s, and a detail
 read is the same row by id. `is_smart` is derived on the registration (from

@@ -33,8 +33,8 @@ mod routes;
 pub(crate) mod test_support;
 
 // The router builders below name the shared state. Its canonical public path is
-// `apps_rust::live_bindings::state::AppsState` (also re-exported crate-root as
-// `apps_rust::AppsState`); this is a private import, not another public path.
+// `wildflowerhealthio_apps::live_bindings::state::AppsState` (also re-exported crate-root as
+// `wildflowerhealthio_apps::AppsState`); this is a private import, not another public path.
 use crate::live_bindings::state::AppsState;
 
 use std::sync::Arc;
@@ -83,10 +83,10 @@ mod openapi_tests {
 
     /// The generated `OpenAPI` document must match the committed snapshot. A
     /// wire-type change flips this red; regenerate with
-    /// `UPDATE_OPENAPI=1 cargo test -p apps-rust openapi_spec_snapshot_is_up_to_date`.
+    /// `UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-apps openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        shared_structures_rust::openapi_snapshot::assert_up_to_date(
+        wildflowerhealthio_shared_structures::openapi_snapshot::assert_up_to_date(
             &super::openapi_spec(),
             SPEC_PATH,
         );

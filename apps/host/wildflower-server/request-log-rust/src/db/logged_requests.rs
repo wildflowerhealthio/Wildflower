@@ -10,8 +10,10 @@ use chrono::{DateTime, Utc};
 use diesel::dsl::max;
 use diesel::prelude::*;
 use diesel::sql_types::{BigInt, Integer, Nullable, Text, TimestamptzSqlite};
-use persistence_rust::PooledDieselConnection;
-use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller, RequestRefusal};
+use wildflowerhealthio_persistence::PooledDieselConnection;
+use wildflowerhealthio_shared_structures::request_caller::{
+    ForwardedRequest, RequestCaller, RequestRefusal,
+};
 
 use crate::db::schema::logged_requests;
 use crate::domain::request_log::{
@@ -386,7 +388,7 @@ pub(crate) mod test_support {
     use std::time::{Duration, SystemTime};
 
     use diesel::prelude::*;
-    use shared_structures_rust::request_caller::{ForwardedRequest, RequestCaller};
+    use wildflowerhealthio_shared_structures::request_caller::{ForwardedRequest, RequestCaller};
 
     use crate::db::schema::logged_requests;
     use crate::db::SqliteRequestLogStore;
@@ -427,7 +429,7 @@ pub(crate) mod test_support {
 mod tests {
     use std::time::SystemTime;
 
-    use shared_structures_rust::request_caller::RequestRefusal;
+    use wildflowerhealthio_shared_structures::request_caller::RequestRefusal;
 
     use super::test_support::forwarded_request;
     use super::*;

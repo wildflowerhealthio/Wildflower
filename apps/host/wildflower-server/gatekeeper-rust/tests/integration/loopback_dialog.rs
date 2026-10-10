@@ -18,7 +18,7 @@
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration as StdDuration;
 
-use gatekeeper_rust::{
+use wildflowerhealthio_gatekeeper::{
     LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
     LoopbackRegistrationNotice,
 };

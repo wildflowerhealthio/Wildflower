@@ -1,5 +1,5 @@
 [package]
-name = "apps-rust"
+name = "wildflowerhealthio-apps"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -7,7 +7,7 @@ publish.workspace = true
 # The apps slice, host-side: SQLite-backed selection of bundled apps plus a
 # CRUD surface for user-defined custom apps, the `/apps` HTTP routes the
 # webview consumes (list + launch redirect), and the owner-gated admin routes
-# the consumer wraps with the gatekeeper. Layered like `gatekeeper-rust`: pure
+# the consumer wraps with the gatekeeper. Layered like `wildflowerhealthio-gatekeeper`: pure
 # `domain`, `db`, and `http`.
 [dependencies]
 anyhow.workspace = true
@@ -15,33 +15,33 @@ axum.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
 # Persistence is Diesel over the app-wide r2d2 connection pool
-# (`persistence_rust::DieselPool`), mirroring collector-rust. This crate depends
-# on `persistence-rust` ONLY for the pool type — it does not touch `rusqlite`
+# (`wildflowerhealthio_persistence::DieselPool`), mirroring wildflowerhealthio-collector. This crate depends
+# on `wildflowerhealthio-persistence` ONLY for the pool type — it does not touch `rusqlite`
 # directly. Diesel's `r2d2` feature reuses the one already in the tree.
 diesel = { workspace = true }
 diesel_migrations.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
-persistence-rust = { path = "../../../../slices/persistence-rust" }
+wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 # The scope grammar (`Scope`, `Grant`, `WildflowerResource`, `Permission`) the
 # capabilities gate on, plus the shared default-safe capability machinery
 # (`Scoped<F>`, `Capability`/`FixedScopeCapability`, `ScopeClaims`,
 # `insufficient_scope`). `openapi` derives `ToSchema` on the shared 403 body so
-# each gated handler's `#[utoipa::path]` can declare it — mirrors databases-rust.
-scopes-rust = { path = "../../../../slices/scopes/scopes-rust" }
-scope-capabilities-rust = { path = "../../../../slices/scopes/scope-capabilities-rust", features = [
+# each gated handler's `#[utoipa::path]` can declare it — mirrors wildflowerhealthio-databases.
+wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
+wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust", features = [
   "openapi",
 ] }
 # The shared forwarding-header provenance helper (`request_provenance`,
 # `served_base_url_for`) the launch handler dispatches and renders against —
-# same contract gatekeeper-rust uses to resolve token issuer URLs.
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
+# same contract wildflowerhealthio-gatekeeper uses to resolve token issuer URLs.
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
   "served-origin",
   "http-errors",
 ] }
 rand = "0.10"
 # The loopback base URL and public origin `AppsConfig` / `AppsState` carry; the
-# origin accessors derive from them (same crate/version gatekeeper-rust uses).
+# origin accessors derive from them (same crate/version wildflowerhealthio-gatekeeper uses).
 url = "2"
 
 tracing = "0.1"
@@ -51,10 +51,10 @@ workspace = true
 
 [dev-dependencies]
 # The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature.
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 # The integration crate injects the owner `ScopeClaims` the host's bearer gate
 # would insert, so the scope-gated `/apps` admin handlers pass end-to-end.
-scope-capabilities-rust = { path = "../../../../slices/scopes/scope-capabilities-rust" }
+wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }

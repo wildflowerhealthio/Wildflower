@@ -40,7 +40,7 @@ impl TokenEntitlement<'_> {
     /// The scopes written into the token's `scope` claim, exactly as the proof
     /// holds them. A redemption's differ from its `granted_scopes`: each SMART
     /// scope's alternate spelling is added (see
-    /// [`scopes_rust::with_alternate_canonical_forms`]).
+    /// [`wildflowerhealthio_scopes::with_alternate_canonical_forms`]).
     pub(crate) fn token_scopes(&self) -> &[String] {
         match self {
             TokenEntitlement::HostOwner(host) => host.token_scopes(),

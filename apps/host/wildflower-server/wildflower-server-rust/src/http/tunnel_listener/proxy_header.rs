@@ -102,7 +102,7 @@ pub(in crate::http) mod tests {
     /// A v2 `PROXY` header from the visitor at `source`, as the relay writes
     /// it.
     pub(in crate::http) fn proxy_header(source: &str) -> Vec<u8> {
-        rathole_settings_rust::proxy_header::proxy_header(
+        wildflowerhealthio_rathole_settings::proxy_header::proxy_header(
             source.parse().expect("source address"),
             "198.51.100.1:443".parse().expect("relay address"),
         )

@@ -1,4 +1,4 @@
-//! The server's `/health` checks: what [`health_router`](shared_structures_rust::health_check::health_router)
+//! The server's `/health` checks: what [`health_router`](wildflowerhealthio_shared_structures::health_check::health_router)
 //! serves at `GET /health`, a functional breakdown in two checks.
 //!
 //! - **`server`** — everything else the server serves rides
@@ -18,11 +18,11 @@ use std::time::Duration;
 use anyhow::Context;
 use chrono::Utc;
 use diesel::RunQueryDsl;
-use persistence_rust::DieselPool;
-use shared_structures_rust::health_check::{
+use tokio::sync::watch;
+use wildflowerhealthio_persistence::DieselPool;
+use wildflowerhealthio_shared_structures::health_check::{
     ComponentType, HealthCheck, HealthCheckService, HealthReport, HealthStatus,
 };
-use tokio::sync::watch;
 
 /// How long one check may take before it fails.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(1);
@@ -38,7 +38,7 @@ const CONNECTIVITY_CHECK: &str = "connectivity";
 pub(crate) struct ServerHealthChecks {
     pub(crate) wildflower_db: DieselPool,
     /// The tunnel daemon's [`HealthStatus`]
-    /// ([`TunnelDaemon::connectivity`](tunnel_rust::TunnelDaemon::connectivity)).
+    /// ([`TunnelDaemon::connectivity`](wildflowerhealthio_tunnel::TunnelDaemon::connectivity)).
     pub(crate) tunnel_connectivity: watch::Receiver<HealthStatus>,
 }
 
@@ -124,7 +124,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_server_check_passes_on_an_open_pool() {
-        let wildflower_db = persistence_rust::open_in_memory_pool().expect("pool");
+        let wildflower_db = wildflowerhealthio_persistence::open_in_memory_pool().expect("pool");
         let check = check_server(wildflower_db, CHECK_TIMEOUT).await;
         assert_eq!(
             (check.component_type, check.status),
@@ -135,7 +135,7 @@ mod tests {
     /// Every connection checked out elsewhere: no connection in time fails.
     #[tokio::test]
     async fn the_server_check_fails_on_an_exhausted_pool() {
-        let wildflower_db = persistence_rust::open_in_memory_pool().expect("pool");
+        let wildflower_db = wildflowerhealthio_persistence::open_in_memory_pool().expect("pool");
         let held: Vec<_> = (0..wildflower_db.max_size())
             .map(|_| wildflower_db.get().expect("a connection"))
             .collect();

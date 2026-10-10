@@ -4,7 +4,7 @@
 //! TS/Rust scope-grammar mirror fails the other side's build instead of
 //! drifting silently.
 
-use scopes_rust::{allowed_scope_covers, Scope};
+use wildflowerhealthio_scopes::{allowed_scope_covers, Scope};
 
 const VECTORS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),

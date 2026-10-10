@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use scopes_rust::{grantable_scopes, Grant, Scope};
+use wildflowerhealthio_scopes::{grantable_scopes, Grant, Scope};
 
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -59,7 +59,7 @@ impl ApprovableScopes {
 
     /// The subset of the `owner_approved_scopes` this prompt may grant: each
     /// one covered by a requested scope and by a registration-ceiling scope
-    /// (coverage, not spelling — see [`scopes_rust::grantable_scopes`]).
+    /// (coverage, not spelling — see [`wildflowerhealthio_scopes::grantable_scopes`]).
     /// Rendered in canonical form, deduplicated, in the Owner's order.
     pub(crate) fn grantable_subset(&self, owner_approved_scopes: Vec<String>) -> Vec<String> {
         let requested: HashSet<&str> = self.requested_scopes.iter().map(String::as_str).collect();

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use scope_capabilities_rust::AuthenticatedCapability;
+use wildflowerhealthio_scope_capabilities::AuthenticatedCapability;
 
 use super::state::GatekeeperState;
 use super::FromState;

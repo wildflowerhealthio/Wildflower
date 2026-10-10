@@ -1,5 +1,5 @@
 [package]
-name = "gatekeeper-rust"
+name = "wildflowerhealthio-gatekeeper"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -12,7 +12,7 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 # Persistence is Diesel over the app-wide r2d2 connection pool
-# (`persistence_rust::DieselPool`), mirroring collector-rust: the host builds
+# (`wildflowerhealthio_persistence::DieselPool`), mirroring wildflowerhealthio-collector: the host builds
 # one pool on the shared database file and hands it to every diesel-backed
 # slice. The `chrono` feature maps the `DateTime<Utc>` columns natively
 # (`TimestamptzSqlite` text, `%F %T%.f%:z`), so no timestamp wrapper types.
@@ -22,27 +22,27 @@ diesel_migrations.workspace = true
 # shared across diesel-backed slices; this crate names the pool type but not
 # rusqlite — the token-revocation store (a separate crate) keeps its own
 # rusqlite connection, whose error type `domain/token.rs` still names.
-persistence-rust = { path = "../../../../slices/persistence-rust" }
+wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 rusqlite.workspace = true
 # The shared token-revocation store (per-jti denylist + per-subject epoch).
 # gatekeeper owns the *policy*: it runs the full revocation check in the auth
 # gate and exposes the revoke control surface (`/access/revocations`, logout).
-token-revocation-rust = { path = "../token-revocation-rust" }
+wildflowerhealthio-token-revocation = { path = "../token-revocation-rust" }
 # OAuth 2.0 / SMART on FHIR scope primitives (the v1↔v2 grammar and the
 # canonical scope strings) — gatekeeper is the canonical consumer; the crate
-# was extracted out of here so other slices (fhir-r4-rust) can share one grammar.
-scopes-rust = { path = "../../../../slices/scopes/scopes-rust" }
+# was extracted out of here so other slices (wildflowerhealthio-fhir-r4) can share one grammar.
+wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 # The shared forwarding-header provenance helpers (`served_base_url_for`,
-# `request_provenance`) — gatekeeper-rust resolves token issuer URLs through
-# them, and apps-rust dispatches launches off the same provenance, so the
+# `request_provenance`) — wildflowerhealthio-gatekeeper resolves token issuer URLs through
+# them, and wildflowerhealthio-apps dispatches launches off the same provenance, so the
 # `Forwarded`-header (RFC 7239) contract lives in one place. `http-errors` pulls
 # the shared opaque-500 `InternalError` the handler/OAuth error enums hold.
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["served-origin", "http-errors"] }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["served-origin", "http-errors"] }
 # The scope-gated capability extractors (`Scoped<F>`, `Capability`,
 # `FixedScopeCapability`, `ScopeClaims`) — the enforcement half of the scopes
 # slice; gatekeeper's `/access` surface is the pattern's original adopter and
 # its bearer gate inserts the `ScopeClaims` downstream slices gate on.
-scope-capabilities-rust = { path = "../../../../slices/scopes/scope-capabilities-rust", features = ["openapi"] }
+wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust", features = ["openapi"] }
 parking_lot = "0.12"
 # jsonwebtoken 10 split the crypto backend out of the default features: `default`
 # only enables PEM parsing, so a signer backend must be selected explicitly.
@@ -84,13 +84,13 @@ tokio = { workspace = true, features = ["sync"] }
 workspace = true
 
 [dev-dependencies]
-persistence-rust = { path = "../../../../slices/persistence-rust" }
+wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 # The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
 # the snapshot test uses it, so it's an extra dev-only feature on the existing
 # `[dependencies]` entry above (cargo unifies the feature set across both
 # tables, so the dev opt-in adds `openapi-snapshot` to the served-origin runtime
 # build).
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
 proptest = "1"
 http = "1"

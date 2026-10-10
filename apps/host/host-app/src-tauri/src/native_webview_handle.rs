@@ -1,4 +1,4 @@
-//! The Tauri host's [`apps_rust::OnDeviceWebviewHandle`].
+//! The Tauri host's [`wildflowerhealthio_apps::OnDeviceWebviewHandle`].
 //!
 //! The apps launch handler (`POST /apps/{id}`) resolves the launch URL and, for
 //! a loopback (local) caller, hands it here instead of returning a `302`. This
@@ -17,9 +17,9 @@
 //! loopback app calling the loopback API — by the host's loopback-provenance
 //! owner trust (`wildflower-server-rust`'s `inject_loopback_owner_token`).
 
-use apps_rust::OnDeviceWebviewHandle;
 use tauri::AppHandle;
 use tauri_plugin_log::log;
+use wildflowerhealthio_apps::OnDeviceWebviewHandle;
 
 /// The `tauri-plugin-native-webview` instance id for an apps-launch popup. Each
 /// launched app gets its **own** instance keyed `launch-<app-id>` — distinct from
@@ -94,7 +94,7 @@ fn open_app_in_native_webview(
     // `resolve_http_url` enforces http(s)-only (rejecting `file:` / `javascript:`
     // and unparseable URLs). We only need it to gate the string; the plugin
     // re-parses it.
-    shared_structures_tauri::resolve_http_url(&url)
+    wildflowerhealthio_shared_structures_tauri::resolve_http_url(&url)
         .map_err(|error| anyhow::anyhow!("launch URL rejected: {error}"))?;
 
     // No popup events to consume: native chrome owns Close and the apps flow

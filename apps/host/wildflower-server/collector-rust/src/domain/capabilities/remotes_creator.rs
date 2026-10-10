@@ -4,7 +4,7 @@
 //! so enforced and grantable can't drift) and its store-focused tests.
 
 use chrono::{SecondsFormat, Utc};
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::{required_config_tag, Remote, RemoteError, RemotesStore};
 

@@ -16,9 +16,9 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, Router};
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
 use helios_rest::{create_app_with_auth, ServerConfig};
-use shared_structures_rust::ServerRuntimeConfig;
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
-use token_revocation_rust::RevocationStore;
+use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::auth::build_auth;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
@@ -27,7 +27,7 @@ use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 pub use crate::config::FhirR4Config;
 
 /// The FHIR R4 base path [`setup_fhir_r4`]'s router mounts HFS under.
-pub use shared_structures_rust::FHIR_R4_PATH;
+pub use wildflowerhealthio_shared_structures::FHIR_R4_PATH;
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
 /// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router, and the bare HFS
@@ -144,7 +144,7 @@ pub fn setup_fhir_r4(
         ..ServerConfig::default()
     };
 
-    let server_origin = shared_structures_rust::origin_string(&config.public_origin);
+    let server_origin = wildflowerhealthio_shared_structures::origin_string(&config.public_origin);
     let (auth_config, auth_state) =
         build_auth(config.jwks_url.as_deref(), revocation_store, &server_origin);
     let hfs_router = create_app_with_auth(

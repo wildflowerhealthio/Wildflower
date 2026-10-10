@@ -17,7 +17,7 @@ use std::sync::Arc;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::post;
 use axum::Router;
-use scope_capabilities_rust::Authenticated;
+use wildflowerhealthio_scope_capabilities::Authenticated;
 
 use crate::http::extractors::LauncherPages;
 use crate::http::state::GatekeeperState;

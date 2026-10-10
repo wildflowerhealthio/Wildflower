@@ -1,6 +1,6 @@
 mod dicom_file_reader;
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 pub(crate) use dicom_file_reader::{dicom_file_reader_scopes, DicomFileReader};
 
@@ -16,7 +16,7 @@ mod tests {
     #[test]
     fn grantable_scopes_are_user_document_reference_r() {
         assert_eq!(
-            scopes_rust::render_scopes(&grantable_ohif_server_scopes()),
+            wildflowerhealthio_scopes::render_scopes(&grantable_ohif_server_scopes()),
             vec!["user/DocumentReference.r".to_owned()],
         );
     }

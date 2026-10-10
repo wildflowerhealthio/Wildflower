@@ -1,7 +1,7 @@
 //! The delete capability — [`AppsDeleter`], gated by `wildflower/Apps.d`
 //! ([`apps_deleter_scopes`](super::apps_deleter_scopes)).
 
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::{AppsError, AppsStore};
 

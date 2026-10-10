@@ -1,7 +1,7 @@
 //! The edit capability — [`AppsEditor`], gated by `wildflower/Apps.u`
 //! ([`apps_editor_scopes`](super::apps_editor_scopes)).
 
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::actions::{self, AppPayload};
 use crate::domain::{AppRegistration, AppsError, AppsStore};

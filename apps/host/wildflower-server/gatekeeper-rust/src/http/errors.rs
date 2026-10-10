@@ -26,8 +26,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
-use shared_structures_rust::request_caller::RequestRefusal;
 use utoipa::ToSchema;
+use wildflowerhealthio_shared_structures::request_caller::RequestRefusal;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::token::VerifyError;
@@ -70,11 +70,11 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
 /// enum holds it in its `Internal` variant instead of re-declaring the same
 /// fields, constructor, and render call. (`TokenError` additionally
 /// cache-suppresses the rendered 500 per RFC 6749 §5.1 by wrapping it.)
-pub(crate) use shared_structures_rust::http_errors::InternalError;
+pub(crate) use wildflowerhealthio_shared_structures::http_errors::InternalError;
 
 /// Plain 401 used by the auth middleware when a request lacks a valid bearer
 /// token, stamped with `refusal` (why it lacks one) for the host's
-/// forwarded-request observer (see `shared_structures_rust::request_caller`).
+/// forwarded-request observer (see `wildflowerhealthio_shared_structures::request_caller`).
 pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
     let mut response = (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     response.extensions_mut().insert(refusal);
@@ -93,7 +93,7 @@ pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
 /// The wire shape and this constructor live in `scope-capabilities-rust` (the
 /// reusable capability layer), re-exported here so call sites keep importing it
 /// from `errors`.
-pub(crate) use scope_capabilities_rust::insufficient_scope;
+pub(crate) use wildflowerhealthio_scope_capabilities::insufficient_scope;
 
 /// Wire shape for `GrantNotFound` (404) — no standing grant has this id.
 #[derive(Debug, Serialize, ToSchema)]

@@ -4,7 +4,7 @@
 //! the standing device grant.
 
 use chrono::{DateTime, Utc};
-use scopes_rust::Grant;
+use wildflowerhealthio_scopes::Grant;
 
 use super::delegation::deny_consent;
 use super::{ApproveDeviceConsentInput, ConsentOutcome};

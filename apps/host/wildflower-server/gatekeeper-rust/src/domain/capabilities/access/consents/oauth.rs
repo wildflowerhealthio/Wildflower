@@ -16,7 +16,7 @@ use crate::domain::client_registration::{classify_registration, PresentedClientR
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::PendingConsentPublisher;
-use scopes_rust::Grant;
+use wildflowerhealthio_scopes::Grant;
 
 /// Everything an approval needs beyond the prompt itself: who is approving,
 /// which client's registration is locked,

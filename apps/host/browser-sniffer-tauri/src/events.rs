@@ -1,6 +1,6 @@
 //! Sniffer-specific tag literals dispatched on the multiplexed bridge
 //! channel. The channel name (`BRIDGE_EVENT`), envelope shape, and the
-//! single-channel/FIFO rationale live in [`shared_structures_rust::bridge`];
+//! single-channel/FIFO rationale live in [`wildflowerhealthio_shared_structures::bridge`];
 //! this module only owns the per-crate tag literals and window labels.
 
 /// Web→host tag literals this crate dispatches on. `Open` both builds the

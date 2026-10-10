@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 use axum::routing::get;
 use axum::{Json, Router};
-use scope_capabilities_rust::Authenticated;
 use serde::Serialize;
+use wildflowerhealthio_scope_capabilities::Authenticated;
 
 use crate::http::state::GatekeeperState;
 use crate::live_bindings::LiveSessionReader;

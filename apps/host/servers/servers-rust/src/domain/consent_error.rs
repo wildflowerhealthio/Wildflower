@@ -1,8 +1,8 @@
 //! [`ConsentError`], why a consent couldn't be read or decided.
 
-use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
+use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
 
 /// Why a consent couldn't be read or decided. Serialises as
 /// `{"kind", "message"}`.

@@ -22,9 +22,9 @@ use utoipa_axum::router::OpenApiRouter;
 /// per-handler `body = …`) so [`InsufficientScopeResponses`] can `$ref` it when
 /// it documents the `403` on the scope-gated paths — see `openapi_spec`.
 ///
-/// [`InsufficientScopeResponses`]: scope_capabilities_rust::InsufficientScopeResponses
+/// [`InsufficientScopeResponses`]: wildflowerhealthio_scope_capabilities::InsufficientScopeResponses
 #[derive(OpenApi)]
-#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]
+#[openapi(components(schemas(wildflowerhealthio_scope_capabilities::InsufficientScopeBody)))]
 struct ApiDoc;
 
 /// The `/databases` surface as an `OpenApiRouter`, so the spec is collected from
@@ -55,8 +55,10 @@ fn openapi_spec() -> utoipa::openapi::OpenApi {
     // (download + delete are scope-gated) in one place, instead of a
     // `#[utoipa::path(responses(...))]` on each handler. `/databases` (list) is
     // authenticated-only (no per-database scope), so it stays 403-free.
-    scope_capabilities_rust::InsufficientScopeResponses::for_paths(["/databases/{id}"])
-        .modify(&mut spec);
+    wildflowerhealthio_scope_capabilities::InsufficientScopeResponses::for_paths([
+        "/databases/{id}",
+    ])
+    .modify(&mut spec);
     spec
 }
 
@@ -70,10 +72,10 @@ mod openapi_tests {
 
     /// The generated `OpenAPI` document must match the committed snapshot. A
     /// wire-type change flips this red; regenerate with
-    /// `UPDATE_OPENAPI=1 cargo test -p databases-rust openapi_spec_snapshot_is_up_to_date`.
+    /// `UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-databases openapi_spec_snapshot_is_up_to_date`.
     #[test]
     fn openapi_spec_snapshot_is_up_to_date() {
-        shared_structures_rust::openapi_snapshot::assert_up_to_date(
+        wildflowerhealthio_shared_structures::openapi_snapshot::assert_up_to_date(
             &super::openapi_spec(),
             SPEC_PATH,
         );

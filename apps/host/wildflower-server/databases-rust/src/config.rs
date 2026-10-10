@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 /// One database the host exposes for export / delete. `id` doubles as the
 /// on-disk filename and the REST resource id (e.g. `health-data.sqlite`), so it
@@ -70,7 +70,7 @@ pub struct DatabasesConfig {
 
 #[cfg(test)]
 mod tests {
-    use scopes_rust::Permission;
+    use wildflowerhealthio_scopes::Permission;
 
     use super::*;
 

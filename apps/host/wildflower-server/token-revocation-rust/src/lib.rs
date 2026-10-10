@@ -23,12 +23,12 @@
 //! wrapper (per-`jti` denylist only — helios's `Principal` carries no `iat`).
 
 use chrono::{DateTime, Duration, Utc};
-use persistence_rust::{Connection, DbResult};
 use rusqlite::{params, OptionalExtension};
+use wildflowerhealthio_persistence::{Connection, DbResult};
 
 /// Migration namespace for the revocation tables in the shared database. Kept
 /// distinct from `gatekeeper` so the two slices' `schema_migrations` versions
-/// don't collide (see [`persistence_rust::run_migrations`]).
+/// don't collide (see [`wildflowerhealthio_persistence::run_migrations`]).
 const NAMESPACE: &str = "token_revocation";
 
 /// Ordered, append-only schema migrations. The array index is the recorded
@@ -70,7 +70,7 @@ impl RevocationStore {
     pub fn new(conn: Connection) -> DbResult<Self> {
         {
             let mut guard = conn.lock();
-            persistence_rust::run_migrations(&mut guard, NAMESPACE, MIGRATIONS)?;
+            wildflowerhealthio_persistence::run_migrations(&mut guard, NAMESPACE, MIGRATIONS)?;
         }
         Ok(Self {
             backend: Backend::Sqlite(conn),

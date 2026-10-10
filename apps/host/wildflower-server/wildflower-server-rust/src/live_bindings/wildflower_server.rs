@@ -8,18 +8,18 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use apps_rust::ports::{AppLaunchScopes, LaunchContextMinter};
-use apps_rust::{setup_apps, AppsConfig};
 use axum::Router;
-use fhir_r4_rust::{setup_fhir_r4, FhirR4Config};
-use gatekeeper_rust::{
-    gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
-    GatekeeperConfig, HostConsentDecider,
-};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tunnel_rust::{TunnelDaemon, TunnelStream};
+use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
+use wildflowerhealthio_apps::{setup_apps, AppsConfig};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_gatekeeper::{
+    gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
+    GatekeeperConfig, HostConsentDecider,
+};
+use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
 use crate::adapters::acme_certificate::DeviceCertificate;
 use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
@@ -76,7 +76,7 @@ pub struct WildflowerServer {
     reachability_monitor: ReachabilityMonitor,
     /// Mints the SMART App Launch `launch` values this server's
     /// `/oauth/authorize` consumes.
-    launch_context_minter: gatekeeper_rust::LaunchContextMinter,
+    launch_context_minter: wildflowerhealthio_gatekeeper::LaunchContextMinter,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
@@ -90,7 +90,7 @@ impl WildflowerServer {
     /// before [`serve`](Self::serve); it mints for as long as the server's
     /// database is open.
     #[must_use]
-    pub fn launch_context_minter(&self) -> gatekeeper_rust::LaunchContextMinter {
+    pub fn launch_context_minter(&self) -> wildflowerhealthio_gatekeeper::LaunchContextMinter {
         self.launch_context_minter.clone()
     }
 
@@ -194,7 +194,7 @@ pub async fn set_up(
     // The server's public origin, from its domain: what HFS's links and every app
     // launch name, and every token's `iss` and `aud`. It doesn't change while the
     // server runs.
-    let public_origin = tunnel_rust::public_origin_url(&domain)
+    let public_origin = wildflowerhealthio_tunnel::public_origin_url(&domain)
         .context("the server's domain doesn't name an origin")?;
 
     // The server's folder holds its databases, and a server added since the
@@ -210,7 +210,7 @@ pub async fn set_up(
     // BEFORE opening the databases below: the `/databases` DELETE can't remove a
     // file the owning slice holds open, so it drops a marker that we purge here,
     // while nothing has the file open yet.
-    databases_rust::purge_pending_deletions(&runtime.server_dir)
+    wildflowerhealthio_databases::purge_pending_deletions(&runtime.server_dir)
         .context("failed to purge scheduled database deletions")?;
 
     let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
@@ -218,7 +218,7 @@ pub async fn set_up(
     // slice's config that renders it (gatekeeper / fhir-r4). `loopback_origin` is its
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
-    let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
+    let loopback_origin = wildflowerhealthio_shared_structures::origin_string(&loopback_base_url);
     let fhir_r4_config = FhirR4Config {
         log_level: "debug".to_string(),
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
@@ -242,15 +242,15 @@ pub async fn set_up(
     // runs its own namespaced migrations on it. (The FHIR store is managed
     // separately by helios-persistence.)
     let db_path = runtime.server_dir.join(WILDFLOWER_DB);
-    let db =
-        persistence_rust::Connection::open(&db_path).context("failed to open shared database")?;
+    let db = wildflowerhealthio_persistence::Connection::open(&db_path)
+        .context("failed to open shared database")?;
 
     // One shared token-revocation store on that same connection, built BEFORE
     // both setups and threaded into each: gatekeeper's auth gate runs the full
     // revocation check (denylist + subject epoch) through it, and HFS reads the
     // per-jti denylist through it (defense-in-depth behind the gate). One store,
     // two enforcement points. See #269.
-    let revocation_store = token_revocation_rust::RevocationStore::new(db.clone())
+    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(db.clone())
         .context("failed to open token-revocation store")?;
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
@@ -282,8 +282,8 @@ pub async fn set_up(
     //
     // Built BEFORE `setup_gatekeeper` because the gatekeeper store now rides
     // this pool too (its diesel migrations run when the store is constructed).
-    let diesel_pool =
-        persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
+    let diesel_pool = wildflowerhealthio_persistence::open_pool(&db_path)
+        .context("failed to open diesel db pool")?;
 
     // DEBUG BUILDS ONLY: the `…-dev` app rows pointing at the first-party apps'
     // vite dev servers, plus their matching OAuth clients. The first-party apps
@@ -296,10 +296,11 @@ pub async fn set_up(
     // Best-effort: a failure only costs the dev tiles, never startup.
     #[cfg(debug_assertions)]
     {
-        if let Err(error) = apps_rust::seed_dev_apps(diesel_pool.clone()) {
+        if let Err(error) = wildflowerhealthio_apps::seed_dev_apps(diesel_pool.clone()) {
             tracing::warn!("failed to seed dev app rows: {error:#}");
         }
-        if let Err(error) = gatekeeper_rust::seed_dev_app_clients(diesel_pool.clone()) {
+        if let Err(error) = wildflowerhealthio_gatekeeper::seed_dev_app_clients(diesel_pool.clone())
+        {
             tracing::warn!("failed to seed dev app OAuth clients: {error:#}");
         }
     }
@@ -323,13 +324,14 @@ pub async fn set_up(
     // the bearer gate; every other `/fhir-r4/*` path still requires a token.
     let gated_fhir_r4 = fhir_r4_router.layer(gatekeeper_auth_middleware(
         gatekeeper.state.clone(),
-        fhir_r4_rust::UNAUTHENTICATED_FHIR_PATHS,
+        wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
     ));
 
     let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
 
-    let gated_ohif_server = ohif_server_rust::setup_ohif_server(fhir_routers.raw_hfs_router)
-        .layer(gatekeeper_auth_layer.clone());
+    let gated_ohif_server =
+        wildflowerhealthio_ohif_server::setup_ohif_server(fhir_routers.raw_hfs_router)
+            .layer(gatekeeper_auth_layer.clone());
 
     // The real `/collector/remotes` surface (replacing the former api_stubs
     // stub — the demo FHIR remote it hardcoded is now seeded by migration).
@@ -337,7 +339,7 @@ pub async fn set_up(
     // `diesel_pool` above). User-created remotes persist there; a remote's config
     // JSON may carry pharmacy credentials, so the whole surface is Owner-gated
     // like the rest of the admin API.
-    let gated_collector = collector_rust::setup_collector(diesel_pool.clone())
+    let gated_collector = wildflowerhealthio_collector::setup_collector(diesel_pool.clone())
         .context("failed to set up collector")?
         .layer(gatekeeper_auth_layer.clone());
 
@@ -345,11 +347,11 @@ pub async fn set_up(
     // server runs, handing each visitor's stream, in process, to the tunnel
     // listener; it has no HTTP surface.
     let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel::<TunnelStream>(TUNNEL_STREAM_BACKLOG);
-    let tunnel_config = tunnel_rust::TunnelConfig {
+    let tunnel_config = wildflowerhealthio_tunnel::TunnelConfig {
         tunnel_stream_tx,
         relay_settings,
     };
-    let tunnel_daemon = tunnel_rust::setup_tunnel(&tunnel_config);
+    let tunnel_daemon = wildflowerhealthio_tunnel::setup_tunnel(&tunnel_config);
     // The tunnel listener's certificate for the server's domain: a cached one
     // when it is still valid, otherwise ordered now, over TLS-ALPN-01
     // handshakes that arrive through the tunnel; renewed while the server
@@ -379,7 +381,7 @@ pub async fn set_up(
     // The `/requests` surface: the request log the forwarded-request report
     // (below) feeds, over the same diesel pool. Scope-gated on
     // `wildflower/RequestLog.r` behind the bearer gate.
-    let request_log = request_log_rust::setup_request_log(diesel_pool.clone())
+    let request_log = wildflowerhealthio_request_log::setup_request_log(diesel_pool.clone())
         .context("failed to set up the request log")?;
     let gated_request_log = request_log.router.layer(gatekeeper_auth_layer.clone());
 
@@ -445,30 +447,30 @@ pub async fn set_up(
     // export only what it can read. The scopes are built from `scopes-rust`'s
     // typed constructors (tested there) rather than parsed from strings, so a
     // typo is a compile error, never a silent `Unknown` scope.
-    let databases_config = databases_rust::DatabasesConfig {
+    let databases_config = wildflowerhealthio_databases::DatabasesConfig {
         data_dir: runtime.server_dir.clone(),
         databases: vec![
-            databases_rust::DatabaseDescriptor {
+            wildflowerhealthio_databases::DatabaseDescriptor {
                 id: HEALTH_DATA_DB.to_owned(),
                 label: "Health data".to_owned(),
                 description:
                     "Your FHIR clinical records — patients, observations, and the rest of your chart."
                         .to_owned(),
-                read_scope: scopes_rust::Scope::fhir_system_all(scopes_rust::Permission::READ_SEARCH),
-                delete_scope: scopes_rust::Scope::fhir_system_all(scopes_rust::Permission::DELETE),
+                read_scope: wildflowerhealthio_scopes::Scope::fhir_system_all(wildflowerhealthio_scopes::Permission::READ_SEARCH),
+                delete_scope: wildflowerhealthio_scopes::Scope::fhir_system_all(wildflowerhealthio_scopes::Permission::DELETE),
             },
-            databases_rust::DatabaseDescriptor {
+            wildflowerhealthio_databases::DatabaseDescriptor {
                 id: WILDFLOWER_DB.to_owned(),
                 label: "Wildflower app data".to_owned(),
                 description: "App state — access grants and the apps catalogue."
                     .to_owned(),
-                read_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::READ),
-                delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),
+                read_scope: wildflowerhealthio_scopes::Scope::wildflower_all(wildflowerhealthio_scopes::Permission::READ),
+                delete_scope: wildflowerhealthio_scopes::Scope::wildflower_all(wildflowerhealthio_scopes::Permission::DELETE),
             },
         ],
     };
-    let gated_databases =
-        databases_rust::setup_databases(&databases_config).layer(gatekeeper_auth_layer);
+    let gated_databases = wildflowerhealthio_databases::setup_databases(&databases_config)
+        .layer(gatekeeper_auth_layer);
 
     // Every slice's routes, gated per slice, composed once: the routes each
     // listener serves. The listener-specific layers go on top of this, below.
@@ -482,9 +484,11 @@ pub async fn set_up(
         // which the reachability monitor round-trips through the relay.
         // Ungated so the monitor (and any external uptime check) needs no
         // bearer token; the report says pass, warn or fail and nothing more.
-        .merge(shared_structures_rust::health_check::health_router(
-            Arc::new(health_checks),
-        ))
+        .merge(
+            wildflowerhealthio_shared_structures::health_check::health_router(Arc::new(
+                health_checks,
+            )),
+        )
         .merge(gated_apps)
         .merge(gated_databases)
         // No slice claimed the route: `404`, pointing a browser at the hosted

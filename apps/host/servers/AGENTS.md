@@ -392,7 +392,7 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   never makes it `orderFailing`. With none, as for a stopped or starting
   server, the host reads what the certificate cached in the server's
   `certificates/` folder says
-  (`wildflower_server_rust::cached_certificate_state`) when it emits the
+  (`wildflowerhealthio_wildflower_server::cached_certificate_state`) when it emits the
   status or answers `servers_list`, only for those servers, and
   concurrently: `notIssued`, `noRenewalNeeded`, `renewalDue` or `expired`,
   or `cacheUnreadable` with the error, never `ordering` or `orderFailing`.
@@ -404,7 +404,7 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
 lastError?: {kind, …}}`.
 - **Each new certificate is recorded once.** A run appends each certificate
   it deploys that the history doesn't record already to `certificates/history.json`
-  (`wildflower_server_rust::read_certificate_history`), so it is deleted with
+  (`wildflowerhealthio_wildflower_server::read_certificate_history`), so it is deleted with
   the server.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
   `domain/notifications/` with its tests; `servers-tauri` only posts.
@@ -413,7 +413,7 @@ lastError?: {kind, …}}`.
   are live state, held by whatever runs the server, never in a
   `ServerRecord`.
 - **The run policy is the unit runner's `RunPolicy`.** `servers-rust` stores
-  `unit_runner_rust::RunPolicy` itself, no mirror, in its wire shape:
+  `wildflowerhealthio_unit_runner::RunPolicy` itself, no mirror, in its wire shape:
   `{"kind": "off"}`, `{"kind": "whileOpen"}`,
   `{"kind": "until", "at": "<RFC 3339>"}` or `{"kind": "always"}`. The app
   stores it and pushes it to `UnitRunner`; `UnitRunner` never reads

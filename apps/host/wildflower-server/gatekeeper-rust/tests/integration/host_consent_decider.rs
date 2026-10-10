@@ -3,7 +3,7 @@
 //! `/access/oauth-consents/*` and `/access/devices/*`. A decision moves the
 //! consent head as one made over HTTP does.
 
-use gatekeeper_rust::{
+use wildflowerhealthio_gatekeeper::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ClientRegistrationVerdict, ConsentOutcome,
     HostConsentDecider,
 };
@@ -111,7 +111,7 @@ async fn the_host_reads_approves_and_denies_device_requests() {
     assert_eq!(
         decider.deny_device(&user_codes[1]),
         Err(
-            gatekeeper_rust::domain::gatekeeper_error::GatekeeperError::DeviceConsentNotFound {
+            wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError::DeviceConsentNotFound {
                 user_code: user_codes[1].clone()
             }
         ),

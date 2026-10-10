@@ -18,9 +18,9 @@
 
 use std::collections::BTreeMap;
 
-use gatekeeper_rust::PendingConsentHead;
 use serde::{Deserialize, Serialize};
-use unit_runner_rust::{UnitId, UnitStatus, UnitStatuses};
+use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
 use crate::domain::ServerDetail;
 
@@ -150,7 +150,7 @@ fn head_of(unit_status: &UnitStatus<ServerDetail>) -> Option<&PendingConsentHead
 
 #[cfg(test)]
 mod tests {
-    use unit_runner_rust::RunState;
+    use wildflowerhealthio_unit_runner::RunState;
 
     use super::*;
     use crate::domain::server_status::tests::{golden, LAB, RUTH};

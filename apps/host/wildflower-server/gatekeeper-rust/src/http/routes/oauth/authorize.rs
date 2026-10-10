@@ -4,9 +4,9 @@ use axum::extract::Query;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
-use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 use utoipa::IntoParams;
 use uuid::Uuid;
+use wildflowerhealthio_shared_structures::served_origin::{request_provenance, RequestProvenance};
 
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::capabilities::oauth::{

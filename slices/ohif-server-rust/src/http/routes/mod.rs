@@ -19,8 +19,8 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use http_body_util::BodyExt;
-    use scope_capabilities_rust::ScopeClaims;
     use tower::ServiceExt;
+    use wildflowerhealthio_scope_capabilities::ScopeClaims;
 
     use crate::hfs::HfsDicomFileStore;
     use crate::live_bindings::state::OhifServerState;

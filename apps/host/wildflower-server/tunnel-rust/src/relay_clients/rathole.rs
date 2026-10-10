@@ -17,11 +17,11 @@ use std::collections::BTreeMap;
 use crate::domain::{RelayClient, RelaySettings, TunnelStream};
 use anyhow::Context;
 use rathole::ClientServiceEvent;
-use rathole_settings_rust::{NoisePattern, Transport};
 use serde::Serialize;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
+use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
 
 /// The real client: renders a rathole client config and runs an embedded
 /// rathole client on the ambient tokio runtime.

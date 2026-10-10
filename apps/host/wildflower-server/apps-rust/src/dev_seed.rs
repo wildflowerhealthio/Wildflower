@@ -31,7 +31,7 @@
 use anyhow::Context;
 use diesel::sql_types::Text;
 use diesel::{OptionalExtension, QueryableByName, RunQueryDsl, SqliteConnection};
-use persistence_rust::DieselPool;
+use wildflowerhealthio_persistence::DieselPool;
 
 use crate::db::SqliteAppsStore;
 
@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn seeds_all_dev_rows_on_their_pinned_topology() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn the_ohif_dev_row_uses_its_own_launch_url_shape() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn the_health_viewer_dev_row_launches_its_dev_server() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn the_synthetic_data_dev_row_launches_its_dev_server() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn the_lifting_dev_row_launches_its_dev_server() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn the_production_rows_stay_beside_the_dev_rows() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn is_idempotent_across_restarts() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool.clone()).unwrap();
         let before = store.list_registrations().unwrap();
@@ -477,7 +477,7 @@ mod tests {
     /// adopting and rewriting it.
     #[test]
     fn never_adopts_a_user_row_that_already_holds_a_dev_id() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         let store = SqliteAppsStore::new(pool.clone()).unwrap();
         let mut conn = pool.get().unwrap();
         diesel::sql_query(

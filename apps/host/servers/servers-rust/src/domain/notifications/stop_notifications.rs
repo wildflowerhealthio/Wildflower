@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use unit_runner_rust::{PlatformStopReason, RunStop, RunStopped, StopReason, UnitId};
+use wildflowerhealthio_unit_runner::{PlatformStopReason, RunStop, RunStopped, StopReason, UnitId};
 
 use crate::domain::notifications::local_notification::LocalNotification;
 

@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 
-use shared_structures_rust::launcher::LauncherBase;
-use token_revocation_rust::RevocationStore;
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
+use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::pending_consent::PendingConsentHead;
@@ -47,7 +47,7 @@ pub struct GatekeeperState {
     /// [`GatekeeperConfig`](crate::GatekeeperConfig) at
     /// [`crate::setup_gatekeeper`]. Handlers don't read it directly: it is only
     /// the loopback fallback passed to
-    /// [`served_base_url_for`](shared_structures_rust::served_origin::served_base_url_for), which resolves
+    /// [`served_base_url_for`](wildflowerhealthio_shared_structures::served_origin::served_base_url_for), which resolves
     /// each request's served base URL for the launcher links it renders. See
     /// `docs/Origins/Explanation.md`.
     pub(crate) loopback_base_url: url::Url,
@@ -87,5 +87,5 @@ pub struct GatekeeperState {
     /// [`GatekeeperConfig::host_owner_scopes`](crate::GatekeeperConfig::host_owner_scopes)
     /// — the approving authority when the Owner answers the loopback dialog,
     /// the same scopes the host owner token carries.
-    pub(crate) host_owner_grant: scopes_rust::Grant,
+    pub(crate) host_owner_grant: wildflowerhealthio_scopes::Grant,
 }

@@ -9,7 +9,7 @@
  * apps-specific scope and accepted differences.
  *
  * Regenerate the committed server spec after a wire-type change with:
- *   UPDATE_OPENAPI=1 cargo test -p apps-rust openapi_spec_snapshot_is_up_to_date
+ *   UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-apps openapi_spec_snapshot_is_up_to_date
  */
 
 import { readFileSync } from 'node:fs'

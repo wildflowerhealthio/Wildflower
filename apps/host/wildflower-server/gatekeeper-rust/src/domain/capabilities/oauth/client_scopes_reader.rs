@@ -2,7 +2,7 @@
 //! request, for the host's per-app SMART launch check (the apps slice resolves
 //! a SMART app's `client_id` to this set through its `AppLaunchScopes` port).
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
@@ -62,7 +62,9 @@ mod tests {
             .unwrap();
         let reader = ClientScopesReader::new(store);
         assert_eq!(
-            scopes_rust::render_scopes(&reader.registered_client_scopes("app").unwrap()),
+            wildflowerhealthio_scopes::render_scopes(
+                &reader.registered_client_scopes("app").unwrap()
+            ),
             vec!["patient/*.rs".to_owned(), "openid".to_owned()]
         );
         assert!(reader.registered_client_scopes("ghost").unwrap().is_empty());

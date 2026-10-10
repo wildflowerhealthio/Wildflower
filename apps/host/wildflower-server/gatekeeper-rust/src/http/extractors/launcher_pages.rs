@@ -10,7 +10,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::Response;
 
-use shared_structures_rust::launcher::LauncherBase;
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 use crate::domain::page_paths;
 use crate::http::state::GatekeeperState;

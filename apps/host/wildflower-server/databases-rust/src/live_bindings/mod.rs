@@ -4,7 +4,7 @@
 //! monomorphizes a generic domain capability over the concrete
 //! [`FilesystemDatabaseFiles`](crate::adapters::FilesystemDatabaseFiles) adapter
 //! (as a `Live…` type alias) and implements
-//! [`Capability`](scope_capabilities_rust::Capability) for it, cloning the adapter
+//! [`Capability`](wildflowerhealthio_scope_capabilities::Capability) for it, cloning the adapter
 //! out of the state's [`files`](state::DatabasesState::files) field — so `domain/`
 //! stays free of both `crate::http` and the concrete adapter type. [`state`] holds
 //! the [`DatabasesState`](state::DatabasesState) the bindings build from. Mirrors

@@ -1,7 +1,7 @@
 //! [`ServerHealth`]: what the host knows about the running server's
 //! reachability and health.
 
-use shared_structures_rust::health_check::HealthReport;
+use wildflowerhealthio_shared_structures::health_check::HealthReport;
 
 /// Whether the server's `/health`, requested through its public origin (the
 /// relay and the tunnel), answered, and with what. The reachability monitor

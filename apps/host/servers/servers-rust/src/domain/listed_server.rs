@@ -3,8 +3,8 @@
 //! certificate's state.
 
 use serde::{Serialize, Serializer};
-use unit_runner_rust::{RunPolicy, UnitId, UnitStatus, UnitStatuses};
-use wildflower_server_rust::CertificateState;
+use wildflowerhealthio_unit_runner::{RunPolicy, UnitId, UnitStatus, UnitStatuses};
+use wildflowerhealthio_wildflower_server::CertificateState;
 
 use crate::domain::certificate_state_wire::CertificateStateWire;
 use crate::domain::server_status::ServerStatusWire;
@@ -100,10 +100,12 @@ impl Serialize for ListedServer {
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
-    use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
     use url::Url;
+    use wildflowerhealthio_rathole_settings::{
+        NoisePattern, PublicRatholeSettings, Transport, TunnelName,
+    };
 
-    use wildflower_server_rust::CertificateStatus;
+    use wildflowerhealthio_wildflower_server::CertificateStatus;
 
     use super::*;
     use crate::domain::fixtures::launcher_url;

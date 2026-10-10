@@ -2,7 +2,7 @@
 //! so the request log never holds a record identifier.
 
 use axum::http::Uri;
-use fhir_r4_rust::FHIR_R4_PATH;
+use wildflowerhealthio_fhir_r4::FHIR_R4_PATH;
 
 /// `uri`'s path reduced to its route: the first segment, plus the resource type
 /// when the first segment is the FHIR base. `/fhir-r4/Patient/123/_history/2?x=y`

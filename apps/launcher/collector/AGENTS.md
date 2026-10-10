@@ -141,7 +141,7 @@ before adding one.
 - **A new config in the union changes the remotes API wire schema — regenerate
   the OpenAPI snapshots.** `CollectorConfig` is the payload of
   `CreateRemote`/`UpdateRemote`; widening it drifts the committed spec. Run
-  `UPDATE_OPENAPI=1 cargo test -p collector-rust openapi_spec_snapshot_is_up_to_date`
+  `UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-collector openapi_spec_snapshot_is_up_to_date`
   and `vp test openapi-drift`. See the
   [How-To](./docs/Adding%20a%20Collector%20How-To.md) and the
   [OpenAPI Spec Drift How-To](../../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).

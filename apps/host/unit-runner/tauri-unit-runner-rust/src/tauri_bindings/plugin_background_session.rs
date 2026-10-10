@@ -9,7 +9,7 @@ use tauri_plugin_background_service::{
     ServiceError as BackgroundServiceError, ServiceManagerHandle as BackgroundServiceManagerHandle,
     StartConfig as BackgroundServiceStartConfig,
 };
-use unit_runner_rust::BackgroundSessionPlatform;
+use wildflowerhealthio_unit_runner::BackgroundSessionPlatform;
 
 use super::notification_permission::ask_for_notification_permission;
 use super::session_end_pairing::NO_LONGER_NEEDED_STOP_REASON;

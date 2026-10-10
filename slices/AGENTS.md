@@ -10,14 +10,14 @@ Every slice is a `<name>-core` (usually) plus optional platform adapters. The su
 slices/<name>/
 ├── <name>-core            # Pure logic: schemas, HttpApi definitions, business rules (no DOM/fs/platform imports)
 ├── <name>-react           # Browser UI adapter — the dominant web adapter
-├── <name>-rust            # Native/server Rust adapter
-├── <name>-tauri           # Tauri host adapter (Rust side)
+├── <name>-rust            # Native/server Rust adapter (crate `wildflowerhealthio-<name>`)
+├── <name>-tauri           # Tauri host adapter (Rust side; crate `wildflowerhealthio-<name>-tauri`)
 ├── <name>-tauri-js        # Tauri host adapter (TS side; `-tauri-react` if it renders React)
 ├── <name>-node            # Node.js adapter
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
-Each npm package is named `@wildflowerhealthio/<folder>` (`@wildflowerhealthio/fhir-r4-react`); everything else, prose included, uses the unscoped folder name.
+Each npm package is named `@wildflowerhealthio/<folder>` (`@wildflowerhealthio/fhir-r4-react`), and each Rust crate `wildflowerhealthio-` + its folder's name without `-rust` (`scopes/scopes-rust` is the crate `wildflowerhealthio-scopes`; see [apps/AGENTS.md](../apps/AGENTS.md#names)). Everything else, prose included, uses the folder name.
 
 Slices may also carry slice-specific packages (e.g. `fhir-r4` / `fhir-r4-react` under `fhir`, the `*-source` packages under `http-extraction`).
 

@@ -1,7 +1,7 @@
 //! The `/access` surface's capabilities — the **scope-gated** group, unlocked
 //! by the caller's scopes. The generic machinery (the [`Scoped`] extractor and
 //! the [`Capability`]/[`FixedScopeCapability`] traits) lives in
-//! [`scope_capabilities_rust`]; this module supplies one capability per
+//! [`wildflowerhealthio_scope_capabilities`]; this module supplies one capability per
 //! (resource, permission) the surface gates, split by resource: [`grants`],
 //! [`clients`], [`consents`], [`tokens`]. Their privileged writes go through the sibling
 //! [`writers`](crate::domain::capabilities::writers) under an authority proof.
@@ -24,11 +24,11 @@ pub(crate) use consents::{ConsentDecider, ConsentReader};
 pub(crate) use grants::{GrantsReader, GrantsRevoker};
 pub(crate) use tokens::TokenRevoker;
 
-pub(crate) use scope_capabilities_rust::{Capability, FixedScopeCapability, Scoped};
+pub(crate) use wildflowerhealthio_scope_capabilities::{Capability, FixedScopeCapability, Scoped};
 
 use std::collections::HashSet;
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 /// The admin scopes the `/access` surface enforces, deduplicated in declaration
 /// order — the registry mapping *capability → required scope*. Because it reads
@@ -60,7 +60,8 @@ mod tests {
 
     #[test]
     fn grantable_admin_scopes_are_the_expected_wildflower_scopes() {
-        let rendered: Vec<String> = scopes_rust::render_scopes(&grantable_admin_scopes());
+        let rendered: Vec<String> =
+            wildflowerhealthio_scopes::render_scopes(&grantable_admin_scopes());
         assert_eq!(
             rendered,
             vec![

@@ -11,7 +11,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::Response;
 
-use shared_structures_rust::served_origin::served_base_url_for;
+use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 use crate::http::errors;
 use crate::http::state::GatekeeperState;
@@ -49,8 +49,8 @@ impl FromRequestParts<Arc<GatekeeperState>> for ServedOrigin {
                     "forwarded header did not indicate a valid base URL",
                 )
             })?;
-        Ok(ServedOrigin(shared_structures_rust::origin_string(
-            &base_url,
-        )))
+        Ok(ServedOrigin(
+            wildflowerhealthio_shared_structures::origin_string(&base_url),
+        ))
     }
 }

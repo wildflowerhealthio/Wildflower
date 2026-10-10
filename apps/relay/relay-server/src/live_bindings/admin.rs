@@ -87,7 +87,7 @@ mod tests {
         assert!(extract(Some(SignedBy::Admin)).await.is_ok());
         for signed_by in [
             Some(SignedBy::Tunnel(
-                rathole_settings_rust::TunnelName::parse("alice").unwrap(),
+                wildflowerhealthio_rathole_settings::TunnelName::parse("alice").unwrap(),
             )),
             None,
         ] {

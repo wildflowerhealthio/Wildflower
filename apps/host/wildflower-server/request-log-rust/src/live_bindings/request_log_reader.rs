@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use scope_capabilities_rust::{FixedScopeCapability, ScopeClaims};
-use scopes_rust::Scope;
+use wildflowerhealthio_scope_capabilities::{FixedScopeCapability, ScopeClaims};
+use wildflowerhealthio_scopes::Scope;
 
 use super::state::RequestLogState;
 use crate::db::SqliteRequestLogStore;

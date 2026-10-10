@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use shared_structures_rust::request_caller::RequestRefusal;
+use wildflowerhealthio_shared_structures::request_caller::RequestRefusal;
 
 use crate::domain::request_log::{CallerSummary, LoggedRequest, RequestAuth, RequestLogPage};
 /// Why a bearer gate refused a logged request with a `401`. Mirrors

@@ -97,7 +97,7 @@ pub struct Client {
 
 impl Client {
     /// Whether every requested scope is inside this client's `allowed_scopes`.
-    /// Coverage-aware ([`scopes_rust::allowed_scope_covers`]), not exact
+    /// Coverage-aware ([`wildflowerhealthio_scopes::allowed_scope_covers`]), not exact
     /// membership: a client allowed a broad scope (`patient/*.rs`) also admits
     /// a narrower request it covers (`patient/Observation.r`). Read at
     /// `/authorize` (the first-party host) and `/device_authorization` (every
@@ -121,9 +121,9 @@ impl Client {
     /// Whether some entry of this client's `allowed_scopes` covers
     /// `requested_scope`.
     fn allows_scope(&self, requested_scope: &str) -> bool {
-        self.allowed_scopes
-            .iter()
-            .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested_scope))
+        self.allowed_scopes.iter().any(|allowed| {
+            wildflowerhealthio_scopes::allowed_scope_covers(allowed, requested_scope)
+        })
     }
 }
 

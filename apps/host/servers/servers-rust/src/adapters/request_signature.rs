@@ -10,9 +10,9 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use hmac::{Hmac, Mac};
-use rathole_settings_rust::TunnelName;
 use sha2::Sha256;
 use url::Url;
+use wildflowerhealthio_rathole_settings::TunnelName;
 
 use crate::domain::TunnelToken;
 

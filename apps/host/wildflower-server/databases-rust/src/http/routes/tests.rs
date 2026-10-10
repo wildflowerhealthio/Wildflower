@@ -7,8 +7,8 @@ use http_body_util::BodyExt;
 use rusqlite::Connection;
 use tower::ServiceExt;
 
-use scope_capabilities_rust::ScopeClaims;
-use scopes_rust::{Permission, Scope};
+use wildflowerhealthio_scope_capabilities::ScopeClaims;
+use wildflowerhealthio_scopes::{Permission, Scope};
 
 use super::*;
 use crate::config::DatabaseDescriptor;

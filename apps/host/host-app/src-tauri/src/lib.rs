@@ -3,15 +3,15 @@ mod loopback_consent_dialog;
 mod native_webview_handle;
 
 use anyhow::Context;
-use servers_rust::{ServerDetail, ServerRecord};
-use shared_structures_rust::launcher::LauncherBase;
-use shared_structures_rust::ServerRuntimeConfig;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::Manager;
-use tauri_unit_runner_rust::{BackgroundServiceStartConfig, TauriUnitRunner};
 use url::Url;
-use wildflower_server_rust::{HostPorts, WildflowerServerConfig};
+use wildflowerhealthio_servers::{ServerDetail, ServerRecord};
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
+use wildflowerhealthio_tauri_unit_runner::{BackgroundServiceStartConfig, TauriUnitRunner};
+use wildflowerhealthio_wildflower_server::{HostPorts, WildflowerServerConfig};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -36,7 +36,7 @@ const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 // the id gatekeeper seeds the first-party client and mints the owner token under.
 const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
 
-// The hosted launcher (see `shared_structures_rust::launcher`), sourced from the
+// The hosted launcher (see `wildflowerhealthio_shared_structures::launcher`), sourced from the
 // same `tauri-shared-config.json` (re-emitted by `build.rs`). Debug builds use
 // the local `main-web` dev server, so a dev host's links open the UI being
 // worked on rather than the published one.
@@ -87,8 +87,8 @@ fn resolve_data_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Resu
 /// The relay connection `server`'s tunnel dials: the relay's dial address and
 /// noise key from its record's `public_settings`, as its tunnel name, with its
 /// token.
-fn relay_settings_of(server: &ServerRecord) -> tunnel_rust::RelaySettings {
-    tunnel_rust::RelaySettings::from_public_rathole_settings(
+fn relay_settings_of(server: &ServerRecord) -> wildflowerhealthio_tunnel::RelaySettings {
+    wildflowerhealthio_tunnel::RelaySettings::from_public_rathole_settings(
         server.public_settings.clone(),
         server.tunnel_name.to_string(),
         server.token.expose().to_owned(),
@@ -158,7 +158,7 @@ fn server_config(
             env!("CARGO_MANIFEST_DIR"),
             "/../../wildflower-server/fhir-r4-rust/assets/search-parameters-r4.json"
         ));
-        // Filename matches `fhir_r4_rust`'s `SEARCH_PARAMETERS_R4_FILENAME` and the
+        // Filename matches `wildflowerhealthio_fhir_r4`'s `SEARCH_PARAMETERS_R4_FILENAME` and the
         // `tauri.conf.json` resource mapping.
         let dir = data_root.join("fhir-search-params");
         std::fs::create_dir_all(&dir).with_context(|| {
@@ -213,7 +213,7 @@ fn server_config(
 /// servers running at once publish onto the same two channels; the latest
 /// publish wins. Each run's gatekeeper publishes its pending-consent head on
 /// a channel of the run's own, which the run forwards to this one (see
-/// `servers_rust::ServerUnit`).
+/// `wildflowerhealthio_servers::ServerUnit`).
 fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublishers) -> HostPorts {
     HostPorts {
         // The native Approve / Reject dialog gatekeeper raises when the hosted
@@ -262,24 +262,24 @@ pub fn run() {
             // untrusted content webview — allowlists the inner `_tag` so the page
             // can't forge control tags it would otherwise reach via a bus `emit`
             // grant. See capabilities/native-webview-window.json.
-            browser_sniffer_tauri::native_webview_data_plane_emit,
+            wildflowerhealthio_browser_sniffer_tauri::native_webview_data_plane_emit,
             // The base's enrolment commands, granted to the `main` webview
             // only (`allow-server-enrolment`, see capabilities/default.json).
-            servers_tauri::server_add,
-            servers_tauri::server_set_credentials,
+            wildflowerhealthio_servers_tauri::server_add,
+            wildflowerhealthio_servers_tauri::server_set_credentials,
             // The base's server management commands, granted to the `main`
             // webview only (`allow-server-management`).
-            servers_tauri::servers_list,
-            servers_tauri::server_set_run_policy,
-            servers_tauri::server_update,
-            servers_tauri::server_remove,
-            servers_tauri::server_launch,
+            wildflowerhealthio_servers_tauri::servers_list,
+            wildflowerhealthio_servers_tauri::server_set_run_policy,
+            wildflowerhealthio_servers_tauri::server_update,
+            wildflowerhealthio_servers_tauri::server_remove,
+            wildflowerhealthio_servers_tauri::server_launch,
             // The base's consent commands, granted to the `main` webview only
             // (`allow-server-consents`).
-            servers_tauri::pending_consents_list,
-            servers_tauri::server_consent_get,
-            servers_tauri::server_consent_approve,
-            servers_tauri::server_consent_deny,
+            wildflowerhealthio_servers_tauri::pending_consents_list,
+            wildflowerhealthio_servers_tauri::server_consent_get,
+            wildflowerhealthio_servers_tauri::server_consent_approve,
+            wildflowerhealthio_servers_tauri::server_consent_deny,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -311,7 +311,7 @@ pub fn run() {
                 )
                 // The reachability monitor logs every `/health` probe on debug
                 .level_for(
-                    "wildflower_server_rust::domain::reachability_monitor",
+                    "wildflowerhealthio_wildflower_server::domain::reachability_monitor",
                     tauri_plugin_log::log::LevelFilter::Info,
                 )
                 // Helios's logging can be very chatty at debug, especially the auth middleware, so pin it to info
@@ -374,13 +374,16 @@ pub fn run() {
             // allowlists their inner `_tag` first (the mobile channel's
             // `validate_native_webview_message`, the desktop content webview's
             // `native_webview_data_plane_emit` command) and re-broadcasts.
-            browser_sniffer_tauri::attach_browser_sniffer(app.handle());
+            wildflowerhealthio_browser_sniffer_tauri::attach_browser_sniffer(app.handle());
 
             // Wire the HarRecorderBridge.webToHost listener that writes a
             // finished recording into `<data root>/saved_data`, shared by
             // every server, taking the directory this `setup()` already
             // resolved rather than its own.
-            har_recorder_tauri::attach_har_recorder(app.handle(), data_root.clone());
+            wildflowerhealthio_har_recorder_tauri::attach_har_recorder(
+                app.handle(),
+                data_root.clone(),
+            );
 
             // Push every server in `servers.json`, in the same data root, to
             // `TauriUnitRunner`, and manage the registry the commands write,
@@ -391,7 +394,7 @@ pub fn run() {
             )?;
             let config_app_handle = app.handle().clone();
             let config_data_root = data_root.clone();
-            servers_tauri::host_servers(
+            wildflowerhealthio_servers_tauri::host_servers(
                 app.handle(),
                 &data_root,
                 default_launcher_url,
@@ -407,8 +410,12 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use rathole_settings_rust::{NoisePattern, PublicRatholeSettings, Transport, TunnelName};
-    use servers_rust::{CertificateAuthority, RelayKind, RunPolicy, ServerRecord, TunnelToken};
+    use wildflowerhealthio_rathole_settings::{
+        NoisePattern, PublicRatholeSettings, Transport, TunnelName,
+    };
+    use wildflowerhealthio_servers::{
+        CertificateAuthority, RelayKind, RunPolicy, ServerRecord, TunnelToken,
+    };
 
     /// A server on the official relay.
     fn server() -> ServerRecord {
@@ -434,7 +441,7 @@ mod tests {
     fn the_tunnel_dials_the_relay_in_the_server_s_record() {
         assert_eq!(
             super::relay_settings_of(&server()),
-            tunnel_rust::RelaySettings {
+            wildflowerhealthio_tunnel::RelaySettings {
                 remote_addr: "relay.wildflowerhealth.io:2333".to_owned(),
                 token: "s3cret-tunnel-token".to_owned(),
                 public_key: "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=".to_owned(),

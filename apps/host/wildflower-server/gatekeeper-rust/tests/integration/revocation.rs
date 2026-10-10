@@ -210,15 +210,17 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
     seed_client_with_redirect(&db, "granted-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_authorization_code_grant(&gatekeeper_rust::domain::grant::AuthorizationCodeGrant {
-            id: "grant-1".to_string(),
-            client_id: "granted-client".to_string(),
-            scopes: vec!["read".to_string()],
-            granted_at: Utc::now(),
-            last_used_at: None,
-            patient: None,
-            redirect_uri: Url::parse("https://app.example/cb").expect("url"),
-        })
+        .create_authorization_code_grant(
+            &wildflowerhealthio_gatekeeper::domain::grant::AuthorizationCodeGrant {
+                id: "grant-1".to_string(),
+                client_id: "granted-client".to_string(),
+                scopes: vec!["read".to_string()],
+                granted_at: Utc::now(),
+                last_used_at: None,
+                patient: None,
+                redirect_uri: Url::parse("https://app.example/cb").expect("url"),
+            },
+        )
         .expect("create grant");
     // Revoke it.
     let res = g
@@ -261,7 +263,7 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_device_grant(&gatekeeper_rust::domain::grant::DeviceGrant {
+        .create_device_grant(&wildflowerhealthio_gatekeeper::domain::grant::DeviceGrant {
             id: "device-grant-1".to_string(),
             client_id: "device-client".to_string(),
             scopes: vec!["read".to_string()],

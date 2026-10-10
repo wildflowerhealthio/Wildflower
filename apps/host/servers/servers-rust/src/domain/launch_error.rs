@@ -1,8 +1,8 @@
 //! [`LaunchError`], why a server's launcher couldn't be opened.
 
-use gatekeeper_rust::domain::gatekeeper_error::GatekeeperError;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
+use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
 
 use crate::domain::{CertificateAuthority, RegistryError};
 

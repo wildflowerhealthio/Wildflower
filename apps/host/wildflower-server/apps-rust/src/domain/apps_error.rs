@@ -11,7 +11,7 @@
 //! opaque infrastructure failure (a pool checkout / query error) answered as an
 //! empty 500 — the operator sees the detail, the client doesn't.
 
-use scope_capabilities_rust::MissingScopes;
+use wildflowerhealthio_scope_capabilities::MissingScopes;
 
 /// The ways an apps operation can fail.
 #[derive(Debug)]
@@ -27,11 +27,11 @@ pub enum AppsError {
     InvalidHomeScreen { message: String },
     /// 403 — the caller authenticated, but their token doesn't cover the
     /// scope(s) the operation requires (a scope-gated admin surface, whose
-    /// [`Scoped`](scope_capabilities_rust::Scoped) extractor rejects with this
+    /// [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor rejects with this
     /// variant via `From<MissingScopes>`, or a per-app SMART launch check).
     /// `missing_scopes` are the rendered scopes the caller must additionally
     /// hold; the HTTP layer delegates to the shared
-    /// [`scope_capabilities_rust::insufficient_scope`] body.
+    /// [`wildflowerhealthio_scope_capabilities::insufficient_scope`] body.
     InsufficientScope { missing_scopes: Vec<String> },
     /// An infrastructure failure in the backing store (a pool checkout or query
     /// error) — opaque to clients: the HTTP layer logs `context` + `source` and
@@ -88,7 +88,7 @@ impl From<diesel::result::Error> for AppsError {
     }
 }
 
-/// The [`Scoped`](scope_capabilities_rust::Scoped) extractor's rejection — the
+/// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's rejection — the
 /// caller's token doesn't cover the capability's required scopes — becomes
 /// [`InsufficientScope`](AppsError::InsufficientScope), so it reaches the wire
 /// through this error's rendering like any other failure.

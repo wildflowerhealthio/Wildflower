@@ -9,8 +9,8 @@ use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Json;
-use rathole_settings_rust::{PublicRatholeSettings, TunnelHost};
-use shared_structures_rust::health_check::{health_router, AlwaysHealthy};
+use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost};
+use wildflowerhealthio_shared_structures::health_check::{health_router, AlwaysHealthy};
 
 use super::signature::{require_signature, SignedBy, Verifier};
 use super::{admin, admin_ui};
@@ -141,8 +141,9 @@ mod tests {
     fn rathole_settings() -> PublicRatholeSettings {
         PublicRatholeSettings {
             remote_addr: "relay.example.com:2333".to_owned(),
-            transport: rathole_settings_rust::Transport::Noise,
-            noise_pattern: rathole_settings_rust::NoisePattern::Nk25519ChaChaPolyBlake2s,
+            transport: wildflowerhealthio_rathole_settings::Transport::Noise,
+            noise_pattern:
+                wildflowerhealthio_rathole_settings::NoisePattern::Nk25519ChaChaPolyBlake2s,
             public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned(),
             domain: "relay.example.com".to_owned(),
         }

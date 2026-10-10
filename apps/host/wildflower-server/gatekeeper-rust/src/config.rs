@@ -1,18 +1,18 @@
-use shared_structures_rust::launcher::LauncherBase;
 use url::Url;
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 #[derive(Debug, Clone)]
 pub struct GatekeeperConfig {
     /// The HTTP-only loopback origin the embedded API server binds to, e.g.
     /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The loopback base URL
-    /// [`served_base_url_for`](shared_structures_rust::served_origin::served_base_url_for) returns when a
+    /// [`served_base_url_for`](wildflowerhealthio_shared_structures::served_origin::served_base_url_for) returns when a
     /// request carries no public-origin header (consumers then take its bare
-    /// origin via [`shared_structures_rust::origin_string`]).
+    /// origin via [`wildflowerhealthio_shared_structures::origin_string`]).
     pub loopback_base_url: Url,
 
     /// The server's origin, `https://<domain>`, as a typed [`Url`]. Every token
     /// this server mints carries its bare origin (via
-    /// [`shared_structures_rust::origin_string`]) as both `iss` and `aud`, and
+    /// [`wildflowerhealthio_shared_structures::origin_string`]) as both `iss` and `aud`, and
     /// the bearer gates accept only tokens that do, whichever origin a request
     /// was served on. See `docs/Origins/Explanation.md`.
     pub server_origin: Url,

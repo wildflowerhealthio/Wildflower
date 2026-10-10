@@ -7,7 +7,7 @@
 
 use std::net::SocketAddr;
 
-use gatekeeper_rust::{ensure_bearer_header, is_pre_auth_public_path};
+use wildflowerhealthio_gatekeeper::{ensure_bearer_header, is_pre_auth_public_path};
 
 /// Desktop loopback-owner trust: presents the host's owner `Authorization:
 /// Bearer` header on behalf of a direct-local caller. Holds a `watch::Receiver`
@@ -48,7 +48,8 @@ pub(crate) async fn inject_loopback_owner_token(
 ) -> axum::response::Response {
     let peer_is_loopback = connect_info
         .is_some_and(|axum::Extension(axum::extract::ConnectInfo(addr))| addr.ip().is_loopback());
-    let forwarded = shared_structures_rust::served_origin::is_forwarded(req.headers());
+    let forwarded =
+        wildflowerhealthio_shared_structures::served_origin::is_forwarded(req.headers());
     let is_public_surface = is_pre_auth_public_path(req.uri().path());
 
     if should_present_owner_token(peer_is_loopback, forwarded, is_public_surface) {

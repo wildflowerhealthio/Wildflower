@@ -12,16 +12,16 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
-use gatekeeper_rust::{
-    gatekeeper_auth_middleware, setup_gatekeeper, GatekeeperConfig, GatekeeperStore,
-    NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
-};
-use persistence_rust::{Connection, DieselPool};
-use shared_structures_rust::launcher::LauncherBase;
 use tokio::sync::watch;
 use tower::ServiceExt;
 use url::Url;
+use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
+use wildflowerhealthio_gatekeeper::{
+    gatekeeper_auth_middleware, setup_gatekeeper, GatekeeperConfig, GatekeeperStore,
+    NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
+};
+use wildflowerhealthio_persistence::{Connection, DieselPool};
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// The server's origin: the `iss` and `aud` of every token its gatekeeper
 /// mints, and the only ones its bearer gate accepts.
@@ -29,19 +29,19 @@ const SERVER_ORIGIN: &str = "https://test.relay.invalid";
 
 /// A gatekeeper over an in-memory database, and the host owner token it
 /// published on start.
-fn set_up_gatekeeper(pool: &DieselPool) -> (gatekeeper_rust::Gatekeeper, String) {
+fn set_up_gatekeeper(pool: &DieselPool) -> (wildflowerhealthio_gatekeeper::Gatekeeper, String) {
     let config = GatekeeperConfig {
         loopback_base_url: Url::parse("http://127.0.0.1").expect("loopback URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
-        host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
-        first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
+        host_owner_scopes: wildflowerhealthio_gatekeeper::default_local_granted_scopes(),
+        first_party_client_id: wildflowerhealthio_gatekeeper::default_first_party_client_id(),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base URL"),
     };
     let (owner_token_tx, owner_token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, _pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
-    let revocation_store = token_revocation_rust::RevocationStore::new(
+    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(
         Connection::open_in_memory().expect("open revocation db"),
     )
     .expect("revocation store");
@@ -86,7 +86,7 @@ fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
 
 #[tokio::test]
 async fn bearer_gate_inserts_scope_claims_a_databases_capability_reads() {
-    let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+    let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
     let (gatekeeper, host_owner_token) = set_up_gatekeeper(&pool);
 
     // A one-database catalogue gated by `wildflower/*` read/delete, backed by a
@@ -99,17 +99,21 @@ async fn bearer_gate_inserts_scope_claims_a_databases_capability_reads() {
         .lock()
         .execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY);")
         .expect("seed table");
-    let config = databases_rust::DatabasesConfig {
+    let config = wildflowerhealthio_databases::DatabasesConfig {
         data_dir: data_dir.path().to_path_buf(),
-        databases: vec![databases_rust::DatabaseDescriptor {
+        databases: vec![wildflowerhealthio_databases::DatabaseDescriptor {
             id: db_id.to_owned(),
             label: "Wildflower app data".to_owned(),
             description: "App state.".to_owned(),
-            read_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::READ),
-            delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),
+            read_scope: wildflowerhealthio_scopes::Scope::wildflower_all(
+                wildflowerhealthio_scopes::Permission::READ,
+            ),
+            delete_scope: wildflowerhealthio_scopes::Scope::wildflower_all(
+                wildflowerhealthio_scopes::Permission::DELETE,
+            ),
         }],
     };
-    let gated = databases_rust::setup_databases(&config)
+    let gated = wildflowerhealthio_databases::setup_databases(&config)
         .layer(gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]));
 
     let get_status = |token: Option<String>| {

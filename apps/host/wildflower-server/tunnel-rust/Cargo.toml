@@ -1,11 +1,11 @@
 [package]
-name = "tunnel-rust"
+name = "wildflowerhealthio-tunnel"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
 # The host's tunnel: an embedded `rathole` client (noise transport, no
-# TLS/openssl) that dials the wildflower-relay named in the server's record and
+# TLS/openssl) that dials the wildflowerhealthio-relay-server named in the server's record and
 # hands each visitor's stream, in process, to the server's tunnel listener,
 # re-dialing with backoff. No HTTP surface; the tunnel keeps no rows.
 [dependencies]
@@ -19,9 +19,9 @@ rathole = { version = "0.5", default-features = false, features = [
 ] }
 # The relay's `GET /rathole` settings, and the transport and noise pattern the
 # rendered client config names.
-rathole-settings-rust = { path = "../../../../slices/rathole-settings-rust" }
+wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust" }
 # `HealthStatus`: the tunnel's own health, which the server's `/health` reports.
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
 ] }
 async-trait = "0.1"

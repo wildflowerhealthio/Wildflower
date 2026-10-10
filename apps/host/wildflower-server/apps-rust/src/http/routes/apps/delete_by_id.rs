@@ -4,7 +4,7 @@
 use axum::extract::Path;
 use axum::http::StatusCode;
 
-use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
+use wildflowerhealthio_scope_capabilities::{InsufficientScopeBody, Scoped};
 
 use crate::domain::AppsError;
 use crate::http::errors::AppNotFoundBody;

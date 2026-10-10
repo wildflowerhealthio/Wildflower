@@ -17,9 +17,9 @@
 //! is minted under through its [`TokenEntitlement`] variant.
 
 use chrono::{DateTime, Utc};
-use scopes_rust::KnownScope;
 use subtle::ConstantTimeEq;
 use url::Url;
+use wildflowerhealthio_scopes::KnownScope;
 
 use super::authenticated_client::AuthenticatedClient;
 use super::token_entitlement::TokenEntitlement;
@@ -449,10 +449,10 @@ impl ValidatedRefreshToken {
 
 /// The scopes a token carries: each granted scope alongside its alternate
 /// canonical form, so a v1-worded grant also carries its v2 letter spelling
-/// (see [`scopes_rust::with_alternate_canonical_forms`]). The response's
+/// (see [`wildflowerhealthio_scopes::with_alternate_canonical_forms`]). The response's
 /// `scope` stays the granted set as-is.
 fn token_scope_spellings(granted: &[String]) -> Vec<String> {
-    scopes_rust::with_alternate_canonical_forms(granted)
+    wildflowerhealthio_scopes::with_alternate_canonical_forms(granted)
 }
 
 #[cfg(test)]

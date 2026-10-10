@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::{RelayClient, RelaySettings, TunnelStream};
-use shared_structures_rust::health_check::HealthStatus;
+use wildflowerhealthio_shared_structures::health_check::HealthStatus;
 
 /// Exponential reconnect backoff, configurable so tests don't wait on wall time.
 #[derive(Debug, Clone, Copy)]

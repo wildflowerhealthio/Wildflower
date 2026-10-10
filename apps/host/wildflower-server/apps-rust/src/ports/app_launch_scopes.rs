@@ -10,9 +10,9 @@
 //! `client_id` to its client's `allowed_scopes`; a host with no SMART client
 //! directory wires [`NoAppLaunchScopes`].
 //!
-//! [`Scoped`]: scope_capabilities_rust::Scoped
+//! [`Scoped`]: wildflowerhealthio_scope_capabilities::Scoped
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 use crate::domain::{AppRegistration, AppsError};
 

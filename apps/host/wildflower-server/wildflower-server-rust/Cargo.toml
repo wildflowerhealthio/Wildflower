@@ -1,5 +1,5 @@
 [package]
-name = "wildflower-server-rust"
+name = "wildflowerhealthio-wildflower-server"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -16,7 +16,7 @@ publish.workspace = true
 # listener a visitor's connection the way the tunnel does, for this crate's
 # own integration tests; and `CertificateAuthority::UnreachableForTests`, a CA
 # nothing answers at, for every test that runs a server. Only dev-dependencies
-# enable it: this crate's own below, and `servers-rust`'s.
+# enable it: this crate's own below, and `wildflowerhealthio-servers`'s.
 test-support = []
 
 [dependencies]
@@ -81,17 +81,17 @@ async-trait = "0.1"
 chrono = { workspace = true, features = ["clock", "serde"] }
 # The `server` `/health` check's `SELECT 1` on the shared diesel pool.
 diesel.workspace = true
-apps-rust = { path = "../apps-rust" }
-collector-rust = { path = "../collector-rust" }
-databases-rust = { path = "../databases-rust" }
-fhir-r4-rust = { path = "../fhir-r4-rust" }
-gatekeeper-rust = { path = "../gatekeeper-rust" }
-ohif-server-rust = { path = "../../../../slices/ohif-server-rust" }
-persistence-rust = { path = "../../../../slices/persistence-rust" }
-request-log-rust = { path = "../request-log-rust" }
+wildflowerhealthio-apps = { path = "../apps-rust" }
+wildflowerhealthio-collector = { path = "../collector-rust" }
+wildflowerhealthio-databases = { path = "../databases-rust" }
+wildflowerhealthio-fhir-r4 = { path = "../fhir-r4-rust" }
+wildflowerhealthio-gatekeeper = { path = "../gatekeeper-rust" }
+wildflowerhealthio-ohif-server = { path = "../../../../slices/ohif-server-rust" }
+wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
+wildflowerhealthio-request-log = { path = "../request-log-rust" }
 # Names the per-database export/delete `Scope`s the databases catalogue declares.
-scopes-rust = { path = "../../../../slices/scopes/scopes-rust" }
-shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
+wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
   # `served_base_url_for`: the unmatched-route 404 links back to the request's
   # served origin (see `src/http/not_found.rs`); `is_forwarded` for the loopback
@@ -100,18 +100,18 @@ shared-structures-rust = { path = "../../../../slices/shared-structures/shared-s
 ] }
 # Built once on the shared db and threaded into both gatekeeper and the FHIR
 # server so the auth gate and HFS read one revocation denylist/epoch store (#269).
-token-revocation-rust = { path = "../token-revocation-rust" }
-tunnel-rust = { path = "../tunnel-rust" }
+wildflowerhealthio-token-revocation = { path = "../token-revocation-rust" }
+wildflowerhealthio-tunnel = { path = "../tunnel-rust" }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 # This crate with its test support, for `tests/serve.rs`.
-wildflower-server-rust = { path = ".", features = ["test-support"] }
+wildflowerhealthio-wildflower-server = { path = ".", features = ["test-support"] }
 # The PROXY headers the tunnel listener tests send, built as the relay
 # builds them.
-rathole-settings-rust = { path = "../../../../slices/rathole-settings-rust", features = [
+wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust", features = [
   "proxy-header",
 ] }
 # A throwaway data root for the `serve` lifecycle test.

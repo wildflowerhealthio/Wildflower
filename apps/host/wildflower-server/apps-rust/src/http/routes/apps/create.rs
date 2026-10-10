@@ -8,7 +8,7 @@
 
 use axum::Json;
 
-use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
+use wildflowerhealthio_scope_capabilities::{InsufficientScopeBody, Scoped};
 
 use super::AppBody;
 use crate::domain::actions::AppPayload;

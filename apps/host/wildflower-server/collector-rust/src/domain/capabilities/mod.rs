@@ -1,6 +1,6 @@
 //! Scope-gated capabilities for the `/collector/remotes` surface — the
 //! collector slice's copy of the default-safe authorization pattern (the generic
-//! machinery lives in [`scope_capabilities_rust`]; the pattern originated on
+//! machinery lives in [`wildflowerhealthio_scope_capabilities`]; the pattern originated on
 //! gatekeeper's `/access` surface, recipe in
 //! `docs/Authorization/Scope-Gated Endpoints How-To.md`). Each capability is the
 //! only door to the store for its operations, so a handler that skips the scope
@@ -27,7 +27,7 @@
 //! and holds the store handle **lifted from the state** (never an
 //! `Arc<CollectorState>` it reaches into), so its logic is unit-testable against
 //! the in-memory fake. The
-//! [`FixedScopeCapability`](scope_capabilities_rust::FixedScopeCapability)
+//! [`FixedScopeCapability`](wildflowerhealthio_scope_capabilities::FixedScopeCapability)
 //! bindings that name the concrete `SqliteRemotesStore` and build a capability
 //! from the router state live beside the state in
 //! [`crate::live_bindings`](crate::live_bindings) — so this module stays store-agnostic and free
@@ -37,7 +37,7 @@
 //! capability's `*_scopes()` function — read by **both** its `Capability` binding
 //! and [`grantable_collector_scopes`], so *enforced* and *grantable* can't drift.
 
-use scopes_rust::Scope;
+use wildflowerhealthio_scopes::Scope;
 
 mod remotes_creator;
 mod remotes_deleter;
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn grantable_scopes_are_accounts_r_c_u_d() {
         assert_eq!(
-            scopes_rust::render_scopes(&grantable_collector_scopes()),
+            wildflowerhealthio_scopes::render_scopes(&grantable_collector_scopes()),
             vec![
                 "wildflower/Accounts.r".to_owned(),
                 "wildflower/Accounts.c".to_owned(),

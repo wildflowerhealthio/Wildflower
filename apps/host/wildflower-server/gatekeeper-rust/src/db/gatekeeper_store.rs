@@ -1,6 +1,6 @@
 //! The `SqliteGatekeeperStore` adapter — the `SQLite` implementation of the
 //! [`GatekeeperStore`](crate::domain::GatekeeperStore) port. Holds the app-wide
-//! r2d2 pool of Diesel `SqliteConnection`s (`persistence_rust::DieselPool`) onto
+//! r2d2 pool of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`) onto
 //! the shared database file, applies the embedded gatekeeper migrations once on
 //! construction (under this slice's [`MIGRATION_NAMESPACE`]), and implements the
 //! port by checking a connection out of the pool and delegating to the
@@ -13,8 +13,8 @@ use chrono::{DateTime, Utc};
 use diesel::connection::Connection;
 use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use persistence_rust::{DieselPool, PooledDieselConnection};
 use url::Url;
+use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
 use crate::db::{
     authorization_codes, authorization_requests, clients, grants, launch_contexts, refresh_tokens,
@@ -32,7 +32,7 @@ use crate::domain::signing_key::SigningKey;
 use crate::domain::{GatekeeperStore, GatekeeperTx};
 
 /// This slice's migration namespace in the shared database. Applied versions are
-/// bookkept per-namespace by [`persistence_rust::run_diesel_migrations`], so
+/// bookkept per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], so
 /// gatekeeper's `0001` and another diesel slice's `0001` never collide — the
 /// stock diesel harness records versions in a single un-namespaced
 /// `__diesel_schema_migrations` table, where a second diesel slice's `0001`
@@ -42,7 +42,7 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// The gatekeeper migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
 /// Applied once per database in [`SqliteGatekeeperStore::new`] via
-/// [`persistence_rust::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
+/// [`wildflowerhealthio_persistence::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
 /// (see that runner for why the stock diesel harness can't be shared across
 /// slices). Each migration's header says what it changes and why (see
 /// `migrations/`); because each runs only once per database, an upgrade neither
@@ -54,7 +54,7 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 #[derive(Clone)]
 pub struct SqliteGatekeeperStore {
     // The app-wide r2d2 pool onto the shared database file, built and owned by
-    // the host (`persistence_rust::open_pool`) — the same pool the other
+    // the host (`wildflowerhealthio_persistence::open_pool`) — the same pool the other
     // diesel-backed slices' stores ride. Diesel's connection API is `&mut`, so
     // each call checks a connection out of the pool rather than sharing one
     // behind a mutex; the pool (an `Arc` inside) makes the store cheap to clone
@@ -62,7 +62,7 @@ pub struct SqliteGatekeeperStore {
     // rusqlite `persistence-rust::Connection` serves the remaining rusqlite
     // slices from — SQLite permits multiple connections per file; the pool's
     // `busy_timeout` pragma rides out the brief write locks any connection takes
-    // (see `persistence_rust::open_pool`).
+    // (see `wildflowerhealthio_persistence::open_pool`).
     pool: DieselPool,
 }
 
@@ -70,7 +70,7 @@ impl SqliteGatekeeperStore {
     /// Wrap the host-owned connection `pool` and apply pending gatekeeper
     /// migrations once, on a single checked-out connection, under
     /// [`MIGRATION_NAMESPACE`]. The host builds the app-wide pool (via
-    /// `persistence_rust::open_pool`) on the same file its rusqlite connection
+    /// `wildflowerhealthio_persistence::open_pool`) on the same file its rusqlite connection
     /// opens for the other slices; both coexist (see the `pool` field).
     ///
     /// # Errors
@@ -81,15 +81,19 @@ impl SqliteGatekeeperStore {
         let mut conn = pool
             .get()
             .context("failed to check out a connection to run gatekeeper migrations")?;
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .context("failed to apply gatekeeper migrations")?;
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .context("failed to apply gatekeeper migrations")?;
         drop(conn);
         Ok(Self { pool })
     }
 
     /// Build a store over a private in-memory database — for tests. Each call
     /// is an independent, freshly-migrated database. Uses
-    /// `persistence_rust::open_in_memory_pool`, whose shared-cache URI keeps
+    /// `wildflowerhealthio_persistence::open_in_memory_pool`, whose shared-cache URI keeps
     /// the pooled connections on one in-memory database (a naive `:memory:`
     /// pool gives each connection its own empty db).
     ///
@@ -97,7 +101,7 @@ impl SqliteGatekeeperStore {
     ///
     /// Returns an error if the in-memory pool can't be built or migrated.
     pub fn open_in_memory() -> anyhow::Result<Self> {
-        Self::new(persistence_rust::open_in_memory_pool()?)
+        Self::new(wildflowerhealthio_persistence::open_in_memory_pool()?)
     }
 
     /// Check a connection out of the pool, mapping a checkout failure to the
@@ -542,7 +546,7 @@ mod tests {
     #[test]
     fn an_install_already_at_0009_is_upgraded_onto_the_fhir_viewer_redirect() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0009"),
@@ -559,7 +563,7 @@ mod tests {
             "0009 must stay exactly as it shipped — an install that ran it sees no edit",
         );
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0010"),
@@ -622,7 +626,7 @@ mod tests {
     #[test]
     fn an_install_that_ran_only_the_ohif_0009_gains_the_importer_write_scopes() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThroughOnly0009("0009_seed_ohif_viewer_client"),
@@ -634,7 +638,7 @@ mod tests {
             "the importer widening was skipped, leaving 0008's set",
         );
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0015"),
@@ -654,7 +658,7 @@ mod tests {
     #[test]
     fn an_install_that_ran_only_the_importer_0009_gains_the_ohif_viewer_client() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThroughOnly0009("0009_widen_importer_client_write_scopes"),
@@ -665,7 +669,7 @@ mod tests {
             "the OHIF seed was skipped",
         );
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0016"),
@@ -689,7 +693,7 @@ mod tests {
     #[test]
     fn the_0009_repairs_leave_changed_rows_alone() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0013"),
@@ -702,7 +706,7 @@ mod tests {
         .execute(&mut conn)
         .expect("change both rows");
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0016"),
@@ -762,7 +766,7 @@ mod tests {
     #[test]
     fn an_install_already_at_0018_gains_the_lifting_app_client() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0018"),
@@ -779,7 +783,7 @@ mod tests {
             "no migration through 0018 seeds lifting-app"
         );
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0019"),
@@ -830,7 +834,7 @@ mod tests {
         const LIFTING_AT_0019: &str = r#"["launch","launch/patient","openid","fhirUser","system/Patient.rs","system/PlanDefinition.crus","system/ServiceRequest.crus","system/Procedure.crus","system/Observation.crus"]"#;
 
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0019"),
@@ -842,7 +846,7 @@ mod tests {
         );
         assert_eq!(allowed_scopes_of(&mut conn, "lifting-app"), LIFTING_AT_0019);
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0020"),
@@ -879,7 +883,7 @@ mod tests {
     #[test]
     fn an_install_already_at_0020_drops_path_entries_from_redirect_uris() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0020"),
@@ -925,7 +929,7 @@ mod tests {
         .expect("plant an interleaved path entry");
         let docs_at_0020 = redirect_uris_of(&mut conn, "wildflower-server-docs");
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0021"),
@@ -975,7 +979,7 @@ mod tests {
     #[test]
     fn an_install_already_at_0021_gains_the_health_viewer_app_client() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0021"),
@@ -986,7 +990,7 @@ mod tests {
             "no migration through 0021 seeds health-viewer-app"
         );
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0022"),
@@ -1012,7 +1016,7 @@ mod tests {
         use diesel::connection::SimpleConnection as _;
 
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0023"),
@@ -1024,8 +1028,12 @@ mod tests {
         )
         .expect("a launch at 0023");
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0024");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0024");
 
         let kept: Vec<Name> = diesel::sql_query(
             "SELECT client_id || ':' || patient AS name FROM launch_contexts WHERE nonce = 'bound'",
@@ -1060,7 +1068,7 @@ mod tests {
         const LIFTING_DEV: &str = "8467e680a05f1e92e22864e923144e5a";
 
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0024"),
@@ -1079,8 +1087,12 @@ mod tests {
         )
         .expect("a dev client and a launch at 0024");
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0025");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0025");
 
         assert!(column_for_client(&mut conn, "client_id", "lifting-app").is_empty());
         assert!(column_for_client(&mut conn, "client_id", "lifting-app-dev").is_empty());
@@ -1157,7 +1169,7 @@ mod tests {
         ];
 
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0027"),
@@ -1189,8 +1201,12 @@ mod tests {
         )
         .expect("a launch at 0027");
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0028");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0028");
 
         for (old, new, redirects) in production {
             assert!(column_for_client(&mut conn, "client_id", old).is_empty());
@@ -1247,7 +1263,7 @@ mod tests {
         const OHIF_VIEWER_DEV: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0028"),
@@ -1266,8 +1282,12 @@ mod tests {
         )
         .expect("a dev client and a launch at 0028");
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0029");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0029");
 
         assert!(column_for_client(&mut conn, "client_id", "ohif-viewer").is_empty());
         assert!(column_for_client(&mut conn, "client_id", "ohif-viewer-dev").is_empty());
@@ -1309,10 +1329,18 @@ mod tests {
     #[test]
     fn migrations_are_idempotent_and_create_the_schema() {
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("first run");
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("second run");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("first run");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("second run");
         let names: Vec<String> = diesel::sql_query(
             "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name",
         )
@@ -1370,8 +1398,12 @@ mod tests {
         )
         .expect("simulate the old schema");
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("rebaseline");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("rebaseline");
 
         // The old parent's row is gone (destructive) and `grants` is now the
         // UNION ALL view over the two rebuilt concrete tables.
@@ -1412,7 +1444,7 @@ mod tests {
         diesel::sql_query("PRAGMA foreign_keys = ON")
             .execute(&mut conn)
             .expect("enforce foreign keys, as the pool does");
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0026"),
@@ -1441,7 +1473,7 @@ mod tests {
                 .expect("plant a 0026 row");
         }
 
-        persistence_rust::run_diesel_migrations(
+        wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MigrationsThrough("0027"),

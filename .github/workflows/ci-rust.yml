@@ -6,9 +6,10 @@ on:
   #
   # It compiles, lints, and tests the ENTIRE Cargo workspace in one job,
   # including the crates that pull in `tauri = "2"` (host-app,
-  # browser-sniffer-tauri, har-recorder-tauri, servers-tauri,
-  # shared-structures-tauri, tauri-plugin-native-webview,
-  # tauri-unit-runner-rust). Those need GTK/webkit
+  # wildflowerhealthio-browser-sniffer-tauri,
+  # wildflowerhealthio-har-recorder-tauri, wildflowerhealthio-servers-tauri,
+  # wildflowerhealthio-shared-structures-tauri, tauri-plugin-native-webview,
+  # wildflowerhealthio-tauri-unit-runner). Those need GTK/webkit
   # system libs, so the job installs them and stubs the generated web bundles
   # the Tauri crates `include_str!` (and the relay's admin UI, which
   # wildflower-relay embeds).

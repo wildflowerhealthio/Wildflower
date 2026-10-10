@@ -33,7 +33,9 @@ describe('the workspace package graph', () => {
     expect(byName.get('npm:@wildflowerhealthio/importer-react')?.runtimeDependencyNames).toContain(
       '@wildflowerhealthio/importer-core'
     )
-    expect(byName.get('cargo:host-app')?.runtimeDependencyNames).toContain('browser-sniffer-tauri')
+    expect(byName.get('cargo:host-app')?.runtimeDependencyNames).toContain(
+      'wildflowerhealthio-browser-sniffer-tauri'
+    )
   })
 })
 
@@ -136,14 +138,7 @@ describe('packageGraphViolations', () => {
 
   const kindArbitrary = fc.constantFrom<DependencyKind>('runtime', 'dev')
   const stemArbitrary = fc.stringMatching(/^[a-z]{1,8}$/)
-  const adapterSuffixArbitrary = fc.constantFrom(
-    '-react',
-    '-rust',
-    '-tauri',
-    '-tauri-js',
-    '-node',
-    '-web'
-  )
+  const adapterSuffixArbitrary = fc.constantFrom('-react', '-tauri', '-tauri-js', '-node', '-web')
 
   describe('a core and its dependencies', () => {
     it('flags a core depending on an adapter, of either kind', () => {
@@ -180,6 +175,22 @@ describe('packageGraphViolations', () => {
           ).toEqual([])
         }),
         { numRuns: numRunsFor({ base: 50 }) }
+      )
+    })
+    it('treats every crate as an adapter, whatever its name', () => {
+      fc.assert(
+        fc.property(stemArbitrary, kindArbitrary, (stem, kind) => {
+          const core = packageAt(`${stem}-core`, `slices/${stem}/a`, 'cargo')
+          const crate = packageAt(
+            `wildflowerhealthio-${stem}`,
+            `slices/${stem}/${stem}-rust`,
+            'cargo'
+          )
+          expect(tagsOf(packageGraphViolations([dependingOn(core, crate, kind), crate]))).toEqual([
+            'CoreDependsOnAdapter',
+          ])
+        }),
+        { numRuns: numRunsFor({ base: 20 }) }
       )
     })
   })

@@ -3,7 +3,7 @@
 //! [`grantable_request_log_scopes`](super::grantable_request_log_scopes) so
 //! enforced and grantable can't drift) and its store-focused test.
 
-use scopes_rust::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::request_log::{CallerSummary, RequestLogFilter, RequestLogPage};
 use crate::domain::{RequestLogError, RequestLogStore};

@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 
-use token_revocation_rust::RevocationStore;
+use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::ports::{Revocation, RevocationCheck};
 

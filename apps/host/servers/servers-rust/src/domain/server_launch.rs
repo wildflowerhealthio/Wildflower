@@ -8,10 +8,10 @@
 //! app's `/oauth/authorize` presents the `launch` and parks a consent the
 //! base's consent sheet answers.
 
-use shared_structures_rust::FHIR_R4_PATH;
-use unit_runner_rust::RunState;
 use url::{form_urlencoded, Url};
-use wildflower_server_rust::{CertificateStatus, ServerHealth};
+use wildflowerhealthio_shared_structures::FHIR_R4_PATH;
+use wildflowerhealthio_unit_runner::RunState;
+use wildflowerhealthio_wildflower_server::{CertificateStatus, ServerHealth};
 
 use crate::domain::{LaunchError, ServerDetail, ServerStatus};
 
@@ -116,7 +116,7 @@ pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use unit_runner_rust::UnitStatus;
+    use wildflowerhealthio_unit_runner::UnitStatus;
 
     use crate::domain::server_status::tests::{
         cached, golden_statuses, running_and_reachable, RUTH,
@@ -128,7 +128,7 @@ mod tests {
     }
 
     fn ruth_origin() -> Url {
-        tunnel_rust::public_origin_url(RUTH).unwrap()
+        wildflowerhealthio_tunnel::public_origin_url(RUTH).unwrap()
     }
 
     #[test]
