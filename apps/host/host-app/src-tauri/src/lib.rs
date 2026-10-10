@@ -302,7 +302,7 @@ pub fn run() {
                 .level(tauri_plugin_log::log::LevelFilter::Debug)
                 // rathole logs every relay heartbeat/data-channel event at
                 // debug — far too repetitive to read the tunnel lifecycle
-                // through. Pin it to warn; the tunnel slice's own dial logs
+                // through. Pin it to warn; tunnel-rust's own dial logs
                 // carry the timeline we care about.
                 .level_for("rathole", tauri_plugin_log::log::LevelFilter::Warn)
                 .level_for(

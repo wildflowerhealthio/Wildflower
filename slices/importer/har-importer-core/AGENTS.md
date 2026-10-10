@@ -145,7 +145,7 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
   `fhirR4Source` descriptor whose pre-adopted kinds the pool flattens.
 - [http-archive AGENTS.md](../../file-formats/http-archive/AGENTS.md) — the HAR
   format + `HttpArchive` projection this binding decodes through.
-- [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) —
+- [web-trace-core AGENTS.md](../../web-trace-core/AGENTS.md) —
   the trace-side codec constants the source file codec shares.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

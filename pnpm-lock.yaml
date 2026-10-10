@@ -368,7 +368,7 @@ importers:
         version: link:../../../slices/scopes/scopes-react
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       telemetry-core:
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-core
@@ -667,7 +667,7 @@ importers:
         version: link:../../../global/react-tundraish
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       telemetry-core:
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-core
@@ -1011,7 +1011,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
 
   apps/importer/anonymizer/har-anonymizer-core-js:
     devDependencies:
@@ -1053,7 +1053,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
 
   apps/importer/anonymizer/har-anonymizer-react:
     devDependencies:
@@ -1498,7 +1498,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../slices/web-trace/web-trace-core
+        version: link:../../../slices/web-trace-core
 
   apps/importer/importer-web:
     dependencies:
@@ -1561,7 +1561,7 @@ importers:
         version: link:../../../slices/shared-structures/shared-structures-react
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       telemetry-core:
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-core
@@ -1619,7 +1619,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../slices/web-trace/web-trace-core
+        version: link:../../../slices/web-trace-core
 
   apps/importer/lifelabs-pdf-importer-react:
     devDependencies:
@@ -2051,7 +2051,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
 
   apps/launcher/collector/rexall-be-well-collector:
     devDependencies:
@@ -2129,7 +2129,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
 
   apps/launcher/collector/shoppers-drugmart-collector:
     devDependencies:
@@ -2204,7 +2204,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
 
   apps/launcher/collector/web-trace-collector:
     devDependencies:
@@ -2276,7 +2276,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
       web-trace-source:
         specifier: workspace:*
         version: link:../web-trace-source
@@ -2315,7 +2315,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
 
   apps/launcher/databases/databases-core-js:
     devDependencies:
@@ -2453,7 +2453,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../../../slices/web-trace/web-trace-core
+        version: link:../../../../slices/web-trace-core
 
   apps/launcher/har-recorder/har-recorder-react:
     devDependencies:
@@ -2609,7 +2609,7 @@ importers:
         version: link:../../../global/kitchen-sink
       navigation-core:
         specifier: workspace:*
-        version: link:../../../slices/navigation/navigation-core
+        version: link:../../../slices/navigation-core
       navigation-react:
         specifier: workspace:*
         version: link:../navigation-react
@@ -2639,7 +2639,7 @@ importers:
         version: link:../../../slices/shared-structures/shared-structures-react
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       telemetry-react:
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-react
@@ -2721,7 +2721,7 @@ importers:
         version: 3.23.2
       navigation-core:
         specifier: workspace:*
-        version: link:../../../slices/navigation/navigation-core
+        version: link:../../../slices/navigation-core
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -3090,7 +3090,7 @@ importers:
         version: link:../../../global/react-tundraish
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       telemetry-core:
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-core
@@ -3424,7 +3424,7 @@ importers:
         version: link:../../../global/react-tundraish
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       telemetry-core:
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-core
@@ -3950,7 +3950,7 @@ importers:
         version: link:../../../global/react-tundraish
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       synthetic-data-core-js:
         specifier: workspace:*
         version: link:../synthetic-data-core-js
@@ -4115,7 +4115,7 @@ importers:
         version: link:../../../slices/shared-structures/shared-structures-react
       smart-app-react:
         specifier: workspace:*
-        version: link:../../../slices/smart-app/smart-app-react
+        version: link:../../../slices/smart-app-react
       synthetic-data-core-js:
         specifier: workspace:*
         version: link:../synthetic-data-core-js
@@ -4872,7 +4872,7 @@ importers:
         version: link:../../../global/kitchen-sink
       navigation-core:
         specifier: workspace:*
-        version: link:../../navigation/navigation-core
+        version: link:../../navigation-core
       shared-structures-core:
         specifier: workspace:*
         version: link:../../shared-structures/shared-structures-core
@@ -5084,7 +5084,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
+        version: link:../../web-trace-core
 
   slices/file-formats/positioned-text:
     devDependencies:
@@ -5231,10 +5231,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4-react
+        version: link:../../fhir/fhir-r4-react
       gatekeeper-core:
         specifier: workspace:*
         version: link:../gatekeeper-core
@@ -5291,7 +5291,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../http-extraction-fundamentals
@@ -5351,10 +5351,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       fhir-stu3-as-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-stu3-as-r4
+        version: link:../../fhir/fhir-stu3-as-r4
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../http-extraction-fundamentals
@@ -5387,7 +5387,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../http-extraction-fundamentals
@@ -5423,7 +5423,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       importer-fundamentals:
         specifier: workspace:*
         version: link:../importer-fundamentals
@@ -5459,7 +5459,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       fhir-r4-source:
         specifier: workspace:*
         version: link:../../http-extraction/fhir-r4-source
@@ -5495,7 +5495,7 @@ importers:
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
       web-trace-core:
         specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
+        version: link:../../web-trace-core
 
   slices/importer/importer-fundamentals:
     devDependencies:
@@ -5513,7 +5513,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -5546,7 +5546,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       importer-fundamentals:
         specifier: workspace:*
         version: link:../importer-fundamentals
@@ -5585,7 +5585,7 @@ importers:
         version: 3.23.2
       fhir-utility:
         specifier: workspace:*
-        version: link:../../emr/fhir-utility
+        version: link:../../fhir/fhir-utility
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -5615,10 +5615,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../../fhir/fhir-r4
       fhir-utility:
         specifier: workspace:*
-        version: link:../../emr/fhir-utility
+        version: link:../../fhir/fhir-utility
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -5638,7 +5638,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/navigation/navigation-core:
+  slices/navigation-core:
     devDependencies:
       '@effect/platform':
         specifier: 'catalog:'
@@ -5651,13 +5651,13 @@ importers:
         version: 3.22.2
       effect-messaging-core:
         specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
+        version: link:../../global/effect-messaging/effect-messaging-core
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
       kitchen-sink:
         specifier: workspace:*
-        version: link:../../../global/kitchen-sink
+        version: link:../../global/kitchen-sink
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -5846,7 +5846,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/smart-app/smart-app-react:
+  slices/smart-app-react:
     devDependencies:
       '@tanstack/react-query':
         specifier: 'catalog:'
@@ -5868,10 +5868,10 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       branding-core:
         specifier: workspace:*
-        version: link:../../branding/branding-core
+        version: link:../branding/branding-core
       branding-react:
         specifier: workspace:*
-        version: link:../../branding/branding-react
+        version: link:../branding/branding-react
       effect:
         specifier: 'catalog:'
         version: 3.22.2
@@ -5880,16 +5880,16 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4-react
+        version: link:../fhir/fhir-r4-react
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
       kitchen-sink:
         specifier: workspace:*
-        version: link:../../../global/kitchen-sink
+        version: link:../../global/kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -5898,19 +5898,19 @@ importers:
         version: 19.3.0(react@19.3.0)
       react-kitchen-sink:
         specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
+        version: link:../../global/react-kitchen-sink
       react-tundraish:
         specifier: workspace:*
-        version: link:../../../global/react-tundraish
+        version: link:../../global/react-tundraish
       telemetry-core:
         specifier: workspace:*
-        version: link:../../telemetry/telemetry-core
+        version: link:../telemetry/telemetry-core
       telemetry-react:
         specifier: workspace:*
-        version: link:../../telemetry/telemetry-react
+        version: link:../telemetry/telemetry-react
       telemetry-web:
         specifier: workspace:*
-        version: link:../../telemetry/telemetry-web
+        version: link:../telemetry/telemetry-web
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -6068,14 +6068,14 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/web-trace/web-trace-core:
+  slices/web-trace-core:
     devDependencies:
       '@types/node':
         specifier: ^26
         version: 26.1.0
       browser-sniffer-core:
         specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
+        version: link:../browser-sniffer/browser-sniffer-core
       effect:
         specifier: 'catalog:'
         version: 3.22.2
@@ -6084,10 +6084,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../emr/fhir-r4
+        version: link:../fhir/fhir-r4
       kitchen-sink:
         specifier: workspace:*
-        version: link:../../../global/kitchen-sink
+        version: link:../../global/kitchen-sink
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

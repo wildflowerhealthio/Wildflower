@@ -22,7 +22,7 @@ diesel_migrations.workspace = true
 # shared across diesel-backed slices; this crate names the pool type but not
 # rusqlite — the token-revocation store (a separate crate) keeps its own
 # rusqlite connection, whose error type `domain/token.rs` still names.
-persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+persistence-rust = { path = "../../../../slices/persistence-rust" }
 rusqlite.workspace = true
 # The shared token-revocation store (per-jti denylist + per-subject epoch).
 # gatekeeper owns the *policy*: it runs the full revocation check in the auth
@@ -84,7 +84,7 @@ tokio = { workspace = true, features = ["sync"] }
 workspace = true
 
 [dev-dependencies]
-persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+persistence-rust = { path = "../../../../slices/persistence-rust" }
 # The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
 # the snapshot test uses it, so it's an extra dev-only feature on the existing
 # `[dependencies]` entry above (cargo unifies the feature set across both

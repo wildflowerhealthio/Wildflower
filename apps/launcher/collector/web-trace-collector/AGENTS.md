@@ -156,9 +156,9 @@ Two static edits, per the descriptor seam:
 
 - [Adding a Collector How-To](../docs/Adding%20a%20Collector%20How-To.md) — the
   recipe this collector follows.
-- [web-trace-core AGENTS.md](../../../../slices/web-trace/web-trace-core/AGENTS.md) — the
+- [web-trace-core AGENTS.md](../../../../slices/web-trace-core/AGENTS.md) — the
   codec, and the traps in the encoding this collector writes.
-- [web-trace slice AGENTS.md](../../../../slices/web-trace/AGENTS.md) — why the slice exists
+- [web-trace-core AGENTS.md](../../../../slices/web-trace-core/AGENTS.md) — why the package is its own
   and the store-raw/anonymize-at-export asymmetry.
 - [collector AGENTS.md](../AGENTS.md) — the `AwaitUserDismiss` /
   `EnsureWindowVisible` traps in full.

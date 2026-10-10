@@ -430,7 +430,7 @@ TextEncoder().encode(text)`).
   `HarSettingsPicker` this shell mounts per HAR group.
 - [slices AGENTS.md](../../../slices/AGENTS.md) — the slice layering rules this package
   follows.
-- [web-trace-core AGENTS.md](../../../slices/web-trace/web-trace-core/AGENTS.md) — the
+- [web-trace-core AGENTS.md](../../../slices/web-trace-core/AGENTS.md) — the
   coding a HAR source file shares an axis with, and the disjointness of traces
   and source files (a test-fixture dependency here, nothing at runtime).
 - [fhir AGENTS.md](../../../slices/fhir/AGENTS.md) — `fhir-r4`'s typed client and

@@ -62,7 +62,7 @@ depends on its Rust half.
   `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`, or `collector-registry`'s
   reading `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`.
 - **Shared packages never fold in.** Anything two products use stays in
-  `slices/` or `global/` (`branding`, `telemetry`, `smart-app`,
+  `slices/` or `global/` (`branding`, `telemetry`, `smart-app-react`,
   `gatekeeper-core`, `global/pebble`); a file every app reads sits at the repo
   root (`dev-app-ports.json`).
 

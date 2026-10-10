@@ -17,7 +17,7 @@ This package is the SMART shell around them and the wiring between them.
 ## Boot structure
 
 The entry runs on `smart-app-react`, the chrome every first-party SMART app
-boots through (see [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md)),
+boots through (see [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md)),
 exactly as `apps/medications/medications-web` does.
 
 `src/main.tsx` is the `index.html` entry: it imports the design-system

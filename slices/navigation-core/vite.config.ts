@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite-plus'
-import base, { tsgoDts } from '../../../vite.config.base.ts'
+import base, { tsgoDts } from '../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,

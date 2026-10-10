@@ -118,7 +118,7 @@ assembly belongs to none of them:
 - **`fhir-r4-source`** (same slice) owns the FHIR R4 source descriptor
   (`fhirR4Source`, its `responseKinds` pre-adopted) but knows nothing about HAR
   or about a registry of formats.
-- **`web-trace-core`** (in `slices/web-trace`) owns the HAR codec but is
+- **`web-trace-core`** owns the HAR codec but is
   deliberately consumer-agnostic.
 
 `har-importer-core` is the one place those three meet: HAR text in, a per-URL
@@ -214,7 +214,7 @@ sits above `http-extraction` and below every binding, exactly as
   registry's React half, and the pick-review-confirm flow.
 - [slices/http-extraction/AGENTS.md](../http-extraction/AGENTS.md) — the
   vocabulary and source packages the HAR importer recognizes and extracts with.
-- [web-trace-core AGENTS.md](../web-trace/web-trace-core/AGENTS.md) — the HAR
+- [web-trace-core AGENTS.md](../web-trace-core/AGENTS.md) — the HAR
   codec (the `HttpArchive` namespace) and the coding constants the HAR source
   file shares an axis with.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

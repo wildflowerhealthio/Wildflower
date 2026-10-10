@@ -133,7 +133,7 @@ stays open:
   recipe this collector follows, including the provenance step
 - [fhir-r4-client-collector](../fhir-r4-client-collector/AGENTS.md) — the worked
   example mirrored
-- [web-trace-core](../../../../slices/web-trace/web-trace-core/AGENTS.md) — the codec and the
+- [web-trace-core](../../../../slices/web-trace-core/AGENTS.md) — the codec and the
   two body policies the provenance capture picks between
 - [fhir-stu3-as-r4](../../../../slices/fhir/fhir-stu3-as-r4) — the STU3⇄R4 schemas the bundles decode with
 - [fhir-r4](../../../../slices/fhir/fhir-r4) — the R4 resource types and the `upsertResource` write path

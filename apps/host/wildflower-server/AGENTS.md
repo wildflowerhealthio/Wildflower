@@ -30,7 +30,7 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
   `apps-react` in `apps/launcher/`.
 - **`tunnel-rust`** — the embedded `rathole` client that dials the relay and
   hands each visitor's stream to the server's tunnel listener. The settings it
-  shares with the relay, `rathole-settings-rust`, stay in `slices/tunnel`.
+  shares with the relay, `rathole-settings-rust`, stay in `slices/rathole-settings-rust`.
 - **`collector-rust`** — the collector remotes store (diesel) behind the
   `/collector` surface. Its TypeScript half is
   [`apps/launcher/collector`](../../launcher/collector/AGENTS.md).

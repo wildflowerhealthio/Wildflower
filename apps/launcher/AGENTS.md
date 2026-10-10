@@ -40,7 +40,7 @@ the host runs, in
   and `request-log-react`, the `/settings/requests` activity page.
 - [`navigation-react`](./navigation-react) — the bridge handler that reports
   route changes to the host. Its wire, `navigation-core`, stays in
-  `slices/navigation`, because `fhir-r4` reads it too.
+  `slices/navigation-core`, because `fhir-r4` reads it too.
 - [`wildflower-server-core-js`](./wildflower-server-core-js/AGENTS.md) — the
   pure layer of the server-status wire: `BackgroundServerServiceBridge`, the
   host's `ServerServiceStatus` snapshot of the Wildflower server it runs and the

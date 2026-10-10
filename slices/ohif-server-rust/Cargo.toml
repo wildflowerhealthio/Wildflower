@@ -17,9 +17,9 @@ serde.workspace = true
 serde_json.workspace = true
 # In-process re-drive of HFS's router via `oneshot`.
 tower.workspace = true
-scopes-rust = { path = "../../scopes/scopes-rust" }
-scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = ["openapi"] }
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+scopes-rust = { path = "../scopes/scopes-rust" }
+scope-capabilities-rust = { path = "../scopes/scope-capabilities-rust", features = ["openapi"] }
+shared-structures-rust = { path = "../shared-structures/shared-structures-rust", features = ["http-errors"] }
 utoipa.workspace = true
 utoipa-axum.workspace = true
 
@@ -27,6 +27,6 @@ utoipa-axum.workspace = true
 workspace = true
 
 [dev-dependencies]
-shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+shared-structures-rust = { path = "../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 http-body-util.workspace = true

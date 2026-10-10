@@ -151,7 +151,7 @@ Two static edits, per the descriptor seam:
 - [collector AGENTS.md](../AGENTS.md) — package roles, the
   `captureProvenance` / diagnostics-channel guardrails, and the
   plan-purity trap in full.
-- [web-trace-core AGENTS.md](../../../../slices/web-trace/web-trace-core/AGENTS.md) — the
+- [web-trace-core AGENTS.md](../../../../slices/web-trace-core/AGENTS.md) — the
   codec and the two body policies the provenance capture picks between.
 - [fhir-r4](../../../../slices/fhir/fhir-r4) — the R4 resource schemas and the
   `persistResources` / `upsertResource` write path.

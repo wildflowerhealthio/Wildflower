@@ -1,54 +1,54 @@
-# AGENTS.md — slices/smart-app
+# AGENTS.md — slices/smart-app-react
 
 The Wildflower chrome every first-party SMART app boots through. The SMART
 wiring (the handshake, the SMART runtime, the launch-error contract, the
 standalone-launch primitives) is `fhir-r4-react/smart`'s, and the Wildflower
 look (header, footer, brand bar, landing layout) is `branding-react`'s. This
-slice is where the two meet, so neither has to know about the other.
+package is where the two meet, so neither has to know about the other.
 
-## Package roles
+## Exports
 
-- **`smart-app-react`** — the only package. There is no `-core`: everything
-  here is UI or DOM boot code.
-  - `SmartAppRoot({ app, registration, telemetry, launched?, replaceLocation?, children })`
-    — the app root, and the app's one page: it starts a SMART launch its URL
-    carries, completes the callback, and shows the landing on a plain visit.
-    `registration` is the app's SMART registration (`clientId` and `scope`),
-    for a launch the URL carries and for the connect menu alike. `telemetry`
-    (`SmartAppTelemetry`: `dsn`, `app`) names where the app reports once the
-    visitor consents: its own Sentry project's DSN and the id its events are
-    tagged with. `replaceLocation` replaces the page in the session history
-    when it leaves for the app root, and defaults to `window.location.replace`.
-  - `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
-    standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
-    base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
-    launcher's own sign-in (`connect`) the picked URL (a Wildflower server's
-    API base, or the demo server's FHIR base), and also runs the
-    page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
-    (`autoConnect`). Either target shows the problem the page arrived with
-    (`arrivalProblem`).
-  - `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
-    vocabulary an app's page speaks: `Loading…` (or `Loading <subject>…`)
-    before anything lands, `Loading more…` while later pages arrive, and
-    `Could not load <subject>: <reason>` for a failed read. Pair them with
-    `react-kitchen-sink`'s `pagedQueryStatusOf` for a paged read.
-  - The patient choice, for an app that picks the patient itself after
-    sign-in rather than asking the authorization server for `launch/patient`:
-    - `PatientChoice` — one patient (`{ kind: 'patient', patientId }`) or
-      every patient (`{ kind: 'all-patients' }`). `patientScopeOf` turns it
-      into the `patientId: string | null` a `fhir-r4-react/smart` reader
-      takes (`null` reads unscoped); `patientChoiceKeyOf` into one string,
-      distinct per choice, for a React key or a query key.
-    - `usePatientChoice(launchPatientId)` — the choice the page reads under,
-      `None` while the reader is choosing, with `choosePatient` and
-      `changePatient`.
-    - `PatientPicker({ client, onPatientChoice })` — "All patients" first,
-      then every patient the session can see (`fetchPatientPage`, name and
-      birth date per row, sorted by family name, "More patients" while the
-      server has more).
-    - `PatientChoiceLine({ client, patientChoice, onPatientChange })` — the
-      line under an app's title: `Name · born YYYY-MM-DD` (one `fetchPatient`
-      read) or "All patients", and a "Change patient" link.
+There is no `-core`: everything here is UI or DOM boot code.
+
+- `SmartAppRoot({ app, registration, telemetry, launched?, replaceLocation?, children })`
+  — the app root, and the app's one page: it starts a SMART launch its URL
+  carries, completes the callback, and shows the landing on a plain visit.
+  `registration` is the app's SMART registration (`clientId` and `scope`),
+  for a launch the URL carries and for the connect menu alike. `telemetry`
+  (`SmartAppTelemetry`: `dsn`, `app`) names where the app reports once the
+  visitor consents: its own Sentry project's DSN and the id its events are
+  tagged with. `replaceLocation` replaces the page in the session history
+  when it leaves for the app root, and defaults to `window.location.replace`.
+- `ConnectMenu({ target, … })` and its `DEFAULT_SERVER_PRESET_GROUPS` — the
+  standalone connect flow. `target: 'fhir-r4'` launches a SMART app against a FHIR R4
+  base with `startStandaloneLaunch`; `target: 'wildflower'` hands the Wildflower
+  launcher's own sign-in (`connect`) the picked URL (a Wildflower server's
+  API base, or the demo server's FHIR base), and also runs the
+  page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
+  (`autoConnect`). Either target shows the problem the page arrived with
+  (`arrivalProblem`).
+- `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
+  vocabulary an app's page speaks: `Loading…` (or `Loading <subject>…`)
+  before anything lands, `Loading more…` while later pages arrive, and
+  `Could not load <subject>: <reason>` for a failed read. Pair them with
+  `react-kitchen-sink`'s `pagedQueryStatusOf` for a paged read.
+- The patient choice, for an app that picks the patient itself after
+  sign-in rather than asking the authorization server for `launch/patient`:
+  - `PatientChoice` — one patient (`{ kind: 'patient', patientId }`) or
+    every patient (`{ kind: 'all-patients' }`). `patientScopeOf` turns it
+    into the `patientId: string | null` a `fhir-r4-react/smart` reader
+    takes (`null` reads unscoped); `patientChoiceKeyOf` into one string,
+    distinct per choice, for a React key or a query key.
+  - `usePatientChoice(launchPatientId)` — the choice the page reads under,
+    `None` while the reader is choosing, with `choosePatient` and
+    `changePatient`.
+  - `PatientPicker({ client, onPatientChoice })` — "All patients" first,
+    then every patient the session can see (`fetchPatientPage`, name and
+    birth date per row, sorted by family name, "More patients" while the
+    server has more).
+  - `PatientChoiceLine({ client, patientChoice, onPatientChange })` — the
+    line under an app's title: `Name · born YYYY-MM-DD` (one `fetchPatient`
+    read) or "All patients", and a "Change patient" link.
 
 Consumers: `apps/medications/medications-web`, `apps/health-viewer/health-viewer-web`, `apps/lifting/lifting-web`,
 `apps/importer/importer-web` and `apps/synthetic-data/synthetic-data-web` mount
@@ -217,7 +217,7 @@ import `branding-react/styles.css` itself.
 
 ## References
 
-- [slices/fhir/AGENTS.md](../fhir/AGENTS.md) — the SMART primitives this slice
+- [slices/fhir/AGENTS.md](../fhir/AGENTS.md) — the SMART primitives this package
   builds on
 - [slices/branding/AGENTS.md](../branding/AGENTS.md) — the chrome it renders,
   and "The app landing page"

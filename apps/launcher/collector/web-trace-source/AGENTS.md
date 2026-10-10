@@ -82,5 +82,5 @@ base64**, which is why `decideBody` reads `bytes()` and never `text()`.
 - [web-trace-collector AGENTS.md](../web-trace-collector/AGENTS.md)
   — the live collector built from this entity (config, plan, form), and the full
   set of invariants.
-- [web-trace-core AGENTS.md](../../../../slices/web-trace/web-trace-core/AGENTS.md) — the
+- [web-trace-core AGENTS.md](../../../../slices/web-trace-core/AGENTS.md) — the
   codec this package encodes through.

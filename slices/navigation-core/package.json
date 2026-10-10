@@ -7,7 +7,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/navigation/navigation-core"
+    "directory": "slices/navigation-core"
   },
   "files": [
     "dist"

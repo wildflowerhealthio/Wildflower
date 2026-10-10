@@ -334,5 +334,5 @@ its own base URL as an identifier system makes it guess wrong.
   that states a collector's source system.
 - [collector AGENTS.md](../AGENTS.md) — the plan/entity/descriptor vocabulary this
   builds on.
-- [web-trace-core AGENTS.md](../../../../slices/web-trace/web-trace-core/AGENTS.md) — the codec
+- [web-trace-core AGENTS.md](../../../../slices/web-trace-core/AGENTS.md) — the codec
   that mints trace ids.

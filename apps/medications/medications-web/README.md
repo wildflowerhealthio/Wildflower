@@ -9,7 +9,7 @@ picks a FHIR server, on a bare visit.
 ## Boot structure
 
 The entry runs on `smart-app-react`, the chrome every first-party SMART app
-boots through (see [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md)).
+boots through (see [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md)).
 
 `src/main.tsx` is the `index.html` entry: it imports the design-system
 stylesheet module (`react-tundraish/styles` — tundra-css, react-tundraish and

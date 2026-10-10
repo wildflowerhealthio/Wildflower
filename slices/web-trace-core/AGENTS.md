@@ -1,23 +1,43 @@
-# AGENTS.md — slices/web-trace/web-trace-core
+# AGENTS.md — slices/web-trace-core
 
-The pure layer of the web-trace slice. No DOM, no `fs`, no UI, no store — one
-vocabulary, and the translations built on it.
+Records a real browsing session against a target portal and turns it into
+something a collector author can hand to an agent when designing a new
+collector — without handing over the patient's data. This package is the pure
+layer: no DOM, no `fs`, no UI, no store — one vocabulary, and the translations
+built on it.
 
-The export-boundary anonymizer moved to
-[`har-anonymizer-core-js`](../../../apps/importer/anonymizer/har-anonymizer-core-js/)
-in M2 of #578; read the
-[Anonymization Explanation](../../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md)
+The asymmetry is the whole design: **store raw, anonymize only at the export
+boundary.** Capture stays lossless — it is the user's own device and their own
+data — so a better redactor later can be applied retroactively to sessions
+already recorded. The export-boundary anonymizer moved to
+[`har-anonymizer-core-js`](../../apps/importer/anonymizer/har-anonymizer-core-js/)
+in M2 of #578; a change there changes what leaves the device, so read the
+[Anonymization Explanation](../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md)
 before touching it.
+
+The capture half lives with the collectors, where the descriptor seam is:
+[`web-trace-collector`](../../apps/launcher/collector/web-trace-collector/AGENTS.md)
+is the `*-client-collector` that records a hand-driven session and writes each
+exchange through this package's codec. It imports the encoding; it never
+re-derives it.
 
 ## Layering
 
 `web-trace-core` is a `-core` package and follows the rule in
-[slices/AGENTS.md](../../AGENTS.md): adapters may depend on it, it depends on no
+[slices/AGENTS.md](../AGENTS.md): adapters may depend on it, it depends on no
 adapter.
 
-It sits below both a collector (which captures) and a React app (which reviews
-and exports), which is why it is its own slice rather than a package inside
-either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
+It sits directly in `slices/` rather than inside another slice because the FHIR
+encoding of a trace cannot live anywhere it already had a home:
+
+- **not `collector-fundamentals`** — that package is deliberately FHIR-agnostic;
+  nothing in it assumes FHIR-ish config.
+- **not `browser-sniffer`** — that slice is deliberately FHIR-ignorant; no
+  package in it knows about FHIR.
+
+It is consumed by both the collectors and the HAR packages (`http-archive`,
+`har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core-js`), so it
+has to sit below all of them.
 
 ## Module layout
 
@@ -307,7 +327,7 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 ## Testing
 
 Property-based, per the project standard — see
-[Property Testing Reference](../../../docs/Testing/Property%20Testing%20Reference.md).
+[Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md).
 `src/test-helpers.ts` holds the arbitraries: `Arbitrary.make(TraceExchange)`
 would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
@@ -328,11 +348,10 @@ specifiers against the workspace root, not against this package.
 
 ## References
 
-- [Anonymization Explanation](../../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md) — the pseudonymizer's
+- [Anonymization Explanation](../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md) — the pseudonymizer's
   design and its stated limits.
-- [slice AGENTS.md](../AGENTS.md) — why this slice exists at all.
-- [slices/AGENTS.md](../../AGENTS.md) — the layering rules.
-- [browser-sniffer AGENTS.md](../../browser-sniffer/AGENTS.md) — the upstream
+- [slices/AGENTS.md](../AGENTS.md) — the layering rules.
+- [browser-sniffer AGENTS.md](../browser-sniffer/AGENTS.md) — the upstream
   primitive whose wire schema this package's field types come from.
-- [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
+- [Doc Comments Reference](../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

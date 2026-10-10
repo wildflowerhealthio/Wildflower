@@ -86,8 +86,8 @@ collector-rust = { path = "../collector-rust" }
 databases-rust = { path = "../databases-rust" }
 fhir-r4-rust = { path = "../fhir-r4-rust" }
 gatekeeper-rust = { path = "../gatekeeper-rust" }
-ohif-server-rust = { path = "../../../../slices/dicom/ohif-server-rust" }
-persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+ohif-server-rust = { path = "../../../../slices/ohif-server-rust" }
+persistence-rust = { path = "../../../../slices/persistence-rust" }
 request-log-rust = { path = "../request-log-rust" }
 # Names the per-database export/delete `Scope`s the databases catalogue declares.
 scopes-rust = { path = "../../../../slices/scopes/scopes-rust" }
@@ -111,7 +111,7 @@ workspace = true
 wildflower-server-rust = { path = ".", features = ["test-support"] }
 # The PROXY headers the tunnel listener tests send, built as the relay
 # builds them.
-rathole-settings-rust = { path = "../../../../slices/tunnel/rathole-settings-rust", features = [
+rathole-settings-rust = { path = "../../../../slices/rathole-settings-rust", features = [
   "proxy-header",
 ] }
 # A throwaway data root for the `serve` lifecycle test.

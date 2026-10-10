@@ -2,12 +2,12 @@
   "name": "web-trace-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of the web-trace slice: the TraceExchange ⇄ FHIR DocumentReference codec, the shape-preserving pseudonymizer that is the epic's privacy boundary, and the HAR 1.2 emitter and parser. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
+  "description": "Pure core of web-trace: the TraceExchange ⇄ FHIR DocumentReference codec, the shape-preserving pseudonymizer that is the epic's privacy boundary, and the HAR 1.2 emitter and parser. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/web-trace/web-trace-core"
+    "directory": "slices/web-trace-core"
   },
   "files": [
     "dist"

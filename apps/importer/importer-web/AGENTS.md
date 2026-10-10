@@ -222,7 +222,7 @@ into it. The marketing site links there from its "collection of apps" section
 ## Boot and chrome
 
 The entry runs on `smart-app-react`, the chrome every first-party SMART app
-boots through (see [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md)).
+boots through (see [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
 JS entry), completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListener()`, and
@@ -246,7 +246,7 @@ consent dialog and owns the `QueryClientProvider` and the chrome gate:
 the `VITE_SENTRY_DSN_IMPORTER_WEB` build variable (see `.env.example`).
 
 The decision is **latched on mount** inside `SmartAppRoot`; the shell's
-[`smart-app-root.test.tsx`](../../../slices/smart-app/smart-app-react/src/smart-app-root.test.tsx)
+[`smart-app-root.test.tsx`](../../../slices/smart-app-react/src/smart-app-root.test.tsx)
 pins it along with the rest of the shell's behaviour.
 
 The `source`-only export (`"exports": { ".": { "source": "…" } }`) has no

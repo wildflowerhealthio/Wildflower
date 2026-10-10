@@ -31,8 +31,8 @@ it. No DOM, no `fs`, no React, no Effect runtime.
 Pure and neutral (`platform: 'neutral'`). Depends on `effect`,
 `browser-sniffer-core` (the message types it consumes), `http-archive`
 (`HttpArchive.Entry` / `Log`, `emitHarFromLog`, `ENTRY_ID_PREFIX`),
-`effect-messaging-core` (`Bridge`), and — transitionally, until #578 dissolves
-`slices/web-trace` — `web-trace-core` (`contentTypeOf`). Never imports a React
+`effect-messaging-core` (`Bridge`), and — transitionally, until #578 dissolves it
+— `web-trace-core` (`contentTypeOf`). Never imports a React
 package, `collector-*`, or anything from `slices/importer`.
 
 The sniffer events the recording is built from arrive on **`CollectorBridge`**,

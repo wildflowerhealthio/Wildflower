@@ -14,7 +14,7 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 rusqlite.workspace = true
-persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+persistence-rust = { path = "../../../../slices/persistence-rust" }
 # Timestamps are stored as Unix epoch seconds (INTEGER), matching the
 # second-precision of a JWT's `iat`/`exp` and sidestepping any TEXT-datetime
 # lexicographic-comparison pitfalls in the epoch `MAX` / purge range queries.

@@ -43,8 +43,8 @@ on:
       - 'vite.config.base.ts'
       - 'pnpm-lock.yaml'
       - 'slices/shared-structures/shared-structures-rust/**'
-      - 'slices/tunnel/rathole-settings-rust/**'
-      - 'slices/persistence/persistence-rust/**'
+      - 'slices/rathole-settings-rust/**'
+      - 'slices/persistence-rust/**'
       - 'Cargo.lock'
       - '.github/workflows/deploy-relay.yml'
   # Redeploy by hand, e.g. after a secret or variable changes.

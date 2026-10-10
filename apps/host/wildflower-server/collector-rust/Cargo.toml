@@ -28,7 +28,7 @@ diesel = { workspace = true }
 diesel_migrations.workspace = true
 # The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
 # diesel-backed slices; this crate names the pool type but not rusqlite.
-persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+persistence-rust = { path = "../../../../slices/persistence-rust" }
 # The scope grammar (`Scope`, `Permission`, `WildflowerResource`) the
 # `wildflower/Accounts.*` capabilities gate on — built with the typed
 # constructors so a typo is a compile error, not a silent `Unknown` scope.

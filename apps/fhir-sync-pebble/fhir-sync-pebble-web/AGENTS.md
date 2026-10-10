@@ -166,7 +166,7 @@ jsdom.
 - [apps/importer/importer-web AGENTS.md](../../importer/importer-web/AGENTS.md) — the template app
 - [apps/fhir-sync-pebble AGENTS.md](../AGENTS.md) —
   the core the settings, the return target and its store live in
-- [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md) — the shell this
+- [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md) — the shell this
   app boots through
 - [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — the SMART primitives
   (`useSmartHandshake`, `buildSmartRouterContext`)

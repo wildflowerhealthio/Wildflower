@@ -103,7 +103,7 @@ enter that address.
   — the screen this app mounts.
 - [synthetic-data-core-js AGENTS.md](../synthetic-data-core-js/AGENTS.md)
   — the snapshot's files, and reading them back.
-- [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md) — the shell
+- [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md) — the shell
   and the consent gate.
 - [apps/importer/importer-web AGENTS.md](../../importer/importer-web/AGENTS.md) — the template.
 - [apps/AGENTS.md](../../AGENTS.md) — the rules every app follows.

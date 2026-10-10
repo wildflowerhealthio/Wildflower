@@ -1,8 +1,8 @@
-import appsSpec from '../../host/wildflower-server/apps-rust/openapi/apps.openapi.json'
 import fhirSpec from '../../../slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json'
-import gatekeeperSpec from '../../host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json'
+import appsSpec from '../../host/wildflower-server/apps-rust/openapi/apps.openapi.json'
 import collectorSpec from '../../host/wildflower-server/collector-rust/openapi/collector.openapi.json'
 import databasesSpec from '../../host/wildflower-server/databases-rust/openapi/databases.openapi.json'
+import gatekeeperSpec from '../../host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json'
 import requestLogSpec from '../../host/wildflower-server/request-log-rust/openapi/request-log.openapi.json'
 
 import type { OpenApiDocument } from './spec.ts'

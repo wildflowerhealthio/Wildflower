@@ -88,4 +88,4 @@ workspace = true
 # Parses the Android manifest the merge-override tests read.
 roxmltree = "0.21"
 # Builds the server record the relay-settings test reads.
-rathole-settings-rust = { path = "../../../../slices/tunnel/rathole-settings-rust" }
+rathole-settings-rust = { path = "../../../../slices/rathole-settings-rust" }

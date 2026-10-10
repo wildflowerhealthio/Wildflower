@@ -187,7 +187,7 @@ const replaceWindowLocation = (url: string): void => {
  * The case is latched on mount: fhirclient's `oauth2.ready()` strips
  * `code`/`state` once the exchange completes, so re-reading the URL later
  * would flip a finished launch back to the connect menu. See the
- * guardrails in `slices/smart-app/AGENTS.md`.
+ * guardrails in `slices/smart-app-react/AGENTS.md`.
  */
 function SmartAppRoot({
   app,

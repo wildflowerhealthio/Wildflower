@@ -1,4 +1,4 @@
-//! `tunnel-rust` — the Tauri-side tunnel slice: a dialer.
+//! `tunnel-rust` — the host's tunnel: a dialer.
 //!
 //!  - [`domain`] — the [`RelayClient`](domain::RelayClient) trait and its
 //!    [`RelaySettings`], the [`TunnelDaemon`] that dials the relay and re-dials

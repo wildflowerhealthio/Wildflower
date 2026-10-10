@@ -1,4 +1,4 @@
-//! Open-time configuration for the tunnel slice, mirroring
+//! Open-time configuration for the tunnel, mirroring
 //! `gatekeeper-rust`'s `GatekeeperConfig`.
 
 use tokio::sync::mpsc;

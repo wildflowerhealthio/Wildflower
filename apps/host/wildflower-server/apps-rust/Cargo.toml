@@ -22,7 +22,7 @@ diesel = { workspace = true }
 diesel_migrations.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
-persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+persistence-rust = { path = "../../../../slices/persistence-rust" }
 # The scope grammar (`Scope`, `Grant`, `WildflowerResource`, `Permission`) the
 # capabilities gate on, plus the shared default-safe capability machinery
 # (`Scoped<F>`, `Capability`/`FixedScopeCapability`, `ScopeClaims`,

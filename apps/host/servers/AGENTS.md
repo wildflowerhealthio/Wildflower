@@ -517,7 +517,7 @@ lastError?: {kind, …}}`.
 - [wildflower-server-rust AGENTS.md](../wildflower-server/wildflower-server-rust/AGENTS.md) — the server
   each run sets up and serves.
 - [slices/AGENTS.md](../../../slices/AGENTS.md) — slice layering rules these packages follow.
-- `slices/tunnel/rathole-settings-rust` — `PublicRatholeSettings`, the
+- `slices/rathole-settings-rust` — `PublicRatholeSettings`, the
   `GET /rathole` response a record keeps as `public_settings`,
   `TunnelHost`, the `GET /me` response, and `TunnelName`.
 - `apps/relay/relay-server` — the relay whose `GET /rathole` and `GET /me`

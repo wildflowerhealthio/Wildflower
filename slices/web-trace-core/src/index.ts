@@ -1,5 +1,5 @@
 /**
- * The pure core of the web-trace slice: the vocabulary of a recorded browsing
+ * The pure core of web-trace: the vocabulary of a recorded browsing
  * session.
  *
  * @remarks

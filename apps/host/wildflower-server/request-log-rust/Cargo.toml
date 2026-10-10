@@ -28,7 +28,7 @@ diesel_migrations.workspace = true
 chrono = { workspace = true, features = ["clock", "serde"] }
 # The app-wide diesel connection pool (`DieselPool` / `open_pool`) shared across
 # diesel-backed slices; this crate names the pool type but not rusqlite.
-persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+persistence-rust = { path = "../../../../slices/persistence-rust" }
 # The `ForwardedRequest` record the server reports, and the shared opaque-500
 # `InternalError` the handlers 500 with (`http-errors`).
 shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
