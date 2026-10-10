@@ -37,6 +37,7 @@
     "effect-messaging-core": "workspace:*",
     "effect-messaging-tauri": "workspace:*",
     "esbuild": "catalog:",
+    "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",

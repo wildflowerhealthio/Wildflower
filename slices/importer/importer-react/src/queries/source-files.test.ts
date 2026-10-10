@@ -5,10 +5,7 @@ import { DateTime, Effect, Layer, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
-import {
-  LIFELABS_PDF_SOURCE_FILE_CODE,
-  LIFELABS_SYSTEM,
-} from 'lifelabs-pdf-importer/source-file'
+import { LIFELABS_PDF_SOURCE_FILE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer/source-file'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {

@@ -85,6 +85,7 @@
     "@tanstack/virtual-file-routes": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",

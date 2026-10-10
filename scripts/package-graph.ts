@@ -4,7 +4,7 @@
 // explained in docs/Dependencies/Package Graph Rules Explanation.md.
 import { readFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
-import { Effect, Schema } from 'effect'
+import { Effect, Match, Schema } from 'effect'
 import { parse as parseToml } from 'smol-toml'
 
 import { loadPackages } from './risk-map.ts'
@@ -115,12 +115,15 @@ const loadCrates = (repoRoot: string): readonly WorkspacePackage[] => {
   return crates.map((crate) => {
     const crateNamesIn = (tableNames: readonly CargoDependencyTableName[]): ReadonlySet<string> =>
       new Set(
-        crateDependencyDirs(crate.relDir, crate.manifest, tableNames, workspaceDependencyDirs).flatMap(
-          (dependencyDir) => {
-            const name = crateNameByDir.get(dependencyDir)
-            return name === undefined ? [] : [name]
-          }
-        )
+        crateDependencyDirs(
+          crate.relDir,
+          crate.manifest,
+          tableNames,
+          workspaceDependencyDirs
+        ).flatMap((dependencyDir) => {
+          const name = crateNameByDir.get(dependencyDir)
+          return name === undefined ? [] : [name]
+        })
       )
     return {
       name: crate.manifest.package.name,
@@ -140,15 +143,13 @@ const loadWorkspacePackages = (repoRoot: string): Effect.Effect<readonly Workspa
   Effect.gen(function* () {
     const npmPackages = yield* loadPackages(repoRoot)
     return [
-      ...npmPackages.map(
-        (npmPackage): WorkspacePackage => ({
-          name: npmPackage.name,
-          relDir: npmPackage.relDir,
-          ecosystem: 'npm',
-          runtimeDependencyNames: npmPackage.deps,
-          devDependencyNames: npmPackage.devDeps,
-        })
-      ),
+      ...npmPackages.map((npmPackage): WorkspacePackage => ({
+        name: npmPackage.name,
+        relDir: npmPackage.relDir,
+        ecosystem: 'npm',
+        runtimeDependencyNames: npmPackage.deps,
+        devDependencyNames: npmPackage.devDeps,
+      })),
       ...loadCrates(repoRoot),
     ]
   })
@@ -261,7 +262,7 @@ const findCycles = (
     }
     visit(root)
     while (work.length > 0) {
-      const frame = work[work.length - 1]!
+      const frame = work[work.length - 1]
       const next = frame.successors.next()
       if (!next.done) {
         const successor = next.value
@@ -287,7 +288,7 @@ const findCycles = (
       if (component.length > 1) cycles.push(component.toSorted())
     }
   }
-  return cycles.toSorted((a, b) => a[0]!.localeCompare(b[0]!))
+  return cycles.toSorted((a, b) => a[0].localeCompare(b[0]))
 }
 
 /**
@@ -328,20 +329,16 @@ const packageGraphViolations = (packages: readonly WorkspacePackage[]): readonly
 }
 
 /** One line naming the rule a {@link Violation} breaks and the packages that break it. */
-const formatViolation = (violation: Violation): string => {
-  switch (violation._tag) {
-    case 'CoreDependsOnAdapter': {
-      const { dependent, dependency } = violation.dependency
-      return `${dependent.name} (${dependent.relDir}) is a core package but depends on the adapter ${dependency.name}`
-    }
-    case 'ReachesIntoApp': {
-      const { dependent, dependency } = violation.dependency
-      return `${dependent.name} (${dependent.relDir}) depends on ${dependency.name}, which is private to apps/${violation.app}/`
-    }
-    case 'Cycle':
-      return `${violation.ecosystem} dependency cycle: ${violation.names.join(' ↔ ')}`
-  }
-}
+const formatViolation = (violation: Violation): string =>
+  Match.value(violation).pipe(
+    Match.tagsExhaustive({
+      CoreDependsOnAdapter: ({ dependency: { dependent, dependency } }) =>
+        `${dependent.name} (${dependent.relDir}) is a core package but depends on the adapter ${dependency.name}`,
+      ReachesIntoApp: ({ dependency: { dependent, dependency }, app }) =>
+        `${dependent.name} (${dependent.relDir}) depends on ${dependency.name}, which is private to apps/${app}/`,
+      Cycle: ({ ecosystem, names }) => `${ecosystem} dependency cycle: ${names.join(' ↔ ')}`,
+    })
+  )
 
 export type { Dependency, DependencyKind, Ecosystem, Violation, WorkspacePackage }
 export { findCycles, formatViolation, loadWorkspacePackages, packageGraphViolations }

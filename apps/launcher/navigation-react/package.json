@@ -35,6 +35,7 @@
     "effect": "catalog:",
     "effect-messaging-react": "workspace:*",
     "fast-check": "catalog:",
+    "jsdom": "catalog:",
     "navigation-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

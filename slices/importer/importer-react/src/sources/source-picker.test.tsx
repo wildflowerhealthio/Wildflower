@@ -9,10 +9,7 @@ import type * as FhirR4React from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
 import type { FormatDetector } from 'importer-fundamentals'
-import {
-  LIFELABS_PDF_SOURCE_FILE_CODE,
-  LIFELABS_SYSTEM,
-} from 'lifelabs-pdf-importer/source-file'
+import { LIFELABS_PDF_SOURCE_FILE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer/source-file'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 

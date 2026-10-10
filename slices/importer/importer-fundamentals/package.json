@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
+    "@types/fhir": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",

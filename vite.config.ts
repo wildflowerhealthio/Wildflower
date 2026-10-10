@@ -279,6 +279,25 @@ export default defineConfig({
         },
       },
       {
+        // A core is the pure layer: no Node built-ins in its production code.
+        // DOM is kept out by each core's tsconfig `lib`; Node's types stay in
+        // `types`, as they also declare the web globals a core may use (`URL`,
+        // `TextEncoder`), so the built-in imports are held off here. Tests and
+        // test helpers are exempt below. See docs/Dependencies/Package Graph
+        // Rules Explanation.md.
+        files: ['**/*-core/src/**', '**/*-core-js/src/**'],
+        rules: {
+          'import/no-nodejs-modules': 'error',
+        },
+      },
+      {
+        // The test helpers a core exports read fixtures off disk, as tests do.
+        files: ['**/test-helpers.ts', '**/*-arbitrary.ts', '**/openapi-drift/testing.ts'],
+        rules: {
+          'import/no-nodejs-modules': 'off',
+        },
+      },
+      {
         // Test files freely hoist small helpers (fixtures, arrange-step
         // builders) inside `describe`/`it` blocks for locality; enforcing
         // module-scope placement there hurts readability for no runtime gain.
@@ -297,6 +316,7 @@ export default defineConfig({
           'unicorn/consistent-function-scoping': 'off',
           'react/globals': 'off',
           'react/immutability': 'off',
+          'import/no-nodejs-modules': 'off',
         },
       },
     ],

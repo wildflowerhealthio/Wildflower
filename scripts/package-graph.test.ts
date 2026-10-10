@@ -56,21 +56,17 @@ describe('findCycles', () => {
     return false
   }
 
-  const graphArbitrary = fc
-    .integer({ min: 1, max: 8 })
-    .chain((size) =>
-      fc
-        .array(fc.tuple(fc.nat(size - 1), fc.nat(size - 1)), { maxLength: size * 3 })
-        .map((edges) => {
-          const names = Array.from({ length: size }, (_, i) => `p${i}`)
-          return new Map(
-            names.map((name, i) => [
-              name,
-              new Set(edges.filter(([from]) => from === i).map(([, to]) => `p${to}`)),
-            ])
-          )
-        })
-    )
+  const graphArbitrary = fc.integer({ min: 1, max: 8 }).chain((size) =>
+    fc.array(fc.tuple(fc.nat(size - 1), fc.nat(size - 1)), { maxLength: size * 3 }).map((edges) => {
+      const names = Array.from({ length: size }, (_, i) => `p${i}`)
+      return new Map(
+        names.map((name, i) => [
+          name,
+          new Set(edges.filter(([from]) => from === i).map(([, to]) => `p${to}`)),
+        ])
+      )
+    })
+  )
 
   it('puts two packages in one cycle exactly when each reaches the other', () => {
     fc.assert(

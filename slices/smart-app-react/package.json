@@ -30,6 +30,7 @@
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-react": "workspace:*",
+    "fhirclient": "^2.5.4",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",

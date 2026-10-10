@@ -43,6 +43,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@types/fhir": "catalog:",
     "@types/node": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",

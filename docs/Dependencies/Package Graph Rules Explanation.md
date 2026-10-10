@@ -16,6 +16,14 @@ named for a platform: `-react`, `-rust`, `-tauri`, `-tauri-rust`, `-node` or
 `positioned-text-web`'s pdfjs extraction, is not a core and doesn't take the
 suffix.
 
+A core's own code is held pure the same way, below the package level. Each
+core's tsconfig has `lib: ["es2024"]` with no `"dom"`, so a `document` or
+`window` reference fails to compile. Its `types` keep `node`, because Node's
+types are also where the web globals every runtime shares (`URL`,
+`TextEncoder`, `crypto`) are declared; an import of a Node built-in from a
+core's production source is an oxlint error instead (`import/no-nodejs-modules`,
+in `vite.config.ts`). Tests and test helpers may use both.
+
 **An app's folder is private to it.** A package inside `apps/<name>/` may be
 depended on only by packages in the same folder. Slices and `global/` never
 depend on `apps/`. Anything two products use lives in `slices/` or `global/`;
@@ -33,11 +41,14 @@ Cargo manifests are read as TOML (`smol-toml`) rather than through
 `cargo metadata`, so the check runs in the TypeScript CI job.
 
 For Rust the manifest graph is the import graph: cargo refuses to compile a
-`use` of a crate the manifest doesn't declare. For TypeScript it is only as
-good as the manifests, because `nodeLinker: hoisted` lets a package import
-something it never declared and still resolve. A file-path reference that
-crosses into another package's folder, such as an `include_str!` of another
-package's build output, is not an edge the check sees either.
+`use` of a crate the manifest doesn't declare. TypeScript has no such guard:
+`nodeLinker: hoisted` lets a package import something it never declared and
+still resolve. `vp run lint:deps` closes that gap. It runs knip over every
+workspace package and fails on an import its manifest doesn't list, so the
+manifests the graph is read from stay true; CI runs it beside `vp check`. A
+file-path reference that crosses into another package's folder, such as an
+`include_str!` of another package's build output, is not an edge either check
+sees.
 
 The TS graph comes from `scripts/risk-map.ts`'s workspace reader, which
 `vp run test:changed` uses too, so the two never disagree about which

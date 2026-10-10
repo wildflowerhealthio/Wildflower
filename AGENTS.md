@@ -133,7 +133,8 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 
 ```bash
 vp run dev           # Start EVERY package's dev server in parallel (vp run -r --parallel dev), not just marketing-site-web
-vp run ready         # fmt + lint + lint:comments + lint:docs + pack + test:all — full pre-PR check (≈ CI's TS-side gates)
+vp run ready         # fmt + lint + lint:deps + lint:comments + lint:docs + pack + test:all — full pre-PR check (≈ CI's TS-side gates)
+vp run lint:deps     # knip: fail on an import its package.json doesn't declare
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run test:all      # Run the full Vitest test pass
 vp run test:changed  # Same as test:all but scales fast-check numRuns down for packages unchanged vs origin/main
@@ -149,6 +150,7 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 `vp run ready` covers the TypeScript side of CI. Every PR runs `.github/workflows/ci.yml`, which calls only the areas' workflows the PR touches and sums them up in the one status check the `main` ruleset requires, `Required`: [Required Check Explanation](./docs/CI/Required%20Check%20Explanation.md). The full gate set:
 
 - **TS format/lint/typecheck/test** — `vp check` + `vp test`. Its `vp run pack` outputs are cached, and `ts-cache-warm.yml` warms that cache on `main`: [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md). The enforced lint/format rules are oxlint+oxfmt, configured in `vite.config.ts` under the `lint:`/`fmt:` keys — **not** `eslint.config.mjs`, which runs only the informational TSDoc check (`lint:comments`, `continue-on-error`). Editing eslint config never fixes a lint failure.
+- **Package graph rules** — `scripts/package-graph.test.ts` (part of `vp test`) reads every `package.json` and `Cargo.toml` and fails on a `-core` depending on an adapter, anything outside `apps/<name>/` depending on a package inside it, or a dependency cycle; `vp run lint:deps` (knip) keeps the TS manifests honest. See the [Package Graph Rules Explanation](./docs/Dependencies/Package%20Graph%20Rules%20Explanation.md).
 - **Rust fmt + clippy (`-D warnings`) + nextest** — `./scripts/checks/rust.sh` is the canonical Rust check; both the git hooks and CI (`ci-rust.yml`, which compiles the full workspace incl. the Tauri crates in one job) call it. It self-skips when `cargo` is absent, so a frontend-only change stays green locally while CI still gates it on PRs.
 - **cargo-deny** (licenses/advisories, `deny.toml`) gates new Rust deps.
 - **Rust build cache** — each cargo job names its build environment with a

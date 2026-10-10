@@ -58,6 +58,7 @@
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "jose": "catalog:",
+    "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "openapi-to-effect": "^0.9.3",
     "prettier": "^3.9.9",
