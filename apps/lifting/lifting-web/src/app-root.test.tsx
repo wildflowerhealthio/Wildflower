@@ -9,7 +9,7 @@ import { AppRoot } from './app-root.tsx'
 // The build variable this app's DSN comes from, set before `config.ts` reads it.
 const { SENTRY_DSN } = vi.hoisted(() => {
   const dsn = 'https://key@sentry.example/7'
-  vi.stubEnv('VITE_SENTRY_DSN_LIFTING_APP', dsn)
+  vi.stubEnv('VITE_SENTRY_DSN_LIFTING_WEB', dsn)
   return { SENTRY_DSN: dsn }
 })
 

@@ -72,6 +72,7 @@ runs:
           apps/wildflower-site/wildflower-site-web/dist/medications
           apps/wildflower-site/wildflower-site-web/dist/importer
           apps/wildflower-site/wildflower-site-web/dist/health-viewer
+          apps/wildflower-site/wildflower-site-web/dist/lifting
           apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble
           apps/wildflower-site/wildflower-site-web/dist/synthetic-data
           apps/wildflower-site/wildflower-site-web/dist/launcher
@@ -90,6 +91,7 @@ runs:
         find apps/wildflower-site/wildflower-site-web/dist/medications \
           apps/wildflower-site/wildflower-site-web/dist/importer \
           apps/wildflower-site/wildflower-site-web/dist/health-viewer \
+          apps/wildflower-site/wildflower-site-web/dist/lifting \
           apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble \
           apps/wildflower-site/wildflower-site-web/dist/synthetic-data \
           apps/wildflower-site/wildflower-site-web/dist/launcher \

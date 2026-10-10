@@ -5,7 +5,7 @@ interface ImportMetaEnv {
    * The DSN of this app's Sentry project, set by the deploy build; unset, the
    * app reports nothing whatever the visitor answers.
    */
-  readonly VITE_SENTRY_DSN_LIFTING_APP?: string
+  readonly VITE_SENTRY_DSN_LIFTING_WEB?: string
 }
 
 declare module '*.module.css' {

@@ -30,7 +30,7 @@ registration={smartRegistration} telemetry={smartAppTelemetry}>` around
 `<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 starts a launch the URL carries under a loading line or renders one of the
 other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
-through the `VITE_SENTRY_DSN_LIFTING_APP` build variable; see `.env.example`),
+through the `VITE_SENTRY_DSN_LIFTING_WEB` build variable; see `.env.example`),
 owns the single `QueryClientProvider`, and branches, latched on mount, on
 whether a SMART callback is in the URL — the slim `BrandBar` above `<App />`
 when launched, the full Wildflower chrome with `APP_DESCRIPTIONS.lifting`'s

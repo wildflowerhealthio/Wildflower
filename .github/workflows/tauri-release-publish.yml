@@ -302,6 +302,12 @@ jobs:
       # Built by the prepare job's "Select platform matrix" step.
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
+    # The host's base reads its own `VITE_SENTRY_DSN_HOST_APP` (a public
+    # identifier, so a repository variable) and reports nothing without one.
+    # Job-wide, because `vp run pack` builds host-app's webview and the Tauri
+    # CLI's `beforeBuildCommand` builds it again.
+    env:
+      VITE_SENTRY_DSN_HOST_APP: ${{ vars.VITE_SENTRY_DSN_HOST_APP }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -406,6 +412,9 @@ jobs:
       contains(inputs.platforms, 'all') ||
       contains(inputs.platforms, 'ios')
     runs-on: macos-latest
+    # The host's base Sentry DSN; see the build job.
+    env:
+      VITE_SENTRY_DSN_HOST_APP: ${{ vars.VITE_SENTRY_DSN_HOST_APP }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -523,6 +532,9 @@ jobs:
       contains(inputs.platforms, 'all') ||
       contains(inputs.platforms, 'macos-testflight')
     runs-on: macos-latest
+    # The host's base Sentry DSN; see the build job.
+    env:
+      VITE_SENTRY_DSN_HOST_APP: ${{ vars.VITE_SENTRY_DSN_HOST_APP }}
     steps:
       - uses: actions/checkout@v7
         with:
