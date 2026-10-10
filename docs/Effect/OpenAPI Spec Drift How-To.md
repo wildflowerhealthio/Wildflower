@@ -106,7 +106,7 @@ defineSpecDriftTest({
   `#[schema(required)]`; match a `Schema.optionalWith` (optional key) with a
   plain `Option<T>` (utoipa's default).
 - **Regenerate, don't hand-edit, the snapshot** — `UPDATE_OPENAPI=1 cargo test
--p <slice>-rust openapi_spec_snapshot_is_up_to_date`. The committed JSON must
+  -p <slice>-rust openapi_spec_snapshot_is_up_to_date`. The committed JSON must
   stay byte-exact with `serde_json::to_string_pretty` (the Rust snapshot test
   asserts equality), which is why it's excluded from oxfmt.
 - **Keep `defineSpecDriftTest` generic over `fromApi`'s `<Id, Groups, E, R>`.**
@@ -119,7 +119,7 @@ defineSpecDriftTest({
   owns — e.g. `collector_remotes.config`, the tagged `CollectorConfig` union the
   TS `collector-registry` defines and this crate stores verbatim
   (`collector-rust/src/domain/remote.rs`) — annotate it `#[schema(value_type =
-Value)]`. That emits an empty schema `{}`, which the drift engine normalizes to
+  Value)]`. That emits an empty schema `{}`, which the drift engine normalizes to
   `any`: a wildcard that matches whatever the client declares, so widening the TS
   union (a new collector) never breaks the gate. `value_type = Object` is **not**
   equivalent — it emits `{"type":"object"}`, which normalizes to an object with

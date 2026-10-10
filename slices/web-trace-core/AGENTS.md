@@ -292,7 +292,7 @@ has to sit below all of them.
   archive states HAR's own "not observed" values for the request side and the
   timings, with a comment saying they were not carried through the import. The
   properties that hold are `decode(encode(x)) == x` and `read(write(read(f)))
-== read(f)` — not `encode(decode(f)) == f`, which no projection can give.
+  == read(f)` — not `encode(decode(f)) == f`, which no projection can give.
 - **`bodyAbsent` is a distinct fact from an empty body.** Our own emitter writes
   a `size` with no `text` for a policy-skipped body and DevTools does the same
   for content the browser discarded; both parse to empty bytes _plus_ the flag.

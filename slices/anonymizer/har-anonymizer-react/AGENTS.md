@@ -72,7 +72,7 @@ An adapter. Depends on `har-anonymizer-core` (the redactor),
   archive that did not say which rules were on could not be read back years
   later.
 - **A schema-URL row names its rule, not its count.** `Auto — visible (schema
-URL)` / `Auto — hidden (schema URLs off)`. Those paths are exempt from the
+  URL)` / `Auto — hidden (schema URLs off)`. Those paths are exempt from the
   threshold, so reporting `visible (18 values)` would send the reviewer to a
   control that had no say in the decision.
 - **The preview is split by outcome, not listed as one table.** The rows that
@@ -81,7 +81,7 @@ URL)` / `Auto — hidden (schema URLs off)`. Those paths are exempt from the
   bury them. A single sorted table put the rows that matter wherever the path
   names happened to fall.
 - **The `Auto` option says what it resolves to, and why.** `Auto — visible
-(3 values)` / `Auto — hidden (not a code)` / `Auto — hidden (codes off)`. A
+  (3 values)` / `Auto — hidden (not a code)` / `Auto — hidden (codes off)`. A
   bare `Auto` makes the reviewer infer the outcome from another column, and
   the two hidden cases have different fixes — one is answered by raising the
   threshold, the other never is.

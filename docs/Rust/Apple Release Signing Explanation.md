@@ -91,7 +91,7 @@ Two consequences follow, and both cost time before they were understood:
   `CODE_SIGN_IDENTITY` and `DEVELOPMENT_TEAM` committed into `project.pbxproj`
   are overwritten before they are ever read. Configure through the environment.
 
-Note also that the repository variable is named `IOS_PROVISIONING_PROFILE`,
+Note also that the variable is named `IOS_PROVISIONING_PROFILE`,
 which is not a name Tauri reads; the workflow maps it to `IOS_MOBILE_PROVISION`.
 
 `scripts/checks/apple-ios-signing-preflight.sh` validates all of this before the
@@ -168,6 +168,73 @@ it cannot read at all warns and passes. A check that cannot run must not become
 a new way for a release to fail — the upload still reports the real thing
 minutes later, which is exactly the outcome that holds today without it.
 
+## Each channel's credentials live in their own environment
+
+The certificates and profiles are stored per channel, in GitHub Actions
+environments, rather than as repository secrets:
+
+| Environment            | Declared by                           | Secrets                                                                                                                                    | Variables                                                                                           |
+| ---------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `apple-ios`            | `build-ios`                           | `IOS_CERTIFICATE`, `IOS_CERTIFICATE_PASSWORD`                                                                                              | `IOS_PROVISIONING_PROFILE`                                                                          |
+| `apple-macos-appstore` | `build-macos-testflight`              | `MACOS_APPSTORE_CERTIFICATE`, `MACOS_APPSTORE_CERTIFICATE_PASSWORD`, `MACOS_INSTALLER_CERTIFICATE`, `MACOS_INSTALLER_CERTIFICATE_PASSWORD` | `MACOS_APPSTORE_SIGNING_IDENTITY`, `MACOS_INSTALLER_SIGNING_IDENTITY`, `MACOS_PROVISIONING_PROFILE` |
+| `apple-macos-direct`   | `build`, for the `macos` matrix entry | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`                                                                                          | `APPLE_SIGNING_IDENTITY`                                                                            |
+
+Each holds the names the workflow and the preflights read. Only a job that
+declares an environment can see it, so a channel's `.p12` reaches only the job
+that signs with it. The `build` job's matrix carries the environment per
+entry, and the Windows and Linux entries name none. An environment secret or variable takes precedence over a
+repository one of the same name, which keeps the repository-level copies
+working as a fallback until the first release has run on the environments;
+they are then deleted by hand with `gh secret delete <name>` and `gh variable
+delete <name>`.
+
+The credentials that are not certificates stay at repository level:
+`APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` for notarization, and the
+`APP_STORE_CONNECT_*` key the TestFlight jobs upload with. Nothing about them
+is per channel, and nothing renews them.
+
+`scripts/release/apple-signing-sync.sh` is the only writer of these
+environments. The [Apple Signing Sync How-To](./Apple%20Signing%20Sync%20How-To.md)
+covers running it; what it relies on:
+
+- **One persistent private key per certificate kind**, in a signing folder on
+  the Account Holder's Mac. A certificate Apple lists is paired with a key by
+  comparing public keys, so the script recognises its own certificates without
+  keeping any state about them, and renews one from the same key once it is
+  within the renewal window. A key leaves the Mac only inside the `.p12`
+  written to GitHub.
+- **A team API key with the Admin role**, which stays on that Mac. App Store
+  Connect accepts an ES256 token built with `openssl` alone; the only care
+  needed is that `openssl dgst -sign` writes a DER signature, and JWS wants raw
+  `r||s`, each half exactly 32 bytes.
+- **Nothing is revoked or overwritten that the script did not make.** The team
+  has a small cap on each certificate kind; at the cap the script lists the
+  existing certificates rather than choosing one to revoke. Profiles are found
+  by an exact name, `Wildflower <bundle id> <profile type>`, and only a profile
+  with that name is ever replaced.
+- **Legacy `.p12` encryption.** OpenSSL 3 encrypts a `.p12` with AES and
+  PBKDF2 by default, which `security import` cannot read; the export passes
+  `-legacy` whenever the local openssl knows it.
+- **The App ID is matched exactly.** App Store Connect's `filter[identifier]`
+  is a substring match, and a `MAC_APP_STORE` profile needs an App ID whose
+  platform is `MAC_OS` or `UNIVERSAL`; an iOS-only one is reported as such.
+- **Developer ID may need the portal.** Apple's documentation lists
+  `DEVELOPER_ID_APPLICATION_G2` as a creatable type without saying whether a
+  team key may create one. When App Store Connect refuses, the script asks for
+  the certificate to be made in the portal from the same CSR, and picks it up
+  from there.
+
+Each channel's preflight runs against what is about to be stored, and a
+channel that fails it is not written. The notarization half of
+`apple-signing-preflight.sh` checks the repository-level credentials, which
+the script cannot read; it runs only when they are exported in the shell.
+
+None of the environments has a deployment branch rule. Such a rule is matched
+against `GITHUB_REF`, which for the `pull_request: closed` event that triggers
+a publish is `refs/pull/<number>/merge`, not `main` — so a `main`-only rule
+blocks every merge-triggered release, and admitting `refs/pull/*/merge` admits
+every pull request in the repository.
+
 ## Reading entitlements out of a profile
 
 The `application-identifier` entitlement carries `<team id>.<bundle id>` and is
@@ -190,6 +257,7 @@ profile — advice to regenerate a profile that is correct.
 
 ## See Also
 
+- [Apple Signing Sync How-To](./Apple%20Signing%20Sync%20How-To.md) — creating or renewing the certificates and profiles, and storing them in their environments
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the cache keys these release jobs share
 - [Data Directory Explanation](../../apps/host/host-app/Data%20Directory%20Explanation.md) — where each platform puts the host's databases, including what the sandbox does to it on macOS and why iOS uses `Documents`
 - `scripts/checks/apple-signing-preflight.sh` — the macOS check
@@ -197,3 +265,4 @@ profile — advice to regenerate a profile that is correct.
 - `scripts/checks/apple-macos-appstore-preflight.sh` — the macOS TestFlight check
 - `scripts/checks/apple-app-record-preflight.sh` — the App Store Connect app record check, run by both TestFlight jobs
 - `scripts/checks/apple-signing-lib.sh` — certificate, profile and entitlement helpers shared by all of them
+- `scripts/release/apple-signing-sync.sh` — creates, renews and stores every credential in the table above

@@ -2,6 +2,8 @@ import type { JSX } from 'react'
 
 import styles from './site-footer.module.css'
 
+const year = new Date().getFullYear()
+
 /**
  * The footer, shared by the marketing homepage and each app's standalone
  * landing page: the "not a company" paragraph, the plain contact line, and a
@@ -10,8 +12,6 @@ import styles from './site-footer.module.css'
  * references resolve to.
  */
 function SiteFooter(): JSX.Element {
-  const year = new Date().getFullYear()
-
   return (
     <footer className={styles['site-footer']} id="note">
       <div className={styles['site-footer__inner']}>

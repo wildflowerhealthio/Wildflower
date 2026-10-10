@@ -89,7 +89,7 @@ jobs:
           mv "$tmp" "$conf"
 
       - name: Install cargo-edit (cargo set-version)
-        uses: taiki-e/install-action@v2.87.23
+        uses: taiki-e/install-action@v2.87.26
         with:
           tool: cargo-edit
 

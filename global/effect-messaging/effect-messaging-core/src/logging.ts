@@ -74,6 +74,7 @@ const defaultOnLog = ({ level, payload }: LogPayload): Effect.Effect<void> =>
   effectLogForLevel[level](...payload)
 
 /** Concrete bridge type for the LogBridge — one-way Web → Host. */
+// oxlint-disable-next-line typescript/no-generated-empty-object-type -- no Host → Web messages
 type LogBridge = Bridge.Bridge<'Log', Record<never, never>, { readonly Log: typeof LogMessage }>
 
 /**

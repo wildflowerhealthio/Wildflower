@@ -188,7 +188,7 @@ constructs its own identity, so recognition and the namespace a resource keys
 under are the one decision:
 
 - **FHIR** (`fhir-r4-source`) — `tryRecognize` returns `source: { system: root,
-baseUrl: root }`, the root captured by the kind's own fused `UrlMatch`. So a
+  baseUrl: root }`, the root captured by the kind's own fused `UrlMatch`. So a
   resource keys under the root of the URL it arrived on.
 - **Rexall / Shoppers** — `tryRecognize` stays URL-gated but mints a constant
   `source: { system: SID }` (`REXALL_CAREBOOK_SYSTEM` /

@@ -21,6 +21,7 @@ import { createContext, useContext } from 'react'
  * which is why it carries the session's patient and not a Wildflower FHIR base.
  */
 type ServerKind = Data.TaggedEnum<{
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
   readonly Wildflower: Record<never, never>
   readonly PlainSmart: {
     readonly fhirBaseUrl: string

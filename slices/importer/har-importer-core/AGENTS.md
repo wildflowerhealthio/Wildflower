@@ -62,7 +62,7 @@ shell's shared `persistBatchBundle`.
   in the batch, so two source files in one pick cannot collide on
   `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,
-enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
+  enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
   top-specificity enabled candidate (`pickFor` — there are no per-response
   overrides), and parses the chosen ones (`Extraction.parseWith`), folding
   every non-resource outcome to data so one bad response cannot abort the

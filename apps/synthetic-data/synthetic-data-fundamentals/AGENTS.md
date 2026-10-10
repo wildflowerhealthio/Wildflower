@@ -97,9 +97,9 @@ one's ids and times untouched.
   does not re-export them:
 
   ```ts
-  import { Effect } from 'effect'
   import { chromeHarOf, chromeHarToJson, chromePageOf } from '@wildflowerhealthio/http-archive'
   import * as ChromeHar from '@wildflowerhealthio/synthetic-data-fundamentals/chrome-har'
+  import { Effect } from 'effect'
 
   const archive = chromeHarOf(pages.map(chromePageOf), exchanges.map(ChromeHar.entryOf))
   const text = Effect.runSync(chromeHarToJson(archive, { pretty: true }))

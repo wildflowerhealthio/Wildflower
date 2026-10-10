@@ -406,7 +406,7 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
   jsdom single-realm workaround; the production encode stays `new
-TextEncoder().encode(text)`).
+  TextEncoder().encode(text)`).
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own

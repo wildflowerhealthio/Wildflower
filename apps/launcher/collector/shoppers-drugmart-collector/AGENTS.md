@@ -51,7 +51,7 @@ Mirrors `fhir-r4-client-collector`; wired into `collector-registry` +
 `collector-react`:
 
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'shoppers-drugmart', email,
-password }`) with fast-check arbitraries, `defaultConfig`, the
+  password }`) with fast-check arbitraries, `defaultConfig`, the
   login-pause-for-2FA-then-visit-dashboard-and-history `scrapingPlan`, and the
   `ShoppersDrugMartCollectorDescriptor`.
 - the write sink — `fhir-r4/clients`' shared `persistResources`, imported in

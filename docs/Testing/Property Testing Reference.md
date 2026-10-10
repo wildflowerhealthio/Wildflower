@@ -119,8 +119,8 @@ When applicable, test for mathematical truths:
 The convention that works: import raw `fast-check`, write properties inside a normal `test(...)`/`it(...)`, and pass `numRuns` from `numRunsFor`. This is also what lets `test:changed` scale runs down.
 
 ```typescript
-import * as fc from 'fast-check'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import * as fc from 'fast-check'
 import { expect, test } from 'vite-plus/test'
 
 test('property: every encoded value decodes back to itself', () => {

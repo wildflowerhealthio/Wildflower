@@ -19,7 +19,16 @@ The maintainer "just fires tickets" — most arrive as a sentence. Grooming turn
   - Column/field defs: `gh project field-list 2 --owner Assessment-is --format json`
   - Missing scope? `gh auth refresh -s read:project,project`.
 - **Restricted-session fallback:** in a sandbox where GraphQL is blocked (some web sessions return `403 "GraphQL proxying is not enabled."`) the board is unreadable — fall back to REST (`list_issues` → labels + the priority field) or a committed `board.json` snapshot, and **say which** you used.
-- **Priority field:** over REST it surfaces as `field_values: [{field:"", value:"Low|Medium|High|Urgent"}]` (name blank); via `gh` the field name is present.
+- **Priority field:** the org-level `Priority` issue field, which the board shows. Its values follow FHIR's `request-priority` codes, from highest to lowest:
+
+  | Priority | Definition (FHIR `request-priority`) | When to do it |
+  |---|---|---|
+  | **STAT** | The request should be actioned immediately - highest possible priority.  E.g. an emergency. | Work off-hours to complete it. |
+  | **ASAP** | The request should be actioned as soon as possible - higher priority than urgent. | Drop any other task to complete it. |
+  | **Urgent** | The request should be actioned promptly - higher priority than routine. | Begin it before any routine task. |
+  | **Routine** | The request has normal priority. | Complete it as scheduled. |
+
+  Over REST it surfaces as `field_values: [{field:"", value:"Routine|Urgent|ASAP|STAT"}]` (name blank); via `gh` the field name is present. A child issue with no priority of its own takes its epic's.
 - **Status / workflow labels seen in use:** `🗓️ on-deck`, `🗓️ backlog`, `🎟️ intake`, `👀 needs human`, `📠 needs machine`, `👋 low context`, `👋 high context`, `improvement`, `fundementals`. (`🎟️ intake` marks intake items — out of scope for this protocol.)
 - **Gold-standard groomed tickets** to imitate: **#242** and **#218** (both "drafted from a design session" — full Motivation / Scope checklist / Key files / Dependencies / Out-of-scope / Tests / Verification). **#256** is a worked grooming example produced by this skill.
 
@@ -53,7 +62,7 @@ For each ticket:
 5. **Dedup & size** — Is it a duplicate or partial-overlap of another ticket? Too big / multiple concerns for one agent-PR? Propose **merge / split / nest**. This is a **human call** — present options, don't decide unilaterally.
 6. **Ask the human the design-only questions** via `AskUserQuestion` — the decisions only they can make (intent, scope boundary, UX, which interpretation). **Iterate.** Per `CLAUDE.md`: if you're guessing, ask. Split large batches across multiple asks.
 7. **Draft** the groomed ticket in the template below. Mark inferred points as **"to confirm"** rather than guessing them into fact.
-8. **Set priority + independent-start flag** — keep/adjust priority; state plainly whether it can **start now** or is **blocked** (and by what), with a suggested order.
+8. **Set priority + independent-start flag** — keep/adjust priority (Routine by default; higher only when its "When to do it" holds, or to match its epic); state plainly whether it can **start now** or is **blocked** (and by what), with a suggested order.
 9. **Apply on approval** (Step 2).
 
 ---
@@ -103,7 +112,7 @@ Reference for "done": **#242 / #218.**
 - `vp check`, `vp test`; `vp run ready` pre-PR; manual E2E if user-facing.
 
 ## Priority / start
-- <Low|Medium|High|Urgent>. <Independently startable, or blocked by #N>. Suggested order: …
+- <Routine|Urgent|ASAP|STAT>. <Independently startable, or blocked by #N>. Suggested order: …
 ```
 
 **✅ Do** respect repo layering, type-safety (no `any`/`@ts-ignore`/unsafe casts), and the test/doc rules from `CLAUDE.md` when writing scope and key-files.
@@ -115,7 +124,7 @@ Reference for "done": **#242 / #218.**
 
 Default to **draft-in-chat → confirm → apply**. Don't write to live issues without an explicit go-ahead.
 
-- **Rewrite the issue:** `issue_write` `method:update` — `title`, `body`, `labels` (note: `labels` **replaces** the set; re-send any to keep), and the priority via `issue_fields` (`field_name:"Priority"`, `field_option_name:"High"`). Don't pass `assignees` unless changing them (omitting leaves them intact).
+- **Rewrite the issue:** `issue_write` `method:update` — `title`, `body`, `labels` (note: `labels` **replaces** the set; re-send any to keep), and the priority via `issue_fields` (`field_name:"Priority"`, `field_option_name:"Urgent"`). Don't pass `assignees` unless changing them (omitting leaves them intact).
 - **Ripple edits** — grooming one ticket usually touches neighbours. Post a short `add_issue_comment` on each affected sibling/blocker (e.g. "split by surface with #256", "blocker for #256"). Prefer a comment over rewriting another ticket's carefully-authored body.
 - **Pruning** — if a ticket is a duplicate or already solved, recommend closing and (with approval) `issue_write` `state:closed` with `state_reason` (`duplicate` + `duplicate_of`, or `not_planned`/`completed`).
 

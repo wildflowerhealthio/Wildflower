@@ -148,6 +148,7 @@ const PreviewActions = ({
 
 /** The resource-editor dialog's state: closed, or open on one format's resource. */
 type EditorState = Data.TaggedEnum<{
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
   readonly Closed: Record<never, never>
   readonly Open: { readonly format: FormatKind; readonly key: string; readonly resource: unknown }
 }>

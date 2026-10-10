@@ -62,7 +62,7 @@
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "fast-check": "catalog:",
-    "jsdom": "^30.1.0",
+    "jsdom": "^30.1.2",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tundra-css": "catalog:",
