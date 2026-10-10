@@ -24,7 +24,8 @@ type TelemetryConsentFormProps = Pick<TelemetryConsentDialogProps, 'copy' | 'onC
 }
 
 /**
- * The dialog's contents: the warning, the two switches and Continue. Mounted
+ * The dialog's contents: the warning with its link to the code, the two
+ * switches, the as-is disclaimer and Continue. Mounted
  * each time the dialog opens, so the switches start from `initialSwitches`.
  */
 const TelemetryConsentForm = ({
@@ -43,6 +44,18 @@ const TelemetryConsentForm = ({
             {paragraph}
           </p>
         ))}
+        <p className={styles['consent__warning-paragraph']}>
+          {copy.sourceCode.text}{' '}
+          <a
+            className={styles['consent__warning-link']}
+            href={copy.sourceCode.href}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {copy.sourceCode.linkLabel}
+          </a>
+          .
+        </p>
       </div>
       <p className={styles['consent__text']}>{copy.destination}</p>
       <div className={styles['consent__switches']}>
@@ -71,6 +84,7 @@ const TelemetryConsentForm = ({
       </div>
       <p className={styles['consent__text']}>{copy.sessions}</p>
       <p className={styles['consent__text']}>{copy.changeLater}</p>
+      <p className={styles['consent__fine-print']}>{copy.asIs}</p>
       <button type="button" className="button-2 filled" onClick={() => onContinue(switches)}>
         {copy.continueLabel}
       </button>
@@ -79,9 +93,9 @@ const TelemetryConsentForm = ({
 }
 
 /**
- * The telemetry consent dialog: the synthetic-data warning, where reports go,
- * a switch each for crash reports and performance data, and one Continue
- * button. Both switches start off, and Continue with both off is an answer
+ * The telemetry consent dialog: the early-stage warning, where reports go, a
+ * switch each for crash reports and performance data, the as-is disclaimer,
+ * and one Continue button. Both switches start off, and Continue with both off is an answer
  * like any other.
  *
  * @remarks

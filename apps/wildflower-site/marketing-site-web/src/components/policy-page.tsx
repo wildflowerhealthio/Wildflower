@@ -56,4 +56,48 @@ function PolicySection({
   )
 }
 
-export { PolicyPage, PolicySection }
+/** One kind of data a policy page describes, by the same four facts. */
+type PolicyDataKind = {
+  /** What the data is. */
+  readonly title: string
+  /** Where it is kept. */
+  readonly where: ReactNode
+  /** When it is collected or kept at all. */
+  readonly when: ReactNode
+  /** How long it is kept. */
+  readonly keptFor: ReactNode
+  /** How to delete it. */
+  readonly delete: ReactNode
+}
+
+/**
+ * One kind of data as a titled card of four facts — where, when, how long and
+ * how to delete — so every kind reads the same way and the page can be scanned
+ * rather than read through. A description list rather than a table, so it
+ * stacks at phone width.
+ */
+function PolicyDataCard({
+  title,
+  where,
+  when,
+  keptFor,
+  delete: deleteIt,
+}: PolicyDataKind): JSX.Element {
+  return (
+    <div className={styles['policy-page__card']}>
+      <h3 className={styles['policy-page__card-title']}>{title}</h3>
+      <dl className={styles['policy-page__facts']}>
+        <dt>Where</dt>
+        <dd>{where}</dd>
+        <dt>When</dt>
+        <dd>{when}</dd>
+        <dt>Kept for</dt>
+        <dd>{keptFor}</dd>
+        <dt>To delete</dt>
+        <dd>{deleteIt}</dd>
+      </dl>
+    </div>
+  )
+}
+
+export { PolicyDataCard, PolicyPage, PolicySection, type PolicyDataKind }

@@ -9,6 +9,16 @@ interface TelemetryConsentSwitchCopy {
   readonly description: string
 }
 
+/** A sentence that ends in a link: `text`, then `linkLabel` linking to `href`. */
+interface LinkedSentenceCopy {
+  /** The words before the link. */
+  readonly text: string
+  /** The link's visible text. */
+  readonly linkLabel: string
+  /** Where the link goes. */
+  readonly href: string
+}
+
 /**
  * The words of the telemetry consent dialog every Wildflower web app shows
  * before it starts, and the version they are stored under.
@@ -21,8 +31,15 @@ interface TelemetryConsentCopy {
   readonly version: number
   /** The dialog's heading. */
   readonly title: string
-  /** The synthetic-data warning, in reading order, shown first and loudest. */
+  /**
+   * The early-stage warning, in reading order, shown first and loudest: the
+   * code is unaudited, so use your own judgement about what to load.
+   */
   readonly warning: readonly string[]
+  /** Where to read the code, shown at the end of the warning. */
+  readonly sourceCode: LinkedSentenceCopy
+  /** The as-is disclaimer: no warranty and no liability. */
+  readonly asIs: string
   /** Where reports go when either switch is on. */
   readonly destination: string
   /** The crash-reports switch: errors, which may carry loaded data. */
@@ -37,24 +54,36 @@ interface TelemetryConsentCopy {
   readonly continueLabel: string
 }
 
+/** Where both dialogs send a visitor who wants to audit the code themselves. */
+const SOURCE_CODE: LinkedSentenceCopy = {
+  text: 'You can review the code yourself at',
+  linkLabel: 'github.com/wildflowerhealthio/Wildflower',
+  href: 'https://github.com/wildflowerhealthio/Wildflower',
+}
+
 /**
  * The telemetry consent dialog's copy, shared by every Wildflower web app.
  *
  * @remarks
- * The apps are demos, and a crash report can carry whatever the app had
- * loaded, so the warning comes before the switches and says plainly what not
- * to do. Each switch description names what it sends, not what it is for. Any
+ * The apps are early-stage and unaudited, and a crash report can carry
+ * whatever the app had loaded, so the warning comes before the switches and
+ * leaves what to connect to the visitor's judgement, with a link to the code. Each switch description names what it sends, not what it is for. Any
  * change to what the dialog promises raises `version`, so the visitors who
  * answered the old wording are asked again.
  */
 const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
-  version: 1,
-  title: 'Demo apps and telemetry',
+  version: 2,
+  title: 'Before you start',
   warning: [
-    'These are demo apps from the Wildflower Health Project. ' +
-      'Use them only with synthetic or test data.',
-    "Never connect them to a real person's health record.",
+    'The Wildflower Health Project is an early-stage open source project, ' +
+      'and its code has not been independently audited.',
+    'Use your own judgement about which health records you connect these apps to.',
   ],
+  sourceCode: SOURCE_CODE,
+  asIs:
+    'These apps are provided "as is", without warranty of any kind, express or implied. ' +
+    'To the fullest extent the law allows, the authors are not liable for any claim, ' +
+    'damages or other liability arising from their use.',
   destination:
     'The two switches below choose what, if anything, these apps report to Sentry, ' +
     'a third-party service in the United States. Both switches start off, ' +
@@ -90,20 +119,26 @@ const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
  * @remarks
  * The same dialog as {@link TELEMETRY_CONSENT_COPY}, worded for one app that
  * keeps what it loads on the device rather than for a set of web apps: the
- * warning says so, the session counts name no browser, and the answer is
+ * warning and the disclaimer name the app, the session counts name no browser, and the answer is
  * changed from the Settings screen rather than a button on the page. The
  * switch labels are the shared ones, so the Telemetry row in Settings reads
  * the same on every entry. Its answer is stored in the webview's own
  * storage, under this copy's `version`, apart from any web app's.
  */
 const WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
-  version: 1,
-  title: 'Demo app and telemetry',
+  version: 2,
+  title: TELEMETRY_CONSENT_COPY.title,
   warning: [
-    'Wildflower Host is a demo app from the Wildflower Health Project. ' +
-      'It keeps the records you load in it on this device.',
-    "Load synthetic data only. Never load a real person's health record.",
+    'Wildflower Host is an early-stage open source project, ' +
+      'and its code has not been independently audited.',
+    'It keeps the records you load into it on this device. ' +
+      'Use your own judgement about which records you load.',
   ],
+  sourceCode: SOURCE_CODE,
+  asIs:
+    'Wildflower Host is provided "as is", without warranty of any kind, express or implied. ' +
+    'To the fullest extent the law allows, the authors are not liable for any claim, ' +
+    'damages or other liability arising from its use.',
   destination:
     'The two switches below choose what, if anything, this app reports to Sentry, ' +
     'a third-party service in the United States. Both switches start off, ' +

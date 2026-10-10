@@ -1,6 +1,6 @@
 /*
  * The telemetry consent dialog's contents, in a readable column centred on
- * the full-width sheet. The synthetic-data warning comes first and loudest:
+ * the full-width sheet. The early-stage warning comes first and loudest:
  * the warning tone's box and a body size a step above the rest, so it reads
  * before the switches do. Everything reads the scheme-aware tokens.
  */
@@ -30,6 +30,21 @@
   font-size: var(--font-size-4);
   font-weight: var(--font-weight-4);
   line-height: var(--line-height-3);
+}
+
+/* The link to the code reads in the warning's own colour, underlined. */
+.consent__warning-link {
+  color: inherit;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+/* The as-is disclaimer: small print, a step quieter than the body text. */
+.consent__fine-print {
+  margin: 0;
+  color: var(--color-neutral-4);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
 }
 
 .consent__text {

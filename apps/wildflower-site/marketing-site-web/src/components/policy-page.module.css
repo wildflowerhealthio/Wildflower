@@ -44,3 +44,50 @@
   gap: var(--space-3);
   padding-left: var(--space-9);
 }
+
+/* One kind of data: a hairline card with its four facts. */
+.policy-page__card {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-7);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+}
+
+.policy-page__card-title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-4);
+}
+
+/* Label column in the mono side-note role; stacks above its value on phones. */
+.policy-page__facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1) var(--space-7);
+  margin: 0;
+}
+
+.policy-page__facts > dt {
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-5);
+}
+
+.policy-page__facts > dd {
+  margin: 0 0 var(--space-3);
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
+}
+
+@media (min-width: 640px) {
+  .policy-page__facts {
+    grid-template-columns: 7rem minmax(0, 1fr);
+  }
+
+  .policy-page__facts > dd {
+    margin: 0;
+  }
+}
