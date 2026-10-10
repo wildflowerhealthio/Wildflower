@@ -1,6 +1,6 @@
 ---
 name: priorities
-description: What should the machine work on next? Lists the PRs and issues assigned to ruths-machine and what each one needs (answer a review, or review with /code-review high --comment), flips stacked draft PRs to ready once their base merges, then suggests backlog items from the epics that are unblocked and easy. Lists first, then offers to run the picks.
+description: What should the machine work on next? Lists the PRs and issues assigned to ruths-machine and what each one needs (answer a review, or review with /code-review high --comment), flips stacked draft PRs to ready once their base merges, then suggests backlog items from the epics that are unblocked, highest priority first, then easy. Lists first, then offers to run the picks.
 ---
 
 > **⚠️ Scope:** Wildflower only (`wildflowerhealthio/Wildflower`). **List, then offer to run.** Don't comment, review, push, mark PRs ready or change assignees until the user picks items in Step 5.
@@ -25,10 +25,20 @@ The repos are public, so CI runs on draft PRs too. Draft and assignment carry th
 
 ## Repo facts
 
-- **`gh` is logged in as `ruths-machine`** with `repo` scope but **not `read:project`**, so the project board is unreadable. The **epics** are the source of truth for the backlog.
+- **`gh` is logged in as `ruths-machine`** with `repo` scope, and often **not `read:project`**, so the project board may be unreadable. The **epics** are the source of truth for the backlog.
 - **Epics** are open issues titled `Epic: …`. Each has an `## Issues` table, one row per child: `| #N | <code>: <title> | <depends-on, e.g. 1E #574, 2F #773, or —> |`. A struck-through row (`~~#763~~`) is folded or closed. Many epics also carry a `PR stack:` line (`main ← #767 (2E) ← #768 (2A) ← …`) and a decision log that can reorder work. Read the prose under the table too.
 - **Child issues** open with `Part of #<epic>.`, often followed by `Stacked on #<dep>.`. Their bodies follow the backlog-grooming template (`## Dependencies`, `## Scope` checklist, `## Key files`, `## Key decisions / to confirm`).
 - **PRs name their issue in the title**, e.g. `synthetic-data-core: … (#793)`.
+- **Priority** is the org-level `Priority` issue field, readable with `repo` scope. Its values follow FHIR's `request-priority` codes, from highest to lowest:
+
+  | Priority | Definition (FHIR `request-priority`) | When to do it |
+  |---|---|---|
+  | **STAT** | The request should be actioned immediately - highest possible priority.  E.g. an emergency. | Work off-hours to complete it. |
+  | **ASAP** | The request should be actioned as soon as possible - higher priority than urgent. | Drop any other task to complete it. |
+  | **Urgent** | The request should be actioned promptly - higher priority than routine. | Begin it before any routine task. |
+  | **Routine** | The request has normal priority. | Complete it as scheduled. |
+
+  A child issue with no priority of its own takes its epic's. An issue with neither counts as Routine.
 - **Ticket labels:** `🎟️ intake` (not refined), `🎟️ Accepted` (on the board), `🎟️ drifted` (refresh before work), `👀 needs human`, `📠 needs machine`.
 
 > The epic bodies and issue lists are large. Parse them in a subagent and have it return a compact table, rather than loading them all into context.
@@ -78,6 +88,14 @@ gh issue view <epic> --json body -q .body
 gh pr list --state open --json number,title,isDraft,headRefName   # to spot tickets that already have a PR
 ```
 
+Read each epic's priority and its children's in one query:
+
+```bash
+gh api graphql -F n=<epic> -f query='query($n:Int!){repository(owner:"wildflowerhealthio",name:"Wildflower"){issue(number:$n){
+  issueFieldValues(first:10){nodes{... on IssueFieldSingleSelectValue{name field{... on IssueFieldSingleSelect{name}}}}}
+  subIssues(first:50){nodes{number state issueFieldValues(first:10){nodes{... on IssueFieldSingleSelectValue{name field{... on IssueFieldSingleSelect{name}}}}}}}}}}'
+```
+
 For each epic, classify every open, non-struck child:
 
 - **Taken** — it has an open PR (its `#N` is in a PR title), or someone other than `ruths-machine` is assigned. Skip it.
@@ -90,8 +108,9 @@ Also consider open `🎟️ Accepted` issues outside every epic, such as standal
 
 **Rank the Ready and Stackable items** by:
 
-1. **Unblocks the most.** Count the epic rows that list the item as a dependency. Integration points and wave-1 roots come first.
-2. **Easy.** Look for these signals:
+1. **Priority.** STAT, then ASAP, then Urgent, then Routine. A STAT or ASAP item leads the report even if it's hard; say so in its reason.
+2. **Unblocks the most.** Count the epic rows that list the item as a dependency. Integration points and wave-1 roots come first.
+3. **Easy.** Look for these signals:
    - a short `## Scope` checklist
    - a few `## Key files`, all within one slice
    - a named precedent to mirror ("mirror X", "Builds on #M (done)")
@@ -100,7 +119,7 @@ Also consider open `🎟️ Accepted` issues outside every epic, such as standal
    - no to-confirm items
 
    These count against easy: new packages, Rust and TS both, migrations, or a user-facing flow that needs a manual E2E check.
-3. **Epic momentum.** Prefer the epic whose PR stack is closest to landing.
+4. **Epic momentum.** Prefer the epic whose PR stack is closest to landing.
 
 Keep the list short: about 5 picks, each with a one-line reason.
 
@@ -121,10 +140,10 @@ Keep the list short: about 5 picks, each with a one-line reason.
 - 3 ready PRs assigned to her: #801, #804, #812   ← one line, context only
 
 ## Backlog picks
-| Pick | Epic | State | Why |
-|---|---|---|---|
-| #571 1B: shared dev-port reader | #570 | Ready | unblocks 3A; one file + tests, mirrors …|
-| #794 Synthetic data 7 | #787 | Stackable on #804 | … |
+| Pick | Epic | Priority | State | Why |
+|---|---|---|---|---|
+| #571 1B: shared dev-port reader | #570 | Urgent | Ready | unblocks 3A; one file + tests, mirrors …|
+| #794 Synthetic data 7 | #787 | Routine | Stackable on #804 | … |
 ```
 
 Omit empty sections. `gh pr list --assignee ruthmarks151 --state open` fills the "Waiting on" line.
