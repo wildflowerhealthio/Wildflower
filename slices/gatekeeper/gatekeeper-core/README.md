@@ -26,7 +26,7 @@ because the wire schemas in this package mirror their rows.
   discriminator (matching the wire `grant_type` parameter) splits
   between `'authorization_code'` (browser-side OAuth code grant) and
   `'device_code'` (RFC 8628). `status: 'pending' | 'approved' | 'denied'
-| 'expired'`. Device-grant rows carry a `userCode` and `lastPolledAt`
+  | 'expired'`. Device-grant rows carry a `userCode` and `lastPolledAt`
   (for `slow_down`).
 - `authorizationCodes` — single-use codes issued when a code-flow
   request is approved; consumed at `/oauth/token`.

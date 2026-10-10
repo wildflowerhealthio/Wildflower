@@ -25,7 +25,7 @@ viewer knowledge and lives here. The chart math it feeds lives in
 - `src/medication-groups.ts` — the one catalogue group, `medications`
   (`Medications`), which every series files under.
 - `src/source.ts` — `medicationSource`, the package's surface: `name:
-'medications'`, `idPrefix: 'm'`, the group, the reader, the key grammar and
+  'medications'`, `idPrefix: 'm'`, the group, the reader, the key grammar and
   the grouping, in one value.
 
 ## Rules

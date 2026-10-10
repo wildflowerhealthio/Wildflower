@@ -19,7 +19,7 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   inclusive; `end: null` = open), with an optional band (`low` / `high`) and an
   optional `note` the domain supplies for a readout (`per day`). Absent keys,
   never `undefined` or `null`, for the optional fields. `inEffectAt(levels,
-time)` is the one lookup every crosshair read goes through: the
+  time)` is the one lookup every crosshair read goes through: the
   latest-starting level that covers `time`, or `null` in a gap.
 - **`PointSeries`** (`src/point-series.ts`) — readings (`Point`: `time`,
   `value`, band, `note`) plus an `Interpolation` (`'linear' | 'step'`).
@@ -34,7 +34,7 @@ time)` is the one lookup every crosshair read goes through: the
 - **`Series`** (`src/series.ts`) — `Series = PointSeries | LevelSeries`,
   discriminated on `kind` (`'points' | 'levels'`). Both carry an opaque `id`,
   `label`, `unit` and a `ValueScale` (`'fitted' | 'from-zero' |
-'zero-to-one'`). `levelsOf` is the one place the two kinds are told apart;
+  'zero-to-one'`). `levelsOf` is the one place the two kinds are told apart;
   `levelAt`, `extentOf`, `extentOfAll` (the span of several series together) and
   `sizeOf` read through it.
 - **`ValueAxis`** (`src/value-axis.ts`) — one value axis per series: `assign`

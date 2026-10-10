@@ -318,7 +318,7 @@ derivation and the field table.
 Three things to get right:
 
 - **The `source` each kind mints (step 2).** For a FHIR source, `{ system: root,
-baseUrl: root }` from `recognizeFhirRoot` (the root of the response's own URL —
+  baseUrl: root }` from `recognizeFhirRoot` (the root of the response's own URL —
   a live capture from the configured server keys byte-identically to an archive
   import, and a cross-origin redirect keys under the redirect target). For a
   scraper, a Wildflower-minted `sid` URI naming the portal, `{ system: SID }` with

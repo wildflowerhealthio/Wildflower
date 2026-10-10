@@ -8,20 +8,20 @@ For _why_ the versions must agree — the pnpm variant-split mechanism, the `vit
 
 A vite-plus bump moves two distinct version strings, each in more than one file:
 
-- **`vite-plus`** itself — the package that ships the `vp` binary (currently `1.0.0`).
+- **`vite-plus`** itself — the package that ships the `vp` binary (currently `1.1.0`).
 - **`@voidzero-dev/vite-plus-core`** — the `vite` alias vite-plus depends on. Must match the core that _this_ `vite-plus` depends on, **not** the newest core on npm (see the Explanation's "What a vite-plus bump needs from the overrides" section).
 
-`vitest` is not pinned anywhere: vite-plus depends on an exact `vitest` (`5.0.1` on 1.0.0), and `vp --version` reports it.
+`vitest` is not pinned anywhere: vite-plus depends on an exact `vitest` (`5.0.3` on 1.1.0), and `vp --version` reports it.
 
 ## Every place to edit
 
 | #   | File                                                                             | Key                           | Current value                            | Holds     |
 | --- | -------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------- | --------- |
-| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite-plus:`          | `1.0.0`                                  | vite-plus |
-| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite:`               | `npm:@voidzero-dev/vite-plus-core@1.0.0` | core      |
-| 3   | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh)           | `pnpm install -g vite-plus@…` | `1.0.0`                                  | vite-plus |
-| 4   | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh)   | `pnpm install -g vite-plus@…` | `1.0.0`                                  | vite-plus |
-| 5   | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `1.0.0`                                  | vite-plus |
+| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite-plus:`          | `1.1.0`                                  | vite-plus |
+| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite:`               | `npm:@voidzero-dev/vite-plus-core@1.1.0` | core      |
+| 3   | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh)           | `pnpm install -g vite-plus@…` | `1.1.0`                                  | vite-plus |
+| 4   | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh)   | `pnpm install -g vite-plus@…` | `1.1.0`                                  | vite-plus |
+| 5   | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `1.1.0`                                  | vite-plus |
 
 Rows 1–2 are the catalog values. The `vite@*: 'catalog:'` override in [pnpm-workspace.yaml](../../pnpm-workspace.yaml) follows row 2, so it needs no edit. Rows 3–5 are exact pins in global-install scripts, hand-kept in lockstep because there is no way to reference the catalog from a global `pnpm install -g`; they must equal the version the lockfile resolves.
 

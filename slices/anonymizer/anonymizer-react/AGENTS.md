@@ -9,7 +9,7 @@ decode, review, blob download. **Issues no writes** and speaks to no server.
 
 - `src/registry.tsx` — the **closed format registry**: an ordered
   `readonly BoundFormat[]` literal, each entry minted by `bind(descriptor,
-Panel)`. The pairing is a closure, not a lookup — `bind` takes a descriptor
+  Panel)`. The pairing is a closure, not a lookup — `bind` takes a descriptor
   and a panel over the _same_ `T` and returns a `BoundFormat` whose
   `decodeToPanel` runs the decode and hands the value straight to the panel,
   so `T` never escapes and the shell routes heterogeneous formats without a

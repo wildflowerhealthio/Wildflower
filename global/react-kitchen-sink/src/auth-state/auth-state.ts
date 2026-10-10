@@ -18,8 +18,10 @@ import { Data } from 'effect'
  * lives beside {@link AuthStateStore}.
  */
 type AuthState = Data.TaggedEnum<{
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
   readonly Unauthed: Record<never, never>
   readonly AuthedUntil: { readonly exp: number }
+  // oxlint-disable-next-line typescript/no-generated-empty-object-type -- an empty variant
   readonly HostAuthed: Record<never, never>
 }>
 

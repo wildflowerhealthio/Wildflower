@@ -33,7 +33,7 @@ fi
 #    peer-warns. Re-sync on every bump; the full list of places a vite-plus
 #    version is recorded is in docs/Dependencies/Bumping vite-plus How-To.md.
 if ! command -v vp >/dev/null 2>&1; then
-  pnpm install -g vite-plus@1.0.0 typescript@7.0.2 @tsdown/css@0.23.0
+  pnpm install -g vite-plus@1.1.0 typescript@7.0.2 @tsdown/css@0.23.0
 fi
 
 # 3. Warm the workspace install so node_modules + the pnpm store land in the

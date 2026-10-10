@@ -17,8 +17,8 @@ read `Document.Schema` / `Document.Type`, `Page.Schema`, `Run.Schema`:
 
 - `src/document.ts` — **`Document.Schema`** Effect Schema
   (`{ format: 'wildflower-positioned-text', version: 1, fileName?, pages:
-[{ pageNumber, width, height, runs: [{ text, x, y, width, fontSize,
-fontName? }] }] }`, top-left `y` origin), plus **`Document.FromJson`**
+  [{ pageNumber, width, height, runs: [{ text, x, y, width, fontSize,
+  fontName? }] }] }`, top-left `y` origin), plus **`Document.FromJson`**
   (`Schema.parseJson`) for round-tripping through JSON.
 - `src/page.ts` — **`Page.Schema`**, one page of positioned runs.
 - `src/run.ts` — **`Run.Schema`**, one positioned span of text.

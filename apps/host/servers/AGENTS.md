@@ -277,7 +277,7 @@ changing how servers run or what the host notifies about them.
   relay one of `{kind: "wildflowerOfficial"}`,
   `{kind: "selfHostedWildflower", baseUrl, pin?}` with `pin`
   `{remoteAddr, publicKey}`, or `{kind: "rathole", remoteAddr, publicKey,
-domain}`; and `invoke('server_set_credentials', { domain, token })`. An
+  domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   `EnrolmentError`'s `kind` is camelCase (`signedRequestRejected`,
   `relayIdentityChanged`, `alreadyRegistered`, ...), and so is every field of
   `servers.json`. Only the relay's own `GET /rathole` and `GET /me` keep its
@@ -329,7 +329,7 @@ domain}`; and `invoke('server_set_credentials', { domain, token })`. An
   pending consent's head included), camelCase, each optional member left out
   when absent:
   `{domain, runState, lastStop?: {reason, platformReason?, error?,
-stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
+  stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   there. A removed server gets no event; the
   base drops a server once `servers_list` no longer lists it, and reads the
   list again after `server_remove` and for a status of a server it doesn't
@@ -401,7 +401,7 @@ stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
   `expired` is not a failure. A listed server's `certificate` is its
   status's. The certificate state's wire
   shape is `{status, issuer, held?: {notBefore, notAfter, fingerprint},
-lastError?: {kind, …}}`.
+  lastError?: {kind, …}}`.
 - **Each new certificate is recorded once.** A run appends each certificate
   it deploys that the history doesn't record already to `certificates/history.json`
   (`wildflowerhealthio_wildflower_server::read_certificate_history`), so it is deleted with

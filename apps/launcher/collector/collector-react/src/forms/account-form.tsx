@@ -34,6 +34,10 @@ interface AccountFormScreenProps<T extends CollectorTag> {
   readonly onCancel: () => void
 }
 
+/** The name an account gets when its name field is left empty: `"<collector title> <today>"`. */
+const datedAccountName = (collectorTitle: string): string =>
+  `${collectorTitle} ${new Date().toLocaleDateString()}`.trim()
+
 /**
  * The generic account create/edit screen. It owns the chrome shared across
  * every collector — the page header, the type badge, the account-name field,
@@ -63,10 +67,7 @@ function AccountFormScreen<T extends CollectorTag>({
   const [name, setName] = useState(initialName)
 
   const handleSubmit = (config: ConfigForTag<T>): void => {
-    const remoteName =
-      name === ''
-        ? `${descriptor?.display.title ?? ''} ${new Date().toLocaleDateString()}`.trim()
-        : name
+    const remoteName = name === '' ? datedAccountName(descriptor?.display.title ?? '') : name
     onSubmit(remoteName, config)
   }
 

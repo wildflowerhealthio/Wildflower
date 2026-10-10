@@ -97,8 +97,8 @@ When the assertion is purely structural — "did this method run once, with what
 Four patterns come up often enough that they live in the shared kitchen-sink:
 
 ```typescript
-import { expect } from 'vite-plus/test'
 import { utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
+import { expect } from 'vite-plus/test'
 
 const { expectDistinct, expectToMultisetEqual, expectRightToEqual, expectLeftToEqual } =
   utilityExpectations(expect)
@@ -152,8 +152,8 @@ expect(error._tag).toBe('SomeError')
 ### Compile-Time FHIR Check
 
 ```typescript
-import { Composition } from './Composition'
 import type { Composition as FhirComposition } from 'fhir/r4.d.ts'
+import { Composition } from './Composition'
 
 // Compile-time check: Encoded schema must match FHIR R4 type
 const _check: DeepReadonly<FhirComposition> = Composition.Encoded
