@@ -8,7 +8,7 @@ For which channel needs which certificate, what the script relies on, and why ea
 
 The script runs as the team's Account Holder or an Admin, on a Mac with Xcode installed: the preflights it runs resolve identities through the keychain, which needs Apple's intermediate certificates that Xcode installs.
 
-1. In App Store Connect → Users and Access → Integrations → Team Keys, create a key with the **Admin** role. Download `AuthKey_<key id>.p8` into the signing folder, `~/.wildflower-signing` (or the folder `WILDFLOWER_SIGNING_DIR` names), and note the key id and the issuer id shown above the key list.
+1. In App Store Connect → Users and Access → Integrations → Team Keys, create a key with the **Admin** role. Download `AuthKey_<key id>.p8` into the signing folder, `~/.wildflower-signing` (or the folder `WILDFLOWER_SIGNING_DIR` names), keeping that file name — the script reads the key id from it — and note the issuer id shown above the key list. Keep only the one key there; to use a key kept elsewhere, set `APP_STORE_CONNECT_ADMIN_KEY_PATH` to it.
 2. Log `gh` in as someone who can administer the repository — creating an environment needs admin access:
 
    ```bash
@@ -22,7 +22,6 @@ The signing folder is where the script keeps the private key of each certificate
 1. From the repository root, see what the run would do:
 
    ```bash
-   APP_STORE_CONNECT_ADMIN_KEY_ID=<key id> \
    APP_STORE_CONNECT_ISSUER_ID=<issuer id> \
      ./scripts/release/apple-signing-sync.sh --dry-run
    ```

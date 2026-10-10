@@ -6,14 +6,14 @@
 # certificate, and why: docs/Rust/Apple Release Signing Explanation.md. Steps
 # for running it: docs/Rust/Apple Signing Sync How-To.md.
 #
-#   APP_STORE_CONNECT_ADMIN_KEY_ID=<key id> \
 #   APP_STORE_CONNECT_ISSUER_ID=<issuer id> \
 #     ./scripts/release/apple-signing-sync.sh [--dry-run] [--channel <channel>]…
 #
 # Channels are ios, macos-appstore and macos-direct; with no --channel, all
 # three. The key is an Admin-role *team* App Store Connect API key, read from
-# APP_STORE_CONNECT_ADMIN_KEY_PATH (default
-# $WILDFLOWER_SIGNING_DIR/AuthKey_<key id>.p8). It never leaves the Mac.
+# APP_STORE_CONNECT_ADMIN_KEY_PATH, or else the one AuthKey_<key id>.p8 in
+# WILDFLOWER_SIGNING_DIR; its id is read from that file name. It never leaves
+# the Mac.
 #
 # Each certificate kind has one persistent private key in WILDFLOWER_SIGNING_DIR
 # (default ~/.wildflower-signing), generated on first use. A listed certificate
@@ -48,7 +48,7 @@ source "${BASH_SOURCE[0]%/*}/apple-signing-sync-lib.sh"
 (return 0 2>/dev/null) && return 0
 
 usage() {
-  sed -n 's/^#   //p' "${BASH_SOURCE[0]}" | head -n 3 >&2
+  sed -n 's/^#   //p' "${BASH_SOURCE[0]}" | head -n 2 >&2
   exit "${1:-1}"
 }
 
@@ -81,13 +81,25 @@ done
 repo_root="$(cd "${BASH_SOURCE[0]%/*}/../.." && pwd)"
 signing_dir="${WILDFLOWER_SIGNING_DIR:-$HOME/.wildflower-signing}"
 renewal_days="${WILDFLOWER_SIGNING_RENEWAL_DAYS:-30}"
-key_id="${APP_STORE_CONNECT_ADMIN_KEY_ID:-}"
 issuer_id="${APP_STORE_CONNECT_ISSUER_ID:-}"
-[[ -n "$key_id" ]] || fail "APP_STORE_CONNECT_ADMIN_KEY_ID is empty. Create an Admin-role team key at App Store Connect → Users and Access → Integrations."
-[[ -n "$issuer_id" ]] || fail "APP_STORE_CONNECT_ISSUER_ID is empty. It is shown above the key list on the same page."
+[[ -n "$issuer_id" ]] || fail "APP_STORE_CONNECT_ISSUER_ID is empty. It is shown above the key list at App Store Connect → Users and Access → Integrations."
 [[ "$renewal_days" =~ ^[0-9]+$ ]] || fail "WILDFLOWER_SIGNING_RENEWAL_DAYS must be a whole number of days."
-key_path="${APP_STORE_CONNECT_ADMIN_KEY_PATH:-$signing_dir/AuthKey_$key_id.p8}"
-[[ -f "$key_path" ]] || fail "No App Store Connect key at $key_path. Put the downloaded AuthKey_$key_id.p8 there or set APP_STORE_CONNECT_ADMIN_KEY_PATH."
+if [[ -n "${APP_STORE_CONNECT_ADMIN_KEY_PATH:-}" ]]; then
+  key_path="$APP_STORE_CONNECT_ADMIN_KEY_PATH"
+  [[ -f "$key_path" ]] || fail "No App Store Connect key at $key_path."
+else
+  key_paths=()
+  for candidate in "$signing_dir"/AuthKey_*.p8; do
+    [[ -f "$candidate" ]] && key_paths+=("$candidate")
+  done
+  case "${#key_paths[@]}" in
+    0) fail "No AuthKey_<key id>.p8 in $signing_dir. Create an Admin-role team key at App Store Connect → Users and Access → Integrations and download it there, or set APP_STORE_CONNECT_ADMIN_KEY_PATH." ;;
+    1) key_path="${key_paths[0]}" ;;
+    *) fail "More than one App Store Connect key in $signing_dir (${key_paths[*]##*/}). Remove the ones not in use or set APP_STORE_CONNECT_ADMIN_KEY_PATH." ;;
+  esac
+fi
+key_id="$(asc_key_id_from_path "$key_path")" ||
+  fail "$key_path is not named AuthKey_<key id>.p8, which is where the key id is read from. Keep the name App Store Connect downloaded it with."
 
 # The app's bundle identifier is the one Tauri builds with, read rather than
 # repeated here.
@@ -131,7 +143,7 @@ asc_or_fail() {
   status="$(asc "$@")"
   if [[ "$status" != 2?? ]]; then
     case "$status" in
-      401) fail "App Store Connect rejected the token for $method $path (HTTP 401): check APP_STORE_CONNECT_ADMIN_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and that $key_path is that key. $(asc_json errors "$out")" ;;
+      401) fail "App Store Connect rejected the token for $method $path (HTTP 401): check APP_STORE_CONNECT_ISSUER_ID and that $key_path is key $key_id, still active. $(asc_json errors "$out")" ;;
       403) fail "App Store Connect refused $method $path (HTTP 403): certificates and profiles need a team key with the Admin role. $(asc_json errors "$out")" ;;
       *) fail "$method $path answered HTTP $status. $(asc_json errors "$out")" ;;
     esac

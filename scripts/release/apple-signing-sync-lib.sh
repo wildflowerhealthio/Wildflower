@@ -128,6 +128,15 @@ team_id_from_common_name() {
   printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
+# The key id App Store Connect puts in the name of every API key it hands
+# out, AuthKey_<key id>.p8. Args: the key's path. Returns 1 when the file is
+# not named that way.
+asc_key_id_from_path() {
+  local name="${1##*/}"
+  [[ "$name" =~ ^AuthKey_([A-Za-z0-9]+)\.p8$ ]] || return 1
+  printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
 # base64url without padding, as a JWT spells it. Reads stdin. `tr -d '\n'`
 # because GNU base64 wraps and BSD base64 does not.
 base64url() {

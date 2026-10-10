@@ -18,7 +18,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 // (GitHub) and the preflights, so fakes for each go first on PATH:
 //
 // - curl plays App Store Connect from fixture files in FAKE_DIR, signing any
-//   CSR it is sent with a test CA, and logs `<method> <path>` per request.
+//   CSR it is sent with a test CA, and logs `<method> <path>` per request
+//   along with the key id its token names.
 // - gh logs each call's arguments, and for `secret set` / `variable set` the
 //   value it read from stdin, into FAKE_DIR/github/<env>/<name>.
 // - uname answers Darwin, except inside a preflight — recognised by the
@@ -33,13 +34,18 @@ const team = 'ABCDE12345'
 const fakeCurl = `#!/usr/bin/env python3
 import base64, json, os, subprocess, sys, tempfile
 args = sys.argv[1:]
-method, out, body, url = 'GET', None, None, None
+method, out, body, url, kid = 'GET', None, None, None, None
 i = 0
 while i < len(args):
     a = args[i]
     if a == '-X': method = args[i + 1]; i += 1
     elif a == '--output': out = args[i + 1]; i += 1
     elif a == '--data-binary': body = args[i + 1][1:]; i += 1
+    elif a == '-H' and args[i + 1].startswith('@'):
+        with open(args[i + 1][1:]) as header:
+            token = header.read().split('Bearer ', 1)[1].strip()
+        kid = json.loads(base64.urlsafe_b64decode(token.split('.')[0] + '=='))['kid']
+        i += 1
     elif a in ('-H', '--write-out', '--max-time'): i += 1
     elif a.startswith('https://'): url = a
     i += 1
@@ -49,6 +55,7 @@ route = path.split('?', 1)[0]
 with open(os.path.join(fake, 'curl.log'), 'a') as log:
     log.write(method + ' ' + path + '\\n')
     log.write('ARGV ' + ' '.join(args) + '\\n')
+    log.write('KID ' + kid + '\\n')
 status, response = 404, {'errors': [{'status': '404', 'code': 'NOT_FOUND', 'title': 'no route', 'detail': path}]}
 def fixture(name):
     with open(os.path.join(fake, name)) as handle:
@@ -219,7 +226,6 @@ const sync = (
       HOME: dir,
       FAKE_DIR: fake,
       WILDFLOWER_SIGNING_DIR: signing,
-      APP_STORE_CONNECT_ADMIN_KEY_ID: 'ADMINKEY',
       APP_STORE_CONNECT_ISSUER_ID: 'issuer-uuid',
       ...env,
     },
@@ -231,7 +237,7 @@ const appleCalls = (): ReadonlyArray<string> =>
   existsSync(join(fake, 'curl.log'))
     ? readFileSync(join(fake, 'curl.log'), 'utf8')
         .split('\n')
-        .filter((line) => line !== '' && !line.startsWith('ARGV '))
+        .filter((line) => line !== '' && !line.startsWith('ARGV ') && !line.startsWith('KID '))
     : []
 
 const appleWrites = (): ReadonlyArray<string> =>
@@ -600,6 +606,51 @@ describe('apple-signing-sync', { timeout: 30_000 }, () => {
     const result = sync(['--channel', 'android'])
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("Unknown channel 'android'")
+    expect(appleCalls()).toEqual([])
+  })
+
+  it('names the key in the signing folder by its file name', () => {
+    expect(sync(['--channel', 'macos-direct']).status).toBe(0)
+    const kids = readFileSync(join(fake, 'curl.log'), 'utf8')
+      .split('\n')
+      .filter((line) => line.startsWith('KID '))
+    expect(kids.length).toBeGreaterThan(0)
+    expect(new Set(kids)).toEqual(new Set(['KID ADMINKEY']))
+  })
+
+  it('names a key given by path by its file name', () => {
+    const elsewhere = join(dir, 'AuthKey_ELSEWHERE.p8')
+    copyFileSync(join(signing, 'AuthKey_ADMINKEY.p8'), elsewhere)
+    rmSync(join(signing, 'AuthKey_ADMINKEY.p8'))
+    expect(
+      sync(['--channel', 'macos-direct'], { APP_STORE_CONNECT_ADMIN_KEY_PATH: elsewhere }).status
+    ).toBe(0)
+    expect(readFileSync(join(fake, 'curl.log'), 'utf8')).toContain('KID ELSEWHERE\n')
+  })
+
+  it('refuses a signing folder with no key', () => {
+    rmSync(join(signing, 'AuthKey_ADMINKEY.p8'))
+    const result = sync()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(`No AuthKey_<key id>.p8 in ${signing}.`)
+    expect(appleCalls()).toEqual([])
+  })
+
+  // Picking one would be a guess at which key is current.
+  it('refuses a signing folder with more than one key', () => {
+    copyFileSync(join(signing, 'AuthKey_ADMINKEY.p8'), join(signing, 'AuthKey_OLDKEY.p8'))
+    const result = sync()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('AuthKey_ADMINKEY.p8 AuthKey_OLDKEY.p8')
+    expect(appleCalls()).toEqual([])
+  })
+
+  it('refuses a key given by path whose name carries no key id', () => {
+    const renamed = join(dir, 'admin.p8')
+    copyFileSync(join(signing, 'AuthKey_ADMINKEY.p8'), renamed)
+    const result = sync([], { APP_STORE_CONNECT_ADMIN_KEY_PATH: renamed })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(`${renamed} is not named AuthKey_<key id>.p8`)
     expect(appleCalls()).toEqual([])
   })
 

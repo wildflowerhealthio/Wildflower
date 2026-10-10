@@ -148,6 +148,30 @@ describe('team_id_from_common_name', () => {
   })
 })
 
+describe('asc_key_id_from_path', () => {
+  it('reads the key id from the name App Store Connect downloads it with', () => {
+    expect(
+      callHelper('asc_key_id_from_path', '/Users/me/.wildflower-signing/AuthKey_8BXMC4XDDP.p8')
+    ).toBe('8BXMC4XDDP')
+  })
+
+  // The folder may itself look like a key; only the file name counts.
+  it('reads only the file name', () => {
+    expect(callHelper('asc_key_id_from_path', '/keys/AuthKey_FOLDER.p8/AuthKey_ABC123.p8')).toBe(
+      'ABC123'
+    )
+  })
+
+  it.each([
+    '/keys/admin.p8',
+    '/keys/AuthKey_.p8',
+    '/keys/AuthKey_ABC123.p8.bak',
+    '/keys/AuthKey_A B.p8',
+  ])('refuses %s', (path) => {
+    expect(tryHelper('asc_key_id_from_path', path).code).toBe(1)
+  })
+})
+
 // DER INTEGER encoding of an unsigned big-endian value, the way openssl writes
 // r and s: leading zero bytes dropped, and a 00 prepended when the top bit is
 // set so the value does not read as negative.
