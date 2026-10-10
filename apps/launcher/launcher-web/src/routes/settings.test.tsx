@@ -61,13 +61,17 @@ const renderSettingsScreen = (platformSettingsItems: readonly SettingsItem[] = [
  * Links contributed by the slice rows only — the `SettingsLayout` now
  * also renders the persistent `<TabBar>` (a `Primary` navigation), whose
  * Home/Collector/Settings links would otherwise pollute the
- * "/settings/<slice>" assertions below.
+ * "/settings/<slice>" assertions below, and the index ends on the Legal rows,
+ * absolute links to the policy pages on the canonical site.
  */
 const sliceRowLinks = (): readonly HTMLAnchorElement[] => {
   const tabBar = screen.getByRole('navigation', { name: 'Primary' })
   return screen
     .getAllByRole('link')
-    .filter((link): link is HTMLAnchorElement => !tabBar.contains(link))
+    .filter(
+      (link): link is HTMLAnchorElement =>
+        !tabBar.contains(link) && !(link.getAttribute('href') ?? '').startsWith('https://')
+    )
 }
 
 // The screen now renders the persistent tab bar (a `Primary`
@@ -114,6 +118,20 @@ describe('SettingsScreen', () => {
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
       expect(href.startsWith('/settings/')).toBe(true)
+    }
+  })
+
+  test('ends on the Legal rows, each opening a policy page on the canonical site in a new tab', async () => {
+    renderSettingsScreen()
+    await screen.findByRole('navigation', { name: 'Primary' })
+    for (const [name, href] of [
+      ['Privacy policy', 'https://wildflowerhealth.io/privacy-policy/'],
+      ['Terms of use', 'https://wildflowerhealth.io/terms/'],
+      ['Deleting your data', 'https://wildflowerhealth.io/deletion/'],
+    ] as const) {
+      const link = screen.getByRole('link', { name })
+      expect(link.getAttribute('href')).toBe(href)
+      expect(link.getAttribute('target')).toBe('_blank')
     }
   })
 

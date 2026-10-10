@@ -86,5 +86,52 @@ function siteRootFor(section: Exclude<SectionId, 'marketing'>, sectionBaseUrl: s
     : `${SITE_ORIGIN}/`
 }
 
-export { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl, siteRootFor }
-export type { SectionId }
+/**
+ * The marketing site's policy pages, by the directory each is served from
+ * under {@link SITE_ORIGIN}. These must match the HTML entries of
+ * `apps/wildflower-site/marketing-site-web` (`vite.config.ts`) and the
+ * `requiredFiles` of `apps/wildflower-site/wildflower-site-web/src/assembly.ts`.
+ * Google Play and the App Store link to the privacy policy and the deletion
+ * page for Wildflower Host, so their paths are a published contract.
+ */
+const POLICY_PATHS = {
+  privacyPolicy: 'privacy-policy',
+  terms: 'terms',
+  deletion: 'deletion',
+} as const
+
+/** Identifies one of the site's policy pages. */
+type PolicyId = keyof typeof POLICY_PATHS
+
+/** Every policy page, in the order the footer and the settings menus list them. */
+const POLICY_IDS: readonly PolicyId[] = ['privacyPolicy', 'terms', 'deletion']
+
+/** What each policy page is called where it is linked: the footer, the settings menus, the consent dialog. */
+const POLICY_LABELS: Readonly<Record<PolicyId, string>> = {
+  privacyPolicy: 'Privacy policy',
+  terms: 'Terms of use',
+  deletion: 'Deleting your data',
+}
+
+/**
+ * Absolute, slash-terminated URL of a policy page on the canonical site,
+ * e.g. `https://wildflowerhealth.io/privacy-policy/`. Always the canonical
+ * site, never a preview or a dev server: the stores link to these URLs, and
+ * an app's settings menu links to the same page the stores do.
+ */
+function policyUrl(id: PolicyId): string {
+  return `${SITE_ORIGIN}/${POLICY_PATHS[id]}/`
+}
+
+export {
+  POLICY_IDS,
+  POLICY_LABELS,
+  POLICY_PATHS,
+  SECTION_PATHS,
+  SITE_ORIGIN,
+  policyUrl,
+  sectionRootPath,
+  sectionUrl,
+  siteRootFor,
+}
+export type { PolicyId, SectionId }

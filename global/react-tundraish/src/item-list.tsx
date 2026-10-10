@@ -36,13 +36,15 @@ type ItemListItemBase = {
 /**
  * Three interaction variants:
  * - `href` → navigates (TanStack `<Link>` for in-app paths, `<a>` for
- *   absolute URLs).
+ *   absolute URLs). `external` opens an absolute URL in a new tab, or, in a
+ *   Tauri webview, the system browser, so a settings row can link to a web
+ *   page without navigating the app away.
  * - `onClick` → button.
  * - none → static, non-interactive row (e.g. a read-only feed entry).
  */
 type ItemListItem = ItemListItemBase &
   (
-    | { readonly href: string; readonly onClick?: never }
+    | { readonly href: string; readonly external?: boolean; readonly onClick?: never }
     | { readonly href?: never; readonly onClick: () => void }
     | { readonly href?: never; readonly onClick?: never }
   )
@@ -148,7 +150,11 @@ const ItemListRow = ({
           </Link>
         )
       }
-      return (
+      return item.external === true ? (
+        <a className={textClass} href={item.href} target="_blank" rel="noreferrer">
+          {textChildren}
+        </a>
+      ) : (
         <a className={textClass} href={item.href}>
           {textChildren}
         </a>
