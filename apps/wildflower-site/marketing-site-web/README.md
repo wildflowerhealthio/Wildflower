@@ -32,6 +32,15 @@ vp build    # production build to dist/
   `built`, `possible-today`, `asks`, `dev-tools`) plus the page's own chrome
   (`site-header`, `site-footer`) and shared pieces (`app-row`, `launcher`,
   `layout.module.css`). Each `.tsx` pairs with a `*.module.css`.
+- `privacy-policy/index.html`, `deletion/index.html` — the two policy pages,
+  built as extra Vite entries (`vite.config.ts`) so they are served at
+  `/privacy-policy/` and `/deletion/`. Their entry modules
+  (`src/privacy-policy-main.tsx`, `src/deletion-main.tsx`) render
+  `src/pages/*` inside `components/policy-page.tsx`, which wraps the shared
+  header and footer around one prose column. Google Play links to both pages
+  for Wildflower Host, so keep them true of what the apps and the relay
+  actually collect, and bump the `updated` date with any change.
+- `src/mount-page.tsx` — the shared styles and `createRoot` every entry uses.
 - `src/count-up.ts` — the stats count-up animation (reads its targets from the
   rendered DOM; respects `prefers-reduced-motion`; unit- and property-tested in
   `count-up.test.ts`).

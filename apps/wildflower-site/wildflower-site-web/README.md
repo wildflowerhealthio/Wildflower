@@ -7,6 +7,8 @@ that owns it, and this package places those outputs at their public URLs.
 | URL                 | Source package                                                        |
 | ------------------- | --------------------------------------------------------------------- |
 | `/`                 | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
+| `/privacy-policy`   | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
+| `/deletion`         | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
 | `/medications`      | `medications-web` (`apps/medications/medications-web`)                |
 | `/importer`         | `importer-web` (`apps/importer-web`)                                  |
 | `/server-docs`      | `server-docs-web` (`apps/server-docs-web`)                            |

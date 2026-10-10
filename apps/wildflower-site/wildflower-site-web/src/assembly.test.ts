@@ -65,6 +65,9 @@ describe('site layout', () => {
     // the uploaded artifact.
     expect(marketing?.requiredPaths).toContain(join(outDir, 'CNAME'))
     expect(marketing?.requiredPaths).toContain(join(outDir, 'index.html'))
+    // The app stores link to the policy pages by these URLs.
+    expect(marketing?.requiredPaths).toContain(join(outDir, 'privacy-policy', 'index.html'))
+    expect(marketing?.requiredPaths).toContain(join(outDir, 'deletion', 'index.html'))
   })
 
   it('serves the medications app from /medications with its one SMART entry', () => {

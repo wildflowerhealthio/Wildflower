@@ -1,0 +1,46 @@
+/*
+ * The policy pages: one prose column under the shared header, with the same
+ * section padding as the homepage's sections and the homepage's type roles
+ * (`layout.module.css`). The body keeps the essay's prose measure.
+ */
+
+.policy-page {
+  /* Ramp has no stage rung past 64px; the 92px ceiling stays literal. */
+  padding: clamp(var(--space-13), 7vw, 92px) 0;
+}
+
+.policy-page__title {
+  margin: 0 0 var(--space-5);
+  color: var(--color-neutral-1);
+  font-size: clamp(var(--font-size-6), 3vw, var(--font-size-8));
+  font-weight: var(--font-weight-4);
+  line-height: var(--line-height-2);
+  letter-spacing: var(--letter-spacing-1);
+}
+
+.policy-page__body {
+  display: grid;
+  gap: clamp(var(--space-9), 3vw, var(--space-11));
+  max-width: var(--prose-max-width);
+  margin-top: clamp(var(--space-9), 3vw, var(--space-11));
+}
+
+.policy-page__section {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.policy-page__section p,
+.policy-page__section ul,
+.policy-page__section ol {
+  margin: 0;
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
+}
+
+.policy-page__section ul,
+.policy-page__section ol {
+  display: grid;
+  gap: var(--space-3);
+  padding-left: var(--space-9);
+}
