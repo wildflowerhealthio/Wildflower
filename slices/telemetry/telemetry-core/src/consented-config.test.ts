@@ -11,7 +11,7 @@ const baseConfig: TelemetryConfig = configFromEnv({
   SENTRY_RELEASE: 'abc123',
   SENTRY_TRACES_SAMPLE_RATE: '0.25',
   SENTRY_PROFILES_SAMPLE_RATE: '0.5',
-  OTEL_SERVICE_NAME: 'medications-app',
+  OTEL_SERVICE_NAME: 'medications-web',
   OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otel.example/v1/traces',
 })
 

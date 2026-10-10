@@ -61,12 +61,12 @@ const PUBLISHED_SNAPSHOT_ADDRESS = 'https://wildflowerhealthio.github.io/synthet
 /**
  * Where this app's telemetry goes once the visitor consents to it: its own
  * Sentry project, whose DSN is the `VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB` build
- * variable, with `synthetic-data-app` as the `app` tag. A build that sets no
+ * variable, with `synthetic-data-web` as the `app` tag. A build that sets no
  * DSN reports nothing.
  */
 const smartAppTelemetry: SmartAppTelemetry = {
   dsn: import.meta.env.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB ?? '',
-  app: 'synthetic-data-app',
+  app: 'synthetic-data-web',
 }
 
 export { PUBLISHED_SNAPSHOT_ADDRESS, smartAppTelemetry, smartRegistration, SYNTHETIC_DATA_SCOPE }

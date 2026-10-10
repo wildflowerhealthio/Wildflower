@@ -33,7 +33,7 @@ describe('CrashReportingBoundary', () => {
   it('should render its children, and report nothing, while they render', () => {
     // Arrange / Act
     render(
-      <CrashReportingBoundary extraContext={{ app: 'medications-app' }}>
+      <CrashReportingBoundary extraContext={{ app: 'medications-web' }}>
         <p>the app</p>
       </CrashReportingBoundary>
     )

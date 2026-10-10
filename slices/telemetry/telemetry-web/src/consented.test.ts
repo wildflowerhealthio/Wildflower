@@ -30,7 +30,7 @@ const buildConfig = configFromEnv({
   SENTRY_PROFILES_SAMPLE_RATE: '1',
 })
 
-const tags = { app: 'medications-app', launch: 'launched' } as const
+const tags = { app: 'medications-web', launch: 'launched' } as const
 
 const consentWith = (switches: {
   readonly crashReports: boolean

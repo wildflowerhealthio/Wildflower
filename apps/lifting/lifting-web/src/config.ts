@@ -65,12 +65,12 @@ const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
 /**
  * Where this app's telemetry goes once the visitor consents to it: its own
  * Sentry project, whose DSN is the `VITE_SENTRY_DSN_LIFTING_WEB` build
- * variable, with `lifting-app` as the `app` tag. A build that sets no DSN
+ * variable, with `lifting-web` as the `app` tag. A build that sets no DSN
  * reports nothing.
  */
 const smartAppTelemetry: SmartAppTelemetry = {
   dsn: import.meta.env.VITE_SENTRY_DSN_LIFTING_WEB ?? '',
-  app: 'lifting-app',
+  app: 'lifting-web',
 }
 
 export { LIFTING_SCOPE, smartAppTelemetry, smartRegistration }

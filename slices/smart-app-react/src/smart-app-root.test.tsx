@@ -110,7 +110,7 @@ const REGISTRATION = {
 
 const TELEMETRY: SmartAppTelemetry = {
   dsn: 'https://key@sentry.example/42',
-  app: 'medications-app',
+  app: 'medications-web',
 }
 
 const MARKETING_ORIGIN = 'https://wildflowerhealth.io/'

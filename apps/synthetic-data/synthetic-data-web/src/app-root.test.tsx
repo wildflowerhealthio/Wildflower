@@ -67,6 +67,6 @@ describe('AppRoot', () => {
     expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
     const [{ config, tags }] = initConsentedTelemetryMock.mock.calls[0]
     expect(config.sentry.dsn).toBe(SENTRY_DSN)
-    expect(tags.app).toBe('synthetic-data-app')
+    expect(tags.app).toBe('synthetic-data-web')
   })
 })

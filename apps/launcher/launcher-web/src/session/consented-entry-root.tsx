@@ -43,7 +43,7 @@ function BootedApp({ bootedApp }: { readonly bootedApp: Promise<ReactNode> }): R
  * started. A stored answer is handed to the gate's `onDecided` in the first
  * commit, as a new one is on Continue; either way the answer starts telemetry
  * (reporting to the `VITE_SENTRY_DSN_LAUNCHER_WEB` project, tagged
- * `app: wildflower-react` and `entry`) and only then calls `bootApp`, once,
+ * `app: launcher-web` and `entry`) and only then calls `bootApp`, once,
  * so a persisted yes has Sentry and the tracer provider running before the
  * router and runtime are built. Later answers (the Telemetry row in settings
  * reopens the dialog) start or narrow telemetry and leave the app mounted. A
@@ -52,7 +52,7 @@ function BootedApp({ bootedApp }: { readonly bootedApp: Promise<ReactNode> }): R
 function ConsentedEntryRoot({ entry, copy, bootApp }: ConsentedEntryRootProps): JSX.Element {
   const { startTelemetry } = useConsentedTelemetryStart({
     dsn: import.meta.env.VITE_SENTRY_DSN_LAUNCHER_WEB ?? '',
-    tags: { app: 'wildflower-react', entry },
+    tags: { app: 'launcher-web', entry },
   })
   // StrictMode runs the gate's layout effect twice on mount; the sign-in
   // redemption in `main-web`'s `bootApp` spends a single-use code, so it

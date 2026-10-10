@@ -17,7 +17,7 @@ vi.mock('telemetry-web', async (importOriginal) => ({
 }))
 
 const APP_DSN = 'https://key@sentry.example/9'
-const TAGS = { app: 'wildflower-react', entry: 'main-web' } as const
+const TAGS = { app: 'launcher-web', entry: 'main-web' } as const
 
 const consentWith = (switches: {
   readonly crashReports: boolean

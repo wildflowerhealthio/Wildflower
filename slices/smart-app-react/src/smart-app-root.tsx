@@ -39,7 +39,7 @@ interface SmartAppTelemetry {
    */
   readonly dsn: string
   /**
-   * The app's id, e.g. `'medications-app'`: the `app` tag on every event and
+   * The app's id, e.g. `'medications-web'`: the `app` tag on every event and
    * the OpenTelemetry service name.
    */
   readonly app: string

@@ -95,8 +95,8 @@ describe('ConsentedEntryRoot on main-web', () => {
     const [{ consent, config, tags }] = initConsentedTelemetryMock.mock.calls[0]
     expect(consent).toMatchObject({ crashReports: true, performance: true })
     expect(config.sentry.dsn).toBe(LAUNCHER_DSN)
-    expect(config.otel.serviceName).toBe('wildflower-react')
-    expect(tags).toStrictEqual({ app: 'wildflower-react', entry: 'main-web' })
+    expect(config.otel.serviceName).toBe('launcher-web')
+    expect(tags).toStrictEqual({ app: 'launcher-web', entry: 'main-web' })
     expect(bootApp).toHaveBeenCalledTimes(1)
     expect(initConsentedTelemetryMock.mock.invocationCallOrder[0]).toBeLessThan(
       bootApp.mock.invocationCallOrder[0]
@@ -232,7 +232,7 @@ describe('ConsentedEntryRoot on main-tauri', () => {
     const [{ consent, config, tags }] = initConsentedTelemetryMock.mock.calls[0]
     expect(consent).toMatchObject({ crashReports: true, performance: false })
     expect(config.sentry.dsn).toBe(LAUNCHER_DSN)
-    expect(tags).toStrictEqual({ app: 'wildflower-react', entry: 'main-tauri' })
+    expect(tags).toStrictEqual({ app: 'launcher-web', entry: 'main-tauri' })
     expect(bootApp).toHaveBeenCalledTimes(1)
     expect(initConsentedTelemetryMock.mock.invocationCallOrder[0]).toBeLessThan(
       bootApp.mock.invocationCallOrder[0]

@@ -498,7 +498,7 @@ lastError?: {kind, …}}`.
   `TelemetryConsentGate` with `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY`; until
   it is answered no router or query cache exists and no host command is
   called. The answer starts telemetry with the DSN the app passes, from
-  `VITE_SENTRY_DSN_HOST_APP`, tagged `app: wildflower-tauri`. The web
+  `VITE_SENTRY_DSN_HOST_APP`, tagged `app: host-app`. The web
   app's consent is its own, on its own origin.
 - **`servers-rust` has no `tauri` dependency**, so it builds and tests in the
   non-Tauri partition of `scripts/checks/rust.sh`. Its one unit runner

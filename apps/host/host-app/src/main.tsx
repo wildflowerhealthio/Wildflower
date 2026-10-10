@@ -43,7 +43,7 @@ createRoot(rootElement).render(
       defaultLauncherUrl={launcherBaseUrl}
       telemetry={{
         dsn: import.meta.env.VITE_SENTRY_DSN_HOST_APP ?? '',
-        app: 'wildflower-tauri',
+        app: 'host-app',
       }}
     />
   </StrictMode>

@@ -208,7 +208,7 @@ const renderBase = ({
       listen={events.listen}
       backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
       defaultLauncherUrl={DEFAULT_LAUNCHER_URL}
-      telemetry={{ dsn: BASE_DSN, app: 'wildflower-tauri' }}
+      telemetry={{ dsn: BASE_DSN, app: 'host-app' }}
       httpClient={httpClient}
       history={createMemoryHistory({ initialEntries: [path] })}
       storage={storage}
@@ -279,7 +279,7 @@ describe('BaseRoot', () => {
     expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
     const [{ consent, tags }] = initConsentedTelemetryMock.mock.calls[0]
     expect(consent).toMatchObject({ crashReports: false, performance: false })
-    expect(tags).toStrictEqual({ app: 'wildflower-tauri' })
+    expect(tags).toStrictEqual({ app: 'host-app' })
   })
 
   it('should start telemetry with the base DSN from a stored answer, without the dialog', async () => {
@@ -299,8 +299,8 @@ describe('BaseRoot', () => {
     const [{ consent, config, tags }] = initConsentedTelemetryMock.mock.calls[0]
     expect(consent).toMatchObject({ crashReports: true, performance: false })
     expect(config.sentry.dsn).toBe(BASE_DSN)
-    expect(config.otel.serviceName).toBe('wildflower-tauri')
-    expect(tags).toStrictEqual({ app: 'wildflower-tauri' })
+    expect(config.otel.serviceName).toBe('host-app')
+    expect(tags).toStrictEqual({ app: 'host-app' })
   })
 
   it('should show the empty server list, and reach Host Settings from it', async () => {

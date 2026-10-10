@@ -22,7 +22,7 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   `TELEMETRY_CONSENT_COPY`, `main-tauri` `branding-core`'s
   `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY`. The answer, kept in the page's
   `localStorage`, starts telemetry (`useConsentedTelemetryStart`, DSN
-  `VITE_SENTRY_DSN_LAUNCHER_WEB`, tags `app: wildflower-react` and
+  `VITE_SENTRY_DSN_LAUNCHER_WEB`, tags `app: launcher-web` and
   `entry`) and only then calls `bootApp`, once: on `main-web` the sign-in
   redemption, then `buildAppTree`; on `main-tauri` `buildAppTree` alone. So
   before an answer no code is redeemed and no router, `QueryClient`, runtime

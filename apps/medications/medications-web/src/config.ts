@@ -64,11 +64,11 @@ const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
 /**
  * Where this app's telemetry goes once the visitor consents to it: its own
  * Sentry project, whose DSN is the `VITE_SENTRY_DSN_MEDICATIONS_WEB` build variable, with
- * `medications-app` as the `app` tag. A build that sets no DSN reports nothing.
+ * `medications-web` as the `app` tag. A build that sets no DSN reports nothing.
  */
 const smartAppTelemetry: SmartAppTelemetry = {
   dsn: import.meta.env.VITE_SENTRY_DSN_MEDICATIONS_WEB ?? '',
-  app: 'medications-app',
+  app: 'medications-web',
 }
 
 export { MEDICATIONS_SCOPE, smartAppTelemetry, smartRegistration }

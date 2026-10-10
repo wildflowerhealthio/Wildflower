@@ -24,7 +24,7 @@ its authed runner from route context. Like the Importer, **this app writes.**
   starts, neither the connect menu nor the app mounts, and nothing loads. A
   launch the URL carries then starts under a loading line. `smartAppTelemetry` names the app's own Sentry project through the
   `VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB` build variable (see `.env.example`), with
-  `synthetic-data-app` as its `app` tag. A bare visit shows
+  `synthetic-data-web` as its `app` tag. A bare visit shows
   `APP_DESCRIPTIONS.syntheticData`'s landing beside the `ConnectMenu`.
 - `src/app.tsx` — `App` completes the handshake (`useSmartHandshake`; a
   failure goes back to the app root through `useLaunchFailureRedirect`) and
