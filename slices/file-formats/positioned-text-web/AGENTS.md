@@ -34,7 +34,7 @@ Depends on `positioned-text` (the schema it produces) and `pdfjs-dist`
 - [slices/file-formats AGENTS.md](../AGENTS.md) — the slice's role and layering.
 - [positioned-text AGENTS.md](../positioned-text/AGENTS.md) — the schema this
   seam fills.
-- [pdf-anonymizer-react AGENTS.md](../../../apps/importer/anonymizer/pdf-anonymizer-react/AGENTS.md)
+- [pdf-anonymizer-react AGENTS.md](../../../slices/anonymizer/pdf-anonymizer-react/AGENTS.md)
   — the panel whose descriptor calls this seam.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

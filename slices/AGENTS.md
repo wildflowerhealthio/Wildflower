@@ -21,11 +21,11 @@ Slices may also carry slice-specific packages (e.g. `fhir-r4` / `fhir-r4-react` 
 
 A slice of one package is not a folder: the package sits directly in `slices/`, as `slices/<package>/`, and keeps its own name and layer suffix. Its AGENTS.md (if any) is the package's. When a second package joins it, it becomes a `slices/<name>/` folder again.
 
-Current slices: `branding`, `browser-sniffer`, `file-formats`, `fhir`, `gatekeeper`, `http-extraction`, `importer`, `medication`, `scopes`, `shared-structures`, `telemetry`. Lone packages: `navigation-core`, `ohif-server-rust`, `persistence-rust`, `rathole-settings-rust`, `smart-app-react`, `web-trace-core`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `branding`, `browser-sniffer`, `file-formats`, `fhir`, `gatekeeper`, `http-extraction`, `importer`, `medication`, `scopes`, `shared-structures`, `telemetry`. Lone packages: `fhir-sync-pebble-core`, `navigation-core`, `ohif-server-rust`, `persistence-rust`, `rathole-settings-rust`, `smart-app-react`, `web-trace-core`. Verify with `ls slices/` — this list can go stale.
 
 The collectors, the HAR Recorder, databases, the request log and the app registry are not slices: each was used by the launcher alone in TypeScript and by the host alone in Rust, so their TypeScript packages live in `apps/launcher/` (`collector/`, `har-recorder/`, `databases/`, `request-log/`, `apps-core-js`, `apps-react`) and their crates in `apps/host/wildflower-server/` — see [apps/AGENTS.md](../apps/AGENTS.md#what-folds-in). The same folder holds the Rust halves of slices whose TypeScript other products share: `gatekeeper-rust` and `token-revocation-rust` (from `gatekeeper`), `fhir-r4-rust` (from `fhir`) and `tunnel-rust`, whose settings the relay shares as `slices/rathole-settings-rust`. The dev servers' ports, `dev-app-ports.json`, sit at the repo root.
 
-`http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `rexall-be-well-source`, `shoppers-drugmart-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two consumers build on it and neither owns it: the collectors (in `apps/launcher/collector`) run the vocabulary live against a sniffer webview, and `importer` — the per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md). The importer slice keeps the fundamentals and format bindings the Synthetic Data Loader also runs; the Importer's core, shell, format screens and the anonymizer live with the app in `apps/importer` — see [apps/importer/AGENTS.md](../apps/importer/AGENTS.md).
+`http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `rexall-be-well-source`, `shoppers-drugmart-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two consumers build on it and neither owns it: the collectors (in `apps/launcher/collector`) run the vocabulary live against a sniffer webview, and `importer` — the per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md). The importer slice holds the fundamentals and format bindings the Synthetic Data Loader also runs, and the core, shell and format screens the Importer app mounts; the anonymizer it pairs with is its own slice, `anonymizer` — see [anonymizer/AGENTS.md](./anonymizer/AGENTS.md). The app itself is [`apps/importer-web`](../apps/importer-web/AGENTS.md).
 
 `medication` is the shared base of a patient's medication list — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values, which the Health Viewer reads too, and `medication-calendar-core` the fill-date arithmetic. Two features build on it, neither owning the base, and live with the medications app in `apps/medications` — see [apps/medications/AGENTS.md](../apps/medications/AGENTS.md): `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
 
@@ -41,12 +41,13 @@ catalogue, range presets and the URL codec a shared link round-trips through —
 all pure functions, property-tested without a DOM. `health-viewer-react` draws
 the fundamentals' series with Observable Plot, importing no domain package.
 
-FHIR Sync for Pebble is not a slice: the watchapp, its settings page and their
-pure core live together in `apps/fhir-sync-pebble` — see
-[apps/fhir-sync-pebble/AGENTS.md](../apps/fhir-sync-pebble/AGENTS.md). Its
-`fhir-sync-pebble-core-js` is the patients the page lists, the settings the
-watch receives, and the phone's decoding of the watch's data, as pure
-functions.
+FHIR Sync for Pebble's watchapp and settings page live in
+`apps/fhir-sync-pebble` — see
+[apps/fhir-sync-pebble/AGENTS.md](../apps/fhir-sync-pebble/AGENTS.md). Their
+pure core, `fhir-sync-pebble-core`, is a slice here, because the Synthetic
+Data Loader's Pebble generator writes through it too: the patients the page
+lists, the settings the watch receives, and the phone's decoding of the
+watch's data, as pure functions.
 
 WatchLifts is not a slice either: the watchapp, its settings page and their
 pure core live together in `apps/watch-lifts` — see
@@ -149,13 +150,13 @@ effect-messaging bridge.
 
 `smart-app-react` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app-react/AGENTS.md](./smart-app-react/AGENTS.md). It joins `fhir`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
-`web-trace-core` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace-core/AGENTS.md](./web-trace-core/AGENTS.md). It sits below both the collectors and the HAR packages (`http-archive`, `har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core-js`), which is why it stands on its own rather than as a package inside any of them. The collector that consumes it, [`web-trace-collector`](../apps/launcher/collector/web-trace-collector/AGENTS.md), lives with the other collectors in `apps/launcher/collector` — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
+`web-trace-core` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace-core/AGENTS.md](./web-trace-core/AGENTS.md). It sits below both the collectors and the HAR packages (`http-archive`, `har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core`), which is why it stands on its own rather than as a package inside any of them. The collector that consumes it, [`web-trace-collector`](../apps/launcher/collector/web-trace-collector/AGENTS.md), lives with the other collectors in `apps/launcher/collector` — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
 
 ## Rules
 
 - **`<name>-core` is the pure layer** — no DOM, no Node `fs`, no platform-specific imports
 - **Platform adapters depend on `-core`, never the reverse**
-- **Slices don't depend on `apps/`** — with one deliberate exception: `browser-sniffer-tauri-rust` depends on `apps/host/tauri-plugin-native-webview`, since the plugin lives with the host it is registered in.
+- **Slices don't depend on `apps/`**, not even from their tests. This and the two rules above are checked by `scripts/package-graph.test.ts` — see the [Package Graph Rules Explanation](../docs/Dependencies/Package%20Graph%20Rules%20Explanation.md).
 - **Compose `HttpApi` groups across slices via the phantom-id bridge pattern** — see [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md)
 - **Don't use `topLevel: true` on multiple `HttpApiGroup`s under the same `HttpApi`** — name collision in the generated client. See [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md).
 - **In a `<name>-react` route file, annotate `useRouteContext`'s `select`.** A slice type-checks both standalone (`vp run --filter <slice> check`) and mounted under `apps/launcher/launcher-web`. Standalone there is no registered Router, so `RegisteredRouter` falls back to `AnyRouter` and a bare `Route.useRouteContext()` / `useRouteContext()` widens to `any` (`no-unsafe-assignment` under oxlint). Fix without a cast: give the slice its own structural `RouterContext` (`BaseRouterContext.RouterContextWith<…>`, re-declared per slice — never imported from the app), and read context through an annotated select, e.g. `useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })`. `Route.useParams()` needs no annotation (params come from the route's own path). See `apps/launcher/collector/collector-react/src/queries/use-run-authed.ts` for the pattern.

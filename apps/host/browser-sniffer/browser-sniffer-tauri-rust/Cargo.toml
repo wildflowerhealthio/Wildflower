@@ -1,0 +1,28 @@
+[package]
+name = "browser-sniffer-tauri-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-log = "2"
+serde.workspace = true
+# `raw_value` lets `native_webview_bridge` forward an untrusted native-webview
+# message's inner payload as a borrowed `&RawValue` — one parse, no intermediate
+# `Value`, no deep clone — on the mobile streaming hot path. See
+# `native_webview_bridge.rs`.
+serde_json = { workspace = true, features = ["raw_value"] }
+shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust" }
+anyhow.workspace = true
+url = "2"
+# On iOS/Android the sniffer runs in the native-webview plugin (a real
+# WKWebView / android.webkit.WebView with native chrome) instead of a Tauri
+# WebviewWindow — see `sniffer_window.rs` for the cfg-gated routing. Desktop
+# keeps the WebviewWindow path; the plugin compiles to a no-op shell on those
+# targets but stays linked so the host registration in `host-app` works.
+tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true

@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as fc from 'fast-check'
-import { PhoneSettings } from 'fhir-sync-pebble-core-js/pkjs'
+import { PhoneSettings } from 'fhir-sync-pebble-core/pkjs'
 import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 

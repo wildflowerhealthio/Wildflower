@@ -1,0 +1,64 @@
+{
+  "name": "lifelabs-pdf-importer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The LifeLabs PDF binding of the importer slice: the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports, the FHIR R4 synthesis, and the format's FileImporter. It carries no layer suffix because it is not a pure -core: its decode binds positioned-text-web's pdfjs extraction seam to read a picked PDF's bytes. The /synthesis subpath stays free of that seam. No fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/importer/lifelabs-pdf-importer"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./source-file": {
+      "source": "./src/source-file.ts",
+      "default": "./dist/source-file.js"
+    },
+    "./synthesis": {
+      "source": "./src/synthesis.ts",
+      "default": "./dist/synthesis.js"
+    },
+    "./test-helpers": {
+      "source": "./src/test-helpers.ts",
+      "default": "./dist/test-helpers.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "positioned-text": "workspace:*",
+    "positioned-text-web": "workspace:*",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "positioned-text": "workspace:*",
+    "positioned-text-web": "workspace:*"
+  }
+}

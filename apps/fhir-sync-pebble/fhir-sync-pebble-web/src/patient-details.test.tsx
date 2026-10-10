@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { Schema } from 'effect'
-import { PatientSummary, type PebbleSettings } from 'fhir-sync-pebble-core-js'
+import { PatientSummary, type PebbleSettings } from 'fhir-sync-pebble-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { PatientDetails } from './patient-details.tsx'

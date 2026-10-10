@@ -5,8 +5,10 @@ heart rate the Pebble records to a FHIR server. The watchapp itself, C for the
 watch and PebbleKit JS for the phone, is
 [`fhir-sync-pebble-watchapp`](./fhir-sync-pebble-watchapp/AGENTS.md); its
 settings page is [`fhir-sync-pebble-web`](./fhir-sync-pebble-web/AGENTS.md).
-The package beside them, `fhir-sync-pebble-core-js`, holds what the settings
-page decides and what the PebbleKit JS does with the watch's data.
+Their core, [`slices/fhir-sync-pebble-core`](../../slices/fhir-sync-pebble-core),
+holds what the settings page decides and what the PebbleKit JS does with the
+watch's data. It is a slice, not a package here, because the Synthetic Data
+Loader's Pebble generator writes through it too.
 
 ## Packages
 
@@ -16,12 +18,12 @@ page decides and what the PebbleKit JS does with the watch's data.
   (`fhir-sync-pebble-test`).
 - `fhir-sync-pebble-web` — the settings page, published at
   `/fhir-sync-pebble` on the GitHub Pages site.
-- `fhir-sync-pebble-core-js` — the pure layer.
+- `fhir-sync-pebble-core` (in `slices/`) — the pure layer.
   Namespace modules, all re-exported from the package index. For the settings
   page: `PatientSummary` (a patient the settings page lists, read leniently
   out of a `Patient` search) and `PebbleSettings` (the watch's wire shape,
   built from the SMART grant and the picked patient). For the PebbleKit JS, also
-  exported alone as `fhir-sync-pebble-core-js/pkjs`: `PhoneSettings` (the
+  exported alone as `fhir-sync-pebble-core/pkjs`: `PhoneSettings` (the
   settings decoded on the phone, and the watch's part), `HealthActivity` and
   `MinuteHistory` (the watch's activity and hour messages decoded, and the
   Observations each becomes; `HealthActivityType` names pebble.h's activity

@@ -10,8 +10,8 @@ import {
   Practitioner,
 } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
-import { decodeLifeLabsPdfDocument, Report } from 'lifelabs-pdf-importer-core'
-import { layoutDocument } from 'lifelabs-pdf-importer-core/test-helpers'
+import { decodeLifeLabsPdfDocument, Report } from 'lifelabs-pdf-importer'
+import { layoutDocument } from 'lifelabs-pdf-importer/test-helpers'
 import { type Story, StoryDay } from 'synthetic-data-fundamentals/story'
 import { asOfArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'

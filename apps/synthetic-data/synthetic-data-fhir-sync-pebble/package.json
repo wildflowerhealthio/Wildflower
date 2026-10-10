@@ -2,7 +2,7 @@
   "name": "synthetic-data-fhir-sync-pebble",
   "version": "0.0.0",
   "private": true,
-  "description": "The FHIR Sync for Pebble synthetic data generator: a Physiology — resting heart rate, walks, nights and charging, day by day relative to the as-of date — as the heart-rate, steps and movement minute history and the Sleep, RestfulSleep and Walk activity Observations the phone app writes, built by fhir-sync-pebble-core-js's own HealthActivity, MinuteHistory and WatchSync. Pure — no DOM, no fs, no React.",
+  "description": "The FHIR Sync for Pebble synthetic data generator: a Physiology — resting heart rate, walks, nights and charging, day by day relative to the as-of date — as the heart-rate, steps and movement minute history and the Sleep, RestfulSleep and Walk activity Observations the phone app writes, built by fhir-sync-pebble-core's own HealthActivity, MinuteHistory and WatchSync. Pure — no DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -35,7 +35,7 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
-    "fhir-sync-pebble-core-js": "workspace:*",
+    "fhir-sync-pebble-core": "workspace:*",
     "kitchen-sink": "workspace:*",
     "synthetic-data-fundamentals": "workspace:*",
     "typescript": "catalog:",
@@ -45,7 +45,7 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "fhir-sync-pebble-core-js": "workspace:*",
+    "fhir-sync-pebble-core": "workspace:*",
     "synthetic-data-fundamentals": "workspace:*"
   }
 }

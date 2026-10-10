@@ -10,7 +10,7 @@ Page-sniffing primitive: shims `fetch`/`XHR`/`console` inside arbitrary third-pa
 ## Traps
 
 - There are **two bootstrap variants** (Tauri desktop vs native/mobile) built from separate entries — a change to the sniffer body usually affects both.
-- `browser-sniffer-tauri-rust/src/events.rs` is a drift guard pinning the TS event names — keep it in sync when renaming events.
+- The Rust host adapter lives with the host, in `apps/host/browser-sniffer/browser-sniffer-tauri-rust`. Its `src/events.rs` is a drift guard pinning the TS event names — keep it in sync when renaming events.
 - The control-tag vs data-plane capability split is enforced at the transport layer, not by event naming — see the [Tauri Host Explanation](./docs/Tauri%20Host%20Explanation.md).
 
 ## References

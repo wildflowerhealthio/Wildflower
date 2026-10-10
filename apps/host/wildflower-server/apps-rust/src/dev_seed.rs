@@ -139,7 +139,7 @@ fn dev_apps() -> [DevApp; 7] {
             id: "importer-dev",
             client_id: IMPORTER_DEV_CLIENT_ID,
             name: "Importer (Dev)",
-            subtitle: "Local vite dev server for apps/importer/importer-web",
+            subtitle: "Local vite dev server for apps/importer-web",
             url: dev_launch_url(ports.importer_dev),
         },
         DevApp {

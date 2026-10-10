@@ -126,11 +126,11 @@ carrying the one `ImagingStudy` its files make up.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).
 - **Does not depend on**: any DOM, `fs`, or React package. Does not depend on
-  `har-importer-core`, `lifelabs-pdf-importer-core`, or
+  `har-importer-core`, `lifelabs-pdf-importer`, or
   `http-extraction-fundamentals`.
 
 ## References
 
 - [Adding a File-Format Importer How-To](../docs/Adding%20a%20File-Format%20Importer%20How-To.md)
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md)
-- [importer-react AGENTS.md](../../../apps/importer/importer-react/AGENTS.md)
+- [importer-react AGENTS.md](../../../slices/importer/importer-react/AGENTS.md)

@@ -50,9 +50,9 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: 'importer-web',
-    // The package lives in `apps/importer/importer-web`; its published path is
+    // The package lives in `apps/importer-web`; its published path is
     // `/${SECTION_PATHS.importer}`.
-    sourceDir: 'apps/importer/importer-web/dist',
+    sourceDir: 'apps/importer-web/dist',
     destPath: SECTION_PATHS.importer,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare

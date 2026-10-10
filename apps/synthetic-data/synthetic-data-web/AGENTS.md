@@ -8,7 +8,7 @@ loads a published synthetic data snapshot — by default the one
 deploys to <https://wildflowerhealthio.github.io/synthetic-data/> — into the
 FHIR server it is connected to.
 
-`apps/importer/importer-web` is the template: the same one HTML entry, relative
+`apps/importer-web` is the template: the same one HTML entry, relative
 `base`, build into the package's own `dist/`, `SmartAppRoot` shell, and a
 memory router carrying a SMART-built context, because the slice screen reads
 its authed runner from route context. Like the Importer, **this app writes.**
@@ -105,5 +105,5 @@ enter that address.
   — the snapshot's files, and reading them back.
 - [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md) — the shell
   and the consent gate.
-- [apps/importer/importer-web AGENTS.md](../../importer/importer-web/AGENTS.md) — the template.
+- [apps/importer-web AGENTS.md](../../importer-web/AGENTS.md) — the template.
 - [apps/AGENTS.md](../../AGENTS.md) — the rules every app follows.

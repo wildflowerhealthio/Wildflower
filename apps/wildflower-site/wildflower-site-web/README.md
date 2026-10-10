@@ -8,7 +8,7 @@ that owns it, and this package places those outputs at their public URLs.
 | ------------------- | --------------------------------------------------------------------- |
 | `/`                 | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
 | `/medications`      | `medications-web` (`apps/medications/medications-web`)                |
-| `/importer`         | `importer-web` (`apps/importer/importer-web`)                         |
+| `/importer`         | `importer-web` (`apps/importer-web`)                                  |
 | `/server-docs`      | `server-docs-web` (`apps/server-docs-web`)                            |
 | `/ohif-viewer`      | `ohif-viewer-web` (`apps/ohif-viewer-web`)                            |
 | `/fhir-sync-pebble` | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble/fhir-sync-pebble-web`) |

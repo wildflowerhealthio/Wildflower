@@ -1,4 +1,4 @@
-import { PhoneSettings } from 'fhir-sync-pebble-core-js/pkjs'
+import { PhoneSettings } from 'fhir-sync-pebble-core/pkjs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 // src/index.ts is the glue between PebbleKit JS and the core: what it does

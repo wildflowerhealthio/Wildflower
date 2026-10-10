@@ -2,7 +2,7 @@
   "name": "synthetic-data-lifelabs",
   "version": "0.0.0",
   "private": true,
-  "description": "The LifeLabs synthetic data generator: a synthetic-data-fundamentals Story's lab draws as the LifeLabs reports a laboratory prints, and as the FHIR R4 resources lifelabs-pdf-importer-core makes of them, filed on the person's pharmacy Patient. Pure — no DOM, no fs, no React.",
+  "description": "The LifeLabs synthetic data generator: a synthetic-data-fundamentals Story's lab draws as the LifeLabs reports a laboratory prints, and as the FHIR R4 resources lifelabs-pdf-importer makes of them, filed on the person's pharmacy Patient. Pure — no DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -42,7 +42,7 @@
     "har-importer-core": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "lifelabs-pdf-importer-core": "workspace:*",
+    "lifelabs-pdf-importer": "workspace:*",
     "synthetic-data-fundamentals": "workspace:*",
     "synthetic-data-rexall-be-well": "workspace:*",
     "synthetic-data-shoppers-drugmart": "workspace:*",
@@ -54,7 +54,7 @@
   "peerDependencies": {
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
-    "lifelabs-pdf-importer-core": "workspace:*",
+    "lifelabs-pdf-importer": "workspace:*",
     "synthetic-data-fundamentals": "workspace:*"
   }
 }

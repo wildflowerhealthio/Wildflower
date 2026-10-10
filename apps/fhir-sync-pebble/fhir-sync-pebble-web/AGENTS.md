@@ -8,7 +8,7 @@ FHIR server, picks the patient from the server's list, and saves, which hands
 the watch what its PebbleKit JS needs to write that data as Observations on the
 patient's record.
 
-`apps/importer/importer-web` is the template for the shape (`SmartAppRoot`, a relative
+`apps/importer-web` is the template for the shape (`SmartAppRoot`, a relative
 `base`, a build into the package's own `dist/`, a memory router carrying a
 SMART-built context). What differs is below.
 
@@ -35,7 +35,7 @@ SMART-built context). What differs is below.
 - `patient-details.tsx` — the picked patient's summary. Its name and the
   watch's `patientName` are one string, `fhir-r4`'s `HumanName.displayName`.
 - The decisions live in the core,
-  [`fhir-sync-pebble-core-js`](../AGENTS.md), whose
+  [`fhir-sync-pebble-core`](../AGENTS.md), whose
   namespace modules this app imports by name: `PatientSummary` (a listed
   patient, read leniently) and `PebbleSettings` (the watch's wire shape).
   The Pebble side of the hand-off is
@@ -77,7 +77,7 @@ The app implements the Pebble "App Configuration (Static)" contract:
    falling back to the guide's `pebblejs://close#` when the page was opened
    without one.
 
-`PebbleSettings` (`fhir-sync-pebble-core-js`) is the wire shape the watchapp
+`PebbleSettings` (`fhir-sync-pebble-core`) is the wire shape the watchapp
 parses — flat, with `null` for what the record lacks:
 
 ```json
@@ -99,7 +99,7 @@ server wrote, partial dates (`1970`, `1970-05`) included. The settings are built
 in two steps because the facts arrive separately: the grant gives a
 `Connection` (token, server), and the save adds the patient the user picked
 (`withPatient`). The watchapp decodes the shape with `PhoneSettings.decodeResponse`,
-beside `PebbleSettings` in `fhir-sync-pebble-core-js`: `PebbleSettings.Schema` is
+beside `PebbleSettings` in `fhir-sync-pebble-core`: `PebbleSettings.Schema` is
 pinned to `PhoneSettings.Settings`, so the two can't change apart, and
 `phone-settings.test.ts` round-trips `toJson` through the decoder.
 
@@ -163,7 +163,7 @@ jsdom.
 
 ## References
 
-- [apps/importer/importer-web AGENTS.md](../../importer/importer-web/AGENTS.md) — the template app
+- [apps/importer-web AGENTS.md](../../importer-web/AGENTS.md) — the template app
 - [apps/fhir-sync-pebble AGENTS.md](../AGENTS.md) —
   the core the settings, the return target and its store live in
 - [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md) — the shell this

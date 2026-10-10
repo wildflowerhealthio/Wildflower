@@ -10,9 +10,9 @@ The asymmetry is the whole design: **store raw, anonymize only at the export
 boundary.** Capture stays lossless — it is the user's own device and their own
 data — so a better redactor later can be applied retroactively to sessions
 already recorded. The export-boundary anonymizer moved to
-[`har-anonymizer-core-js`](../../apps/importer/anonymizer/har-anonymizer-core-js/)
+[`har-anonymizer-core`](../../slices/anonymizer/har-anonymizer-core/)
 in M2 of #578; a change there changes what leaves the device, so read the
-[Anonymization Explanation](../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md)
+[Anonymization Explanation](../../slices/anonymizer/docs/Anonymization%20Explanation.md)
 before touching it.
 
 The capture half lives with the collectors, where the descriptor seam is:
@@ -36,7 +36,7 @@ encoding of a trace cannot live anywhere it already had a home:
   package in it knows about FHIR.
 
 It is consumed by both the collectors and the HAR packages (`http-archive`,
-`har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core-js`), so it
+`har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core`), so it
 has to sit below all of them.
 
 ## Module layout
@@ -65,8 +65,8 @@ has to sit below all of them.
   `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
   sits below the collector slice and must not import it, so the boundary is a
   shape, not a dependency.
-- **`src/pseudonymizer/` — moved to `har-anonymizer-core-js/src/`** in M2
-  of #578. The export-boundary redactor now lives in the anonymizer (`apps/importer/anonymizer`),
+- **`src/pseudonymizer/` — moved to `har-anonymizer-core/src/`** in M2
+  of #578. The export-boundary redactor now lives in the anonymizer (`slices/anonymizer`),
   on the same per-file-format argument the archive codec does.
 - **`src/har/` — moved to the `http-archive` package**
   (`slices/file-formats/http-archive`); it left this slice in M1 of #578 for
@@ -333,7 +333,7 @@ would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
 
 The five properties the privacy boundary rests on live in
-`har-anonymizer-core-js/src/redact.test.ts` (moved in M2 of #578); the HAR
+`har-anonymizer-core/src/redact.test.ts` (moved in M2 of #578); the HAR
 emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
 The reading direction is held to the emitter — a property in
@@ -348,7 +348,7 @@ specifiers against the workspace root, not against this package.
 
 ## References
 
-- [Anonymization Explanation](../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md) — the pseudonymizer's
+- [Anonymization Explanation](../../slices/anonymizer/docs/Anonymization%20Explanation.md) — the pseudonymizer's
   design and its stated limits.
 - [slices/AGENTS.md](../AGENTS.md) — the layering rules.
 - [browser-sniffer AGENTS.md](../browser-sniffer/AGENTS.md) — the upstream

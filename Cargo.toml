@@ -16,7 +16,7 @@ members = [
   "apps/host/wildflower-server/wildflower-server-rust",
   "apps/relay/relay-server",
   "apps/host/wildflower-server/apps-rust",
-  "slices/browser-sniffer/browser-sniffer-tauri-rust",
+  "apps/host/browser-sniffer/browser-sniffer-tauri-rust",
   "slices/ohif-server-rust",
   "apps/host/wildflower-server/fhir-r4-rust",
   "apps/host/wildflower-server/gatekeeper-rust",

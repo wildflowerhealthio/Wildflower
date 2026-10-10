@@ -184,7 +184,7 @@ The console does not carry a list of addresses it is allowed to sign in from.
 It **derives** its `redirect_uri` from where the page is being served, with
 `gatekeeper-core/smart-client`'s `redirectUriForPage` — the page's own directory
 URL, which is what the fhirclient-based apps (`apps/medications/medications-web`,
-`apps/importer/importer-web`) have always done. One build
+`apps/importer-web`) have always done. One build
 therefore signs in from the published site, from a PR preview under
 `https://wildflowerhealthio.github.io/staging/pr-<n>/server-docs/`,
 and from `vp run -F server-docs-web dev`, with nothing to keep in step.

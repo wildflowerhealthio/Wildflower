@@ -16,8 +16,6 @@ runs:
           apps/health-viewer/*/dist
           apps/host/*/dist
           apps/host/servers/*/dist
-          apps/importer/*/dist
-          apps/importer/anonymizer/*/dist
           apps/medications/*/dist
           apps/relay/*/dist
           apps/synthetic-data/*/dist

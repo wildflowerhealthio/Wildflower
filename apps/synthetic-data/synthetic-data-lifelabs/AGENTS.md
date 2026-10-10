@@ -3,7 +3,7 @@
 The **LifeLabs generator**: a `synthetic-data-fundamentals/story` `Story`'s lab
 draws as the reports a LifeLabs laboratory prints, and as the FHIR R4
 resources the LifeLabs PDF import makes of them, filed on the Patient the
-person's pharmacy import made. The reports are `lifelabs-pdf-importer-core`'s
+person's pharmacy import made. The reports are `lifelabs-pdf-importer`'s
 `Report` model and the resources its own synthesis and adoption; nothing here
 restates either. No PDF is written. No DOM, no `fs`, no React.
 
@@ -46,11 +46,11 @@ and read back is the same report.
 ## Layering
 
 Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
-`/story`, `Seeding` from `/seeding`), `lifelabs-pdf-importer-core/synthesis`
+`/story`, `Seeding` from `/seeding`), `lifelabs-pdf-importer/synthesis`
 (the `Report` types, `adoptedResourcesOf`) and
 `fhir-r4` (`AdministrativeGender`, the resource and `Reference` types). The
 `/synthesis` subpath keeps the PDF extraction (pdfjs) out. The tests also use
-`lifelabs-pdf-importer-core`'s main entry and `/test-helpers` (to print a
+`lifelabs-pdf-importer`'s main entry and `/test-helpers` (to print a
 report and read it back), `har-importer-core`, `importer-fundamentals`, and
 the Rexall and Shoppers generators, as dev dependencies only. Never imports a
 `-react`, `-node` or `-tauri` package.
@@ -85,7 +85,7 @@ the Rexall and Shoppers generators, as dev dependencies only. Never imports a
 ## References
 
 - [apps/synthetic-data/AGENTS.md](../AGENTS.md) — the slice and its packages.
-- [lifelabs-pdf-importer-core AGENTS.md](../../../slices/importer/lifelabs-pdf-importer-core/AGENTS.md)
+- [lifelabs-pdf-importer AGENTS.md](../../../slices/importer/lifelabs-pdf-importer/AGENTS.md)
   — the report model, the synthesis and the `/synthesis` subpath.
 - [Source Identity Explanation](../../launcher/collector/docs/Source%20Identity%20Explanation.md)
   — how adoption keys a Patient, and `adoptedReferenceOf`.

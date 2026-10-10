@@ -4,7 +4,7 @@
  *
  * @remarks
  * All of them are built on a picked file's `id` — minted once, over the whole
- * batch in pick order, by `importer-core-js`'s `readBatch`. Position takes part in
+ * batch in pick order, by `importer-core`'s `readBatch`. Position takes part in
  * it because picking two files that share a name is ordinary (two `report.pdf`s
  * out of two folders) and a name alone would collide; and a settings re-decode
  * hands the same files back, so everything keyed by an id survives one.

@@ -51,7 +51,7 @@ There is no `-core`: everything here is UI or DOM boot code.
     read) or "All patients", and a "Change patient" link.
 
 Consumers: `apps/medications/medications-web`, `apps/health-viewer/health-viewer-web`, `apps/lifting/lifting-web`,
-`apps/importer/importer-web` and `apps/synthetic-data/synthetic-data-web` mount
+`apps/importer-web` and `apps/synthetic-data/synthetic-data-web` mount
 `SmartAppRoot`, which an EHR launches at the app root; the first three speak
 the read-status lines, as does `synthetic-data-react`'s screen, and pick the
 patient with the patient choice; `apps/fhir-sync-pebble/fhir-sync-pebble-web` mounts

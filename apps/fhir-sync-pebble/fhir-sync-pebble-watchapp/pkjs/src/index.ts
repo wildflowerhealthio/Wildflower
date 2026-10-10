@@ -2,10 +2,10 @@
 // the watch, and writes the watch's Health activities and minute history to the
 // FHIR server. Implements developer.repebble.com's "App Configuration
 // (Static)". What the messages mean, what to do with each and the Observations
-// they become are fhir-sync-pebble-core-js's; this is the glue to Pebble's events,
+// they become are fhir-sync-pebble-core's; this is the glue to Pebble's events,
 // AppMessage, localStorage, XMLHttpRequest and timers.
 
-import { PhoneSettings, WatchDevice, WatchSync } from 'fhir-sync-pebble-core-js/pkjs'
+import { PhoneSettings, WatchDevice, WatchSync } from 'fhir-sync-pebble-core/pkjs'
 
 const CONFIGURATION_URL = 'https://wildflowerhealth.io/fhir-sync-pebble/'
 

@@ -43,7 +43,7 @@ redirects to the deepest one that answers, and passes the requested path along,
 site-absolute, as `?redirect=<path>` (an app-relative route named like the
 app's own directory, `/launcher` below `/launcher/`, would read as the app root).
 `restoreRedirectedUrl(window)` is the other half: each
-first-party SPA entry (`apps/medications/medications-web`, `apps/importer/importer-web`,
+first-party SPA entry (`apps/medications/medications-web`, `apps/importer-web`,
 `apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/lifting/lifting-web`, `apps/watch-lifts/watch-lifts-web`, `apps/server-docs-web`) calls it as its first statement,
 before the router, the SMART callback check, or the `?server=` read — it puts
 the route back in the address bar with `history.replaceState` and drops the
@@ -64,7 +64,7 @@ the same `?redirect=` detour as the published site.
 ## The app landing page
 
 A SMART app visited without a launch (`apps/medications/medications-web`,
-`apps/importer/importer-web` and `apps/fhir-sync-pebble/fhir-sync-pebble-web`, all
+`apps/importer-web` and `apps/fhir-sync-pebble/fhir-sync-pebble-web`, all
 through `smart-app-react`'s `SmartAppRoot`) renders `AppLandingPage`. So does
 the hosted launcher's landing (`apps/launcher/launcher-web`'s `routes/index.tsx`,
 `app="app"`), whose connect menu also carries its "Sign in to …" row for a

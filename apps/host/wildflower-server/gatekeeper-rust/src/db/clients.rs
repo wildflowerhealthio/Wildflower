@@ -490,7 +490,7 @@ mod tests {
         // broaden every type to full `.cruds` (create + read + update + delete +
         // search) — re-applied by `0015` on an install that skipped it. This
         // vector must stay element-for-element equal to the `scope` string in
-        // `apps/importer/importer-web/src/config.ts` —
+        // `apps/importer-web/src/config.ts` —
         // nothing spans the TS/Rust boundary to check it, so this assertion is the
         // Rust-side mirror of that pin, and a scope added on one side alone fails
         // `/authorize` on a real device.

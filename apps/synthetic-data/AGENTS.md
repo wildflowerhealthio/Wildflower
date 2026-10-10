@@ -59,7 +59,7 @@ importer output, and the browser layer that loads a published snapshot.
 
 - **`synthetic-data-lifelabs`** (pure) — `LifeLabs.render`: a `Story`'s lab
   draws, printed by a `Laboratory`, as the FHIR resources the LifeLabs PDF
-  import makes of the reports (`lifelabs-pdf-importer-core/synthesis`), filed
+  import makes of the reports (`lifelabs-pdf-importer/synthesis`), filed
   on the Patient the person's pharmacy import made. Its `./story` subpath
   holds the `Laboratory`, `PrintedRange` and `LabRequisition` a data set
   writes beside the story; its `./test-helpers` subpath holds
@@ -70,7 +70,7 @@ importer output, and the browser layer that loads a published snapshot.
   a `Physiology` (resting heart rate, walks, nights and charging, per
   `StoryDay`) as the heart-rate, steps and movement minute history and the
   sleep and walk activity Observations the FHIR Sync for Pebble app writes,
-  built by `fhir-sync-pebble-core-js`'s own `WatchSync`. Its `./test-helpers`
+  built by `fhir-sync-pebble-core`'s own `WatchSync`. Its `./test-helpers`
   subpath holds `physiologyCaseArbitrary`. See its
   [AGENTS.md](./synthetic-data-fhir-sync-pebble/AGENTS.md).
 

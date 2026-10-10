@@ -16,18 +16,18 @@ product, `apps/<product>/`: [`relay`](./relay/AGENTS.md),
 [`watch-lifts`](./watch-lifts/AGENTS.md), [`lifting`](./lifting/AGENTS.md),
 [`launcher`](./launcher/AGENTS.md), [`host`](./host/AGENTS.md),
 [`medications`](./medications/AGENTS.md),
-[`health-viewer`](./health-viewer/AGENTS.md),
-[`importer`](./importer/AGENTS.md) and
+[`health-viewer`](./health-viewer/AGENTS.md) and
 [`synthetic-data`](./synthetic-data/AGENTS.md).
 [`wildflower-site`](./wildflower-site/AGENTS.md) is a product folder for
 grouping alone: the site assembly and the marketing homepage share no package
 built only for them, but they ship together as wildflowerhealth.io. An app with
 no packages of its own sits directly under `apps/` under its product's name:
-`server-docs-web` and `ohif-viewer-web`.
+`server-docs-web`, `ohif-viewer-web` and `importer-web`, whose importer and
+anonymizer packages are slices (`slices/importer`, `slices/anonymizer`).
 
 Packages that came from one slice and belong together stay nested in a folder
-for their group, as `apps/host/servers/`, `apps/host/unit-runner/`,
-`apps/importer/anonymizer/` and `apps/launcher/collector/` do (each group also
+for their group, as `apps/host/servers/`, `apps/host/unit-runner/` and
+`apps/launcher/collector/` do (each group also
 listed in `pnpm-workspace.yaml` and the root `vite.config.ts` test projects);
 a lone package, or one from the product's
 namesake slice, sits directly in the product folder.

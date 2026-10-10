@@ -60,6 +60,10 @@ jobs:
               - '**/*.mjs'
               - '**/package.json'
               - '**/tsconfig*.json'
+              # scripts/package-graph.test.ts checks the crates' dependencies
+              # too, so a manifest-only Rust change must still run it.
+              - 'Cargo.toml'
+              - '**/Cargo.toml'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - '.github/workflows/ci.yml'

@@ -1,5 +1,5 @@
 import { HumanName } from 'fhir-r4/data-types'
-import { PebbleSettings } from 'fhir-sync-pebble-core-js'
+import { PebbleSettings } from 'fhir-sync-pebble-core'
 import { ReturnTarget } from 'pebble-configuration'
 import { useState, type JSX } from 'react'
 import { ErrorBanner, PageLoading } from 'react-tundraish'

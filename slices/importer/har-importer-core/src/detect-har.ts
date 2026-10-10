@@ -8,7 +8,7 @@
  * sniff rather than a parse. The extension test wins first because a `.har`
  * name is the most common signal; the JSON sniff catches the case a browser
  * exported the archive as plain `.json`. Both tests are the same as
- * `har-anonymizer-core-js`'s `harDescriptor.detect` by construction — a HAR
+ * `har-anonymizer-core`'s `harDescriptor.detect` by construction — a HAR
  * anonymized and re-imported must be recognized as HAR twice.
  *
  * @packageDocumentation

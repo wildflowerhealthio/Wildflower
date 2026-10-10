@@ -26,7 +26,7 @@
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-react": "workspace:*",
-    "fhir-sync-pebble-core-js": "workspace:*",
+    "fhir-sync-pebble-core": "workspace:*",
     "pebble-configuration": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

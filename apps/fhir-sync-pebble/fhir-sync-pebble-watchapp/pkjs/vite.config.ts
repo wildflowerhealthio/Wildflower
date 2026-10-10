@@ -10,7 +10,7 @@ import base from '../../../../vite.config.base.ts'
 // The watchapp's PebbleKit JS, as its own package: fhir-sync-pebble-watchapp's
 // package.json is the Pebble manifest and can't list the dependencies a
 // TypeScript build needs (see ../test/vite.config.ts). `vp pack` bundles
-// src/index.ts and the fhir-sync-pebble-core-js it imports into the one ES5 file
+// src/index.ts and the fhir-sync-pebble-core it imports into the one ES5 file
 // the Pebble SDK reads, ../src/pkjs/index.js; the wscript runs it before every
 // `pebble build`.
 export default defineConfig({
@@ -18,7 +18,7 @@ export default defineConfig({
   pack: pkjsPack({
     entry: { index: 'src/index.ts' },
     outDir: '../src/pkjs',
-    alwaysBundle: ['fhir-sync-pebble-core-js'],
+    alwaysBundle: ['fhir-sync-pebble-core'],
     es5Tsconfig: fileURLToPath(new URL('src/tsconfig.json', import.meta.url)),
   }),
   test: {

@@ -58,7 +58,7 @@ The root entry exports `SyntheticDataScreen` (`initialSnapshotAddress`).
   button are disabled from the first read to the last bundle.
 - **The FHIR server comes from route context.** The screen reads its authed
   runner with `useRunAuthed`, so the host mounts it under a router carrying a
-  SMART-built context, as `apps/importer/importer-web` does for `importer-react`.
+  SMART-built context, as `apps/importer-web` does for `importer-react`.
 
 ## Testing
 

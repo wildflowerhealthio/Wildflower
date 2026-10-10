@@ -5,8 +5,8 @@ packages:
   # app packages themselves.
   - apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/pkjs
   - apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/test
-  # FHIR Sync for Pebble: the watchapp, its settings page and the core both
-  # build on.
+  # FHIR Sync for Pebble: the watchapp and its settings page. The core both
+  # build on is slices/fhir-sync-pebble-core.
   - apps/fhir-sync-pebble/*
   # The Health Viewer: the app and the core, sources and chart it is built
   # from.
@@ -14,10 +14,6 @@ packages:
   # The host: the Tauri host app and the packages it is built from.
   - apps/host/*
   - apps/host/servers/*
-  # The Importer: the app, the import pipelines and screens only it uses, and
-  # the anonymizer it scrubs uploads with.
-  - apps/importer/*
-  - apps/importer/anonymizer/*
   # The launcher: the web app that manages a Wildflower server, and the
   # packages it is built from, grouped by the slice they came from.
   - apps/launcher/*
@@ -109,9 +105,14 @@ catalog:
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
   '@vitejs/plugin-react': ^6.1.1
+  # Repo-tooling checks of the import graph: dependency-cruiser holds the
+  # file-level import rules inside packages, knip fails on imports a package's
+  # manifest doesn't declare, and smol-toml reads the Cargo manifests for the
+  # package-graph check (scripts/package-graph.ts).
+  dependency-cruiser: ^18.5.0
   effect: 3.22.2
   esbuild: ^0.28.2
-  # Browser shim for Node's `events`, aliased in `apps/importer/importer-web/vite.config.ts`.
+  # Browser shim for Node's `events`, aliased in `apps/importer-web/vite.config.ts`.
   # @cornerstonejs/core reaches xmlbuilder2 (via vtk.js's XML mesh reader), which
   # subclasses EventEmitter at module scope; Vite's externalized stub makes that
   # throw. See the alias comment for the full chain.
@@ -126,11 +127,13 @@ catalog:
   http-message-signatures: ^1.0.6
   jose: ^6.1.3
   jsdom: ^30.1.0
+  knip: ^6.41.0
   nanoid: ^6.0.1
   pdfjs-dist: 6.3.289
   qrcode-generator: 2.0.4
   react: 19.3.0
   react-dom: 19.3.0
+  smol-toml: ^1.9.1
   structured-headers: ^2.0.2
   tundra-css: ^0.14.0
 

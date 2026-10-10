@@ -7,7 +7,7 @@
  * @remarks
  * Bytes rather than text so the picker stays format-blind: a HAR decodes
  * UTF-8 JSON, a PDF decodes binary. The id is minted once, where the batch is
- * read (`importer-core-js`'s `readBatch`), so everything keyed by it survives a
+ * read (`importer-core`'s `readBatch`), so everything keyed by it survives a
  * settings re-decode, which hands the same files back.
  *
  * The codec is written once here rather than per format, and the per-format
@@ -47,7 +47,7 @@ interface NamedBytes {
  * it.
  *
  * @remarks
- * The id is assigned in exactly one place — `importer-core-js`'s `readBatch`,
+ * The id is assigned in exactly one place — `importer-core`'s `readBatch`,
  * over the whole batch in pick order — so every review key, result id and
  * unreadable row derived from it is stable across a settings re-decode.
  */

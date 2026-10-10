@@ -1,12 +1,12 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as fc from 'fast-check'
-import { MinuteHistory } from 'fhir-sync-pebble-core-js/pkjs'
+import { MinuteHistory } from 'fhir-sync-pebble-core/pkjs'
 import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 // minute-wire.c packs each minute of HealthMinuteData for the phone, and
-// fhir-sync-pebble-core-js's MinuteHistory unpacks it. The watch side needs no
+// fhir-sync-pebble-core's MinuteHistory unpacks it. The watch side needs no
 // SDK to test: buildHostCDriver compiles it with the host C compiler under the
 // sanitizers, driven through minute-wire-driver.c, and these tests feed its
 // bytes to the phone's decoder to hold the two sides of the wire together.

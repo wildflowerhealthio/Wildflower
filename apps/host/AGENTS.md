@@ -32,6 +32,11 @@ stores, and the packages beside it that only the host uses. The app itself is
   Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)
   — the native, JS-injectable web view plugin (iOS, Android, desktop).
+- `browser-sniffer/` — the browser sniffer's Tauri host adapter,
+  `browser-sniffer-tauri-rust`, which opens the sniffer in that plugin's web
+  view and embeds the bootstrap that `slices/browser-sniffer`'s
+  `browser-sniffer-tauri` builds. The slice keeps its TypeScript packages and
+  docs: [Tauri Host Explanation](../../slices/browser-sniffer/docs/Tauri%20Host%20Explanation.md).
 
 ## Rules
 
@@ -40,9 +45,6 @@ stores, and the packages beside it that only the host uses. The app itself is
   Rust consumer, its TypeScript half living with the launcher or in a shared slice. Anything a
   second product needs moves back to `slices/` or `global/`
   ([What folds in](../AGENTS.md#what-folds-in)).
-- **One exception reads across.** `slices/browser-sniffer/browser-sniffer-tauri-rust`
-  depends on `tauri-plugin-native-webview`; the plugin lives here with its only
-  app.
 - **Slice layering still applies inside a group.** `servers-react` imports
   `servers-core-js`, never the reverse; `servers-tauri-rust` composes
   `servers-rust`; `tauri-unit-runner-rust` binds `unit-runner-rust`.

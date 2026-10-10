@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { Either } from 'effect'
-import { PebbleSettings } from 'fhir-sync-pebble-core-js'
+import { PebbleSettings } from 'fhir-sync-pebble-core'
 import { ReturnTarget, type ReturnTargetStore } from 'pebble-configuration'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 

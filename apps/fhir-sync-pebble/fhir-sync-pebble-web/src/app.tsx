@@ -15,7 +15,7 @@ import {
   useLaunchFailureRedirect,
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
-import { PebbleSettings } from 'fhir-sync-pebble-core-js'
+import { PebbleSettings } from 'fhir-sync-pebble-core'
 import { ReturnTargetStore } from 'pebble-configuration'
 import { useMemo, useState, type JSX } from 'react'
 import { ErrorBanner, PageLoading } from 'react-tundraish'

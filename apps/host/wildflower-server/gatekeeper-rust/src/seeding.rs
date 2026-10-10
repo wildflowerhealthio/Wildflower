@@ -279,7 +279,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             IMPORTER_DEV_CLIENT_ID,
             "Importer (Dev)",
             // Mirrors the production Importer client's write-carrying set
-            // (`apps/importer/importer-web/src/config.ts`, as widened by gatekeeper
+            // (`apps/importer-web/src/config.ts`, as widened by gatekeeper
             // migration `0009_widen_importer_client_write_scopes`, re-applied by
             // `0015` on an install that skipped it) — a dev build
             // requests the same scopes, and unlike the medications viewer above the

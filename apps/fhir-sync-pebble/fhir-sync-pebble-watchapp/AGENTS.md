@@ -10,7 +10,7 @@ activities, the other five from its minute history.
 Pebble manifest, and host-side tests live in a separate `test/` package. The
 PebbleKit JS is TypeScript in a third, `pkjs/`, for the same reason: the
 manifest can't list the dependencies its build needs. What the phone decodes
-and the Observations it posts are `fhir-sync-pebble-core-js`'s (see
+and the Observations it posts are `fhir-sync-pebble-core`'s (see
 [apps/fhir-sync-pebble](../AGENTS.md)); `pkjs/`
 is the glue to Pebble's events, AppMessage, `localStorage` and
 `XMLHttpRequest`.
@@ -47,7 +47,7 @@ the host `cc`.
   `WatchSync.receive` and does what that says; a complete sync goes through
   `WatchSync.planWrite`, and its transaction Bundle is posted with a 60 s
   timeout. It answers the watch exactly once per sync, with the sync's id.
-  Everything it calls comes from `fhir-sync-pebble-core-js/pkjs`.
+  Everything it calls comes from `fhir-sync-pebble-core/pkjs`.
 - `pkjs/src/tsconfig.json` — the ES5 program: ES5's library and no DOM, with
   the PebbleKit JS globals (`Pebble`, `localStorage`, `XMLHttpRequest`,
   `setTimeout`, `console`) from `pebble-pkjs/pebble-kit-js` in its `types`.
@@ -245,7 +245,7 @@ restart. With nothing checked, Sync Now succeeds without asking the phone.
 
 ## Tests
 
-What the phone decodes and builds is tested in `fhir-sync-pebble-core-js`, where
+What the phone decodes and builds is tested in `fhir-sync-pebble-core`, where
 it lives. Here, `vp test --project fhir-sync-pebble-test` (the root `vp test`
 includes it):
 
@@ -293,7 +293,7 @@ than the stand-in has, so only `pebble build` compiles it.
   build files and tests.
 - **Nothing the phone bundles may import Effect.** Effect needs ES2015 at run
   time, so the core's `pkjs` entry is Effect-free and its decoders are
-  hand-written. Import `fhir-sync-pebble-core-js/pkjs`, not the package root,
+  hand-written. Import `fhir-sync-pebble-core/pkjs`, not the package root,
   from `pkjs/`.
 - **`package.json` is the Pebble manifest.** `pebble build` runs `npm install`
   if it lists dependencies, which fails on `catalog:` / `workspace:*`, so test
