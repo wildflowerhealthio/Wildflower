@@ -17,8 +17,9 @@ export default defineConfig({
   ...base,
   base: './',
   plugins: [react()],
-  // The debug-only `fhir-sync-pebble-dev` client registers this port's root as
-  // its redirect, so the dev server must hold exactly it. Run with
+  // The debug-only dev client registers the root of the port
+  // `dev-app-ports.json` pins under `fhir-sync-pebble-dev` as its redirect, so
+  // the dev server must hold exactly it. Run with
   // `vp run -F @wildflowerhealthio/fhir-sync-pebble-web dev`.
   server: devAppServer('fhir-sync-pebble-dev'),
   build: {

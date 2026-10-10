@@ -1322,6 +1322,76 @@ mod tests {
         assert!(column_for_client(&mut conn, "client_id", OHIF_VIEWER).is_empty());
     }
 
+    /// An install already at `0029` re-keys FHIR Sync for Pebble's clients when
+    /// `0030` runs: the production client and a debug build's dev client take
+    /// their random ids and keep their redirects, and what was issued to them
+    /// (here a launch) follows. Reverting `0030` restores the old ids.
+    #[test]
+    fn an_install_already_at_0029_rekeys_the_fhir_sync_pebble_clients() {
+        use diesel::connection::SimpleConnection as _;
+        const FHIR_SYNC_PEBBLE: &str = "6847df97d54c31936d54ca1b36b3bb09";
+        const FHIR_SYNC_PEBBLE_DEV: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0029"),
+        )
+        .expect("migrate to 0029");
+        conn.batch_execute(
+            "INSERT INTO clients \
+             (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+              secret_hash, registered_at, disabled_at) \
+             VALUES ('fhir-sync-pebble-dev', 'FHIR Sync for Pebble (Dev)', 'public', \
+                     '[\"http://localhost:5195/\"]', '[\"openid\"]', \
+                     '[\"authorization_code\"]', NULL, '2024-01-01 00:00:00+00:00', NULL); \
+             INSERT INTO launch_contexts (nonce, client_id, patient, created_at, expires_at) \
+             VALUES ('issued', 'fhir-sync-pebble', 'pat-1', \
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z')",
+        )
+        .expect("a dev client and a launch at 0029");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0030");
+
+        assert!(column_for_client(&mut conn, "client_id", "fhir-sync-pebble").is_empty());
+        assert!(column_for_client(&mut conn, "client_id", "fhir-sync-pebble-dev").is_empty());
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", FHIR_SYNC_PEBBLE)[0].name,
+            r#"["https://wildflowerhealth.io/fhir-sync-pebble/"]"#,
+        );
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", FHIR_SYNC_PEBBLE_DEV)[0].name,
+            r#"["http://localhost:5195/"]"#,
+        );
+        let launch: Vec<Name> = diesel::sql_query(
+            "SELECT client_id AS name FROM launch_contexts WHERE nonce = 'issued'",
+        )
+        .load(&mut conn)
+        .expect("read the launch");
+        assert_eq!(launch[0].name, FHIR_SYNC_PEBBLE);
+
+        let migration_0030 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0030"))
+            .expect("0030 is embedded");
+        migration_0030.revert(&mut conn).expect("revert 0030");
+        for client_id in ["fhir-sync-pebble", "fhir-sync-pebble-dev"] {
+            assert_eq!(
+                column_for_client(&mut conn, "client_id", client_id).len(),
+                1
+            );
+        }
+        assert!(column_for_client(&mut conn, "client_id", FHIR_SYNC_PEBBLE).is_empty());
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database
