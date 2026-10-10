@@ -2,7 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
-import devAppPortsFile from '../slices/apps/dev-app-ports.json' with { type: 'json' }
+import devAppPortsFile from '../dev-app-ports.json' with { type: 'json' }
 import type { DevAppId } from '../vite.config.base.ts'
 import { devAppIds, devAppPort, devAppPortsPath, devAppServer } from '../vite.config.base.ts'
 

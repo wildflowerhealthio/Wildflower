@@ -67,7 +67,7 @@ with `requires_tunnel` set, and its public OAuth client,
 `https://wildflowerhealth.io/synthetic-data/` and allows exactly
 `SYNTHETIC_DATA_SCOPE`. In development, debug builds of the host seed a
 `synthetic-data-dev` row on the port
-`slices/apps/dev-app-ports.json` pins (5198) and its OAuth client
+`dev-app-ports.json` pins (5198) and its OAuth client
 (`apps-rust`'s `seed_dev_apps`, `gatekeeper-rust`'s `seed_dev_app_clients`),
 so the homescreen carries a "Synthetic Data (Dev)" tile that launches whatever
 is serving that port. The dev client's scopes are
@@ -77,7 +77,7 @@ unless it requests exactly them and launches as both clients.
 ## Running locally
 
 ```bash
-vp run -F synthetic-data-web dev     # strictPort, from slices/apps/dev-app-ports.json
+vp run -F synthetic-data-web dev     # strictPort, from dev-app-ports.json
 ```
 
 Open the printed `http://localhost:5198/`, connect to a FHIR server (a

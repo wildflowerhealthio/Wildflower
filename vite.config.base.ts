@@ -3,7 +3,7 @@
  * `base` config it spreads (below), `tsgoDts` for its `pack.dts`, `cpuBoundTest`
  * for a package whose tests are CPU-bound, and — for
  * apps — `devAppServer(id)`, the single TypeScript reader of
- * `slices/apps/dev-app-ports.json`.
+ * `dev-app-ports.json`.
  */
 
 import { createRequire } from 'node:module'
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 import { defineConfig } from 'vite-plus'
 
-import devAppPortsFile from './slices/apps/dev-app-ports.json' with { type: 'json' }
+import devAppPortsFile from './dev-app-ports.json' with { type: 'json' }
 
 /** The one non-port key in `dev-app-ports.json`; every other key is a dev app id. */
 const COMMENT_KEY = '_comment'
@@ -21,7 +21,7 @@ const COMMENT_KEY = '_comment'
 const DEV_APP_HOST = '0.0.0.0'
 
 /**
- * A dev app id declared in `slices/apps/dev-app-ports.json`.
+ * A dev app id declared in `dev-app-ports.json`.
  *
  * @remarks
  * Derived from the file, so dropping a row turns every config still naming it
@@ -30,7 +30,7 @@ const DEV_APP_HOST = '0.0.0.0'
 type DevAppId = Exclude<keyof typeof devAppPortsFile, typeof COMMENT_KEY>
 
 /** Absolute path of the dev-port file, quoted in {@link devAppPort}'s error. */
-const devAppPortsPath = fileURLToPath(new URL('./slices/apps/dev-app-ports.json', import.meta.url))
+const devAppPortsPath = fileURLToPath(new URL('./dev-app-ports.json', import.meta.url))
 
 /**
  * Id → port. The annotation is what enforces "every value is a port number":
@@ -69,7 +69,7 @@ const devAppPort = (id: string): number => {
 
 /** Vite options pinning a first-party app's dev server to its shared port. */
 interface DevAppServerOptions {
-  /** The port from `slices/apps/dev-app-ports.json`. */
+  /** The port from `dev-app-ports.json`. */
   readonly port: number
   /** Always `true`: a taken port fails loudly instead of drifting. */
   readonly strictPort: true
@@ -79,7 +79,7 @@ interface DevAppServerOptions {
 
 /**
  * The `server` (or `preview`) block pinning a first-party app's dev server to
- * the port `slices/apps/dev-app-ports.json` assigns it.
+ * the port `dev-app-ports.json` assigns it.
  *
  * @param id - The app's dev id, narrowed to the file's own keys
  * @returns Options to spread into `server` — or into `preview`, for an app

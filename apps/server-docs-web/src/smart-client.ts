@@ -4,7 +4,7 @@
  *
  * The console signs in as the **public PKCE client
  * `664a01e8614050cd82ffe90350b81413`**, seeded into every Wildflower server by
- * `slices/gatekeeper/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`
+ * `apps/host/wildflower-server/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`
  * (as `server-docs`) and re-keyed to that random id, with its redirect
  * moved to `/server-docs/`, by `0028_rekey_site_app_clients`.
  * {@link CLIENT_ID} MUST equal that migration's row: the server clamps the

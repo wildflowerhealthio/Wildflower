@@ -61,7 +61,7 @@ because the wire schemas in this package mirror their rows.
 lineage are the three that would otherwise only grow — a background sweep
 reclaims them a fixed window past their own `expires_at` (7 days, 7 days,
 and 90 days respectively). See the
-[Retention Explanation](../docs/Retention%20Explanation.md).
+[Retention Explanation](../../../apps/host/wildflower-server/gatekeeper-rust/docs/Retention%20Explanation.md).
 
 ## Routes
 

@@ -10,7 +10,7 @@ mod on_device_webview_handle;
 pub use on_device_webview_handle::OnDeviceWebviewHandle;
 
 /// The path every server mounts its FHIR R4 API under: a server's FHIR base is
-/// `https://<domain>/fhir-r4`, the `iss` every app launch names. emr-rust
+/// `https://<domain>/fhir-r4`, the `iss` every app launch names. fhir-r4-rust
 /// mounts HFS here, and the gatekeeper accepts it as a SMART `aud`.
 pub const FHIR_R4_PATH: &str = "/fhir-r4";
 

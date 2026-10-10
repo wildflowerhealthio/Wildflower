@@ -55,7 +55,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
     WildflowerServerConfig {
         search_parameter_data_dir: PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../../slices/emr/emr-rust/assets"
+            "/../../wildflower-server/fhir-r4-rust/assets"
         )),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),

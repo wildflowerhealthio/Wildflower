@@ -32,7 +32,7 @@ const HEALTH_VIEWER_SCOPE =
  *   `https://wildflowerhealth.io/health-viewer/` and launches as the
  *   `health-viewer` tile's client, `474e103de61f9141c4b640d59bfa130e`.
  * - The **vite dev server** (`vp run -F health-viewer-web dev`, on the port
- *   `slices/apps/dev-app-ports.json` pins) launches as the `health-viewer-dev`
+ *   `dev-app-ports.json` pins) launches as the `health-viewer-dev`
  *   tile's client, `e7efc7c805f5f8f640bb3b3d48a2d7aa`.
  *
  * The ids are random (`openssl rand -hex 16`), not the tile ids. Either way

@@ -194,10 +194,10 @@ equal the client's allowed scopes.
 ## Running locally
 
 ```bash
-vp run -F lifting-web dev     # strictPort, from slices/apps/dev-app-ports.json
+vp run -F lifting-web dev     # strictPort, from dev-app-ports.json
 ```
 
 Open the printed `http://localhost:<port>/`, pick a server on the connect menu,
 sign in, and choose a patient (or All patients) in the app. The port has a single source,
-`slices/apps/dev-app-ports.json` (`lifting-dev`): `vite.config.ts` reads it
+`dev-app-ports.json` (`lifting-dev`): `vite.config.ts` reads it
 through the shared `devAppServer` helper in the root `vite.config.base.ts`.

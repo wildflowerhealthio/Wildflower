@@ -731,7 +731,7 @@ collected for the next round:
 ## References
 
 - [README](../gatekeeper-core/README.md) — current tables and routes
-- `slices/gatekeeper/gatekeeper-rust/src/` — server implementation and storage
+- `apps/host/wildflower-server/gatekeeper-rust/src/` — server implementation and storage
 - `slices/gatekeeper/gatekeeper-core/src/http-api-definition/` — endpoint groups
 - RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 7519 (JWT), RFC 7517 (JWK),
   RFC 6750 (Bearer), RFC 5785 (`.well-known`), RFC 8628 (Device

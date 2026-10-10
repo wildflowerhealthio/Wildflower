@@ -135,7 +135,7 @@ clients to it.
 ## Running locally
 
 ```bash
-vp run -F health-viewer-web dev     # strictPort, from slices/apps/dev-app-ports.json
+vp run -F health-viewer-web dev     # strictPort, from dev-app-ports.json
 ```
 
 **Standalone**: open the printed `http://localhost:<port>/`, pick a server on the
@@ -148,7 +148,7 @@ connect menu (the SMART Health IT sandbox works), sign in, and choose a patient
 so the homescreen carries a "Health Viewer (Dev)" tile that launches whatever is
 serving that port — the vite dev server when it is up, nothing when it is down.
 A launch with a patient in context opens on that patient. The port has a
-single source, `slices/apps/dev-app-ports.json`: `vite.config.ts` reads it through the shared
+single source, `dev-app-ports.json`: `vite.config.ts` reads it through the shared
 `devAppServer` helper in the root `vite.config.base.ts` and `apps-rust` embeds
 it, so the dev server and the row cannot drift.
 

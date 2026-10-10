@@ -49,18 +49,22 @@ depends on its Rust half.
   beside the server that composes them. No slice may depend on a folded crate,
   not even as a dev-dependency: a test that drives two slices together moves
   into `wildflower-server-rust`'s tests.
-- **Only a slice's TypeScript packages** fold in when one product is their only
-  consumer but something else needs the slice's Rust half or a file beside it.
-  The slice keeps its Rust crate, its AGENTS.md and that file: `slices/apps`
-  keeps `apps-rust` beside `dev-app-ports.json`, which every app reads, while
-  `apps-core-js` and `apps-react` sit in `apps/launcher/`.
+- **Only a slice's Rust crates** fold in when the host is their only consumer
+  but other products share the slice's TypeScript packages. The crates move to
+  `apps/host/wildflower-server/`, with the docs about them; the slice keeps its
+  TypeScript packages, its AGENTS.md and the shared docs: `gatekeeper-rust` and
+  `token-revocation-rust` left `slices/gatekeeper`, and `fhir-r4-rust` left
+  `slices/emr`. A crate another product also uses stays behind, as
+  `rathole-settings-rust`, which the relay shares, stayed when `tunnel-rust`
+  moved.
 - Either way, a cross-language contract then reads across folders by relative
   path, such as `apps-core-js`'s OpenAPI drift test reading
-  `slices/apps/apps-rust/openapi/apps.openapi.json`, or `collector-registry`'s
+  `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`, or `collector-registry`'s
   reading `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`.
 - **Shared packages never fold in.** Anything two products use stays in
-  `slices/` or `global/` (`branding`, `telemetry`, `smart-app`, `gatekeeper`,
-  `global/pebble`).
+  `slices/` or `global/` (`branding`, `telemetry`, `smart-app`,
+  `gatekeeper-core`, `global/pebble`); a file every app reads sits at the repo
+  root (`dev-app-ports.json`).
 
 ### Names
 
@@ -106,7 +110,7 @@ Ids that predate this, and the Sentry `app` tags, are tracked in
 ## Dev-server ports
 
 The first-party apps pin their vite dev server to a port from
-`slices/apps/dev-app-ports.json`, keyed `<product>-dev`. For the apps that get
+`dev-app-ports.json`, keyed `<product>-dev`. For the apps that get
 a debug-only "(Dev)" homescreen tile, `apps-rust/src/dev_seed.rs` embeds it to
 seed the matching row; the launcher has no tile, and `host-app`'s `build.rs`
 reads its `launcher-dev` port instead. `devAppServer(id)`

@@ -1,0 +1,99 @@
+[package]
+name = "gatekeeper-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+# Persistence is Diesel over the app-wide r2d2 connection pool
+# (`persistence_rust::DieselPool`), mirroring collector-rust: the host builds
+# one pool on the shared database file and hands it to every diesel-backed
+# slice. The `chrono` feature maps the `DateTime<Utc>` columns natively
+# (`TimestamptzSqlite` text, `%F %T%.f%:z`), so no timestamp wrapper types.
+diesel = { workspace = true, features = ["chrono"] }
+diesel_migrations.workspace = true
+# The app-wide diesel connection pool (`DieselPool` / `open_in_memory_pool`)
+# shared across diesel-backed slices; this crate names the pool type but not
+# rusqlite — the token-revocation store (a separate crate) keeps its own
+# rusqlite connection, whose error type `domain/token.rs` still names.
+persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+rusqlite.workspace = true
+# The shared token-revocation store (per-jti denylist + per-subject epoch).
+# gatekeeper owns the *policy*: it runs the full revocation check in the auth
+# gate and exposes the revoke control surface (`/access/revocations`, logout).
+token-revocation-rust = { path = "../token-revocation-rust" }
+# OAuth 2.0 / SMART on FHIR scope primitives (the v1↔v2 grammar and the
+# canonical scope strings) — gatekeeper is the canonical consumer; the crate
+# was extracted out of here so other slices (fhir-r4-rust) can share one grammar.
+scopes-rust = { path = "../../../../slices/scopes/scopes-rust" }
+# The shared forwarding-header provenance helpers (`served_base_url_for`,
+# `request_provenance`) — gatekeeper-rust resolves token issuer URLs through
+# them, and apps-rust dispatches launches off the same provenance, so the
+# `Forwarded`-header (RFC 7239) contract lives in one place. `http-errors` pulls
+# the shared opaque-500 `InternalError` the handler/OAuth error enums hold.
+shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["served-origin", "http-errors"] }
+# The scope-gated capability extractors (`Scoped<F>`, `Capability`,
+# `FixedScopeCapability`, `ScopeClaims`) — the enforcement half of the scopes
+# slice; gatekeeper's `/access` surface is the pattern's original adopter and
+# its bearer gate inserts the `ScopeClaims` downstream slices gate on.
+scope-capabilities-rust = { path = "../../../../slices/scopes/scope-capabilities-rust", features = ["openapi"] }
+parking_lot = "0.12"
+# jsonwebtoken 10 split the crypto backend out of the default features: `default`
+# only enables PEM parsing, so a signer backend must be selected explicitly.
+# `rust_crypto` is the pure-Rust RustCrypto backend (rsa/sha2/ed25519/p256) — it
+# matches the crate's existing RustCrypto deps and needs no C toolchain (unlike
+# the `aws_lc_rs` alternative), keeping CI free of cmake/aws-lc build steps.
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+rsa = { version = "0.9", features = ["sha2"] }
+sha2 = "0.11"
+argon2 = "0.6"
+subtle = "2"
+# Scrub plaintext client secrets and RSA private-key material from memory on
+# drop (`Zeroizing<…>` wrappers and `#[derive(ZeroizeOnDrop)]`). Already resolved
+# in the lockfile transitively (via `rsa`), so this direct dep pins no new
+# version; the `derive` feature adds the already-locked `zeroize_derive`.
+zeroize = { version = "1.8", features = ["derive"] }
+# Derive the enum ↔ wire-string conversions (`EnumString`/`AsRefStr`/`Display`)
+# for the stored-as-text enums, replacing the hand-rolled `as_str`/`FromStr`
+# match arms so the variant set and its wire spellings can't drift apart.
+strum = { version = "0.28", features = ["derive"] }
+rand = "0.10"
+# rsa 0.9 bounds key generation on rand_core 0.6's CryptoRngCore; rand 0.10
+# re-exports rand_core 0.10 whose OsRng does not satisfy that bound. Pin
+# rand_core 0.6 directly so signing_key.rs can construct the compatible OsRng.
+rand_core = { version = "0.6", features = ["getrandom"] }
+uuid = { version = "1", features = ["v4"] }
+base64.workspace = true
+percent-encoding = "2"
+serde_urlencoded = "0.7"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+tracing = "0.1"
+url = { version = "2", features = ["serde"] }
+thiserror = "2"
+tokio = { workspace = true, features = ["sync"] }
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`),
+# so a future `unsafe` block in the crypto/OAuth code is a compile error.
+[lints]
+workspace = true
+
+[dev-dependencies]
+persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
+# The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
+# the snapshot test uses it, so it's an extra dev-only feature on the existing
+# `[dependencies]` entry above (cargo unifies the feature set across both
+# tables, so the dev opt-in adds `openapi-snapshot` to the served-origin runtime
+# build).
+shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
+proptest = "1"
+http = "1"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"

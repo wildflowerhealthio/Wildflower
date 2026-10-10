@@ -295,7 +295,7 @@ describe('source identity', () => {
   })
 
   it('lands an Observation subject on the id its Patient is adopted to', () => {
-    // `emr-rust`'s `$everything` searches `?subject=Patient/{id}`, so the two
+    // `fhir-r4-rust`'s `$everything` searches `?subject=Patient/{id}`, so the two
     // sides have to agree after adoption, not just before it.
     const patientId = adoptedPatient().id
     const [observation] = parseBody(

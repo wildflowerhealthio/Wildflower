@@ -156,9 +156,9 @@ fn server_config(
     let search_parameter_data_dir = {
         const EMBEDDED_SEARCH_PARAMETERS_R4: &[u8] = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../../slices/emr/emr-rust/assets/search-parameters-r4.json"
+            "/../../wildflower-server/fhir-r4-rust/assets/search-parameters-r4.json"
         ));
-        // Filename matches `emr_rust`'s `SEARCH_PARAMETERS_R4_FILENAME` and the
+        // Filename matches `fhir_r4_rust`'s `SEARCH_PARAMETERS_R4_FILENAME` and the
         // `tauri.conf.json` resource mapping.
         let dir = data_root.join("fhir-search-params");
         std::fs::create_dir_all(&dir).with_context(|| {
@@ -189,7 +189,7 @@ fn server_config(
     let search_parameter_data_dir = if cfg!(debug_assertions) && !cfg!(mobile) {
         std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../../slices/emr/emr-rust/assets"
+            "/../../wildflower-server/fhir-r4-rust/assets"
         ))
     } else {
         app_handle.path().resource_dir()?.join("fhir-search-params")

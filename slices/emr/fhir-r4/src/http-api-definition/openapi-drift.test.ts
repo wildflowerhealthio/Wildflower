@@ -3,9 +3,9 @@
  *
  * Unlike the other slices' `openapi-drift` tests, the direction is inverted:
  * there is no `utoipa` spec to diff against, because the server is the
- * off-the-shelf HFS router embedded by `emr-rust` (see the emr slice
+ * off-the-shelf HFS router embedded by `fhir-r4-rust` (see the emr slice
  * AGENTS.md). Instead, the Effect `HttpApi` here is the source, and the
- * committed snapshot at `emr-rust/openapi/fhir-r4.openapi.json` is its
+ * committed snapshot at `fhir-r4/openapi/fhir-r4.openapi.json` is its
  * generated projection — "the system how we use it", not a full description of
  * HFS. The published server-docs console renders that snapshot as the FHIR
  * surface. This test only keeps the committed file
@@ -22,7 +22,7 @@ import { OpenApi } from '@effect/platform'
 import { describe, expect, it } from 'vite-plus/test'
 import { FhirResourcesApi, FhirResourcesApiPrefix } from './index.ts'
 
-const snapshotUrl = new URL('../../../emr-rust/openapi/fhir-r4.openapi.json', import.meta.url)
+const snapshotUrl = new URL('../../openapi/fhir-r4.openapi.json', import.meta.url)
 
 describe('generateFhirR4OpenApiSpec', () => {
   it('should declare $everything for Patient only', () => {
@@ -48,7 +48,7 @@ describe('generateFhirR4OpenApiSpec', () => {
     expect(Object.keys(spec.components?.schemas ?? {})).toEqual(['FhirDateSearch'])
   })
 
-  it('should match the committed snapshot embedded by emr-rust (regenerate with UPDATE_OPENAPI=1)', () => {
+  it('should match the committed snapshot embedded by fhir-r4-rust (regenerate with UPDATE_OPENAPI=1)', () => {
     // Arrange
     const spec = generateFhirR4OpenApiSpec()
     const path = fileURLToPath(snapshotUrl)

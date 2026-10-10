@@ -11,7 +11,7 @@ use anyhow::Context;
 use apps_rust::ports::{AppLaunchScopes, LaunchContextMinter};
 use apps_rust::{setup_apps, AppsConfig};
 use axum::Router;
-use emr_rust::{setup_fhir_r4, EmrConfig};
+use fhir_r4_rust::{setup_fhir_r4, FhirR4Config};
 use gatekeeper_rust::{
     gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
     GatekeeperConfig, HostConsentDecider,
@@ -219,7 +219,7 @@ pub async fn set_up(
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
     let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
-    let emr_config = EmrConfig {
+    let fhir_r4_config = FhirR4Config {
         log_level: "debug".to_string(),
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
         // HFS-enforced auth: every FHIR request must carry a Bearer JWT
@@ -265,7 +265,7 @@ pub async fn set_up(
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
 
-    let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
+    let fhir_routers = setup_fhir_r4(&runtime, &fhir_r4_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
     let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
 
@@ -323,7 +323,7 @@ pub async fn set_up(
     // the bearer gate; every other `/fhir-r4/*` path still requires a token.
     let gated_fhir_r4 = fhir_r4_router.layer(gatekeeper_auth_middleware(
         gatekeeper.state.clone(),
-        emr_rust::UNAUTHENTICATED_FHIR_PATHS,
+        fhir_r4_rust::UNAUTHENTICATED_FHIR_PATHS,
     ));
 
     let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);

@@ -1,6 +1,6 @@
 # Wire Pinning How-To
 
-How to add or change a message that crosses the TS ⇄ Rust bridge boundary while keeping both sides byte-compatible. The canonical example is the gatekeeper bridge: `slices/gatekeeper/gatekeeper-core/src/bridge.ts` (TS) mirrored by `slices/gatekeeper/gatekeeper-rust/src/bridge.rs` (Rust). For why the bridge works the way it does, see the [Bridge Explanation](./Bridge%20Explanation.md).
+How to add or change a message that crosses the TS ⇄ Rust bridge boundary while keeping both sides byte-compatible. The canonical example is the gatekeeper bridge: `slices/gatekeeper/gatekeeper-core/src/bridge.ts` (TS) mirrored by `apps/host/wildflower-server/gatekeeper-rust/src/bridge.rs` (Rust). For why the bridge works the way it does, see the [Bridge Explanation](./Bridge%20Explanation.md).
 
 ## 1. Declare the TS schema
 

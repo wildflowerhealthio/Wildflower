@@ -22,11 +22,12 @@ stores, and the packages beside it that only the host uses. The app itself is
 - [`wildflower-server/`](./wildflower-server/AGENTS.md) — the Wildflower
   server the host runs,
   [`wildflower-server-rust`](./wildflower-server/wildflower-server-rust/AGENTS.md),
-  which composes the server slices' Rust crates (gatekeeper, emr, OHIF,
-  collector, request log, apps, databases) into one API; beside it the crates
-  only the host composes: `collector-rust`, `databases-rust`,
-  `request-log-rust`, and the HAR Recorder's `har-recorder-rust` and
-  `har-recorder-tauri`.
+  which composes the server features' Rust crates (gatekeeper, FHIR R4, OHIF,
+  collector, request log, apps, databases, tunnel) into one API; beside it the
+  crates only the host composes: `gatekeeper-rust`, `token-revocation-rust`,
+  `fhir-r4-rust`, `apps-rust`, `tunnel-rust`, `collector-rust`,
+  `databases-rust`, `request-log-rust`, and the HAR Recorder's
+  `har-recorder-rust` and `har-recorder-tauri`.
 - [`shared-structures-tauri-rust`](./shared-structures-tauri-rust) — the host's
   Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)
@@ -36,7 +37,7 @@ stores, and the packages beside it that only the host uses. The app itself is
 
 - **Only the host uses these.** A package lives here because the host is its
   only consumer; a crate in `wildflower-server/`, because the host is its only
-  Rust consumer, its TypeScript half living with the launcher. Anything a
+  Rust consumer, its TypeScript half living with the launcher or in a shared slice. Anything a
   second product needs moves back to `slices/` or `global/`
   ([What folds in](../AGENTS.md#what-folds-in)).
 - **One exception reads across.** `slices/browser-sniffer/browser-sniffer-tauri-rust`

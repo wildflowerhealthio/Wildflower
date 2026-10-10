@@ -23,7 +23,7 @@ pub struct WildflowerServerConfig {
     pub runtime: ServerRuntimeConfig,
     /// The directory holding the FHIR R4 SearchParameter bundle HFS indexes from
     /// (see
-    /// [`EmrConfig::search_parameter_data_dir`](emr_rust::EmrConfig::search_parameter_data_dir)).
+    /// [`FhirR4Config::search_parameter_data_dir`](fhir_r4_rust::FhirR4Config::search_parameter_data_dir)).
     pub search_parameter_data_dir: PathBuf,
     /// The hosted launcher every browser-facing link points at.
     pub launcher_base: LauncherBase,

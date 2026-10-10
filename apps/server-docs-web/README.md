@@ -8,14 +8,14 @@ pointed at whichever running server the reader chooses.
 It documents six slices, one sidebar group each, from the **committed OpenAPI
 snapshots**:
 
-| Sidebar group | Snapshot                                                                        |
-| ------------- | ------------------------------------------------------------------------------- |
-| Gatekeeper    | `slices/gatekeeper/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json`       |
-| Apps          | `slices/apps/apps-rust/openapi/apps.openapi.json`                               |
-| Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`     |
-| Collector     | `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`     |
-| Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json` |
-| FHIR R4       | `slices/emr/emr-rust/openapi/fhir-r4.openapi.json`                              |
+| Sidebar group | Snapshot                                                                            |
+| ------------- | ----------------------------------------------------------------------------------- |
+| Gatekeeper    | `apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json` |
+| Apps          | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                   |
+| Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`         |
+| Collector     | `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`         |
+| Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`     |
+| FHIR R4       | `slices/emr/fhir-r4/openapi/fhir-r4.openapi.json`                                   |
 
 Those snapshots are the same files the per-slice Rust snapshot tests and the
 `api-sync.yml` drift guard hold to the live routes, so publishing from them
@@ -95,7 +95,7 @@ in by hand.
    `{server}/fhir-r4/.well-known/smart-configuration` for the `?server=` target
    and reads `authorization_endpoint` and `token_endpoint` out of it; the FHIR
    base that answered, `{server}/fhir-r4`, is the SMART `iss`. A Wildflower
-   server answers that path from `slices/emr/emr-rust/src/smart_configuration.rs`
+   server answers that path from `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
    (unauthenticated, exempt from the bearer gate) and points it at its own
    gatekeeper, whether it is served at an origin or behind a path prefix. Only
    if that answers 404 does the console try
@@ -125,7 +125,7 @@ line asking the server how to sign in. On that restore (`pageshow` with
 `persisted`) the button and status line start over.
 
 The client is registered by
-`slices/gatekeeper/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`
+`apps/host/wildflower-server/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`
 and re-keyed to that random id, with its redirect moved to `/server-docs/`, by
 `0028_rekey_site_app_clients`;
 `src/smart-client.ts` is the browser-side reading of that row's `client_id` and

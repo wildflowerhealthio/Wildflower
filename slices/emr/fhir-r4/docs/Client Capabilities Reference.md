@@ -2,20 +2,20 @@
 
 This is an **internal scratch doc** — not a published FHIR `CapabilityStatement` resource, and **not a description of the server**. It catalogues the capabilities and gaps of the **`fhir-r4` TypeScript client** in `slices/emr/`: what its wire schemas validate and what its `HttpApi` description (and therefore the typed client) declares. Every entry is scoped to that client layer.
 
-Server behaviour — validation, search, pagination, conformance — is **out of scope here**. The server is the off-the-shelf HFS Rust server embedded by `emr-rust` and mounted at `/fhir-r4`; it lives outside this slice's TypeScript surface and keeps no capability catalogue of its own (HFS implements standard FHIR R4). The client is hand-synchronized to what HFS serves — see "No drift guard against the HFS server" below.
+Server behaviour — validation, search, pagination, conformance — is **out of scope here**. The server is the off-the-shelf HFS Rust server embedded by `fhir-r4-rust` and mounted at `/fhir-r4`; it lives outside this slice's TypeScript surface and keeps no capability catalogue of its own (HFS implements standard FHIR R4). The client is hand-synchronized to what HFS serves — see "No drift guard against the HFS server" below.
 
 Each entry is a place where the client deviates from, narrows, or postpones the FHIR R4 spec. None are blockers; they are simply not implemented in the client yet. When a deviation is fixed, delete or amend the entry. When a new gap is introduced (or noticed), add one.
 
 ## No drift guard against the HFS server
 
-The `HttpApi` definition and the schemas here are hand-synchronized with what HFS actually serves at `/fhir-r4/*`. There is no OpenAPI-snapshot or CapabilityStatement-based drift test (deliberate, for now): `emr-rust` mounts HFS's router wholesale, so there is nothing to annotate with `utoipa` on the Rust side. If the two sides diverge, nothing fails automatically — changes to either side need a manual cross-check.
+The `HttpApi` definition and the schemas here are hand-synchronized with what HFS actually serves at `/fhir-r4/*`. There is no OpenAPI-snapshot or CapabilityStatement-based drift test (deliberate, for now): `fhir-r4-rust` mounts HFS's router wholesale, so there is nothing to annotate with `utoipa` on the Rust side. If the two sides diverge, nothing fails automatically — changes to either side need a manual cross-check.
 
 ## The `HttpApi` is base-relative; the mount prefix is re-applied by consumers
 
 `FhirResourcesApi` carries no `/fhir-r4` prefix. The typed client emits **base-relative** paths (`/Patient`, `/DocumentReference/{id}`), so it can be pointed at any FHIR server — Wildflower's host, a SMART sandbox, an arbitrary open R4 base. Naming the base is the **consumer's** job:
 
 - **Host app wiring** (`apps/launcher/launcher-web`'s `router-context.ts`) re-applies `FhirResourcesApiPrefix` (`/fhir-r4`, still exported here) by wrapping the FHIR slice's `HttpClient` with `prependApiBaseUrl(httpClientLayer, FhirResourcesApiPrefix)`, so the host webview's reads still resolve to `{origin}/fhir-r4/…`.
-- **OpenAPI generation** (`http-api-definition/openapi-drift.test.ts`) re-applies the same prefix to every `spec.paths` key after `OpenApi.fromApi`, so the committed `emr-rust/openapi/fhir-r4.openapi.json` — the source of the FHIR R4 group in the published [server-docs console](../../../../apps/server-docs-web/README.md) — shows the mounted `/fhir-r4/…` paths.
+- **OpenAPI generation** (`http-api-definition/openapi-drift.test.ts`) re-applies the same prefix to every `spec.paths` key after `OpenApi.fromApi`, so the committed `fhir-r4/openapi/fhir-r4.openapi.json` — the source of the FHIR R4 group in the published [server-docs console](../../../../apps/server-docs-web/README.md) — shows the mounted `/fhir-r4/…` paths.
 - **SMART apps** (`fhir-r4-react/smart`'s `smartHttpClientLayer`) prepend the `iss`/picked server URL verbatim.
 
 The `/fhir-r4` mount path itself is unchanged on the server side — only where it is applied on the client side moved.
@@ -170,7 +170,7 @@ The server (HFS) supports both batch and transaction bundles at `POST /fhir-r4` 
 
 The `HttpApi` declares `GET /Patient/{id}/$everything` (with `_count`, returning a `Bundle`) on the Patient group only — added via `buildEverythingEndpoint` in `patient.ts`, not by `buildDomainResourceHttpApiGroup`. This matches the server, which implements the operation for Patient only. A resource that gains a server-side `$everything` later opts in with one `.add(buildEverythingEndpoint(...))` line.
 
-What the server actually returns for `Patient/{id}/$everything` — which related types it gathers, and how (an indexed, server-side, fully-paged `subject=` search per type) — is server behaviour and lives in the emr-rust [Capability Statement](../../emr-rust/docs/Capability%20Statement.md), not here.
+What the server actually returns for `Patient/{id}/$everything` — which related types it gathers, and how (an indexed, server-side, fully-paged `subject=` search per type) — is server behaviour and lives in the fhir-r4-rust [Capability Statement](../../../../apps/host/wildflower-server/fhir-r4-rust/docs/Capability%20Statement.md), not here.
 
 ## Patient invariant `pat-1` not enforced
 

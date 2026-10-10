@@ -35,7 +35,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  *   `0017_seed_fhir_sync_pebble_client`, scopes widened by `0018`), which
  *   registers that absolute URL.
  * - The **vite dev server** (`vp run -F fhir-sync-pebble-web dev`, on the port
- *   `slices/apps/dev-app-ports.json` pins) authorizes as the debug-only
+ *   `dev-app-ports.json` pins) authorizes as the debug-only
  *   `fhir-sync-pebble-dev` client (`gatekeeper-rust`'s `seed_dev_app_clients`),
  *   which registers `http://localhost:{port}/`.
  *

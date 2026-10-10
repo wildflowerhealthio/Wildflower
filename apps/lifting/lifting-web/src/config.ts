@@ -38,7 +38,7 @@ const LIFTING_SCOPE =
  *   `https://wildflowerhealth.io/lifting/` and launches as the `lifting` tile's
  *   client, `bdf9fc5cb5a28c6683b49896b0ef8a75`.
  * - The **vite dev server** (`vp run -F lifting-web dev`, on the port
- *   `slices/apps/dev-app-ports.json` pins) launches as the `lifting-dev` tile's
+ *   `dev-app-ports.json` pins) launches as the `lifting-dev` tile's
  *   client, `8467e680a05f1e92e22864e923144e5a`.
  *
  * The ids are random (`openssl rand -hex 16`), not the tile ids. Either way

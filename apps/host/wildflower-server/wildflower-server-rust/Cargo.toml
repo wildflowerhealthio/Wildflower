@@ -81,11 +81,11 @@ async-trait = "0.1"
 chrono = { workspace = true, features = ["clock", "serde"] }
 # The `server` `/health` check's `SELECT 1` on the shared diesel pool.
 diesel.workspace = true
-apps-rust = { path = "../../../../slices/apps/apps-rust" }
+apps-rust = { path = "../apps-rust" }
 collector-rust = { path = "../collector-rust" }
 databases-rust = { path = "../databases-rust" }
-emr-rust = { path = "../../../../slices/emr/emr-rust" }
-gatekeeper-rust = { path = "../../../../slices/gatekeeper/gatekeeper-rust" }
+fhir-r4-rust = { path = "../fhir-r4-rust" }
+gatekeeper-rust = { path = "../gatekeeper-rust" }
 ohif-server-rust = { path = "../../../../slices/dicom/ohif-server-rust" }
 persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
 request-log-rust = { path = "../request-log-rust" }
@@ -100,8 +100,8 @@ shared-structures-rust = { path = "../../../../slices/shared-structures/shared-s
 ] }
 # Built once on the shared db and threaded into both gatekeeper and the FHIR
 # server so the auth gate and HFS read one revocation denylist/epoch store (#269).
-token-revocation-rust = { path = "../../../../slices/gatekeeper/token-revocation-rust" }
-tunnel-rust = { path = "../../../../slices/tunnel/tunnel-rust" }
+token-revocation-rust = { path = "../token-revocation-rust" }
+tunnel-rust = { path = "../tunnel-rust" }
 
 [lints]
 workspace = true

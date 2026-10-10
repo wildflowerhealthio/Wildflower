@@ -188,13 +188,13 @@ The app is registered as a row served from the published site, by two
 migrations that must land together — an app registration whose `client_id` has no
 registered client cannot launch:
 
-- `slices/apps/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
+- `apps/host/wildflower-server/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
   registration and its launch URL
   (`https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}/fhir-r4`
   since `0016_launch_first_party_apps_at_root`, and under the tile id
   `importer` since `0019_rekey_site_apps`), `requires_tunnel = 1` (like
   `medications`).
-- `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
+- `apps/host/wildflower-server/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
   — the OAuth client, re-keyed to `165cd26573e5ac72378e6ad2d2198330` by
   `0028_rekey_site_app_clients`. Its one registered redirect is
   `https://wildflowerhealth.io/importer/`, the page it launches from.
@@ -204,7 +204,7 @@ the client's id in both.
 
 A **debug build** additionally seeds an `importer-dev` row
 (`apps-rust`'s `dev_seed.rs`) whose launch URL names this app's vite dev-server
-port (`slices/apps/dev-app-ports.json` → `5193`), plus its sibling OAuth client
+port (`dev-app-ports.json` → `5193`), plus its sibling OAuth client
 (`gatekeeper-rust`'s `seed_dev_app_clients`) carrying the same write scopes. That
 row is what a developer running `vp run -F importer-web dev` launches;
 there is no fallback build, so the tile opens nothing when vite is not holding

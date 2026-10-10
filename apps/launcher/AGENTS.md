@@ -8,7 +8,7 @@ the server-status wire and its screens, and the host navigation reporter. The
 app itself is [`launcher-web`](./launcher-web/AGENTS.md).
 
 Where a feature also has a server half, its Rust crate lives with the server
-the host runs: `apps-rust` in `slices/apps`, the rest in
+the host runs, in
 [`apps/host/wildflower-server/`](../host/wildflower-server/AGENTS.md).
 
 ## Packages
@@ -23,10 +23,10 @@ the host runs: `apps-rust` in `slices/apps`, the rest in
   consent dialog is answered. It mounts the settings and route fragments of the
   packages it composes (`routes.config.ts`).
 - [`apps-core-js`](./apps-core-js) and [`apps-react`](./apps-react) — the
-  TypeScript half of the [`apps` slice](../../slices/apps/AGENTS.md), whose
-  server half (`apps-rust`) stays in `slices/apps`. `apps-core-js` is the
+  TypeScript half of the app registry, whose server half is
+  [`apps-rust`](../host/wildflower-server/apps-rust/AGENTS.md). `apps-core-js` is the
   registry's `HttpApi` definition and clients, held to
-  `slices/apps/apps-rust/openapi/apps.openapi.json` by its drift test;
+  `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json` by its drift test;
   `apps-react` is the homescreen and the `/settings/apps` pages.
 - [`collector/`](./collector/AGENTS.md) — the collectors: the vocabulary and
   handler machines (`collector-fundamentals`), the closed registry and remotes

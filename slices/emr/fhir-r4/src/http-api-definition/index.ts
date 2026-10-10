@@ -17,7 +17,7 @@ import * as Procedure from './procedure.ts'
 import * as ServiceRequest from './service-request.ts'
 
 /**
- * The path Wildflower's host mounts `emr-rust` at.
+ * The path Wildflower's host mounts `fhir-r4-rust` at.
  *
  * @remarks
  * No longer baked into {@link FhirResourcesApi} — the typed client emits
@@ -26,7 +26,7 @@ import * as ServiceRequest from './service-request.ts'
  * consumers that know they are talking to Wildflower's own host: the host app's
  * client wiring (`apps/launcher/launcher-web`'s `router-context.ts`) and the OpenAPI
  * snapshot generation (`openapi-drift.test.ts`), which keeps the committed
- * `emr-rust/openapi/fhir-r4.openapi.json` — the server-docs console's source —
+ * `fhir-r4/openapi/fhir-r4.openapi.json` — the server-docs console's source —
  * showing the mounted paths.
  */
 const FhirResourcesApiPrefix = '/fhir-r4'

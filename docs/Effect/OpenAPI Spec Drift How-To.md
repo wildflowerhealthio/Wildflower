@@ -143,7 +143,7 @@ the live routes, so it can't drift from the server — no extra guard is needed.
 FHIR/HFS is the one **inverted** group: HFS (the embedded third-party FHIR
 server) emits no OpenAPI spec, only a FHIR CapabilityStatement at
 `/fhir-r4/metadata`. So its snapshot
-(`slices/emr/emr-rust/openapi/fhir-r4.openapi.json`) is generated **from the TS
+(`slices/emr/fhir-r4/openapi/fhir-r4.openapi.json`) is generated **from the TS
 side** — `OpenApi.fromApi` on the `fhir-r4` Effect `HttpApi`, kept fresh by
 `slices/emr/fhir-r4/src/http-api-definition/openapi-drift.test.ts` (regenerate
 with `UPDATE_OPENAPI=1 vp test --config slices/emr/fhir-r4/vite.config.ts

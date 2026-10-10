@@ -3,7 +3,7 @@
 //! A small, resource-focused HTTP surface over the host's SQLite databases.
 //! Where the other `-rust` slices each own a store, this one is deliberately
 //! storeless: it operates at the *file* level on databases that other slices
-//! own (`health-data.sqlite` is managed by `emr-rust`, `wildflower.sqlite` by
+//! own (`health-data.sqlite` is managed by `fhir-r4-rust`, `wildflower.sqlite` by
 //! the gatekeeper / apps / collector / request-log slices), so the host hands
 //! it only the data directory.
 //!

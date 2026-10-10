@@ -128,6 +128,9 @@ jobs:
               # route change instead lands as *.rs and is gated by
               # ci-rust.yml's Rust snapshot half.
               - '**/*-rust/openapi/*.openapi.json'
+              # The FHIR R4 snapshot, which `fhir-r4`'s drift test writes from
+              # the TS `HttpApi` (HFS serves the routes; no Rust test emits it).
+              - 'slices/emr/fhir-r4/openapi/*.openapi.json'
               # The shared wire-shape engine + the spec-drift test factory.
               - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
               - '.github/workflows/ci.yml'

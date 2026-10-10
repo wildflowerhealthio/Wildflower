@@ -69,7 +69,7 @@ For the full Vite+ command surface and pitfalls, see the Vite+ block at the bott
 ## Dev-Server Ports
 
 The apps with a debug-only "(Dev)" homescreen tile pin their vite dev server to
-a port from `slices/apps/dev-app-ports.json`. `devAppServer(id)` in the root
+a port from `dev-app-ports.json`. `devAppServer(id)` in the root
 `vite.config.base.ts` is the **only** TypeScript reader of that file — an app
 config spreads it into `server` (or `preview`) rather than parsing the JSON
 itself. The Rust side embeds the same file in `apps-rust/src/dev_seed.rs`. See

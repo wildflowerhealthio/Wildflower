@@ -13,7 +13,7 @@ struct TauriSharedConfig {
     background_service_foreground_type: String,
 }
 
-/// The one key of `slices/apps/dev-app-ports.json` the host reads: the port the
+/// The one key of `dev-app-ports.json` the host reads: the port the
 /// launcher's dev server binds, which a debug build links its launcher pages to.
 #[derive(serde::Deserialize)]
 struct DevAppPorts {
@@ -70,8 +70,7 @@ fn main() {
     );
     // The debug launcher address is the launcher's dev server, whose port the
     // shared dev-port file pins (the launcher's `vite.config.web.ts` binds it).
-    let dev_ports_path =
-        Path::new(&manifest_dir).join("../../../../slices/apps/dev-app-ports.json");
+    let dev_ports_path = Path::new(&manifest_dir).join("../../../../dev-app-ports.json");
     println!("cargo:rerun-if-changed={}", dev_ports_path.display());
     let dev_ports_raw = std::fs::read_to_string(&dev_ports_path).unwrap_or_else(|error| {
         panic!(

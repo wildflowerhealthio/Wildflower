@@ -101,7 +101,7 @@ the client ID, for launching from another FHIR server.
 
 A debug build of the host also seeds an `ohif-viewer-dev` row and client
 (`apps-rust/src/dev_seed.rs`, `gatekeeper-rust/src/seeding.rs`) on the port
-`slices/apps/dev-app-ports.json` names. `vp run -F ohif-viewer-web dev` previews
+`dev-app-ports.json` names. `vp run -F ohif-viewer-web dev` previews
 `dist/` on that port, and `app-config.js` sends the `ohif-viewer-dev` client ID
 when served from a loopback origin.
 

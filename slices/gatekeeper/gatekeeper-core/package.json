@@ -46,7 +46,7 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "generate:openapi-schemas": "mkdir -p src/http-api-definition/generated && openapi-to-effect gen ../gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json src/http-api-definition/generated",
+    "generate:openapi-schemas": "mkdir -p src/http-api-definition/generated && openapi-to-effect gen ../../../apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json src/http-api-definition/generated",
     "prepublishOnly": "vp run build",
     "test": "vp test"
   },

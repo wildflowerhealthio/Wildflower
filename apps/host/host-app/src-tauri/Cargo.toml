@@ -31,7 +31,7 @@ tauri-plugin-opener = "2"
 openssl = {version = "0.10.36", features = ["vendored"] } 
 serde.workspace = true
 serde_json.workspace = true
-apps-rust = { path = "../../../../slices/apps/apps-rust" }
+apps-rust = { path = "../../wildflower-server/apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 # Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
 # recorded archive into `<data root>/saved_data`.
@@ -51,7 +51,7 @@ tauri-unit-runner-rust = { path = "../../unit-runner/tauri-unit-runner-rust" }
 # Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
 tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
-gatekeeper-rust = { path = "../../../../slices/gatekeeper/gatekeeper-rust" }
+gatekeeper-rust = { path = "../../wildflower-server/gatekeeper-rust" }
 # `ServerRuntimeConfig` and `LauncherBase` for the server config, and the bridge
 # envelope the host's listeners decode.
 shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust" }
@@ -60,7 +60,7 @@ shared-structures-rust = { path = "../../../../slices/shared-structures/shared-s
 # native-webview plugin.
 shared-structures-tauri-rust = { path = "../../shared-structures-tauri-rust" }
 # The `RelaySettings` the host builds from the server's record for its tunnel.
-tunnel-rust = { path = "../../../../slices/tunnel/tunnel-rust" }
+tunnel-rust = { path = "../../wildflower-server/tunnel-rust" }
 # The Wildflower server's config and ports, which the host builds.
 wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
 anyhow.workspace = true

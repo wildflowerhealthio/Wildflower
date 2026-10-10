@@ -15,18 +15,18 @@ members = [
   "apps/host/wildflower-server/request-log-rust",
   "apps/host/wildflower-server/wildflower-server-rust",
   "apps/relay/relay-server",
-  "slices/apps/apps-rust",
+  "apps/host/wildflower-server/apps-rust",
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
   "slices/dicom/ohif-server-rust",
-  "slices/emr/emr-rust",
-  "slices/gatekeeper/gatekeeper-rust",
-  "slices/gatekeeper/token-revocation-rust",
+  "apps/host/wildflower-server/fhir-r4-rust",
+  "apps/host/wildflower-server/gatekeeper-rust",
+  "apps/host/wildflower-server/token-revocation-rust",
   "slices/persistence/persistence-rust",
   "slices/scopes/scope-capabilities-rust",
   "slices/scopes/scopes-rust",
   "slices/shared-structures/shared-structures-rust",
   "slices/tunnel/rathole-settings-rust",
-  "slices/tunnel/tunnel-rust",
+  "apps/host/wildflower-server/tunnel-rust",
 ]
 
 [workspace.package]

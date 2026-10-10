@@ -28,7 +28,7 @@ const SYNTHETIC_DATA_SCOPE =
  *   `https://wildflowerhealth.io/synthetic-data/` and launches as the
  *   `synthetic-data` tile's client, `225ba6af034a3acec6be7ff8010df67f`.
  * - The **vite dev server** (`vp run -F synthetic-data-web dev`, on the port
- *   `slices/apps/dev-app-ports.json` pins) launches as the `synthetic-data-dev`
+ *   `dev-app-ports.json` pins) launches as the `synthetic-data-dev`
  *   tile's client, `07a31e58db3367afda5c6480e03ed993`.
  *
  * The ids are random (`openssl rand -hex 16`), not the tile ids. Either way

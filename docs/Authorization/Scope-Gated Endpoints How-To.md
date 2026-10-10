@@ -339,7 +339,7 @@ lets a guard test assert `domain/` never imports `crate::http`.
 
 ## Worked examples
 
-- **Fixed:** `slices/gatekeeper/gatekeeper-rust/src/domain/capabilities/` — the
+- **Fixed:** `apps/host/wildflower-server/gatekeeper-rust/src/domain/capabilities/` — the
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
   `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
   concrete store in `gatekeeper-rust/src/live_bindings/`. Their privileged writes

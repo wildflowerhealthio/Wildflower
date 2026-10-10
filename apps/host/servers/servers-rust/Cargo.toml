@@ -66,12 +66,12 @@ shared-structures-rust = { path = "../../../../slices/shared-structures/shared-s
 # The head of a run's pending-consent queue, which its detail carries, and
 # `HostConsentDecider`, through which the base's commands read, approve and
 # deny a running server's consents in-process. Tauri-free.
-gatekeeper-rust = { path = "../../../../slices/gatekeeper/gatekeeper-rust" }
+gatekeeper-rust = { path = "../../wildflower-server/gatekeeper-rust" }
 # `public_origin_url`, a server's `https://<domain>` origin, the one its run
 # serves and its gatekeeper issues tokens for, which a launch names as `iss`;
 # and, in `tests/server_unit.rs`, the relay settings a real server's config
 # names.
-tunnel-rust = { path = "../../../../slices/tunnel/tunnel-rust" }
+tunnel-rust = { path = "../../wildflower-server/tunnel-rust" }
 
 [lints]
 workspace = true

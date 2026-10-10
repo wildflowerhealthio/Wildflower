@@ -26,7 +26,7 @@ servers-rust = { path = "../servers-rust" }
 wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
 # The gatekeeper's failure a consent or launch command that couldn't run
 # answers with.
-gatekeeper-rust = { path = "../../../../slices/gatekeeper/gatekeeper-rust" }
+gatekeeper-rust = { path = "../../wildflower-server/gatekeeper-rust" }
 # `ForwardedRequest`, which the servers report and the request notifications
 # count.
 shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust" }
@@ -54,7 +54,7 @@ async-trait = "0.1"
 # A gatekeeper over a temporary database, whose consents the consent commands'
 # tests decide.
 persistence-rust = { path = "../../../../slices/persistence/persistence-rust" }
-token-revocation-rust = { path = "../../../../slices/gatekeeper/token-revocation-rust" }
+token-revocation-rust = { path = "../../wildflower-server/token-revocation-rust" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"

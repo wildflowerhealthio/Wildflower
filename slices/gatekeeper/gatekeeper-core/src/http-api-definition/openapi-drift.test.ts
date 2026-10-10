@@ -19,7 +19,7 @@ import { GatekeeperApi } from './index.ts'
 defineSpecDriftTest({
   name: 'gatekeeper OAuth',
   serverSpec: new URL(
-    '../../../gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json',
+    '../../../../../apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json',
     import.meta.url
   ),
   clientApi: GatekeeperApi,

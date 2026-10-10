@@ -47,7 +47,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  *   `0028_rekey_site_app_clients`), which registers that absolute Pages URL as
  *   a redirect URI.
  * - The **vite dev server** (`vp run -F importer-web dev`, on the port
- *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
+ *   `dev-app-ports.json` pins) is launched through the debug-only
  *   `importer-dev` row (`apps-rust`'s `seed_dev_apps`) and its client,
  *   `57268ff88aea38d6a22de56ae53e2c28` (`gatekeeper-rust`'s
  *   `seed_dev_app_clients`), which registers the

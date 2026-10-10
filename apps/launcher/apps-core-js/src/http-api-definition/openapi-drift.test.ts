@@ -21,7 +21,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import { AppsAdminApi, AppsApi } from './index.ts'
 
 const serverSpec = new URL(
-  '../../../../../slices/apps/apps-rust/openapi/apps.openapi.json',
+  '../../../../host/wildflower-server/apps-rust/openapi/apps.openapi.json',
   import.meta.url
 )
 

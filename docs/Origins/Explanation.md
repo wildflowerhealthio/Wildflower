@@ -102,8 +102,8 @@ Every JWT gatekeeper mints, whether through the OAuth flows or as the host owner
 token, names one origin in both its origin-shaped claims: **`iss` = `aud` =
 `https://<domain>`, the server's origin**. It is the public origin the server
 builds from its domain at startup (`wildflower_server.rs`), handed to gatekeeper
-as [`GatekeeperConfig::server_origin`] and to emr-rust as
-[`EmrConfig`]`.public_origin`, and spelled as a bare origin (no trailing slash,
+as [`GatekeeperConfig::server_origin`] and to fhir-r4-rust as
+[`FhirR4Config`]`.public_origin`, and spelled as a bare origin (no trailing slash,
 no path) by [`origin_string`].
 
 The claims say which server the token is for, not which origin a request was
@@ -113,7 +113,7 @@ served on, so they are checked against configuration, never against the request:
   in front of the FHIR server and the other slices) run the `TokenVerifier`,
   which accepts a token only when its `iss` and its `aud` are both the
   configured server origin.
-- **HFS** checks the same pair itself: emr-rust sets HFS's `expected_issuer` and
+- **HFS** checks the same pair itself: fhir-r4-rust sets HFS's `expected_issuer` and
   `expected_audience` to the server's origin, and HFS matches `aud` exactly. A
   FHIR request is checked by gatekeeper's gate and again by HFS.
 
@@ -148,9 +148,9 @@ client that authorised over loopback can follow a public `next` link through
 the tunnel.
 
 The domain can't change while the server runs, so the server hands
-emr-rust the public origin in its config ([`EmrConfig`]) and HFS's router is
+fhir-r4-rust the public origin in its config ([`FhirR4Config`]) and HFS's router is
 built once with that `base_url`; a domain that can't form an origin stops
-startup. emr-rust's own overrides (`$everything`, the SMART discovery doc) still
+startup. fhir-r4-rust's own overrides (`$everything`, the SMART discovery doc) still
 render the served origin per request.
 
 ### Every launch names the public origin
@@ -175,7 +175,7 @@ how well it carries traffic is `/health`'s `connectivity` check.
 A SMART/FHIR client fetches the discovery documents (`smart-configuration`,
 `metadata`, `jwks.json`) _before_ it holds a token, so a bearer gate mounted
 above the FHIR router must let those paths through unauthenticated. The canonical
-allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (emr-rust), which mirrors HFS's own
+allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (fhir-r4-rust), which mirrors HFS's own
 `EXEMPT_PATHS`.
 
 ## Loopback is the trust boundary
@@ -230,9 +230,9 @@ restate the grammar.
   — `iss` / `aud` / Owner / Client / SMART terms.
 
 [`origin_string`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
-[`GatekeeperConfig::server_origin`]: ../../slices/gatekeeper/gatekeeper-rust/src/config.rs
+[`GatekeeperConfig::server_origin`]: ../../apps/host/wildflower-server/gatekeeper-rust/src/config.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
-[`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
-[`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
-[`EmrConfig`]: ../../slices/emr/emr-rust/src/config.rs
+[`require_loopback_peer`]: ../../apps/host/wildflower-server/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
+[`UNAUTHENTICATED_FHIR_PATHS`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/lib.rs
+[`FhirR4Config`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/config.rs

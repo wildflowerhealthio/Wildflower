@@ -168,7 +168,7 @@ beside the model display. Without a token the phone fails the sync rather than
 write ids no later sync reproduces.
 
 The server must accept a PUT that creates a resource under a client-chosen id,
-inside a transaction. HFS, which `emr-rust` embeds, does (`helios-rest`'s
+inside a transaction. HFS, which `fhir-r4-rust` embeds, does (`helios-rest`'s
 transaction handler upserts a PUT entry).
 
 ## Health Activity sync

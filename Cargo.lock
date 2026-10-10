@@ -2398,34 +2398,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 
 [[package]]
-name = "emr-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "base64 0.23.1",
- "chrono",
- "gatekeeper-rust",
- "helios-audit",
- "helios-auth",
- "helios-persistence",
- "helios-rest",
- "http-body-util",
- "ohif-server-rust",
- "persistence-rust",
- "scope-capabilities-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "token-revocation-rust",
- "tokio",
- "tower",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "encoding_rs"
 version = "0.8.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2591,6 +2563,34 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "fhir-r4-rust"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "gatekeeper-rust",
+ "helios-audit",
+ "helios-auth",
+ "helios-persistence",
+ "helios-rest",
+ "http-body-util",
+ "ohif-server-rust",
+ "persistence-rust",
+ "scope-capabilities-rust",
+ "serde",
+ "serde_json",
+ "shared-structures-rust",
+ "token-revocation-rust",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -9521,7 +9521,7 @@ dependencies = [
  "collector-rust",
  "databases-rust",
  "diesel",
- "emr-rust",
+ "fhir-r4-rust",
  "futures-util",
  "gatekeeper-rust",
  "ohif-server-rust",
