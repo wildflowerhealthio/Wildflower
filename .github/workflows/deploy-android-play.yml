@@ -1,0 +1,293 @@
+name: Deploy Android to Google Play
+
+# Builds the host's Android App Bundle for a release tag, signed with the
+# upload key, attaches it to the tag's GitHub Release, and uploads it to Google
+# Play's `internal` testing track as a draft release, to be rolled out by hand
+# from Play Console. The version Play sees is the one in the tag's
+# `apps/host/host-app/src-tauri/tauri.conf.json` — see
+# docs/Rust/Android Release Signing Explanation.md.
+#
+# Runs once Tauri Release — Publish completes successfully for a merged
+# `release/v<version>` PR, so a release reaches Play only after every other
+# platform built. Prereleases are skipped: Tauri drops the prerelease suffix
+# from the version code, so every beta of 1.2.3 would spend 1.2.3's.
+#
+# The `resolve` job holds no secrets. `deploy` runs in the `android-play`
+# environment, which carries:
+#   - secrets ANDROID_UPLOAD_KEYSTORE (base64 of the keystore) and
+#     ANDROID_UPLOAD_KEYSTORE_PASSWORD, and variable ANDROID_UPLOAD_KEY_ALIAS;
+#   - secret PLAY_SERVICE_ACCOUNT_JSON, the key of the service account Play
+#     Console lets release to testing tracks.
+# scripts/release/android-signing-sync.sh creates and fills it. Creating the
+# app and uploading its first bundle cannot be done through the API — see
+# docs/Rust/Android Signing Sync How-To.md.
+#
+# Also exposes `workflow_dispatch` with a `tag` (e.g. `v0.4.0`), for a Publish
+# that was itself dispatched rather than triggered by the merge, or to retry a
+# failed upload. Play refuses a version code it has already been sent, so a
+# dispatch for a version that reached Play fails at the upload step, after
+# replacing the GitHub Release's bundle.
+
+on:
+  workflow_run:
+    workflows: ['Tauri Release — Publish']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and upload (e.g. v0.4.0). Its version must be one Google Play has not been sent.'
+        required: true
+        type: string
+
+# One upload at a time, and never cancelled midway: committing one Play edit
+# invalidates any other open on the same app, so two concurrent uploads would
+# fail each other.
+concurrency:
+  group: deploy-android-play
+  cancel-in-progress: false
+
+permissions:
+  # Needed to upload the bundle to the tag's GitHub Release.
+  contents: write
+
+jobs:
+  resolve:
+    name: Resolve release tag
+    # Gate: on a Publish run, only one that succeeded for a release PR. A
+    # dispatched Publish — a re-trigger or a tag rebuild — is left to this
+    # workflow's own dispatch: a rebuilt version has usually reached Play
+    # already, and Play refuses it a second time.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'pull_request' &&
+       startsWith(github.event.workflow_run.head_branch, 'release/v'))
+    runs-on: ubuntu-latest
+    # Only reads; the workflow-wide `contents: write` is for `deploy`.
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+      version: ${{ steps.vars.outputs.version }}
+      deploy: ${{ steps.vars.outputs.deploy }}
+    steps:
+      - name: Resolve tag
+        id: vars
+        # A Publish run for a release PR reads the version from tauri.conf.json
+        # at the merged commit and tags it `v<version>`. The workflow_run event
+        # does not carry that tag, so it is read the same way here, from
+        # tauri.conf.json at the run's head commit. The head commit is the
+        # release branch's tip, not the merge commit Publish tagged, but the
+        # two carry the same tauri.conf.json whichever way the PR was merged,
+        # and reading the file rather than parsing the branch name keeps
+        # tauri.conf.json the one source of truth, as Publish does. A PR closed
+        # without merging also completes a Publish run, one that skipped
+        # tagging: no tag exists, and there is nothing to deploy.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          dispatched='${{ github.event_name == 'workflow_dispatch' }}'
+          if [[ "$dispatched" == true ]]; then
+            tag="$DISPATCH_TAG"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::tag '$tag' is not of the form vX.Y.Z or vX.Y.Z-prerelease."
+              exit 1
+            fi
+          else
+            version="$(gh api "repos/${{ github.repository }}/contents/apps/host/host-app/src-tauri/tauri.conf.json?ref=$HEAD_SHA" \
+              -H 'Accept: application/vnd.github.raw' | jq -r '.version')"
+            tag="v$version"
+          fi
+          version="${tag#v}"
+
+          # No checkout here, so ask the API rather than git.
+          if ! gh api "repos/${{ github.repository }}/git/ref/tags/$tag" --silent; then
+            if [[ "$dispatched" == true ]]; then
+              echo "::error::Tag $tag does not exist on origin."
+              exit 1
+            fi
+            echo "::notice::Publish cut no tag $tag for this run (a release PR closed without merging), so there is nothing to deploy."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Tauri's version code is major * 1000000 + minor * 1000 + patch,
+          # with no room for a prerelease suffix.
+          if [[ "$version" == *-* ]]; then
+            if [[ "$dispatched" == true ]]; then
+              echo "::error::$tag is a prerelease. Its version code is ${version%%-*}'s, which Play would then refuse for the release itself."
+              exit 1
+            fi
+            echo "::notice::$tag is a prerelease, so it was not uploaded to Google Play."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Build and upload to Google Play
+    needs: resolve
+    if: needs.resolve.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    # The upload key and the Play service account key.
+    environment: android-play
+    # The host's base reads its own `VITE_SENTRY_DSN_HOST_APP` (a public
+    # identifier, so a repository variable) and reports nothing without one.
+    # Job-wide, because `vp run pack` builds host-app's webview and the Tauri
+    # CLI's `beforeBuildCommand` builds it again.
+    env:
+      VITE_SENTRY_DSN_HOST_APP: ${{ vars.VITE_SENTRY_DSN_HOST_APP }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
+      - name: Verify version
+        # The Tauri CLI writes the bundle's versionName and versionCode from
+        # tauri.conf.json at build time, so the file at the tag is what Play
+        # sees. A tag that disagrees with it would upload a wrongly-versioned
+        # bundle — or spend another release's version code.
+        run: |
+          set -euo pipefail
+          version='${{ needs.resolve.outputs.version }}'
+          conf_version="$(jq -r '.version' apps/host/host-app/src-tauri/tauri.conf.json)"
+          if [[ "$conf_version" != "$version" ]]; then
+            echo "::error::${{ needs.resolve.outputs.tag }} says $version but its tauri.conf.json says $conf_version."
+            exit 1
+          fi
+
+      # Android Gradle Plugin 8 needs JDK 17. Before the preflight, which runs
+      # this JDK's keytool.
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify Android upload signing inputs
+        # Fails in seconds, not after the compile, and names the input at
+        # fault; Gradle's own signing failure arrives at the end of the build
+        # and names neither. Same values the keystore.properties step and the
+        # upload receive below.
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: ./scripts/checks/android-play-preflight.sh
+
+      - name: Install Android NDK
+        # The runner image carries the Android SDK, but which NDKs it has
+        # moves with the image. The Tauri CLI builds with NDK_HOME when it is
+        # set and otherwise with the newest NDK under the SDK, so pin the one
+        # the CLI installs itself when it finds none (`NDK_VERSION` in
+        # tauri-cli's mobile/android/mod.rs).
+        env:
+          NDK_VERSION: 29.0.13846066
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          # The two ABIs every phone Play serves runs; the x86 ones are for
+          # emulators.
+          target: aarch64-linux-android,armv7-linux-androideabi
+          rustflags: '-D warnings'
+          # Its own key: release profile and Android targets, disjoint from
+          # every other job's — see docs/Rust/CI Build Cache Explanation.md.
+          cache-shared-key: release-android
+          cache-on-failure: true
+
+      # Vite+ owns the toolchain (Node + package manager + `vp`), same as
+      # every other workflow here. Its managed `pnpm` is also what the Gradle
+      # project's Rust build task calls back into the Tauri CLI with.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          cache: true
+
+      - name: Install workspace dependencies
+        run: vp install
+
+      - name: Build workspace (vp run pack)
+        run: vp run pack
+
+      - name: Write keystore.properties
+        # The file the release signing config in
+        # src-tauri/gen/android/app/build.gradle.kts reads; without it the
+        # bundle is built unsigned. The keystore goes to the runner's temp
+        # directory, outside the checkout.
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          printf 'storeFile=%s\nkeyAlias=%s\npassword=%s\n' \
+            "$RUNNER_TEMP/upload.jks" "$ANDROID_UPLOAD_KEY_ALIAS" "$ANDROID_UPLOAD_KEYSTORE_PASSWORD" \
+            > apps/host/host-app/src-tauri/gen/android/keystore.properties
+
+      - name: Build Android App Bundle
+        working-directory: apps/host/host-app
+        # One bundle for both ABIs, not one per ABI: Play splits it per device.
+        run: vp run tauri android build --aab --target aarch64 armv7
+
+      - name: Locate bundle
+        id: bundle
+        # Gradle names the bundle and R8's mapping file after the build
+        # variant, so find them rather than spelling it. The release asset
+        # adds the version, as every other asset on the release carries one.
+        run: |
+          set -euo pipefail
+          OUTPUTS=apps/host/host-app/src-tauri/gen/android/app/build/outputs
+          shopt -s nullglob
+          bundles=("$OUTPUTS"/bundle/*Release/*.aab)
+          if [[ ${#bundles[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one .aab under $OUTPUTS/bundle, found ${#bundles[@]}. Contents:"
+            ls -laR "$OUTPUTS/bundle" 2>&1 || echo "  (directory does not exist)"
+            exit 1
+          fi
+          asset="$RUNNER_TEMP/wildflower-host-${{ needs.resolve.outputs.version }}.aab"
+          cp "${bundles[0]}" "$asset"
+          echo "path=$asset" >> "$GITHUB_OUTPUT"
+          # Present when R8 minified the release, which build.gradle.kts asks
+          # for; Play uses it to deobfuscate crash reports.
+          mappings=("$OUTPUTS"/mapping/*Release/mapping.txt)
+          echo "mapping=${mappings[0]:-}" >> "$GITHUB_OUTPUT"
+
+      # Before the Play upload, so the bundle is on the release even when that
+      # upload fails — which is where the first bundle, uploaded to Play by
+      # hand, comes from. `--clobber` replaces a same-named asset, so a
+      # dispatch re-uploads cleanly.
+      - name: Upload bundle to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload '${{ needs.resolve.outputs.tag }}' \
+            '${{ steps.bundle.outputs.path }}' \
+            --clobber
+
+      - name: Upload to Google Play, internal track, draft
+        # A draft release on the internal track, for a person to roll out from
+        # Play Console. Draft is also the only status the API accepts while
+        # the app has never been published.
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: io.wildflowerhealth.hostapp
+          releaseFiles: ${{ steps.bundle.outputs.path }}
+          track: internal
+          status: draft
+          mappingFile: ${{ steps.bundle.outputs.mapping }}
