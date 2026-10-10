@@ -11,7 +11,7 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   when opened with a SMART launch, as the base opens a server's launcher.
 - **`main-tauri`** — the wiring for a webview the host authenticates. No app
   mounts it: the Tauri host's webview mounts the servers base
-  (`slices/servers/servers-react`) instead.
+  (`apps/host/servers/servers-react`) instead.
 
 ## Guardrails
 

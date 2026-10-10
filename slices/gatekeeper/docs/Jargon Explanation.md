@@ -380,8 +380,8 @@ its base as the `pending-consent` event, raises the window when a server with
 nothing waiting gets a request (not when its queue advances), and gives the base
 commands that read and decide a request in-process through
 `HostConsentDecider`, the same consent capabilities with the host Owner's grant
-(see the servers slice's
-[Server Runs Explanation](../../servers/docs/Server%20Runs%20Explanation.md)).
+(see `apps/host/servers`'s
+[Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
 The host also forwards each change as `bridge:PendingConsentRequested`, on
 which the SPA's `PendingConsentModalHost` branches on `kind` to mount the
 matching consent form.

@@ -1,5 +1,5 @@
 //! Cross-crate constants and envelope shape for the multiplexed Tauri
-//! bridge channel. Both the wildflower-tauri host crate and the
+//! bridge channel. Both the host-app host crate and the
 //! browser-sniffer host crate (and any future Rust crate that listens
 //! on the bridge) must agree on the channel name and the discriminator
 //! field, otherwise tag routing silently breaks with no compile error.

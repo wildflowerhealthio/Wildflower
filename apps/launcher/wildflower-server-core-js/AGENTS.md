@@ -18,7 +18,7 @@ page's request to restart it. No DOM, no React.
 Pure and neutral (`platform: 'neutral'`). Depends on `effect` and
 `effect-messaging-core` (`Bridge`). Imported by
 `wildflower-server-react`, `apps/launcher/launcher-web` (the bridges tuple)
-and `apps/wildflower-tauri` (the bridge name its transport seeds).
+and `apps/host/host-app` (the bridge name its transport seeds).
 
 ## Traps
 

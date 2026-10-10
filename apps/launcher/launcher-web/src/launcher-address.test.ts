@@ -2,7 +2,7 @@ import { sectionUrl } from 'branding-core'
 import { SERVER_QUERY_PARAM } from 'gatekeeper-core/smart-client'
 import { describe, expect, it } from 'vite-plus/test'
 import launcherRs from '../../../../slices/shared-structures/shared-structures-rust/src/launcher.rs?raw'
-import { launcher_base_url as launcherBaseUrl } from '../../../wildflower-tauri/tauri-shared-config.json'
+import { launcher_base_url as launcherBaseUrl } from '../../../host/host-app/tauri-shared-config.json'
 import { RETURN_TO_PARAM } from './sign-in.ts'
 
 // The Tauri host links every browser-facing launcher page (device-flow

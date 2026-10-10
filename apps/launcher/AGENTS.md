@@ -21,7 +21,7 @@ registry's client and screens. The app itself is
   signing in by SMART redirect and holding its bearer in page memory; and
   `main-tauri`, the wiring for a webview the host authenticates, which no app
   mounts today (the Tauri host's webview mounts the servers base,
-  `slices/servers/servers-react`, instead). Both boot only after the telemetry
+  `apps/host/servers/servers-react`, instead). Both boot only after the telemetry
   consent dialog is answered. It mounts the settings and route fragments of the
   slices it composes.
 - [`wildflower-server-core-js`](./wildflower-server-core-js/AGENTS.md) — the

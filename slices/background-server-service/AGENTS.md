@@ -5,8 +5,8 @@ of the Wildflower server (host → web) and a request to restart it
 (web → host), with the web app's banner and `/settings/server` page that
 render it. The wire is kept for the web app to read a server's status over a
 future websocket. Nothing sends or answers it today: the Tauri host runs its
-servers on the unit runner (see the servers slice's
-[Server Runs Explanation](../servers/docs/Server%20Runs%20Explanation.md)),
+servers on the unit runner (see `apps/host/servers`'s
+[Server Runs Explanation](../../apps/host/servers/docs/Server%20Runs%20Explanation.md)),
 and neither sends `ServerServiceStatus` nor listens for `RestartServer`.
 
 ## Package roles

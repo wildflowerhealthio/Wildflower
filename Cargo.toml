@@ -1,11 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
+  "apps/host/host-app/src-tauri",
+  "apps/host/servers/servers-rust",
+  "apps/host/servers/servers-tauri-rust",
+  "apps/host/shared-structures-tauri-rust",
+  "apps/host/tauri-plugin-native-webview",
+  "apps/host/unit-runner/tauri-unit-runner-rust",
+  "apps/host/unit-runner/unit-runner-rust",
+  "apps/host/wildflower-server-rust",
   "apps/relay/relay-server",
-  "apps/wildflower-tauri/src-tauri",
-  "global/tauri-unit-runner",
-  "global/unit-runner",
-  "plugins/tauri-plugin-native-webview",
   "slices/apps/apps-rust",
   "slices/background-server-service/background-server-service-rust",
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
@@ -16,18 +20,14 @@ members = [
   "slices/gatekeeper/gatekeeper-rust",
   "slices/gatekeeper/token-revocation-rust",
   "slices/har-recorder/har-recorder-rust",
-  "slices/har-recorder/har-recorder-tauri-rust",
+  "slices/har-recorder/har-recorder-tauri",
   "slices/persistence/persistence-rust",
   "slices/request-log/request-log-rust",
   "slices/scopes/scope-capabilities-rust",
   "slices/scopes/scopes-rust",
-  "slices/servers/servers-rust",
-  "slices/servers/servers-tauri-rust",
   "slices/shared-structures/shared-structures-rust",
-  "slices/shared-structures/shared-structures-tauri-rust",
   "slices/tunnel/rathole-settings-rust",
   "slices/tunnel/tunnel-rust",
-  "slices/wildflower-server/wildflower-server-rust",
 ]
 
 [workspace.package]

@@ -4,7 +4,7 @@
 import {
   loopback_hostname as loopbackHostname,
   loopback_port as loopbackPort,
-} from '../../wildflower-tauri/tauri-shared-config.json'
+} from '../../host/host-app/tauri-shared-config.json'
 
 /**
  * Facts about a Wildflower host that this console needs, read from the same

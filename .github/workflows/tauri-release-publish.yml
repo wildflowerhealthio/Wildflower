@@ -2,7 +2,7 @@ name: Tauri Release — Publish
 
 # Fires when a `release/v<version>` PR opened by Tauri Release — Prepare is
 # merged. Reads the version straight out of the merged
-# `apps/wildflower-tauri/src-tauri/tauri.conf.json` (source of truth), pushes
+# `apps/host/host-app/src-tauri/tauri.conf.json` (source of truth), pushes
 # a `v<version>` tag on the merged commit, creates the tag's GitHub Release as
 # a draft prerelease, then fans out to macOS (universal), Windows and Linux
 # runners. `tauri-apps/tauri-action` uploads platform bundles to that release —
@@ -132,7 +132,7 @@ jobs:
           set -euo pipefail
           rebuild_tag='${{ inputs.tag }}'
           input='${{ inputs.version }}'
-          conf_version="$(jq -r '.version' apps/wildflower-tauri/src-tauri/tauri.conf.json)"
+          conf_version="$(jq -r '.version' apps/host/host-app/src-tauri/tauri.conf.json)"
           if [[ -n "$rebuild_tag" ]]; then
             version="${rebuild_tag#v}"
             source="tag $rebuild_tag"
@@ -196,7 +196,7 @@ jobs:
         id: notes
         run: |
           set -euo pipefail
-          changelog='apps/wildflower-tauri/CHANGELOG.md'
+          changelog='apps/host/host-app/CHANGELOG.md'
           body="$(mktemp)"
           if [[ -f "$changelog" ]] && grep -q '^## v' "$changelog"; then
             awk '
@@ -353,8 +353,8 @@ jobs:
         run: vp install
 
       - name: Build workspace (vp run pack)
-        # `wildflower-tauri` bundles the workspace-built webview:
-        #   `apps/wildflower-tauri/dist` is the Tauri `frontendDist`.
+        # `host-app` bundles the workspace-built webview:
+        #   `apps/host/host-app/dist` is the Tauri `frontendDist`.
         # `vp run pack` builds every package in dependency order and is the
         # single command the project's own release checklist uses.
         run: vp run pack
@@ -381,7 +381,7 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
         with:
-          projectPath: apps/wildflower-tauri
+          projectPath: apps/host/host-app
           # tauri-action detects the package manager from a lockfile inside
           # `projectPath`; there is none there (pnpm-lock.yaml is at the
           # workspace root), so it fell back to `npm run tauri`. Drive the
@@ -469,7 +469,7 @@ jobs:
         run: vp run pack
 
       - name: Build iOS app
-        working-directory: apps/wildflower-tauri
+        working-directory: apps/host/host-app
         # Tauri signs iOS only when it finds all three IOS_* variables, and
         # falls back to an account-based signing mode no runner can satisfy
         # when one is missing — see docs/Rust/Apple Release Signing
@@ -498,10 +498,10 @@ jobs:
           # into altool reporting a missing file rather than the cause.
           BUILD_DIR=src-tauri/gen/apple/build/arm64
           shopt -s nullglob
-          ipas=("apps/wildflower-tauri/$BUILD_DIR"/*.ipa)
+          ipas=("apps/host/host-app/$BUILD_DIR"/*.ipa)
           if [[ ${#ipas[@]} -eq 0 ]]; then
             echo "::error::No .ipa in $BUILD_DIR. Contents:"
-            ls -la "apps/wildflower-tauri/$BUILD_DIR" 2>&1 || echo "  (directory does not exist)"
+            ls -la "apps/host/host-app/$BUILD_DIR" 2>&1 || echo "  (directory does not exist)"
             exit 1
           fi
           if [[ ${#ipas[@]} -gt 1 ]]; then
@@ -597,10 +597,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "$MACOS_PROVISIONING_PROFILE" | base64 --decode \
-            > apps/wildflower-tauri/src-tauri/embedded.provisionprofile
+            > apps/host/host-app/src-tauri/embedded.provisionprofile
 
       - name: Build sandboxed .app
-        working-directory: apps/wildflower-tauri
+        working-directory: apps/host/host-app
         # `--bundles app` only: the App Store channel ships the .app inside a
         # pkg built below, never a dmg. The overlay config adds the sandbox
         # entitlements and the embedded profile without touching the default

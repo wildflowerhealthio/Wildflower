@@ -73,7 +73,7 @@ pub const USER_DISMISSED: &str = "UserDismissed";
 pub const SNIFFER_DISPOSED: &str = "SnifferDisposed";
 
 /// Window label assigned to the main React SPA webview by
-/// `apps/wildflower-tauri/src-tauri/tauri.conf.json`. Re-exported so
+/// `apps/host/host-app/src-tauri/tauri.conf.json`. Re-exported so
 /// integration tests can drift-guard against a config rename; not
 /// referenced at runtime in this crate (the sniffer opens as a peer
 /// top-level window — the plugin's `native-webview` window — not a child of the

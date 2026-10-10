@@ -13,9 +13,13 @@ Apps compose slice packages. They handle runtime wiring, routing, user interacti
 An app that has packages built only for it lives with them in one folder per
 product, `apps/<product>/`: [`relay`](./relay/AGENTS.md),
 [`fhir-sync-pebble`](./fhir-sync-pebble/AGENTS.md),
-[`watch-lifts`](./watch-lifts/AGENTS.md), [`lifting`](./lifting/AGENTS.md) and
-[`launcher`](./launcher/AGENTS.md). The other apps still sit directly under
-`apps/` and move in as they are consolidated.
+[`watch-lifts`](./watch-lifts/AGENTS.md), [`lifting`](./lifting/AGENTS.md),
+[`launcher`](./launcher/AGENTS.md) and [`host`](./host/AGENTS.md). The other
+apps still sit directly under `apps/` and move in as they are consolidated.
+
+Packages that came from one slice and belong together stay nested in a folder
+for their group, as `apps/host/servers/` and `apps/host/unit-runner/` do; a
+lone package sits directly in the product folder.
 
 ### What folds in
 
@@ -28,7 +32,7 @@ depends on its Rust half.
   Rust binary included).
 - **Only a slice's TypeScript packages** fold in when one product is their only
   consumer but the slice's Rust half is composed into the server
-  (`wildflower-server-rust`) or another crate. The slice keeps its Rust crate,
+  (`apps/host/wildflower-server-rust`) or another crate. The slice keeps its Rust crate,
   its AGENTS.md and any file both languages read: `slices/apps` keeps
   `apps-rust` while `apps-core-js` and `apps-react` sit in `apps/launcher/`. A
   cross-language contract then reads across folders by relative path, such as
@@ -43,17 +47,17 @@ depends on its Rust half.
 
 Everything that identifies the product takes the folder's name:
 
-| What                                     | Name                                                                                         | Lifting                                         |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Folder                                   | `apps/<product>/`                                                                            | `apps/lifting/`                                 |
-| The app's folder and npm package         | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`) | `lifting-web`                                   |
-| A folded `-core` package                 | `<name>-core-js`                                                                             | `lifting-core-js`                               |
-| Other folded packages                    | keep their names (`-react`, `-pkjs`, `-test`)                                                | `lifting-react`                                 |
-| Published path on the site               | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                           | `/lifting/`                                     |
-| Homescreen tile id                       | `<product>`                                                                                  | `lifting`                                       |
-| Dev tile id and `dev-app-ports.json` key | `<product>-dev`                                                                              | `lifting-dev`                                   |
-| OAuth client id                          | random, from `openssl rand -hex 16`                                                          | `bdf9fc5c…`                                     |
-| Sentry DSN build variable                | `VITE_SENTRY_DSN_<PACKAGE>`                                                                  | `VITE_SENTRY_DSN_LIFTING_APP` (not yet renamed) |
+| What                                     | Name                                                                                                                                     | Lifting                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Folder                                   | `apps/<product>/`                                                                                                                        | `apps/lifting/`                                 |
+| The app's folder and npm package         | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`; a store-shipped Tauri app: `<product>-app`) | `lifting-web`                                   |
+| A folded `-core` package                 | `<name>-core-js`                                                                                                                         | `lifting-core-js`                               |
+| Other folded packages                    | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `lifting-react`                                 |
+| Published path on the site               | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/lifting/`                                     |
+| Homescreen tile id                       | `<product>`                                                                                                                              | `lifting`                                       |
+| Dev tile id and `dev-app-ports.json` key | `<product>-dev`                                                                                                                          | `lifting-dev`                                   |
+| OAuth client id                          | random, from `openssl rand -hex 16`                                                                                                      | `bdf9fc5c…`                                     |
+| Sentry DSN build variable                | `VITE_SENTRY_DSN_<PACKAGE>`                                                                                                              | `VITE_SENTRY_DSN_LIFTING_APP` (not yet renamed) |
 
 A client id is never a name: the host's loopback consent dialog shows the
 client's registered `name`, and nothing looks an app up by its client id, so a
@@ -85,7 +89,7 @@ Ids that predate this, and the Sentry `app` tags, are tracked in
 The first-party apps pin their vite dev server to a port from
 `slices/apps/dev-app-ports.json`, keyed `<product>-dev`. For the apps that get
 a debug-only "(Dev)" homescreen tile, `apps-rust/src/dev_seed.rs` embeds it to
-seed the matching row; the launcher has no tile, and the Tauri host's `build.rs`
+seed the matching row; the launcher has no tile, and `host-app`'s `build.rs`
 reads its `launcher-dev` port instead. `devAppServer(id)`
 in the root [`vite.config.base.ts`](../vite.config.base.ts) is the **only**
 TypeScript reader of that file — spread it into `server` (or `preview`) instead

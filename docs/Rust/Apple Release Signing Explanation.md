@@ -191,7 +191,7 @@ profile — advice to regenerate a profile that is correct.
 ## See Also
 
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the cache keys these release jobs share
-- [Data Directory Explanation](../../apps/wildflower-tauri/Data%20Directory%20Explanation.md) — where each platform puts the host's databases, including what the sandbox does to it on macOS and why iOS uses `Documents`
+- [Data Directory Explanation](../../apps/host/host-app/Data%20Directory%20Explanation.md) — where each platform puts the host's databases, including what the sandbox does to it on macOS and why iOS uses `Documents`
 - `scripts/checks/apple-signing-preflight.sh` — the macOS check
 - `scripts/checks/apple-ios-signing-preflight.sh` — the iOS check
 - `scripts/checks/apple-macos-appstore-preflight.sh` — the macOS TestFlight check

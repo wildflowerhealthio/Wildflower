@@ -20,8 +20,10 @@ url = "2"
 # WKWebView / android.webkit.WebView with native chrome) instead of a Tauri
 # WebviewWindow — see `sniffer_window.rs` for the cfg-gated routing. Desktop
 # keeps the WebviewWindow path; the plugin compiles to a no-op shell on those
-# targets but stays linked so the host registration in `wildflower-tauri` works.
-tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-webview" }
+# targets but stays linked so the host registration in `host-app` works. The
+# plugin lives with the host in apps/host/ — a deliberate exception to slices
+# depending only on slices and global/.
+tauri-plugin-native-webview = { path = "../../../apps/host/tauri-plugin-native-webview" }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]

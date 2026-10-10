@@ -60,6 +60,7 @@ export default defineConfig({
       'apps/fhir-sync-pebble/fhir-sync-pebble-web/vite.config.ts',
       'apps/github-pages/vite.config.ts',
       'apps/health-viewer/vite.config.ts',
+      'apps/host/servers/*/vite.config.ts',
       'apps/importer-web/vite.config.ts',
       'apps/lifting/*/vite.config.ts',
       'apps/medications-app/vite.config.ts',

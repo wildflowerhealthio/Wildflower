@@ -8,6 +8,9 @@ packages:
   # FHIR Sync for Pebble: the watchapp, its settings page and the core both
   # build on.
   - apps/fhir-sync-pebble/*
+  # The host: the Tauri host app and the packages it is built from.
+  - apps/host/*
+  - apps/host/servers/*
   # The launcher: the web app that manages a Wildflower server, and the
   # packages it is built from.
   - apps/launcher/*

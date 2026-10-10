@@ -1,6 +1,6 @@
 # Tauri Host Explanation
 
-How `browser-sniffer-tauri-rust` (Rust) and `browser-sniffer-tauri` (TS) work together to run the sniffer inside a native webview presented by [`tauri-plugin-native-webview`](../../../plugins/tauri-plugin-native-webview/docs/Explanation.md) — on iOS, Android, and desktop alike.
+How `browser-sniffer-tauri-rust` (Rust) and `browser-sniffer-tauri` (TS) work together to run the sniffer inside a native webview presented by [`tauri-plugin-native-webview`](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md) — on iOS, Android, and desktop alike.
 
 ## What the crate is
 
@@ -23,7 +23,7 @@ The data plane is host-mediated on **both** platforms: the content webview loads
 
 ## `WebViewSource` accepts only real `http(s)` targets
 
-`Open` carries a `WebViewSource`, and there is no way to hand the host a blank or inline starting page through it. `WebViewSource.Uri` is restricted to `http(s)://` on **both** sides — TS (`HttpUriString` in [`collector-fundamentals/src/model/web-view-source.ts`](../../collector/collector-fundamentals/src/model/web-view-source.ts)) and Rust (`resolve_source` in [`model/web_view_source.rs`](../browser-sniffer-tauri-rust/src/model/web_view_source.rs), which rejects a non-`http(s)` URI with `NonHttpUri`). The union's other variant, `Html`, is a **decode-and-drop placeholder**: `resolve_source` returns `HtmlNotSupported`, so the host renders no inline HTML today — the variant exists only to catch wire drift. `about:blank` is therefore **not** a mountable `WebViewSource`; it lives only inside the plugin ([`url_scheme.rs`](../../../plugins/tauri-plugin-native-webview/src/url_scheme.rs)'s `parse_target` / `BLANK_URL`) as the cookie-seed transit, never as an `Open` target. This is why the leading `Open` builds the sniffer directly on its real target rather than mounting a blank page first — and the plugin's content webview [needs a real `http(s)` origin to run its IPC at all](../../../plugins/tauri-plugin-native-webview/docs/Explanation.md).
+`Open` carries a `WebViewSource`, and there is no way to hand the host a blank or inline starting page through it. `WebViewSource.Uri` is restricted to `http(s)://` on **both** sides — TS (`HttpUriString` in [`collector-fundamentals/src/model/web-view-source.ts`](../../collector/collector-fundamentals/src/model/web-view-source.ts)) and Rust (`resolve_source` in [`model/web_view_source.rs`](../browser-sniffer-tauri-rust/src/model/web_view_source.rs), which rejects a non-`http(s)` URI with `NonHttpUri`). The union's other variant, `Html`, is a **decode-and-drop placeholder**: `resolve_source` returns `HtmlNotSupported`, so the host renders no inline HTML today — the variant exists only to catch wire drift. `about:blank` is therefore **not** a mountable `WebViewSource`; it lives only inside the plugin ([`url_scheme.rs`](../../../apps/host/tauri-plugin-native-webview/src/url_scheme.rs)'s `parse_target` / `BLANK_URL`) as the cookie-seed transit, never as an `Open` target. This is why the leading `Open` builds the sniffer directly on its real target rather than mounting a blank page first — and the plugin's content webview [needs a real `http(s)` origin to run its IPC at all](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md).
 
 ## Why the plugin and not `WebviewWindow`
 
@@ -31,7 +31,7 @@ The sniffer used to present the external URL in a Tauri `WebviewWindow`, drawing
 
 - **iOS**: real `WKWebView` in a `UINavigationController` (`.pageSheet`), native chrome (Close + page host + back/forward), document-start injection via `WKUserScript(.atDocumentStart, forMainFrameOnly: false)`, scoped JS↔native bridge through `WKScriptMessageHandler`. No `__TAURI__` exposure to the loaded page at all.
 - **Android**: `android.webkit.WebView` in a fullscreen `Dialog` + `Toolbar`, document-start injection via `WebViewCompat.addDocumentStartJavaScript(..., setOf("*"))`, scoped bridge via `@JavascriptInterface`. No `__TAURI__` exposure.
-- **Desktop**: a Tauri parent `Window` with two child webviews via `Window::add_child` — a chrome bar on top and the external URL underneath. The content webview is still a Tauri webview (so `__TAURI__` is present), scoped by `apps/wildflower-tauri/src-tauri/capabilities/native-webview-window.json` to event-bus `listen` (inbound `PageAction` / `CancelSnifferRequest`) plus the gated `native_webview_data_plane_emit` command — see below.
+- **Desktop**: a Tauri parent `Window` with two child webviews via `Window::add_child` — a chrome bar on top and the external URL underneath. The content webview is still a Tauri webview (so `__TAURI__` is present), scoped by `apps/host/host-app/src-tauri/capabilities/native-webview-window.json` to event-bus `listen` (inbound `PageAction` / `CancelSnifferRequest`) plus the gated `native_webview_data_plane_emit` command — see below.
 
 The constraint that forced `WKWebView` / `WebView` (not `SFSafariViewController` / Chrome Custom Tabs): those in-app-browser components **cannot inject JavaScript**. Injection on any domain is the whole point of the sniffer.
 
@@ -86,7 +86,7 @@ The plugin's `open_url()` is idempotent: a second call while a native webview is
 
 ## Downloads land in the app's data directory
 
-The sniffer instance always names a download directory — `<app data dir>/saved_data` — in its `open_url` request, so page-initiated downloads are saved rather than blocked. The plugin creates the directory on demand, confines the file to it under a sanitised, non-clobbering name, and reports the outcome as `NativeWebviewEvent::Downloaded`; see [the plugin's Explanation](../../../plugins/tauri-plugin-native-webview/docs/Explanation.md) § "Downloads (desktop)" for the naming and blocking rules, which are desktop-only. If the platform cannot resolve an app data directory, `sniffer_window` logs and opens with downloads blocked rather than failing the scrape.
+The sniffer instance always names a download directory — `<app data dir>/saved_data` — in its `open_url` request, so page-initiated downloads are saved rather than blocked. The plugin creates the directory on demand, confines the file to it under a sanitised, non-clobbering name, and reports the outcome as `NativeWebviewEvent::Downloaded`; see [the plugin's Explanation](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md) § "Downloads (desktop)" for the naming and blocking rules, which are desktop-only. If the platform cannot resolve an app data directory, `sniffer_window` logs and opens with downloads blocked rather than failing the scrape.
 
 The bridge deliberately forwards **nothing** for a `Downloaded`: it logs at info and stops. A saved file is not sniffer bus traffic, no capture step waits on one, and giving downloads a `_tag` would add another tag to `NATIVE_WEBVIEW_DATA_PLANE_TAGS` for an untrusted page to spoof.
 
@@ -129,4 +129,4 @@ Doc-comments at the top of each file should be quick references useful on hover.
 - [`browser-sniffer-tauri/src/tauri-sniffer-entry.ts`](../browser-sniffer-tauri/src/tauri-sniffer-entry.ts) — desktop IIFE wrapper.
 - [`browser-sniffer-tauri/src/native-sniffer-entry.ts`](../browser-sniffer-tauri/src/native-sniffer-entry.ts) — mobile IIFE wrapper.
 - [`slices/collector/collector-fundamentals/src/bridge.ts`](../../collector/collector-fundamentals/src/bridge.ts) — consumer-side bridge schema; the Rust payload structs in `model/open.rs` and `model/set_sniffer_status.rs` mirror its shapes.
-- [`plugins/tauri-plugin-native-webview/docs/Explanation.md`](../../../plugins/tauri-plugin-native-webview/docs/Explanation.md) — plugin's own architecture write-up.
+- [`apps/host/tauri-plugin-native-webview/docs/Explanation.md`](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md) — plugin's own architecture write-up.

@@ -17,12 +17,12 @@ import {
 // entry, and importing them individually keeps the rest of the host's
 // configuration out of a published bundle. The same read
 // `apps/wildflower-server-docs/src/host-defaults.ts` does, and the same one
-// `apps/wildflower-tauri/vite.config.ts` injects `WILDFLOWER_LOOPBACK_ORIGIN`
+// `apps/host/host-app/vite.config.ts` injects `WILDFLOWER_LOOPBACK_ORIGIN`
 // from.
 import {
   loopback_hostname as loopbackHostname,
   loopback_port as loopbackPort,
-} from '../../../wildflower-tauri/tauri-shared-config.json'
+} from '../../../host/host-app/tauri-shared-config.json'
 
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'

@@ -17,9 +17,9 @@ slices/<name>/
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
-Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `wildflower-server`).
+Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (e.g. `persistence`).
 
-Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `medication`, `navigation`, `persistence`, `request-log`, `scopes`, `servers`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `medication`, `navigation`, `persistence`, `request-log`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
 
@@ -92,13 +92,15 @@ as pure functions; its `lifting-react` renders the planned workout, the
 submitted workout's outcome, starting a program, the plan editor and the
 workout history over that core.
 
-`wildflower-server` is the server the Tauri host runs: `wildflower-server-rust`'s
+The host is not a slice either: the Tauri host app, the server it runs and the
+install's list of servers live together in `apps/host` — see
+[apps/host/AGENTS.md](../apps/host/AGENTS.md). `wildflower-server-rust`'s
 `set_up` composes every server slice into one API, binds the loopback port and
 opens the tunnel listener, and `WildflowerServer::serve` serves the API on both
 until its shutdown token is cancelled — see
-[wildflower-server/AGENTS.md](./wildflower-server/AGENTS.md). It has no `tauri`
-dependency; the host passes its native adapters in as trait objects, and
-watches the server through host-owned observer channels.
+[apps/host/wildflower-server-rust/AGENTS.md](../apps/host/wildflower-server-rust/AGENTS.md).
+It has no `tauri` dependency; the host passes its native adapters in as trait
+objects, and watches the server through host-owned observer channels.
 
 `background-server-service` is the server-status wire, kept for the web app
 to read a server's status over a future websocket — see
@@ -111,8 +113,8 @@ is the wire's TS schema, and
 the banner and `/settings/server` page that render a status snapshot. Nothing
 sends or answers the wire today.
 
-`servers` is the install's list of servers — see
-[servers/AGENTS.md](./servers/AGENTS.md). `servers-rust` holds a
+`apps/host/servers` is the install's list of servers — see
+[apps/host/servers/AGENTS.md](../apps/host/servers/AGENTS.md). `servers-rust` holds a
 `ServerRecord` per server, identified by its domain
 (`<tunnel name>.<relay domain>`), in `<data root>/servers.json` behind the
 `ServerRegistry` port; the file is versioned, replaced atomically, and the
@@ -124,7 +126,7 @@ no Wildflower relay site, is entered as its settings, which get the same
 checks. A relay's identity (its dial address and noise key) is pinned when
 the server is added, and re-entering a token refuses a relay that presents
 another. Each server runs as a `ServerUnit`, one unit on the Tauri host's
-unit runner (`global/tauri-unit-runner`), keyed by its domain: the host
+unit runner (`apps/host/unit-runner/tauri-unit-runner-rust`), keyed by its domain: the host
 pushes every record with its run policy and a factory that builds a fresh
 unit for each run, and the unit reports its health as its detail.
 `servers-rust` also decides what the host notifies: the per-caller request
@@ -133,10 +135,10 @@ the host side: it pushes the servers to `TauriUnitRunner`, emits each server's
 status to the base as the `server-status` event, posts the notifications,
 and holds the base's commands (list, add, re-enter credentials, set the run
 policy, update, remove), which write the registry and then push. See the
-[Server Runs Explanation](./servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
+[Server Runs Explanation](../apps/host/servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
 place of the launcher, is `servers-react`'s `BaseRoot`: its own telemetry
 consent, then the server list and Host Settings, which reach the host
-only through `servers-core`'s Tauri commands (plain `invoke`, answers
+only through `servers-core-js`'s Tauri commands (plain `invoke`, answers
 decoded by Effect Schema) and the `server-status` event, never the
 effect-messaging bridge.
 
@@ -148,6 +150,7 @@ effect-messaging bridge.
 
 - **`<name>-core` is the pure layer** — no DOM, no Node `fs`, no platform-specific imports
 - **Platform adapters depend on `-core`, never the reverse**
+- **Slices don't depend on `apps/`** — with one deliberate exception: `browser-sniffer-tauri-rust` depends on `apps/host/tauri-plugin-native-webview`, since the plugin lives with the host it is registered in.
 - **Compose `HttpApi` groups across slices via the phantom-id bridge pattern** — see [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md)
 - **Don't use `topLevel: true` on multiple `HttpApiGroup`s under the same `HttpApi`** — name collision in the generated client. See [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md).
 - **In a `<name>-react` route file, annotate `useRouteContext`'s `select`.** A slice type-checks both standalone (`vp run --filter <slice> check`) and mounted under `apps/launcher/launcher-web`. Standalone there is no registered Router, so `RegisteredRouter` falls back to `AnyRouter` and a bare `Route.useRouteContext()` / `useRouteContext()` widens to `any` (`no-unsafe-assignment` under oxlint). Fix without a cast: give the slice its own structural `RouterContext` (`BaseRouterContext.RouterContextWith<…>`, re-declared per slice — never imported from the app), and read context through an annotated select, e.g. `useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })`. `Route.useParams()` needs no annotation (params come from the route's own path). See `slices/collector/collector-react/src/queries/use-run-authed.ts` for the pattern.

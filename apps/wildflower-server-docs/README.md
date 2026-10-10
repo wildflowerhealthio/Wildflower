@@ -48,7 +48,7 @@ The target lives in the URL:
   rejected, and the console falls back to the default.
 - The default is the loopback origin the desktop host's embedded server binds —
   `http://127.0.0.1:8080` today. It is **derived** from
-  `apps/wildflower-tauri/tauri-shared-config.json` (the same file the Rust host
+  `apps/host/host-app/tauri-shared-config.json` (the same file the Rust host
   and the Tauri webview read), not restated here, so changing the port there
   changes this console too.
 - The header bar's input writes the canonical target back into the URL, so a
@@ -222,7 +222,7 @@ Requests are sent **straight from the reader's browser** to the chosen server �
 there is no proxy — so they are cross-origin and subject to the browser's rules:
 
 - The Wildflower API applies one CORS layer across its whole surface
-  (`api_cors_layer` in `slices/wildflower-server/wildflower-server-rust/src/http/middleware/cors.rs`),
+  (`api_cors_layer` in `apps/host/wildflower-server-rust/src/http/middleware/cors.rs`),
   which mirrors the requesting origin and headers back rather than sending `*`,
   so the `Authorization` header is allowed and a cross-origin call from this
   page is accepted by the server.

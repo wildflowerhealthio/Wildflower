@@ -13,6 +13,8 @@ runs:
         path: |
           node_modules/.vite/task-cache
           apps/*/dist
+          apps/host/*/dist
+          apps/host/servers/*/dist
           apps/relay/*/dist
           global/**/dist
           slices/**/dist

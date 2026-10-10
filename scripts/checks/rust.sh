@@ -43,15 +43,15 @@ fi
 # the changed-crate hooks (pre-commit / pre-push) and the local Tauri degrade
 # path — not to split CI into two jobs.
 non_tauri=(--workspace
-  --exclude wildflower-tauri
+  --exclude host-app
   --exclude browser-sniffer-tauri-rust
-  --exclude har-recorder-tauri-rust
+  --exclude har-recorder-tauri
   --exclude servers-tauri-rust
   --exclude shared-structures-tauri-rust
   --exclude tauri-plugin-native-webview
-  --exclude tauri-unit-runner)
-tauri=(-p wildflower-tauri -p browser-sniffer-tauri-rust -p har-recorder-tauri-rust -p servers-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview -p tauri-unit-runner)
-tauri_names=" wildflower-tauri browser-sniffer-tauri-rust har-recorder-tauri-rust servers-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview tauri-unit-runner "
+  --exclude tauri-unit-runner-rust)
+tauri=(-p host-app -p browser-sniffer-tauri-rust -p har-recorder-tauri -p servers-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview -p tauri-unit-runner-rust)
+tauri_names=" host-app browser-sniffer-tauri-rust har-recorder-tauri servers-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview tauri-unit-runner-rust "
 
 # Exact-match a crate name against the Tauri set. Iterating + string equality
 # avoids the substring ambiguity a `case "$tauri_names" in *" $n "*)` glob would

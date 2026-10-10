@@ -42,7 +42,7 @@ vp build    # production build to dist/
   does not provide (content column, gutter, prose measures).
 - `src/styles/global.css` — page surface, global link/hover/selection styling.
 - `public/app-icon.png` / `public/favicon.png` — scaled from the shared
-  app-icon set in `apps/wildflower-tauri/src-tauri/icons`; `public/CNAME` — the
+  app-icon set in `apps/host/host-app/src-tauri/icons`; `public/CNAME` — the
   custom domain.
 
 ## Styling conventions

@@ -17,7 +17,7 @@ It composes three existing primitives and adds nothing to their semantics:
 
 - [`slices/browser-sniffer`](../../browser-sniffer/AGENTS.md) — the injected
   shims and the `Open` / `SniffingComplete` / `UserDismissed` lifecycle.
-- [`plugins/tauri-plugin-native-webview`](../../../plugins/tauri-plugin-native-webview/docs/Explanation.md)
+- [`apps/host/tauri-plugin-native-webview`](../../../apps/host/tauri-plugin-native-webview/docs/Explanation.md)
   — the presentation surface, which gained a per-instance **download
   directory** for this feature.
 - [`slices/file-formats/http-archive`](../../file-formats/http-archive/AGENTS.md)
@@ -44,7 +44,7 @@ hand-driven flow over time; it does not touch `slices/web-trace`.
                                                on_download → saved_data/<name> ◀─ DownloadEvent
   Stop & Save   (or UserDismissed from a window close)
   ├─ toHar(recording) → harToJson → text
-  ├─ send SaveHar { fileName, text } ────────▶ har-recorder-tauri-rust
+  ├─ send SaveHar { fileName, text } ────────▶ har-recorder-tauri
   │                                             spawn_blocking(save_har) → tmp + rename
   │  HarSaved { path } / HarSaveFailed ◀─────── emit on BRIDGE_EVENT
   ├─ send SniffingComplete ──────────────────▶ browser-sniffer-tauri-rust → dispose()
@@ -58,15 +58,15 @@ sniffer webview down and the host must hold the bytes first.
 
 ## Where each piece lives, and why
 
-| Piece                         | Home                                       | Why there                                                                                                                                                                        |
-| ----------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Accumulating responses        | `har-recorder-core` (`Recording`)          | Pure and synchronous; testable by feeding message sequences. Holds body bytes as a mutable class because rebuilding per chunk would copy megabytes per event.                    |
-| Building the HAR              | `har-recorder-core` (`toHar`)              | Delegates to `http-archive`'s `emitHarFromLog`, so there is **one** HAR emitter. Two additive options (`creatorName`, `requestComment`) let the recorder name itself.            |
-| Writing the file              | `har-recorder-rust` (`save_har`)           | The SPA has no `fs` grant and should not get one; Rust validates the name before any filesystem call, writes to a temp file and renames, and refuses to overwrite.               |
-| Carrying the text to the host | `HarRecorderBridge`                        | Bridge messages are the repo's SPA→host pattern. The archive rides as already-encoded text so the host needs no HAR model.                                                       |
-| Receiving sniffer events      | `har-recorder-react` on `CollectorBridge`  | The data-plane tags are declared on `CollectorBridge` and tags must be unique across bridges, so the recorder registers through `collector-react`'s hooks. Intrinsic dependency. |
-| The tab                       | `apps/wildflower-tauri` via `platformTabs` | The route exists in every build; only the Tauri entry contributes the tab, the same way it contributes `platformSettingsItems`.                                                  |
-| Downloads                     | `tauri-plugin-native-webview`              | The `on_download` hook must be set when the content webview is built, so the plugin owns it; the sniffer passes `saved_data` on every open.                                      |
+| Piece                         | Home                                      | Why there                                                                                                                                                                        |
+| ----------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accumulating responses        | `har-recorder-core` (`Recording`)         | Pure and synchronous; testable by feeding message sequences. Holds body bytes as a mutable class because rebuilding per chunk would copy megabytes per event.                    |
+| Building the HAR              | `har-recorder-core` (`toHar`)             | Delegates to `http-archive`'s `emitHarFromLog`, so there is **one** HAR emitter. Two additive options (`creatorName`, `requestComment`) let the recorder name itself.            |
+| Writing the file              | `har-recorder-rust` (`save_har`)          | The SPA has no `fs` grant and should not get one; Rust validates the name before any filesystem call, writes to a temp file and renames, and refuses to overwrite.               |
+| Carrying the text to the host | `HarRecorderBridge`                       | Bridge messages are the repo's SPA→host pattern. The archive rides as already-encoded text so the host needs no HAR model.                                                       |
+| Receiving sniffer events      | `har-recorder-react` on `CollectorBridge` | The data-plane tags are declared on `CollectorBridge` and tags must be unique across bridges, so the recorder registers through `collector-react`'s hooks. Intrinsic dependency. |
+| The tab                       | `apps/host/host-app` via `platformTabs`   | The route exists in every build; only the Tauri entry contributes the tab, the same way it contributes `platformSettingsItems`.                                                  |
+| Downloads                     | `tauri-plugin-native-webview`             | The `on_download` hook must be set when the content webview is built, so the plugin owns it; the sniffer passes `saved_data` on every open.                                      |
 
 ## Decisions
 
@@ -96,11 +96,11 @@ entry's `request.comment`.
 
 The desktop Tauri crates link `webkit2gtk`, which the Linux dev container does
 not have, so `tauri-plugin-native-webview`, `browser-sniffer-tauri-rust`,
-`har-recorder-tauri-rust` and the app crate are compiled only in CI
+`har-recorder-tauri` and the app crate are compiled only in CI
 (`ci-rust.yml`). Everything with logic worth testing was placed where a plain
 `cargo test` runs: `har-recorder-rust` has no `tauri` dependency, and the
 plugin's download-name sanitiser is a tauri-free module. `scripts/checks/rust.sh`
-lists `har-recorder-tauri-rust` in its Tauri partition so the GTK-less
+lists `har-recorder-tauri` in its Tauri partition so the GTK-less
 pre-commit keeps skipping it locally.
 
 ## Deliberately not here
@@ -116,4 +116,4 @@ pre-commit keeps skipping it locally.
 - `har-recorder-core/src/recording.ts` — the accumulator and its rules.
 - `har-recorder-react/src/use-har-recorder.ts` — the state machine and ordering.
 - `har-recorder-rust/src/save.rs` — name validation and the atomic write.
-- `plugins/tauri-plugin-native-webview/src/desktop/lifecycle.rs` — the download hook.
+- `apps/host/tauri-plugin-native-webview/src/desktop/lifecycle.rs` — the download hook.

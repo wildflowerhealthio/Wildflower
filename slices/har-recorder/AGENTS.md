@@ -9,7 +9,7 @@ read the [Design Explanation](./docs/Design%20Explanation.md) before changing an
 
 It composes three existing primitives and adds nothing to their semantics:
 `slices/browser-sniffer` (the injected shims and the webview lifecycle),
-`plugins/tauri-plugin-native-webview` (the presentation surface), and
+`apps/host/tauri-plugin-native-webview` (the presentation surface), and
 `slices/file-formats/http-archive` (the one HAR emitter).
 
 ## Package roles
@@ -28,9 +28,9 @@ It composes three existing primitives and adds nothing to their semantics:
   makes `collector-react` an intrinsic dependency. The tab is contributed by the
   Tauri entry through `platformTabs`, so the recorder appears only where a
   sniffer webview and a host filesystem exist.
-- **`har-recorder-tauri-rust`** — the host glue: one `BRIDGE_EVENT` listener
+- **`har-recorder-tauri`** — the host glue: one `BRIDGE_EVENT` listener
   that decodes `SaveHar`, writes off the event thread, and answers `HarSaved` /
-  `HarSaveFailed`. Attached from `wildflower-tauri`'s `setup()`, which hands it
+  `HarSaveFailed`. Attached from `host-app`'s `setup()`, which hands it
   the app data directory it already resolved.
 
 ## Layering

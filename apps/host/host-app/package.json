@@ -1,0 +1,47 @@
+{
+  "name": "host-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "atool": "xcrun altool --upload-app --type ios --file \"src-tauri/gen/apple/build/arm64/Wildflower.ipa\" --apiKey \"$APP_STORE_CONNECT_KEY_ID\" --apiIssuer \"$APP_STORE_CONNECT_ISSUER_ID\"",
+    "build": "tsc && vp build",
+    "build:ios:prod": "tauri ios build --export-method app-store-connect && vp run atool",
+    "dev": "vp dev",
+    "dev:android": "tauri android dev -- --target aarch64-linux-android",
+    "dev:ios": "tauri ios dev --host=\"$(ipconfig getifaddr en0)\"",
+    "preview": "vp preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@tauri-apps/api": "catalog:",
+    "@tauri-apps/plugin-fs": "catalog:",
+    "@tauri-apps/plugin-opener": "catalog:",
+    "branding-core": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "scopes-core": "workspace:*",
+    "scopes-react": "workspace:*",
+    "servers-core-js": "workspace:*",
+    "servers-react": "workspace:*",
+    "telemetry-core": "workspace:*",
+    "telemetry-react": "workspace:*",
+    "telemetry-web": "workspace:*",
+    "tundra-css": "catalog:"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:"
+  }
+}

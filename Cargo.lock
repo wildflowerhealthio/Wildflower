@@ -3279,7 +3279,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "har-recorder-tauri-rust"
+name = "har-recorder-tauri"
 version = "0.0.0"
 dependencies = [
  "har-recorder-rust",
@@ -3747,6 +3747,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
 dependencies = [
  "digest 0.11.3",
+]
+
+[[package]]
+name = "host-app"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "apps-rust",
+ "browser-sniffer-tauri-rust",
+ "chrono",
+ "gatekeeper-rust",
+ "har-recorder-tauri",
+ "openssl",
+ "rathole-settings-rust",
+ "roxmltree 0.21.1",
+ "serde",
+ "serde_json",
+ "servers-rust",
+ "servers-tauri-rust",
+ "shared-structures-rust",
+ "shared-structures-tauri-rust",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-background-service",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-log",
+ "tauri-plugin-native-webview",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-unit-runner-rust",
+ "tokio",
+ "tunnel-rust",
+ "url",
+ "wildflower-server-rust",
 ]
 
 [[package]]
@@ -7378,7 +7413,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tunnel-rust",
- "unit-runner",
+ "unit-runner-rust",
  "url",
  "wildflower-relay",
  "wildflower-server-rust",
@@ -7403,7 +7438,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-native-webview",
  "tauri-plugin-notification",
- "tauri-unit-runner",
+ "tauri-unit-runner-rust",
  "tempfile",
  "token-revocation-rust",
  "tokio",
@@ -8310,7 +8345,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-unit-runner"
+name = "tauri-unit-runner-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
@@ -8321,7 +8356,7 @@ dependencies = [
  "tauri-plugin-background-service",
  "tauri-plugin-notification",
  "tokio",
- "unit-runner",
+ "unit-runner-rust",
 ]
 
 [[package]]
@@ -9014,7 +9049,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
-name = "unit-runner"
+name = "unit-runner-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
@@ -9527,41 +9562,6 @@ dependencies = [
  "url",
  "wildflower-server-rust",
  "x509-parser",
-]
-
-[[package]]
-name = "wildflower-tauri"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "apps-rust",
- "browser-sniffer-tauri-rust",
- "chrono",
- "gatekeeper-rust",
- "har-recorder-tauri-rust",
- "openssl",
- "rathole-settings-rust",
- "roxmltree 0.21.1",
- "serde",
- "serde_json",
- "servers-rust",
- "servers-tauri-rust",
- "shared-structures-rust",
- "shared-structures-tauri-rust",
- "tauri",
- "tauri-build",
- "tauri-plugin-background-service",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-log",
- "tauri-plugin-native-webview",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-unit-runner",
- "tokio",
- "tunnel-rust",
- "url",
- "wildflower-server-rust",
 ]
 
 [[package]]

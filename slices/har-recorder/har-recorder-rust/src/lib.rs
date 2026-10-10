@@ -4,7 +4,7 @@
 //!
 //! Deliberately no `tauri` dependency, so every decision that can be wrong
 //! is testable on a machine without a webview toolkit; the Tauri glue lives
-//! in `har-recorder-tauri-rust`. The archive arrives as already-encoded
+//! in `har-recorder-tauri`. The archive arrives as already-encoded
 //! text — there is one HAR emitter, and it is on the web side.
 
 pub mod bridge;

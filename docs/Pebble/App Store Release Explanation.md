@@ -31,7 +31,7 @@ another store release of 1.2.3 ahead of the real one. Without the
 failing, so the rest of the release is unaffected.
 
 The release notes are the GitHub Release's body — the release's section of
-`apps/wildflower-tauri/CHANGELOG.md` — sent as they are, in the plain form
+`apps/host/host-app/CHANGELOG.md` — sent as they are, in the plain form
 field `pebble publish --release-notes` fills, so the Markdown bullets arrive as
 `-` lines. pebble-tool puts no length limit on them.
 
