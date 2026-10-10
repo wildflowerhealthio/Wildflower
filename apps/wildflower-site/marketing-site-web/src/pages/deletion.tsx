@@ -26,8 +26,10 @@ function Deletion(): JSX.Element {
         </p>
         <ul>
           <li>
-            <strong>Crash reports.</strong> Name the app and roughly when you used it. I delete the
-            matching reports and session counts from Sentry.
+            <strong>Crash reports.</strong> Name the app and roughly when you used it. Reports carry
+            no user id, so I can&rsquo;t pick out yours by name: I delete every report from that app
+            and period that could be yours. Sentry deletes all reports on its own 90 days after they
+            arrive.
           </li>
           <li>
             <strong>A relay tunnel.</strong> Send the email from the address the tunnel is
@@ -40,9 +42,11 @@ function Deletion(): JSX.Element {
           </li>
         </ul>
         <p>
-          I reply to confirm, and finish the deletion within 30 days. Nothing is kept afterwards,
-          except that certificates already issued for a tunnel&rsquo;s address stay in the public
-          Certificate Transparency logs, which nobody can remove them from.
+          I reply to confirm, and finish the deletion within 30 days. After that, nothing is kept
+          except what I can&rsquo;t delete: copies in the providers&rsquo; backups, which expire on
+          their own, anything the law requires me to keep, and the certificates already issued for a
+          tunnel&rsquo;s address, which stay in the public Certificate Transparency logs that nobody
+          can remove them from.
         </p>
       </PolicySection>
 

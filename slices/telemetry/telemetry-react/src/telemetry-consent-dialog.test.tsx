@@ -55,6 +55,26 @@ describe('TelemetryConsentDialog', () => {
     ).toBe(TELEMETRY_CONSENT_COPY.sourceCode.href)
   }, 15_000)
 
+  it('should end on the acceptance sentence, linking the Terms of Use and the Privacy Policy', () => {
+    // Arrange + Act
+    render(
+      <TelemetryConsentDialog open={true} copy={TELEMETRY_CONSENT_COPY} onContinue={vi.fn()} />
+    )
+
+    // Assert — the sentence reads whole, and each policy opens in its own tab
+    // so the dialog, which can't be dismissed, stays where it is.
+    const { acceptance } = TELEMETRY_CONSENT_COPY
+    const termsLink = screen.getByRole('link', { name: acceptance.terms.label })
+    expect(termsLink.closest('p')?.textContent).toBe(
+      `${acceptance.before} ${acceptance.terms.label} ${acceptance.between} ${acceptance.privacyPolicy.label}.`
+    )
+    for (const policy of [acceptance.terms, acceptance.privacyPolicy]) {
+      const link = screen.getByRole('link', { name: policy.label })
+      expect(link.getAttribute('href')).toBe(policy.href)
+      expect(link.getAttribute('target')).toBe('_blank')
+    }
+  })
+
   it('should be named by its title and describe each switch by what it sends', () => {
     // Arrange + Act
     render(

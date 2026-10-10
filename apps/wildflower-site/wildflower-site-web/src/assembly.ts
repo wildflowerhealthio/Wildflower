@@ -38,7 +38,13 @@ const siteSections: readonly SiteSection[] = [
     // `CNAME` (copied from the marketing site's `public/`) has to land at the
     // artifact root or GitHub Pages drops the custom-domain setting on deploy.
     // The policy pages are app-store requirements, so their entries are too.
-    requiredFiles: ['index.html', 'CNAME', 'privacy-policy/index.html', 'deletion/index.html'],
+    requiredFiles: [
+      'index.html',
+      'CNAME',
+      'privacy-policy/index.html',
+      'terms/index.html',
+      'deletion/index.html',
+    ],
   },
   {
     packageName: '@wildflowerhealthio/medications-web',

@@ -302,7 +302,9 @@ const relayDomainOf = (relay: EnteredRelay.Type): Option.Option<string> =>
 
 /**
  * Step 2, the tunnel: its name, with the address it gives the server
- * through `relay`, and its token, masked. Add server waits for both.
+ * through `relay` and a note that the address becomes public in the
+ * Certificate Transparency logs, and its token, masked. Add server waits for
+ * both.
  */
 const CredentialsStep = ({
   relay,
@@ -340,6 +342,11 @@ const CredentialsStep = ({
         }}
         description={`Your server will be available at ${name}.${domain}`}
       />
+      <p className={`text-body-3 ${styles['add-server-page__note']}`}>
+        That address becomes public: when your server gets its certificate, the certificate
+        authority records the address in the public Certificate Transparency logs, which nobody can
+        remove it from. Choose a tunnel name you are happy to have public.
+      </p>
       <TextField
         label="Tunnel token"
         type="password"

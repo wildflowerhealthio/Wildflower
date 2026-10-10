@@ -39,12 +39,23 @@
   overflow-wrap: anywhere;
 }
 
-/* The as-is disclaimer: small print, a step quieter than the body text. */
-.consent__fine-print {
+/*
+ * The acceptance sentence, right above Continue, at body size and weight: it
+ * is the visitor's agreement to the terms, so it must be as readable as the
+ * rest. The as-is disclaimer above it is a plain `.consent__text` for the
+ * same reason: a disclaimer in small print is not conspicuous.
+ */
+.consent__acceptance {
   margin: 0;
-  color: var(--color-neutral-4);
-  font-size: var(--font-size-2);
+  color: var(--color-foreground);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-5);
   line-height: var(--line-height-4);
+}
+
+.consent__policy-link {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .consent__text {

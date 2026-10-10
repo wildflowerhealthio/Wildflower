@@ -25,7 +25,8 @@ type TelemetryConsentFormProps = Pick<TelemetryConsentDialogProps, 'copy' | 'onC
 
 /**
  * The dialog's contents: the warning with its link to the code, the two
- * switches, the as-is disclaimer and Continue. Mounted
+ * switches, the as-is disclaimer, the acceptance sentence linking the Terms of
+ * Use and the Privacy Policy, and Continue. Mounted
  * each time the dialog opens, so the switches start from `initialSwitches`.
  */
 const TelemetryConsentForm = ({
@@ -84,7 +85,28 @@ const TelemetryConsentForm = ({
       </div>
       <p className={styles['consent__text']}>{copy.sessions}</p>
       <p className={styles['consent__text']}>{copy.changeLater}</p>
-      <p className={styles['consent__fine-print']}>{copy.asIs}</p>
+      <p className={styles['consent__text']}>{copy.asIs}</p>
+      <p className={styles['consent__acceptance']}>
+        {copy.acceptance.before}{' '}
+        <a
+          className={styles['consent__policy-link']}
+          href={copy.acceptance.terms.href}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {copy.acceptance.terms.label}
+        </a>{' '}
+        {copy.acceptance.between}{' '}
+        <a
+          className={styles['consent__policy-link']}
+          href={copy.acceptance.privacyPolicy.href}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {copy.acceptance.privacyPolicy.label}
+        </a>
+        .
+      </p>
       <button type="button" className="button-2 filled" onClick={() => onContinue(switches)}>
         {copy.continueLabel}
       </button>
@@ -95,8 +117,10 @@ const TelemetryConsentForm = ({
 /**
  * The telemetry consent dialog: the early-stage warning, where reports go, a
  * switch each for crash reports and performance data, the as-is disclaimer,
- * and one Continue button. Both switches start off, and Continue with both off is an answer
- * like any other.
+ * the acceptance sentence and one Continue button. Pressing Continue is the
+ * visitor's acceptance of the Terms of Use, so the sentence sits right above
+ * the button at body size. Both switches start off, and Continue with both off
+ * is an answer like any other.
  *
  * @remarks
  * The dialog is react-tundraish's non-dismissable `Dialog`: no ×, the

@@ -67,6 +67,7 @@ describe('site layout', () => {
     expect(marketing?.requiredPaths).toContain(join(outDir, 'index.html'))
     // The app stores link to the policy pages by these URLs.
     expect(marketing?.requiredPaths).toContain(join(outDir, 'privacy-policy', 'index.html'))
+    expect(marketing?.requiredPaths).toContain(join(outDir, 'terms', 'index.html'))
     expect(marketing?.requiredPaths).toContain(join(outDir, 'deletion', 'index.html'))
   })
 

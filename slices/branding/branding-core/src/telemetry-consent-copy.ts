@@ -9,6 +9,8 @@ interface TelemetryConsentSwitchCopy {
   readonly description: string
 }
 
+import { POLICY_LABELS, policyUrl } from './site.ts'
+
 /** A sentence that ends in a link: `text`, then `linkLabel` linking to `href`. */
 interface LinkedSentenceCopy {
   /** The words before the link. */
@@ -38,8 +40,17 @@ interface TelemetryConsentCopy {
   readonly warning: readonly string[]
   /** Where to read the code, shown at the end of the warning. */
   readonly sourceCode: LinkedSentenceCopy
-  /** The as-is disclaimer: no warranty and no liability. */
+  /**
+   * The as-is disclaimer: no warranty and no liability. Shown at body size,
+   * not as small print: a disclaimer only counts when it is conspicuous.
+   */
   readonly asIs: string
+  /**
+   * The clickwrap sentence right above Continue: pressing it accepts the Terms
+   * of Use and acknowledges the Privacy Policy, both linked, so the dialog is
+   * the one place every visitor has agreed to the terms.
+   */
+  readonly acceptance: AcceptanceCopy
   /** Where reports go when either switch is on. */
   readonly destination: string
   /** The crash-reports switch: errors, which may carry loaded data. */
@@ -53,6 +64,44 @@ interface TelemetryConsentCopy {
   /** The one button, which records the answer whatever the switches say. */
   readonly continueLabel: string
 }
+
+/** One of the two policy links of {@link AcceptanceCopy}. */
+interface PolicyLinkCopy {
+  /** The link's visible text. */
+  readonly label: string
+  /** Where the link goes: the policy page on the canonical site. */
+  readonly href: string
+}
+
+/**
+ * The clickwrap sentence: `before`, the Terms of Use link, `between`, the
+ * Privacy Policy link, then a full stop. Read out: "By continuing you accept
+ * the Terms of Use and acknowledge the Privacy Policy."
+ */
+interface AcceptanceCopy {
+  /** The words before the terms link. */
+  readonly before: string
+  readonly terms: PolicyLinkCopy
+  /** The words between the two links. */
+  readonly between: string
+  readonly privacyPolicy: PolicyLinkCopy
+}
+
+/** The one acceptance sentence both dialogs end on, with the canonical policy URLs. */
+const ACCEPTANCE: AcceptanceCopy = {
+  before: 'By continuing you accept the',
+  terms: { label: POLICY_LABELS.terms, href: policyUrl('terms') },
+  between: 'and acknowledge the',
+  privacyPolicy: { label: POLICY_LABELS.privacyPolicy, href: policyUrl('privacyPolicy') },
+}
+
+/**
+ * The medical disclaimer both dialogs carry in their warning: the apps show
+ * and store records; they don't advise.
+ */
+const NOT_MEDICAL_ADVICE =
+  'Nothing in Wildflower is medical advice, and it is not for use in an emergency. ' +
+  'Talk to a clinician about your health.'
 
 /** Where both dialogs send a visitor who wants to audit the code themselves. */
 const SOURCE_CODE: LinkedSentenceCopy = {
@@ -78,12 +127,14 @@ const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
     'The Wildflower Health Project is an early-stage open source project, ' +
       'and its code has not been independently audited.',
     'Use your own judgement about which health records you connect these apps to.',
+    NOT_MEDICAL_ADVICE,
   ],
   sourceCode: SOURCE_CODE,
   asIs:
     'These apps are provided "as is", without warranty of any kind, express or implied. ' +
     'To the fullest extent the law allows, the authors are not liable for any claim, ' +
     'damages or other liability arising from their use.',
+  acceptance: ACCEPTANCE,
   destination:
     'The two switches below choose what, if anything, these apps report to Sentry, ' +
     'a third-party service in the United States. Both switches start off, ' +
@@ -133,12 +184,14 @@ const WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
       'and its code has not been independently audited.',
     'It keeps the records you load into it on this device. ' +
       'Use your own judgement about which records you load.',
+    NOT_MEDICAL_ADVICE,
   ],
   sourceCode: SOURCE_CODE,
   asIs:
     'Wildflower Host is provided "as is", without warranty of any kind, express or implied. ' +
     'To the fullest extent the law allows, the authors are not liable for any claim, ' +
     'damages or other liability arising from its use.',
+  acceptance: ACCEPTANCE,
   destination:
     'The two switches below choose what, if anything, this app reports to Sentry, ' +
     'a third-party service in the United States. Both switches start off, ' +
@@ -160,4 +213,4 @@ const WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
 }
 
 export { TELEMETRY_CONSENT_COPY, WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY }
-export type { TelemetryConsentCopy }
+export type { AcceptanceCopy, PolicyLinkCopy, TelemetryConsentCopy }
