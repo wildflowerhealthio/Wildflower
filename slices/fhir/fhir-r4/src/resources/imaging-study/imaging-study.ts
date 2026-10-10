@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import {
+  PermissivePassthrough,
   OrNullAsOptional,
   StructNoContext,
   mutableEncoded,
@@ -191,7 +192,7 @@ const ImagingStudyStruct = Schema.extend(
       location: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
       reasonCode: codeableConceptArray,
       reasonReference: referenceArray,
-      note: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.Any)), {
+      note: Schema.optionalWith(mutableEncoded(Schema.Array(PermissivePassthrough)), {
         default: (): readonly unknown[] => [],
       }),
       description: OrNullAsOptional(Schema.String),

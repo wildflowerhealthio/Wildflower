@@ -1,6 +1,7 @@
 import { type Arbitrary, type FastCheck, Schema } from 'effect'
 
 import {
+  PermissivePassthrough,
   OrNullAsOptional,
   StructNoContext,
   mutableEncoded,
@@ -46,7 +47,7 @@ const codeableConceptArray = Schema.optionalWith(
   { default: (): readonly (typeof CodeableConcept.Schema.Type)[] => [] }
 )
 
-const passthroughArray = Schema.optionalWith(mutableEncoded(Schema.Array(Schema.Any)), {
+const passthroughArray = Schema.optionalWith(mutableEncoded(Schema.Array(PermissivePassthrough)), {
   default: (): readonly unknown[] => [],
 })
 
