@@ -1,4 +1,4 @@
-import 'kitchen-sink/polyfills/promise-with-resolvers'
+import '@wildflowerhealthio/kitchen-sink/polyfills/promise-with-resolvers'
 
 import { useMemo, useRef, useState } from 'react'
 

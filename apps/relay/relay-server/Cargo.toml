@@ -1,0 +1,142 @@
+[package]
+name = "wildflowerhealthio-relay-server"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# Two parts in one process: the `rathole` library in server mode, which owns
+# the noise-encrypted tunnels to devices, and a small TCP front on :443/:80
+# that routes visitors to those tunnels by the TLS ClientHello's server name.
+# The relay never terminates TLS for the public `https://<tunnel name>.<domain>`
+# surface: it holds no certificates or keys for it and forwards ciphertext.
+# It terminates TLS only for its own hostname, with a certificate from
+# rustls-acme, and serves a small axum site there.
+# The `noise` transport is selected (and TLS/websocket default features
+# dropped) so the tunnel side needs no system OpenSSL either.
+[dependencies]
+anyhow.workspace = true
+# The router of the relay's own site.
+axum.workspace = true
+# Decodes the noise private key and encodes its public key for `GET /rathole`,
+# and encodes created tunnels' tokens (base64url).
+base64.workspace = true
+# Derives the noise public key from the private key (X25519). snow, rathole's
+# noise implementation, still pulls in 4.x.
+curve25519-dalek = "5.0"
+# The tunnel store, `<state dir>/tunnels.db`: queries over the
+# `wildflowerhealthio_persistence::DieselPool`, as the slices' stores do.
+diesel.workspace = true
+# Embeds the tunnel store's migrations (`migrations/`) at compile time.
+diesel_migrations.workspace = true
+# Polls the `AcmeState` stream (`StreamExt::next`).
+futures-util = { version = "0.3", default-features = false }
+# Embeds the admin UI's build (`apps/relay/relay-admin-web/dist`): an `index.html`
+# and Vite's hashed assets, fonts included, too many to list one by one.
+include_dir = "0.7"
+# `hmac-sha256` HTTP message signatures (RFC 9421), with a constant-time
+# MAC check. 0.13, on the `sha2` 0.11 / `digest` 0.11 line; helios and
+# jsonwebtoken still pull in 0.12.
+hmac = "0.13"
+# Serves the site's router over each TLS connection; `axum::serve` only takes
+# listeners, and the front hands over connections one at a time. Both are
+# already in the tree through axum.
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "service"] }
+# The tunnel store's diesel connection pool and namespaced migration runner,
+# as the slices use them. The relay names the pool type but not rusqlite.
+wildflowerhealthio-persistence = { path = "../../../slices/persistence-rust" }
+# OS randomness (`SysRng`) for created tunnels' tokens and default names. The
+# version the slices use.
+rand = "0.10"
+# The server takes the front's visitors through each tunnel's visitor queue,
+# and the admin API's tunnel changes while it runs (our fork, patched in the
+# workspace `Cargo.toml`).
+rathole = { version = "0.5", default-features = false, features = [
+  "server",
+  "noise",
+] }
+# The wire shapes of `GET /rathole` and `GET /me`, shared with the device, and
+# `TunnelName`, the tunnel-name check the device's server registry shares.
+# `proxy-header`: the PROXY protocol v2 header ahead of each replayed
+# ClientHello, so the device sees the visitor's address instead of the relay's.
+wildflowerhealthio-rathole-settings = { path = "../../../slices/rathole-settings-rust", features = [
+  "proxy-header",
+] }
+# `rustls::server::Acceptor` reads the ClientHello's server name for routing.
+# `ring` is the provider for the site's TLS, the same one rustls-acme uses;
+# aws-lc-rs would need cmake to build.
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "ring",
+] }
+# The site's certificate for the relay's own hostname, ordered from Let's
+# Encrypt over TLS-ALPN-01 and cached on disk. `ring` instead of the default
+# aws-lc-rs (see `rustls`); `webpki-roots` so the ACME client trusts Let's
+# Encrypt's API.
+rustls-acme = { version = "0.15", default-features = false, features = [
+  "ring",
+  "webpki-roots",
+] }
+# The `GET /me` response body and the admin API's bodies.
+serde.workspace = true
+# SHA-256 for `hmac-sha256` and for `sha-256` content digests (RFC 9530).
+# Already in the tree.
+sha2 = "0.11"
+# Parses `Signature-Input`, `Signature` and `Content-Digest`, which are
+# structured fields (RFC 9651), and serializes `@signature-params`.
+sfv = "0.15"
+# `GET /health` on the site.
+wildflowerhealthio-shared-structures = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
+  "health-check",
+] }
+# TCP keepalive on piped sockets (tokio has no setter); already in the tree
+# through tokio.
+socket2 = "0.6"
+# Renders the rathole server TOML in memory, for rathole's own parser.
+toml = "0.9"
+tokio = { workspace = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "net",
+  "io-util",
+  "time",
+  "signal",
+  "sync",
+] }
+# TLS for the site over tokio sockets. No default features: the provider is
+# `rustls`'s `ring`.
+tokio-rustls = { version = "0.26", default-features = false }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Opt into the workspace lints (notably `unsafe_code = "forbid"`). This crate
+# carries no `unsafe`; rathole's transitive deps are unaffected by our lints.
+[lints]
+workspace = true
+
+[dev-dependencies]
+# A real rustls client produces the ClientHellos the tests feed the front.
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "ring",
+  "tls12",
+] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
+tempfile = "3"
+# A rathole client hands the tests each tunnel's visitor streams in place of
+# a device.
+rathole = { version = "0.5", default-features = false, features = [
+  "server",
+  "client",
+  "noise",
+] }
+# Parses the PROXY header the front writes ahead of each visitor's bytes.
+ppp.workspace = true
+# Property tests of the name generator and the admin API's defaults.
+proptest = "1"
+# Drive the site's router in unit tests.
+tower = { workspace = true, features = ["util"] }
+http-body-util.workspace = true
+serde_json.workspace = true
+# A self-signed certificate stands in for the ACME one in the site's tests.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }

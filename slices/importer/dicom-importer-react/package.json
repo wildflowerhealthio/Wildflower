@@ -1,12 +1,12 @@
 {
-  "name": "dicom-importer-react",
+  "name": "@wildflowerhealthio/dicom-importer-react",
   "version": "0.0.0",
   "private": true,
   "description": "The DICOM format's UI for the importer slice: the debounced time-zone DicomSettingsPicker and its North American zone suggestions — the IANA zone the acquiring equipment's clock was set to, which turns DICOM's offset-less StudyDate/StudyTime into the instant FHIR's dateTime requires. Presentation and interaction only.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/importer/dicom-importer-react"
   },
   "files": [
@@ -32,24 +32,24 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "dicom-importer-core": "workspace:*",
-    "dicom-react": "workspace:*",
+    "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/dicom-react": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "importer-fundamentals": "workspace:*",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "dicom-importer-core": "workspace:*",
-    "dicom-react": "workspace:*",
+    "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/dicom-react": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "importer-fundamentals": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*"
+    "react": "catalog:"
   }
 }

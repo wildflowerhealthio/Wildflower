@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { TELEMETRY_CONSENT_COPY } from 'branding-core'
+import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { TelemetryConsentDialog } from './telemetry-consent-dialog.tsx'

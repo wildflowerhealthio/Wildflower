@@ -1,4 +1,4 @@
-import { ErrorBoundary } from 'react-tundraish'
+import { ErrorBoundary } from '@wildflowerhealthio/react-tundraish'
 
 /** A child that always throws — used to drive the boundary into its caught state. */
 const Boom = (): never => {

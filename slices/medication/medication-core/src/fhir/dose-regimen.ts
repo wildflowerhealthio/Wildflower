@@ -1,5 +1,5 @@
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DateTime } from 'effect'
-import type { MedicationRequest } from 'fhir-r4/resources'
 
 import { normalizeName } from '../normalize.ts'
 import { amortizedDoseOf } from './amortized-dose.ts'

@@ -1,8 +1,8 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -31,7 +31,7 @@ describe('risk-map / pnpm-workspace.yaml reconciliation', () => {
     const map = buildRiskMap(packages, new Set(names))
     // `kitchen-sink` lives at global/kitchen-sink, matched by the `global/*`
     // workspace glob — deriving from the YAML MUST surface it in the map.
-    expect(Object.keys(map)).toContain('kitchen-sink')
+    expect(Object.keys(map)).toContain('@wildflowerhealthio/kitchen-sink')
     expect(names.length).toBeGreaterThan(0)
     for (const name of names) expect(map[name]).toBeTypeOf('number')
   })

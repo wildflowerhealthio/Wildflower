@@ -24,7 +24,7 @@ import {
   type AuthStateStore,
   makeSubscribableStore,
   Unauthed,
-} from 'react-kitchen-sink'
+} from '@wildflowerhealthio/react-kitchen-sink'
 
 /**
  * Build the Tauri {@link AuthStateStore}: a `SubscriptionRef<AuthState>`

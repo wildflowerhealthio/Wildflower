@@ -1,6 +1,6 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Encoding, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import * as PickedFile from './picked-file.ts'

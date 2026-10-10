@@ -7,9 +7,9 @@ import {
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
+import { GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
+import type { AccessManagement } from '@wildflowerhealthio/gatekeeper-core/http-api-definition'
 import { DateTime, Effect, type Schema } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import type { AccessManagement } from 'gatekeeper-core/http-api-definition'
 
 import type { RunAuthed } from '../router-context.ts'
 import { CLIENTS_QUERY_KEY } from './keys.ts'

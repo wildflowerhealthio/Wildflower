@@ -1,6 +1,6 @@
 import { ParseResult, Schema } from 'effect'
 
-import { Ratio } from 'fhir-r4/data-types'
+import { Ratio } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /** A leading decimal number (`.` only — see {@link StrengthRatioFromString}), then a unit word. */
 const STRENGTH_PATTERN = /^\s*(\d+(?:\.\d+)?)\s*([A-Za-z][A-Za-z/%.-]*)\s*$/

@@ -1,12 +1,12 @@
 {
-  "name": "shared-structures-core",
+  "name": "@wildflowerhealthio/shared-structures-core",
   "version": "0.0.0",
   "private": true,
   "description": "Cross-slice utilities. The phantom-id bridge helper used by every slice that composes its HttpApi into a parent, plus the shared OpenAPI Rust↔TS drift harness.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/shared-structures/shared-structures-core"
   },
   "files": [
@@ -42,10 +42,10 @@
     "@apidevtools/json-schema-ref-parser": "^16.0.3",
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -53,7 +53,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

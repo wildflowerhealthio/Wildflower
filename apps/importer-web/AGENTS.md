@@ -1,7 +1,7 @@
 # AGENTS.md — apps/importer-web
 
 The Importer, shipped as a SMART-on-FHIR app served from the published
-GitHub Pages site (`/importer-app`), with a debug-only dev row for local
+GitHub Pages site (`/importer`), with a debug-only dev row for local
 development. It pairs
 [`importer-react`](../../slices/importer/importer-react/AGENTS.md)'s
 `ImporterScreen` with
@@ -14,36 +14,35 @@ one adapter the anonymizer's `serverSource` slot asks of a host (it passes
 carry `{ fileName, bytes }`, so the adapter is the identity). The unselected
 screen is unmounted, not hidden.
 
-`apps/web-trace` is the template for this shape (one HTML entry, a relative
-`base`, a build into the package's own `dist/`, a memory
-router carrying a SMART-built context, and a standalone `ConnectMenu` beside the
-EHR launch). **One thing is deliberately different: this app writes.** Everything
-that follows from that is called out below.
+The app has one HTML entry, a relative `base`, a build into the package's own
+`dist/`, a memory router carrying a SMART-built context, and a standalone
+`ConnectMenu` beside the EHR launch. **Unlike the read-only SMART apps, this app
+writes.** Everything that follows from that is called out below.
 
-The npm package is `wildflower-importer` (the web-trace naming convention — its
-package is `wildflower-web-trace` while its app id is `web-trace-app`). The app
-id and the OAuth `client_id` are both `importer-app` — the published path
-segment, matching `medications-app` / `web-trace-app`. The debug-only dev row
-is `importer-app-dev`. Those identities
-are load-bearing — see [Seeded registration](#seeded-registration).
+The npm package is `importer-web`. The app's tile id is `importer`, its
+published path segment, as `medications` is the medications app's; its OAuth
+`client_id` is a random id, `165cd26573e5ac72378e6ad2d2198330`. The debug-only
+dev row is `importer-dev`, whose client is `57268ff88aea38d6a22de56ae53e2c28`.
+Those identities are load-bearing — see
+[Seeded registration](#seeded-registration).
 
 ## Why this app has a router and a bearer token
 
 The wiring itself is **not this app's** — it lives in
-[`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.ts),
+[`fhir-r4-react/smart`](../../slices/fhir/fhir-r4-react/src/smart/smart-runtime.ts),
 because every SMART app served from its own origin needs the same thing. `app.tsx`
 imports `buildSmartRouterContext` from there directly — there is no local
 re-export to edit, deliberately, so a change to the behaviour has to be made in
 the one place that owns it. The guardrail listing the properties that must
-survive is in [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md).
+survive is in [slices/fhir/AGENTS.md](../../slices/fhir/AGENTS.md).
 
 Two facts about an app served off its own origin drive everything in that
 runtime:
 
 - **It is served from a different origin than the API** — the published Pages
-  site (`https://wildflowerhealth.io/importer-app/`) in production, or the
+  site (`https://wildflowerhealth.io/importer/`) in production, or the
   loopback dev origin (`http://localhost:5193/`) under the debug-only
-  `importer-app-dev` row. The typed FHIR client emits _relative_ paths
+  `importer-dev` row. The typed FHIR client emits _relative_ paths
   (`/fhir-r4/DocumentReference`), which would resolve against the app's own
   origin and 404. So the layer prefixes them with the FHIR base the SMART
   handshake named.
@@ -61,7 +60,7 @@ package growing a second, prop-threaded way in.
 
 The app is reachable two ways, both wired here:
 
-- **EHR launch** — the homescreen tile (the `importer-app` row) opens the app
+- **EHR launch** — the homescreen tile (the `importer` row) opens the app
   root with `iss={origin}/fhir-r4` and a `launch`, and `SmartAppRoot` starts the
   SMART authorize redirect against that FHIR base at once. The app root is the
   redirect target too.
@@ -74,8 +73,8 @@ The app is reachable two ways, both wired here:
   launch, the callback and the bare visit apart; the callback's branch renders
   `BrandBar` + `App` instead.
 
-Both run through the one registered client (`importer-app`, or `importer-app-dev`
-in a vite dev build), whose redirect URI is the app root — so the same handshake
+Both run through the one registered client (the `importer` tile's, or the
+`importer-dev` tile's in a vite dev build), whose redirect URI is the app root — so the same handshake
 completion path serves both.
 
 ## Scopes: this app writes, and the two sides must match exactly
@@ -112,7 +111,7 @@ accepts the writes and the set has room to grow.
   unreachable through patient context and a `patient/` scope would match
   nothing.
 - **The pin.** This string MUST equal the `allowed_scopes` JSON array the
-  `gatekeeper-rust` migrations seed for `importer-app` — originally
+  `gatekeeper-rust` migrations seed for the Importer's client — originally
   `0008_seed_wildflower_importer_client`, widened by
   `0009_widen_importer_client_write_scopes` (which broadens every type to full
   `.cruds` and adds `Practitioner`, `DiagnosticReport`, `Medication`,
@@ -126,7 +125,7 @@ accepts the writes and the set has room to grow.
   the migrations' own comments, and the exact
   vector asserted in `gatekeeper-rust`'s `db/clients.rs`. Change
   one, change all four. A **dev** build authorizes against the sibling
-  `importer-app-dev` client instead (`gatekeeper-rust`'s `seed_dev_app_clients`,
+  `importer-dev` tile's client instead (`gatekeeper-rust`'s `seed_dev_app_clients`,
   see [Seeded registration](#seeded-registration) below), which carries the same
   set — widen it in step too, or `/authorize` fails only in a vite dev build. Do
   **not** invent a parity test that hand-copies the list a third time — that is
@@ -156,10 +155,9 @@ accepts the writes and the set has room to grow.
   no props; `AnonymizerScreen` takes only the `serverSource` slot. Each owns
   every level below it (source pick → preview → confirm/download → results).
   This app renders a heading, the Import | Anonymize tabstrip, and the one
-  screen the picked tab mounts. Splitting a flow across that boundary is the mistake `apps/web-trace`
-  made with its exchange detail and had to undo: both surfaces opened at once
-  and the accessibility tree hid it. Re-creating any of the four levels here
-  re-creates that.
+  screen the picked tab mounts. Splitting a flow across that boundary opens
+  two surfaces at once, and the accessibility tree hides it. Don't re-create any
+  of the four levels here.
 - **The tabstrip state lives inside `ImporterHome`, not `ImporterApp`.** The
   router memo above is keyed on the context; lifting `tab` into `ImporterApp`
   would rebuild the router (and its mounted tree) on every tab switch. Keep the
@@ -190,38 +188,42 @@ The app is registered as a row served from the published site, by two
 migrations that must land together — an app registration whose `client_id` has no
 registered client cannot launch:
 
-- `slices/apps/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
-  `importer-app` registration and its launch URL
-  (`https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}/fhir-r4`
-  since `0016_launch_first_party_apps_at_root`), `requires_tunnel = 1` (like
-  `medications-app` / `web-trace-app`).
-- `slices/gatekeeper/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
-  — the `importer-app` OAuth client. Its one registered redirect is
-  `https://wildflowerhealth.io/importer-app/`, the page it launches from.
+- `apps/host/wildflower-server/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
+  registration and its launch URL
+  (`https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}/fhir-r4`
+  since `0016_launch_first_party_apps_at_root`, and under the tile id
+  `importer` since `0019_rekey_site_apps`), `requires_tunnel = 1` (like
+  `medications`).
+- `apps/host/wildflower-server/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
+  — the OAuth client, re-keyed to `165cd26573e5ac72378e6ad2d2198330` by
+  `0028_rekey_site_app_clients`. Its one registered redirect is
+  `https://wildflowerhealth.io/importer/`, the page it launches from.
 
-The `clientId` in `src/config.ts` must equal the app id in both.
+The `clientId` in `src/config.ts` must equal the registration's `client_id`,
+the client's id in both.
 
-A **debug build** additionally seeds an `importer-app-dev` row
+A **debug build** additionally seeds an `importer-dev` row
 (`apps-rust`'s `dev_seed.rs`) whose launch URL names this app's vite dev-server
-port (`slices/apps/dev-app-ports.json` → `5193`), plus its sibling OAuth client
+port (`dev-app-ports.json` → `5193`), plus its sibling OAuth client
 (`gatekeeper-rust`'s `seed_dev_app_clients`) carrying the same write scopes. That
-row is what a developer running `vp run -F wildflower-importer dev` launches;
+row is what a developer running `vp run -F @wildflowerhealthio/importer-web dev` launches;
 there is no fallback build, so the tile opens nothing when vite is not holding
 the port.
 
 ## Published on GitHub Pages
 
-`apps/github-pages` stages this app's `dist/` at `/importer-app` on
-<https://wildflowerhealth.io>, alongside the medications and web-trace apps. The
+`apps/wildflower-site/wildflower-site-web` stages this app's `dist/` at `/importer` on
+<https://wildflowerhealth.io>, alongside the other first-party apps. The
 relative `base: './'` in `vite.config.ts` is the whole subpath mechanism. No SPA
 fallback is needed: the router is a memory history, so the site has no deep links
-into it. The marketing site links there from its "collection of apps" section
-(`apps/marketing-website/src/data/convergence.ts`).
+into it. The marketing site links there from its infrastructure section
+(`apps/wildflower-site/marketing-site-web/src/components/infrastructure.tsx`,
+from the shared `APP_DESCRIPTIONS` entry).
 
 ## Boot and chrome
 
 The entry runs on `smart-app-react`, the chrome every first-party SMART app
-boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
+boots through (see [slices/smart-app-react/AGENTS.md](../../slices/smart-app-react/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
 JS entry), completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListener()`, and
@@ -245,7 +247,7 @@ consent dialog and owns the `QueryClientProvider` and the chrome gate:
 the `VITE_SENTRY_DSN_IMPORTER_WEB` build variable (see `.env.example`).
 
 The decision is **latched on mount** inside `SmartAppRoot`; the shell's
-[`smart-app-root.test.tsx`](../../slices/smart-app/smart-app-react/src/smart-app-root.test.tsx)
+[`smart-app-root.test.tsx`](../../slices/smart-app-react/src/smart-app-root.test.tsx)
 pins it along with the rest of the shell's behaviour.
 
 The `source`-only export (`"exports": { ".": { "source": "…" } }`) has no
@@ -256,7 +258,7 @@ workspace `source` condition at bundle time.
 
 - The auth wiring in isolation — prefix derivation, the relative/absolute split,
   and that an absent token sets no header — is
-  [`fhir-r4-react`'s `smart-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/smart-runtime.test.ts).
+  [`fhir-r4-react`'s `smart-runtime.test.ts`](../../slices/fhir/fhir-r4-react/src/smart/smart-runtime.test.ts).
 - The import flow's own semantics — zero writes to reach a preview, `meta.source`
   on every written resource, partial results, cancel — are
   [`importer-react`'s `importer-screen.test.tsx`](../../slices/importer/importer-react/src/importer-screen.test.tsx).
@@ -278,16 +280,14 @@ workspace `source` condition at bundle time.
 
 ## References
 
-- [emr slice AGENTS.md](../../slices/emr/AGENTS.md) — the shared SMART runtime
+- [fhir slice AGENTS.md](../../slices/fhir/AGENTS.md) — the shared SMART runtime
   this app imports (`fhir-r4-react/smart`), and the auth-critical properties it
   must keep.
 - [importer-react AGENTS.md](../../slices/importer/importer-react/AGENTS.md) —
   the screen this app mounts, and its traps.
 - [importer slice AGENTS.md](../../slices/importer/AGENTS.md) — the
   preview-then-confirm opt-in seam.
-- [apps/web-trace AGENTS.md](../web-trace/AGENTS.md) — the read-only twin this
-  app is cloned from.
 - [Apps Explanation](../../docs/Apps/Explanation.md) — how a first-party app is
   registered and launched from the published site, and how the debug-only `-dev`
   rows work.
-- [apps/AGENTS.md](../AGENTS.md) — the rules every app follows.
+- [apps/AGENTS.md](../../AGENTS.md) — the rules every app follows.

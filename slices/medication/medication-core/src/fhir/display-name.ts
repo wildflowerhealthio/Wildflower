@@ -1,6 +1,6 @@
+import { CodeableConcept } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option, pipe, String as Str } from 'effect'
-import { CodeableConcept } from 'fhir-r4/data-types'
-import type { MedicationRequest } from 'fhir-r4/resources'
 
 import {
   containedMedicationOf,

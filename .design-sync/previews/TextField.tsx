@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TextField } from 'react-tundraish'
+import { TextField } from '@wildflowerhealthio/react-tundraish'
 
 /** The canonical use — a labeled input with a helper line beneath it. */
 export const WithDescription = () => {

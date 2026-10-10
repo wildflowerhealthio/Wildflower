@@ -1,6 +1,6 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { Scope } from '@wildflowerhealthio/scopes-core'
 import { Fragment, type JSX, type ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { Scope } from 'scopes-core'
 
 import styles from './authorization-failure.module.css'
 

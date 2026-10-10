@@ -1,0 +1,68 @@
+{
+  "name": "@wildflowerhealthio/web-trace-collector",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Development-purposes collector that records a hand-driven browsing session: point it at a URL, browse the portal by hand, close the window, and every XHR/fetch the pages fired is on device as a FHIR DocumentReference via web-trace-core's codec. Captures everything and filters nothing — the content-type allowlist governs bodies, never whether an exchange is recorded.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "apps/launcher/collector/web-trace-collector"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/collector-fundamentals": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
+    "@wildflowerhealthio/web-trace-source": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/collector-fundamentals": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
+    "@wildflowerhealthio/web-trace-source": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:"
+  }
+}

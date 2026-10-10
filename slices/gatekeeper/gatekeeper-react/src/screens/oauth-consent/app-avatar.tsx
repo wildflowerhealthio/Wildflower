@@ -1,6 +1,6 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './app-avatar.module.css'
 

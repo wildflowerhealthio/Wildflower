@@ -3,26 +3,25 @@ const SITE_ORIGIN = 'https://wildflowerhealth.io'
 
 /**
  * Deploy-contract paths for each site section. These must match the
- * `destPath` values in `apps/github-pages/src/assembly.ts` — a mismatch
+ * `destPath` values in `apps/wildflower-site/wildflower-site-web/src/assembly.ts` — a mismatch
  * breaks cross-section links on the assembled GitHub Pages site.
  */
 const SECTION_PATHS = {
   marketing: '',
-  medications: 'medications-app',
-  importer: 'importer-app',
-  webTrace: 'web-trace-app',
-  serverDocs: 'wildflower-server-docs',
+  medications: 'medications',
+  importer: 'importer',
+  serverDocs: 'server-docs',
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
-  healthViewer: 'health-viewer-app',
-  syntheticData: 'synthetic-data-app',
-  lifting: 'lifting-app',
+  healthViewer: 'health-viewer',
+  syntheticData: 'synthetic-data',
+  lifting: 'lifting',
   // The WatchLifts watchapp's settings page: not a SMART app, so it has no nav
   // link and no app description.
   watchLifts: 'watch-lifts',
-  // The hosted copy of the wildflower-react owner UI, published cross-origin to
-  // the API. `/app/` was chosen over `/wildflower-react/` and `/wildflower/`.
-  app: 'app',
+  // The hosted launcher (`apps/launcher/launcher-web`), published cross-origin
+  // to the API, under its folder's name.
+  launcher: 'launcher',
 } as const
 
 /** Identifies one section of the assembled site. */
@@ -59,7 +58,7 @@ function sectionRootPath(id: SectionId): string {
  * @param section - The section `sectionBaseUrl` serves; never `marketing`, which
  *   is the root itself.
  * @param sectionBaseUrl - The absolute URL of the directory the section's page
- *   is served from, e.g. the owner UI's origin plus its router basepath.
+ *   is served from, e.g. the launcher's origin plus its router basepath.
  * @returns `sectionBaseUrl` with the section's own path taken off, slash-terminated,
  *   when it ends in that path — `https://wildflowerhealth.io/` for the published
  *   site, `https://wildflowerhealthio.github.io/staging/pr-7/` for a PR preview —
@@ -73,9 +72,9 @@ function sectionRootPath(id: SectionId): string {
  *
  * @example
  * ```ts
- * siteRootFor('app', 'https://wildflowerhealthio.github.io/staging/pr-7/app/')
+ * siteRootFor('launcher', 'https://wildflowerhealthio.github.io/staging/pr-7/launcher/')
  * // → 'https://wildflowerhealthio.github.io/staging/pr-7/'
- * siteRootFor('app', 'http://localhost:5173/') // → 'https://wildflowerhealth.io/'
+ * siteRootFor('launcher', 'http://localhost:5173/') // → 'https://wildflowerhealth.io/'
  * ```
  */
 function siteRootFor(section: Exclude<SectionId, 'marketing'>, sectionBaseUrl: string): string {

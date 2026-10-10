@@ -5,17 +5,21 @@
  *
  * @packageDocumentation
  */
-import { DicomHeader } from 'dicom'
-import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
-import { IdentifierAndReference } from 'fhir-r4/data-types'
-import { adoptResource } from 'fhir-r4/identity'
+import { DicomHeader } from '@wildflowerhealthio/dicom'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { adoptResource } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   type DocumentReference,
   DocumentReferenceContext,
   type FhirResource,
-} from 'fhir-r4/resources'
-import { type DecodeFunction, DecodedFile, type PickedFile } from 'importer-fundamentals'
-import { checkTimeZone } from 'kitchen-sink'
+} from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type DecodeFunction,
+  DecodedFile,
+  type PickedFile,
+} from '@wildflowerhealthio/importer-fundamentals'
+import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
+import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 
 import {
   accessionNumbers,

@@ -1,5 +1,5 @@
-import type { FhirResource } from 'fhir-r4/resources'
-import { SourceDescriptor } from 'http-extraction-fundamentals'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { rexallBeWellResponseKinds } from './response-kinds.ts'
 

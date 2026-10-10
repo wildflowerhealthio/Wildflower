@@ -1,0 +1,89 @@
+# systemd unit for wildflowerhealthio-relay-server on a plain host (e.g. a
+# droplet).
+#
+# Install:
+#   1. Build and copy the binary:
+#        cargo build --release --locked -p wildflowerhealthio-relay-server
+#        sudo install -D -m 0755 target/release/wildflowerhealthio-relay-server /opt/wildflower-relay/wildflowerhealthio-relay-server
+#      It lives off root's PATH because the deploy workflow's `deploy` user
+#      writes it (deploy/sudoers).
+#   2. Write the settings, readable by root only, starting from
+#      relay.example.env (it lists every variable):
+#        sudo install -d -m 0755 /etc/wildflower-relay
+#        sudo install -m 0600 apps/relay/relay-server/relay.example.env /etc/wildflower-relay/env
+#        sudoedit /etc/wildflower-relay/env
+#      Set WILDFLOWER_RELAY_DOMAIN, WILDFLOWER_RELAY_NOISE_PRIVATE_KEY and
+#      WILDFLOWER_RELAY_ADMIN_KEY, which creates the tunnels. The domain must
+#      resolve to this host: Let's Encrypt validates the relay's certificate
+#      for it on :443. After changing it:
+#        sudo systemctl restart wildflowerhealthio-relay-server
+#   3. Install and start the unit:
+#        sudo install -m 0644 apps/relay/relay-server/wildflowerhealthio-relay-server.service /etc/systemd/system/
+#        sudo systemctl daemon-reload
+#        sudo systemctl enable --now wildflowerhealthio-relay-server
+#
+# On a host still running the relay's earlier unit, wildflower-relay.service,
+# install this unit without starting it (step 3's first two commands) and let
+# the next deploy start it: deploy/install.sh stops, disables and removes the
+# earlier unit first, so the two never contend for the ports.
+#
+# The environment file is the relay's only configuration (see
+# relay.example.env). /var/lib/wildflower-relay keeps the relay's state
+# across restarts: the certificate for its own hostnames and the tunnels
+# created through the admin API.
+
+[Unit]
+Description=Wildflower relay (rathole tunnels and SNI front)
+Documentation=https://github.com/wildflowerhealthio/Wildflower/tree/main/apps/relay/relay-server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/opt/wildflower-relay/wildflowerhealthio-relay-server
+EnvironmentFile=/etc/wildflower-relay/env
+Environment=WILDFLOWER_RELAY_STATE_DIR=/var/lib/wildflower-relay
+Restart=on-failure
+RestartSec=2
+
+# Unprivileged, with only the right to bind 443 and 80.
+DynamicUser=yes
+# Named like the directories rather than the unit, so the user that owns the
+# state directory doesn't depend on the unit's name.
+User=wildflower-relay
+# Writable despite ProtectSystem=strict. With DynamicUser it lives in
+# /var/lib/private/wildflower-relay, linked from /var/lib/wildflower-relay.
+StateDirectory=wildflower-relay
+StateDirectoryMode=0700
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+LimitNOFILE=65536
+
+# Hardening.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# rathole raises its open-file limit at start (setrlimit), so @resources stays allowed.
+SystemCallFilter=~@privileged
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

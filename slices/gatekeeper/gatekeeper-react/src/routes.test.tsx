@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { createRouter, type AnyRoute } from '@tanstack/react-router'
+import { GatekeeperPaths } from '@wildflowerhealthio/gatekeeper-core/page-paths'
 import { Layer } from 'effect'
-import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 import { describe, expect, test } from 'vite-plus/test'
 
 import type { RunAuthed } from './queries/index.ts'

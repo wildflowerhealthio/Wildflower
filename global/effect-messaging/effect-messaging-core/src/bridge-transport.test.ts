@@ -1,6 +1,6 @@
+import { LoggingLayerTest, numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option, Queue, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import * as BridgeTransport from './bridge-transport.ts'
 import * as Bridge from './bridge.ts'

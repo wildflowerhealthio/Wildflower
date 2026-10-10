@@ -1,14 +1,44 @@
 packages:
   - apps/*
   # The watch apps' host-side tests and PebbleKit JS builds; see
-  # apps/watch-lifts/test/vite.config.ts for why they aren't part of the watch
+  # apps/watch-lifts/watch-lifts-watchapp/test/vite.config.ts for why they aren't part of the watch
   # app packages themselves.
-  - apps/fhir-sync-pebble/pkjs
-  - apps/fhir-sync-pebble/test
-  # The relay's admin UI. Its sibling apps/relay/server is the Rust crate.
-  - apps/relay/admin-web
-  - apps/watch-lifts/pkjs
-  - apps/watch-lifts/test
+  - apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/pkjs
+  - apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/test
+  # FHIR Sync for Pebble: the watchapp and its settings page. The core both
+  # build on is slices/fhir-sync-pebble-core.
+  - apps/fhir-sync-pebble/*
+  # The Health Viewer: the app and the core, sources and chart it is built
+  # from.
+  - apps/health-viewer/*
+  # The host: the Tauri host app and the packages it is built from.
+  - apps/host/*
+  - apps/host/servers/*
+  # The launcher: the web app that manages a Wildflower server, and the
+  # packages it is built from, grouped by the slice they came from.
+  - apps/launcher/*
+  - apps/launcher/collector/*
+  - apps/launcher/databases/*
+  - apps/launcher/har-recorder/*
+  - apps/launcher/request-log/*
+  # Lifting: the app and the core and screens it is built from.
+  - apps/lifting/*
+  # Medications: the app and the calendar, interaction and sponsorship
+  # features only it uses.
+  - apps/medications/*
+  # The relay's admin UI and the packages it is built from. Their sibling
+  # apps/relay/relay-server is the Rust crate.
+  - apps/relay/*
+  # The Synthetic Data Loader: the app, and the story model and per-source
+  # generators its snapshot is built from.
+  - apps/synthetic-data/*
+  - apps/watch-lifts/watch-lifts-watchapp/pkjs
+  - apps/watch-lifts/watch-lifts-watchapp/test
+  # WatchLifts: the watchapp, its settings page and the core both build on.
+  - apps/watch-lifts/*
+  # The site: the assembly that publishes wildflowerhealth.io, and the
+  # marketing homepage at its root.
+  - apps/wildflower-site/*
   - global/*
   - global/effect-messaging/*
   - global/pebble/*
@@ -36,18 +66,16 @@ catalog:
   '@opentelemetry/exporter-trace-otlp-http': ^0.222.0
   '@opentelemetry/resources': 2.11.0
   '@opentelemetry/sdk-trace-base': ^2.11.0
-  '@opentelemetry/sdk-trace-node': ^2.11.0
   '@opentelemetry/sdk-trace-web': ^2.11.0
   '@opentelemetry/semantic-conventions': ^1.43.0
   # Keep the `@sentry/*` packages aligned on a single version so only one
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
-  # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
-  '@sentry/node': 10.74.0
+  # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-web).
   '@sentry/opentelemetry': 10.74.0
   '@sentry/react': 10.74.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the
-  # static server-docs console at /wildflower-server-docs ships self-contained.
+  # static server-docs console at /server-docs ships self-contained.
   '@scalar/api-reference': ^1.72.1
   '@tanstack/react-query': ^5.104.0
   '@tanstack/react-router': ^1.170.39
@@ -89,16 +117,22 @@ catalog:
   fast-check: 3.23.2
   har-schema: ^2.0.0
   # RFC 9421 HTTP message signatures for the relay admin UI's requests
-  # (relay-core), and the structured-field codec it is built on, which
-  # relay-core uses to serialize the signature input itself.
+  # (relay-core-js), and the structured-field codec it is built on, which
+  # relay-core-js uses to serialize the signature input itself.
   http-message-signatures: ^1.0.6
   jose: ^6.1.3
   jsdom: ^30.1.0
+  # `vp run lint:deps`: fails on an import its package's manifest doesn't
+  # declare, which the package graph check (scripts/package-graph.ts) trusts.
+  knip: ^6.41.0
   nanoid: ^6.0.1
   pdfjs-dist: 6.3.289
   qrcode-generator: 2.0.4
   react: 19.3.0
   react-dom: 19.3.0
+  # Reads the Cargo manifests for the package graph check, so it needs no Rust
+  # toolchain.
+  smol-toml: ^1.9.1
   structured-headers: ^2.0.2
   tundra-css: ^0.14.0
 

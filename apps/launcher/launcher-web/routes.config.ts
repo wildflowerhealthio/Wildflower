@@ -1,0 +1,83 @@
+import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-file-routes'
+
+/**
+ * Virtual route config for launcher-web. The app owns the structural
+ * skeleton (root provider stack, the `_auth` gate, the `/settings`
+ * layout) as physical files under `src/routes`, and pulls each slice's
+ * route directory into the tree with `physical()`.
+ *
+ * The three slice buckets mount as SIBLINGS so that the id a slice's own
+ * generator computes (from its top-level folder) is identical to the id
+ * this app generator computes — otherwise the two generators fight over
+ * the single `createFileRoute('<id>')` literal in each route file.
+ *
+ *   - `settings/` → mounted under the real `/settings` route → `/settings/…`
+ *   - `_auth/`    → mounted under the pathless `_auth` layout  → `/_auth/…`
+ *   - `_open/`    → mounted under the pathless `_open` layout  → `/_open/…`
+ *
+ * Section sub-layouts (`_auth/home.tsx`, `_auth/gatekeeper.tsx`,
+ * `_open/gatekeeper.tsx`) live in the app's own `src/routes` directory.
+ * Each wraps its slice mount in the shared `pageLayoutStyles['page']`
+ * shell so the leaves render content only. They cannot live in their
+ * source slice because `physical()` mounts compute the generated
+ * route-variable name from the in-mount path: with a slice-level
+ * `_auth/gatekeeper.tsx` AND `_open/gatekeeper.tsx`, both reduce to
+ * `Gatekeeper` and the launcher-web `routeTree.gen.ts` ends up with a
+ * duplicate `const GatekeeperRoute = …`. Owning the section layout at the
+ * app level keeps the `/_auth/` / `/_open/` prefix in scope for the
+ * generator so it disambiguates as `AuthGatekeeperRoute` /
+ * `OpenGatekeeperRoute`.
+ *
+ * Because `/settings` is a sibling of `_auth` (not a child), it is not
+ * auth-gated by the `_auth` layout's `beforeLoad`. The `/settings`
+ * route re-applies the same gate via the shared
+ * `wildflowerRouteOptions`, so the runtime behavior (settings requires
+ * auth, on a Wildflower server) is preserved.
+ *
+ * `/fhir-home`, a plain SMART server's Home, is a sibling of `_auth` for
+ * the same reason the other way round: everything under `_auth` calls
+ * Wildflower-only endpoints, so `_auth` redirects a plain SMART server's
+ * session to `/fhir-home`, which gates itself with
+ * `plainSmartRouteOptions`.
+ *
+ * Paths passed to `physical()` are resolved relative to
+ * `routesDirectory` (`src/routes`), so `../../../../../slices` reaches the
+ * monorepo's `slices/` directory and `../../..` this app's folder,
+ * `apps/launcher/`, where the packages built only for the launcher sit.
+ */
+const slices = '../../../../../slices'
+const launcher = '../../..'
+
+/** A slice's `<slice>-react` route bucket. */
+const sliceRoutesDir = (slice: string, bucket: string): string =>
+  `${slices}/${slice}/${slice}-react/src/routes/${bucket}`
+
+/** A route bucket of a package beside this app in `apps/launcher/`. */
+const launcherRoutesDir = (packageDir: string, bucket: string): string =>
+  `${launcher}/${packageDir}/src/routes/${bucket}`
+
+export const routes = rootRoute('__root.tsx', [
+  route('/settings', 'settings.tsx', [
+    index('settings/index.tsx'),
+    physical('', launcherRoutesDir('request-log/request-log-react', 'settings')),
+    physical('', sliceRoutesDir('gatekeeper', 'settings')),
+    physical('', launcherRoutesDir('databases/databases-react', 'settings')),
+    physical('', launcherRoutesDir('apps-react', 'settings')),
+    physical('', launcherRoutesDir('wildflower-server-react', 'settings')),
+  ]),
+  index('index.tsx'),
+  route('/fhir-home', 'fhir-home.tsx'),
+  layout('_auth', '_auth.tsx', [
+    physical('', launcherRoutesDir('collector/collector-react', '_auth')),
+    physical('', launcherRoutesDir('har-recorder/har-recorder-react', '_auth')),
+    route('/home', '_auth/home.tsx', [physical('', launcherRoutesDir('apps-react', '_auth/home'))]),
+    route('/gatekeeper', '_auth/gatekeeper.tsx', [
+      physical('', sliceRoutesDir('gatekeeper', '_auth/gatekeeper')),
+    ]),
+  ]),
+  layout('_open', '_open.tsx', [
+    route('/gatekeeper', '_open/gatekeeper.tsx', [
+      physical('', sliceRoutesDir('gatekeeper', '_open/gatekeeper')),
+    ]),
+  ]),
+])

@@ -9,13 +9,17 @@
  *
  * @packageDocumentation
  */
-import { writeDicom, type DicomTagMap } from 'dicom/test-helpers'
+import { writeDicom, type DicomTagMap } from '@wildflowerhealthio/dicom/test-helpers'
+import { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { emitHar, HarFromJson } from '@wildflowerhealthio/http-archive'
+import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import type { TraceBody } from '@wildflowerhealthio/web-trace-core'
+import {
+  CAPTURE_FLOOR,
+  jsonBody,
+  traceExchange,
+} from '@wildflowerhealthio/web-trace-core/test-helpers'
 import { Effect, Schema } from 'effect'
-import { DocumentReference } from 'fhir-r4/resources'
-import { emitHar, HarFromJson } from 'http-archive'
-import { PickedFile } from 'importer-fundamentals'
-import type { TraceBody } from 'web-trace-core'
-import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 /** The tags every file of the canonical study shares. */
 const STUDY_TAGS: DicomTagMap = {

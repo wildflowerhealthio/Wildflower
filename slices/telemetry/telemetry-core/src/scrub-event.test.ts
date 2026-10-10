@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import { anonymizeUrl } from './anonymize-url.ts'
 import { type ScrubbableEvent, scrubEvent } from './scrub-event.ts'

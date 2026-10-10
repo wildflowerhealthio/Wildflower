@@ -1,5 +1,5 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { writeDicom } from 'dicom/test-helpers'
+import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { DicomFilePreview } from './file-preview.tsx'

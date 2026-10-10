@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { AccessManagement } from '@wildflowerhealthio/gatekeeper-core/http-api-definition'
 import { Schema } from 'effect'
-import { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import type { JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 

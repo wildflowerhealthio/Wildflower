@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 
-import { sectionUrl } from 'branding-core'
+import { sectionUrl } from '@wildflowerhealthio/branding-core'
 
 import { AppIcon } from './app-icon.tsx'
 import styles from './brand-bar.module.css'

@@ -1,0 +1,19 @@
+{
+  "name": "@wildflowerhealthio/ohif-viewer-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "vp check",
+    "dev": "vp preview",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

@@ -3,7 +3,7 @@
 The **FHIR R4 source**: the single definition of how FHIR R4 traffic decodes
 into resources, exported as one `SourceDescriptor` value — `fhirR4Source`,
 whose pre-adopted `responseKinds` an archive import extracts with. The live
-`fhir-r4-client-collector` scraping plan (browser-driven, in `slices/collector`)
+`fhir-r4-client-collector` scraping plan (browser-driven, in `apps/launcher/collector`)
 consumes the same response-kind tuple by reference, so the two
 consumers can never disagree on a decode. It is the first of the per-source
 packages; `rexall-be-well-source`, `shoppers-drugmart-source`, and
@@ -46,7 +46,7 @@ Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
 `RecognizedUrlData`), `fhir-r4` (resources + `identity`'s
 `adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
-particular it must **never** import anything from `slices/collector`
+particular it must **never** import anything from `apps/launcher/collector`
 (`fhir-r4-client-collector` depends on this package; the live config/plan/form
 are its concern) or `slices/importer` (whose `har-importer-core` consumes this
 package's `fhirR4Source.responseKinds`).
@@ -83,8 +83,8 @@ pin only its own surface's behaviour.
   belongs to.
 - [http-extraction-fundamentals AGENTS.md](../http-extraction-fundamentals/AGENTS.md)
   — the vocabulary this package is written against.
-- [fhir-r4-client-collector AGENTS.md](../../collector/fhir-r4-client-collector/AGENTS.md)
+- [fhir-r4-client-collector AGENTS.md](../../../apps/launcher/collector/fhir-r4-client-collector/AGENTS.md)
   — the live collector built from these entities (config, plan, provenance,
   form).
-- [Source Identity Explanation](../../collector/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../../../apps/launcher/collector/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

@@ -1,0 +1,91 @@
+[package]
+name = "host-app"
+version = "0.3.0"
+description = "A Tauri App"
+authors = ["Ruth Marks"]
+edition.workspace = true
+publish.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "host_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+# Parses the shared `tauri-shared-config.json` (single source of truth for
+# the loopback hostname/port) in `build.rs`, re-emitting it as compile-time env
+# vars for `src/lib.rs`.
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+# The `LoopbackConsentRequest` (its `expires_at`) the dialog tests render.
+chrono = { workspace = true, features = ["clock"] }
+tauri-plugin-opener = "2"
+openssl = {version = "0.10.36", features = ["vendored"] } 
+serde.workspace = true
+serde_json.workspace = true
+wildflowerhealthio-apps = { path = "../../wildflower-server/apps-rust" }
+wildflowerhealthio-browser-sniffer-tauri = { path = "../../browser-sniffer-tauri" }
+# Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
+# recorded archive into `<data root>/saved_data`.
+wildflowerhealthio-har-recorder-tauri = { path = "../../wildflower-server/har-recorder-tauri" }
+# The install's servers on the unit runner, the notifications about them, and
+# the base's commands for adding a server and re-entering its token, over the
+# install's `servers.json`. Hosted from `.setup()`; the commands registered in
+# `run()`.
+wildflowerhealthio-servers-tauri = { path = "../../servers/servers-tauri" }
+# `ServerRecord`, which the server config builder reads, the folder a server
+# runs from, and `ServerDetail`, `TauriUnitRunner`'s detail.
+wildflowerhealthio-servers = { path = "../../servers/servers-rust" }
+# Runs the servers as units, keeping the app alive in the background with
+# `tauri-plugin-background-service`'s one service; built before the Tauri
+# builder, its two plugins registered in `run()`.
+wildflowerhealthio-tauri-unit-runner = { path = "../../unit-runner/tauri-unit-runner-rust" }
+# Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
+# with the browser-sniffer WebviewWindow path. Registered in `run()`.
+tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
+wildflowerhealthio-gatekeeper = { path = "../../wildflower-server/gatekeeper-rust" }
+# `ServerRuntimeConfig` and `LauncherBase` for the server config, and the bridge
+# envelope the host's listeners decode.
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
+# Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
+# gates its `RequestSandboxedWebView { url }` on before handing the URL to the
+# native-webview plugin.
+wildflowerhealthio-shared-structures-tauri = { path = "../../shared-structures-tauri" }
+# The `RelaySettings` the host builds from the server's record for its tunnel.
+wildflowerhealthio-tunnel = { path = "../../wildflower-server/tunnel-rust" }
+# The Wildflower server's config and ports, which the host builds.
+wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflower-server-rust" }
+anyhow.workspace = true
+# Typed loopback base URL for the server's `ServerRuntimeConfig`.
+url = "2"
+tokio = { workspace = true, features = ["full"] }
+tauri-plugin-log = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+# Local notifications about the servers; registered before `TauriUnitRunner`'s
+# plugins, which ask for the permission before the background session's first
+# start.
+tauri-plugin-notification = "2"
+# The background session's plugin, which `wildflowerhealthio-tauri-unit-runner` registers. A direct
+# dependency so `tauri-build` finds its permissions (the `main` webview's
+# `allow-configure-recovery`), and for its config type, which a host test
+# decodes `tauri.conf.json` through. Pinned exactly, as in `wildflowerhealthio-tauri-unit-runner`.
+tauri-plugin-background-service = "=1.0.1"
+
+# Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true
+
+[dev-dependencies]
+# Parses the Android manifest the merge-override tests read.
+roxmltree = "0.21"
+# Builds the server record the relay-settings test reads.
+wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust" }

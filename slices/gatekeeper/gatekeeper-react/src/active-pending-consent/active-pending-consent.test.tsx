@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
-import type { PendingConsentHead } from 'gatekeeper-core/bridge'
+import type { PendingConsentHead } from '@wildflowerhealthio/gatekeeper-core/bridge'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 

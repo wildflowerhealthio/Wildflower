@@ -1,5 +1,5 @@
+import { deepFreeze } from '@wildflowerhealthio/kitchen-sink'
 import type { Effect, Option, ParseResult } from 'effect'
-import { deepFreeze } from 'kitchen-sink'
 import type { HttpMethod } from './http-method.ts'
 import type { HttpResponse } from './http-response.ts'
 

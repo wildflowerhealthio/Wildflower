@@ -1,11 +1,11 @@
-import type { ItemListItem } from 'react-tundraish'
+import type { ItemListItem } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * One entry in the unified `/settings` menu.
  *
  * Each slice's `*-react` package exports
  * `<slice>SettingsItemsFragment: readonly SettingsItem[]`, which
- * `apps/wildflower-react/src/routes/settings/index.tsx` concatenates
+ * `apps/launcher/launcher-web/src/routes/settings/index.tsx` concatenates
  * and feeds straight into `<ItemList>` from `react-tundraish`. The
  * shape is the navigational (`href`) and action (`onClick`, e.g.
  * `main-web`'s bearer logout) branches of `ItemListItem`, so no

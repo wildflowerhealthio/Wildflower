@@ -32,7 +32,7 @@ always takes the top-specificity enabled candidate.
 An adapter: depends on `har-importer-core` (`fhirSources`, `HarSettings`),
 `importer-fundamentals` (`SettingsPickerProps`), and `react`. Never imports
 `importer-react` (the shell depends on this, not the reverse) or
-`slices/collector`.
+`apps/launcher/collector`.
 
 ## Guardrails
 
@@ -43,8 +43,8 @@ An adapter: depends on `har-importer-core` (`fhirSources`, `HarSettings`),
 
 ## References
 
-- [slices/importer AGENTS.md](../AGENTS.md) — the slice's package roles.
-- [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the sources
+- [slices/importer AGENTS.md](../../../slices/importer/AGENTS.md) — the slice's package roles.
+- [har-importer-core AGENTS.md](../../../slices/importer/har-importer-core/AGENTS.md) — the sources
   and settings this picker renders.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
   mounts this picker in its per-format settings form.

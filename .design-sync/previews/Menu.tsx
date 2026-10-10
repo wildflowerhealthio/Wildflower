@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Menu, type MenuItem } from 'react-tundraish'
+import { Menu, type MenuItem } from '@wildflowerhealthio/react-tundraish'
 
 const actions: readonly MenuItem[] = [
   { id: 'edit', label: 'Edit', onSelect: () => {} },

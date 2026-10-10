@@ -1,6 +1,6 @@
+import { ErrorBoundary, type ErrorBoundaryProps } from '@wildflowerhealthio/react-tundraish'
+import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import type { JSX, ReactNode } from 'react'
-import { ErrorBoundary, type ErrorBoundaryProps } from 'react-tundraish'
-import { Sentry } from 'telemetry-web'
 
 /** Props for {@link CrashReportingBoundary}. */
 interface CrashReportingBoundaryProps {

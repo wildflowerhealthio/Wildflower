@@ -1,12 +1,12 @@
 {
-  "name": "har-importer-core",
+  "name": "@wildflowerhealthio/har-importer-core",
   "version": "0.0.0",
   "private": true,
   "description": "The HAR binding of the importer slice: the concrete FileImporter for format 'har' — decoding through the `http-archive` package's HttpArchive projection, the HAR source-file DocumentReference coding the importer mints from, the FHIR R4 response-kind pool, and HAR settings. The HAR format itself lives in `http-archive` (slices/file-formats); the shape-preserving anonymizer in har-anonymizer-core (slices/anonymizer). No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/importer/har-importer-core"
   },
   "files": [
@@ -33,31 +33,31 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-source": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/rexall-be-well-source": "workspace:*",
+    "@wildflowerhealthio/shoppers-drugmart-source": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
-    "http-archive": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "rexall-be-well-source": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
-    "http-archive": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "rexall-be-well-source": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-source": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/rexall-be-well-source": "workspace:*",
+    "@wildflowerhealthio/shoppers-drugmart-source": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

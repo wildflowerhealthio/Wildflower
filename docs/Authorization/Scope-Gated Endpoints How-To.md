@@ -14,7 +14,7 @@ _only_ through a scope-gated **capability**. Acquiring the capability is the pri
 of admission — a handler that skips the check has no way to touch data. A
 source-guard test then fails the build if any handler bypasses the capability.
 
-The building blocks (`scope_capabilities_rust`):
+The building blocks (`wildflowerhealthio_scope_capabilities`):
 
 - **`FixedScopeCapability`** — the trait a capability implements when one static
   scope set gates it (the common case): its router `State`, the `Claims` its authN
@@ -60,7 +60,7 @@ must run first and insert them. This is one half of a **pair** of claims-inserti
 middlewares (see the Explanation):
 
 - A router the host layers with
-  `gatekeeper_rust::gatekeeper_auth_middleware` is already covered —
+  `wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware` is already covered —
   `require_valid_bearer_token` inserts a `ScopeClaims` after verifying the token,
   so downstream slices read scopes **without depending on gatekeeper's domain
   claims type**.
@@ -76,8 +76,8 @@ its operations. For the fixed-scope flavour, implement `FixedScopeCapability`:
 
 ```rust
 use std::sync::Arc;
-use scopes_rust::{Permission, Scope, WildflowerResource};
-use scope_capabilities_rust::{FixedScopeCapability, ScopeClaims};
+use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
+use wildflowerhealthio_scope_capabilities::{FixedScopeCapability, ScopeClaims};
 
 pub(crate) struct WidgetsReader {
     state: Arc<WidgetsState>,
@@ -110,7 +110,7 @@ through the shared `insufficient_scope`. It converts the extractor's
 `MissingScopes` into that variant, beside the error's definition:
 
 ```rust
-use scope_capabilities_rust::MissingScopes;
+use wildflowerhealthio_scope_capabilities::MissingScopes;
 
 impl From<MissingScopes> for WidgetError {
     fn from(missing: MissingScopes) -> Self {
@@ -137,7 +137,7 @@ required scope in the grammar the covering grant uses (reach for the letter bag,
 not the `read` word). This bites anywhere scopes are compared across the two
 grammars, and the fix is always to widen to the alternate canonical form first:
 the token minter widens every granted scope to both forms in bulk with
-`scopes_rust::with_alternate_canonical_forms` before it mints, so a token covers
+`wildflowerhealthio_scopes::with_alternate_canonical_forms` before it mints, so a token covers
 regardless of the grammar the required scope is spelled in; and gatekeeper's
 owner-approval clamp (`ensure_approver_covers`, enforcing "an owner can't delegate
 more than they hold") widens each scope per-scope with
@@ -186,14 +186,14 @@ If the slice's handlers are collected into a `utoipa` `OpenApiRouter` (they carr
 `#[utoipa::path(responses((status = 403, …)))]` on every gated handler:
 
 1. Register the shared body on the slice's `ApiDoc` (needs the crate's `openapi`
-   feature): `#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]`.
+   feature): `#[openapi(components(schemas(wildflowerhealthio_scope_capabilities::InsufficientScopeBody)))]`.
 2. In the slice's `openapi_spec()`, after the routes are merged, apply the addon
    for the **gated paths** (every method on a listed path gets the 403, so list
    only fully-gated paths):
 
    ```rust
    use utoipa::Modify as _;
-   scope_capabilities_rust::InsufficientScopeResponses::for_paths(["/databases/{id}"])
+   wildflowerhealthio_scope_capabilities::InsufficientScopeResponses::for_paths(["/databases/{id}"])
        .modify(&mut spec);
    ```
 
@@ -218,7 +218,7 @@ there.
 Nothing further is needed per slice — the web app already turns a `403` into a
 user-facing surface — but it helps to know what the contract buys:
 
-- `wildflower-react/src/router-context.ts` recognises both 403 shapes: a
+- `apps/launcher/launcher-web/src/router-context.ts` recognises both 403 shapes: a
   **declared** one decodes to `{ error: 'InsufficientScope', missingScopes }`; an
   **undeclared** one arrives as a bare `403` `ResponseError` with no decoded body.
   Either way TanStack Query skips its retries (the token's scopes don't change
@@ -334,17 +334,17 @@ lets a guard test assert `domain/` never imports `crate::http`.
   store-agnostic. The router state itself lives at the crate root
   (`crate::live_bindings::state`), not under `http/`, for the same reason
   (`domain/` builds capabilities from it).
-- Owner-UI read models the `GET` handlers return live in `domain/` too (beside the
+- Launcher read models the `GET` handlers return live in `domain/` too (beside the
   capability that produces them), since they're pure data.
 
 ## Worked examples
 
-- **Fixed:** `slices/gatekeeper/gatekeeper-rust/src/domain/capabilities/` — the
+- **Fixed:** `apps/host/wildflower-server/gatekeeper-rust/src/domain/capabilities/` — the
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
   `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
   concrete store in `gatekeeper-rust/src/live_bindings/`. Their privileged writes
   go through the writers under an authority proof (see the section above).
-- **Data-dependent:** `slices/databases/databases-rust/src/domain/capabilities.rs` —
+- **Data-dependent:** `apps/host/wildflower-server/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
   the `DatabaseFiles` port (stubbed with an in-memory fake in the unit tests).

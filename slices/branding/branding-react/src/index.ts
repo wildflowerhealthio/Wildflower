@@ -14,11 +14,11 @@ export {
   anchorHref,
   fromApp,
   onMarketingSite,
-} from 'branding-core'
+} from '@wildflowerhealthio/branding-core'
 export type {
   AppDescription,
   AppSectionId,
   MarketingAnchor,
   NavContext,
   NavLink,
-} from 'branding-core'
+} from '@wildflowerhealthio/branding-core'

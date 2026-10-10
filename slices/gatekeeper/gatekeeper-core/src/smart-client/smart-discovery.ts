@@ -8,7 +8,7 @@
  * {@link discoverSmartEndpoints} asks: the Wildflower location first, and the
  * URL itself only when that answers 404. A path-prefixed Wildflower server
  * (`https://example.org/wildflower`) is found at the first, like any other.
- * A Wildflower server answers it from `slices/emr/emr-rust/src/smart_configuration.rs`
+ * A Wildflower server answers it from `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
  * (mounted at `/fhir-r4/.well-known/smart-configuration`, and exempt from the
  * bearer gate — `gatekeeper-rust`'s `require_valid_bearer_token`), advertising
  * `authorization_endpoint` and `token_endpoint` derived from the origin it was
@@ -42,7 +42,7 @@ interface SmartEndpoints {
   readonly tokenEndpoint: string
 }
 
-/** Where a Wildflower server's FHIR API is mounted under its API base (`emr-rust`). */
+/** Where a Wildflower server's FHIR API is mounted under its API base (`fhir-r4-rust`). */
 const WILDFLOWER_FHIR_PATH = '/fhir-r4'
 
 /**

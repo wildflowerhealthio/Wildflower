@@ -1,4 +1,4 @@
-import { DecodeFunction, type FileImporter } from 'importer-fundamentals'
+import { DecodeFunction, type FileImporter } from '@wildflowerhealthio/importer-fundamentals'
 
 import { linkToPatientAndStudy, decodeStudy, studyGroupKey } from './decode.ts'
 import { detectDicom } from './detect.ts'

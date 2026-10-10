@@ -1,11 +1,15 @@
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Observation } from 'fhir-r4/resources'
-import { type HttpMethod, type HttpResponse, Specificity } from 'http-extraction-fundamentals'
-import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
+import type { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type HttpMethod,
+  type HttpResponse,
+  Specificity,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 
 import { ObservationListResponseKind } from './observation-list-response-kind.ts'
 

@@ -4,7 +4,7 @@ How to declare wire schemas for an `effect-messaging` `Bridge` without falling i
 
 ## The constraint
 
-`BridgeTransport.makeHostTransport({ bridges, handlers })` and `effect-messaging-tauri`'s `makeTauriTransport({ bridges })` each call `Schema.typeSchema(schema)` on **every** inbound message schema before wiring it into dispatch. `typeSchema` strips transforms — it returns the _output_ (`Type`) side of the schema with any decode/encode steps removed. The result is the schema the transport expects after a single `JSON.parse` over the wire.
+`BridgeTransport.makeHostTransport({ bridges, handlers })` and `effect-messaging-tauri-js`'s `makeTauriTransport({ bridges })` each call `Schema.typeSchema(schema)` on **every** inbound message schema before wiring it into dispatch. `typeSchema` strips transforms — it returns the _output_ (`Type`) side of the schema with any decode/encode steps removed. The result is the schema the transport expects after a single `JSON.parse` over the wire.
 
 Concretely, if you declare a field as:
 
@@ -121,4 +121,4 @@ The bridge stays in lockstep with `JSON.parse`; the consumer policy (how to hand
 
 ## Tests that pin the convention
 
-`slices/browser-sniffer/browser-sniffer-core/tests/bridge.test.ts` round-trips arbitrary instances of every message through `BridgeTransport` + `TestPlatformAdapterLayer`. If anyone slips a `Schema.transform` into a bridge field, the property test fails — either the arbitrary generates a Type-side value that doesn't survive `JSON.stringify` / `JSON.parse`, or the round-trip decode rejects the wire-side string.
+`slices/browser-sniffer/browser-sniffer-core/src/bridge.test.ts` round-trips arbitrary instances of every message through `BridgeTransport` + `TestPlatformAdapterLayer`. If anyone slips a `Schema.transform` into a bridge field, the property test fails — either the arbitrary generates a Type-side value that doesn't survive `JSON.stringify` / `JSON.parse`, or the round-trip decode rejects the wire-side string.

@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Grant, GrantDraft, Scope, ScopeRequest } from '../index.ts'

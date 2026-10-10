@@ -1,0 +1,144 @@
+//! `http(s)`-only URL parsing shared by both plugin backends.
+//!
+//! The native webview loads arbitrary external pages, so the scheme is
+//! constrained to `http` / `https` — `data:`, `file:`, `javascript:` etc. must
+//! never reach the webview. Both backends' `open_url` validate through this one
+//! function and thread the parsed [`Url`] onward, so the scheme rule lives in a
+//! single place.
+//!
+//! There is a second, runtime reason an injected IPC-using script (the browser
+//! sniffer) needs a real `http(s)` origin: on desktop the content webview's Tauri
+//! IPC parses the request `Origin` header, and a **null-origin** page
+//! (`about:blank`, `data:`, `with_html`) makes every `native_webview_data_plane_emit`
+//! / `plugin:event|listen` call fail with `Origin header is not a valid URL`. So
+//! `about:blank` (below) is only ever a transient cookie-seed transit — never a
+//! page the sniffer is expected to talk from. See the plugin's `docs/Explanation.md`.
+//!
+//! Mirrors `wildflowerhealthio_shared_structures_tauri::sandboxed_webview::resolve_http_url`;
+//! kept local so this self-contained plugin doesn't depend on an app-level slice
+//! adapter (the layering points the other way).
+
+use url::Url;
+
+/// Construct the target-appropriate [`crate::Error`] variant:
+/// [`Error::Internal`](crate::Error::Internal) on desktop,
+/// [`Error::PluginInvoke`](crate::Error::PluginInvoke) on mobile.
+#[cfg(desktop)]
+fn scheme_error(message: String) -> crate::Error {
+    crate::Error::Internal(message)
+}
+
+#[cfg(mobile)]
+fn scheme_error(message: String) -> crate::Error {
+    crate::Error::PluginInvoke(message)
+}
+
+/// Parse `uri` into a [`Url`], rejecting any non-`http(s)` scheme.
+///
+/// # Errors
+///
+/// Returns [`crate::Error`] when `uri` does not parse, or parses to a scheme
+/// other than `http` / `https`.
+pub(crate) fn parse_http_url(uri: &str) -> crate::Result<Url> {
+    let parsed =
+        Url::parse(uri).map_err(|error| scheme_error(format!("invalid URL {uri}: {error}")))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(parsed),
+        other => Err(scheme_error(format!(
+            "native-webview URL must be http(s):// (got scheme {other:?} in {uri})"
+        ))),
+    }
+}
+
+/// The one non-http(s) navigation target the native webview accepts: the blank
+/// placeholder the sniffer mounts on before its first real `Open`, and the
+/// transient page a cookie-seeding open parks at. Named once here so the sentinel
+/// is not re-spelled at every call site.
+pub(crate) const BLANK_URL: &str = "about:blank";
+
+/// Validate a caller's navigation target and return the parsed [`Url`].
+/// `about:blank` (the [`BLANK_URL`] placeholder — no network, no scheme
+/// validation) is the one non-`http(s)` target accepted; every other target must
+/// be an `http(s)://` URL (see [`parse_http_url`]). Recognising the sentinel here
+/// keeps `about:blank` out of each `open_url` call site.
+///
+/// # Errors
+///
+/// Returns [`crate::Error`] when `uri` is neither `about:blank` nor a parseable
+/// `http(s)` URL.
+pub(crate) fn parse_target(uri: &str) -> crate::Result<Url> {
+    if uri == BLANK_URL {
+        return Url::parse(BLANK_URL)
+            .map_err(|error| scheme_error(format!("invalid blank URL {uri}: {error}")));
+    }
+    parse_http_url(uri)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_http_and_https() {
+        for uri in [
+            "https://example.test/page",
+            "http://localhost:8080/fhir/Patient/1",
+        ] {
+            let parsed = parse_http_url(uri).expect("should parse");
+            assert_eq!(parsed.as_str(), uri);
+        }
+    }
+
+    #[test]
+    fn rejects_non_http_schemes() {
+        for uri in [
+            "ftp://example.test/",
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "data:text/html,hi",
+        ] {
+            assert!(
+                parse_http_url(uri).is_err(),
+                "{uri} should have been rejected",
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unparseable() {
+        assert!(parse_http_url("not a url").is_err());
+    }
+
+    #[test]
+    fn parse_target_accepts_blank_and_http() {
+        assert_eq!(
+            parse_target(BLANK_URL)
+                .expect("about:blank should parse")
+                .as_str(),
+            BLANK_URL,
+        );
+        assert_eq!(
+            parse_target("https://example.test/page")
+                .expect("https should parse")
+                .as_str(),
+            "https://example.test/page",
+        );
+    }
+
+    #[test]
+    fn parse_target_rejects_other_non_http_schemes() {
+        // `about:blank` is the *only* non-http(s) target accepted — a sibling
+        // `about:` URL or any other scheme still rejects.
+        for uri in [
+            "about:srcdoc",
+            "file:///etc/passwd",
+            "data:text/html,x",
+            "not a url",
+        ] {
+            assert!(
+                parse_target(uri).is_err(),
+                "{uri} should have been rejected"
+            );
+        }
+    }
+}

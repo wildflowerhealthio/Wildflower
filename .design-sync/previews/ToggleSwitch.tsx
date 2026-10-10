@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ToggleSwitch } from 'react-tundraish'
+import { ToggleSwitch } from '@wildflowerhealthio/react-tundraish'
 
 /** On — the live state, knob slid to the colored end of the track. */
 export const On = () => {

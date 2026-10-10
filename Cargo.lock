@@ -205,30 +205,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "apps-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "diesel",
- "diesel_migrations",
- "http-body-util",
- "persistence-rust",
- "rand 0.10.3",
- "scope-capabilities-rust",
- "scopes-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "tokio",
- "tower",
- "tracing",
- "url",
- "utoipa",
- "utoipa-axum",
-]
-
-[[package]]
 name = "ar_archive_writer"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -840,15 +816,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "background-server-service-rust"
-version = "0.0.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "backoff"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1110,20 +1077,6 @@ checksum = "941cd9bd4ddab83cb46fa5a2d428f1c857b24ac78cb876cf7beb710840934bd7"
 dependencies = [
  "alloc-no-stdlib 3.0.0",
  "alloc-stdlib 0.3.0",
-]
-
-[[package]]
-name = "browser-sniffer-tauri-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "tauri",
- "tauri-plugin-log",
- "tauri-plugin-native-webview",
- "url",
 ]
 
 [[package]]
@@ -1489,28 +1442,6 @@ name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
-
-[[package]]
-name = "collector-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "diesel",
- "diesel_migrations",
- "http-body-util",
- "persistence-rust",
- "scope-capabilities-rust",
- "scopes-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "tokio",
- "tower",
- "utoipa",
- "utoipa-axum",
-]
 
 [[package]]
 name = "colorchoice"
@@ -1970,31 +1901,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
-name = "databases-rust"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "futures-core",
- "http",
- "http-body-util",
- "rusqlite",
- "scope-capabilities-rust",
- "scopes-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "tempfile",
- "tokio",
- "tokio-util",
- "tower",
- "tracing",
- "utoipa",
- "utoipa-axum",
-]
-
-[[package]]
 name = "dbus"
 version = "0.9.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2405,34 +2311,6 @@ name = "embed_plist"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
-
-[[package]]
-name = "emr-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "base64 0.23.1",
- "chrono",
- "gatekeeper-rust",
- "helios-audit",
- "helios-auth",
- "helios-persistence",
- "helios-rest",
- "http-body-util",
- "ohif-server-rust",
- "persistence-rust",
- "scope-capabilities-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "token-revocation-rust",
- "tokio",
- "tower",
- "tracing",
- "url",
-]
 
 [[package]]
 name = "encoding_rs"
@@ -2848,51 +2726,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gatekeeper-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "argon2",
- "axum",
- "base64 0.23.1",
- "chrono",
- "databases-rust",
- "diesel",
- "diesel_migrations",
- "http",
- "http-body-util",
- "jsonwebtoken 10.2.0",
- "parking_lot",
- "percent-encoding",
- "persistence-rust",
- "proptest",
- "rand 0.10.3",
- "rand_core 0.6.4",
- "rsa",
- "rusqlite",
- "scope-capabilities-rust",
- "scopes-rust",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sha2 0.11.0",
- "shared-structures-rust",
- "strum",
- "subtle",
- "tempfile",
- "thiserror 2.0.21",
- "token-revocation-rust",
- "tokio",
- "tower",
- "tracing",
- "url",
- "utoipa",
- "utoipa-axum",
- "uuid",
- "zeroize",
-]
-
-[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3265,28 +3098,6 @@ dependencies = [
  "crunchy",
  "num-traits",
  "zerocopy",
-]
-
-[[package]]
-name = "har-recorder-rust"
-version = "0.0.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "har-recorder-tauri-rust"
-version = "0.0.0"
-dependencies = [
- "har-recorder-rust",
- "serde_json",
- "shared-structures-rust",
- "tauri",
- "tauri-plugin-log",
 ]
 
 [[package]]
@@ -3747,6 +3558,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
 dependencies = [
  "digest 0.11.3",
+]
+
+[[package]]
+name = "host-app"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "openssl",
+ "roxmltree 0.21.1",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-background-service",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-log",
+ "tauri-plugin-native-webview",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tokio",
+ "url",
+ "wildflowerhealthio-apps",
+ "wildflowerhealthio-browser-sniffer-tauri",
+ "wildflowerhealthio-gatekeeper",
+ "wildflowerhealthio-har-recorder-tauri",
+ "wildflowerhealthio-rathole-settings",
+ "wildflowerhealthio-servers",
+ "wildflowerhealthio-servers-tauri",
+ "wildflowerhealthio-shared-structures",
+ "wildflowerhealthio-shared-structures-tauri",
+ "wildflowerhealthio-tauri-unit-runner",
+ "wildflowerhealthio-tunnel",
+ "wildflowerhealthio-wildflower-server",
 ]
 
 [[package]]
@@ -5308,26 +5154,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ohif-server-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.23.1",
- "bytes",
- "http-body-util",
- "scope-capabilities-rust",
- "scopes-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "tokio",
- "tower",
- "utoipa",
- "utoipa-axum",
-]
-
-[[package]]
 name = "oid-registry"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5639,21 +5465,6 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
-
-[[package]]
-name = "persistence-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "diesel",
- "diesel_migrations",
- "parking_lot",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "url",
-]
 
 [[package]]
 name = "phc"
@@ -6362,16 +6173,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rathole-settings-rust"
-version = "0.0.0"
-dependencies = [
- "ppp",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "raw-cpuid"
 version = "11.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6545,29 +6346,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71fe3824f5629716b1589be05dacd749f6aa084c87e00e016714a8cdfccc997c"
 dependencies = [
  "bytecheck",
-]
-
-[[package]]
-name = "request-log-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "diesel",
- "diesel_migrations",
- "http-body-util",
- "persistence-rust",
- "scope-capabilities-rust",
- "scopes-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "tokio",
- "tower",
- "tracing",
- "utoipa",
- "utoipa-axum",
 ]
 
 [[package]]
@@ -7044,32 +6822,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "scope-capabilities-rust"
-version = "0.0.0"
-dependencies = [
- "axum",
- "scopes-rust",
- "serde",
- "shared-structures-rust",
- "tokio",
- "utoipa",
-]
-
-[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "scopes-rust"
-version = "0.0.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
- "tracing",
-]
 
 [[package]]
 name = "seahash"
@@ -7352,67 +7108,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "servers-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.23.1",
- "chrono",
- "gatekeeper-rust",
- "hmac 0.12.1",
- "parking_lot",
- "proptest",
- "rand 0.10.3",
- "rathole-settings-rust",
- "rcgen 0.13.2",
- "reqwest 0.12.28",
- "rustls",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "shared-structures-rust",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tunnel-rust",
- "unit-runner",
- "url",
- "wildflower-relay",
- "wildflower-server-rust",
-]
-
-[[package]]
-name = "servers-tauri-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "futures-util",
- "gatekeeper-rust",
- "persistence-rust",
- "rathole-settings-rust",
- "serde",
- "serde_json",
- "servers-rust",
- "shared-structures-rust",
- "tauri",
- "tauri-plugin-log",
- "tauri-plugin-native-webview",
- "tauri-plugin-notification",
- "tauri-unit-runner",
- "tempfile",
- "token-revocation-rust",
- "tokio",
- "tokio-util",
- "url",
- "wildflower-server-rust",
-]
-
-[[package]]
 name = "servo_arc"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7472,34 +7167,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
-]
-
-[[package]]
-name = "shared-structures-rust"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "diesel",
- "http-body-util",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tracing",
- "url",
- "utoipa",
-]
-
-[[package]]
-name = "shared-structures-tauri-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "tauri",
- "tauri-plugin-log",
- "url",
 ]
 
 [[package]]
@@ -8310,21 +7977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-unit-runner"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "log",
- "serde_json",
- "tauri",
- "tauri-plugin-background-service",
- "tauri-plugin-notification",
- "tokio",
- "unit-runner",
-]
-
-[[package]]
 name = "tauri-utils"
 version = "2.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8546,17 +8198,6 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
-
-[[package]]
-name = "token-revocation-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "chrono",
- "persistence-rust",
- "proptest",
- "rusqlite",
-]
 
 [[package]]
 name = "tokio"
@@ -8928,26 +8569,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tunnel-rust"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "parking_lot",
- "rand 0.10.3",
- "rathole",
- "rathole-settings-rust",
- "serde",
- "serde_json",
- "shared-structures-rust",
- "tokio",
- "tokio-util",
- "toml 0.9.6",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "twox-hash"
 version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9012,20 +8633,6 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
-
-[[package]]
-name = "unit-runner"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "chrono",
- "log",
- "proptest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
-]
 
 [[package]]
 name = "universal-hash"
@@ -9445,7 +9052,231 @@ dependencies = [
 ]
 
 [[package]]
-name = "wildflower-relay"
+name = "wildflowerhealthio-apps"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "diesel",
+ "diesel_migrations",
+ "http-body-util",
+ "rand 0.10.3",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+ "utoipa-axum",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-scope-capabilities",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-browser-sniffer-tauri"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-log",
+ "tauri-plugin-native-webview",
+ "url",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-collector"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "diesel",
+ "diesel_migrations",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "utoipa",
+ "utoipa-axum",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-scope-capabilities",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-databases"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "futures-core",
+ "http",
+ "http-body-util",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tracing",
+ "utoipa",
+ "utoipa-axum",
+ "wildflowerhealthio-scope-capabilities",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-fhir-r4"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "helios-audit",
+ "helios-auth",
+ "helios-persistence",
+ "helios-rest",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+ "wildflowerhealthio-gatekeeper",
+ "wildflowerhealthio-ohif-server",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-scope-capabilities",
+ "wildflowerhealthio-shared-structures",
+ "wildflowerhealthio-token-revocation",
+]
+
+[[package]]
+name = "wildflowerhealthio-gatekeeper"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "diesel",
+ "diesel_migrations",
+ "http",
+ "http-body-util",
+ "jsonwebtoken 10.2.0",
+ "parking_lot",
+ "percent-encoding",
+ "proptest",
+ "rand 0.10.3",
+ "rand_core 0.6.4",
+ "rsa",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sha2 0.11.0",
+ "strum",
+ "subtle",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+ "utoipa-axum",
+ "uuid",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-scope-capabilities",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+ "wildflowerhealthio-token-revocation",
+ "zeroize",
+]
+
+[[package]]
+name = "wildflowerhealthio-har-recorder"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "wildflowerhealthio-har-recorder-tauri"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "tauri",
+ "tauri-plugin-log",
+ "wildflowerhealthio-har-recorder",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-ohif-server"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.23.1",
+ "bytes",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "utoipa",
+ "utoipa-axum",
+ "wildflowerhealthio-scope-capabilities",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-persistence"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "diesel",
+ "diesel_migrations",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "url",
+]
+
+[[package]]
+name = "wildflowerhealthio-rathole-settings"
+version = "0.0.0"
+dependencies = [
+ "ppp",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "wildflowerhealthio-relay-server"
 version = "0.0.0"
 dependencies = [
  "anyhow",
@@ -9460,12 +9291,10 @@ dependencies = [
  "hyper",
  "hyper-util",
  "include_dir",
- "persistence-rust",
  "ppp",
  "proptest",
  "rand 0.10.3",
  "rathole",
- "rathole-settings-rust",
  "rcgen 0.14.10",
  "rustls",
  "rustls-acme",
@@ -9473,7 +9302,6 @@ dependencies = [
  "serde_json",
  "sfv",
  "sha2 0.11.0",
- "shared-structures-rust",
  "socket2 0.6.5",
  "tempfile",
  "tokio",
@@ -9482,86 +9310,248 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-rathole-settings",
+ "wildflowerhealthio-shared-structures",
 ]
 
 [[package]]
-name = "wildflower-server-rust"
+name = "wildflowerhealthio-request-log"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "apps-rust",
- "async-trait",
  "axum",
  "chrono",
- "collector-rust",
- "databases-rust",
  "diesel",
- "emr-rust",
- "futures-util",
- "gatekeeper-rust",
- "ohif-server-rust",
- "pem",
- "persistence-rust",
- "ppp",
+ "diesel_migrations",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "utoipa",
+ "utoipa-axum",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-scope-capabilities",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-scope-capabilities"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tokio",
+ "utoipa",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-scopes"
+version = "0.0.0"
+dependencies = [
  "proptest",
- "rathole-settings-rust",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "wildflowerhealthio-servers"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.23.1",
+ "chrono",
+ "hmac 0.12.1",
+ "parking_lot",
+ "proptest",
+ "rand 0.10.3",
  "rcgen 0.13.2",
- "request-log-rust",
  "reqwest 0.12.28",
  "rustls",
- "rustls-acme",
- "scopes-rust",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "shared-structures-rust",
  "tempfile",
- "token-revocation-rust",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "wildflowerhealthio-gatekeeper",
+ "wildflowerhealthio-rathole-settings",
+ "wildflowerhealthio-relay-server",
+ "wildflowerhealthio-shared-structures",
+ "wildflowerhealthio-tunnel",
+ "wildflowerhealthio-unit-runner",
+ "wildflowerhealthio-wildflower-server",
+]
+
+[[package]]
+name = "wildflowerhealthio-servers-tauri"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-log",
+ "tauri-plugin-native-webview",
+ "tauri-plugin-notification",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "url",
+ "wildflowerhealthio-gatekeeper",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-rathole-settings",
+ "wildflowerhealthio-servers",
+ "wildflowerhealthio-shared-structures",
+ "wildflowerhealthio-tauri-unit-runner",
+ "wildflowerhealthio-token-revocation",
+ "wildflowerhealthio-wildflower-server",
+]
+
+[[package]]
+name = "wildflowerhealthio-shared-structures"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "diesel",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+]
+
+[[package]]
+name = "wildflowerhealthio-shared-structures-tauri"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "tauri",
+ "tauri-plugin-log",
+ "url",
+]
+
+[[package]]
+name = "wildflowerhealthio-tauri-unit-runner"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "log",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-background-service",
+ "tauri-plugin-notification",
+ "tokio",
+ "wildflowerhealthio-unit-runner",
+]
+
+[[package]]
+name = "wildflowerhealthio-token-revocation"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "proptest",
+ "rusqlite",
+ "wildflowerhealthio-persistence",
+]
+
+[[package]]
+name = "wildflowerhealthio-tunnel"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "parking_lot",
+ "rand 0.10.3",
+ "rathole",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "toml 0.9.6",
+ "tracing",
+ "url",
+ "wildflowerhealthio-rathole-settings",
+ "wildflowerhealthio-shared-structures",
+]
+
+[[package]]
+name = "wildflowerhealthio-unit-runner"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "log",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "wildflowerhealthio-wildflower-server"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "diesel",
+ "futures-util",
+ "pem",
+ "ppp",
+ "proptest",
+ "rcgen 0.13.2",
+ "reqwest 0.12.28",
+ "rustls",
+ "rustls-acme",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
  "tokio",
  "tokio-rustls",
  "tokio-util",
  "tower",
  "tower-http 0.7.1",
  "tracing",
- "tunnel-rust",
  "url",
- "wildflower-server-rust",
+ "wildflowerhealthio-apps",
+ "wildflowerhealthio-collector",
+ "wildflowerhealthio-databases",
+ "wildflowerhealthio-fhir-r4",
+ "wildflowerhealthio-gatekeeper",
+ "wildflowerhealthio-ohif-server",
+ "wildflowerhealthio-persistence",
+ "wildflowerhealthio-rathole-settings",
+ "wildflowerhealthio-request-log",
+ "wildflowerhealthio-scopes",
+ "wildflowerhealthio-shared-structures",
+ "wildflowerhealthio-token-revocation",
+ "wildflowerhealthio-tunnel",
+ "wildflowerhealthio-wildflower-server",
  "x509-parser",
-]
-
-[[package]]
-name = "wildflower-tauri"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "apps-rust",
- "browser-sniffer-tauri-rust",
- "chrono",
- "gatekeeper-rust",
- "har-recorder-tauri-rust",
- "openssl",
- "rathole-settings-rust",
- "roxmltree 0.21.1",
- "serde",
- "serde_json",
- "servers-rust",
- "servers-tauri-rust",
- "shared-structures-rust",
- "shared-structures-tauri-rust",
- "tauri",
- "tauri-build",
- "tauri-plugin-background-service",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-log",
- "tauri-plugin-native-webview",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-unit-runner",
- "tokio",
- "tunnel-rust",
- "url",
- "wildflower-server-rust",
 ]
 
 [[package]]

@@ -1,0 +1,98 @@
+{
+  "name": "@wildflowerhealthio/launcher-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./app-root": {
+      "source": "./src/app-root.tsx",
+      "types": "./dist/app-root.d.ts",
+      "default": "./dist/app-root.js"
+    },
+    "./web-entry": {
+      "source": "./src/web-entry.ts",
+      "types": "./dist/web-entry.d.ts",
+      "default": "./dist/web-entry.js"
+    },
+    "./web-assets": {
+      "source": "./src/web-assets.ts"
+    },
+    "./bridges": {
+      "source": "./src/bridges/bridges.ts"
+    },
+    "./consented-entry-root": {
+      "source": "./src/session/consented-entry-root.tsx"
+    },
+    "./server-kind": {
+      "source": "./src/session/server-kind.ts"
+    },
+    "./global.css": {
+      "source": "./src/styles/global.css"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp run build:web",
+    "build:web": "vp build --config vite.config.web.ts",
+    "check": "vp check",
+    "dev": "vp dev --config vite.config.web.ts",
+    "test": "vp test --passWithNoTests"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@wildflowerhealthio/apps-core-js": "workspace:*",
+    "@wildflowerhealthio/apps-react": "workspace:*",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/branding-react": "workspace:*",
+    "@wildflowerhealthio/collector-fundamentals": "workspace:*",
+    "@wildflowerhealthio/collector-react": "workspace:*",
+    "@wildflowerhealthio/collector-registry": "workspace:*",
+    "@wildflowerhealthio/databases-react": "workspace:*",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/effect-messaging-react": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-react": "workspace:*",
+    "@wildflowerhealthio/gatekeeper-core": "workspace:*",
+    "@wildflowerhealthio/gatekeeper-react": "workspace:*",
+    "@wildflowerhealthio/har-recorder-core-js": "workspace:*",
+    "@wildflowerhealthio/har-recorder-react": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/navigation-core": "workspace:*",
+    "@wildflowerhealthio/navigation-react": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/request-log-react": "workspace:*",
+    "@wildflowerhealthio/scopes-react": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
+    "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "@wildflowerhealthio/smart-app-react": "workspace:*",
+    "@wildflowerhealthio/telemetry-react": "workspace:*",
+    "@wildflowerhealthio/telemetry-web": "workspace:*",
+    "@wildflowerhealthio/wildflower-server-core-js": "workspace:*",
+    "@wildflowerhealthio/wildflower-server-react": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tundra-css": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@tanstack/virtual-file-routes": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@wildflowerhealthio/telemetry-core": "workspace:*",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

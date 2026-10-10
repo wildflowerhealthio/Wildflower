@@ -1,0 +1,15 @@
+{
+  "name": "@wildflowerhealthio/fhir-sync-pebble-test",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-sync-pebble-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "fast-check": "catalog:"
+  }
+}

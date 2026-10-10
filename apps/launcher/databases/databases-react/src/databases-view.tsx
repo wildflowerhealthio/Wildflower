@@ -1,0 +1,161 @@
+import { formatBytes } from '@wildflowerhealthio/kitchen-sink'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import {
+  Dialog,
+  ErrorBanner,
+  ItemList,
+  Menu,
+  PageHeader,
+  pageLayoutStyles,
+  type ItemListItem,
+  type MenuItem,
+} from '@wildflowerhealthio/react-tundraish'
+import { Effect } from 'effect'
+import { useState, type JSX } from 'react'
+
+import { describeDatabase } from './format.ts'
+import type { DatabaseMetadata } from './queries.ts'
+
+/** Right-aligned size/status chip for a row. */
+const rowMeta = (database: DatabaseMetadata): string => {
+  if (database.pendingDeletion) return 'Scheduled'
+  if (database.exists) return formatBytes(database.sizeBytes)
+  return 'Empty'
+}
+
+/** Row tint: danger while scheduled, neutral when present, none when absent. */
+const rowTone = (database: DatabaseMetadata): 'neutral' | 'danger' | undefined => {
+  if (database.pendingDeletion) return 'danger'
+  if (database.exists) return 'neutral'
+  return undefined
+}
+
+interface DatabasesViewProps {
+  readonly databases: readonly DatabaseMetadata[]
+  readonly onExport: (id: string) => void
+  readonly onDelete: (id: string) => void
+  /** The id currently exporting, if any (disables that row's buttons). */
+  readonly exportingId: string | null
+  /** The id currently deleting, if any. */
+  readonly deletingId: string | null
+  /**
+   * The failed export/delete mutation's error, or `null` when neither failed.
+   * Rendered by {@link ErrorBanner}: a `403 InsufficientScope` becomes the app's
+   * authorization-failure surface (via the ambient error renderer), anything else
+   * a plain message banner.
+   */
+  readonly error: unknown
+}
+
+/**
+ * Presentational settings screen: one `ItemList` row per database with Download
+ * + Delete actions, and a confirmation dialog gating the destructive delete.
+ * Pure props in, callbacks out — the route screen wires the queries/mutations.
+ */
+const DatabasesView = ({
+  databases,
+  onExport,
+  onDelete,
+  exportingId,
+  deletingId,
+  error,
+}: DatabasesViewProps): JSX.Element => {
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const confirmTarget = databases.find((database) => database.id === confirmId) ?? null
+
+  const toItem = (database: DatabaseMetadata): ItemListItem => {
+    const busy = exportingId === database.id || deletingId === database.id
+    // A scheduled database is on its way out — no further export/delete until
+    // the restart actually removes it.
+    const locked = !database.exists || database.pendingDeletion
+    return {
+      id: database.id,
+      title: database.label,
+      // `describeDatabase` is Effect-returning (date formatting runs through
+      // Effect's `DateTime`); it needs no services, so it runs synchronously.
+      subtitle: Effect.runSync(describeDatabase(database)),
+      meta: rowMeta(database),
+      tone: rowTone(database),
+      actions: (
+        <Menu
+          label={`Actions for ${database.label}`}
+          items={
+            [
+              {
+                id: 'download',
+                label: exportingId === database.id ? 'Downloading…' : 'Download',
+                disabled: locked || busy,
+                onSelect: () => onExport(database.id),
+              },
+              {
+                id: 'delete',
+                label: 'Delete',
+                destructive: true,
+                disabled: locked || busy,
+                onSelect: () => setConfirmId(database.id),
+              },
+            ] as readonly MenuItem[]
+          }
+        />
+      ),
+    }
+  }
+
+  const hasPendingDeletion = databases.some((database) => database.pendingDeletion)
+
+  return (
+    <>
+      <PageHeader title="Your data" backHref="/settings" backLabel="Settings" />
+      <p className="text-body-3">
+        Download a copy of a database to keep, or delete it from this device. Deleting your health
+        data erases your clinical records here; deleting the app database resets access grants and
+        the apps catalogue.
+      </p>
+
+      {hasPendingDeletion ? (
+        <p className={cn(pageLayoutStyles['error'], 'text-body-3')} role="alert">
+          A database is scheduled for deletion. <strong>Quit and reopen Wildflower</strong> to
+          finish — until you do, the app will keep using it and may not work correctly.
+        </p>
+      ) : null}
+
+      <ErrorBanner error={error} />
+
+      <ItemList items={databases.map((database) => toItem(database))} />
+
+      <Dialog
+        open={confirmTarget !== null}
+        onClose={() => setConfirmId(null)}
+        title={confirmTarget === null ? '' : `Delete ${confirmTarget.label}?`}
+      >
+        {confirmTarget !== null ? (
+          <>
+            <p className="text-body-3">
+              This deletes <strong>{confirmTarget.id}</strong> from this device. It takes effect
+              when you restart Wildflower, and can't be undone — download a copy first if you might
+              want it back.
+            </p>
+            <div>
+              <button type="button" className="button-2" onClick={() => setConfirmId(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button-2 filled accent-red"
+                disabled={deletingId === confirmTarget.id}
+                onClick={() => {
+                  onDelete(confirmTarget.id)
+                  setConfirmId(null)
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </>
+        ) : null}
+      </Dialog>
+    </>
+  )
+}
+
+export { DatabasesView, type DatabasesViewProps }

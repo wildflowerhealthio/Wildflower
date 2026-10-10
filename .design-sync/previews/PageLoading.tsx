@@ -1,4 +1,4 @@
-import { PageLoading } from 'react-tundraish'
+import { PageLoading } from '@wildflowerhealthio/react-tundraish'
 
 /** The default Suspense-fallback body — the standard "Loading…" line. */
 export const Default = () => (

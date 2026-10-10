@@ -1,6 +1,6 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ToggleSwitch } from '@wildflowerhealthio/react-tundraish'
 import type { JSX, ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ToggleSwitch } from 'react-tundraish'
 
 import styles from './flag-toggle-row.module.css'
 

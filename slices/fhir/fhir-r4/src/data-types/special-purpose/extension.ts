@@ -1,0 +1,98 @@
+import { type Arbitrary, Array as Arr, type FastCheck, Option, Schema } from 'effect'
+
+import {
+  mutableEncoded,
+  OrNullAsOptional,
+  StructNoContext,
+} from '@wildflowerhealthio/kitchen-sink/schema'
+
+import type * as FhirR4 from 'fhir/r4.d.ts'
+
+import {
+  filterForExclusiveChoiceElementSet,
+  choiceElementSetPassthroughFields,
+} from '../base/choice-element-passthrough-fields.ts'
+import * as ChoiceElementSet from '../base/choice-element-set.ts'
+import * as Datatype from '../base/datatype.ts'
+
+const valueChoiceFields = choiceElementSetPassthroughFields('value', Datatype.names)
+
+/** All-`null` `value[x]` slots — spread into a decoded Extension literal. */
+const emptyValueChoice = ChoiceElementSet.empty('value', Datatype.names)
+
+/**
+ * Decoded shape of {@link ExtensionSchema}. Written out explicitly (rather
+ * than inferred) because the schema is recursive through the nested
+ * `extension` array — TypeScript cannot infer a type for a self-referential
+ * schema constant.
+ */
+interface ExtensionType extends Schema.Struct.Type<typeof valueChoiceFields> {
+  readonly id: string | null
+  readonly extension: readonly ExtensionType[]
+  readonly url: string
+}
+
+const ExtensionSchema: Schema.Schema<ExtensionType, FhirR4.Extension, never> = mutableEncoded(
+  StructNoContext({
+    id: OrNullAsOptional(Schema.String),
+    // Override `Arbitrary.make(...)` to always emit `[]`. Nested extensions
+    // multiply the size of every resource property test (each child carries
+    // the full ~50-field value[x] choice). Recursion through `extension` is
+    // exercised by explicit fixtures; everywhere else, an empty array keeps
+    // arbitrary generation tractable.
+    extension: Schema.optionalWith(
+      mutableEncoded(
+        Schema.Array(Schema.suspend(() => ExtensionSchema)).annotations({
+          arbitrary:
+            (): Arbitrary.LazyArbitrary<readonly ExtensionType[]> => (fc: typeof FastCheck) =>
+              fc.constant([]),
+        })
+      ),
+      { default: (): readonly ExtensionType[] => [] }
+    ),
+    url: Schema.String,
+    ...valueChoiceFields,
+  })
+).pipe(filterForExclusiveChoiceElementSet('value', Datatype.names))
+
+/**
+ * Whether an extension is at `url` — a predicate for `Array.find` /
+ * `Array.filter` over an `extension` or `modifierExtension` list.
+ */
+const hasUrl =
+  (url: string) =>
+  (extension: ExtensionType): boolean =>
+    extension.url === url
+
+/**
+ * An extension at `url` with no value and no nested extensions — a shell for
+ * one `value[x]` slot, or a complex extension's parts, to be spread onto.
+ */
+const emptyAt = (url: string): ExtensionType => ({
+  ...emptyValueChoice,
+  id: null,
+  extension: [],
+  url,
+})
+
+/**
+ * The single extension at `url` in an `extension` or `modifierExtension`
+ * list; `None` when there is none, or several — a repeated extension names no
+ * one value.
+ */
+const onlyAt = (
+  extensions: readonly ExtensionType[],
+  url: string
+): Option.Option<ExtensionType> => {
+  const atUrl = extensions.filter(hasUrl(url))
+  return atUrl.length === 1 ? Arr.head(atUrl) : Option.none()
+}
+
+export {
+  ExtensionSchema as Schema,
+  emptyAt,
+  emptyValueChoice,
+  hasUrl,
+  onlyAt,
+  type ExtensionType as Type,
+}

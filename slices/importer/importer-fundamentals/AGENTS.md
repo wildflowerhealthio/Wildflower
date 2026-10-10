@@ -5,7 +5,7 @@ contract every file-format binding implements, the pure per-resource
 staged-import model (what a decoded-but-unwritten import consists of), and the
 structural failure record the sinks report against. It is to the
 importer slice what `collector-fundamentals` is to the collector slice — the
-layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer-core`)
+layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer`)
 sits on top of.
 
 No DOM, no `fs`, no React: pure data and transitions the shell drives.
@@ -156,7 +156,7 @@ web-trace direction. A HAR binding passes web-trace's coding constants in as
 data. Names no source file _format_ (each binding supplies its `decodeFileSet` and
 its coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
 `har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
-an `importer-core`, a `*-importer-react`, `slices/collector`, or
+an `importer-core`, a `*-importer-react`, `apps/launcher/collector`, or
 `slices/http-extraction`.
 
 ## Guardrails
@@ -217,9 +217,9 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   layering.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR binding
   that builds on this contract.
-- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the closed registry
+- [importer-core AGENTS.md](../../../slices/importer/importer-core/AGENTS.md) — the closed registry
   and the batch machinery built on this contract.
-- [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
+- [importer-react AGENTS.md](../../../slices/importer/importer-react/AGENTS.md) — the shell that
   drives the `StagedImport` transitions over each format's review.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

@@ -1,5 +1,5 @@
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { DateTime } from 'effect'
-import type { MedicationRequest } from 'fhir-r4/resources'
 
 import { authorizedSupplyEndOf } from './dispense-request.ts'
 

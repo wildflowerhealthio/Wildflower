@@ -1,6 +1,6 @@
 # AGENTS.md — slices/anonymizer/pdf-anonymizer-react
 
-The **PDF panel** of the anonymizer slice: the panel a host mounts over a
+The **PDF panel** of the anonymizer: the panel a host mounts over a
 `Document.Type` (extracted from a PDF by `positioned-text-web`'s
 `extractPositionedText`) to enter literal-substring substitution rules, preview
 the masked runs, and download anonymized positioned-text JSON. Extraction runs
@@ -66,7 +66,7 @@ FHIR client.
 
 ## References
 
-- [slices/anonymizer AGENTS.md](../AGENTS.md) — the slice's package roles.
+- [slices/anonymizer AGENTS.md](../AGENTS.md) — the anonymizer's package roles.
 - [pdf-anonymizer-core AGENTS.md](../pdf-anonymizer-core/AGENTS.md) — the
   schema and substitution engine.
 - [har-anonymizer-react AGENTS.md](../har-anonymizer-react/AGENTS.md) — the

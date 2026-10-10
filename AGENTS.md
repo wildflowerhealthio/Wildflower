@@ -10,7 +10,7 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 - **Node.js 26+ required** (`engines` in `package.json`)
 - **Vite+ owns the toolchain** — drive everything through `vp`. Never invoke `pnpm`, `npm`, or `yarn` directly. See the Vite+ block at the bottom of this file for command surface and pitfalls.
 - **Test utilities import from `vite-plus/test`**, not `vitest`
-- **Slices must respect their layering** — `<name>-core` is the pure layer; adapters (`-react` browser UI, `-rust` native/server, `-tauri`/`-tauri-rust` Tauri host, `-node`, `-web`) may import from `-core`, never the reverse. Some slices (`persistence`, `wildflower-server`) are Rust-only with no `-core`. See [slices/AGENTS.md](./slices/AGENTS.md).
+- **Slices must respect their layering** — `<name>-core` is the pure layer; adapters (`-react` browser UI, `-rust` native/server (folder; the crate is `wildflowerhealthio-<name>`), `-tauri` Tauri host (Rust), `-tauri-js`/`-tauri-react` its TypeScript side, `-node`, `-web`) may import from `-core`, never the reverse. Some slices (`persistence`, `wildflower-server`) are Rust-only with no `-core`. See [slices/AGENTS.md](./slices/AGENTS.md).
 - **Changes MUST include corresponding test updates**
 - **Vitest (via Vite+) is the test runner** — `vp test` runs the suite across all packages.
 
@@ -132,8 +132,9 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 ## Commands
 
 ```bash
-vp run dev           # Start EVERY package's dev server in parallel (vp run -r --parallel dev), not just marketing-website
-vp run ready         # fmt + lint + lint:comments + lint:docs + pack + test:all — full pre-PR check (≈ CI's TS-side gates)
+vp run dev           # Start EVERY package's dev server in parallel (vp run -r --parallel dev), not just marketing-site-web
+vp run ready         # fmt + lint + lint:deps + lint:comments + lint:docs + pack + test:all — full pre-PR check (≈ CI's TS-side gates)
+vp run lint:deps     # knip: fail on an import its package.json doesn't declare
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run test:all      # Run the full Vitest test pass
 vp run test:changed  # Same as test:all but scales fast-check numRuns down for packages unchanged vs origin/main
@@ -149,17 +150,18 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 `vp run ready` covers the TypeScript side of CI. Every PR runs `.github/workflows/ci.yml`, which calls only the areas' workflows the PR touches and sums them up in the one status check the `main` ruleset requires, `Required`: [Required Check Explanation](./docs/CI/Required%20Check%20Explanation.md). The full gate set:
 
 - **TS format/lint/typecheck/test** — `vp check` + `vp test`. Its `vp run pack` outputs are cached, and `ts-cache-warm.yml` warms that cache on `main`: [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md). The enforced lint/format rules are oxlint+oxfmt, configured in `vite.config.ts` under the `lint:`/`fmt:` keys — **not** `eslint.config.mjs`, which runs only the informational TSDoc check (`lint:comments`, `continue-on-error`). Editing eslint config never fixes a lint failure.
+- **Package graph rules** — `scripts/package-graph.test.ts` (part of `vp test`) reads every `package.json` and `Cargo.toml` and fails on a `-core` depending on an adapter, anything outside `apps/<name>/` depending on a package inside it, or a dependency cycle; `vp run lint:deps` (knip) keeps the TS manifests honest. See the [Package Graph Rules Explanation](./docs/Dependencies/Package%20Graph%20Rules%20Explanation.md).
 - **Rust fmt + clippy (`-D warnings`) + nextest** — `./scripts/checks/rust.sh` is the canonical Rust check; both the git hooks and CI (`ci-rust.yml`, which compiles the full workspace incl. the Tauri crates in one job) call it. It self-skips when `cargo` is absent, so a frontend-only change stays green locally while CI still gates it on PRs.
 - **cargo-deny** (licenses/advisories, `deny.toml`) gates new Rust deps.
 - **Rust build cache** — each cargo job names its build environment with a
   `cache-shared-key`, and `rust-cache-warm.yml` warms the shared entry on `main`
   (a PR run can only restore its base branch's cache). Keys and constraints:
   [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md).
-- **Pebble apps** (`ci-pebble.yml`) — for `apps/watch-lifts` and `apps/fhir-sync-pebble`, two parallel jobs: **Lint + Test** runs `fmt:c:check` with a pinned clang-format and the host-side C tests; **Build** runs `pebble build` for both apps, uploading each `.pbw` as an artifact. The SDK install is cached: [Pebble CI Build Cache Explanation](./docs/Pebble/CI%20Build%20Cache%20Explanation.md).
+- **Pebble apps** (`ci-pebble.yml`) — for `apps/watch-lifts/watch-lifts-watchapp` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp`, two parallel jobs: **Lint + Test** runs `fmt:c:check` with a pinned clang-format and the host-side C tests; **Build** runs `pebble build` for both apps, uploading each `.pbw` as an artifact. The SDK install is cached: [Pebble CI Build Cache Explanation](./docs/Pebble/CI%20Build%20Cache%20Explanation.md).
 - **markdownlint-cli2** on all `.md` — run locally via `vp run lint:docs`.
 - **actionlint** (`lint-actions.yml`) on `.github/` — workflow and action wiring, plus shellcheck (warnings and up) over `run:` scripts; settings in `.github/actionlint.yaml`.
 - **shellcheck** (`lint-shell.yml`, warnings and up) on every tracked `*.sh` and `.vite-hooks/`, pinned via `shellcheck-py` — run locally with `shellcheck --severity=warning -x <file>`.
-- **OpenAPI Rust↔TS drift** (`api-sync.yml`) — a committed snapshot per slice. Regenerate a stale one with `UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date`; the TS half is `vp test openapi-drift`.
+- **OpenAPI Rust↔TS drift** (`api-sync.yml`) — a committed snapshot per slice. Regenerate a stale one with `UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-<slice> openapi_spec_snapshot_is_up_to_date`; the TS half is `vp test openapi-drift`.
 
 ## Rust / Tauri
 

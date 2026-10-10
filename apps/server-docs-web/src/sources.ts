@@ -1,0 +1,34 @@
+import fhirSpec from '../../../slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json'
+import appsSpec from '../../host/wildflower-server/apps-rust/openapi/apps.openapi.json'
+import collectorSpec from '../../host/wildflower-server/collector-rust/openapi/collector.openapi.json'
+import databasesSpec from '../../host/wildflower-server/databases-rust/openapi/databases.openapi.json'
+import gatekeeperSpec from '../../host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json'
+import requestLogSpec from '../../host/wildflower-server/request-log-rust/openapi/request-log.openapi.json'
+
+import type { OpenApiDocument } from './spec.ts'
+
+/**
+ * The documented slices, in the order the console's sidebar lists them.
+ *
+ * The specs are the **committed snapshots** — the same files the Rust snapshot
+ * tests and `api-sync.yml` hold to the live routes — imported straight from
+ * their `slices/**` homes and bundled in. So this page ships whatever the
+ * drift guard last agreed on, without the deploy having to compile the host.
+ */
+export interface DocSource {
+  /** Sidebar heading. */
+  readonly title: string
+  /** URL-safe id Scalar uses for the source in its routing. */
+  readonly slug: string
+  /** The slice's committed OpenAPI snapshot. */
+  readonly spec: OpenApiDocument
+}
+
+export const docSources: readonly DocSource[] = [
+  { title: 'Gatekeeper', slug: 'gatekeeper', spec: gatekeeperSpec },
+  { title: 'Apps', slug: 'apps', spec: appsSpec },
+  { title: 'Databases', slug: 'databases', spec: databasesSpec },
+  { title: 'Collector', slug: 'collector', spec: collectorSpec },
+  { title: 'Request log', slug: 'request-log', spec: requestLogSpec },
+  { title: 'FHIR R4', slug: 'fhir-r4', spec: fhirSpec },
+]

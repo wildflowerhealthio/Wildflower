@@ -1,5 +1,5 @@
-import { TELEMETRY_CONSENT_COPY } from 'branding-core'
-import type { TelemetryConsent } from 'telemetry-core'
+import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import type { TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { telemetryConsentSummary } from './telemetry-consent-summary.ts'

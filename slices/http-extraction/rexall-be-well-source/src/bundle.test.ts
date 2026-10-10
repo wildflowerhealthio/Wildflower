@@ -1,7 +1,11 @@
 import { Schema } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
+import {
+  Bundle,
+  MedicationDispense,
+  MedicationRequest,
+} from '@wildflowerhealthio/fhir-stu3-as-r4/schemas'
 
 import { MedicationBundle, MedicationRequestBundle } from './bundle.ts'
 import detailBundle from './fixtures/detail-bundle.json' with { type: 'json' }

@@ -30,7 +30,7 @@ import type { Layer } from 'effect'
  * consumer's parent `ApiId`. This module is the one place that bridge
  * lives.
  *
- * See [HttpApi Composition How-To](../../../../docs/Effect/HttpApi%20Composition%20How-To.md)
+ * See [HttpApi Composition How-To](../../../../../docs/Effect/HttpApi%20Composition%20How-To.md)
  * for the broader pattern and why the cast is safe.
  */
 const apiHandlersFor =

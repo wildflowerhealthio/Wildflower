@@ -1,6 +1,6 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, Match } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -15,7 +15,7 @@ import {
 } from './smart-discovery.ts'
 
 /**
- * A discovery document shaped like the one `emr-rust`'s
+ * A discovery document shaped like the one `fhir-r4-rust`'s
  * `build_smart_configuration` serves, trimmed to the fields this client reads.
  */
 const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> => ({

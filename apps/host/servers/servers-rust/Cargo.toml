@@ -1,0 +1,99 @@
+[package]
+name = "wildflowerhealthio-servers"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The install's list of servers: `ServerRecord`s kept in `<data root>/servers.json`
+# behind the `ServerRegistry` port, and enrolment, which checks a tunnel's
+# credentials with its Wildflower relay behind the `RelayClient` port before a record
+# is written; a server as a `ServerUnit` the unit runner runs; and what the host
+# notifies about its servers. No `tauri` dependency; the host builds a
+# `JsonServerRegistry` over its data root, a `ReqwestRelayClient` for each relay
+# enrolment asks, and a `ServerUnit` for each run.
+[dependencies]
+# `Unit::run`'s result.
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The relay's `GET /rathole` response a `ServerRecord` keeps as its
+# `public_settings`, whose `domain` is the relay domain a server's domain ends
+# in, and `TunnelName`, the tunnel-name check the relay applies too.
+wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust" }
+# `launcher_url` and a self-hosted relay's `base_url`, stored as URLs in the file.
+url = { version = "2", features = ["serde"] }
+# Serialises read-modify-write cycles on `servers.json` within the process.
+parking_lot = "0.12"
+# `RegistryError`'s and `EnrolmentError`'s `Display`/`source` wiring.
+thiserror = "2"
+# `RelayClient` is an `#[async_trait]`, so the base holds it as a trait object.
+async-trait = "0.1"
+# Runs the synchronous registry off the async runtime during enrolment and
+# spawns a run's detail reporter (`rt`); `sync` carries a run's server-health
+# and certificate watches and the forwarded-request channel; `macros` selects
+# over the two watches.
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
+# `GET /rathole` and the signed `GET /me` on the relay's site. `rustls-tls`
+# (no openssl) as in `wildflowerhealthio-wildflower-server`; `json` decodes both bodies.
+# Already in the tree.
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
+# `hmac-sha256` HTTP message signatures (RFC 9421) keyed by the tunnel's
+# token, the scheme the relay verifies, and `base64` also checks a relay's
+# noise key. All three are already in the tree.
+hmac = "0.12"
+sha2 = "0.10"
+base64.workspace = true
+# The signature's `created`, in unix seconds, and the instant a run policy is
+# chosen and checked at.
+chrono = { workspace = true, features = ["clock"] }
+# Each signature's nonce.
+rand = "0.10"
+# `RunPolicy`, `UnitRunner`'s own type, which each `ServerRecord` stores in
+# its wire shape; the `Unit` a `ServerUnit` is; and the statuses and stop
+# reasons the stop notifications read. The Tauri-free `UnitRunner`, so this
+# crate stays Tauri-free.
+wildflowerhealthio-unit-runner = { path = "../../unit-runner/unit-runner-rust" }
+# The server a `ServerUnit` sets up and serves, the `ServerHealth` and
+# `CertificateState` its detail carries, and the `CertificateAuthority` a
+# record names. Tauri-free too.
+wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflower-server-rust"}
+# `ForwardedRequest`/`RequestCaller`, which a run reports and the request
+# notifications count, and `HealthStatus`, which a server's status carries.
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["health-check"] }
+# The head of a run's pending-consent queue, which its detail carries, and
+# `HostConsentDecider`, through which the base's commands read, approve and
+# deny a running server's consents in-process. Tauri-free.
+wildflowerhealthio-gatekeeper = { path = "../../wildflower-server/gatekeeper-rust" }
+# `public_origin_url`, a server's `https://<domain>` origin, the one its run
+# serves and its gatekeeper issues tokens for, which a launch names as `iss`;
+# and, in `tests/server_unit.rs`, the relay settings a real server's config
+# names.
+wildflowerhealthio-tunnel = { path = "../../wildflower-server/tunnel-rust" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The registry's atomic replace only exists against a real filesystem.
+tempfile = "3"
+# `CertificateAuthority::UnreachableForTests`, the CA `tests/server_unit.rs`'s
+# server orders from, so no test reaches a real CA.
+wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflower-server-rust", features = [
+  "test-support",
+] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
+# The coalescer's property tests.
+proptest = "1"
+# The relay's own site and signature verifier, served on a loopback port, so
+# enrolment is tested against the real relay rather than a copy of its rules.
+wildflowerhealthio-relay-server = { path = "../../../relay/relay-server" }
+# A self-signed certificate for that site, and the rustls types to serve it,
+# as the relay's own tests do.
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+# Collects log output to check that the token never reaches it.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }

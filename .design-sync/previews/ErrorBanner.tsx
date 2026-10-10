@@ -1,4 +1,4 @@
-import { ErrorBanner } from 'react-tundraish'
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * In context (databases-view): a failed mutation's message, inline under the

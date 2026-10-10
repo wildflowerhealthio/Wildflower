@@ -1,0 +1,27 @@
+{
+  "name": "@wildflowerhealthio/server-docs-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vp build",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@scalar/api-reference": "catalog:",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/gatekeeper-core": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

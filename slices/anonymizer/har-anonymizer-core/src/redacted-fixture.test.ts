@@ -1,3 +1,4 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 // oxlint-disable import/max-dependencies -- HAR 1.2 is published as eighteen
 // cross-referencing schema files; ajv needs every one registered before it can
 // compile `har.json`, and splitting them across modules would only move the
@@ -24,13 +25,12 @@ import querySchema from 'har-schema/lib/query.json' with { type: 'json' }
 import requestSchema from 'har-schema/lib/request.json' with { type: 'json' }
 import responseSchema from 'har-schema/lib/response.json' with { type: 'json' }
 import timingsSchema from 'har-schema/lib/timings.json' with { type: 'json' }
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { emitHar, Har } from 'http-archive'
-import type { TraceExchange } from 'web-trace-core'
-import { toDocumentReference } from 'web-trace-core/codec'
-import { arbitraries } from 'web-trace-core/test-helpers'
+import { emitHar, Har } from '@wildflowerhealthio/http-archive'
+import type { TraceExchange } from '@wildflowerhealthio/web-trace-core'
+import { toDocumentReference } from '@wildflowerhealthio/web-trace-core/codec'
+import { arbitraries } from '@wildflowerhealthio/web-trace-core/test-helpers'
 
 import { buildRedactionPolicy, redactSession } from './redact.ts'
 

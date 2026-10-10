@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { CodeableConcept, IdentifierAndReference } from 'fhir-r4/data-types'
+import { CodeableConcept, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /**
  * Re-readers for the `any`-typed choice slots on the decoded R4 resources:

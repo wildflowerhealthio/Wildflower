@@ -1,6 +1,10 @@
+import {
+  CanadianCodingSystem,
+  WildflowerExtension,
+  withMandatoryId,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { Schema } from 'effect'
-import { CanadianCodingSystem, WildflowerExtension, withMandatoryId } from 'fhir-r4/data-types'
-import { MedicationRequest } from 'fhir-r4/resources'
 
 const decode = Schema.decodeUnknownSync(MedicationRequest.Schema)
 

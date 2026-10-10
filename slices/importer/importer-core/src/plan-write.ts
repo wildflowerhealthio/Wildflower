@@ -1,5 +1,9 @@
-import type { FhirResource } from 'fhir-r4/resources'
-import { StagedImport, DecodedFile, type FormatDecode } from 'importer-fundamentals'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  StagedImport,
+  DecodedFile,
+  type FormatDecode,
+} from '@wildflowerhealthio/importer-fundamentals'
 
 /**
  * The pure half of the confirm: from one format's decode result and the

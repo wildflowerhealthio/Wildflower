@@ -1,0 +1,19 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Arbitrary, Schema } from 'effect'
+import * as fc from 'fast-check'
+import { describe, expect, test } from 'vite-plus/test'
+
+import * as Address from './address.ts'
+
+describe('FhirR4Address', () => {
+  test('property: FHIR encode-decode round-trip', () => {
+    fc.assert(
+      fc.property(Arbitrary.make(Address.Schema), (address) => {
+        const fhir = Schema.encodeSync(Address.Schema)(address)
+        const decoded = Schema.decodeSync(Address.Schema)(fhir)
+        expect(decoded).toSchemaEqual(Address.Schema, address)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})

@@ -1,7 +1,7 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { AuthedUntil, type AuthState, Unauthed } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Equal } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { AuthedUntil, type AuthState, Unauthed } from 'react-kitchen-sink'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { makeBearerAuthStateStore } from './bearer-auth-state-store.ts'

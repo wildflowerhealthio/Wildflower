@@ -9,7 +9,7 @@ Wildflower embeds web UIs inside native hosts (Tauri webviews). The page and the
 ## The layers
 
 - [`effect-messaging-core`](../../global/effect-messaging/effect-messaging-core/README.md) — platform-agnostic machinery. `Bridge.make` declares a named pair of directional schema records (`HostToWeb` / `WebToHost`, one `[tag]: schema` entry per message). `BridgeTransport.makeHostTransport` wires any number of bridges through a single dispatch fiber, with an outbox/inbox queue pair and a one-way `__Ready` handshake. A bridge is only its schemas — sending, dispatch, and endpoint identity all live in the transport.
-- [`effect-messaging-tauri`](../../global/effect-messaging/effect-messaging-tauri/README.md) — Tauri adapter: the page-side transport. Every message rides the single multiplexed `BRIDGE_EVENT` channel as a structured payload, demuxed by `_tag`.
+- [`effect-messaging-tauri-js`](../../global/effect-messaging/effect-messaging-tauri-js/README.md) — Tauri adapter: the page-side transport. Every message rides the single multiplexed `BRIDGE_EVENT` channel as a structured payload, demuxed by `_tag`.
 - [`effect-messaging-react`](../../global/effect-messaging/effect-messaging-react/README.md) — React bindings: the handler-coordinator context and the per-slice register hooks slices use to install their inbound handlers on mount.
 - **Slice bridge declarations** — each participating slice declares its messages in `<name>-core/src/bridge.ts` (e.g. `GatekeeperBridge`, `CollectorBridge`, `BrowserSnifferBridge`) as `Schema.parseJson(Schema.TaggedStruct(...))` entries.
 - **Rust hosts** — mirror the wire shapes with `#[serde(tag = "_tag")]` enums and listen/emit on the same channel. See the [Wire Pinning How-To](./Wire%20Pinning%20How-To.md) for keeping the two sides byte-compatible.
@@ -22,7 +22,7 @@ The `__Ready` handshake is one-way: the host buffers its outbox until the web si
 
 ## Traps
 
-- **Tag uniqueness across processes is manual discipline.** `assertUniqueTags` only catches collisions within one transport instance. The shared channel has many listeners (TS transports, the raw sniffer bootstrap, Rust host crates), and a duplicated tag double-dispatches silently. Before adding a tag, follow the checklist in the [effect-messaging-tauri README](../../global/effect-messaging/effect-messaging-tauri/README.md).
+- **Tag uniqueness across processes is manual discipline.** `assertUniqueTags` only catches collisions within one transport instance. The shared channel has many listeners (TS transports, the raw sniffer bootstrap, Rust host crates), and a duplicated tag double-dispatches silently. Before adding a tag, follow the checklist in the [effect-messaging-tauri-js README](../../global/effect-messaging/effect-messaging-tauri-js/README.md).
 - **Secrets never ride the bridge.** The multiplexed channel is observable by sibling listeners. Gatekeeper's `AuthTokenIssued` is a contentless notify — the bearer is pulled out-of-band via a capability-gated command. Follow that pattern for anything sensitive.
 - **Host listeners receive their own emits.** A Rust `app.listen(BRIDGE_EVENT, …)` handler also sees the host's own replies; it must dispatch on only its inbound tags and drop everything else.
 

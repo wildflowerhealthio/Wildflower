@@ -1,12 +1,12 @@
 //! Cross-crate constants and envelope shape for the multiplexed Tauri
-//! bridge channel. Both the wildflower-tauri host crate and the
+//! bridge channel. Both the host-app host crate and the
 //! browser-sniffer host crate (and any future Rust crate that listens
 //! on the bridge) must agree on the channel name and the discriminator
 //! field, otherwise tag routing silently breaks with no compile error.
 //! Hoisting them here means there is exactly one source of truth.
 //!
 //! The TS side pins the same `BRIDGE_EVENT` literal in
-//! `global/effect-messaging/effect-messaging-tauri/src/event-names.ts`;
+//! `global/effect-messaging/effect-messaging-tauri-js/src/event-names.ts`;
 //! see [`tests::bridge_event_matches_the_ts_convention`] for the drift
 //! guard.
 
@@ -40,7 +40,7 @@ mod tests {
     use super::*;
 
     /// Drift guard: the TS side pins the same literal in
-    /// `effect-messaging-tauri/src/event-names.test.ts`. Any Rust
+    /// `effect-messaging-tauri-js/src/event-names.test.ts`. Any Rust
     /// crate that listens on this channel inherits this guarantee.
     #[test]
     fn bridge_event_matches_the_ts_convention() {

@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
+import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
-import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
  * A `Grant` is a materialized consent decision — the Owner approved a client for
@@ -81,7 +81,7 @@ const ClientsSchema = Schema.Array(ClientSchema)
  * `disabledAt` is required, `null` included:
  * - any time disables the client now. The server stamps its own now whatever
  *   time is sent, so a disable can be neither scheduled nor backdated (the
- *   owner UI sends its current time).
+ *   launcher sends its current time).
  * - `null` re-enables it.
  *
  * A client that already has a `disabledAt` keeps it: disabling it again

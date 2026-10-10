@@ -18,9 +18,9 @@
  * push. Mirrors the {@link makeEmbeddedAuthStateStore} rationale.
  */
 
+import type { PendingConsentHead } from '@wildflowerhealthio/gatekeeper-core/bridge'
+import { makeSubscribableStore } from '@wildflowerhealthio/react-kitchen-sink'
 import type { Subscribable } from 'effect'
-import type { PendingConsentHead } from 'gatekeeper-core/bridge'
-import { makeSubscribableStore } from 'react-kitchen-sink'
 
 interface ActivePendingConsentStore {
   /**

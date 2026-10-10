@@ -1,5 +1,5 @@
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Option, pipe, String as Str } from 'effect'
-import type { MedicationRequest } from 'fhir-r4/resources'
 
 /** The free text a person wrote on a request: the dosage sig, notes, and the prescriber's name. */
 

@@ -1,0 +1,258 @@
+# tauri-plugin-native-webview — Explanation
+
+## What this is
+
+A Tauri v2 plugin that presents an external URL in a **native, JavaScript-injectable
+web view** with **native chrome**, instead of a Tauri `WebviewWindow` with
+fake in-page chrome.
+
+It exposes six commands, with a backend per platform. Every command takes a
+caller-named instance **`id`** (distinct ids get independent, concurrent
+instances on every platform — see "Desktop is different on purpose" for the
+per-platform presentation difference). **Visibility, content, and liveness are
+independent concerns**: `open_url` navigates without presenting, `show`/`hide`
+toggle visibility while keeping the webview alive, and only `dispose` tears it
+down.
+
+The cross-platform protocols the three backends share — the lifecycle, the
+dispose→open switch race, teardown backstops, the chrome URL-fallback, and the
+re-open rewire — live in [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md);
+the backends' inline comments point there rather than re-deriving them.
+
+- `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?, cookies?, downloadDir?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it. When `cookies` is non-empty, each is written into the webview's cookie store **before** the navigation so it rides the very first request: the webview is built parked at `about:blank`, and the target load is issued from the cookie writes' completions on every platform (macOS writes `WKHTTPCookieStore` directly — see [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "Cookie seeding must not pump the main run loop"; other desktop targets queue wry `set_cookie` messages ahead of the navigation on the main loop's FIFO; iOS/Android issue the load from the native completion handlers). A cookie-carrying `open_url` therefore returns **before** the cookies commit and before the target starts loading; a later open of the same instance supersedes the pending navigation rather than being overwritten by it (§ "A seed's navigation belongs to the open that scheduled it"). Rust-caller only — the JS `open_url` command never accepts cookies (a page must not hand the plugin credential material). `downloadDir` is Rust-caller only for the same reason and desktop-only in effect — see "Downloads (desktop)" below.
+- `show()` — present the native webview (a freshly-created or previously-hidden instance).
+- `evaluate_js(script)` — evaluate JS inside the open native webview.
+- `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
+- `hide()` — remove the native webview from view but keep it **alive and running** in the background. Emits `NativeWebviewEvent::Hidden`. A user dismissal (chrome Close, back, desktop titlebar X) routes here; an instance opened with `on_dismiss: DismissalAction::Dispose` is then disposed (see "Dismissal action" below).
+- `dispose()` — tear the native webview down and free its resources. Emits `NativeWebviewEvent::Disposed`. Also reached by the teardown backstop (app teardown, or 5-minutes-hidden idle timeout on mobile).
+
+| Platform | Backend                                                           | Native chrome                                                          | JS injection (any origin)                                 | Bridge back to host                                      |
+| -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
+| iOS      | Swift `WKWebView` in `UINavigationController` (`.pageSheet`)      | Close + host title                                                     | `WKUserScript(.atDocumentStart)`                          | `WKScriptMessageHandler` → `Channel<NativeWebviewEvent>` |
+| Android  | Kotlin `android.webkit.WebView` in a fullscreen `Dialog`          | `Toolbar` Close + host                                                 | `WebViewCompat.addDocumentStartJavaScript(…, setOf("*"))` | `@JavascriptInterface` → `Channel<NativeWebviewEvent>`   |
+| Desktop  | Tauri parent `Window` + two child webviews (chrome bar + content) | Plugin-drawn chrome bar (host/subtitle/message + back/forward/refresh) | `initialization_script` on the content child              | event bus (page uses `__TAURI__.event` directly)         |
+
+## Why
+
+The browser-sniffer slice opens external pages in a Tauri `WebviewWindow`, then:
+
+- draws fake browser chrome in-page (`injectBrowserTopBar`), and
+- relies on `withGlobalTauri: true`, which exposes the **entire**
+  `window.__TAURI__` IPC surface to arbitrary third-party origins.
+
+On **mobile**, `WKWebView` / `android.webkit.WebView` (the same engines Tauri
+uses under the hood) support the two things we actually need —
+at-document-start injection on **any** origin, and a **scoped** JS↔native bridge
+— while letting us wrap them in a real native toolbar. So we drop both the fake
+chrome and the `__TAURI__` exposure.
+
+The constraint that forced `WKWebView` / `WebView` (not `SFSafariViewController` /
+Chrome Custom Tabs / `ASWebAuthenticationSession`): those native in-app-browser
+components **cannot inject JavaScript**. Injection on any domain is the whole
+point of the sniffer, so we keep the same engine Tauri already uses and draw
+native chrome ourselves.
+
+## Desktop is different on purpose
+
+A _non-Tauri_ native web view on desktop (raw `WKWebView` via objc2, `WebView2`
+via the windows crate) would require `unsafe` FFI, which this workspace forbids
+(`unsafe_code = "forbid"`). So the desktop backend uses Tauri's own webviews —
+still real native webviews (WKWebView on macOS, WebView2 on Windows, webkit2gtk
+on Linux) — with document-start injection via `initialization_script`.
+
+To mirror the mobile native webviews' native chrome, the desktop backend builds, per
+**caller-named instance id**, a parent `Window` (label `native-webview-<id>`) with
+**two child webviews** (via Tauri's `unstable` multi-webview-per-window API): a
+`data:`-HTML **chrome bar** child (`native-webview-<id>-chrome`) anchored at the
+top — drawing the host/subtitle/message labels plus back/forward/refresh — and
+the external **content** child (`native-webview-<id>-content`) below it. The plugin
+draws this chrome itself; it is not the OS window frame. Chrome → Rust IPC rides a
+custom-scheme `fetch` handled by a registered URI-scheme protocol (no `__TAURI__`
+commands, and no navigation — so no WebKit policy-`ignore` backtrace); the chrome
+label names the instance so the app-global handler routes to the right one, and
+Rust → chrome state push uses `Webview::eval`; see the `desktop.rs` module docs.
+
+Distinct ids get **independent, concurrent** instances (each its own window, chrome
+height, nav history, event channel, and dispose/timeout state, kept in a per-id map
+in `PluginState`), so a background sniffer scrape (`sniffer`) and a launched app
+(`launch`) coexist without one navigating the other's webview away. The same id
+reuses its instance.
+
+**Mobile is also per-id** ([#411]): each native backend keeps an `instances[id]`
+map mirroring desktop's `PluginState`, so the same `sniffer` / `launch` ids get
+independent, concurrent instances there too. The one difference is presentation —
+a phone shows one full-screen native webview at a time, so mobile models it as a
+**z-order stack**: `show(id)` presents `id` on top, **covering** the previous
+frontmost (kept alive), and dismissing or disposing the frontmost **reveals the one
+beneath**. Covered and dismissed instances stay alive and running, so a background
+`sniffer` keeps scraping while `launch` is shown. See the Lifecycle & Races doc's
+"Presentation stack".
+
+[#411]: https://github.com/wildflowerhealthio/Wildflower/issues/411
+
+The trade-off: the content child is a Tauri webview, so `window.__TAURI__` is
+present in the loaded page. It is scoped by
+`apps/host/host-app/src-tauri/capabilities/native-webview-window.json` to the
+event bus only (mirroring the browser-sniffer posture). The chrome child needs
+no capability — it issues no Tauri commands. The mobile backends avoid the
+`__TAURI__` exposure entirely.
+
+### The content webview's IPC needs a real `http(s)` origin
+
+On desktop the content child is a Tauri webview, and its host↔page messaging
+rides Tauri IPC — the gated `native_webview_data_plane_emit` command for the
+web→host data plane, and `__TAURI__.event.listen` (internally
+`plugin:event|listen`) for host→web. Tauri's IPC parses the request's `Origin`
+header, and a page with a **null origin** — `about:blank`, a `data:` document, or
+a `WebviewBuilder::with_html` first page — carries the literal origin string
+`null`, which does not parse. Every IPC call from such a page is rejected with
+`Origin header is not a valid URL`, so a null-origin content page is both deaf and
+mute: it can neither emit its data plane nor receive host messages.
+
+That is the runtime reason `about:blank` is only ever a **transient** park (the
+cookie-seed transit in `open_url` above), never where an injected script does its
+work — the plugin navigates to the real `http(s)` target before the page is
+expected to talk to the host. A consumer that injects an IPC-using script (the
+browser sniffer) can only run it on a real `http(s)` origin; mounting one on a
+blank/`data:`/`with_html` first page and expecting it to reach the host does not
+work. `url_scheme.rs` constrains navigation _targets_ to `http(s)` (plus the
+`about:blank` transit); this null-origin rule is why the transit page can't double
+as the working page.
+
+## Shape
+
+```text
+apps/host/tauri-plugin-native-webview/
+├── Cargo.toml                 — links, tauri-plugin build dep, url (desktop)
+├── build.rs                   — COMMANDS=["open_url","evaluate_js","patch_window_text","show","hide","dispose"], ios_path + android_path
+├── permissions/default.toml   — default grant = open-url + evaluate-js + patch-window-text + show + hide + dispose (hand-authored per-command grants)
+├── src/
+│   ├── lib.rs                 — init(), NativeWebviewExt, plugin wiring
+│   ├── commands.rs            — open_url / evaluate_js / patch_window_text / show / hide / dispose IPC commands
+│   ├── models.rs              — OpenRequest/OpenResponse, EvaluateJsRequest/EvaluateJsResponse, PatchWindowTextRequest/PatchWindowTextResponse, NativeWebviewEvent + tests
+│   ├── error.rs               — Error (PluginInvoke on mobile / Internal on desktop)
+│   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
+│   ├── dismissal.rs           — DismissalAction: wraps a Dispose instance's event channel to dispose on a user dismissal, on every platform
+│   ├── download_name.rs       — tauri-free sanitise + de-duplicate of a page-suggested download file name (desktop)
+│   ├── desktop.rs             — parent Window + chrome/content child webviews, initialization_script on content, eval for evaluate_js/patch_window_text
+│   └── mobile.rs              — registers + forwards each command (keyed by instance id via WithId/IdOnly) to the Swift (iOS) / Kotlin (Android) plugin
+├── ios/
+│   ├── Package.swift
+│   └── Sources/NativeWebviewPlugin.swift
+└── android/
+    ├── build.gradle.kts · settings.gradle · proguard-rules.pro · .gitignore
+    └── src/main/
+        ├── AndroidManifest.xml
+        └── java/io/wildflowerhealth/nativewebview/NativeWebviewPlugin.kt
+```
+
+## Round trip
+
+```text
+[caller (Rust or JS)]  open_url(url, initScript, nativeWebviewEventChannel: Channel<NativeWebviewEvent>) ; show()
+      │
+      ▼
+[Rust] commands::open_url → NativeWebviewExt::open_url → platform backend (then show())
+      │
+      ├─ iOS/Android: run_mobile_plugin("openUrl", { id, url, initScript, nativeWebviewEventChannel }) ; run_mobile_plugin("show", { id })
+      │     → build native WebView hidden (native chrome) under instances[id], navigate; show() presents it on top of the stack (covering the previous frontmost)
+      │     → caller's initScript injected at document start on ANY origin
+      │     → page posts an opaque JSON string over the scoped native bridge
+      │       (window.webkit.messageHandlers.nativeWebview / window.nativeWebview)
+      │     → Swift/Kotlin channel.send({ event:"message", payload }) → Rust
+      │       channel handler fires (caller-owned, no JS bridging)
+      │     → user dismiss via native chrome → hide (kept alive) → channel.send({ event:"hidden" })
+      │     → host dispose() (sniff done) → channel.send({ event:"disposed" })
+      │
+      └─ Desktop: parent Window + chrome/content child webviews; the content
+            child gets initScript via initialization_script
+            → present the native webview with a plugin-drawn chrome bar
+            → caller's initScript injected at document start on the content child
+            → (the content page is a Tauri webview, so the script uses the event
+              bus directly — channel goes unused on desktop today)
+
+[caller]  evaluate_js(script)  // evaluateJavaScript into the native webview
+      │
+      ▼
+[Rust] commands::evaluate_js → NativeWebviewExt::evaluate_js → platform backend
+      │
+      ├─ iOS/Android: WKWebView.evaluateJavaScript / WebView.evaluateJavascript
+      └─ Desktop:     content child webview eval (looked up by CONTENT_WEBVIEW_LABEL)
+```
+
+`initScript` is **caller-supplied** — the plugin is content-agnostic. browser-sniffer
+passes its bundled `installSniffer` IIFE wrapped in a small adapter that posts
+to the platform bridge; `browser-sniffer-tauri::native_webview_bridge` owns the
+`Channel<NativeWebviewEvent>` and re-emits onto its `BRIDGE_EVENT` bus.
+
+`evaluate_js` is the reverse direction — `browser-sniffer-tauri` calls it on
+mobile when it sees `Click` / `CancelSnifferRequest` on `BRIDGE_EVENT`, wrapping
+the payload in a `window.__nativeWebviewReceive(...)` call the native-webview-side
+transport parses. JS host code never touches the plugin.
+
+## Why a Channel (not `trigger` + `addPluginListener`)
+
+Earlier drafts had Swift/Kotlin call `trigger("message", …)` and the host JS
+subscribe via `addPluginListener('native-webview', 'message', …)`. That works
+but pins the bridging to the JS layer — every transport swap (e.g. a future
+HTTP transport for the collector) would have to re-route the JS half.
+
+`Channel<NativeWebviewEvent>` from `tauri::ipc` keeps the wire native→Rust. The caller
+(Rust) creates the channel with a Rust closure handler; the channel handle
+serialises as `"__CHANNEL__:<id>"` into the `open` invoke payload; Swift's
+`Channel: Decodable` / Kotlin's `ChannelDeserializer` re-wires it on the native
+side; `channel.send(...)` from native flows back through the `sendChannelData`
+callback into the Rust closure. No JS detour, transport-agnostic.
+
+## Dismissal action
+
+Each `open_url` request chooses what a user dismissal does to its instance, `OpenRequest::on_dismiss`:
+
+- **`Hide`** (the default) — the dismissal hides the instance, kept alive, as in [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "User dismissal hides; only `dispose` tears down". The browser sniffer uses it: a dismissed scrape keeps running until the SPA disposes it.
+- **`Dispose`** — the dismissal hides the instance, then disposes it, so the caller hears `Hidden` then `Disposed`. A host `hide()` still only hides. The host's app-launch popups (`launch-<app-id>`) and each server's launcher (`launcher-<domain>`, its dots as `_`) use it: a closed desktop window is destroyed, so it stops counting as an open window for the unit runner's `WhileOpen` run policy, which a hidden window still would.
+
+It lives in the plugin's Rust layer on every platform (`src/dismissal.rs`); no backend, desktop, Swift or Kotlin, knows the setting, and it never rides the mobile wire. Every backend emits the same `Hidden` for a user dismissal and a host `hide()`, so a `Dispose` instance's event channel is wrapped: it forwards every event to the caller's channel, and on a `Hidden` disposes the instance unless a host `hide()` of it is in flight. The backends' `hide` marks the instance before hiding; its `Hidden` consumes the mark (desktop and Android send it before `hide` returns, iOS from the dismiss animation's completion after), and a hide that found nothing visible clears it. The dispose runs on a blocking thread, off the event path that delivered the `Hidden`, and only while no open of the instance has come since the dismissal: an open that lands first keeps the instance, and one that lands while the dispose is calling the backend waits for that call, so the backend defers it as an open after a dispose (see [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "The dispose→open \"switch-demo\" race"). Rust-caller only: the JS `open_url` command always opens with `Hide`.
+
+## Downloads (desktop)
+
+A page can start a download (a link with `download`, a `Content-Disposition: attachment` response). **Desktop blocks every download by default** and writes nothing anywhere. An instance opts in when its `open_url` request carries a `download_dir`, and only then:
+
+- **What triggers it** — the content webview's `on_download` hook. On `Requested` the backend consults the instance's current download directory, creates it if missing (`create_dir_all`), and rewrites the destination to `<download dir>/<name>`; returning `false` from the hook is what cancels a download, and it does so whenever there is no directory, the directory cannot be created, or no free file name is left.
+- **Where files go** — inside the download directory and nowhere else. wry pre-fills the destination with `<OS downloads dir>/<name the page suggested>`; only the final component is kept, and it is reduced to one safe path segment (allowlist `A-Za-z0-9._-`, other characters become `_`, leading dots stripped, `download` as the fallback, ~150-byte cap) before being joined, so a `../../` or absolute suggestion cannot escape. A collision appends `-1`, `-2`, … before the extension rather than overwriting; `src/download_name.rs` owns that logic and its tests.
+- **What the caller hears** — `NativeWebviewEvent::Downloaded { url, path, success }` on the instance's channel when a download finishes, successfully or not. `path` is `None` on macOS even for a file that saved fine (WebKit reports no path), so `success` is the field to read. The event means "a download ended", not "a download was saved" — a request the backend refused can still surface one with `success: false` on platforms whose cancel path fires the finished signal (GTK does).
+- **Rust-caller only** — the JS `open_url` command always passes `None`. A page choosing where its own bytes land on disk is exactly the thing the directory exists to prevent.
+- **Survives a rewire** — the directory lives in the per-instance state, not in the hook's captures, so a second `open_url` on a live instance re-points (or re-blocks) downloads without rebuilding the webview. See [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "Re-open rewire".
+
+**Mobile implements no downloads.** The Swift and Kotlin backends have no download hook and never emit `Downloaded`; `downloadDir` rides the mobile wire when set and both decoders drop it as an unknown key. A mobile caller must not wait for a `Downloaded` event.
+
+## Deliberately deferred
+
+- **A typed guest-js package** — callers use `invoke` from `@tauri-apps/api`
+  directly. Rust callers go through `NativeWebviewExt` / `OpenRequest` /
+  `EvaluateJsRequest`.
+
+(The desktop open/close race sentinel and the `NativeWebviewEvent::Closed`-on-dismiss
+emission that earlier drafts deferred are now implemented — see `PluginState`
+and the `Destroyed` handler in `desktop.rs`. `open()` also propagates build
+errors back to the caller synchronously via a `sync_channel`, rather than
+logging best-effort.)
+
+## Building / verifying (important)
+
+The native halves cannot be built on Linux:
+
+- **iOS**: macOS + Xcode. Linking requires regenerating the iOS project so the
+  Swift package is picked up — `cargo tauri ios init` (or the next
+  `ios build`/`dev`) from `apps/host/host-app`. Do not hand-edit
+  `project.pbxproj`.
+- **Android**: the Android SDK + Gradle. Linking requires regenerating the
+  Android project (`cargo tauri android init`/`build`) so the Kotlin library is
+  included. `WebViewCompat.addDocumentStartJavaScript` also needs a WebView
+  provider that supports `DOCUMENT_START_SCRIPT` (modern Android System WebView);
+  the code falls back to `onPageStarted` injection otherwise.
+- **Desktop `cargo check`**: needs the GTK/WebKit system libs
+  (`webkit2gtk-4.1`, `gtk+-3.0`) the Linux desktop target links. Without them
+  every tauri crate fails at the `gdk-sys` build script — not a code error.
+
+The Rust models/error logic is covered by unit tests in `models.rs` (run once a
+GTK-equipped environment or CI compiles the crate).

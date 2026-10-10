@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Dialog } from 'react-tundraish'
+import { Dialog } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * A confirm dialog, open on mount — the canonical destructive-action prompt

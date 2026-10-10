@@ -1,4 +1,4 @@
-import { Bridge, type MessageHandler } from 'effect-messaging-core'
+import { Bridge, type MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,
@@ -29,7 +29,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
 >
 
 /**
- * Cross-process contract for the injected sniffer (`browser-sniffer-tauri`'s
+ * Cross-process contract for the injected sniffer (`browser-sniffer-tauri-js`'s
  * `installSniffer`). Web→Host: every shimmed `fetch` / XHR response, page-load
  * notifications, and mid-stream cancel acknowledgements. Host→Web:
  * `CancelSnifferRequest` tells the page to stop pumping events for a
@@ -48,7 +48,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
  * Consumers (e.g. `collector-react`) re-export this bridge's
  * `webToHost` schemas as their own `Host→Web` messages to forward
  * sniffer traffic across nested bridges — see
- * `slices/collector/collector-registry/src/bridge.ts` for the pattern.
+ * `apps/launcher/collector/collector-registry/src/bridge.ts` for the pattern.
  *
  * @remarks
  * Cross-process `console.<level>(...)` mirroring is handled by the
@@ -79,7 +79,7 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
  * `Web→Host` events (`ResponseStart`, `ResponseData`, `ResponseFinished`,
  * `RequestError`, `Cancelled`, `PageLoaded`). Each handler takes the
  * decoded message and returns `Effect<void>`. Defined here so the host
- * adapter (`browser-sniffer-tauri-rust` and the `browser-sniffer-tauri`
+ * adapter (`browser-sniffer-tauri` and the `browser-sniffer-tauri-js`
  * bootstrap) and any wrapper around it share one definition rather
  * than re-deriving it from the bridge.
  */

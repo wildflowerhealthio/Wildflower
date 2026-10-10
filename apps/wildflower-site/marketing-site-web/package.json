@@ -1,0 +1,38 @@
+{
+  "name": "@wildflowerhealthio/marketing-site-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vp build",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
+    "test": "vp test --passWithNoTests"
+  },
+  "dependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/branding-react": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tundra-css": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

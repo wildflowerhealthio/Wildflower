@@ -28,7 +28,7 @@ The repos are public, so CI runs on draft PRs too. Draft and assignment carry th
 - **`gh` is logged in as `ruths-machine`** with `repo` scope, and often **not `read:project`**, so the project board may be unreadable. The **epics** are the source of truth for the backlog.
 - **Epics** are open issues titled `Epic: …`. Each has an `## Issues` table, one row per child: `| #N | <code>: <title> | <depends-on, e.g. 1E #574, 2F #773, or —> |`. A struck-through row (`~~#763~~`) is folded or closed. Many epics also carry a `PR stack:` line (`main ← #767 (2E) ← #768 (2A) ← …`) and a decision log that can reorder work. Read the prose under the table too.
 - **Child issues** open with `Part of #<epic>.`, often followed by `Stacked on #<dep>.`. Their bodies follow the backlog-grooming template (`## Dependencies`, `## Scope` checklist, `## Key files`, `## Key decisions / to confirm`).
-- **PRs name their issue in the title**, e.g. `synthetic-data-core: … (#793)`.
+- **PRs name their issue in the title**, e.g. `synthetic-data-core-js: … (#793)`.
 - **Priority** is the org-level `Priority` issue field, readable with `repo` scope. Its values follow FHIR's `request-priority` codes, from highest to lowest:
 
   | Priority | Definition (FHIR `request-priority`) | When to do it |

@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperPaths } from './page-paths.ts'
 
@@ -7,9 +7,9 @@ test('deviceEntryUrlOn moves the server’s device-entry page onto the given cop
   fc.assert(
     fc.property(
       fc.constantFrom(
-        'https://wildflowerhealthio.github.io/staging/pr-7/app/',
+        'https://wildflowerhealthio.github.io/staging/pr-7/launcher/',
         'http://localhost:5200/',
-        'https://wildflowerhealth.io/app/'
+        'https://wildflowerhealth.io/launcher/'
       ),
       fc.webUrl({ withQueryParameters: true }),
       (servedRoot, verificationUri) => {

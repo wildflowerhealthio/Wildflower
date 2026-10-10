@@ -3,7 +3,7 @@ import {
   mergeConfig,
   type TelemetryConfig,
   type TelemetryConfigOverrides,
-} from 'telemetry-core'
+} from '@wildflowerhealthio/telemetry-core'
 import { getGlobalTracer, initWebTelemetry } from './layer.ts'
 
 /**

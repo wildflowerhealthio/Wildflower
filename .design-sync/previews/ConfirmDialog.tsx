@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ConfirmDialog } from 'react-tundraish'
+import { ConfirmDialog } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * The destructive confirm (gatekeeper "Disable App"), open on mount — the

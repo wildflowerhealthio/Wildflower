@@ -1,0 +1,67 @@
+{
+  "name": "@wildflowerhealthio/fhir-r4",
+  "version": "0.0.1",
+  "description": "FHIR R4 wire schemas, HttpApi description, and HTTP client",
+  "license": "UNLICENSED",
+  "author": "Ruth Marks",
+  "type": "module",
+  "exports": {
+    "./clients": {
+      "source": "./src/clients/index.ts",
+      "default": "./dist/clients/index.js"
+    },
+    "./data-types": {
+      "source": "./src/data-types/index.ts",
+      "default": "./dist/data-types/index.js"
+    },
+    "./identity": {
+      "source": "./src/identity/index.ts",
+      "default": "./dist/identity/index.js"
+    },
+    "./http-api-definition": {
+      "source": "./src/http-api-definition/index.ts",
+      "default": "./dist/http-api-definition/index.js"
+    },
+    "./resources": {
+      "source": "./src/resources/index.ts",
+      "default": "./dist/resources/index.js"
+    },
+    "./telemetry": {
+      "source": "./src/telemetry/index.ts",
+      "default": "./dist/telemetry/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@types/fhir": "catalog:",
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/navigation-core": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
+    "bumpp": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/navigation-core": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
+    "effect": "catalog:"
+  }
+}

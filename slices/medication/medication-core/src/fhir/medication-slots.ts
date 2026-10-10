@@ -1,6 +1,9 @@
+import { CodeableConcept, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  Medication as FhirMedication,
+  type MedicationRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Option, pipe, Schema } from 'effect'
-import { CodeableConcept, IdentifierAndReference } from 'fhir-r4/data-types'
-import { Medication as FhirMedication, type MedicationRequest } from 'fhir-r4/resources'
 
 /**
  * The three places a `MedicationRequest` names its drug: the

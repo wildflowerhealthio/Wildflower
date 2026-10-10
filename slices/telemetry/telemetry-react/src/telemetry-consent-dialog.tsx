@@ -1,6 +1,6 @@
-import type { TelemetryConsentCopy } from 'branding-core'
+import type { TelemetryConsentCopy } from '@wildflowerhealthio/branding-core'
+import { Dialog, ToggleSwitch } from '@wildflowerhealthio/react-tundraish'
 import { useId, useState, type JSX } from 'react'
-import { Dialog, ToggleSwitch } from 'react-tundraish'
 
 import type { TelemetryConsentSwitches } from './use-telemetry-consent.ts'
 import styles from './telemetry-consent-dialog.module.css'

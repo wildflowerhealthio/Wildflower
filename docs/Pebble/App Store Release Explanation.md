@@ -1,9 +1,9 @@
 # App Store Release Explanation
 
-How Tauri Release — Publish gets `apps/watch-lifts` and `apps/fhir-sync-pebble`
+How Tauri Release — Publish gets `apps/watch-lifts/watch-lifts-watchapp` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp`
 into the Pebble app store, why every release arrives there unpublished, and the
 one secret it needs. The build that produces the `.pbw`s is described in the
-[watch-lifts README](../../apps/watch-lifts/README.md#releases).
+[watch-lifts README](../../apps/watch-lifts/watch-lifts-watchapp/README.md#releases).
 
 ## What the job does
 
@@ -31,7 +31,7 @@ another store release of 1.2.3 ahead of the real one. Without the
 failing, so the rest of the release is unaffected.
 
 The release notes are the GitHub Release's body — the release's section of
-`apps/wildflower-tauri/CHANGELOG.md` — sent as they are, in the plain form
+`apps/host/host-app/CHANGELOG.md` — sent as they are, in the plain form
 field `pebble publish --release-notes` fills, so the Markdown bullets arrive as
 `-` lines. pebble-tool puts no length limit on them.
 
@@ -121,7 +121,7 @@ then re-run the failed jobs.
 for the description, category, icons and screenshots a new listing needs.
 Remember that pebble-tool 5.0.40 publishes that first release at once, whatever
 `--is-published` says. It asks for an 80×80 `iconSmall` and a 144×144
-`iconLarge`; `apps/fhir-sync-pebble/appstore/` has a 144×144
+`iconLarge`; `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/appstore/` has a 144×144
 `appstore_large.png`, but its `appstore_small.png` is 48×48. Once the listing
 exists, every later release comes through CI.
 
@@ -135,7 +135,7 @@ don't want.
 
 ## See Also
 
-- [watch-lifts README](../../apps/watch-lifts/README.md#releases) — where the
+- [watch-lifts README](../../apps/watch-lifts/watch-lifts-watchapp/README.md#releases) — where the
   apps' version comes from and the `.pbw`s on the GitHub Release
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the
   Pebble SDK install the build job uses

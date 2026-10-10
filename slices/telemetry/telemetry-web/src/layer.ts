@@ -4,7 +4,7 @@ import {
   initClientTelemetry,
   type SentryAdapter,
   type TelemetryConfig,
-} from 'telemetry-core'
+} from '@wildflowerhealthio/telemetry-core'
 import { initSentryWeb, type InitSentryWebOptions, Sentry } from './sentry.ts'
 
 /** The adapter `telemetry-core` initializes Sentry through, with `sentryOptions` added to `Sentry.init`. */

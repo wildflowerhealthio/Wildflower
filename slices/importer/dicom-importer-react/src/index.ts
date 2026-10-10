@@ -6,6 +6,6 @@
  *
  * @packageDocumentation
  */
-export { DicomFilePreview } from 'dicom-react'
+export { DicomFilePreview } from '@wildflowerhealthio/dicom-react'
 export { COMMIT_DELAY_MS, DicomSettingsPicker, UNKNOWN_ZONE_MESSAGE } from './settings-picker.tsx'
 export { NORTH_AMERICAN_TIME_ZONES, suggestedTimeZones } from './time-zones.ts'

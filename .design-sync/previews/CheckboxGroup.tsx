@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckboxGroup, type CheckboxGroupItem } from 'react-tundraish'
+import { CheckboxGroup, type CheckboxGroupItem } from '@wildflowerhealthio/react-tundraish'
 
 type Interaction = 'c' | 'r' | 'u' | 'd' | 's'
 

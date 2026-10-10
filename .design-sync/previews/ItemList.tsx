@@ -1,4 +1,4 @@
-import { Menu, type ItemListItem, type MenuItem, ItemList, StatusBadge } from 'react-tundraish'
+import { Menu, type ItemListItem, type MenuItem, ItemList, StatusBadge } from '@wildflowerhealthio/react-tundraish'
 
 const accountActions: readonly MenuItem[] = [
   { id: 'edit', label: 'Edit', onSelect: () => {} },

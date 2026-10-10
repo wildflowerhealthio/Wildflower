@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 
-import { useRunAuthed } from 'fhir-r4-react'
+import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import {
   type BatchDecodeResult,
   defaultFormatSettings,
@@ -8,8 +8,8 @@ import {
   type FormatSettings,
   readBatch,
   redecodeFormat,
-} from 'importer-core'
-import type { PickedFile } from 'importer-fundamentals'
+} from '@wildflowerhealthio/importer-core'
+import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 
 import { formatRegistry } from '../registry.ts'
 

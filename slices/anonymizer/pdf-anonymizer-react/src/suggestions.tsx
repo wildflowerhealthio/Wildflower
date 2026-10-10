@@ -1,6 +1,6 @@
-import type { FrequentSubstring } from 'pdf-anonymizer-core'
+import type { FrequentSubstring } from '@wildflowerhealthio/pdf-anonymizer-core'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './pdf-anonymize-panel.module.css'
 

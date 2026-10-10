@@ -1,12 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import type { JSX } from 'react'
 import {
   AsyncErrorView,
   ErrorBanner,
   PageHeader,
   StatusBadge,
   type StatusTone,
-} from 'react-tundraish'
+} from '@wildflowerhealthio/react-tundraish'
+import type { JSX } from 'react'
 
 import { formatInstant } from '../../../format-date.ts'
 import {

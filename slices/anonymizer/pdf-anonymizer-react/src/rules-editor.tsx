@@ -1,7 +1,7 @@
-import type { RuleMatch } from 'pdf-anonymizer-core'
+import type { RuleMatch } from '@wildflowerhealthio/pdf-anonymizer-core'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { StatusBadge, TextField } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { StatusBadge, TextField } from 'react-tundraish'
 
 import styles from './pdf-anonymize-panel.module.css'
 

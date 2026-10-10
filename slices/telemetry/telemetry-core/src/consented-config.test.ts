@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import { configFromEnv, type TelemetryConfig } from './config.ts'
 import type { TelemetryConsent } from './consent.ts'
@@ -11,7 +11,7 @@ const baseConfig: TelemetryConfig = configFromEnv({
   SENTRY_RELEASE: 'abc123',
   SENTRY_TRACES_SAMPLE_RATE: '0.25',
   SENTRY_PROFILES_SAMPLE_RATE: '0.5',
-  OTEL_SERVICE_NAME: 'medications-app',
+  OTEL_SERVICE_NAME: 'medications-web',
   OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otel.example/v1/traces',
 })
 

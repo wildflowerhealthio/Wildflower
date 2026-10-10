@@ -1,4 +1,4 @@
-import { CanadianCodingSystem } from 'fhir-r4/data-types'
+import { CanadianCodingSystem } from '@wildflowerhealthio/fhir-r4/data-types'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { displayNameOf } from './display-name.ts'

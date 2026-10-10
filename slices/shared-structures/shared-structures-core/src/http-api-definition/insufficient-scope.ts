@@ -4,7 +4,7 @@ import { Schema } from 'effect'
  * The shared `403` authorization-failure body: the caller **authenticated**,
  * but their token doesn't cover the scope(s) the operation requires. Emitted
  * identically by every scope-gated slice via the Rust
- * `scope_capabilities_rust::insufficient_scope` / `InsufficientScopeBody`
+ * `wildflowerhealthio_scope_capabilities::insufficient_scope` / `InsufficientScopeBody`
  * (`#[serde(rename_all = "camelCase")]`), so a single TS definition mirrors it
  * everywhere:
  *

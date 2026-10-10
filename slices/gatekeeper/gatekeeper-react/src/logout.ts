@@ -1,5 +1,5 @@
-import { Unauthed } from 'react-kitchen-sink'
-import type { SettingsItem } from 'shared-structures-react'
+import { Unauthed } from '@wildflowerhealthio/react-kitchen-sink'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import type { BearerAuthStateStore } from './client/bearer-auth-state-store.ts'
 
 /** What {@link logOutBearerSession} needs from the entry's wiring. */
@@ -26,7 +26,7 @@ interface BearerLogoutDeps {
  * Forgetting the in-memory bearer is the logout that matters, so it runs first
  * and can't fail. Revoking at `POST {server}/access/logout` (which denylists
  * the token's `jti`) is best-effort defence in depth. `redirect: 'manual'`
- * stops `fetch` following the endpoint's `303` to the owner UI's root (`leave`
+ * stops `fetch` following the endpoint's `303` to the launcher's root (`leave`
  * owns the navigation); `keepalive` lets the revoke outlive `leave` unloading
  * the page.
  */

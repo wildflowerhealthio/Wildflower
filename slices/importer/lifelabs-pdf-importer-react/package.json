@@ -1,12 +1,12 @@
 {
-  "name": "lifelabs-pdf-importer-react",
+  "name": "@wildflowerhealthio/lifelabs-pdf-importer-react",
   "version": "0.0.0",
   "private": true,
   "description": "The LifeLabs PDF format's UI for the importer slice: the time-zone LifeLabsPdfSettingsPicker and the per-report ReviewBody — the same interactive review the HAR format renders, re-exported, since the review is a view over the format-agnostic Review model. Presentation and interaction only.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/importer/lifelabs-pdf-importer-react"
   },
   "files": [
@@ -32,12 +32,12 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "importer-fundamentals": "workspace:*",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "lifelabs-pdf-importer-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "typescript": "catalog:",
@@ -45,9 +45,9 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
     "effect": "catalog:",
-    "importer-fundamentals": "workspace:*",
-    "lifelabs-pdf-importer-core": "workspace:*",
     "react": "catalog:"
   }
 }

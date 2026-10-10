@@ -1,4 +1,4 @@
-import { configFromEnv } from 'telemetry-core'
+import { configFromEnv } from '@wildflowerhealthio/telemetry-core'
 import { describe, expect, test } from 'vite-plus/test'
 import { initSentryWeb } from './sentry.ts'
 

@@ -1,5 +1,8 @@
-import type { Quantity } from 'fhir-r4/data-types'
-import type { Medication as FhirMedication, MedicationRequest } from 'fhir-r4/resources'
+import type { Quantity } from '@wildflowerhealthio/fhir-r4/data-types'
+import type {
+  Medication as FhirMedication,
+  MedicationRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
 
 import { supplyDaysPerFillOf } from './dispense-request.ts'
 import { type Dose, unitOrCodeOf } from './dosage.ts'

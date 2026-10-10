@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
 import { type JSX, useMemo, useState } from 'react'
-import { GrantDraft, ScopeRequest } from 'scopes-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { ScopePicker } from './scope-picker.tsx'

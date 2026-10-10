@@ -1,6 +1,6 @@
+import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { Effect, Option } from 'effect'
-import type { FhirResource, MedicationDispense } from 'fhir-r4/resources'
-import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { mergeShoppersResources } from './merge-resources.ts'

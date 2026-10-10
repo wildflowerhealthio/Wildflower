@@ -1,0 +1,42 @@
+{
+  "name": "@wildflowerhealthio/fhir-stu3-as-r4",
+  "version": "0.0.1",
+  "description": "Just-enough FHIR STU3 wire schemas that decode straight to fhir-r4 resource types via Effect schema transforms",
+  "license": "UNLICENSED",
+  "author": "Ruth Marks",
+  "type": "module",
+  "exports": {
+    "./schemas": {
+      "source": "./src/schemas/index.ts",
+      "default": "./dist/schemas/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/fhir": "catalog:",
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
+  }
+}

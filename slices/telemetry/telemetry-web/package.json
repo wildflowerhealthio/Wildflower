@@ -1,11 +1,11 @@
 {
-  "name": "telemetry-web",
+  "name": "@wildflowerhealthio/telemetry-web",
   "version": "0.0.0",
   "description": "Browser Effect OpenTelemetry layer wiring Sentry and OTLP exporters for Wildflower web apps, and the consent-gated Sentry init that scrubs what it sends.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/telemetry/telemetry-web"
   },
   "files": [
@@ -36,9 +36,9 @@
     "@sentry/opentelemetry": "catalog:",
     "@sentry/react": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/telemetry-core": "workspace:*",
     "bumpp": "catalog:",
     "effect": "catalog:",
-    "telemetry-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -50,7 +50,7 @@
     "@opentelemetry/sdk-trace-web": "catalog:",
     "@sentry/opentelemetry": "catalog:",
     "@sentry/react": "catalog:",
-    "effect": "catalog:",
-    "telemetry-core": "workspace:*"
+    "@wildflowerhealthio/telemetry-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

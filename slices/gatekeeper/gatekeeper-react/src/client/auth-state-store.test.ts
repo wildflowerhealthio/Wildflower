@@ -1,5 +1,10 @@
+import {
+  type AuthState,
+  type AuthStateStore,
+  HostAuthed,
+  Unauthed,
+} from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Equal } from 'effect'
-import { type AuthState, type AuthStateStore, HostAuthed, Unauthed } from 'react-kitchen-sink'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { makeEmbeddedAuthStateStore } from './auth-state-store.ts'

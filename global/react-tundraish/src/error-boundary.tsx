@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './error-boundary.module.css'
 import pageLayout from './page-layout.module.css'

@@ -3,7 +3,7 @@
  * base tokens and reset, then this package's `styles.css` re-pointing them to
  * the Wildflower palette and type scale, then the Atkinson Hyperlegible faces
  * `--font-sans` / `--font-mono` resolve to. An app's entry imports this
- * (`import 'react-tundraish/styles'`) before anything else that carries CSS.
+ * (`import '@wildflowerhealthio/react-tundraish/styles'`) before anything else that carries CSS.
  *
  * @remarks
  * Side-effect imports rather than a stylesheet of `@import`s: the bundler

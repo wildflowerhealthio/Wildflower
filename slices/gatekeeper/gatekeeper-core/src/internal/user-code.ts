@@ -13,8 +13,8 @@
  * sampling is used to avoid modulo bias.
  */
 
+import { CryptoRandom } from '@wildflowerhealthio/kitchen-sink/crypto-random'
 import { Effect } from 'effect'
-import { CryptoRandom } from 'kitchen-sink/crypto-random'
 
 const ALPHABET = 'BCDFGHJKLMNPQRSTVWXZ'
 const BLOCK_LENGTH = 4

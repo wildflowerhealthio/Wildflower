@@ -1,10 +1,10 @@
 /**
- * The query parameter `apps/github-pages/404.html` carries an unresolved
+ * The query parameter `apps/wildflower-site/wildflower-site-web/404.html` carries an unresolved
  * deep link's path in, site-absolute.
  *
  * @remarks
- * `/medications-app/anything?iss=…` lands on
- * `/medications-app/?redirect=/medications-app/anything&iss=…` instead of an
+ * `/medications/anything?iss=…` lands on
+ * `/medications/?redirect=/medications/anything&iss=…` instead of an
  * error page.
  * Completing that redirect is the app's half of the contract
  * ({@link restoreRedirectedUrl}); both halves are described under "The 404
@@ -38,8 +38,8 @@ interface RestorationTarget {
  * The directory `pathname` sits in — the app's basename, always slash-suffixed.
  *
  * @param pathname - A root-relative path, with or without a trailing slash
- * @returns `/medications-app/` for both `/medications-app/` and
- *   `/medications-app/index.html`; `/` for a path with no slash at all
+ * @returns `/medications/` for both `/medications/` and
+ *   `/medications/index.html`; `/` for a path with no slash at all
  */
 const basenameOf = (pathname: string): string => {
   const lastSlash = pathname.lastIndexOf('/')
@@ -78,8 +78,8 @@ const appRelativeRoute = (redirected: string, basename: string): string => {
  *
  * @example
  * ```ts
- * restoredUrl({ pathname: '/web-trace-app/', search: '?redirect=/trace&iss=x', hash: '#t' })
- * // → '/web-trace-app/trace?iss=x#t'
+ * restoredUrl({ pathname: '/importer/', search: '?redirect=/trace&iss=x', hash: '#t' })
+ * // → '/importer/trace?iss=x#t'
  * ```
  */
 const restoredUrl = (location: RestorableLocation): string | undefined => {
@@ -97,7 +97,7 @@ const restoredUrl = (location: RestorableLocation): string | undefined => {
 
 /**
  * The URL that sends a deep link to its app's root, carrying the route in
- * {@link REDIRECT_PARAM} — the redirect `apps/github-pages/404.html` performs,
+ * {@link REDIRECT_PARAM} — the redirect `apps/wildflower-site/wildflower-site-web/404.html` performs,
  * for a server that already knows the app's `basename` (a dev server). The
  * inverse of {@link restoredUrl}.
  *

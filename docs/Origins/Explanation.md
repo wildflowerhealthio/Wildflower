@@ -5,7 +5,7 @@ request, where that decision shows up (redirects, discovery documents, the links
 HFS emits), and why a token's `iss` and `aud` are the one origin that doesn't
 depend on it. The mechanics live in `shared-structures-rust` ([`origin_string`],
 [`served_origin`]); this is the narrative those modules and their consumers
-(gatekeeper, emr, apps, tunnel) point back to instead of each re-deriving it.
+(gatekeeper, FHIR R4, apps, tunnel) point back to instead of each re-deriving it.
 
 ## Two listeners
 
@@ -38,7 +38,7 @@ A request can arrive having been addressed two different ways:
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
   parsed once at boot and threaded into the configs of the slices that render
-  it (gatekeeper, emr) so nothing reassembles it from a string.
+  it (gatekeeper, FHIR R4) so nothing reassembles it from a string.
 - **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request through the tunnel,
   or one relayed by a front, it is the public `{scheme}://{host}` the browser
@@ -92,7 +92,7 @@ the header itself:
   `for` is the visitor's address from the PROXY header, and is left out when
   the connection had none; the `host` is the domain, normalized.
 
-Every reader of the served origin (gatekeeper, emr, apps, the `404`, the
+Every reader of the served origin (gatekeeper, FHIR R4, apps, the `404`, the
 request log) then sees a tunnel request exactly as it sees one a front
 relayed, served at the public origin.
 
@@ -102,8 +102,8 @@ Every JWT gatekeeper mints, whether through the OAuth flows or as the host owner
 token, names one origin in both its origin-shaped claims: **`iss` = `aud` =
 `https://<domain>`, the server's origin**. It is the public origin the server
 builds from its domain at startup (`wildflower_server.rs`), handed to gatekeeper
-as [`GatekeeperConfig::server_origin`] and to emr-rust as
-[`EmrConfig`]`.public_origin`, and spelled as a bare origin (no trailing slash,
+as [`GatekeeperConfig::server_origin`] and to fhir-r4-rust as
+[`FhirR4Config`]`.public_origin`, and spelled as a bare origin (no trailing slash,
 no path) by [`origin_string`].
 
 The claims say which server the token is for, not which origin a request was
@@ -113,7 +113,7 @@ served on, so they are checked against configuration, never against the request:
   in front of the FHIR server and the other slices) run the `TokenVerifier`,
   which accepts a token only when its `iss` and its `aud` are both the
   configured server origin.
-- **HFS** checks the same pair itself: emr-rust sets HFS's `expected_issuer` and
+- **HFS** checks the same pair itself: fhir-r4-rust sets HFS's `expected_issuer` and
   `expected_audience` to the server's origin, and HFS matches `aud` exactly. A
   FHIR request is checked by gatekeeper's gate and again by HFS.
 
@@ -148,9 +148,9 @@ client that authorised over loopback can follow a public `next` link through
 the tunnel.
 
 The domain can't change while the server runs, so the server hands
-emr-rust the public origin in its config ([`EmrConfig`]) and HFS's router is
+fhir-r4-rust the public origin in its config ([`FhirR4Config`]) and HFS's router is
 built once with that `base_url`; a domain that can't form an origin stops
-startup. emr-rust's own overrides (`$everything`, the SMART discovery doc) still
+startup. fhir-r4-rust's own overrides (`$everything`, the SMART discovery doc) still
 render the served origin per request.
 
 ### Every launch names the public origin
@@ -175,7 +175,7 @@ how well it carries traffic is `/health`'s `connectivity` check.
 A SMART/FHIR client fetches the discovery documents (`smart-configuration`,
 `metadata`, `jwks.json`) _before_ it holds a token, so a bearer gate mounted
 above the FHIR router must let those paths through unauthenticated. The canonical
-allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (emr-rust), which mirrors HFS's own
+allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (fhir-r4-rust), which mirrors HFS's own
 `EXEMPT_PATHS`.
 
 ## Loopback is the trust boundary
@@ -192,8 +192,8 @@ posture.
 
 A direct-loopback caller is the one caller the host can put a question to in
 person: nothing relayed it, so whoever started it is at this machine. The
-desktop host uses that for one login. When the hosted owner UI
-(`wildflower-react`, served from `https://wildflowerhealth.io/app/`) signs in to
+desktop host uses that for one login. When the hosted launcher
+(`launcher-web`, served from `https://wildflowerhealth.io/launcher/`) signs in to
 the server on the same machine, gatekeeper parks the `/oauth/authorize` request
 as usual and also asks the host to show a native Approve / Reject dialog. The
 dialog names the app, the origin the login returns to, and whether the app or
@@ -204,7 +204,7 @@ for how the answer is applied.
 "Direct loopback" is the same test as everywhere else in this doc: the request
 carries **no** `Forwarded` header. A request through the tunnel, or relayed by
 a front, never raises the dialog, whatever its `client_id`. It is decided in
-the Owner UI alone, because the person who started it is remote.
+the launcher alone, because the person who started it is remote.
 
 The hosted page is on a public origin and calls a private-network address, so
 Chrome's Local Network Access check sends a preflight carrying
@@ -230,9 +230,9 @@ restate the grammar.
   — `iss` / `aud` / Owner / Client / SMART terms.
 
 [`origin_string`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
-[`GatekeeperConfig::server_origin`]: ../../slices/gatekeeper/gatekeeper-rust/src/config.rs
+[`GatekeeperConfig::server_origin`]: ../../apps/host/wildflower-server/gatekeeper-rust/src/config.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
-[`require_loopback_peer`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
-[`UNAUTHENTICATED_FHIR_PATHS`]: ../../slices/emr/emr-rust/src/lib.rs
-[`EmrConfig`]: ../../slices/emr/emr-rust/src/config.rs
+[`require_loopback_peer`]: ../../apps/host/wildflower-server/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
+[`UNAUTHENTICATED_FHIR_PATHS`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/lib.rs
+[`FhirR4Config`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/config.rs

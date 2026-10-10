@@ -2,7 +2,7 @@
 
 The **pure core** of the importer slice: the closed format registry and the
 batch machinery a shell drives. It sits between the format bindings
-(`har-importer-core`, `lifelabs-pdf-importer-core`, `dicom-importer-core`) and
+(`har-importer-core`, `lifelabs-pdf-importer`, `dicom-importer-core`) and
 the React shell (`importer-react`), which adds each format's `SettingsPicker`
 to the registry here and runs these functions from its hooks.
 
@@ -71,7 +71,7 @@ Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`),
 the three `*-importer-core` bindings (the importers the registry lists),
 `fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
 `importer-react`. Imports no `*-importer-react`, no `web-trace-core`, and
-nothing from `slices/collector` or `slices/http-extraction`.
+nothing from `apps/launcher/collector` or `slices/http-extraction`.
 
 ## Guardrails
 
@@ -96,10 +96,10 @@ nothing from `slices/collector` or `slices/http-extraction`.
 
 ## References
 
-- [slices/importer AGENTS.md](../AGENTS.md) — package roles and layering.
-- [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
+- [slices/importer AGENTS.md](../../../slices/importer/AGENTS.md) — package roles and layering.
+- [importer-fundamentals AGENTS.md](../../../slices/importer/importer-fundamentals/AGENTS.md) — the
   `FileImporter` contract, the source file seam, and `StagedImport`.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
   runs these functions from its hooks.
-- [Adding a File-Format Importer How-To](../docs/Adding%20a%20File-Format%20Importer%20How-To.md)
+- [Adding a File-Format Importer How-To](../../../slices/importer/docs/Adding%20a%20File-Format%20Importer%20How-To.md)
   — the registry edit a new format makes here.

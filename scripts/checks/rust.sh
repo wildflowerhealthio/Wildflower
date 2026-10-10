@@ -43,19 +43,19 @@ fi
 # the changed-crate hooks (pre-commit / pre-push) and the local Tauri degrade
 # path — not to split CI into two jobs.
 non_tauri=(--workspace
-  --exclude wildflower-tauri
-  --exclude browser-sniffer-tauri-rust
-  --exclude har-recorder-tauri-rust
-  --exclude servers-tauri-rust
-  --exclude shared-structures-tauri-rust
+  --exclude host-app
+  --exclude wildflowerhealthio-browser-sniffer-tauri
+  --exclude wildflowerhealthio-har-recorder-tauri
+  --exclude wildflowerhealthio-servers-tauri
+  --exclude wildflowerhealthio-shared-structures-tauri
   --exclude tauri-plugin-native-webview
-  --exclude tauri-unit-runner)
-tauri=(-p wildflower-tauri -p browser-sniffer-tauri-rust -p har-recorder-tauri-rust -p servers-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview -p tauri-unit-runner)
-tauri_names=" wildflower-tauri browser-sniffer-tauri-rust har-recorder-tauri-rust servers-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview tauri-unit-runner "
+  --exclude wildflowerhealthio-tauri-unit-runner)
+tauri=(-p host-app -p wildflowerhealthio-browser-sniffer-tauri -p wildflowerhealthio-har-recorder-tauri -p wildflowerhealthio-servers-tauri -p wildflowerhealthio-shared-structures-tauri -p tauri-plugin-native-webview -p wildflowerhealthio-tauri-unit-runner)
+tauri_names=" host-app wildflowerhealthio-browser-sniffer-tauri wildflowerhealthio-har-recorder-tauri wildflowerhealthio-servers-tauri wildflowerhealthio-shared-structures-tauri tauri-plugin-native-webview wildflowerhealthio-tauri-unit-runner "
 
 # Exact-match a crate name against the Tauri set. Iterating + string equality
 # avoids the substring ambiguity a `case "$tauri_names" in *" $n "*)` glob would
-# carry (e.g. shared-structures-rust vs shared-structures-tauri-rust).
+# carry (e.g. wildflowerhealthio-servers vs wildflowerhealthio-servers-tauri).
 is_tauri_crate() {
   local n="$1" t
   for t in $tauri_names; do

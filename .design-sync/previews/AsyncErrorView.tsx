@@ -1,4 +1,4 @@
-import { AsyncErrorView } from 'react-tundraish'
+import { AsyncErrorView } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * The canonical use — the error body a `<CatchBoundary errorComponent>`

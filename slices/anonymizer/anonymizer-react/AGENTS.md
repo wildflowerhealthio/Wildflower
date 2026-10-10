@@ -41,12 +41,11 @@ dependency.
 
 ## Layering
 
-The slice's shell. Depends on `anonymizer-fundamentals` (the contract and
+The anonymizer's shell. Depends on `anonymizer-fundamentals` (the contract and
 routing helpers), `har-anonymizer-core` (the HAR descriptor),
 `har-anonymizer-react` (the HAR panel), `pdf-anonymizer-core` (the PDF
 schema), `pdf-anonymizer-react` (the PDF descriptor and panel), `effect`,
-`react`, `react-tundraish`. Never imports `importer-react`,
-`web-trace-react`, or a FHIR client.
+`react`, `react-tundraish`. Never imports `importer-react` or a FHIR client.
 
 ## Traps
 
@@ -73,7 +72,7 @@ returns to the sources.
 
 ## References
 
-- [slices/anonymizer AGENTS.md](../AGENTS.md) — the slice's package roles.
+- [slices/anonymizer AGENTS.md](../AGENTS.md) — the anonymizer's package roles.
 - [anonymizer-fundamentals AGENTS.md](../anonymizer-fundamentals/AGENTS.md) —
   the contract and routing helpers.
 - [har-anonymizer-react AGENTS.md](../har-anonymizer-react/AGENTS.md) — the

@@ -1,8 +1,8 @@
 # AGENTS.md — slices/anonymizer/anonymizer-fundamentals
 
-The **format-agnostic upstream** of the anonymizer slice: the value a picker
+The **format-agnostic upstream** of the anonymizer: the value a picker
 produces, the contract every format binding implements, and the pure routing
-helpers the shell drives the closed registry with. It is to this slice what
+helpers the shell drives the closed registry with. It is to the anonymizer what
 `importer-fundamentals` is to the importer slice — the layer a concrete binding
 (`har-anonymizer-*`, `pdf-anonymizer-*`) sits on top of.
 
@@ -41,7 +41,7 @@ imports a `*-anonymizer-core`, a `*-anonymizer-react`, or the shell.
 
 ## References
 
-- [slices/anonymizer AGENTS.md](../AGENTS.md) — the slice's package roles.
+- [slices/anonymizer AGENTS.md](../AGENTS.md) — the anonymizer's package roles.
 - [importer-fundamentals AGENTS.md](../../importer/importer-fundamentals/AGENTS.md)
   — the sibling contract this package mirrors.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)

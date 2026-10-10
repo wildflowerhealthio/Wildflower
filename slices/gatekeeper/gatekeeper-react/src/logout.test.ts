@@ -1,6 +1,6 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { AuthedUntil } from '@wildflowerhealthio/react-kitchen-sink'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { AuthedUntil } from 'react-kitchen-sink'
 import { describe, expect, it } from 'vite-plus/test'
 import { makeBearerAuthStateStore } from './client/bearer-auth-state-store.ts'
 import { gatekeeperLogoutSettingsItem, logOutBearerSession } from './logout.ts'

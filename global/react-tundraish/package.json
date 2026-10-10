@@ -1,5 +1,5 @@
 {
-  "name": "react-tundraish",
+  "name": "@wildflowerhealthio/react-tundraish",
   "version": "0.0.0",
   "description": "Tundra-CSS-styled React DOM component primitives and attribute-driven color-scheme helpers (no prefers-color-scheme CSS fallback).",
   "keywords": [
@@ -13,7 +13,7 @@
   "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "global/react-tundraish"
   },
   "files": [
@@ -59,12 +59,12 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "^30.1.0",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "tundra-css": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
@@ -74,10 +74,10 @@
     "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-router": "catalog:",
-    "kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "tundra-css": "catalog:"
   }
 }

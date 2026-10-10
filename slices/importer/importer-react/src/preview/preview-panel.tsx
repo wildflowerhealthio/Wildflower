@@ -1,10 +1,14 @@
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Data } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
-import { DecodedFile, StagedImport } from 'importer-fundamentals'
 import { type JSX, useMemo, useState } from 'react'
 
-import type { BatchDecodeResult, FormatKind, FormatSettings } from 'importer-core'
-import { claimedFormats, formatKinds } from 'importer-core'
+import type {
+  BatchDecodeResult,
+  FormatKind,
+  FormatSettings,
+} from '@wildflowerhealthio/importer-core'
+import { claimedFormats, formatKinds } from '@wildflowerhealthio/importer-core'
 
 import type { FormatWithComponents } from '../registry.ts'
 import { FormatReviewBody } from './format-review-body.tsx'

@@ -1,6 +1,10 @@
+import type { TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
+import {
+  configFromViteEnv,
+  initConsentedTelemetry,
+  type TelemetryTags,
+} from '@wildflowerhealthio/telemetry-web'
 import { useRef, useState } from 'react'
-import type { TelemetryConsent } from 'telemetry-core'
-import { configFromViteEnv, initConsentedTelemetry, type TelemetryTags } from 'telemetry-web'
 
 /** Options for {@link useConsentedTelemetryStart}. */
 interface ConsentedTelemetryStartOptions {

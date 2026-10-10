@@ -1,6 +1,9 @@
+import { Extension, Narrative, WildflowerExtension } from '@wildflowerhealthio/fhir-r4/data-types'
+import type {
+  Medication as FhirMedication,
+  MedicationRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
-import { Extension, Narrative, WildflowerExtension } from 'fhir-r4/data-types'
-import type { Medication as FhirMedication, MedicationRequest } from 'fhir-r4/resources'
 
 import { dosageTextOf } from './free-text.ts'
 import { containedMedicationOf } from './medication-slots.ts'

@@ -1,7 +1,7 @@
+import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as MetaSource from './meta-source.ts'

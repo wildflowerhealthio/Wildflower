@@ -1,4 +1,4 @@
-import type { ConsentStorage } from 'telemetry-core'
+import type { ConsentStorage } from '@wildflowerhealthio/telemetry-core'
 
 /** A `ConsentStorage` kept in a `Map`, standing in for `window.localStorage`. */
 const mapConsentStorage = (): ConsentStorage => {

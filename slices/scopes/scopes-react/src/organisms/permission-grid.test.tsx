@@ -7,7 +7,7 @@ import {
   Scope,
   type ScopeRequest,
   type ResourceSection,
-} from 'scopes-core'
+} from '@wildflowerhealthio/scopes-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { PermissionGrid } from './permission-grid.tsx'

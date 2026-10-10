@@ -1,8 +1,8 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Document } from 'positioned-text'
+import type { Document } from '@wildflowerhealthio/positioned-text'
 import { extractFrequentSubstrings } from './frequent-substrings.ts'
 
 describe('extractFrequentSubstrings', () => {

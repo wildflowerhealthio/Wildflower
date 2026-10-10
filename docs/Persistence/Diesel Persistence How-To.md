@@ -28,7 +28,7 @@ the shared mapping through a feature rather than every slice re-deriving it. The
 ## JSON columns: map a `serde_json::Value` through a `Text` newtype
 
 Store a `serde_json::Value` field with the shared
-`shared_structures_rust::json_text::JsonText` newtype
+`wildflowerhealthio_shared_structures::json_text::JsonText` newtype
 (`shared-structures-rust/src/json_text.rs`, behind the `diesel-json-text`
 feature). It is a `#[derive(AsExpression, FromSqlRow)] #[diesel(sql_type =
 Text)]` newtype with hand-written `ToSql`/`FromSql<Text, Sqlite>`: writes emit
@@ -59,7 +59,7 @@ Two gotchas that bite every `serialize_as` field:
   `Queryable`/`Insertable` impls the row type's derives generate, so it must be
   at least as visible as the row type.
 
-Note the unrelated `persistence_rust::JsonColumn<T>`
+Note the unrelated `wildflowerhealthio_persistence::JsonColumn<T>`
 (`persistence-rust/src/json_column.rs`) is the **rusqlite** JSON newtype for the
 pre-diesel stores — not this pattern. Don't reach for it in a diesel slice.
 
@@ -117,7 +117,7 @@ A plain r2d2 pool over `:memory:` gives every pooled connection its **own**
 private database, so a migration on one checkout is invisible to the next — tests
 that pass on a single connection break the moment the store checks out a second.
 
-Use `persistence_rust::open_in_memory_pool()` (public, non-test —
+Use `wildflowerhealthio_persistence::open_in_memory_pool()` (public, non-test —
 `persistence-rust/src/diesel_pool.rs`). It builds the pool over a shared-cache
 URI `file:<unique>?mode=memory&cache=shared` (unique per pool via an
 `AtomicU64`, so tests stay isolated) and relies on r2d2's default `min_idle ==
@@ -145,7 +145,7 @@ diesel::sql_query("SELECT timeout AS value FROM pragma_busy_timeout()")
 ## Embed and namespace migrations
 
 Each slice embeds its own `migrations/` tree and applies it through
-`persistence_rust::run_diesel_migrations(conn, namespace, source)` under its own
+`wildflowerhealthio_persistence::run_diesel_migrations(conn, namespace, source)` under its own
 namespace — **never** diesel's stock `run_pending_migrations`. The stock harness
 bookkeeps applied versions in one un-namespaced `__diesel_schema_migrations`
 keyed by version, and every slice starts at `0001_initial_schema`, so a second
@@ -156,7 +156,7 @@ bookkeeping row in one transaction. Call it with a per-slice constant:
 
 ```rust
 // collector-rust/src/db/remotes_store.rs
-persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+wildflowerhealthio_persistence::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
 ```
 
 **A genuinely new table** uses plain `CREATE TABLE` in its `0001` (collector's

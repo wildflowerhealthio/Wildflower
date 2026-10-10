@@ -1,6 +1,6 @@
 import { setupEventContextTrace } from '@sentry/opentelemetry'
 import * as Sentry from '@sentry/react'
-import { isSentryEnabled, type TelemetryConfig } from 'telemetry-core'
+import { isSentryEnabled, type TelemetryConfig } from '@wildflowerhealthio/telemetry-core'
 
 let initialized = false
 

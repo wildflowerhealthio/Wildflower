@@ -1,13 +1,13 @@
-import { DicomSettingsPicker } from 'dicom-importer-react'
-import { HarSettingsPicker } from 'har-importer-react'
+import { DicomSettingsPicker } from '@wildflowerhealthio/dicom-importer-react'
+import { HarSettingsPicker } from '@wildflowerhealthio/har-importer-react'
 import {
   type BoundFormat as CoreBoundFormat,
   type FormatKind,
   formatRegistry as coreRegistry,
   type FormatSettings,
-} from 'importer-core'
-import { type SettingsPickerProps } from 'importer-fundamentals'
-import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
+} from '@wildflowerhealthio/importer-core'
+import { type SettingsPickerProps } from '@wildflowerhealthio/importer-fundamentals'
+import { LifeLabsPdfSettingsPicker } from '@wildflowerhealthio/lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
 
 /**

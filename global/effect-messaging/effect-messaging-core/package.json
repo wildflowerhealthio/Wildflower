@@ -1,12 +1,12 @@
 {
-  "name": "effect-messaging-core",
+  "name": "@wildflowerhealthio/effect-messaging-core",
   "version": "0.0.0",
   "private": true,
   "description": "Effect-typed cross-process message-passing primitives: defineBridge, transport core, dispatch fiber, process-scoped runtime slot.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "global/effect-messaging/effect-messaging-core"
   },
   "files": [
@@ -32,16 +32,16 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

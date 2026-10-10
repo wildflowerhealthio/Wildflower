@@ -11,7 +11,7 @@
  * mode (the user builds freely). The per-control grid state this drives is {@link Cell}. A
  * view-model concern with no `scopes-rust` counterpart.
  *
- * Namespace module (`import { ScopeRequest } from 'scopes-core'`).
+ * Namespace module (`import { ScopeRequest } from '@wildflowerhealthio/scopes-core'`).
  */
 
 import { Grant, Scope } from '../domain/index.ts'

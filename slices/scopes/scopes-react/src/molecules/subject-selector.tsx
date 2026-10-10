@@ -1,5 +1,5 @@
+import { StatusBadge } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { StatusBadge } from 'react-tundraish'
 
 import { ContextCard } from '../atoms/context-card.tsx'
 import { PatientPillPicker, type PatientOption } from './patient-pill-picker.tsx'

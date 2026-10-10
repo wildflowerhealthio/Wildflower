@@ -1,12 +1,12 @@
 {
-  "name": "dicom-importer-core",
+  "name": "@wildflowerhealthio/dicom-importer-core",
   "version": "0.0.0",
   "private": true,
   "description": "The DICOM binding of the importer slice (core layer): byte-level .dcm detection, the source-file coding that stores a DICOM file as a FHIR DocumentReference filed under the patient its header names, header tag parsing, and the FHIR R4 synthesis behind the format's FileImporter. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/importer/dicom-importer-core"
   },
   "files": [
@@ -32,22 +32,22 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "dicom": "workspace:*",
+    "@wildflowerhealthio/dicom": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "dicom": "workspace:*",
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/dicom": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

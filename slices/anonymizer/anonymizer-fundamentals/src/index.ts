@@ -1,5 +1,5 @@
 /**
- * Format-agnostic upstream of the anonymizer slice: the picked-file value, the
+ * Format-agnostic upstream of the anonymizer: the picked-file value, the
  * format-descriptor contract, and the routing helpers the shell drives a
  * closed registry with.
  *

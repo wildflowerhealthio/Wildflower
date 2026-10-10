@@ -1,6 +1,6 @@
 # AGENTS.md — slices/anonymizer/pdf-anonymizer-core
 
-The **PDF engine** of the anonymizer slice: literal-substring substitution with
+The **PDF engine** of the anonymizer: literal-substring substitution with
 class-preserving same-length masking over a `Document.Type`,
 frequent-substring suggestions, and the anonymized-JSON file-name helper. The
 `Document.Schema` schema itself lives in the `positioned-text` package
@@ -37,7 +37,7 @@ behaviour to document.
 
 ## References
 
-- [slices/anonymizer AGENTS.md](../AGENTS.md) — the slice's package roles.
+- [slices/anonymizer AGENTS.md](../AGENTS.md) — the anonymizer's package roles.
 - [positioned-text AGENTS.md](../../file-formats/positioned-text/AGENTS.md) —
   the `Document.Schema` schema this engine masks.
 - [har-anonymizer-react download-har.ts](../har-anonymizer-react/src/download-har.ts)

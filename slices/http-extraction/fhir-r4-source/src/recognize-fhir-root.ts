@@ -1,10 +1,10 @@
-import { Option, pipe } from 'effect'
 import {
   type HttpMethod,
   type RecognizedUrlData,
   Specificity,
   type UrlMatch,
-} from 'http-extraction-fundamentals'
+} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { Option, pipe } from 'effect'
 
 /**
  * Turn a kind's own {@link UrlMatch.UrlMatcher} into its `tryRecognize`: a

@@ -25,11 +25,11 @@ describe('configFromViteEnv', () => {
 
     const config = configFromViteEnv({
       sentry: { dsn: 'https://key@sentry.example/2' },
-      otel: { serviceName: 'medications-app' },
+      otel: { serviceName: 'medications-web' },
     })
 
     expect(config.sentry.dsn).toBe('https://key@sentry.example/2')
-    expect(config.otel.serviceName).toBe('medications-app')
+    expect(config.otel.serviceName).toBe('medications-web')
     expect(config.sentry.environment).toBe('preview')
   })
 

@@ -1,6 +1,6 @@
 # AGENTS.md — slices/anonymizer/har-anonymizer-core
 
-The **HAR engine** of the anonymizer slice: the shape-preserving pseudonymizer
+The **HAR engine** of the anonymizer: the shape-preserving pseudonymizer
 that turns a raw captured session into one that can leave the device. This
 package is the privacy boundary: a change here changes what leaves the device.
 Read [Anonymization Explanation](../docs/Anonymization%20Explanation.md)
@@ -52,7 +52,7 @@ owned by the `file-formats` slice), `web-trace-core` (`TraceExchange`),
 
 - [Anonymization Explanation](../docs/Anonymization%20Explanation.md) — the
   design and its stated limits. Required reading.
-- [slices/anonymizer AGENTS.md](../AGENTS.md) — the slice's package roles.
+- [slices/anonymizer AGENTS.md](../AGENTS.md) — the anonymizer's package roles.
 - [har-anonymizer-react AGENTS.md](../har-anonymizer-react/AGENTS.md) — the
   panel that drives this engine.
 - [http-archive AGENTS.md](../../file-formats/http-archive/AGENTS.md) — the

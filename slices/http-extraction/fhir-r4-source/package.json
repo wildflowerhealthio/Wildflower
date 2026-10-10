@@ -1,12 +1,12 @@
 {
-  "name": "fhir-r4-source",
+  "name": "@wildflowerhealthio/fhir-r4-source",
   "version": "0.0.0",
   "private": true,
   "description": "The FHIR R4 source: the Patient / Observation / Observation-list response kinds that define how FHIR R4 traffic decodes into resources, each with its own tryRecognize, and the assembled fhirR4Source descriptor consumers extract with. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/http-extraction/fhir-r4-source"
   },
   "files": [
@@ -32,20 +32,20 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

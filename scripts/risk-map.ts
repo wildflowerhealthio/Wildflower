@@ -76,7 +76,10 @@ const encodeRiskMap = Schema.encodeSync(RiskMap)
 interface Pkg {
   readonly name: string
   readonly relDir: string
+  /** Workspace packages it needs at runtime: `dependencies` and `peerDependencies`. */
   readonly deps: ReadonlySet<string>
+  /** Workspace packages only its tests and tooling need: `devDependencies`. */
+  readonly devDeps: ReadonlySet<string>
 }
 
 const sh = (cmd: string, cwd?: string): Effect.Effect<string, Error> =>
@@ -101,9 +104,11 @@ const collectChangedFiles = (repoRoot: string): Effect.Effect<ReadonlySet<string
     return new Set(outputs.flatMap(splitNonEmptyLines))
   })
 
-const depsFromPackageJson = (json: PackageJson): ReadonlySet<string> => {
+const workspaceDepsIn = (
+  sections: readonly (PackageJson['dependencies'] | undefined)[]
+): ReadonlySet<string> => {
   const deps = new Set<string>()
-  for (const section of [json.dependencies, json.devDependencies, json.peerDependencies]) {
+  for (const section of sections) {
     if (!section) continue
     for (const [name, ver] of Object.entries(section)) {
       if (ver.startsWith('workspace:')) deps.add(name)
@@ -141,7 +146,12 @@ const loadPackages = (repoRoot: string): Effect.Effect<readonly Pkg[]> =>
         if (Option.isNone(decoded)) continue
         const json = decoded.value
         if (!json.name) continue
-        pkgs.push({ name: json.name, relDir: dirname(rel), deps: depsFromPackageJson(json) })
+        pkgs.push({
+          name: json.name,
+          relDir: dirname(rel),
+          deps: workspaceDepsIn([json.dependencies, json.peerDependencies]),
+          devDeps: workspaceDepsIn([json.devDependencies]),
+        })
       }
     }
     return pkgs
@@ -156,7 +166,7 @@ const buildReverseDeps = (packages: readonly Pkg[]): ReadonlyMap<string, Readonl
   const reverse = new Map<string, Set<string>>()
   for (const p of packages) reverse.set(p.name, new Set())
   for (const p of packages) {
-    for (const dep of p.deps) {
+    for (const dep of [...p.deps, ...p.devDeps]) {
       reverse.get(dep)?.add(p.name)
     }
   }

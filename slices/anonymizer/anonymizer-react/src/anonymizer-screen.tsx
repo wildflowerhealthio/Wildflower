@@ -1,7 +1,7 @@
 import { Effect, Match, Predicate } from 'effect'
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type JSX } from 'react'
 
-import { acceptFor, identify, type PickedFile } from 'anonymizer-fundamentals'
+import { acceptFor, identify, type PickedFile } from '@wildflowerhealthio/anonymizer-fundamentals'
 
 import { LocalFilePicker } from './local-file-picker.tsx'
 import { formatRegistry, type BoundFormat } from './registry.tsx'
