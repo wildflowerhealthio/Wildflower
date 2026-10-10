@@ -25,6 +25,11 @@ name: Tauri Release — Publish
 # The notarization and App Store Connect upload credentials stay at
 # repository level.
 #
+# Android is not built here. Once a run for a merged release PR succeeds,
+# deploy-android-play.yml builds the Android App Bundle for the same tag,
+# attaches it to this release and uploads it to Google Play — see
+# docs/Rust/Android Release Signing Explanation.md.
+#
 # Also exposes `workflow_dispatch` for two manual cases:
 #   - Re-trigger a merge that never ran (e.g. a runner outage ate the original
 #     run): dispatch from the merged branch, leave `tag` blank. The tag step is

@@ -258,6 +258,7 @@ profile — advice to regenerate a profile that is correct.
 ## See Also
 
 - [Apple Signing Sync How-To](./Apple%20Signing%20Sync%20How-To.md) — creating or renewing the certificates and profiles, and storing them in their environments
+- [Android Release Signing Explanation](./Android%20Release%20Signing%20Explanation.md) — the Google Play channel, deployed after the same release
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the cache keys these release jobs share
 - [Data Directory Explanation](../../apps/host/host-app/Data%20Directory%20Explanation.md) — where each platform puts the host's databases, including what the sandbox does to it on macOS and why iOS uses `Documents`
 - `scripts/checks/apple-signing-preflight.sh` — the macOS check

@@ -141,4 +141,7 @@ don't want.
   Pebble SDK install the build job uses
 - [Apple Release Signing Explanation](../Rust/Apple%20Release%20Signing%20Explanation.md)
   — the TestFlight channels the same workflow uploads to
+- [Android Release Signing Explanation](../Rust/Android%20Release%20Signing%20Explanation.md)
+  — the Google Play upload that follows the same release, and skips
+  prereleases for a related reason
 - `scripts/ci/pebble-appstore-upload.sh` — the upload, and its tests beside it
