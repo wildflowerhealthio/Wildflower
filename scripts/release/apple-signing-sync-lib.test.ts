@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 // The parts of apple-signing-sync.sh that need no Mac. Sourcing the library
