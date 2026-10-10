@@ -36,7 +36,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (`{ format, detect }`, the two fields it takes to claim a picked file) and
   **`claiming(detectors, file)`** (the first detector whose `detect` claims it,
   returned at the caller's own element type). The detection seam, held apart
-  from `FileImporter` because the picker and `importer-core`'s `readBatch` need
+  from `FileImporter` because the picker and `importer-core-js`'s `readBatch` need
   it **without** needing the format: neither reads a `decode`, a
   `defaultSettings` or a codec, and neither should have to name the settings
   type of a format it is only sniffing. A `FileImporter.Type` satisfies it
@@ -51,7 +51,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`UnreadableFile`** rows), **`emptyResult`** for a format that claimed
   nothing, and the identity derivations every id and review key is built from.
   All three read a picked file's **`id`** — minted once, over the whole batch in
-  pick order, by `importer-core`'s `readBatch`, so two picks of the same name
+  pick order, by `importer-core-js`'s `readBatch`, so two picks of the same name
   (two `report.pdf`s out of two folders) stay distinct and a settings re-decode
   yields the same ids. **`makeId`** names a whole batch, **`makeFileId`** one
   file within it, and **`keyPrefix`** is the namespace every review key decoded
@@ -110,7 +110,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   name for the shape a picker source, `FormatDetector.claiming` and the read of
   a stored source file all take, instead of three structural copies of it. Bytes
   rather than text so the picker stays format-blind. The `id` is the batch slot
-  `importer-core`'s `readBatch` stamped, and **the picker never mints one**.
+  `importer-core-js`'s `readBatch` stamped, and **the picker never mints one**.
   The codec is one schema over one format's **`FormatValue`**, which reaches it
   as the **`Format`** `Context.Tag`: **`FromDocumentReference`**, whose read leg
   accepts only a source file of this format carrying attachment data (so a rejected
@@ -156,7 +156,7 @@ web-trace direction. A HAR binding passes web-trace's coding constants in as
 data. Names no source file _format_ (each binding supplies its `decodeFileSet` and
 its coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
 `har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
-an `importer-core`, a `*-importer-react`, `slices/collector`, or
+an `importer-core-js`, a `*-importer-react`, `slices/collector`, or
 `slices/http-extraction`.
 
 ## Guardrails
@@ -217,9 +217,9 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   layering.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR binding
   that builds on this contract.
-- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the closed registry
+- [importer-core-js AGENTS.md](../../../apps/importer/importer-core-js/AGENTS.md) — the closed registry
   and the batch machinery built on this contract.
-- [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
+- [importer-react AGENTS.md](../../../apps/importer/importer-react/AGENTS.md) — the shell that
   drives the `StagedImport` transitions over each format's review.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

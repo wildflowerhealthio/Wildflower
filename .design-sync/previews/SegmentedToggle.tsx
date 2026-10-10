@@ -3,7 +3,7 @@ import { SegmentedToggle } from 'react-tundraish'
 
 type Tab = 'medications' | 'calendar' | 'interactions' | 'savings'
 
-/** The medications-app view switcher in its page header. */
+/** The medications view switcher in its page header. */
 export const Views = () => {
   const [tab, setTab] = useState<Tab>('medications')
   return (

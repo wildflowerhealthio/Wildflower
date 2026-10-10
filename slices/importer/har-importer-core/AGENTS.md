@@ -103,7 +103,7 @@ enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
   and broke `lifelabs-source`'s date parse — so add a leaf shape before loosening
   `freeText`, and extend the example table in `shapes.test.ts` when you touch a
   pattern. `redact.ts` is the policy and the derivation loop; `leaves.ts` the
-  traversal. See [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md).
+  traversal. See [Anonymization Explanation](../../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md).
 - `src/har-settings.ts` — **`HarSettings`** `{ disabledKinds }`, default the
   empty list: the kind names turned off for an import. Stored as the
   _disabled_ list so a newly registered kind is on by default. A pre-decode
@@ -139,7 +139,7 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
   the three seams meet here.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
   `FileImporter` contract this binding is built on.
-- [har-importer-react AGENTS.md](../har-importer-react/AGENTS.md) — the HAR UI
+- [har-importer-react AGENTS.md](../../../apps/importer/har-importer-react/AGENTS.md) — the HAR UI
   over this importer.
 - [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md) — the
   `fhirR4Source` descriptor whose pre-adopted kinds the pool flattens.

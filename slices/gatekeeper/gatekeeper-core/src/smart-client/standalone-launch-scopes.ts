@@ -1,7 +1,7 @@
 /**
  * The scope ceiling every Wildflower standalone-launch page asks for.
  *
- * Both seeded public clients — `wildflower-server-docs` (migration 0007) and
+ * Both seeded public clients — `server-docs-web`'s console client (migration 0007, rekeyed by 0028) and
  * `launcher-web`'s launcher client (migration 0012, rekeyed by 0026) — register the *same* `allowed_scopes`,
  * and `db/clients.rs` has a test that fails if one migration gains a scope the
  * other lacks. The browser side is the same story, so the list lives here once

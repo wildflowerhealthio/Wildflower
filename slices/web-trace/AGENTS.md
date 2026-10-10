@@ -30,16 +30,16 @@ The FHIR encoding of a trace cannot live anywhere it already had a home:
   package in it knows about FHIR.
 
 It is consumed by both the collectors and the HAR packages (`http-archive`,
-`har-importer-core`, `har-recorder-core`, `har-anonymizer-core`), so it has to
+`har-importer-core`, `har-recorder-core`, `har-anonymizer-core-js`), so it has to
 sit below all of them.
 
 ## Guardrails
 
 - **Redaction happens at the export boundary and nowhere else.** Capture is
   lossless — it is the user's own device and their own data. A change under
-  `har-anonymizer-core/src/` (moved from `web-trace-core/src/pseudonymizer/` in
+  `har-anonymizer-core-js/src/` (moved from `web-trace-core/src/pseudonymizer/` in
   M2 of #578) changes what leaves the device; read the
-  [Anonymization Explanation](../anonymizer/docs/Anonymization%20Explanation.md) first.
+  [Anonymization Explanation](../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md) first.
 - **A trace never claims to know what the sniffer did not observe.** There is no
   request method, no request headers, and no request body; anything that needs
   one says it is missing rather than guessing.

@@ -5,7 +5,7 @@ name: Tauri Release — Prepare
 # `apps/host/host-app/src-tauri/tauri.conf.json`, its `Cargo.toml`
 # (plus `Cargo.lock`), the iOS `Info.plist`, the two Pebble apps'
 # `package.json` manifests, and rewrites
-# `apps/marketing-website/public/versions.json`,
+# `apps/wildflower-site/marketing-site-web/public/versions.json`,
 # then opens a PR back to the dispatched branch. A human reviews and merges
 # the PR the same way as any other change — no direct push to a protected
 # branch. Tagging and the platform builds happen in Tauri Release — Publish,
@@ -174,7 +174,7 @@ jobs:
                 "windows-x86_64":   { url: $windows },
                 "linux-x86_64":     { url: $linux }
               }
-            }' > apps/marketing-website/public/versions.json
+            }' > apps/wildflower-site/marketing-site-web/public/versions.json
 
       - name: Generate changelog and prepend to CHANGELOG.md
         # Every commit since the previous `v*` tag (or the whole history on the
@@ -246,7 +246,7 @@ jobs:
           vp install
           vp fmt \
             apps/host/host-app/CHANGELOG.md \
-            apps/marketing-website/public/versions.json
+            apps/wildflower-site/marketing-site-web/public/versions.json
           vp run lint:docs
 
       - name: Create release branch, commit and push
@@ -264,7 +264,7 @@ jobs:
             apps/host/host-app/src-tauri/gen/apple/host-app_iOS/Info.plist \
             apps/watch-lifts/watch-lifts-watchapp/package.json \
             apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json \
-            apps/marketing-website/public/versions.json \
+            apps/wildflower-site/marketing-site-web/public/versions.json \
             apps/host/host-app/CHANGELOG.md
           if git diff --cached --quiet; then
             echo "::error::No version-bump changes to commit. Was the workspace already at $tag?"
@@ -298,7 +298,7 @@ jobs:
             printf -- '- `apps/host/host-app/src-tauri/Cargo.toml` (+ `Cargo.lock`)\n'
             printf -- '- `apps/host/host-app/src-tauri/gen/apple/host-app_iOS/Info.plist`\n'
             printf -- '- `apps/watch-lifts/watch-lifts-watchapp/package.json` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json` (Pebble version `%s`)\n' "$pebble_version"
-            printf -- '- `apps/marketing-website/public/versions.json`\n'
+            printf -- '- `apps/wildflower-site/marketing-site-web/public/versions.json`\n'
             printf -- '- `apps/host/host-app/CHANGELOG.md` (prepended with the section below)\n\n'
             printf '## Changes since previous release\n\n'
             cat /tmp/release-commits.md

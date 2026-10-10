@@ -8,7 +8,7 @@ the slice is layered the way it is, read
 worked examples throughout.
 
 A format is registered with exactly **two static edits** — its importer entry in
-`importer-core`'s closed `formatRegistry`, and its `SettingsPicker` in
+`importer-core-js`'s closed `formatRegistry`, and its `SettingsPicker` in
 `importer-react`'s registry on top of it — because the slice has no runtime
 registry. Everything before those edits lives in a new `*-importer-core` binding
 (and its `*-importer-react` settings UI) built on `importer-fundamentals`'
@@ -18,7 +18,7 @@ registry. Everything before those edits lives in a new `*-importer-core` binding
 
 The importer slice mirrors the collector slice: a resource-agnostic
 **fundamentals** layer (`importer-fundamentals`), a per-format **binding** (core +
-React), a pure **core** (`importer-core`: the registry and the batch machinery),
+React), a pure **core** (`importer-core-js`: the registry and the batch machinery),
 and a **shell** (`importer-react`). A new format adds the binding and the two
 registry entries; it touches neither `importer-fundamentals` nor
 `http-extraction`. There is **no per-format review UI**: the shell renders every
@@ -36,7 +36,7 @@ resources, plus a note per thing that did not become a resource.
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
 | Source file     | the `sourceFileFormat` you state               | minted inside `decode` by `DecodeFunction.make`               |
 | Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)    |
-| Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
+| Registry entry  | `importer-core-js/src/registry.ts`             | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
 | Picker entry    | `importer-react/src/registry.ts`               | the same key's `SettingsPicker`                               |
 
 ## When a format is _not_ HTTP traffic
@@ -116,7 +116,7 @@ Three obligations:
 ## 2. The settings
 
 `TSettings` is the format's per-import knobs; `defaultSettings` seeds
-`importer-core`'s `FormatSettings` record. Settings are **pre-decode input**: the
+`importer-core-js`'s `FormatSettings` record. Settings are **pre-decode input**: the
 shell mounts the format's `SettingsPicker` above its sections in the preview, and
 a change re-runs `decode` on that format's files from their retained bytes.
 Anything the user should be able to change about _how_ a file decodes is a
@@ -129,7 +129,7 @@ review state besides the shell's per-resource selection.
 There is no `persist` field. Every FHIR-targeting importer writes through the
 shell's one shared `persistBatchBundle` (`fhir-r4/clients`), so a binding brings
 no write sink and names no write client — `FileImporter` takes no `R` parameter.
-`importer-core`'s `planFormatWrite` turns a format's reviewed selection into the
+`importer-core-js`'s `planFormatWrite` turns a format's reviewed selection into the
 exact list of resources to write, and the shell sends them as one `POST /` batch
 bundle per format. The confirm adds nothing to any resource: the `meta.source`
 links are already there, stamped by the decode.
@@ -269,15 +269,15 @@ with nothing on a prototype to lose.
 `detect` is the routing decision at the picker: the shell tries every registered
 format's `detect` on the picked bytes, and the first match wins
 (`FormatDetector.claiming` in `importer-fundamentals`, `groupByFormat` in
-`importer-core`). Keep it syntactic — an extension or a magic-bytes sniff — so
+`importer-core-js`). Keep it syntactic — an extension or a magic-bytes sniff — so
 the full parse still runs only in `decodeFileSet`. Your `format` and `detect`
 together are all `FormatDetector.Type` asks for, which is how the picker sniffs
 a file without naming your settings type.
 
 ## 6. Register
 
-**The importer half, in `importer-core`.** Add the binding package as a
-dependency of `importer-core`, run `vp install`, and extend four constructs —
+**The importer half, in `importer-core-js`.** Add the binding package as a
+dependency of `importer-core-js`, run `vp install`, and extend four constructs —
 all mapped or exhaustive types over `FormatKind`, so a format missed in any of
 them **fails to compile**:
 
@@ -324,7 +324,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
 
 `BoundFormat<K>` requires every part typed against the format's `FormatSettings`
 entry, so a format missing its settings picker **fails to compile** rather than
-at runtime. The read and write halves need no new branch: `importer-core`
+at runtime. The read and write halves need no new branch: `importer-core-js`
 dispatches generically (`<K extends FormatKind>(kind: K)` keeps `registry[kind]`
 and `settings[kind]` correlated), and the confirm is format-blind.
 
@@ -362,7 +362,7 @@ is a no-op here.
   pick-review-confirm pipeline.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
   `FileImporter` contract, the source-file seam, and the `StagedImport` model.
-- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the closed registry and
+- [importer-core-js AGENTS.md](../../../apps/importer/importer-core-js/AGENTS.md) — the closed registry and
   the batch machinery the two registry edits feed.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the worked HAR
   binding this recipe generalizes.

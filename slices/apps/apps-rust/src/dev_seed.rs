@@ -6,7 +6,7 @@
 //! Loader, Lifting) ship as rows served from
 //! <https://wildflowerhealth.io> (apps migration
 //! `0005_first_party_apps_to_cloud`). That is the right production target and
-//! the wrong development one: a developer editing `apps/medications-app` wants
+//! the wrong development one: a developer editing `apps/medications/medications-web` wants
 //! the homescreen tile to open the vite dev server they are running, not the
 //! last deploy of the public site.
 //!
@@ -35,9 +35,15 @@ use persistence_rust::DieselPool;
 
 use crate::db::SqliteAppsStore;
 
-/// The Lifting dev tile's OAuth client: a random id (`openssl rand -hex 16`),
-/// not the tile id. gatekeeper-rust's `seed_dev_app_clients` registers it, and
-/// `apps/lifting/lifting-web/src/config.ts` launches as it under the dev server.
+/// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
+/// tile ids. gatekeeper-rust's `seed_dev_app_clients` registers each (but
+/// Server Docs', whose console signs in as its production client), and each
+/// app's `src/config.ts` launches as its own under the dev server.
+const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
+const SERVER_DOCS_DEV_CLIENT_ID: &str = "022dcbd37461a19669e24caf6345e8bb";
+const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
+const HEALTH_VIEWER_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 
 /// One debug-only row: an app id, its display fields, its OAuth client, and the
@@ -87,18 +93,18 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
 /// The shape of [`DEV_APP_PORTS_JSON`] — one port per dev app id.
 #[derive(serde::Deserialize)]
 struct DevAppPorts {
-    #[serde(rename = "medications-app-dev")]
-    medications_app_dev: i32,
-    #[serde(rename = "web-server-docs-dev")]
-    web_server_docs_dev: i32,
-    #[serde(rename = "importer-app-dev")]
-    importer_app_dev: i32,
+    #[serde(rename = "medications-dev")]
+    medications_dev: i32,
+    #[serde(rename = "server-docs-dev")]
+    server_docs_dev: i32,
+    #[serde(rename = "importer-dev")]
+    importer_dev: i32,
     #[serde(rename = "ohif-viewer-dev")]
     ohif_viewer_dev: i32,
-    #[serde(rename = "health-viewer-app-dev")]
-    health_viewer_app_dev: i32,
-    #[serde(rename = "synthetic-data-app-dev")]
-    synthetic_data_app_dev: i32,
+    #[serde(rename = "health-viewer-dev")]
+    health_viewer_dev: i32,
+    #[serde(rename = "synthetic-data-dev")]
+    synthetic_data_dev: i32,
     #[serde(rename = "lifting-dev")]
     lifting_dev: i32,
 }
@@ -116,46 +122,46 @@ fn dev_apps() -> [DevApp; 7] {
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
         DevApp {
-            id: "medications-app-dev",
-            client_id: "medications-app-dev",
+            id: "medications-dev",
+            client_id: MEDICATIONS_DEV_CLIENT_ID,
             name: "Medications (Dev)",
-            subtitle: "Local vite dev server for apps/medications-app",
-            url: dev_launch_url(ports.medications_app_dev),
+            subtitle: "Local vite dev server for apps/medications/medications-web",
+            url: dev_launch_url(ports.medications_dev),
         },
         DevApp {
-            id: "web-server-docs-dev",
-            client_id: "web-server-docs-dev",
+            id: "server-docs-dev",
+            client_id: SERVER_DOCS_DEV_CLIENT_ID,
             name: "Server Docs (Dev)",
-            subtitle: "Local vite dev server for apps/wildflower-server-docs",
-            url: dev_launch_url(ports.web_server_docs_dev),
+            subtitle: "Local vite dev server for apps/server-docs-web",
+            url: dev_launch_url(ports.server_docs_dev),
         },
         DevApp {
-            id: "importer-app-dev",
-            client_id: "importer-app-dev",
+            id: "importer-dev",
+            client_id: IMPORTER_DEV_CLIENT_ID,
             name: "Importer (Dev)",
-            subtitle: "Local vite dev server for apps/importer-web",
-            url: dev_launch_url(ports.importer_app_dev),
+            subtitle: "Local vite dev server for apps/importer/importer-web",
+            url: dev_launch_url(ports.importer_dev),
         },
         DevApp {
             id: "ohif-viewer-dev",
             client_id: "ohif-viewer-dev",
             name: "Imaging (Dev)",
-            subtitle: "Local preview server for apps/ohif-viewer",
+            subtitle: "Local preview server for apps/ohif-viewer-web",
             url: ohif_viewer_dev_url(ports.ohif_viewer_dev),
         },
         DevApp {
-            id: "health-viewer-app-dev",
-            client_id: "health-viewer-app-dev",
+            id: "health-viewer-dev",
+            client_id: HEALTH_VIEWER_DEV_CLIENT_ID,
             name: "Health Viewer (Dev)",
-            subtitle: "Local vite dev server for apps/health-viewer",
-            url: dev_launch_url(ports.health_viewer_app_dev),
+            subtitle: "Local vite dev server for apps/health-viewer/health-viewer-web",
+            url: dev_launch_url(ports.health_viewer_dev),
         },
         DevApp {
-            id: "synthetic-data-app-dev",
-            client_id: "synthetic-data-app-dev",
+            id: "synthetic-data-dev",
+            client_id: SYNTHETIC_DATA_DEV_CLIENT_ID,
             name: "Synthetic Data (Dev)",
-            subtitle: "Local vite dev server for apps/synthetic-data-app",
-            url: dev_launch_url(ports.synthetic_data_app_dev),
+            subtitle: "Local vite dev server for apps/synthetic-data/synthetic-data-web",
+            url: dev_launch_url(ports.synthetic_data_dev),
         },
         DevApp {
             id: "lifting-dev",
@@ -354,12 +360,12 @@ mod tests {
         let store = SqliteAppsStore::new(pool).unwrap();
 
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
-        let port = ports.health_viewer_app_dev;
-        let registration = dev_row(&store, "health-viewer-app-dev");
+        let port = ports.health_viewer_dev;
+        let registration = dev_row(&store, "health-viewer-dev");
         assert_eq!(registration.name, "Health Viewer (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
-            Some("Local vite dev server for apps/health-viewer"),
+            Some("Local vite dev server for apps/health-viewer/health-viewer-web"),
         );
         assert_eq!(
             registration.url.to_string(),
@@ -374,12 +380,12 @@ mod tests {
         let store = SqliteAppsStore::new(pool).unwrap();
 
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
-        let port = ports.synthetic_data_app_dev;
-        let registration = dev_row(&store, "synthetic-data-app-dev");
+        let port = ports.synthetic_data_dev;
+        let registration = dev_row(&store, "synthetic-data-dev");
         assert_eq!(registration.name, "Synthetic Data (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
-            Some("Local vite dev server for apps/synthetic-data-app"),
+            Some("Local vite dev server for apps/synthetic-data/synthetic-data-web"),
         );
         assert_eq!(
             registration.url.to_string(),
@@ -418,11 +424,13 @@ mod tests {
         let store = SqliteAppsStore::new(pool).unwrap();
 
         for (id, client_id) in [
-            ("medications-app", "medications-app"),
-            ("importer-app", "importer-app"),
+            ("medications", "9769f8b274370708d0d3ebb2e3e59b7c"),
+            ("importer", "165cd26573e5ac72378e6ad2d2198330"),
             ("ohif-viewer", "ohif-viewer"),
             ("lifting", "bdf9fc5cb5a28c6683b49896b0ef8a75"),
-            ("health-viewer-app", "health-viewer-app"),
+            ("health-viewer", "474e103de61f9141c4b640d59bfa130e"),
+            ("synthetic-data", "225ba6af034a3acec6be7ff8010df67f"),
+            ("server-docs", "664a01e8614050cd82ffe90350b81413"),
         ] {
             let registration = store.find_app(id).unwrap().expect("migrated row");
             assert_eq!(registration.client_id.as_deref(), Some(client_id));
@@ -469,7 +477,7 @@ mod tests {
         diesel::sql_query(
             "INSERT INTO app_registrations \
                  (id, position, on_homescreen, name, subtitle, url, client_id, requires_tunnel) \
-             VALUES ('medications-app-dev', 100, 0, 'My Meds', 'Mine', \
+             VALUES ('medications-dev', 100, 0, 'My Meds', 'Mine', \
                      'https://example.test/my-meds', NULL, 1)",
         )
         .execute(&mut conn)
@@ -478,7 +486,7 @@ mod tests {
 
         seed_dev_apps(pool.clone()).unwrap();
 
-        let registration = dev_row(&store, "medications-app-dev");
+        let registration = dev_row(&store, "medications-dev");
         assert_eq!(
             registration.url.to_string(),
             "https://example.test/my-meds",
@@ -499,8 +507,8 @@ mod tests {
         // A second boot must be just as inert, and the sibling dev app is
         // unaffected by its neighbour's collision.
         seed_dev_apps(pool).unwrap();
-        assert_eq!(dev_row(&store, "medications-app-dev").name, "My Meds");
-        let sibling = dev_row(&store, "web-server-docs-dev");
+        assert_eq!(dev_row(&store, "medications-dev").name, "My Meds");
+        let sibling = dev_row(&store, "server-docs-dev");
         assert_eq!(sibling.url.to_string(), dev_apps()[1].url);
     }
 }

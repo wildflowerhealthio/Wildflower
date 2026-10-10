@@ -5,7 +5,7 @@ below both the importer (a dialect parses it into records) and the anonymizer
 (it masks the runs and downloads them). No DOM, no `fs`, no React, no extraction
 library.
 
-Moved out of `pdf-anonymizer-core` into the `file-formats` slice so the
+Moved out of `pdf-anonymizer-core-js` into the `file-formats` slice so the
 LifeLabs importer dialect could consume the schema without depending on the
 anonymizer.
 
@@ -41,7 +41,7 @@ lives in `positioned-text-web`. Never imports `pdf-anonymizer-*`,
 - [slices/file-formats AGENTS.md](../AGENTS.md) — the slice's role and layering.
 - [positioned-text-web AGENTS.md](../positioned-text-web/AGENTS.md) — the pdfjs
   extraction seam that produces this schema.
-- [pdf-anonymizer-core AGENTS.md](../../anonymizer/pdf-anonymizer-core/AGENTS.md)
+- [pdf-anonymizer-core-js AGENTS.md](../../../apps/importer/anonymizer/pdf-anonymizer-core-js/AGENTS.md)
   — the masking engine that consumes it.
 - [lifelabs-pdf-importer-core AGENTS.md](../../importer/lifelabs-pdf-importer-core/AGENTS.md)
   — the dialect that parses it.

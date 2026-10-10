@@ -15,6 +15,14 @@ The slice mirrors the collector slice's shape: a resource-agnostic
 pure **core** (the registry and the batch machinery) and a **shell**. See the [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
 before adding a format.
 
+The slice keeps what the Importer shares with the Synthetic Data Loader, which
+proves its generators through the real importer: `importer-fundamentals` and
+the format bindings (`har-importer-core`, `lifelabs-pdf-importer-core`,
+`dicom-importer-core`). The pure core, the shell, the format UIs and the
+Importer web app are used by the Importer alone, so they live with it in
+[apps/importer](../../apps/importer/AGENTS.md); the roles below span both
+folders.
+
 Part of the offline FHIR HAR importer epic (#489).
 
 ## Package roles
@@ -47,7 +55,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   response that yielded nothing), under the HAR source-file coding its importer
   mints from inside `decode`. The kind toggles are a _setting_
   (`HarSettings.disabledKinds`), applied inside `decode` too.
-- **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
+- **[`har-importer-react`](../../apps/importer/har-importer-react/AGENTS.md)** (the HAR UI) —
   `HarSettingsPicker`, the whole-import kind toggles grouped by source. The
   format has no review UI of its own; the shell's generalized sectioned
   review covers it.
@@ -60,7 +68,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   per report the PDF carries; this format makes no HTTP routing decisions (no
   response-kind recognition; this format is documents, not archived HTTP
   traffic).
-- **[`lifelabs-pdf-importer-react`](./lifelabs-pdf-importer-react/AGENTS.md)**
+- **[`lifelabs-pdf-importer-react`](../../apps/importer/lifelabs-pdf-importer-react/AGENTS.md)**
   (the LifeLabs PDF UI) — `LifeLabsPdfSettingsPicker` (the report's time zone).
 - **[`dicom-importer-core`](./dicom-importer-core/AGENTS.md)** (the DICOM
   binding) — `dicomImporter` for format `'dicom'`: byte-level `.dcm`
@@ -71,9 +79,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   ServiceRequest / ImagingStudy). The one format that states a **`groupBy`**:
   its decode groups a pick by `StudyInstanceUID` (and patient) and yields one
   `ImagingStudy` per study, with one source file per file.
-- **[`dicom-importer-react`](./dicom-importer-react/AGENTS.md)** (the DICOM
+- **[`dicom-importer-react`](../../apps/importer/dicom-importer-react/AGENTS.md)** (the DICOM
   UI) — `DicomSettingsPicker` (the acquiring equipment's time zone).
-- **[`importer-core`](./importer-core/AGENTS.md)** (the pure core) — the closed
+- **[`importer-core-js`](../../apps/importer/importer-core-js/AGENTS.md)** (the pure core) — the closed
   importer registry (`FormatKind`, `FormatSettings`, `BoundFormat<K>`,
   `formatRegistry`, `defaultFormatSettings`, and `formatKinds` derived from the
   registry) and the batch machinery over it: `groupByFormat` splits a pick by
@@ -84,18 +92,18 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   re-runs one format's files from their retained picks under new settings, and
   `planFormatWrite` turns a format's reviewed selection into the exact resource
   list to write. No DOM, no React, no client.
-- **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
+- **[`importer-react`](../../apps/importer/importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
-  the React half of the registry (each `importer-core` importer spread with
+  the React half of the registry (each `importer-core-js` importer spread with
   that format's `SettingsPicker`) and the generalized sectioned review every format
   shares (per-resource include/edit with the inline JSON `ResourceEditor`),
   plus `ServerSourceFileList`, the uploaded-source-files pick source the
-  anonymizer slice's shell takes through its `serverSource` slot.
+  anonymizer's shell takes through its `serverSource` slot.
 
 A host that provides the FHIR write client and the authed runner sits above
 `importer-react` and mounts `ImporterScreen` — the Importer web app pairs it
-with the anonymizer slice's `AnonymizerScreen`
-([slices/anonymizer](../anonymizer/AGENTS.md), home of the HAR anonymizer's
+with the anonymizer's `AnonymizerScreen`
+([apps/importer/anonymizer](../../apps/importer/anonymizer/AGENTS.md), home of the HAR anonymizer's
 engine and panel) under one Import | Anonymize tabstrip.
 
 ## Why this slice is layered this way
@@ -134,7 +142,7 @@ sits above `http-extraction` and below every binding, exactly as
   **preview** — `decode` yields the actual resources, sectioned, so the
   reviewer sees them and can opt any of them out or edit them inline;
   **writes** still only run at confirm, and confirm writes exactly those
-  reviewed objects (`importer-core`'s `planFormatWrite`) with no re-parse — the same
+  reviewed objects (`importer-core-js`'s `planFormatWrite`) with no re-parse — the same
   "is the same object" argument the anonymizer's preview makes. This split
   is the whole point; do not collapse it. A settings change (a HAR kind
   toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —
@@ -147,7 +155,7 @@ sits above `http-extraction` and below every binding, exactly as
   mints the source file it came from, because the id is a hash of its bytes and its
   name. The picker runs each registered format's `detect` on every
   drop and yields the pick tagged with the first format that claims it, so
-  a batch may span formats — `importer-core`'s `readBatch` groups the pick by
+  a batch may span formats — `importer-core-js`'s `readBatch` groups the pick by
   format and runs each format's own batch `decode` under that format's
   settings. A format's `decode` mints its own source file `DocumentReference`
   for every pick, lists it among the reviewed sections, and stamps every
@@ -159,7 +167,7 @@ sits above `http-extraction` and below every binding, exactly as
   what they make up. The write itself is format-blind — one shared
   `persistBatchBundle` at the shell.
 - **The registry is closed and compile-time.** The importer registry is
-  `importer-core`'s literal `{ har, 'lifelabs-pdf', dicom }`, and
+  `importer-core-js`'s literal `{ har, 'lifelabs-pdf', dicom }`, and
   `importer-react`'s registry spreads each entry with that format's
   `SettingsPicker` — composition, not a subclass, so a field added to
   `FileImporter` cannot be silently dropped on the way through. Every slot is a
@@ -192,17 +200,17 @@ sits above `http-extraction` and below every binding, exactly as
   — the checklist for a new format binding.
 - [importer-fundamentals AGENTS.md](./importer-fundamentals/AGENTS.md) — the
   `FileImporter` contract, the source-file seam, and the `StagedImport` model.
-- [importer-core AGENTS.md](./importer-core/AGENTS.md) — the closed importer
+- [importer-core-js AGENTS.md](../../apps/importer/importer-core-js/AGENTS.md) — the closed importer
   registry and the pure batch machinery the shell drives.
 - [har-importer-core AGENTS.md](./har-importer-core/AGENTS.md) — the HAR binding's
   decode, pool, and source-file coding.
-- [har-importer-react AGENTS.md](./har-importer-react/AGENTS.md) — the HAR
+- [har-importer-react AGENTS.md](../../apps/importer/har-importer-react/AGENTS.md) — the HAR
   settings picker (the response-kind toggles).
 - [dicom-importer-core AGENTS.md](./dicom-importer-core/AGENTS.md) — the DICOM
   binding's detect, source file, and decode.
-- [dicom-importer-react AGENTS.md](./dicom-importer-react/AGENTS.md) — the DICOM
+- [dicom-importer-react AGENTS.md](../../apps/importer/dicom-importer-react/AGENTS.md) — the DICOM
   settings picker (the equipment time zone).
-- [importer-react AGENTS.md](./importer-react/AGENTS.md) — the shell, the
+- [importer-react AGENTS.md](../../apps/importer/importer-react/AGENTS.md) — the shell, the
   registry's React half, and the pick-review-confirm flow.
 - [slices/http-extraction/AGENTS.md](../http-extraction/AGENTS.md) — the
   vocabulary and source packages the HAR importer recognizes and extracts with.

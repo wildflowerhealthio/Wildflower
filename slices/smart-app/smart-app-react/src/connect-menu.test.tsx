@@ -22,7 +22,7 @@ vi.mock('fhir-r4-react/smart', async (importOriginal) => {
 
 const PROPS = {
   target: 'fhir-r4',
-  clientId: 'medications-app',
+  clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
   scope: 'launch openid fhirUser',
   redirectUri: 'https://app.example/',
 } as const
@@ -112,7 +112,7 @@ describe('ConnectMenu', () => {
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
     expect(startStandaloneLaunchMock).toHaveBeenCalledWith({
       iss: picked.url,
-      clientId: 'medications-app',
+      clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
       scope: 'launch openid fhirUser',
       redirectUri: 'https://app.example/',
     })
@@ -583,7 +583,7 @@ describe('ConnectMenu, what the page arrived with', () => {
 describe('ConnectMenu, the Local Network Access hint', () => {
   // The published site is served over https; jsdom's own page is plain http.
   const onPublishedSite = (): void => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications-app/'))
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications/'))
   }
 
   afterEach(() => {
@@ -676,7 +676,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
   }
 
   it('refuses a SMART launch against it, saying why, on the published site', async () => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications-app/'))
+    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications/'))
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 

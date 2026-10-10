@@ -69,5 +69,5 @@ jsdom.
 - [apps/watch-lifts AGENTS.md](../AGENTS.md) — the umbrella, and the core
 - [apps/fhir-sync-pebble/fhir-sync-pebble-web AGENTS.md](../../fhir-sync-pebble/fhir-sync-pebble-web/AGENTS.md) —
   the template app
-- [apps/github-pages README](../../github-pages/README.md) — how the site is
+- [apps/wildflower-site/wildflower-site-web README](../../wildflower-site/wildflower-site-web/README.md) — how the site is
   assembled

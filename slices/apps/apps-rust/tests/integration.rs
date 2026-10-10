@@ -135,12 +135,13 @@ async fn fresh_install_lists_the_default_set() {
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
-            "medications-app",
-            "web-server-docs",
-            "importer-app",
+            "medications",
+            "server-docs",
+            "importer",
             "ohif-viewer",
             "lifting",
-            "health-viewer-app",
+            "health-viewer",
+            "synthetic-data",
         ],
     );
 }
@@ -288,11 +289,12 @@ async fn home_screen_reorders_and_disables_an_app() {
         { "id": "growth-chart", "onHomescreen": true },
         { "id": "medication-viewer", "onHomescreen": true },
         { "id": "precise-hbr", "onHomescreen": true },
-        { "id": "medications-app", "onHomescreen": true },
-        { "id": "web-server-docs", "onHomescreen": true },
-        { "id": "importer-app", "onHomescreen": true },
+        { "id": "medications", "onHomescreen": true },
+        { "id": "server-docs", "onHomescreen": true },
+        { "id": "importer", "onHomescreen": true },
         { "id": "ohif-viewer", "onHomescreen": true },
-        { "id": "health-viewer-app", "onHomescreen": true },
+        { "id": "health-viewer", "onHomescreen": true },
+        { "id": "synthetic-data", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -313,11 +315,12 @@ async fn home_screen_reorders_and_disables_an_app() {
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
-            "medications-app",
-            "web-server-docs",
-            "importer-app",
+            "medications",
+            "server-docs",
+            "importer",
             "ohif-viewer",
-            "health-viewer-app",
+            "health-viewer",
+            "synthetic-data",
         ],
     );
     let lifting = arr.iter().find(|v| v["id"] == "lifting").unwrap();

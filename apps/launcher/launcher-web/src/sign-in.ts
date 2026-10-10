@@ -3,7 +3,7 @@
  *
  * `main-web` signs in with the **SMART standalone launch** in
  * `gatekeeper-core/smart-client` — the same PKCE redirect flow the server-docs
- * console runs (`apps/wildflower-server-docs/src/main.ts`), against whichever
+ * console runs (`apps/server-docs-web/src/main.ts`), against whichever
  * server `?server=` names. Opened with a SMART launch instead (`?iss=`, with
  * the EHR's `launch` when there is one, as the base opens a server's
  * launcher), it signs in to the server `iss` names, carrying that `launch`
@@ -317,7 +317,7 @@ const serverKindForSession = (session: Session): ServerKind => {
  * 401 loop. A response that reported no lifetime gets no timer, matching
  * {@link authStateForSession}'s `HostAuthed`.
  *
- * Mirrors `scheduleExpiryNotice` in `apps/wildflower-server-docs/src/main.ts`.
+ * Mirrors `scheduleExpiryNotice` in `apps/server-docs-web/src/main.ts`.
  * Returns a canceller: this entry signs in once per page load, so it is here for
  * symmetry and tests rather than a re-arm.
  */

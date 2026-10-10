@@ -1,0 +1,44 @@
+{
+  "name": "health-viewer-core-js",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The health viewer's assembly: the closed list of domain sources a record is read through (observations, medications), the catalogue panel's grouping and search, the x-axis range presets, and the URL codec a shared link round-trips through. Chart math lives in health-viewer-fundamentals; what a record means lives in each domain package. No DOM, no platform imports.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "health-viewer-fundamentals": "workspace:*",
+    "health-viewer-medications": "workspace:*",
+    "health-viewer-observations": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "medication-core": "workspace:*",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "health-viewer-fundamentals": "workspace:*",
+    "health-viewer-medications": "workspace:*",
+    "health-viewer-observations": "workspace:*",
+    "medication-core": "workspace:*"
+  }
+}

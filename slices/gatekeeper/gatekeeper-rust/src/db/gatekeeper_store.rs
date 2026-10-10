@@ -634,8 +634,12 @@ mod tests {
             "the importer widening was skipped, leaving 0008's set",
         );
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0015");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0015"),
+        )
+        .expect("upgrade through 0015");
 
         assert_eq!(
             column_for_client(&mut conn, "allowed_scopes", "importer-app")[0].name,
@@ -698,8 +702,12 @@ mod tests {
         .execute(&mut conn)
         .expect("change both rows");
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through the repairs");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0016"),
+        )
+        .expect("upgrade through the repairs");
 
         for client_id in ["importer-app", "ohif-viewer"] {
             assert_eq!(
@@ -978,8 +986,12 @@ mod tests {
             "no migration through 0021 seeds health-viewer-app"
         );
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("upgrade through 0022");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0022"),
+        )
+        .expect("upgrade through 0022");
 
         assert_eq!(
             column_for_client(&mut conn, "redirect_uris", "health-viewer-app")[0].name,
@@ -1102,6 +1114,126 @@ mod tests {
             column_for_client(&mut conn, "client_id", "lifting-app-dev").len(),
             1
         );
+    }
+
+    /// An install already at `0027` re-keys the site's clients when `0028` runs:
+    /// each production client takes its random id and its redirect moves to the
+    /// product's path, each dev client takes its random id, what was issued to
+    /// them (here a launch) follows, and the Synthetic Data Loader gains a
+    /// production client. Reverting `0028` restores the old ids and paths and
+    /// removes that client.
+    #[test]
+    fn an_install_already_at_0027_rekeys_the_site_app_clients() {
+        use diesel::connection::SimpleConnection as _;
+        const SYNTHETIC_DATA: &str = "225ba6af034a3acec6be7ff8010df67f";
+        // (old id, new id, the redirect it holds after `0028`).
+        let production = [
+            (
+                "medications-app",
+                "9769f8b274370708d0d3ebb2e3e59b7c",
+                r#"["https://wildflowerhealth.io/medications/"]"#,
+            ),
+            (
+                "importer-app",
+                "165cd26573e5ac72378e6ad2d2198330",
+                r#"["https://wildflowerhealth.io/importer/"]"#,
+            ),
+            (
+                "health-viewer-app",
+                "474e103de61f9141c4b640d59bfa130e",
+                r#"["https://wildflowerhealth.io/health-viewer/"]"#,
+            ),
+            (
+                "wildflower-server-docs",
+                "664a01e8614050cd82ffe90350b81413",
+                r#"["https://wildflowerhealth.io/server-docs/"]"#,
+            ),
+        ];
+        let dev = [
+            ("medications-app-dev", "4be2ee91360733fdcb99b43a3822de5f"),
+            ("importer-app-dev", "57268ff88aea38d6a22de56ae53e2c28"),
+            ("health-viewer-app-dev", "e7efc7c805f5f8f640bb3b3d48a2d7aa"),
+            ("synthetic-data-app-dev", "07a31e58db3367afda5c6480e03ed993"),
+        ];
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0027"),
+        )
+        .expect("migrate to 0027");
+        let redirects_at_0027: Vec<String> = production
+            .iter()
+            .map(|(old, _, _)| {
+                column_for_client(&mut conn, "redirect_uris", old)[0]
+                    .name
+                    .clone()
+            })
+            .collect();
+        for (old, _) in dev {
+            conn.batch_execute(&format!(
+                "INSERT INTO clients \
+                 (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+                  secret_hash, registered_at, disabled_at) \
+                 VALUES ('{old}', 'A (Dev)', 'public', '[\"http://localhost:5190/\"]', \
+                         '[\"launch\"]', '[\"authorization_code\"]', NULL, \
+                         '2024-01-01 00:00:00+00:00', NULL)"
+            ))
+            .expect("a dev client at 0027");
+        }
+        conn.batch_execute(
+            "INSERT INTO launch_contexts (nonce, client_id, patient, created_at, expires_at) \
+             VALUES ('issued', 'importer-app', 'pat-1', \
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z')",
+        )
+        .expect("a launch at 0027");
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0028");
+
+        for (old, new, redirects) in production {
+            assert!(column_for_client(&mut conn, "client_id", old).is_empty());
+            assert_eq!(
+                column_for_client(&mut conn, "redirect_uris", new)[0].name,
+                redirects,
+            );
+        }
+        for (old, new) in dev {
+            assert!(column_for_client(&mut conn, "client_id", old).is_empty());
+            assert_eq!(
+                column_for_client(&mut conn, "redirect_uris", new)[0].name,
+                r#"["http://localhost:5190/"]"#,
+            );
+        }
+        let launch: Vec<Name> = diesel::sql_query(
+            "SELECT client_id AS name FROM launch_contexts WHERE nonce = 'issued'",
+        )
+        .load(&mut conn)
+        .expect("read the launch");
+        assert_eq!(launch[0].name, "165cd26573e5ac72378e6ad2d2198330");
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", SYNTHETIC_DATA)[0].name,
+            r#"["https://wildflowerhealth.io/synthetic-data/"]"#,
+        );
+
+        let migration_0028 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0028"))
+            .expect("0028 is embedded");
+        migration_0028.revert(&mut conn).expect("revert 0028");
+        for ((old, _, _), at_0027) in production.iter().zip(&redirects_at_0027) {
+            assert_eq!(
+                &column_for_client(&mut conn, "redirect_uris", old)[0].name,
+                at_0027,
+            );
+        }
+        for (old, _) in dev {
+            assert_eq!(column_for_client(&mut conn, "client_id", old).len(), 1);
+        }
+        assert!(column_for_client(&mut conn, "client_id", SYNTHETIC_DATA).is_empty());
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

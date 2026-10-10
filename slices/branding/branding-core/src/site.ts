@@ -3,18 +3,18 @@ const SITE_ORIGIN = 'https://wildflowerhealth.io'
 
 /**
  * Deploy-contract paths for each site section. These must match the
- * `destPath` values in `apps/github-pages/src/assembly.ts` — a mismatch
+ * `destPath` values in `apps/wildflower-site/wildflower-site-web/src/assembly.ts` — a mismatch
  * breaks cross-section links on the assembled GitHub Pages site.
  */
 const SECTION_PATHS = {
   marketing: '',
-  medications: 'medications-app',
-  importer: 'importer-app',
-  serverDocs: 'wildflower-server-docs',
+  medications: 'medications',
+  importer: 'importer',
+  serverDocs: 'server-docs',
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
-  healthViewer: 'health-viewer-app',
-  syntheticData: 'synthetic-data-app',
+  healthViewer: 'health-viewer',
+  syntheticData: 'synthetic-data',
   lifting: 'lifting',
   // The WatchLifts watchapp's settings page: not a SMART app, so it has no nav
   // link and no app description.

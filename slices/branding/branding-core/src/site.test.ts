@@ -29,13 +29,13 @@ describe('SECTION_PATHS', () => {
   it('should contain exactly ten sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
-      medications: 'medications-app',
-      importer: 'importer-app',
-      serverDocs: 'wildflower-server-docs',
+      medications: 'medications',
+      importer: 'importer',
+      serverDocs: 'server-docs',
       ohifViewer: 'ohif-viewer',
       fhirSyncPebble: 'fhir-sync-pebble',
-      healthViewer: 'health-viewer-app',
-      syntheticData: 'synthetic-data-app',
+      healthViewer: 'health-viewer',
+      syntheticData: 'synthetic-data',
       lifting: 'lifting',
       watchLifts: 'watch-lifts',
       launcher: 'launcher',
@@ -49,8 +49,8 @@ describe('sectionUrl', () => {
   })
 
   it('should return absolute URLs for non-marketing sections', () => {
-    expect(sectionUrl('medications')).toBe('https://wildflowerhealth.io/medications-app')
-    expect(sectionUrl('serverDocs')).toBe('https://wildflowerhealth.io/wildflower-server-docs')
+    expect(sectionUrl('medications')).toBe('https://wildflowerhealth.io/medications')
+    expect(sectionUrl('serverDocs')).toBe('https://wildflowerhealth.io/server-docs')
     expect(sectionUrl('launcher')).toBe('https://wildflowerhealth.io/launcher')
   })
 

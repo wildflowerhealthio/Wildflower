@@ -3,7 +3,7 @@ description: >-
   Creates the Sentry release a site build reports under, uploads the source
   maps of every app that reports to Sentry, and then deletes those maps from the
   assembled site so they are never published. Runs between `vp run pack` and
-  the step that publishes apps/github-pages/dist, in both
+  the step that publishes apps/wildflower-site/wildflower-site-web/dist, in both
   deploy-github-pages.yml and pr-preview.yml.
 
 inputs:
@@ -69,12 +69,12 @@ runs:
         environment: ${{ inputs.environment }}
         release: ${{ inputs.release }}
         sourcemaps: >-
-          apps/github-pages/dist/medications-app
-          apps/github-pages/dist/importer-app
-          apps/github-pages/dist/health-viewer-app
-          apps/github-pages/dist/fhir-sync-pebble
-          apps/github-pages/dist/synthetic-data-app
-          apps/github-pages/dist/app
+          apps/wildflower-site/wildflower-site-web/dist/medications
+          apps/wildflower-site/wildflower-site-web/dist/importer
+          apps/wildflower-site/wildflower-site-web/dist/health-viewer
+          apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble
+          apps/wildflower-site/wildflower-site-web/dist/synthetic-data
+          apps/wildflower-site/wildflower-site-web/dist/app
         projects: ${{ steps.projects.outputs.ids }}
         # Sentry's GitHub integration is not installed and the checkout is
         # shallow, so there are no commits to associate.
@@ -87,10 +87,10 @@ runs:
     - name: Delete source maps from the site
       shell: bash
       run: |
-        find apps/github-pages/dist/medications-app \
-          apps/github-pages/dist/importer-app \
-          apps/github-pages/dist/health-viewer-app \
-          apps/github-pages/dist/fhir-sync-pebble \
-          apps/github-pages/dist/synthetic-data-app \
-          apps/github-pages/dist/app \
+        find apps/wildflower-site/wildflower-site-web/dist/medications \
+          apps/wildflower-site/wildflower-site-web/dist/importer \
+          apps/wildflower-site/wildflower-site-web/dist/health-viewer \
+          apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble \
+          apps/wildflower-site/wildflower-site-web/dist/synthetic-data \
+          apps/wildflower-site/wildflower-site-web/dist/app \
           -name '*.map' -type f -print -delete

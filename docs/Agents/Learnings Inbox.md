@@ -12,7 +12,7 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 ## Scalar's browser defaults reach third parties unless turned off
 
-`@scalar/api-reference` in its `web` layout (what `createApiReference` gives you) defaults `proxyUrl` to `https://proxy.scalar.com` — every "send" against a non-local target is routed through Scalar's hosted proxy, bearer token included — and `withDefaultFonts: true` pulls webfonts from `fonts.scalar.com`. Vendoring the npm package instead of the CDN script does not change either. `apps/wildflower-server-docs` sets `proxyUrl: ''` and `withDefaultFonts: false` and asserts both in `configuration.test.ts`; copy that if another page ever embeds Scalar.
+`@scalar/api-reference` in its `web` layout (what `createApiReference` gives you) defaults `proxyUrl` to `https://proxy.scalar.com` — every "send" against a non-local target is routed through Scalar's hosted proxy, bearer token included — and `withDefaultFonts: true` pulls webfonts from `fonts.scalar.com`. Vendoring the npm package instead of the CDN script does not change either. `apps/server-docs-web` sets `proxyUrl: ''` and `withDefaultFonts: false` and asserts both in `configuration.test.ts`; copy that if another page ever embeds Scalar.
 
 ## A default JSON import inlines the whole file, named imports tree-shake
 
@@ -46,7 +46,7 @@ request-time concern before assuming the split loses it.
 
 ## Adding `tsc` to a SMART app's build script fails on other packages' sources
 
-`apps/importer-web` (and the other SMART apps) set `customConditions: ["source"]`
+`apps/importer/importer-web` (and the other SMART apps) set `customConditions: ["source"]`
 in their tsconfig so `tsc` and the bundler agree on the `QueryClient` type. A
 side effect is that a package-local `tsc` also typechecks every workspace
 package's raw source under **this app's** compiler options — e.g.
@@ -61,12 +61,12 @@ which is CI's gate.
 `history.replaceState` to strip `code`/`state` once the token exchange completes
 (`replaceBrowserHistory` is on by default), so any later re-render flips the gate
 and unmounts the authenticated app. Read the URL once in a `useState` initializer
-(`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer-web`'s
+(`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer/importer-web`'s
 `AppRoot` is the worked example, with a re-render test that pins the latch.
 
 ## Source-only `exports` with no `default` condition work for workspace apps
 
-`medications-app`'s `package.json` exports `{ ".": { "source": "./src/app-root.tsx" } }` with no `default` condition. `vp install`, `vp run pack`, `vp build`, and `vp check` all tolerate this: the `source` condition is sufficient for workspace-internal resolution and Vite's dev/build pipelines. A `default` pointing at a `dist/` entry is only needed if a built consumer outside the workspace resolves the package. This pattern is useful for app packages that export a seam for aggregator-shell composition but have no standalone library build.
+`medications`'s `package.json` exports `{ ".": { "source": "./src/app-root.tsx" } }` with no `default` condition. `vp install`, `vp run pack`, `vp build`, and `vp check` all tolerate this: the `source` condition is sufficient for workspace-internal resolution and Vite's dev/build pipelines. A `default` pointing at a `dist/` entry is only needed if a built consumer outside the workspace resolves the package. This pattern is useful for app packages that export a seam for aggregator-shell composition but have no standalone library build.
 
 ## Migrating an app to branding-react chrome: stylesheet import order matters
 
@@ -82,7 +82,7 @@ duplicating them risks silent drift.
 
 ## A SMART app's `customConditions: ["source"]` blocks a `tsc` build step
 
-`apps/importer-web`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
+`apps/importer/importer-web`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
 bundler agree on which copy of `QueryClient` a slice's router context refers to.
 Under that condition a package-local `tsc` also re-typechecks other workspace
 packages' sources under this app's strict compiler options (notably
@@ -152,7 +152,7 @@ a single commit (mocked fetches in tests; a fast server in prod): no committed
 render ever observes `isFetchingNextPage === true`, so the dep array is
 identical before and after the page lands and the effect never re-fires. Add
 `data.pages.length` to the dependencies — it is the one input guaranteed to
-change once per page. See the driver in `apps/medications-app/src/app.tsx`.
+change once per page. See the driver in `apps/medications/medications-web/src/app.tsx`.
 
 ## A `freeText` pseudonym breaks any consumer that parses the value with a regex
 
@@ -191,7 +191,7 @@ the literal and fakes only the data part.
 ## OHIF builds live in `ohif-viewer-dist`, and out-of-tree plugins register via `directory`
 
 **Discovered during**: claude/zealous-planck-nxyki7 (adding the OHIF FHIR viewer to the site)
-**Learning**: OHIF/Viewers is its own pnpm 11 workspace with a ~10 min rspack build, so it is never built inside this monorepo: `wildflowerhealthio/ohif-viewer-dist` pins the upstream commits, builds, and publishes a release tarball plus digest that `apps/ohif-viewer/prebuilt.json` pins. OHIF master's `platform/app/.webpack/writePluginImportsFile.js` accepts `{ packageName, directory }` entries in `pluginConfig.json` for extensions and modes outside its workspace, which replaces the yarn-hardcoded `pnpm run cli link-extension` step the FHIR viewer guide describes. OHIF reads `app-config.js` at page load, so runtime config (router basename, data sources, SMART client ID) is overlaid at assembly time here and never needs an upstream rebuild.
+**Learning**: OHIF/Viewers is its own pnpm 11 workspace with a ~10 min rspack build, so it is never built inside this monorepo: `wildflowerhealthio/ohif-viewer-dist` pins the upstream commits, builds, and publishes a release tarball plus digest that `apps/ohif-viewer-web/prebuilt.json` pins. OHIF master's `platform/app/.webpack/writePluginImportsFile.js` accepts `{ packageName, directory }` entries in `pluginConfig.json` for extensions and modes outside its workspace, which replaces the yarn-hardcoded `pnpm run cli link-extension` step the FHIR viewer guide describes. OHIF reads `app-config.js` at page load, so runtime config (router basename, data sources, SMART client ID) is overlaid at assembly time here and never needs an upstream rebuild.
 **Suggested destination**: apps docs / Strategies
 
 ## axum `nest("/prefix", …)` drops the trailing-slash root — it escapes to the outer fallback
@@ -232,8 +232,8 @@ the literal and fakes only the data part.
 
 ## A correlated union survives registry dispatch through a generic, not a `Match` branch
 
-**Discovered during**: the importer's `importer-core` extraction (registry + batch machinery)
-**Learning**: Indexing a registry record by a union key loses the correlation between the entry and its settings: `registry[kind].decode(files, settings[kind])` with `kind: FormatKind` typechecks each side against the _union_ of every format's `decode` and settings, so the call is rejected and the usual escape is one `Match.when` branch per format. Making the helper generic in the key keeps the correlation instead — `const decodeFormat = <K extends FormatKind>(registry, settings, kind: K, files) => registry[kind].decode(files, settings[kind])` — because inside the body `K` is one format, not the union. `importer-core/src/read-batch.ts` is the worked example: adding a format now touches the registry only, with no branch to widen anywhere in the read half. The second half of the same cleanup: a descriptor's `decode` that **never fails** (a malformed file comes back as an `unreadableFiles` row, data rather than an error channel) removed every `catchAll` from the shell, since the only thing left to handle is a tag.
+**Discovered during**: the importer's `importer-core-js` extraction (registry + batch machinery)
+**Learning**: Indexing a registry record by a union key loses the correlation between the entry and its settings: `registry[kind].decode(files, settings[kind])` with `kind: FormatKind` typechecks each side against the _union_ of every format's `decode` and settings, so the call is rejected and the usual escape is one `Match.when` branch per format. Making the helper generic in the key keeps the correlation instead — `const decodeFormat = <K extends FormatKind>(registry, settings, kind: K, files) => registry[kind].decode(files, settings[kind])` — because inside the body `K` is one format, not the union. `importer-core-js/src/read-batch.ts` is the worked example: adding a format now touches the registry only, with no branch to widen anywhere in the read half. The second half of the same cleanup: a descriptor's `decode` that **never fails** (a malformed file comes back as an `unreadableFiles` row, data rather than an error channel) removed every `catchAll` from the shell, since the only thing left to handle is a tag.
 **Suggested destination**: Strategies / Effect patterns
 
 ## A computed union key is silently unchecked — a correlated record must name every key literally
@@ -399,7 +399,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## oxlint type-checks plain `.js` files anywhere in the repo, including inside a Rust crate
 
 **Discovered during**: claude/oauth-redirect-routing-9cmhrj (the wait page's `wait.js`, embedded by `gatekeeper-rust` with `include_str!`)
-**Learning**: `vp check` runs oxlint's type-aware rules over every `.js` file, so an untyped parameter counts as `any` and trips `no-unsafe-assignment`, even for a browser asset no TS package imports. JSDoc (`@param {string} x`, `/** @type {unknown} */ let body`) satisfies it without a build step. `consistent-function-scoping` also flags helpers inside an IIFE, so load such a script as `type="module"`, whose scope is already private, and keep the helpers at top level. To test the file from Vitest, read it with `readFileSync` and run it through `new Function('window', 'document', 'fetch', source)` as `apps/github-pages`' 404 test does. Under Vitest a `?raw` import of a `.css` file is an empty string.
+**Learning**: `vp check` runs oxlint's type-aware rules over every `.js` file, so an untyped parameter counts as `any` and trips `no-unsafe-assignment`, even for a browser asset no TS package imports. JSDoc (`@param {string} x`, `/** @type {unknown} */ let body`) satisfies it without a build step. `consistent-function-scoping` also flags helpers inside an IIFE, so load such a script as `type="module"`, whose scope is already private, and keep the helpers at top level. To test the file from Vitest, read it with `readFileSync` and run it through `new Function('window', 'document', 'fetch', source)` as `apps/wildflower-site/wildflower-site-web`' 404 test does. Under Vitest a `?raw` import of a `.css` file is an empty string.
 **Suggested destination**: Testing Reference or CONTRIBUTING.md (code style)
 
 ## A runtime `Schema` import in the sniffer bootstrap costs ~800 KB
@@ -491,3 +491,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: base/896-enrolment (`servers-rust`, checking the token never reaches a log)
 **Learning**: `tracing::subscriber::set_default` only applies to its own thread, and a callsite another test thread has already hit with no subscriber is cached as uninteresting, so the scoped subscriber silently misses it. The capture passed alone and failed under `cargo test`. To read log output back in a test, install the capturing subscriber once per process with `set_global_default` behind a `OnceLock`; nextest runs each test in its own process, so both runners see every event.
 **Suggested destination**: docs/Testing (a Rust testing Reference)
+
+## A moved file's relative link can resolve to the wrong file
+
+**Discovered during**: ruthmarks/move-single-purpose-slices (consolidating the site's apps into product folders)
+**Learning**: Moving `slices/<slice>/AGENTS.md` to `apps/<product>/AGENTS.md` keeps the depth, so `markdownlint`'s `relative-links` passes, but `../AGENTS.md` now names `apps/AGENTS.md` instead of `slices/AGENTS.md`. A broken-link check finds only links that no longer resolve. After a move, resolve each relative link against the file's old location, map the target through the move, and compare it with where the link lands now. A repo root built from `'..'` segments (`join(packageRoot, '..', '..')`) is invisible to a check that looks for `../` strings, and fails only at runtime (`assemble.ts` looked for builds under `apps/apps/`).
+**Suggested destination**: apps/AGENTS.md ("Moving a product in")

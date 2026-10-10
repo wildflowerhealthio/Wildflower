@@ -59,7 +59,7 @@ error is thrown while the loader's module graph evaluates, so it takes down
 every decode path at once — including the main-thread one above, which needs no
 codec.
 
-[`apps/importer-web/vite.config.ts`](../../../apps/importer-web/vite.config.ts)
+[`apps/importer/importer-web/vite.config.ts`](../../../apps/importer/importer-web/vite.config.ts)
 carries the working configuration.
 
 Only the dev server is affected. The production build resolves both kinds of
@@ -98,7 +98,7 @@ observer is cheap to leave running.
 
 ## See Also
 
-- [dicom-react AGENTS.md](../dicom-react/AGENTS.md) — the package these notes
+- [dicom-react AGENTS.md](../../../apps/importer/dicom-react/AGENTS.md) — the package these notes
   describe
 - [Learnings Inbox](../../../docs/Agents/Learnings%20Inbox.md) — where these
   started

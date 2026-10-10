@@ -114,7 +114,7 @@ describe('detectSmartSupport', () => {
 describe('startStandaloneLaunch', () => {
   const config = {
     iss: 'https://ehr.example/fhir',
-    clientId: 'medications-app',
+    clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
     scope: 'launch openid fhirUser',
     redirectUri: 'https://app.example/',
   }
@@ -128,7 +128,7 @@ describe('startStandaloneLaunch', () => {
     // The SMART variant carries the client and iss; it never names fhirServiceUrl.
     const arg = authorizeArg()
     expect(arg).toMatchObject({
-      clientId: 'medications-app',
+      clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
       scope: 'launch openid fhirUser',
       redirectUri: 'https://app.example/',
       iss: 'https://ehr.example/fhir',

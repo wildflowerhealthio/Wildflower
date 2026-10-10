@@ -57,7 +57,7 @@ describe('encodeLaunchError / decodeLaunchError', () => {
   it('survives a round trip through an actual URL', () => {
     fc.assert(
       fc.property(bodyArb, (body) => {
-        const href = launchErrorRedirect('https://wildflowerhealth.io/medications-app/', body)
+        const href = launchErrorRedirect('https://wildflowerhealth.io/medications/', body)
         const parameter = new URL(href).searchParams.get(LAUNCH_ERROR_PARAM)
         expect(parameter).not.toBeNull()
         expect(decodeLaunchError(parameter ?? '')).toEqual(Option.some(body))
@@ -124,7 +124,7 @@ describe('launchErrorRedirect', () => {
     // launched branch and fail the same single-use code forever.
     fc.assert(
       fc.property(bodyArb, text, text, (body, code, state) => {
-        const source = new URL('https://wildflowerhealth.io/medications-app/')
+        const source = new URL('https://wildflowerhealth.io/medications/')
         source.searchParams.set('code', code)
         source.searchParams.set('state', state)
         source.searchParams.set('error', 'access_denied')
@@ -152,10 +152,10 @@ describe('launchErrorRedirect', () => {
   it('preserves the target path and origin', () => {
     fc.assert(
       fc.property(bodyArb, (body) => {
-        const root = 'https://ruth.wildflowerhealth.io/importer-app/'
+        const root = 'https://ruth.wildflowerhealth.io/importer/'
         const target = new URL(launchErrorRedirect(root, body))
         expect(target.origin).toBe('https://ruth.wildflowerhealth.io')
-        expect(target.pathname).toBe('/importer-app/')
+        expect(target.pathname).toBe('/importer/')
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -295,7 +295,7 @@ describe('launchErrorBodyFor', () => {
           new Error(message),
           `?iss=${encodeURIComponent(iss)}`
         )
-        const href = launchErrorRedirect('https://wildflowerhealth.io/medications-app/', body)
+        const href = launchErrorRedirect('https://wildflowerhealth.io/medications/', body)
         const reported = launchErrorFrom(new URL(href).search)
         expect(reported?.message).toContain(message)
         expect(Reflect.get(reported ?? {}, 'iss')).toBe(iss)

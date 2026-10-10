@@ -369,7 +369,7 @@ mod tests {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let inserted = store.insert_app(&registration("app-x")).expect("inserted");
         assert_eq!(store.find_app("app-x").unwrap(), Some(inserted.clone()));
-        assert_eq!(inserted.position, 9, "the store assigns the tail position");
+        assert_eq!(inserted.position, 10, "the store assigns the tail position");
         assert!(inserted.on_homescreen);
         assert!(!inserted.is_smart(), "inserted app has no client_id");
         assert_eq!(inserted.url, launch_url("https://example.com/launch"));
@@ -396,7 +396,7 @@ mod tests {
         );
         let stored = store.find_app("app-x").unwrap().unwrap();
         assert_eq!(stored.name, "app-x", "the existing row is untouched");
-        assert_eq!(stored.position, 9);
+        assert_eq!(stored.position, 10);
     }
 
     #[test]
@@ -580,7 +580,7 @@ mod migration_tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 9, "exactly the nine seeded default apps");
+        assert_eq!(row_count, 10, "exactly the ten seeded default apps");
     }
 
     /// The port hands back the seeded registry, in display order.
@@ -655,13 +655,24 @@ mod migration_tests {
             .expect("configuration insert must succeed");
     }
 
-    /// [`SEEDED_IDS`] as an install migrated before `0015` holds them, in display
-    /// order: every seeded app but the Health Viewer, which `0015` appends after
-    /// any app the user created before upgrading.
-    fn seeded_before_0015() -> Vec<&'static str> {
+    /// [`SEEDED_IDS`] as an install migrated before `0019` holds them, in display
+    /// order (under the ids `0019` re-keys them to): every seeded app but the
+    /// Synthetic Data Loader, which `0019` appends after any app the user created
+    /// before upgrading.
+    fn seeded_before_0019() -> Vec<&'static str> {
         SEEDED_IDS
             .into_iter()
-            .filter(|id| *id != "health-viewer-app")
+            .filter(|id| *id != "synthetic-data")
+            .collect()
+    }
+
+    /// [`SEEDED_IDS`] as an install migrated before `0015` holds them, as
+    /// [`seeded_before_0019`] does, and without the Health Viewer, which `0015`
+    /// appends after any app the user created before upgrading.
+    fn seeded_before_0015() -> Vec<&'static str> {
+        seeded_before_0019()
+            .into_iter()
+            .filter(|id| *id != "health-viewer")
             .collect()
     }
 
@@ -690,29 +701,38 @@ mod migration_tests {
     }
 
     /// The first-party apps point at the published GitHub Pages site, under the
-    /// ids `0005` gave them, launching at the app root (`0016`).
+    /// ids `0019` re-keyed them to, launching at the app root (`0016`).
     #[test]
     fn first_party_apps_launch_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
         let registration = store
-            .find_app("medications-app")
+            .find_app("medications")
             .unwrap()
-            .expect("medications-app must exist under its renamed id");
-        // A first-party app's client_id equals its id.
-        assert_eq!(registration.client_id.as_deref(), Some("medications-app"));
+            .expect("medications must exist under its renamed id");
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("9769f8b274370708d0d3ebb2e3e59b7c")
+        );
         assert!(
             registration.requires_tunnel,
-            "medications-app is launched from the published site, so its `iss={{origin}}` \
+            "medications is launched from the published site, so its `iss={{origin}}` \
              FHIR target must resolve to the server's public origin",
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/medications-app/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}/fhir-r4",
         );
 
         // The old ids are fully retired.
-        for old in ["wildflower-medication", "wildflower-web-trace"] {
+        for old in [
+            "wildflower-medication",
+            "wildflower-web-trace",
+            "medications-app",
+            "web-server-docs",
+            "importer-app",
+            "health-viewer-app",
+        ] {
             assert!(store.find_app(old).unwrap().is_none(), "{old} must be gone");
         }
     }
@@ -727,11 +747,14 @@ mod migration_tests {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
         let registration = store
-            .find_app("web-server-docs")
+            .find_app("server-docs")
             .unwrap()
-            .expect("web-server-docs must exist");
-        // A first-party app's client_id equals its id.
-        assert_eq!(registration.client_id.as_deref(), Some("web-server-docs"));
+            .expect("server-docs must exist");
+        // The console's own client, which `0019` points the tile at.
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("664a01e8614050cd82ffe90350b81413")
+        );
         assert!(
             registration.requires_tunnel,
             "the console fetches from `{{origin}}`, which must resolve through the \
@@ -741,7 +764,7 @@ mod migration_tests {
         let url = registration.url.to_string();
         assert_eq!(
             url,
-            "https://wildflowerhealth.io/wildflower-server-docs/?server={origin}",
+            "https://wildflowerhealth.io/server-docs/?server={origin}",
         );
         assert!(
             !url.contains("{launch}") && !url.contains("iss="),
@@ -751,17 +774,20 @@ mod migration_tests {
 
     /// The Importer ships as a first-party app (apps migration `0006`), launched
     /// at its published Pages copy's root (`0016`) — a SMART EHR launch, unlike
-    /// the server-docs console's `?server=` target.
+    /// the server-docs console's `?server=` target, under the id and client
+    /// `0019` re-keyed it to.
     #[test]
     fn importer_launches_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
         let registration = store
-            .find_app("importer-app")
+            .find_app("importer")
             .unwrap()
-            .expect("importer-app must exist");
-        // A first-party app's client_id equals its id.
-        assert_eq!(registration.client_id.as_deref(), Some("importer-app"));
+            .expect("importer must exist");
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("165cd26573e5ac72378e6ad2d2198330")
+        );
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
@@ -769,7 +795,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 
@@ -880,6 +906,151 @@ mod migration_tests {
         assert_eq!(stored_url(&store, "lifting-dev"), edited_dev);
     }
 
+    /// An install at `0018` re-keys the site's apps in place when `0019` runs:
+    /// each tile and dev tile takes its product's id and a random client, a
+    /// user's placement stays, a launch URL the user edited is left as it is,
+    /// and the Synthetic Data Loader joins at the tail, after an app the user
+    /// created before upgrading. Reverting `0019` restores the old ids.
+    #[test]
+    fn an_install_already_at_0018_rekeys_the_site_apps_in_place() {
+        let pool = pool_migrated_through("0018");
+        let mut conn = pool.get().unwrap();
+        sql_query("UPDATE app_registrations SET on_homescreen = 0 WHERE id = 'importer-app'")
+            .execute(&mut conn)
+            .expect("the user hides the Importer");
+        let edited = "https://docs.example/?server={origin}";
+        sql_query("UPDATE app_registrations SET url = ? WHERE id = 'web-server-docs'")
+            .bind::<Text, _>(edited)
+            .execute(&mut conn)
+            .expect("the user edits the console's launch URL");
+        let before = sql_query("SELECT position FROM app_registrations WHERE id = 'importer-app'")
+            .get_result::<Position>(&mut conn)
+            .unwrap();
+        for (dev, port) in [
+            ("medications-app-dev", 5190),
+            ("web-server-docs-dev", 5192),
+            ("importer-app-dev", 5193),
+            ("health-viewer-app-dev", 5196),
+            ("synthetic-data-app-dev", 5198),
+        ] {
+            insert_registration(&mut conn, dev, Some(dev));
+            sql_query("UPDATE app_registrations SET url = ? WHERE id = ?")
+                .bind::<Text, _>(format!(
+                    "http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"
+                ))
+                .bind::<Text, _>(dev)
+                .execute(&mut conn)
+                .expect("a dev row seeded before 0019");
+        }
+        insert_registration(&mut conn, "my-app", None);
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool.clone()).expect("0019 must apply");
+        for (id, client_id) in [
+            ("medications", "9769f8b274370708d0d3ebb2e3e59b7c"),
+            ("server-docs", "664a01e8614050cd82ffe90350b81413"),
+            ("importer", "165cd26573e5ac72378e6ad2d2198330"),
+            ("health-viewer", "474e103de61f9141c4b640d59bfa130e"),
+            ("medications-dev", "4be2ee91360733fdcb99b43a3822de5f"),
+            ("server-docs-dev", "022dcbd37461a19669e24caf6345e8bb"),
+            ("importer-dev", "57268ff88aea38d6a22de56ae53e2c28"),
+            ("health-viewer-dev", "e7efc7c805f5f8f640bb3b3d48a2d7aa"),
+            ("synthetic-data-dev", "07a31e58db3367afda5c6480e03ed993"),
+            ("synthetic-data", "225ba6af034a3acec6be7ff8010df67f"),
+        ] {
+            let registration = store
+                .find_app(id)
+                .unwrap()
+                .unwrap_or_else(|| panic!("{id} re-keyed"));
+            assert_eq!(registration.client_id.as_deref(), Some(client_id), "{id}");
+        }
+        for old in [
+            "medications-app",
+            "web-server-docs",
+            "importer-app",
+            "health-viewer-app",
+            "medications-app-dev",
+            "web-server-docs-dev",
+            "importer-app-dev",
+            "health-viewer-app-dev",
+            "synthetic-data-app-dev",
+        ] {
+            assert!(store.find_app(old).unwrap().is_none(), "{old} is re-keyed");
+        }
+        let importer = store.find_app("importer").unwrap().expect("importer");
+        assert!(!importer.on_homescreen, "the user's placement stays");
+        assert_eq!(importer.position, before.position);
+        assert_eq!(
+            stored_url(&store, "importer"),
+            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}/fhir-r4",
+        );
+        assert_eq!(
+            stored_url(&store, "server-docs"),
+            edited,
+            "the user's edit stays"
+        );
+        assert_eq!(
+            stored_url(&store, "medications-dev"),
+            "http://localhost:5190/?launch={launch}&iss={origin}/fhir-r4",
+        );
+        let ids: Vec<String> = store
+            .list_registrations()
+            .unwrap()
+            .into_iter()
+            .map(|registration| registration.id)
+            .collect();
+        assert_eq!(
+            ids[ids.len() - 2..],
+            ["my-app".to_owned(), "synthetic-data".to_owned()],
+            "the Synthetic Data Loader takes the tail, after the user's app",
+        );
+
+        embedded_migration("0019")
+            .revert(&mut pool.get().unwrap())
+            .expect("revert 0019");
+        assert!(store.find_app("synthetic-data").unwrap().is_none());
+        assert_eq!(
+            stored_url(&store, "importer-app"),
+            "https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}/fhir-r4",
+        );
+        let medications_dev = store
+            .find_app("medications-app-dev")
+            .unwrap()
+            .expect("the dev row's old id is back");
+        assert_eq!(
+            medications_dev.client_id.as_deref(),
+            Some("medications-app-dev")
+        );
+    }
+
+    /// The Synthetic Data Loader ships as a first-party app (`0019`), launched
+    /// at its published Pages copy's root — a SMART EHR launch — under its
+    /// folder's name and a random client id.
+    #[test]
+    fn synthetic_data_launches_at_its_root() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+
+        let registration = store
+            .find_app("synthetic-data")
+            .unwrap()
+            .expect("synthetic-data must exist");
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("225ba6af034a3acec6be7ff8010df67f")
+        );
+        assert_eq!(registration.name, "Synthetic Data Loader");
+        assert!(registration.on_homescreen);
+        assert!(
+            registration.requires_tunnel,
+            "the published page's `iss={{origin}}` fetch must resolve through the \
+             server's public HTTPS origin",
+        );
+        assert_eq!(
+            registration.url.to_string(),
+            "https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}/fhir-r4",
+        );
+    }
+
     /// An install already at `0009` gains Lifting when it upgrades — at the
     /// tail, after an app the user created before upgrading, since `position`
     /// is UNIQUE and `0010` appends rather than naming a literal slot.
@@ -904,18 +1075,21 @@ mod migration_tests {
         );
     }
 
-    /// The Synthesized Health Viewer is seeded as a SMART app (`client_id ==
-    /// id`) launching at its published Pages copy's root (`0016`) — a SMART EHR
-    /// launch.
+    /// The Synthesized Health Viewer is seeded as a SMART app (`0015`) launching
+    /// at its published Pages copy's root (`0016`) — a SMART EHR launch — under
+    /// its folder's name and a random client id (`0019`).
     #[test]
-    fn health_viewer_app_launches_at_its_root() {
+    fn health_viewer_launches_at_its_root() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
 
         let registration = store
-            .find_app("health-viewer-app")
+            .find_app("health-viewer")
             .unwrap()
-            .expect("health-viewer-app must exist");
-        assert_eq!(registration.client_id.as_deref(), Some("health-viewer-app"));
+            .expect("health-viewer must exist");
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("474e103de61f9141c4b640d59bfa130e")
+        );
         assert_eq!(registration.name, "Synthesized Health Viewer");
         assert_eq!(
             registration.subtitle.as_deref(),
@@ -929,7 +1103,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/health-viewer-app/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 
@@ -954,9 +1128,9 @@ mod migration_tests {
             .unwrap()
             .expect("the user's app survives");
         let health_viewer = store
-            .find_app("health-viewer-app")
+            .find_app("health-viewer")
             .unwrap()
-            .expect("0015 must seed health-viewer-app on an upgraded install");
+            .expect("0015 must seed the Health Viewer on an upgraded install");
         assert_eq!(
             health_viewer.position,
             user_app.position + 1,
@@ -964,18 +1138,25 @@ mod migration_tests {
         );
     }
 
-    /// Reverting `0015` removes the Health Viewer and leaves every other app.
+    /// Reverting `0015` (after `0019`, which re-keyed its row) removes the Health
+    /// Viewer and leaves every other app but the Synthetic Data Loader, which
+    /// reverting `0019` removes.
     #[test]
     fn reverting_0015_removes_the_health_viewer() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+        embedded_migration("0019")
+            .revert(&mut conn)
+            .expect("revert 0019");
         embedded_migration("0015")
-            .revert(&mut store.pool().get().unwrap())
+            .revert(&mut conn)
             .expect("revert 0015");
+        drop(conn);
 
         assert!(store.find_app("health-viewer-app").unwrap().is_none());
         assert_eq!(
             store.list_registrations().unwrap().len(),
-            SEEDED_IDS.len() - 1,
+            SEEDED_IDS.len() - 2,
             "every other app stays",
         );
     }
@@ -983,7 +1164,7 @@ mod migration_tests {
     /// An install already at `0015` moves its first-party launches from
     /// `launch.html` to the app root when it upgrades, and a debug build's dev
     /// rows with them, while a launch URL the user edited, production or dev,
-    /// is left as it is.
+    /// is left as it is. (Read under the ids `0019` re-keys them to.)
     #[test]
     fn an_install_already_at_0015_launches_first_party_apps_at_their_roots() {
         let pool = pool_migrated_through("0015");
@@ -1017,7 +1198,7 @@ mod migration_tests {
         drop(conn);
 
         let store = SqliteAppsStore::new(pool).expect("0016 must apply");
-        for id in ["medications-app", "importer-app", "health-viewer-app"] {
+        for id in ["medications", "importer", "health-viewer"] {
             assert_eq!(
                 stored_url(&store, id),
                 format!(
@@ -1031,11 +1212,11 @@ mod migration_tests {
             "the user's edit stays"
         );
         assert_eq!(
-            stored_url(&store, "medications-app-dev"),
+            stored_url(&store, "medications-dev"),
             "http://localhost:5191/?launch={launch}&iss={origin}/fhir-r4",
         );
         assert_eq!(
-            stored_url(&store, "importer-app-dev"),
+            stored_url(&store, "importer-dev"),
             edited_dev,
             "a dev row off the old seed's shape stays"
         );
@@ -1205,7 +1386,7 @@ mod migration_tests {
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
         let mut expected = seeded_before_0015();
-        expected.extend(["my-cloud-app", "health-viewer-app"]);
+        expected.extend(["my-cloud-app", "health-viewer", "synthetic-data"]);
         assert_eq!(
             ids, expected,
             "the system apps are gone and the rest keep their order"
@@ -1422,7 +1603,7 @@ mod migration_tests {
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
         let mut expected = seeded_before_0015();
-        expected.extend(["kept-https", "kept-http", "health-viewer-app"]);
+        expected.extend(["kept-https", "kept-http", "health-viewer", "synthetic-data"]);
         assert_eq!(
             ids, expected,
             "the origin-relative apps are gone and the rest keep their order"
@@ -1460,8 +1641,8 @@ mod migration_tests {
         let store = SqliteAppsStore::new(pool).expect("0018 must apply");
         let registrations = store.list_registrations().unwrap();
         let ids: Vec<&str> = registrations.iter().map(|r| r.id.as_str()).collect();
-        let mut expected = SEEDED_IDS.to_vec();
-        expected.push("my-app");
+        let mut expected = seeded_before_0019();
+        expected.extend(["my-app", "synthetic-data"]);
         assert_eq!(ids, expected, "both Web Trace rows are gone");
         let positions: Vec<i64> = registrations.iter().map(|r| r.position).collect();
         let dense: Vec<i64> = (0..).take(positions.len()).collect();

@@ -499,10 +499,7 @@ mod tests {
     /// [Data Directory Explanation]: ../../Data%20Directory%20Explanation.md
     #[test]
     fn both_ios_plists_declare_files_app_keys() {
-        for relative in [
-            "Info.ios.plist",
-            "gen/apple/host-app_iOS/Info.plist",
-        ] {
+        for relative in ["Info.ios.plist", "gen/apple/host-app_iOS/Info.plist"] {
             let compact = compact_apple_plist(relative);
             for key in ["UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"] {
                 assert!(
@@ -542,10 +539,7 @@ mod tests {
     /// for the same reason as the Files app keys.
     #[test]
     fn both_ios_plists_declare_background_tasks() {
-        for relative in [
-            "Info.ios.plist",
-            "gen/apple/host-app_iOS/Info.plist",
-        ] {
+        for relative in ["Info.ios.plist", "gen/apple/host-app_iOS/Info.plist"] {
             let background_modes = plist_string_array(relative, "UIBackgroundModes");
             for mode in ["fetch", "processing"] {
                 assert!(

@@ -10,7 +10,7 @@ the homepage and absolute from an app.
 ## Package roles
 
 - **`branding-core`** — the pure layer: site origin, section paths (the deploy
-  contract matching `apps/github-pages/src/assembly.ts`), navigation link data
+  contract matching `apps/wildflower-site/wildflower-site-web/src/assembly.ts`), navigation link data
   as discriminated unions (anchor, absolute, and section links), the `NavContext`
   type that lets the same header/footer resolve hrefs differently on the
   marketing site vs. from an app, the `anchorHref` / `sectionHref` / `navHref`
@@ -38,18 +38,18 @@ the homepage and absolute from an app.
 ## The 404 redirect
 
 GitHub Pages serves one `404.html` for every path it has no file for.
-`apps/github-pages/404.html` probes ancestor directories for an `index.html`,
+`apps/wildflower-site/wildflower-site-web/404.html` probes ancestor directories for an `index.html`,
 redirects to the deepest one that answers, and passes the requested path along,
 site-absolute, as `?redirect=<path>` (an app-relative route named like the
 app's own directory, `/launcher` below `/launcher/`, would read as the app root).
 `restoreRedirectedUrl(window)` is the other half: each
-first-party SPA entry (`apps/medications-app`, `apps/importer-web`,
-`apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/lifting/lifting-web`, `apps/watch-lifts/watch-lifts-web`, `apps/wildflower-server-docs`) calls it as its first statement,
+first-party SPA entry (`apps/medications/medications-web`, `apps/importer/importer-web`,
+`apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/lifting/lifting-web`, `apps/watch-lifts/watch-lifts-web`, `apps/server-docs-web`) calls it as its first statement,
 before the router, the SMART callback check, or the `?server=` read — it puts
 the route back in the address bar with `history.replaceState` and drops the
 `redirect` parameter, leaving every other parameter and the fragment alone.
 
-`apps/ohif-viewer` is the exception: it is a prebuilt bundle with no entry
+`apps/ohif-viewer-web` is the exception: it is a prebuilt bundle with no entry
 module of ours, so `config/app-config.js` hand-rolls the same steps. The two
 must stay in step — `spa-redirect.ts` is the reference.
 
@@ -63,8 +63,8 @@ the same `?redirect=` detour as the published site.
 
 ## The app landing page
 
-A SMART app visited without a launch (`apps/medications-app`,
-`apps/importer-web` and `apps/fhir-sync-pebble/fhir-sync-pebble-web`, all
+A SMART app visited without a launch (`apps/medications/medications-web`,
+`apps/importer/importer-web` and `apps/fhir-sync-pebble/fhir-sync-pebble-web`, all
 through `smart-app-react`'s `SmartAppRoot`) renders `AppLandingPage`. So does
 the hosted launcher's landing (`apps/launcher/launcher-web`'s `routes/index.tsx`,
 `app="app"`), whose connect menu also carries its "Sign in to …" row for a
@@ -90,10 +90,10 @@ lives relative to the current surface:
 
 - `onMarketingSite` (`{ marketingBase: '' }`) — anchors resolve to fragment-only
   hrefs like `#built`; section links resolve to root-relative paths like
-  `/medications-app` (so they keep working on preview/staging deploys).
+  `/medications` (so they keep working on preview/staging deploys).
 - `fromApp` (`{ marketingBase: 'https://wildflowerhealth.io/' }`) — anchors
   resolve to absolute URLs like `https://wildflowerhealth.io/#built`; section
-  links to absolute URLs like `https://wildflowerhealth.io/medications-app` (so an
+  links to absolute URLs like `https://wildflowerhealth.io/medications` (so an
   app served from its own origin points back at the canonical site).
 
 `navHref` dispatches over the link kind; the brand link and section links both
@@ -114,7 +114,7 @@ importing them (the first-party SMART apps rely on this).
 ## Deploy contract
 
 `SECTION_PATHS` in `branding-core/src/site.ts` must match the `destPath` values
-in `apps/github-pages/src/assembly.ts`. A mismatch breaks cross-section links on
+in `apps/wildflower-site/wildflower-site-web/src/assembly.ts`. A mismatch breaks cross-section links on
 the assembled GitHub Pages site. The core tests pin the exact five paths.
 
 ## Guardrails
@@ -135,7 +135,7 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   reverse: it has a landing page but no homepage row, so it is described but
   left out of `APP_SECTION_IDS`, the homepage's list.
 - **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
-  apps.** `apps/marketing-website` consumes them just like the apps do (passing
+  apps.** `apps/wildflower-site/marketing-site-web` consumes them just like the apps do (passing
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
   the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
   this slice, and every surface picks it up. Both the homepage and the apps show

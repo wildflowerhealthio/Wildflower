@@ -126,7 +126,7 @@ const launchPageUrlArb = fc
       'https://wildflowerhealth.io/',
       'https://wildflowerhealthio.github.io/staging/pr-7/'
     ),
-    fc.constantFrom('medications-app', 'importer-app', 'health-viewer-app')
+    fc.constantFrom('medications', 'importer', 'health-viewer')
   )
   .map(([siteRoot, section]) => `${siteRoot}${section}/`)
 
@@ -270,7 +270,7 @@ describe('appLaunchUrl', () => {
 
     // Act
     const launchUrl = new URL(
-      appLaunchUrl('https://wildflowerhealth.io/medications-app/', {
+      appLaunchUrl('https://wildflowerhealth.io/medications/', {
         fhirBaseUrl,
         patient,
       })
@@ -288,7 +288,7 @@ describe('appLaunchUrl', () => {
 
   it('should throw for a FHIR base that is not a URL', () => {
     expect(() =>
-      appLaunchUrl('https://wildflowerhealth.io/medications-app/', {
+      appLaunchUrl('https://wildflowerhealth.io/medications/', {
         fhirBaseUrl: 'not a url',
         patient: undefined,
       })

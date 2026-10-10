@@ -22,7 +22,7 @@ consumer slices.
 - **[`positioned-text`](./positioned-text/AGENTS.md)** — a PDF's text content
   as absolutely positioned runs: the `Document.Schema` schema
   (`wildflower-positioned-text` v1) and `Document.FromJson`. Moved out of
-  `pdf-anonymizer-core`. `effect` only.
+  `pdf-anonymizer-core-js`. `effect` only.
 - **[`positioned-text-web`](./positioned-text-web/AGENTS.md)** — the browser
   (non-React) `extractPositionedText` seam that fills the schema from PDF bytes
   via `pdfjs-dist`. Moved out of `pdf-anonymizer-react`. The one place PDF
@@ -62,12 +62,14 @@ consumer slices.
   wrong one fails. `withElementsSpliced` adds the elements `writeDicom` cannot
   write (private groups, sequences, any attribute) at their place in tag
   order, located with `dicom-parser` rather than `Part10`.
-- **[`dicom-react`](./dicom-react/AGENTS.md)** — browser-side DICOM rendering:
+- **[`dicom-react`](../../apps/importer/dicom-react/AGENTS.md)** — browser-side DICOM rendering:
   `DicomFilePreview` (identifying patient and study tags, plus an Encoding
   block, under a cornerstone-rendered image pane) and the `renderInstance`
   seam. Depends on `dicom` for tag parsing, `@cornerstonejs/core` and
   `@cornerstonejs/dicom-image-loader` for image rendering. The `-react` adapter
-  for the `dicom` parser, consumed by `dicom-importer-react`.
+  for the `dicom` parser, consumed by `dicom-importer-react` alone, so it lives
+  with the Importer in `apps/importer`; it keeps its role in this slice's
+  layering.
 
 The deferred positioned-text preview viewer (React `RunsView`) would join as a
 `positioned-text-react` when it is extracted from `pdf-anonymizer-react`.
@@ -81,7 +83,7 @@ The deferred positioned-text preview viewer (React `RunsView`) would join as a
   cornerstone rendering adapter (a `-react` package — it depends on React and
   on `@cornerstonejs/*`, but not on any importer slice).
 - **Consumers depend down.** Nothing in this slice imports `slices/importer`
-  or `slices/anonymizer`.
+  or `apps/importer/anonymizer`.
 
 ## References
 
@@ -89,6 +91,6 @@ The deferred positioned-text preview viewer (React `RunsView`) would join as a
   why `dicom-react`'s image pane needs a resize observer, which transfer
   syntaxes decode where, and what a host app's build must configure.
 - [slices/importer AGENTS.md](../importer/AGENTS.md) — the parse-side consumer.
-- [slices/anonymizer AGENTS.md](../anonymizer/AGENTS.md) — the redact-side
+- [apps/importer/anonymizer AGENTS.md](../../apps/importer/anonymizer/AGENTS.md) — the redact-side
   consumer whose sibling shape this slice sits beneath.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

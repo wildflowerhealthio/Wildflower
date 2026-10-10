@@ -8,7 +8,7 @@ FHIR server, picks the patient from the server's list, and saves, which hands
 the watch what its PebbleKit JS needs to write that data as Observations on the
 patient's record.
 
-`apps/importer-web` is the template for the shape (`SmartAppRoot`, a relative
+`apps/importer/importer-web` is the template for the shape (`SmartAppRoot`, a relative
 `base`, a build into the package's own `dist/`, a memory router carrying a
 SMART-built context). What differs is below.
 
@@ -163,12 +163,12 @@ jsdom.
 
 ## References
 
-- [apps/importer-web AGENTS.md](../../importer-web/AGENTS.md) — the template app
+- [apps/importer/importer-web AGENTS.md](../../importer/importer-web/AGENTS.md) — the template app
 - [apps/fhir-sync-pebble AGENTS.md](../AGENTS.md) —
   the core the settings, the return target and its store live in
 - [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md) — the shell this
   app boots through
 - [slices/emr/AGENTS.md](../../../slices/emr/AGENTS.md) — the SMART primitives
   (`useSmartHandshake`, `buildSmartRouterContext`)
-- [apps/github-pages README](../../github-pages/README.md) — how the site is
+- [apps/wildflower-site/wildflower-site-web README](../../wildflower-site/wildflower-site-web/README.md) — how the site is
   assembled

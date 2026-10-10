@@ -28,7 +28,7 @@ previews graded `good`, project re-anchored. What changed:
   `.design-sync/docs/<name>.md` category stubs: CheckboxGroup, LinkButton
   (forms); SegmentedToggle (navigation); ConfirmDialog (feedback); ErrorBanner,
   PartialBanner, GateCard, ChunkBar (Async & Errors). Copy is from real usage:
-  `apps/medications-app/src/app.tsx` (GateCard/PartialBanner/ChunkBar/
+  `apps/medications/medications-web/src/app.tsx` (GateCard/PartialBanner/ChunkBar/
   SegmentedToggle), `slices/gatekeeper/.../TrustedAppsSection.tsx`
   (ConfirmDialog), `slices/scopes/.../permission-picker.tsx` (CheckboxGroup),
   `slices/smart-app/.../patient-choice-line.tsx` (LinkButton),

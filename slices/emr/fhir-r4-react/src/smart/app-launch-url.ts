@@ -130,11 +130,11 @@ const smartLauncherLaunchCode = (patient: string | undefined): string =>
  *
  * @example
  * ```ts
- * appLaunchUrl('https://wildflowerhealth.io/medications-app/', {
+ * appLaunchUrl('https://wildflowerhealth.io/medications/', {
  *   fhirBaseUrl: 'https://fhir.example.org/r4',
  *   patient: undefined,
  * })
- * // → 'https://wildflowerhealth.io/medications-app/?iss=https%3A%2F%2Ffhir.example.org%2Fr4'
+ * // → 'https://wildflowerhealth.io/medications/?iss=https%3A%2F%2Ffhir.example.org%2Fr4'
  * ```
  */
 const appLaunchUrl = (launchPageUrl: string, server: AppLaunchServer): string => {

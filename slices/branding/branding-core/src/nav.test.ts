@@ -59,21 +59,21 @@ describe('anchorHref', () => {
 
 describe('sectionHref', () => {
   it('should produce current-URL-relative paths on the marketing site', () => {
-    expect(sectionHref(onMarketingSite, 'medications')).toBe('./medications-app')
-    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe('./wildflower-server-docs')
+    expect(sectionHref(onMarketingSite, 'medications')).toBe('./medications')
+    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe('./server-docs')
   })
 
   it('should produce absolute URLs from an app', () => {
-    expect(sectionHref(fromApp, 'medications')).toBe('https://wildflowerhealth.io/medications-app')
+    expect(sectionHref(fromApp, 'medications')).toBe('https://wildflowerhealth.io/medications')
   })
 
   it('should resolve relative-from-marketing under a preview sub-path to sibling builds', () => {
-    // A `./medications-app` reference on `.../staging/pr-N/` resolves into
+    // A `./medications` reference on `.../staging/pr-N/` resolves into
     // the same preview build, not the canonical origin — that is the whole
     // point of the marketing-context change.
     const previewBase = 'https://wildflowerhealth.io/staging/pr-607/'
     expect(new URL(sectionHref(onMarketingSite, 'medications'), previewBase).href).toBe(
-      `${previewBase}medications-app`
+      `${previewBase}medications`
     )
   })
 
@@ -109,13 +109,12 @@ describe('navHref', () => {
 })
 
 describe('HEADER_NAV_LINKS', () => {
-  it('should link directly into the seven apps, in design order', () => {
+  it('should link directly into the six apps, in design order', () => {
     expect(HEADER_NAV_LINKS.map((link) => link.label)).toStrictEqual([
       'Medications',
       'Health viewer',
       'Lifting',
       'Importer',
-      'Web traces',
       'Server docs',
       'Imaging',
     ])

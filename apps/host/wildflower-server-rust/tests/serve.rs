@@ -885,16 +885,13 @@ async fn authorize_health_viewer_launch(
         .query_pairs_mut()
         .append_pair("response_type", "code")
         .append_pair("code_challenge_method", "S256")
-        .append_pair("client_id", "health-viewer-app")
+        .append_pair("client_id", "474e103de61f9141c4b640d59bfa130e")
         .append_pair("scope", "openid system/Observation.rs")
         .append_pair(
             "code_challenge",
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
         )
-        .append_pair(
-            "redirect_uri",
-            "https://wildflowerhealth.io/health-viewer-app/",
-        )
+        .append_pair("redirect_uri", "https://wildflowerhealth.io/health-viewer/")
         .append_pair("state", "xyz")
         .append_pair("launch", launch)
         .append_pair("aud", aud);
@@ -967,14 +964,14 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     let launched = reqwest::Client::new()
         .post(
             loopback_base_url
-                .join("apps/health-viewer-app")
+                .join("apps/health-viewer")
                 .expect("launch URL"),
         )
         .header("forwarded", FORWARDED)
         .bearer_auth(&launcher)
         .send()
         .await
-        .expect("POST /apps/health-viewer-app reaches the server");
+        .expect("POST /apps/health-viewer reaches the server");
     assert_eq!(launched.status(), reqwest::StatusCode::OK);
     let launch_url = Url::parse(
         launched.json::<Value>().await.expect("a launch body")["url"]
@@ -1000,7 +997,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     );
     assert_eq!(
         authorize_health_viewer_launch(&loopback_base_url, &launch, &iss).await,
-        "https://wildflowerhealth.io/health-viewer-app/?error=invalid_request&state=xyz",
+        "https://wildflowerhealth.io/health-viewer/?error=invalid_request&state=xyz",
         "the launch works once"
     );
 

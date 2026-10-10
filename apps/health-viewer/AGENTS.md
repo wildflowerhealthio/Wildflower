@@ -1,81 +1,103 @@
 # AGENTS.md — apps/health-viewer
 
-The Synthesized Health Viewer, a SMART-on-FHIR app published to
-<https://wildflowerhealth.io/health-viewer-app/> (package `health-viewer-app`),
-with a `health-viewer-app-dev` row in debug builds. See [README.md](./README.md)
-for the boot structure, the page and how to run it.
+The **Synthesized Health Viewer**: a patient's own observations and
+medications plotted on one time axis, so a reader can see a lab result against
+the dose that was running when it was taken. The app and every package it is
+built from live here; only the medication fundamentals it reads
+(`slices/medication`'s `medication-core`) are shared with another product.
 
-`apps/medications-app` is the template: the same one HTML entry, relative
-`base`, build into the package's own `dist/`, `SmartAppRoot` shell, and the
-same paged-read drain (`useFetchEveryPage`) and read-status lines.
+## Packages
+
+The folder is layered like `http-extraction`: a domain-free vocabulary, one
+package per kind of record, and an assembly on top.
+
+```text
+health-viewer-fundamentals   plot vocabulary and chart math; imports no slice
+      ▲
+health-viewer-observations   FHIR R4 Observation → PointSeries
+health-viewer-medications    medication-core DoseRegimen → LevelSeries
+      ▲
+health-viewer-core-js           closed list of sources, catalogue, URL codec, range presets
+      ▲
+health-viewer-react          the Plot chart, series panel, range presets and page layout
+```
+
+- **`health-viewer-fundamentals`** — the plot vocabulary, as `effect`-style
+  namespaces from one flat entry: `Level`, `PointSeries`, `LevelSeries`,
+  `Series`, `ValueAxis` (domains, ticks, axis assignment), `Buckets` (a dense
+  series summarised per time slice), `Crosshair`,
+  `ColourSlots`, `TimeDomain`, `SeriesId` (the escaped field grammar ids are
+  written in) and `SeriesSource` (a domain source as one value). See its
+  [AGENTS.md](./health-viewer-fundamentals/AGENTS.md).
+- **`health-viewer-observations`** — the observation source,
+  `observationSource`: FHIR R4 `Observation`s read into point series, the `o:`
+  id grammar, and the catalogue grouping by `Observation.category`. See its
+  [AGENTS.md](./health-viewer-observations/AGENTS.md).
+- **`health-viewer-medications`** — the medication source,
+  `medicationSource`: `MedicationRequest`s read through `medication-core`'s
+  dose regimens into level series — one per medication, dose unit and dose
+  basis, each level ending where the next request starts — the `m:` id
+  grammar, and the Medications catalogue group. See its
+  [AGENTS.md](./health-viewer-medications/AGENTS.md).
+- **`health-viewer-core-js`** — the assembly: `SERIES_SOURCES` and `readRecord`,
+  the catalogue panel's grouping and search, the range presets, and the URL
+  codec a shared link round-trips through. See its
+  [AGENTS.md](./health-viewer-core-js/AGENTS.md).
+- **`health-viewer-react`** — the browser layer: `MultiAxisChart` draws the
+  axes `ValueAxis.assign` returns as one Observable Plot figure — a
+  colour-matched value axis per series, point series as lines with dots (or,
+  too dense for dots, a bucket-mean line over a min–max envelope), level
+  series as step lines broken at gaps and dashed where the domain says, `low` /
+  `high` bands, a legend, and a crosshair readout of `Series.levelAt` per
+  series. `SeriesPanel` lays out `groupForPanel`'s catalogue as searchable,
+  collapsible groups of checkboxes capped at `ValueAxis.CAP`; `RangePresets`
+  picks a `RangePreset`; `HealthViewerLayout` docks the panel beside the chart
+  from 900px and folds it into a `Series (n selected)` disclosure below that.
+  It imports no domain package. See its
+  [AGENTS.md](./health-viewer-react/AGENTS.md).
+
+The app is [`health-viewer-web`](./health-viewer-web/AGENTS.md), published at
+<https://wildflowerhealth.io/health-viewer/> (tile `health-viewer`), which
+composes core and react around a SMART shell. A
+new kind of record is a new package beside
+`health-viewer-observations` that exports a
+`SeriesSource` and joins `SERIES_SOURCES` (and `RecordResources`), plus
+the app's paged read for it in `useRecordRead`.
 
 ## Rules
 
-- **Compose; decide nothing.** The app wires `health-viewer-core` and
-  `health-viewer-react` together and owns only the SMART shell, the reads and
-  the URL; the patient is `smart-app-react`'s (`usePatientChoice`,
-  `PatientPicker`, `PatientChoiceLine`). Which series a record holds, how they
-  are grouped, what each axis spans and what window a preset selects are the
-  slice's functions —
-  `readRecord`, `groupForPanel`, `ValueAxis.assign`, `Series.extentOfAll`,
-  `xDomain`. No domain package is imported here: `health-viewer-observations`
-  and `health-viewer-medications` arrive through core.
-- **The page is patient → record read → layout.** `App` settles on the
-  patient — one patient, or All patients, whose reads are unscoped (`null`)
-  and charted as one record; `useRecordRead` owns every record read and folds
-  them into one `RecordRead`; `PatientRecord` renders from it, remounted per
-  choice. A new record source is a
-  `RecordSourceRead` and its lines in `useRecordRead` — never a branch in a
-  component. See the README's "Adding a record source".
-- **The URL is the selection's only home.** `useUrlSelection` initialises from
-  `decodeSelection` and writes every change back with `withSelection`
-  through `history.replaceState` (never `pushState` — a checkbox is not a
-  navigation), touching only its own keys: `?patient=` beside them is
-  `usePatientChoice`'s. Nothing writes the URL on mount: before the handshake
-  completes the URL still carries the OAuth `code` / `state` fhirclient reads,
-  and replacing the query would lose them.
-- **Every selection change is an updater.** Series, range and the
-  reconciliation all go through `updateSelection((latest) => …)`, never a
-  copy of the selection a render saw, so changes made in one tick compose.
-- **Reconcile only a complete record.** Selected ids with no series are
-  dropped once every read has no next page — never while one is paging,
-  where the series could be on a later page, and never after a failed later
-  page, which leaves the record incomplete.
-- **Every read pages to the end, concurrently.** Each is drained by
-  `react-kitchen-sink`'s `useFetchEveryPage`, which halts on a failed page
-  rather than retrying it. The patient picker's read (`smart-app-react`'s) is
-  the exception: it pages on its "More patients" button. Every paged read's
-  status is `pagedQueryStatusOf`, rendered with `smart-app-react`'s
-  read-status lines.
-- **A MedicationRequest's `id` is required.** `fetchMedicationRequestPage`
-  decodes through `withMandatoryId(MedicationRequest.Schema)`, so an entry
-  without one is dropped and counted in the page's `droppedEntryCount`, which
-  the "couldn't be read" note includes. It is never keyed by position.
-
-## Testing
-
-- `use-url-selection.test.ts` — the URL is left alone on mount, two updates
-  issued from one render both land, and `?patient=` survives a write.
-- `app.test.tsx` stubs only the handshake. The page reads are the real
-  `fhir-r4-react/smart` ones over a stub client whose `request` answers from a
-  table of FHIR JSON by URL prefix, so decoding is exercised end to end. Series
-  ids and labels in assertions come from core's `readRecord` over the same
-  fixtures, never hand-written, so a change to a domain's id grammar or label
-  does not silently desynchronise the tests. They cover the patient as the
-  page uses it — the launch's, the URL's, a pick, a change, and All patients'
-  unscoped reads; the picker, the line and the hook themselves are tested in
-  `smart-app-react`.
-- `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the health
-  viewer (the landing `h1` is `APP_DESCRIPTIONS.healthViewer.name`); the shell
-  itself is tested in `smart-app-react`.
-- `main.test.tsx` — the Pages 404 redirect is completed before anything reads
-  the URL.
+- **Chart math is fundamentals'; domain decisions are the domain package's.**
+  What each axis spans, where the crosshair snaps and what it reads, which
+  colour a series keeps — pure functions over `Series` in
+  `health-viewer-fundamentals`, property-tested exhaustively. Which series a
+  record holds, what each is labelled, how it is drawn (`Interpolation`,
+  `ValueScale`, `LineStyle`, `note`) and which catalogue group it files under
+  — the domain package's. `health-viewer-react` renders what these return; it
+  does not re-derive any of it, and it never reads a domain field.
+- **Fundamentals imports from no slice**, and depends only on `effect` and
+  `kitchen-sink`. A domain package adds the resource package it reads
+  (`health-viewer-observations` → `fhir-r4`; `health-viewer-medications` →
+  `medication-core`, which owns reading a regimen off a request).
+- **Series ids are external contract.** They are what a shared URL carries, so
+  changing a domain's key grammar, its prefix, or `SeriesId`'s escaping
+  invalidates every link a patient has already saved. Each source's
+  `parseSeriesId` is the exact inverse of its `seriesIdOf` and never throws — a
+  URL is user-editable, so a malformed entry is dropped, not raised.
+- **The unit is part of a series' identity.** The same LOINC code reported in
+  `mmol/L` and in `mg/dL` is two series, and so are one drug's doses per
+  administration and per day. One line that silently changes scale mid-plot is
+  a clinical hazard, not a convenience.
+- **Nothing disappears silently.** Every source's `read` returns `undated` and
+  `dropped` counts alongside its series, every input moves at most one of them,
+  and `readRecord` carries them up, so the UI can say what it could not plot.
+- **`ValueAxis.CAP` is a rendering limit.** `ValueAxis.assign` throws past it
+  rather than truncating, so a selection UI caps against the constant instead
+  of discovering a series vanished.
 
 ## References
 
-- [slices/health-viewer/AGENTS.md](../../slices/health-viewer/AGENTS.md) — the
-  slice this app composes.
-- [apps/medications-app/README.md](../medications-app/README.md) — the template.
-- [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md) — `fhir-r4-react/smart`'s
-  paged reads.
-- [apps/AGENTS.md](../AGENTS.md) — the rules every app follows.
+- [Architecture / slice layering](../../slices/AGENTS.md)
+- [http-extraction AGENTS.md](../../slices/http-extraction/AGENTS.md) — the structure
+  this folder mirrors.
+- [fhir-r4 Consumer Gotchas Reference](../../slices/emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
+- [Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md) — property tests are the default here

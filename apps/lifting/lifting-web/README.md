@@ -18,7 +18,7 @@ writes what core returns.
 
 The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md)),
-exactly as `apps/health-viewer` does.
+exactly as `apps/health-viewer/health-viewer-web` does.
 
 `src/main.tsx` is the `index.html` entry: it imports the design-system
 stylesheet module (`react-tundraish/styles`), completes a GitHub Pages 404
@@ -159,9 +159,9 @@ and the debug-only `lifting-dev` tile's client (`seed_dev_app_clients` in
 
 `vp build` writes this package's default `dist/`, and that build is served in
 one place: **the published site**, at
-[`/lifting`](https://wildflowerhealth.io/lifting/). `github-pages`
+[`/lifting`](https://wildflowerhealth.io/lifting/). `wildflower-site-web`
 copies `dist/` into the Pages artifact
-([../../github-pages/README.md](../../github-pages/README.md)), and each pull
+([../../wildflower-site-web/README.md](../../wildflower-site/wildflower-site-web/README.md)), and each pull
 request's `pr-preview.yml` build publishes the same tree under
 `https://wildflowerhealthio.github.io/staging/pr-<n>/lifting/`. The
 published page launches standalone against any SMART server that lets it write

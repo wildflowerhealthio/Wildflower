@@ -4,9 +4,9 @@ The pure layer of the web-trace slice. No DOM, no `fs`, no UI, no store — one
 vocabulary, and the translations built on it.
 
 The export-boundary anonymizer moved to
-[`har-anonymizer-core`](../../anonymizer/har-anonymizer-core/)
+[`har-anonymizer-core-js`](../../../apps/importer/anonymizer/har-anonymizer-core-js/)
 in M2 of #578; read the
-[Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md)
+[Anonymization Explanation](../../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md)
 before touching it.
 
 ## Layering
@@ -45,8 +45,8 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
   sits below the collector slice and must not import it, so the boundary is a
   shape, not a dependency.
-- **`src/pseudonymizer/` — moved to `har-anonymizer-core/src/`** in M2
-  of #578. The export-boundary redactor now lives in the anonymizer slice,
+- **`src/pseudonymizer/` — moved to `har-anonymizer-core-js/src/`** in M2
+  of #578. The export-boundary redactor now lives in the anonymizer (`apps/importer/anonymizer`),
   on the same per-file-format argument the archive codec does.
 - **`src/har/` — moved to the `http-archive` package**
   (`slices/file-formats/http-archive`); it left this slice in M1 of #578 for
@@ -313,7 +313,7 @@ would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
 
 The five properties the privacy boundary rests on live in
-`har-anonymizer-core/src/redact.test.ts` (moved in M2 of #578); the HAR
+`har-anonymizer-core-js/src/redact.test.ts` (moved in M2 of #578); the HAR
 emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
 The reading direction is held to the emitter — a property in
@@ -328,7 +328,7 @@ specifiers against the workspace root, not against this package.
 
 ## References
 
-- [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md) — the pseudonymizer's
+- [Anonymization Explanation](../../../apps/importer/anonymizer/docs/Anonymization%20Explanation.md) — the pseudonymizer's
   design and its stated limits.
 - [slice AGENTS.md](../AGENTS.md) — why this slice exists at all.
 - [slices/AGENTS.md](../../AGENTS.md) — the layering rules.

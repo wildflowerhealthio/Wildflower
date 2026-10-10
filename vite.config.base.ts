@@ -92,7 +92,7 @@ interface DevAppServerOptions {
  *
  * @example
  * ```ts
- * export default defineConfig({ ...base, server: devAppServer('medications-app-dev') })
+ * export default defineConfig({ ...base, server: devAppServer('medications-dev') })
  * ```
  */
 const devAppServer = (id: DevAppId): DevAppServerOptions => ({

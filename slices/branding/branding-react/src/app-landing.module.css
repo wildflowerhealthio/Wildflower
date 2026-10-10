@@ -3,7 +3,7 @@
  * the action (connect menu), and the story (paragraphs + link) — placed by
  * named grid areas: two columns with the action beside both text blocks,
  * collapsing to one column with the action between them. Type roles mirror
- * the homepage's app rows (`apps/marketing-website/src/components/
+ * the homepage's app rows (`apps/wildflower-site/marketing-site-web/src/components/
  * app-row.module.css`) so the landing page and the homepage row read as the
  * same thing: body copy on the second neutral tone, the homepage's text-link
  * call to action as the link.

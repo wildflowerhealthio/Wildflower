@@ -135,7 +135,7 @@ export {
   /**
    * Re-exported from `gatekeeper-core/smart-client`, which owns the one
    * implementation. This module used to carry a byte-identical copy, because the
-   * original lived in `apps/wildflower-server-docs` and a slice cannot import
+   * original lived in `apps/server-docs-web` and a slice cannot import
    * from an app. Moving it into `gatekeeper-core` removed that obstacle, so the
    * copy is gone and `connect-menu.tsx` and the apps now canonicalise a picked
    * FHIR server base exactly as the docs console canonicalises `?server=`.

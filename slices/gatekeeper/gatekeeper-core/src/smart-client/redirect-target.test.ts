@@ -7,38 +7,35 @@ import { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 describe('redirectUriForPage', () => {
   it('derives a page’s own directory, wherever the build is served from', () => {
     // Arrange / Act / Assert — the three addresses one build actually runs at.
-    expect(redirectUriForPage('https://wildflowerhealth.io/wildflower-server-docs/')).toBe(
-      'https://wildflowerhealth.io/wildflower-server-docs/'
+    expect(redirectUriForPage('https://wildflowerhealth.io/server-docs/')).toBe(
+      'https://wildflowerhealth.io/server-docs/'
     )
     expect(
-      redirectUriForPage(
-        'https://wildflowerhealthio.github.io/staging/pr-713/wildflower-server-docs/'
-      )
-    ).toBe('https://wildflowerhealthio.github.io/staging/pr-713/wildflower-server-docs/')
+      redirectUriForPage('https://wildflowerhealthio.github.io/staging/pr-713/server-docs/')
+    ).toBe('https://wildflowerhealthio.github.io/staging/pr-713/server-docs/')
     expect(redirectUriForPage('http://127.0.0.1:5192/')).toBe('http://127.0.0.1:5192/')
   })
 
   it('reduces a file within the directory to the directory itself', () => {
     // Arrange
-    const href = 'https://wildflowerhealth.io/wildflower-server-docs/index.html'
+    const href = 'https://wildflowerhealth.io/server-docs/index.html'
 
     // Act
     const redirectUri = redirectUriForPage(href)
 
     // Assert
-    expect(redirectUri).toBe('https://wildflowerhealth.io/wildflower-server-docs/')
+    expect(redirectUri).toBe('https://wildflowerhealth.io/server-docs/')
   })
 
   it('drops the console’s own query and fragment', () => {
     // Arrange — a reader deep-linked into a tag with a server already chosen.
-    const href =
-      'https://wildflowerhealth.io/wildflower-server-docs/?server=https%3A%2F%2Fx.test#tag/apps'
+    const href = 'https://wildflowerhealth.io/server-docs/?server=https%3A%2F%2Fx.test#tag/apps'
 
     // Act
     const redirectUri = redirectUriForPage(href)
 
     // Assert
-    expect(redirectUri).toBe('https://wildflowerhealth.io/wildflower-server-docs/')
+    expect(redirectUri).toBe('https://wildflowerhealth.io/server-docs/')
   })
 
   it('accepts plain http only on a loopback host', () => {
@@ -53,7 +50,7 @@ describe('redirectUriForPage', () => {
     expect(redirectUriForPage('file:///tmp/docs/index.html')).toBeUndefined()
     expect(redirectUriForPage('blob:https://example.test/abc')).toBeUndefined()
     expect(redirectUriForPage('javascript:alert(1)')).toBeUndefined()
-    expect(redirectUriForPage('/wildflower-server-docs/')).toBeUndefined()
+    expect(redirectUriForPage('/server-docs/')).toBeUndefined()
     expect(redirectUriForPage('')).toBeUndefined()
   })
 

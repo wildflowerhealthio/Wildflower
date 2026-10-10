@@ -104,10 +104,10 @@ describe('FhirServerHome', () => {
     // Assert
     const appLinks = await findAppLinks()
     expect(appLinks.map((link) => link.href.split('?')[0])).toStrictEqual([
-      `${PREVIEW_SITE_ROOT}medications-app/`,
-      `${PREVIEW_SITE_ROOT}importer-app/`,
-      `${PREVIEW_SITE_ROOT}health-viewer-app/`,
-      `${PREVIEW_SITE_ROOT}synthetic-data-app/`,
+      `${PREVIEW_SITE_ROOT}medications/`,
+      `${PREVIEW_SITE_ROOT}importer/`,
+      `${PREVIEW_SITE_ROOT}health-viewer/`,
+      `${PREVIEW_SITE_ROOT}synthetic-data/`,
       `${PREVIEW_SITE_ROOT}lifting/`,
     ])
   })

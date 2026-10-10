@@ -5,7 +5,7 @@ import base, { devAppServer } from '../../../vite.config.base.ts'
 
 /**
  * A SMART-on-FHIR app built as a static bundle into this package's default
- * `dist/`, which `apps/github-pages` publishes. One HTML entry, `index.html`:
+ * `dist/`, which `apps/wildflower-site/wildflower-site-web` publishes. One HTML entry, `index.html`:
  * the standalone connect menu on a bare visit, and the OAuth redirect target
  * that completes the handshake and renders the Pebble settings page when a
  * callback is in the URL. No EHR launches it — the app is only ever opened

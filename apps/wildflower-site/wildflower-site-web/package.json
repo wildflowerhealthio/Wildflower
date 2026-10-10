@@ -1,0 +1,31 @@
+{
+  "name": "wildflower-site-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ./src/assemble.ts",
+    "check": "vp check",
+    "dev": "vp preview",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "branding-core": "workspace:*",
+    "fast-check": "catalog:",
+    "fhir-sync-pebble-web": "workspace:*",
+    "health-viewer-web": "workspace:*",
+    "importer-web": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "launcher-web": "workspace:*",
+    "lifting-web": "workspace:*",
+    "marketing-site-web": "workspace:*",
+    "medications-web": "workspace:*",
+    "ohif-viewer-web": "workspace:*",
+    "server-docs-web": "workspace:*",
+    "synthetic-data-web": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "watch-lifts-web": "workspace:*"
+  }
+}

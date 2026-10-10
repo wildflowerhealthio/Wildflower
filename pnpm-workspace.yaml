@@ -8,21 +8,37 @@ packages:
   # FHIR Sync for Pebble: the watchapp, its settings page and the core both
   # build on.
   - apps/fhir-sync-pebble/*
+  # The Health Viewer: the app and the core, sources and chart it is built
+  # from.
+  - apps/health-viewer/*
   # The host: the Tauri host app and the packages it is built from.
   - apps/host/*
   - apps/host/servers/*
+  # The Importer: the app, the import pipelines and screens only it uses, and
+  # the anonymizer it scrubs uploads with.
+  - apps/importer/*
+  - apps/importer/anonymizer/*
   # The launcher: the web app that manages a Wildflower server, and the
   # packages it is built from.
   - apps/launcher/*
   # Lifting: the app and the core and screens it is built from.
   - apps/lifting/*
+  # Medications: the app and the calendar, interaction and sponsorship
+  # features only it uses.
+  - apps/medications/*
   # The relay's admin UI and the packages it is built from. Their sibling
   # apps/relay/relay-server is the Rust crate.
   - apps/relay/*
+  # The Synthetic Data Loader: the app, and the story model and per-source
+  # generators its snapshot is built from.
+  - apps/synthetic-data/*
   - apps/watch-lifts/watch-lifts-watchapp/pkjs
   - apps/watch-lifts/watch-lifts-watchapp/test
   # WatchLifts: the watchapp, its settings page and the core both build on.
   - apps/watch-lifts/*
+  # The site: the assembly that publishes wildflowerhealth.io, and the
+  # marketing homepage at its root.
+  - apps/wildflower-site/*
   - global/*
   - global/effect-messaging/*
   - global/pebble/*
@@ -61,7 +77,7 @@ catalog:
   '@sentry/opentelemetry': 10.74.0
   '@sentry/react': 10.74.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the
-  # static server-docs console at /wildflower-server-docs ships self-contained.
+  # static server-docs console at /server-docs ships self-contained.
   '@scalar/api-reference': ^1.72.1
   '@tanstack/react-query': ^5.104.0
   '@tanstack/react-router': ^1.170.39
@@ -93,7 +109,7 @@ catalog:
   '@vitejs/plugin-react': ^6.1.1
   effect: 3.22.2
   esbuild: ^0.28.2
-  # Browser shim for Node's `events`, aliased in `apps/importer-web/vite.config.ts`.
+  # Browser shim for Node's `events`, aliased in `apps/importer/importer-web/vite.config.ts`.
   # @cornerstonejs/core reaches xmlbuilder2 (via vtk.js's XML mesh reader), which
   # subclasses EventEmitter at module scope; Vite's externalized stub makes that
   # throw. See the alias comment for the full chain.

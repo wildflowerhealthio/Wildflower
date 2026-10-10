@@ -133,7 +133,7 @@ Value)]`. That emits an empty schema `{}`, which the drift engine normalizes to
 ## Publishing the API reference
 
 The committed snapshots are also the published API reference.
-[`apps/wildflower-server-docs`](../../apps/wildflower-server-docs/README.md)
+[`apps/server-docs-web`](../../apps/server-docs-web/README.md)
 bundles them into an interactive [Scalar](https://scalar.com) console, one
 sidebar source per slice, pointed at whichever server the reader chooses. Paths
 in each slice's spec already carry that slice's host mount prefix, so the

@@ -14,12 +14,21 @@ An app that has packages built only for it lives with them in one folder per
 product, `apps/<product>/`: [`relay`](./relay/AGENTS.md),
 [`fhir-sync-pebble`](./fhir-sync-pebble/AGENTS.md),
 [`watch-lifts`](./watch-lifts/AGENTS.md), [`lifting`](./lifting/AGENTS.md),
-[`launcher`](./launcher/AGENTS.md) and [`host`](./host/AGENTS.md). The other
-apps still sit directly under `apps/` and move in as they are consolidated.
+[`launcher`](./launcher/AGENTS.md), [`host`](./host/AGENTS.md),
+[`medications`](./medications/AGENTS.md),
+[`health-viewer`](./health-viewer/AGENTS.md),
+[`importer`](./importer/AGENTS.md) and
+[`synthetic-data`](./synthetic-data/AGENTS.md).
+[`wildflower-site`](./wildflower-site/AGENTS.md) is a product folder for
+grouping alone: the site assembly and the marketing homepage share no package
+built only for them, but they ship together as wildflowerhealth.io. An app with
+no packages of its own sits directly under `apps/` under its product's name:
+`server-docs-web` and `ohif-viewer-web`.
 
 Packages that came from one slice and belong together stay nested in a folder
-for their group, as `apps/host/servers/` and `apps/host/unit-runner/` do; a
-lone package sits directly in the product folder.
+for their group, as `apps/host/servers/`, `apps/host/unit-runner/` and
+`apps/importer/anonymizer/` do; a lone package, or one from the product's
+namesake slice, sits directly in the product folder.
 
 ### What folds in
 
@@ -74,7 +83,7 @@ Ids that predate this, and the Sentry `app` tags, are tracked in
    `node_modules` still holds.
 2. Rename the packages, then every import, `vp run -F` filter and path:
    `pnpm-workspace.yaml` (`apps/<product>/*`), the root `vite.config.ts`
-   test projects, `.github/workflows/*`, `apps/github-pages/src/assembly.ts`,
+   test projects, `.github/workflows/*`, `apps/wildflower-site/wildflower-site-web/src/assembly.ts`,
    and every relative path inside a package that moved deeper.
 3. The slice's AGENTS.md becomes the folder's umbrella `apps/<product>/AGENTS.md`,
    with a `CLAUDE.md` symlink beside it; `slices/AGENTS.md` notes that the
@@ -96,11 +105,11 @@ TypeScript reader of that file — spread it into `server` (or `preview`) instea
 of parsing the JSON again:
 
 ```ts
-import base, { devAppServer } from '../../vite.config.base.ts'
+import base, { devAppServer } from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
-  server: devAppServer('medications-app-dev'),
+  server: devAppServer('medications-dev'),
 })
 ```
 

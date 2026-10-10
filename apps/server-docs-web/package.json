@@ -1,0 +1,27 @@
+{
+  "name": "server-docs-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vp build",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@scalar/api-reference": "catalog:",
+    "branding-core": "workspace:*",
+    "effect": "catalog:",
+    "gatekeeper-core": "workspace:*"
+  },
+  "devDependencies": {
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

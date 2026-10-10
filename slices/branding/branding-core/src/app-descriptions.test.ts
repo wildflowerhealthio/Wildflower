@@ -12,15 +12,15 @@ import { MARKETING_ANCHORS } from './nav.ts'
 import { SECTION_PATHS, SITE_ORIGIN, siteRootFor } from './site.ts'
 
 /**
- * Every described app: the homepage's SMART apps, and the Synthetic Data Loader
- * and the launcher, which have a landing page but no homepage row.
+ * Every described app: the homepage's SMART apps, and the launcher, which has a
+ * landing page but no homepage row.
  */
-const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'syntheticData', 'launcher']
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'launcher']
 
 const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app but the data loader and the launcher exactly once, and nothing else', () => {
+  it('should list every described app but the launcher exactly once, and nothing else', () => {
     expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 
@@ -78,16 +78,16 @@ describe('smartAppLaunchPages', () => {
     expect(launchPages).toStrictEqual([
       {
         app: 'medications',
-        launchPageUrl: 'https://wildflowerhealth.io/medications-app/',
+        launchPageUrl: 'https://wildflowerhealth.io/medications/',
       },
-      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer-app/' },
+      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer/' },
       {
         app: 'healthViewer',
-        launchPageUrl: 'https://wildflowerhealth.io/health-viewer-app/',
+        launchPageUrl: 'https://wildflowerhealth.io/health-viewer/',
       },
       {
         app: 'syntheticData',
-        launchPageUrl: 'https://wildflowerhealth.io/synthetic-data-app/',
+        launchPageUrl: 'https://wildflowerhealth.io/synthetic-data/',
       },
       { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting/' },
     ])

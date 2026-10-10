@@ -291,7 +291,10 @@ mod tests {
     /// `0007`, the Importer by `0008`, the OHIF imaging viewer by `0009`
     /// (re-seeded by `0016` on an install that skipped it), FHIR Sync for
     /// Pebble by `0017` (its Observation scope widened by `0018`), Lifting by
-    /// `0019`, and the Synthesized Health Viewer by `0022` — so a
+    /// `0019`, the Synthesized Health Viewer by `0022`, and the Synthetic Data
+    /// Loader by `0028` (which re-keys Medications, the console, the Importer and
+    /// the Health Viewer to random ids, as `0025` / `0026` did Lifting and the
+    /// launcher) — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -304,14 +307,15 @@ mod tests {
             "growth_chart",
             "my_web_app",
             "cc344727-6f90-496c-94fd-c7829aa9a51d",
-            "medications-app",
-            "wildflower-server-docs",
+            "9769f8b274370708d0d3ebb2e3e59b7c",
+            "664a01e8614050cd82ffe90350b81413",
             "03a513940b52f8c2649a5366d1a26d19",
-            "importer-app",
+            "165cd26573e5ac72378e6ad2d2198330",
             "ohif-viewer",
             "fhir-sync-pebble",
             "bdf9fc5cb5a28c6683b49896b0ef8a75",
-            "health-viewer-app",
+            "474e103de61f9141c4b640d59bfa130e",
+            "225ba6af034a3acec6be7ff8010df67f",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -353,14 +357,18 @@ mod tests {
         );
 
         // The old `medication_viewer` id is gone — replaced by `my_web_app` —
-        // the pre-rename first-party ids are gone with `0006`, and the Web Trace
-        // clients with `0027`.
+        // the pre-rename first-party ids are gone with `0006`, the Web Trace
+        // clients with `0027`, and the ids `0028` re-keyed with it.
         for retired in [
             "medication_viewer",
             "wildflower-medication",
             "wildflower-web-trace",
             "web-trace-app",
             "web-trace-app-dev",
+            "medications-app",
+            "wildflower-server-docs",
+            "importer-app",
+            "health-viewer-app",
         ] {
             assert!(
                 store.client_by_id(retired).unwrap().is_none(),
@@ -368,19 +376,20 @@ mod tests {
             );
         }
 
-        // `medications-app` carries the published-site redirect it launches from.
-        let medications = store.client_by_id("medications-app").unwrap().unwrap();
+        // Medications carries the published-site redirect it launches from.
+        let medications = store
+            .client_by_id("9769f8b274370708d0d3ebb2e3e59b7c")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             medications.redirect_uris,
-            vec![
-                url::Url::parse("https://wildflowerhealth.io/medications-app/")
-                    .expect("a valid absolute redirect")
-            ],
+            vec![url::Url::parse("https://wildflowerhealth.io/medications/")
+                .expect("a valid absolute redirect")],
         );
         // Its scopes are `system/` reads only, with no `launch/patient`: the app
         // picks the patient itself, reading `Patient` for the picker (`0020`).
         // This vector must stay element-for-element equal to
-        // `MEDICATIONS_SCOPE` in `apps/medications-app/src/config.ts`;
+        // `MEDICATIONS_SCOPE` in `apps/medications/medications-web/src/config.ts`;
         // `seeding.rs`'s `seeds_the_medications_dev_client_with_the_apps_own_scopes`
         // reads that file and pins this client to it.
         assert_eq!(
@@ -402,15 +411,13 @@ mod tests {
         // *known* scope no wildcard covers, and the FHIR and Wildflower resource
         // grammars are disjoint.
         let docs = store
-            .client_by_id("wildflower-server-docs")
+            .client_by_id("664a01e8614050cd82ffe90350b81413")
             .unwrap()
             .unwrap();
         assert_eq!(
             docs.redirect_uris,
-            vec![
-                url::Url::parse("https://wildflowerhealth.io/wildflower-server-docs/")
-                    .expect("a valid absolute redirect")
-            ],
+            vec![url::Url::parse("https://wildflowerhealth.io/server-docs/")
+                .expect("a valid absolute redirect")],
         );
         assert_eq!(
             docs.allowed_scopes,
@@ -473,7 +480,7 @@ mod tests {
                 .expect("a valid absolute redirect")],
         );
 
-        // `importer-app` (the Importer) carries the published-site redirect it
+        // The Importer carries the published-site redirect it
         // launches from (seeded by `0008`). It is the one seeded
         // SMART client whose scopes **carry writes**: importing persists what a
         // captured session contained. The set `0008` seeded was widened by
@@ -483,14 +490,17 @@ mod tests {
         // broaden every type to full `.cruds` (create + read + update + delete +
         // search) — re-applied by `0015` on an install that skipped it. This
         // vector must stay element-for-element equal to the `scope` string in
-        // `apps/importer-web/src/config.ts` —
+        // `apps/importer/importer-web/src/config.ts` —
         // nothing spans the TS/Rust boundary to check it, so this assertion is the
         // Rust-side mirror of that pin, and a scope added on one side alone fails
         // `/authorize` on a real device.
-        let importer = store.client_by_id("importer-app").unwrap().unwrap();
+        let importer = store
+            .client_by_id("165cd26573e5ac72378e6ad2d2198330")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             importer.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/importer-app/")
+            vec![url::Url::parse("https://wildflowerhealth.io/importer/")
                 .expect("a valid absolute redirect")],
         );
         assert_eq!(
@@ -515,7 +525,7 @@ mod tests {
         // redirect, seeded by `0009` and repointed onto the `/fhir-viewer` route
         // by `0010`, and is read-only. This vector must stay
         // element-for-element equal to the `smartScope` string in
-        // `apps/ohif-viewer/config/app-config.js` — nothing spans the JS/Rust
+        // `apps/ohif-viewer-web/config/app-config.js` — nothing spans the JS/Rust
         // boundary to check it, so this assertion is the Rust-side mirror of that
         // pin, and a scope added on one side alone fails `/authorize` on a real
         // device.
@@ -601,20 +611,46 @@ mod tests {
                 AllowedGrantType::RefreshToken,
             ],
         );
-        // `health-viewer-app` (the Synthesized Health Viewer) carries its
-        // published-site redirect, seeded by `0022`, and read-only scopes. Its
-        // scopes are pinned to `apps/health-viewer/src/config.ts` by
+        // The Synthesized Health Viewer carries its published-site redirect,
+        // seeded by `0022` and moved by `0028`, and read-only scopes. Its
+        // scopes are pinned to `apps/health-viewer/health-viewer-web/src/config.ts` by
         // `seeding.rs`'s `seeds_the_health_viewer_dev_client_with_the_apps_own_scopes`.
-        let health_viewer = store.client_by_id("health-viewer-app").unwrap().unwrap();
+        let health_viewer = store
+            .client_by_id("474e103de61f9141c4b640d59bfa130e")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             health_viewer.redirect_uris,
             vec![
-                url::Url::parse("https://wildflowerhealth.io/health-viewer-app/")
+                url::Url::parse("https://wildflowerhealth.io/health-viewer/")
                     .expect("a valid absolute redirect")
             ],
         );
         assert_eq!(
             health_viewer.allowed_grant_types,
+            vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken,
+            ],
+        );
+        // The Synthetic Data Loader carries its published-site redirect, seeded
+        // by `0028`. Its write scopes are pinned to
+        // `apps/synthetic-data/synthetic-data-web/src/config.ts` by `seeding.rs`'s
+        // `seeds_the_synthetic_data_dev_client_with_the_apps_own_scopes`.
+        let synthetic_data = store
+            .client_by_id("225ba6af034a3acec6be7ff8010df67f")
+            .unwrap()
+            .unwrap();
+        assert_eq!(synthetic_data.name, "Synthetic Data Loader");
+        assert_eq!(
+            synthetic_data.redirect_uris,
+            vec![
+                url::Url::parse("https://wildflowerhealth.io/synthetic-data/")
+                    .expect("a valid absolute redirect")
+            ],
+        );
+        assert_eq!(
+            synthetic_data.allowed_grant_types,
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken,

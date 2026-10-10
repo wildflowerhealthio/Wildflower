@@ -1,0 +1,19 @@
+{
+  "name": "ohif-viewer-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "vp check",
+    "dev": "vp preview",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "branding-core": "workspace:*",
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

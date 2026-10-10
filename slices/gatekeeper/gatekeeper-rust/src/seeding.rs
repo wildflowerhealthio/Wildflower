@@ -106,39 +106,48 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
 ));
 
 /// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the seven first-party
-/// apps that register an OAuth client. The file also carries `web-server-docs-dev`
+/// apps that register an OAuth client. The file also carries `server-docs-dev`
 /// and `watch-lifts-web-dev`, which are not SMART apps and so have no client
 /// here; serde ignores them.
 #[cfg(debug_assertions)]
 #[derive(serde::Deserialize)]
 struct DevAppPorts {
-    #[serde(rename = "medications-app-dev")]
-    medications_app_dev: u16,
-    #[serde(rename = "importer-app-dev")]
-    importer_app_dev: u16,
+    #[serde(rename = "medications-dev")]
+    medications_dev: u16,
+    #[serde(rename = "importer-dev")]
+    importer_dev: u16,
     #[serde(rename = "ohif-viewer-dev")]
     ohif_viewer_dev: u16,
     #[serde(rename = "fhir-sync-pebble-dev")]
     fhir_sync_pebble_dev: u16,
-    #[serde(rename = "health-viewer-app-dev")]
-    health_viewer_app_dev: u16,
-    #[serde(rename = "synthetic-data-app-dev")]
-    synthetic_data_app_dev: u16,
+    #[serde(rename = "health-viewer-dev")]
+    health_viewer_dev: u16,
+    #[serde(rename = "synthetic-data-dev")]
+    synthetic_data_dev: u16,
     #[serde(rename = "lifting-dev")]
     lifting_dev: u16,
 }
 
-/// The `lifting-dev` tile's OAuth client: a random id (`openssl rand -hex 16`),
-/// not the tile id. `apps_rust::dev_seed` points the tile at it, and
-/// `apps/lifting/lifting-web/src/config.ts` launches as it under the dev server.
+/// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
+/// tile ids (`medications-dev` and so on). `apps_rust::dev_seed` points each tile
+/// at its client, and each app's `src/config.ts` launches as it under the dev
+/// server.
+#[cfg(debug_assertions)]
+const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
+#[cfg(debug_assertions)]
+const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
+#[cfg(debug_assertions)]
+const HEALTH_VIEWER_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+#[cfg(debug_assertions)]
+const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 #[cfg(debug_assertions)]
 const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 
-/// The `health-viewer-app-dev` client's scopes: exactly the scope string in
-/// `apps/health-viewer/src/config.ts`, which requests the same set for an EHR
+/// The Health Viewer dev client's scopes: exactly the scope string in
+/// `apps/health-viewer/health-viewer-web/src/config.ts`, which requests the same set for an EHR
 /// launch and a standalone connect, and the same set the production
-/// `health-viewer-app` client allows (gatekeeper migration
-/// `0022_seed_health_viewer_app_client`). A test below reads that file and pins
+/// Health Viewer client allows (gatekeeper migration
+/// `0022_seed_health_viewer_app_client`, re-keyed by `0028_rekey_site_app_clients`). A test below reads that file and pins
 /// all three together, so a scope added on one side alone fails the test rather
 /// than `/authorize` on a real device.
 #[cfg(debug_assertions)]
@@ -151,10 +160,11 @@ const HEALTH_VIEWER_DEV_SCOPES: &[&str] = &[
     "system/Patient.rs",
 ];
 
-/// The `synthetic-data-app-dev` client's scopes: exactly the scope string in
-/// `apps/synthetic-data-app/src/config.ts`, which requests the same set for an
-/// EHR launch and a standalone connect. A test below reads that file and pins
-/// the two together.
+/// The Synthetic Data Loader dev client's scopes: exactly the scope string in
+/// `apps/synthetic-data/synthetic-data-web/src/config.ts`, which requests the same set for an
+/// EHR launch and a standalone connect, and the same set the production client
+/// allows (gatekeeper migration `0028_rekey_site_app_clients`). A test below
+/// reads that file and pins all three together.
 #[cfg(debug_assertions)]
 const SYNTHETIC_DATA_DEV_SCOPES: &[&str] = &[
     "launch",
@@ -172,11 +182,11 @@ const SYNTHETIC_DATA_DEV_SCOPES: &[&str] = &[
     "system/ImagingStudy.cu",
 ];
 
-/// The `medications-app-dev` client's scopes: exactly `MEDICATIONS_SCOPE` in
-/// `apps/medications-app/src/config.ts`, which requests the same set for an
+/// The Medications dev client's scopes: exactly `MEDICATIONS_SCOPE` in
+/// `apps/medications/medications-web/src/config.ts`, which requests the same set for an
 /// EHR launch and a standalone connect, and the same set the production
-/// `medications-app` client allows (gatekeeper migration
-/// `0020_first_party_apps_pick_the_patient`). A test below reads that file and
+/// Medications client allows (gatekeeper migration
+/// `0020_first_party_apps_pick_the_patient`, re-keyed by `0028_rekey_site_app_clients`). A test below reads that file and
 /// pins all three together.
 #[cfg(debug_assertions)]
 const MEDICATIONS_DEV_SCOPES: &[&str] = &[
@@ -224,7 +234,8 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// build also gets an `<app>-dev` row (`apps_rust::dev_seed`) whose launch
 /// URL points at the app's local vite dev server on the port
 /// `dev-app-ports.json` pins, and that row needs its own client — named after
-/// the dev app id, or for Lifting a random id — whose absolute
+/// the dev app id for the OHIF viewer and FHIR Sync, a random id for the rest —
+/// whose absolute
 /// `http://localhost:{port}` redirect is what the authorize flow matches. They are separate clients rather than extra
 /// redirect entries on the production ones because adding a plaintext loopback
 /// redirect there would register it on a client that a public website uses.
@@ -256,19 +267,19 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     let dev_clients = [
         (
-            "medications-app-dev",
+            MEDICATIONS_DEV_CLIENT_ID,
             "Medications (Dev)",
-            // `apps/medications-app/src/config.ts`'s `MEDICATIONS_SCOPE` — see
+            // `apps/medications/medications-web/src/config.ts`'s `MEDICATIONS_SCOPE` — see
             // [`MEDICATIONS_DEV_SCOPES`].
             MEDICATIONS_DEV_SCOPES,
-            ports.medications_app_dev,
+            ports.medications_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            "importer-app-dev",
+            IMPORTER_DEV_CLIENT_ID,
             "Importer (Dev)",
-            // Mirrors the production `importer-app` client's write-carrying set
-            // (`apps/importer-web/src/config.ts`, as widened by gatekeeper
+            // Mirrors the production Importer client's write-carrying set
+            // (`apps/importer/importer-web/src/config.ts`, as widened by gatekeeper
             // migration `0009_widen_importer_client_write_scopes`, re-applied by
             // `0015` on an install that skipped it) — a dev build
             // requests the same scopes, and unlike the medications viewer above the
@@ -290,14 +301,14 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
                 "system/ImagingStudy.cruds",
             ]
             .as_slice(),
-            ports.importer_app_dev,
+            ports.importer_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
             "ohif-viewer-dev",
             "Imaging (Dev)",
             // Mirrors the production `ohif-viewer` client's read-only set (the
-            // `smartScope` in `apps/ohif-viewer/config/app-config.js`, seeded
+            // `smartScope` in `apps/ohif-viewer-web/config/app-config.js`, seeded
             // by migration `0009`): the launch Patient plus the ImagingStudy and
             // DocumentReference searches the OHIF FHIR data source issues.
             [
@@ -337,21 +348,21 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            "health-viewer-app-dev",
+            HEALTH_VIEWER_DEV_CLIENT_ID,
             "Health Viewer (Dev)",
-            // `apps/health-viewer/src/config.ts`'s scope string — see
+            // `apps/health-viewer/health-viewer-web/src/config.ts`'s scope string — see
             // [`HEALTH_VIEWER_DEV_SCOPES`].
             HEALTH_VIEWER_DEV_SCOPES,
-            ports.health_viewer_app_dev,
+            ports.health_viewer_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            "synthetic-data-app-dev",
+            SYNTHETIC_DATA_DEV_CLIENT_ID,
             "Synthetic Data (Dev)",
-            // `apps/synthetic-data-app/src/config.ts`'s scope string — see
+            // `apps/synthetic-data/synthetic-data-web/src/config.ts`'s scope string — see
             // [`SYNTHETIC_DATA_DEV_SCOPES`].
             SYNTHETIC_DATA_DEV_SCOPES,
-            ports.synthetic_data_app_dev,
+            ports.synthetic_data_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
@@ -434,27 +445,36 @@ mod tests {
     use super::*;
 
     /// The health viewer's dev client is seeded on its dev server's loopback
-    /// root with exactly the scopes the app requests, and the production
-    /// `health-viewer-app` client (gatekeeper migration `0022`) allows the same
-    /// set. The app's scope string is read out of `config.ts` itself, the one
-    /// place it is written, so neither client can drift from it unnoticed.
+    /// root with exactly the scopes the app requests, and the production client
+    /// (gatekeeper migration `0022`, re-keyed by `0028`) allows the same set.
+    /// The app's scope string and both client ids are read out of `config.ts`
+    /// itself, the one place the app writes them, so neither client can drift
+    /// from it unnoticed.
     #[test]
     fn seeds_the_health_viewer_dev_client_with_the_apps_own_scopes() {
         const HEALTH_VIEWER_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../apps/health-viewer/src/config.ts"
+            "/../../../apps/health-viewer/health-viewer-web/src/config.ts"
         ));
+        /// The production client `0028_rekey_site_app_clients` re-keys to.
+        const HEALTH_VIEWER_CLIENT_ID: &str = "474e103de61f9141c4b640d59bfa130e";
         let scope_string = format!("'{}'", HEALTH_VIEWER_DEV_SCOPES.join(" "));
         assert!(
             HEALTH_VIEWER_CONFIG_TS.contains(&scope_string),
-            "apps/health-viewer/src/config.ts must request exactly {scope_string}",
+            "apps/health-viewer/health-viewer-web/src/config.ts must request exactly {scope_string}",
         );
+        for client_id in [HEALTH_VIEWER_DEV_CLIENT_ID, HEALTH_VIEWER_CLIENT_ID] {
+            assert!(
+                HEALTH_VIEWER_CONFIG_TS.contains(&format!("'{client_id}'")),
+                "apps/health-viewer/health-viewer-web/src/config.ts must launch as {client_id}",
+            );
+        }
 
         let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
-            .client_by_id("health-viewer-app-dev")
+            .client_by_id(HEALTH_VIEWER_DEV_CLIENT_ID)
             .expect("query client")
             .expect("health viewer dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -462,40 +482,48 @@ mod tests {
         assert_eq!(client.allowed_scopes, HEALTH_VIEWER_DEV_SCOPES);
         assert_eq!(
             client.redirect_uris,
-            vec![url::Url::parse(&format!(
-                "http://localhost:{}/",
-                ports.health_viewer_app_dev
-            ))
-            .expect("a valid absolute redirect")],
+            vec![
+                url::Url::parse(&format!("http://localhost:{}/", ports.health_viewer_dev))
+                    .expect("a valid absolute redirect")
+            ],
         );
 
         let production = store
-            .client_by_id("health-viewer-app")
+            .client_by_id(HEALTH_VIEWER_CLIENT_ID)
             .expect("query client")
-            .expect("migration 0022 seeds the health-viewer-app client");
+            .expect("migration 0028 re-keys the Health Viewer client");
         assert_eq!(production.allowed_scopes, HEALTH_VIEWER_DEV_SCOPES);
     }
 
     /// The synthetic data loader's dev client is seeded on its dev server's
-    /// loopback root with exactly the scopes the app requests, read out of
-    /// `config.ts` itself, as the health viewer's is.
+    /// loopback root with exactly the scopes the app requests, and the
+    /// production client (gatekeeper migration `0028`) allows the same set, read
+    /// out of `config.ts` itself with both client ids, as the health viewer's are.
     #[test]
     fn seeds_the_synthetic_data_dev_client_with_the_apps_own_scopes() {
         const SYNTHETIC_DATA_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../apps/synthetic-data-app/src/config.ts"
+            "/../../../apps/synthetic-data/synthetic-data-web/src/config.ts"
         ));
+        /// The production client `0028_rekey_site_app_clients` seeds.
+        const SYNTHETIC_DATA_CLIENT_ID: &str = "225ba6af034a3acec6be7ff8010df67f";
         let scope_string = format!("'{}'", SYNTHETIC_DATA_DEV_SCOPES.join(" "));
         assert!(
             SYNTHETIC_DATA_CONFIG_TS.contains(&scope_string),
-            "apps/synthetic-data-app/src/config.ts must request exactly {scope_string}",
+            "apps/synthetic-data/synthetic-data-web/src/config.ts must request exactly {scope_string}",
         );
+        for client_id in [SYNTHETIC_DATA_DEV_CLIENT_ID, SYNTHETIC_DATA_CLIENT_ID] {
+            assert!(
+                SYNTHETIC_DATA_CONFIG_TS.contains(&format!("'{client_id}'")),
+                "apps/synthetic-data/synthetic-data-web/src/config.ts must launch as {client_id}",
+            );
+        }
 
         let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
-            .client_by_id("synthetic-data-app-dev")
+            .client_by_id(SYNTHETIC_DATA_DEV_CLIENT_ID)
             .expect("query client")
             .expect("synthetic data dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -503,37 +531,44 @@ mod tests {
         assert_eq!(client.allowed_scopes, SYNTHETIC_DATA_DEV_SCOPES);
         assert_eq!(
             client.redirect_uris,
-            vec![url::Url::parse(&format!(
-                "http://localhost:{}/",
-                ports.synthetic_data_app_dev
-            ))
-            .expect("a valid absolute redirect")],
+            vec![
+                url::Url::parse(&format!("http://localhost:{}/", ports.synthetic_data_dev))
+                    .expect("a valid absolute redirect")
+            ],
         );
     }
 
     /// The Medications dev client is seeded on its dev server's loopback root
-    /// with exactly the scopes the app requests, and the production
-    /// `medications-app` client (gatekeeper migrations `0004` / `0011`, then
-    /// `0020`) allows the same set. The app's `MEDICATIONS_SCOPE` is read out of
-    /// `config.ts` itself, the one place it is written, so neither client can
-    /// drift from it unnoticed.
+    /// with exactly the scopes the app requests, and the production client
+    /// (gatekeeper migrations `0004` / `0011`, then `0020`, re-keyed by `0028`)
+    /// allows the same set. The app's `MEDICATIONS_SCOPE` and both client ids are
+    /// read out of `config.ts` itself, the one place the app writes them, so
+    /// neither client can drift from it unnoticed.
     #[test]
     fn seeds_the_medications_dev_client_with_the_apps_own_scopes() {
         const MEDICATIONS_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../apps/medications-app/src/config.ts"
+            "/../../../apps/medications/medications-web/src/config.ts"
         ));
+        /// The production client `0028_rekey_site_app_clients` re-keys to.
+        const MEDICATIONS_CLIENT_ID: &str = "9769f8b274370708d0d3ebb2e3e59b7c";
         let scope_string = format!("'{}'", MEDICATIONS_DEV_SCOPES.join(" "));
         assert!(
             MEDICATIONS_CONFIG_TS.contains(&scope_string),
-            "apps/medications-app/src/config.ts must request exactly {scope_string}",
+            "apps/medications/medications-web/src/config.ts must request exactly {scope_string}",
         );
+        for client_id in [MEDICATIONS_DEV_CLIENT_ID, MEDICATIONS_CLIENT_ID] {
+            assert!(
+                MEDICATIONS_CONFIG_TS.contains(&format!("'{client_id}'")),
+                "apps/medications/medications-web/src/config.ts must launch as {client_id}",
+            );
+        }
 
         let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
         let client = store
-            .client_by_id("medications-app-dev")
+            .client_by_id(MEDICATIONS_DEV_CLIENT_ID)
             .expect("query client")
             .expect("medications dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -542,15 +577,15 @@ mod tests {
         assert_eq!(
             client.redirect_uris,
             vec![
-                url::Url::parse(&format!("http://localhost:{}/", ports.medications_app_dev))
+                url::Url::parse(&format!("http://localhost:{}/", ports.medications_dev))
                     .expect("a valid absolute redirect")
             ],
         );
 
         let production = store
-            .client_by_id("medications-app")
+            .client_by_id(MEDICATIONS_CLIENT_ID)
             .expect("query client")
-            .expect("the migrations seed the medications-app client");
+            .expect("migration 0028 re-keys the Medications client");
         assert_eq!(production.allowed_scopes, MEDICATIONS_DEV_SCOPES);
     }
 

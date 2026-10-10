@@ -309,7 +309,7 @@ interface SmartAppLaunchPage {
  * @example
  * ```ts
  * smartAppLaunchPages('https://wildflowerhealth.io/')[0]
- * // → { app: 'medications', launchPageUrl: 'https://wildflowerhealth.io/medications-app/' }
+ * // → { app: 'medications', launchPageUrl: 'https://wildflowerhealth.io/medications/' }
  * ```
  */
 const smartAppLaunchPages = (siteRoot: string): readonly SmartAppLaunchPage[] =>

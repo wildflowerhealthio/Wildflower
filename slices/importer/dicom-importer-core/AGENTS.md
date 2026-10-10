@@ -133,4 +133,4 @@ carrying the one `ImagingStudy` its files make up.
 
 - [Adding a File-Format Importer How-To](../docs/Adding%20a%20File-Format%20Importer%20How-To.md)
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md)
-- [importer-react AGENTS.md](../importer-react/AGENTS.md)
+- [importer-react AGENTS.md](../../../apps/importer/importer-react/AGENTS.md)

@@ -5,7 +5,7 @@ import base, { devAppServer } from '../../../vite.config.base.ts'
 
 /**
  * A SMART-on-FHIR app built as a static bundle into this package's default
- * `dist/`, which `apps/github-pages` publishes. One HTML entry, `index.html`:
+ * `dist/`, which `apps/wildflower-site/wildflower-site-web` publishes. One HTML entry, `index.html`:
  * the app root, which starts a SMART launch its URL carries (an EHR's `iss` and
  * `launch`, or a lone `iss`), completes the handshake and renders the app when
  * a callback is in the URL, and shows the standalone connect menu otherwise.

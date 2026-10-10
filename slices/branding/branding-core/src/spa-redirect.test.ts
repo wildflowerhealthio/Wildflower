@@ -14,7 +14,7 @@ import {
 /** URL path segments: no separators, no dots (so no traversal), not empty. */
 const segment = fc.stringMatching(/^[A-Za-z0-9_-]{1,12}$/)
 
-/** An app basename, always slash-suffixed: `/`, `/medications-app/`, … */
+/** An app basename, always slash-suffixed: `/`, `/medications/`, … */
 const basenameArb = fc
   .array(segment, { maxLength: 3 })
   .map((segments) => (segments.length === 0 ? '/' : `/${segments.join('/')}/`))
@@ -40,8 +40,8 @@ const parse = (url: string): URL => new URL(url, 'https://wildflowerhealth.io')
 
 describe('basenameOf', () => {
   it('should return the directory of the landing path', () => {
-    expect(basenameOf('/medications-app/')).toBe('/medications-app/')
-    expect(basenameOf('/medications-app/index.html')).toBe('/medications-app/')
+    expect(basenameOf('/medications/')).toBe('/medications/')
+    expect(basenameOf('/medications/index.html')).toBe('/medications/')
     expect(basenameOf('/')).toBe('/')
   })
 
@@ -59,51 +59,51 @@ describe('restoredUrl', () => {
   it('should restore the route the 404 page carried, under the app basename', () => {
     expect(
       restoredUrl({
-        pathname: '/importer-app/',
+        pathname: '/importer/',
         search: '?redirect=/trace&iss=https%3A%2F%2Fexample.com',
         hash: '#t',
       })
-    ).toBe('/importer-app/trace?iss=https%3A%2F%2Fexample.com#t')
+    ).toBe('/importer/trace?iss=https%3A%2F%2Fexample.com#t')
   })
 
   it('should strip a leading copy of the basename from the redirect path', () => {
     expect(
       restoredUrl({
-        pathname: '/medications-app/',
-        search: '?redirect=/medications-app/x',
+        pathname: '/medications/',
+        search: '?redirect=/medications/x',
         hash: '',
       })
-    ).toBe('/medications-app/x')
+    ).toBe('/medications/x')
   })
 
   it('should land on the app root when the redirect path is the basename itself', () => {
     expect(
-      restoredUrl({ pathname: '/medications-app/', search: '?redirect=/medications-app', hash: '' })
-    ).toBe('/medications-app/')
+      restoredUrl({ pathname: '/medications/', search: '?redirect=/medications', hash: '' })
+    ).toBe('/medications/')
   })
 
   it('should keep a route named like the app directory when the path is site-absolute', () => {
-    // What 404.html sends for `/medications-app/medications-app`; app-relative
-    // (`?redirect=/medications-app`) it would read as the app root.
+    // What 404.html sends for `/medications/medications`; app-relative
+    // (`?redirect=/medications`) it would read as the app root.
     expect(
       restoredUrl({
-        pathname: '/medications-app/',
-        search: '?redirect=/medications-app/medications-app',
+        pathname: '/medications/',
+        search: '?redirect=/medications/medications',
         hash: '',
       })
-    ).toBe('/medications-app/medications-app')
+    ).toBe('/medications/medications')
   })
 
   it('should return undefined when the load carries no redirect', () => {
     expect(
-      restoredUrl({ pathname: '/medications-app/', search: '?iss=https%3A%2F%2Fx', hash: '' })
+      restoredUrl({ pathname: '/medications/', search: '?iss=https%3A%2F%2Fx', hash: '' })
     ).toBeUndefined()
-    expect(restoredUrl({ pathname: '/medications-app/', search: '', hash: '' })).toBeUndefined()
+    expect(restoredUrl({ pathname: '/medications/', search: '', hash: '' })).toBeUndefined()
   })
 
   it('should return undefined for an empty redirect rather than rewriting to the root', () => {
     expect(
-      restoredUrl({ pathname: '/medications-app/', search: '?redirect=', hash: '' })
+      restoredUrl({ pathname: '/medications/', search: '?redirect=', hash: '' })
     ).toBeUndefined()
   })
 
@@ -201,15 +201,15 @@ describe('restoreRedirectedUrl', () => {
 
   it('should replace the current history entry with the restored URL', () => {
     const target = targetAt({
-      pathname: '/importer-app/',
+      pathname: '/importer/',
       search: '?redirect=/files&code=abc',
       hash: '',
     })
-    expect(restoreRedirectedUrl(target)).toBe('/importer-app/files?code=abc')
+    expect(restoreRedirectedUrl(target)).toBe('/importer/files?code=abc')
     expect(target.replaceState).toHaveBeenCalledExactlyOnceWith(
       null,
       '',
-      '/importer-app/files?code=abc'
+      '/importer/files?code=abc'
     )
   })
 

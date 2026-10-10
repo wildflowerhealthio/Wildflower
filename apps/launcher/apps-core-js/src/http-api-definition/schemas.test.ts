@@ -157,7 +157,7 @@ describe('InvalidFieldSchema', () => {
 describe('HomeScreenSchema', () => {
   it('decodes an ordered list of { id, onHomescreen } entries', () => {
     const body = [
-      { id: 'medications-app', onHomescreen: true },
+      { id: 'medications', onHomescreen: true },
       { id: 'growth-chart', onHomescreen: false },
     ]
     expectRightToEqual(Schema.decodeUnknownEither(HomeScreenSchema)(body), body)

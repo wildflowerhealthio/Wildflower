@@ -5,7 +5,7 @@ Lifting, a SMART-on-FHIR strength-training app published to
 from the `lifting-dev` tile under the vite dev server. See [README.md](./README.md)
 for the boot structure, the reads, the tabs, the writes and the scopes.
 
-`apps/health-viewer` is the template: the same one HTML entry, relative
+`apps/health-viewer/health-viewer-web` is the template: the same one HTML entry, relative
 `base`, build into the package's own `dist/`, `SmartAppRoot` shell with its own
 Sentry DSN, and read-status lines.
 
@@ -114,7 +114,7 @@ they cover.
 
 - [apps/lifting/AGENTS.md](../AGENTS.md) — the lifting packages this
   app composes.
-- [apps/health-viewer/README.md](../../health-viewer/README.md) — the template.
+- [apps/health-viewer/health-viewer-web/README.md](../../health-viewer/health-viewer-web/README.md) — the template.
 - [slices/emr/AGENTS.md](../../../slices/emr/AGENTS.md) — `fhir-r4-react/smart`'s
   paged reads.
 - [apps/AGENTS.md](../../AGENTS.md) — the rules every app follows.

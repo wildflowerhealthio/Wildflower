@@ -1,9 +1,9 @@
 name: PR Preview
 
 # Builds the same assembled static site as deploy-github-pages.yml
-# (apps/github-pages/dist) and publishes it to the `wildflowerhealthio/staging`
-# repo under `pr-<n>/` on the `main` branch, which that repo serves via GitHub
-# Pages. On PR close the preview is torn down.
+# (apps/wildflower-site/wildflower-site-web/dist) and publishes it to the
+# `wildflowerhealthio/staging` repo under `pr-<n>/` on the `main` branch, which
+# that repo serves via GitHub Pages. On PR close the preview is torn down.
 #
 # Prerequisites (one-time):
 #   - The `wildflowerhealthio/staging` repo exists and has GitHub Pages
@@ -84,18 +84,19 @@ jobs:
 
       # Same build as the production deploy: `vp run pack` runs in workspace
       # dependency order so every assembled section is built before
-      # github-pages stages them into apps/github-pages/dist. Same Sentry
-      # variables too, tagged `staging` so preview traffic filters apart.
+      # wildflower-site-web stages them into
+      # apps/wildflower-site/wildflower-site-web/dist. Same Sentry variables too,
+      # tagged `staging` so preview traffic filters apart.
       - name: Build site
         if: github.event.action != 'closed'
         run: vp run pack
         env:
-          VITE_SENTRY_DSN_MEDICATIONS_APP: ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_APP }}
+          VITE_SENTRY_DSN_MEDICATIONS_WEB: ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_WEB }}
           VITE_SENTRY_DSN_IMPORTER_WEB: ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
-          VITE_SENTRY_DSN_HEALTH_VIEWER: ${{ vars.VITE_SENTRY_DSN_HEALTH_VIEWER }}
+          VITE_SENTRY_DSN_HEALTH_VIEWER_WEB: ${{ vars.VITE_SENTRY_DSN_HEALTH_VIEWER_WEB }}
           VITE_SENTRY_DSN_LIFTING_APP: ${{ vars.VITE_SENTRY_DSN_LIFTING_APP }}
           VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB: ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
-          VITE_SENTRY_DSN_SYNTHETIC_DATA_APP: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_APP }}
+          VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
           VITE_SENTRY_DSN_LAUNCHER_WEB: ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
           VITE_SENTRY_ENVIRONMENT: staging
           VITE_SENTRY_RELEASE: ${{ github.event.pull_request.head.sha }}
@@ -113,11 +114,11 @@ jobs:
           auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           org: ${{ vars.SENTRY_ORG }}
           dsns: |
-            ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_APP }}
+            ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_WEB }}
             ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_HEALTH_VIEWER }}
+            ${{ vars.VITE_SENTRY_DSN_HEALTH_VIEWER_WEB }}
             ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_APP }}
+            ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
             ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
 
       # Strip the marketing site's CNAME from the preview artifact. It only
@@ -127,7 +128,7 @@ jobs:
       # repoints it.
       - name: Strip production CNAME from preview
         if: github.event.action != 'closed'
-        run: rm -f apps/github-pages/dist/CNAME
+        run: rm -f apps/wildflower-site/wildflower-site-web/dist/CNAME
 
       # The staging repo serves Pages **from a branch**, so GitHub builds it
       # with Jekyll — and Jekyll drops every path whose name starts with an
@@ -175,7 +176,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.staging-token.outputs.token }}
         run: |
-          content=$(base64 -w0 apps/github-pages/404.html)
+          content=$(base64 -w0 apps/wildflower-site/wildflower-site-web/404.html)
           # `gh api` prints the error body on stdout for a 404, so the exit
           # status, not the output, says whether the file exists.
           existing=$(gh api "repos/wildflowerhealthio/staging/contents/404.html?ref=main" 2>/dev/null) || existing=''
@@ -198,7 +199,7 @@ jobs:
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1.8.1
         with:
-          source-dir: apps/github-pages/dist
+          source-dir: apps/wildflower-site/wildflower-site-web/dist
           preview-branch: main
           # Umbrella at the repo root (not the action default `pr-preview/`)
           # so previews land at `wildflowerhealthio.github.io/staging/pr-<n>/`

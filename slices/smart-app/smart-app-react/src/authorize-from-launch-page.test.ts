@@ -14,12 +14,12 @@ vi.mock('fhir-r4-react/smart', async (importOriginal) => ({
 }))
 
 const LAUNCH = {
-  clientId: 'importer-app',
+  clientId: '165cd26573e5ac72378e6ad2d2198330',
   scope: 'launch openid fhirUser system/DocumentReference.cruds',
 }
 
 const LAUNCH_PAGE =
-  'https://wildflowerhealth.io/importer-app/?iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz'
+  'https://wildflowerhealth.io/importer/?iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz'
 
 beforeEach(() => {
   authorizeSmartLaunchMock.mockReset()
@@ -36,7 +36,7 @@ describe('authorizeFromLaunchPage', () => {
     // Assert — the registration, plus the root the launch page sits in
     expect(authorizeSmartLaunchMock).toHaveBeenCalledWith({
       ...LAUNCH,
-      redirectUri: 'https://wildflowerhealth.io/importer-app/',
+      redirectUri: 'https://wildflowerhealth.io/importer/',
     })
     expect(failure).toBeNull()
   })
@@ -51,7 +51,7 @@ describe('authorizeFromLaunchPage', () => {
     // Assert — the target is the app root, and the root's banner can decode it
     expect(failure).not.toBeNull()
     const target = new URL(failure ?? '')
-    expect(`${target.origin}${target.pathname}`).toBe('https://wildflowerhealth.io/importer-app/')
+    expect(`${target.origin}${target.pathname}`).toBe('https://wildflowerhealth.io/importer/')
     const reported = launchErrorFrom(target.search)
     expect(reported?.message).toContain('Failed to fetch')
     expect(reported).toHaveProperty('iss', 'https://ehr.example/fhir')

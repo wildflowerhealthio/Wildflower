@@ -104,7 +104,7 @@ vi.mock('./connect-menu.tsx', () => ({
 }))
 
 const REGISTRATION = {
-  clientId: 'medications-app',
+  clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
   scope: 'launch openid fhirUser system/MedicationRequest.rs',
 }
 
@@ -181,7 +181,7 @@ describe('SmartAppRoot', () => {
 
   it('should hand the connect menu the SMART target, the registration and this root as its redirect', () => {
     // Arrange — served from a subpath, with a query that must not leak into the redirect
-    setUrl('/importer-app/index.html?utm_source=email')
+    setUrl('/importer/index.html?utm_source=email')
 
     // Act
     renderShell({ launched: false })
@@ -191,7 +191,7 @@ describe('SmartAppRoot', () => {
     expect(menu.getAttribute('data-target')).toBe('fhir-r4')
     expect(menu.getAttribute('data-client-id')).toBe(REGISTRATION.clientId)
     expect(menu.getAttribute('data-scope')).toBe(REGISTRATION.scope)
-    expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer-app/`)
+    expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer/`)
   })
 
   it('should resolve every header nav link as an absolute marketing-site URL', () => {
@@ -361,7 +361,7 @@ describe('SmartAppRoot on a launch', () => {
       { case: 'a lone iss', search: '?iss=https%3A%2F%2Ffhir.example%2Fr4' },
     ])('should authorize $case once, from the app root, under StrictMode', async ({ search }) => {
       // Arrange
-      setUrl(`/importer-app/${search}`)
+      setUrl(`/importer/${search}`)
 
       // Act
       renderShell({})
@@ -373,7 +373,7 @@ describe('SmartAppRoot on a launch', () => {
       })
       expect(authorizeMock).toHaveBeenCalledWith({
         ...REGISTRATION,
-        redirectUri: `${window.location.origin}/importer-app/`,
+        redirectUri: `${window.location.origin}/importer/`,
       })
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     })
@@ -417,7 +417,7 @@ describe('SmartAppRoot on a launch', () => {
       // Arrange — discovery fails, as for an unreachable iss
       authorizeMock.mockRejectedValue(new Error('Failed to fetch'))
       const replaceLocation = vi.fn<(url: string) => void>()
-      setUrl(`/importer-app/${EHR_LAUNCH}`)
+      setUrl(`/importer/${EHR_LAUNCH}`)
 
       // Act
       renderShell({ replaceLocation })
@@ -427,7 +427,7 @@ describe('SmartAppRoot on a launch', () => {
         expect(replaceLocation).toHaveBeenCalledTimes(1)
       })
       const target = new URL(replaceLocation.mock.calls[0]?.[0] ?? '')
-      expect(`${target.origin}${target.pathname}`).toBe(`${window.location.origin}/importer-app/`)
+      expect(`${target.origin}${target.pathname}`).toBe(`${window.location.origin}/importer/`)
       expect([...target.searchParams.keys()]).toStrictEqual(['launchError'])
       expect(decodeLaunchError(target.searchParams.get('launchError') ?? '')).toStrictEqual(
         Option.some({
@@ -441,7 +441,7 @@ describe('SmartAppRoot on a launch', () => {
     it('should leave for the bare app root when restored from the back-forward cache', async () => {
       // Arrange — the launch has left for the authorization server
       const replaceLocation = vi.fn<(url: string) => void>()
-      setUrl(`/importer-app/${EHR_LAUNCH}`)
+      setUrl(`/importer/${EHR_LAUNCH}`)
       renderShell({ replaceLocation })
       await waitFor(() => {
         expect(authorizeMock).toHaveBeenCalledTimes(1)
@@ -457,9 +457,7 @@ describe('SmartAppRoot on a launch', () => {
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
 
       // Assert — a plain visit to the app root, and the spent launch not reused
-      expect(replaceLocation.mock.calls).toStrictEqual([
-        [`${window.location.origin}/importer-app/`],
-      ])
+      expect(replaceLocation.mock.calls).toStrictEqual([[`${window.location.origin}/importer/`]])
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     })
 

@@ -19,19 +19,20 @@ slices/<name>/
 
 Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (e.g. `persistence`).
 
-Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `medication`, `navigation`, `persistence`, `request-log`, `scopes`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
+Current slices: `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `gatekeeper`, `har-recorder`, `http-extraction`, `importer`, `medication`, `navigation`, `persistence`, `request-log`, `scopes`, `shared-structures`, `smart-app`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
 
-`http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
+`http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md). The importer slice keeps the fundamentals and format bindings the Synthetic Data Loader also runs; the Importer's core, shell, format screens and the anonymizer live with the app in `apps/importer` — see [apps/importer/AGENTS.md](../apps/importer/AGENTS.md).
 
-`medication` owns a patient's medication list end-to-end — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values; two features build on it, neither owning the base: `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
+`medication` is the shared base of a patient's medication list — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values, which the Health Viewer reads too, and `medication-calendar-core` the fill-date arithmetic. Two features build on it, neither owning the base, and live with the medications app in `apps/medications` — see [apps/medications/AGENTS.md](../apps/medications/AGENTS.md): `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
 
-`health-viewer` plots a patient's own observations and medications on one time
-axis — see [health-viewer/AGENTS.md](./health-viewer/AGENTS.md). Like
+The Health Viewer is not a slice: it plots a patient's own observations and
+medications on one time axis, and its packages live with the app in
+`apps/health-viewer` — see [apps/health-viewer/AGENTS.md](../apps/health-viewer/AGENTS.md). Like
 `http-extraction`, it layers a domain-free vocabulary under per-domain packages:
 `health-viewer-fundamentals` holds the plot vocabulary and chart math (point and
 level series, value axes, the crosshair), `health-viewer-observations` reads FHIR
 `Observation`s into it, `health-viewer-medications` reads `medication-core`'s
-dose regimens into it, and `health-viewer-core` assembles the sources with the
+dose regimens into it, and `health-viewer-core-js` assembles the sources with the
 catalogue, range presets and the URL codec a shared link round-trips through —
 all pure functions, property-tested without a DOM. `health-viewer-react` draws
 the fundamentals' series with Observable Plot, importing no domain package.
@@ -61,8 +62,9 @@ days. It serves the log at
 `request-log-react` is the `/settings/requests` page: the recent-activity card,
 the filtered log and its CSV export.
 
-`synthetic-data` is tooling for synthetic health data — see
-[synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md). Like `health-viewer`, it
+Synthetic data is not a slice either: the tooling for synthetic health data
+lives with the Synthetic Data Loader in `apps/synthetic-data` — see
+[apps/synthetic-data/AGENTS.md](../apps/synthetic-data/AGENTS.md). Like the Health Viewer, it
 layers a source-free base under per-source packages:
 `synthetic-data-fundamentals` holds three roles as sub-entries: the story model
 (`/story`: people, prescriptions, lab draws, every date relative to one as-of
@@ -76,10 +78,10 @@ importer (`synthetic-data-rexall-be-well` writes a letsbewell.ca session HAR,
 `synthetic-data-lifelabs` the resources a LifeLabs report imports as, and
 `synthetic-data-fhir-sync-pebble` the Observations a Pebble watch syncs, and
 `synthetic-data-dicom` a de-identified image re-identified as a person);
-`synthetic-data-core` assembles their importer output as a `Snapshot`: its
+`synthetic-data-core-js` assembles their importer output as a `Snapshot`: its
 entries' files and an `index.json` header, and reads them back;
 `synthetic-data-react` loads a published snapshot into a FHIR server, mounted
-by `apps/synthetic-data-app`.
+by `apps/synthetic-data/synthetic-data-web`.
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
 Lifting is not a slice either: a person's strength-training plan, its screens
@@ -144,7 +146,7 @@ effect-messaging bridge.
 
 `smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
-`web-trace` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace/AGENTS.md](./web-trace/AGENTS.md). Its `web-trace-core` sits below both the collectors and the HAR packages (`http-archive`, `har-importer-core`, `har-recorder-core`, `har-anonymizer-core`), which is why it is a slice of its own rather than a package inside any of them. The collector that consumes it, [`web-trace-collector`](./collector/web-trace-collector/AGENTS.md), lives in the `collector` slice — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
+`web-trace` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace/AGENTS.md](./web-trace/AGENTS.md). Its `web-trace-core` sits below both the collectors and the HAR packages (`http-archive`, `har-importer-core`, `har-recorder-core`, `har-anonymizer-core-js`), which is why it is a slice of its own rather than a package inside any of them. The collector that consumes it, [`web-trace-collector`](./collector/web-trace-collector/AGENTS.md), lives in the `collector` slice — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
 
 ## Rules
 

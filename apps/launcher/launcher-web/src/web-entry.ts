@@ -16,7 +16,7 @@ import {
 // Named imports, not the whole document: only these two fields concern this
 // entry, and importing them individually keeps the rest of the host's
 // configuration out of a published bundle. The same read
-// `apps/wildflower-server-docs/src/host-defaults.ts` does, and the same one
+// `apps/server-docs-web/src/host-defaults.ts` does, and the same one
 // `apps/host/host-app/vite.config.ts` injects `WILDFLOWER_LOOPBACK_ORIGIN`
 // from.
 import {
@@ -75,7 +75,7 @@ const chosenServerUrl = (search: string, store: SignedInServerStore): string | u
 /**
  * The API origin a page load targets: the {@link chosenServerUrl}, falling back
  * to {@link DEFAULT_SERVER_URL} — the same shape
- * `apps/wildflower-server-docs/src/server-target.ts` gives the console.
+ * `apps/server-docs-web/src/server-target.ts` gives the console.
  */
 const apiServerUrl = (search: string, store: SignedInServerStore): string =>
   chosenServerUrl(search, store) ?? DEFAULT_SERVER_URL

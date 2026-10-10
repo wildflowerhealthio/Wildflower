@@ -74,7 +74,7 @@
     {
       "id": "effect-slice-core",
       "tools": "edit",
-      "pattern": "^slices/[^/]+/[^/]+-core/src/.*\\.ts$",
+      "pattern": "^slices/[^/]+/[^/]+-core/src/.*\\.ts$|^apps/(?:[^/]+/)+[^/]+-core-js/src/.*\\.ts$",
       "docs": [
         "docs/Effect/Patterns Reference.md — repository pattern, generators, error wrappers, Layers",
         "slices/AGENTS.md — layering rules (-core is pure; adapters import -core, never the reverse)"

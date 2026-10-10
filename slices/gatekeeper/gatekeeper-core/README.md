@@ -189,7 +189,7 @@ an unregistered redirect for it outright (the local `RedirectUriNotAllowed`
 page), and `ensure_first_party_client` seeds it from code with no redirect URIs
 at all. A browser page running this flow therefore cannot authorize as
 `wildflower-host`; it needs a client row of its own, the way
-`wildflower-server-docs` and `launcher-web` have one.
+`server-docs-web` and `launcher-web` have one.
 
 ### Returning to a route instead of a directory
 
