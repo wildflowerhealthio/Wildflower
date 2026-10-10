@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import {
+  PermissivePassthrough,
   OrNullAsOptional,
   mutableEncoded,
   type FieldsNoContext,
@@ -19,7 +20,7 @@ import * as Resource from './resource.ts'
  */
 const fields = {
   ...Resource.fields,
-  contained: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.Any)), {
+  contained: Schema.optionalWith(mutableEncoded(Schema.Array(PermissivePassthrough)), {
     default: (): readonly unknown[] => [],
   }),
   extension: Schema.optionalWith(

@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import {
+  PermissivePassthrough,
   OrNullAsOptional,
   StructNoContext,
   mutableEncoded,
@@ -288,7 +289,7 @@ const ServiceRequestStruct = Schema.extend(
       insurance: referenceArray,
       supportingInfo: referenceArray,
       bodySite: codeableConceptArray,
-      note: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.Any)), {
+      note: Schema.optionalWith(mutableEncoded(Schema.Array(PermissivePassthrough)), {
         default: (): readonly unknown[] => [],
       }),
       patientInstruction: OrNullAsOptional(Schema.String),

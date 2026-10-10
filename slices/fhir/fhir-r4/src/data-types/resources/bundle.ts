@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
 import {
+  PermissivePassthrough,
   mutableEncoded,
   OrNullAsOptional,
   StructNoContext,
@@ -288,7 +289,7 @@ const BundleSchema = <FhirResourceSchema extends Schema.Schema.AnyNoContext>(
         link: Schema.optionalWith(mutableEncoded(Schema.Array(BundleLinkSchema)), {
           default: (): readonly (typeof BundleLinkSchema.Type)[] => [],
         }),
-        signature: OrNullAsOptional(Schema.Any),
+        signature: OrNullAsOptional(PermissivePassthrough),
         timestamp: OrNullAsOptional(Schema.String),
         total: OrNullAsOptional(Schema.Int),
         type: BundleType,

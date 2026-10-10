@@ -25,6 +25,12 @@ describe('FhirR4Medication', () => {
     )
   })
 
+  test('contained passthrough compares NaN entries as equal', () => {
+    const medication = { ...Medication.empty, contained: [Number.NaN] }
+    const fhir = Schema.encodeSync(Medication.Schema)(medication)
+    expect(Schema.decodeSync(Medication.Schema)(fhir)).toSchemaEqual(Medication.Schema, medication)
+  })
+
   test('lenient decode: unknown fields are ignored', () => {
     const decoded = Schema.decodeUnknownSync(Medication.Schema)({
       resourceType: 'Medication',
