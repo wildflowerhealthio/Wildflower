@@ -105,7 +105,7 @@ catalog:
   '@types/react': 19.3.0
   '@types/react-dom': 19.3.0
   '@vitejs/plugin-react': ^6.1.1
-  effect: 3.22.2
+  effect: 4.0.1
   esbuild: ^0.28.2
   # Browser shim for Node's `events`, aliased in `apps/importer-web/vite.config.ts`.
   # @cornerstonejs/core reaches xmlbuilder2 (via vtk.js's XML mesh reader), which
