@@ -33,15 +33,15 @@ by hand:
 
 ## The shared keys
 
-| Key                   | Jobs                                                   | Environment                                                            |
-| --------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `workspace-linux-dev` | `ci-rust.yml` → `rust`; `rust-cache-warm.yml` → `warm` | Full workspace, `ubuntu-latest`, dev profile, default rustflags        |
-| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)          | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app |
-| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)        | Release profile, rustflags add `-C link-arg=advapi32.lib`              |
-| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)          | Release profile, `ubuntu-22.04` — a different image from CI's          |
-| `release-ios`         | `tauri-release-publish.yml` → `build-ios`              | Release profile, `aarch64-apple-ios`                                   |
-| `release-relay`       | `deploy-relay.yml` → `build`                           | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04`               |
-| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                | No compile at all; `cache-targets: false`, registry and git only       |
+| Key                   | Jobs                                                   | Environment                                                             |
+| --------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `workspace-linux-dev` | `ci-rust.yml` → `rust`; `rust-cache-warm.yml` → `warm` | Full workspace, `ubuntu-latest`, dev profile, default rustflags         |
+| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)          | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app  |
+| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)        | Release profile, rustflags add `-C link-arg=advapi32.lib`               |
+| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)          | Release profile, `ubuntu-22.04` — a different image from CI's           |
+| `release-ios`         | `tauri-release-publish.yml` → `build-ios`              | Release profile, `aarch64-apple-ios`                                    |
+| `release-relay`       | `deploy-relay.yml` → `build`                           | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04` |
+| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                | No compile at all; `cache-targets: false`, registry and git only        |
 
 Every one of them pins `cache-on-failure: true` — also the action's own default,
 stated outright because the scheme depends on it: a red run still saves the
