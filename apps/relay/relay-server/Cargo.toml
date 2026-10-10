@@ -84,7 +84,7 @@ serde.workspace = true
 sha2 = "0.11"
 # Parses `Signature-Input`, `Signature` and `Content-Digest`, which are
 # structured fields (RFC 9651), and serializes `@signature-params`.
-sfv = "0.15"
+sfv = "0.16"
 # `GET /health` on the site.
 wildflowerhealthio-shared-structures = { path = "../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
