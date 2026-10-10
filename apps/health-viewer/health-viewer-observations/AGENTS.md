@@ -50,7 +50,7 @@ here; the chart math it feeds lives in `health-viewer-fundamentals`.
   under `other` is decided here; the core only lays out the groups a source
   declares.
 - **This package is a `fhir-r4` consumer**, so both
-  [consumer gotchas](../../../slices/emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
+  [consumer gotchas](../../../slices/fhir/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
   apply. The `value[x]` / `effective[x]` choice slots type as `any` on a
   decoded resource, and a decoded `Coding.system` is a `URL` while the wire
   form is a string — so the reader reads the resource as `unknown` through a
@@ -64,4 +64,4 @@ here; the chart math it feeds lives in `health-viewer-fundamentals`.
 - [apps/health-viewer/AGENTS.md](../AGENTS.md) — the slice and its packages.
 - [health-viewer-fundamentals AGENTS.md](../health-viewer-fundamentals/AGENTS.md)
   — the vocabulary this package reads into.
-- [fhir-r4 Consumer Gotchas Reference](../../../slices/emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
+- [fhir-r4 Consumer Gotchas Reference](../../../slices/fhir/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)

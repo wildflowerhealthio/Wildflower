@@ -76,6 +76,6 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
 - [apps/health-viewer/AGENTS.md](../AGENTS.md) — the
   packages this app composes.
 - [apps/medications/medications-web/README.md](../../medications/medications-web/README.md) — the template.
-- [slices/emr/AGENTS.md](../../../slices/emr/AGENTS.md) — `fhir-r4-react/smart`'s
+- [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — `fhir-r4-react/smart`'s
   paged reads.
 - [apps/AGENTS.md](../../AGENTS.md) — the rules every app follows.

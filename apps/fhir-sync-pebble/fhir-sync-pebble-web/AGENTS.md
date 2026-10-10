@@ -168,7 +168,7 @@ jsdom.
   the core the settings, the return target and its store live in
 - [slices/smart-app/AGENTS.md](../../../slices/smart-app/AGENTS.md) — the shell this
   app boots through
-- [slices/emr/AGENTS.md](../../../slices/emr/AGENTS.md) — the SMART primitives
+- [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — the SMART primitives
   (`useSmartHandshake`, `buildSmartRouterContext`)
 - [apps/wildflower-site/wildflower-site-web README](../../wildflower-site/wildflower-site-web/README.md) — how the site is
   assembled

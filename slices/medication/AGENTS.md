@@ -49,7 +49,7 @@ catalog onto it.
   imports.
 - `medication-calendar-core` — the pure calendar layer: the next-fill /
   exhaustion date math (`nextFillDate`, which reads a `SupplyDuration` from
-  `slices/emr/fhir-utility` — a supply duration is a FHIR concept, not a
+  `slices/fhir/fhir-utility` — a supply duration is a FHIR concept, not a
   calendar one), `deriveCalendarEvents` (pickup on the next-fill date with
   repeats left; a renewal appointment one week before and a marker on the
   exhaustion day without; same-day events of one kind merge into a single
@@ -77,7 +77,7 @@ catalog onto it.
   dependency alone; a feature core that wants a resource takes the
   `medication-core/fhir` output, it does not decode one itself.
 - This package is a `fhir-r4` consumer, so both
-  [consumer gotchas](../emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md) apply.
+  [consumer gotchas](../fhir/fhir-r4/docs/Consumer%20Gotchas%20Reference.md) apply.
   The accessors read the typed slots directly and never re-declare a FHIR shape
   locally. The two slots `fhir-r4` leaves untyped are decoded with its own
   schemas: `medication[x]` already holds **decoded** values (a `Coding.system`

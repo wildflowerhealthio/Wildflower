@@ -3,7 +3,7 @@
   "info": {
     "title": "FHIR R4 (HFS)",
     "version": "0.0.1",
-    "description": "The subset of the embedded HFS FHIR R4 server that the Wildflower client uses — generated from the `fhir-r4` Effect HttpApi, not from the server. See slices/emr/fhir-r4/docs/Client Capabilities Reference.md."
+    "description": "The subset of the embedded HFS FHIR R4 server that the Wildflower client uses — generated from the `fhir-r4` Effect HttpApi, not from the server. See slices/fhir/fhir-r4/docs/Client Capabilities Reference.md."
   },
   "paths": {
     "/fhir-r4/Patient": {
@@ -23180,7 +23180,7 @@
     "schemas": {
       "FhirDateSearch": {
         "type": "string",
-        "description": "A FHIR R4 date search value (§ search.html#date): an optional comparison prefix (eq/ne/gt/lt/ge/le/sa/eb/ap) in front of a date or dateTime of any precision, e.g. ge2026, 2026-07, or lt2026-07-27T14:27:30Z. The value denotes the period its precision implies. See slices/emr/fhir-r4/docs/Client Capabilities Reference.md."
+        "description": "A FHIR R4 date search value (§ search.html#date): an optional comparison prefix (eq/ne/gt/lt/ge/le/sa/eb/ap) in front of a date or dateTime of any precision, e.g. ge2026, 2026-07, or lt2026-07-27T14:27:30Z. The value denotes the period its precision implies. See slices/fhir/fhir-r4/docs/Client Capabilities Reference.md."
       }
     },
     "securitySchemes": {}

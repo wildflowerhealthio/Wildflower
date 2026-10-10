@@ -1,6 +1,6 @@
-# slices/emr/ Packages Explanation
+# slices/fhir/ Packages Explanation
 
-EMR domain — the FHIR R4 wire surface for patient/observation/binary resources. The server is the off-the-shelf [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs) FHIR server, embedded by `fhir-r4-rust`, which lives with the server that mounts it in [`apps/host/wildflower-server/`](../../../apps/host/wildflower-server/AGENTS.md) because the host is its only consumer; the TypeScript packages describe the wire protocol and consume it.
+FHIR domain — the FHIR R4 wire surface for patient/observation/binary resources. The server is the off-the-shelf [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs) FHIR server, embedded by `fhir-r4-rust`, which lives with the server that mounts it in [`apps/host/wildflower-server/`](../../../apps/host/wildflower-server/AGENTS.md) because the host is its only consumer; the TypeScript packages describe the wire protocol and consume it.
 
 - **`fhir-r4`** — standalone FHIR R4 package: pure Effect schemas for datatypes and resources (`data-types/`, `resources/`), the `HttpApi` description of the FHIR REST surface (`http-api-definition/`, base-relative — the `/fhir-r4` mount prefix is re-applied by consumers, not baked into the client), and the derived HTTP client (`clients/`). No server implementation, no persistence — the decoded type of every schema is a plain FHIR R4 value.
 - **`fhir-r4-react`** — React adapter: the tokenless client runtime layer (`FhirR4ResourcesRouterContext`) and query hooks (`usePatientsQuery`). Documented cross-slice consumers: `collector-react`'s sync runner and `gatekeeper-react`'s consent-screen patient picker. Its `./smart` entry is the other half — the SMART App Launch handshake (`authorizeSmartLaunch` / `readySmartClient`, with `appRootRedirectUri` naming the app root every launch returns to), the standalone-launch primitives (`detectSmartSupport` / `startStandaloneLaunch`), and the **SMART runtime** (`buildSmartRouterContext`) a SMART app served from its own origin wires itself up with. The standalone connect menu an app mounts over those primitives (`ConnectMenu`), and the app root around it, live in `slices/smart-app`'s `smart-app-react`, so this package carries no Wildflower chrome. Consumers of `./smart` today: `apps/medications/medications-web`, `apps/importer/importer-web`, and `smart-app-react`; the wiring lives here rather than in those apps because it is a property of serving a SMART app from its own origin, not of any one app.
@@ -13,7 +13,7 @@ The slice used to carry `emr-core`, a LiveStore-backed domain layer (tables, eve
 ## Layering rules
 
 - **`fhir-r4` is platform-neutral.** No DOM, no Node `fs`, no store bindings.
-- **`fhir-r4` depends on no other emr package.** `fhir-r4-react` depends only on `fhir-r4`. `fhir-r4-rust` shares no code with the TS packages — the wire format is the contract.
+- **`fhir-r4` depends on no other fhir package.** `fhir-r4-react` depends only on `fhir-r4`. `fhir-r4-rust` shares no code with the TS packages — the wire format is the contract.
 - **Tests live alongside code** (`*.test.ts` next to the file they cover). They are pure schema round-trip/property tests; server behaviour is HFS's responsibility (HFS has its own test suite upstream).
 
 ## Contract with the server (no automated drift guard)

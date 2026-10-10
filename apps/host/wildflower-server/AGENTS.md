@@ -5,7 +5,7 @@ host composes. [`wildflower-server-rust`](./wildflower-server-rust/AGENTS.md)
 is the server itself; the other crates here are the server halves of features
 whose TypeScript halves live with the launcher, in `apps/launcher/`, or stay
 in a slice because more than one product uses them (`slices/gatekeeper`,
-`slices/emr`).
+`slices/fhir`).
 
 ## Packages
 
@@ -24,7 +24,7 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
   its deltas from stock HFS are in its
   [Capability Statement](./fhir-r4-rust/docs/Capability%20Statement.md). The
   schemas and client every app reads it through are
-  [`slices/emr`](../../../slices/emr/AGENTS.md).
+  [`slices/fhir`](../../../slices/fhir/AGENTS.md).
 - [`apps-rust`](./apps-rust/AGENTS.md) — the app registry and launch routes
   (`/apps`, `/home-screen`). Its TypeScript half is `apps-core-js` and
   `apps-react` in `apps/launcher/`.
@@ -64,7 +64,7 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
   test and schema codegen in `slices/gatekeeper`, and `apps/server-docs-web`.
   The FHIR R4 snapshot is the exception: HFS emits no spec, so `fhir-r4`
   generates it from its `HttpApi` and commits it in
-  `slices/emr/fhir-r4/openapi/`. Regenerate a
+  `slices/fhir/fhir-r4/openapi/`. Regenerate a
   stale one with
   `UPDATE_OPENAPI=1 cargo test -p <crate> openapi_spec_snapshot_is_up_to_date`
   and run `vp test openapi-drift`; see the

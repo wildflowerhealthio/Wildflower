@@ -1,4 +1,4 @@
-# AGENTS.md — slices/emr/fhir-stu3-as-r4
+# AGENTS.md — slices/fhir/fhir-stu3-as-r4
 
 Just-enough FHIR **STU3** wire schemas that decode **straight to the `fhir-r4`
 slice's R4 resource types**. Part of the Rexall collector epic: the Rexall tunnel
@@ -68,7 +68,7 @@ Relocated shared logic now lives in `fhir-r4`, not here: `Quantity.fromSimpleQua
 
 ## References
 
-- [slices/emr/AGENTS.md](../AGENTS.md) — the emr slice overview
+- [slices/fhir/AGENTS.md](../AGENTS.md) — the fhir slice overview
 - [fhir-r4](../fhir-r4) — the R4 target types, datatype schemas, `.empty` defaults,
   and `Quantity.fromSimpleQuantity` this slice builds on
 - [rexall-be-well-collector](../../../apps/launcher/collector/rexall-be-well-collector) — the

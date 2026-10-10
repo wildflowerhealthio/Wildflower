@@ -132,7 +132,7 @@ import `branding-react/styles.css` itself.
   `buildSmartRouterContext`. The shell reads the handshake's result off that
   client with `whenSmartHandshakeReady` rather than running the exchange
   itself. See the `useSmartHandshake` guardrail in
-  [slices/emr/AGENTS.md](../emr/AGENTS.md) for why the exchange must run once.
+  [slices/fhir/AGENTS.md](../fhir/AGENTS.md) for why the exchange must run once.
 - **Redirect targets are derived from the page URL, in render.** The shell's
   `ConnectMenu` redirect, a launch the URL carries, and a failed handshake's
   return are all `fhir-r4-react/smart`'s `appRootRedirectUri(href)` (the page's
@@ -178,7 +178,7 @@ import `branding-react/styles.css` itself.
   `connect` returns its problem without the hint. A page restored from the back-forward cache mid-launch comes
   back idle rather than disabled; why an `unreachable` probe must never degrade
   to `open` is the standalone-launch guardrail in
-  [slices/emr/AGENTS.md](../emr/AGENTS.md).
+  [slices/fhir/AGENTS.md](../fhir/AGENTS.md).
 - **`ConnectMenu` runs every sign-in on its page, through one state.** A pick,
   the `wildflower` target's "Sign in to {url}" row for the server the page is
   already pointed at (`chosenServer`, with its `blockedReason` shown and the
@@ -217,7 +217,7 @@ import `branding-react/styles.css` itself.
 
 ## References
 
-- [slices/emr/AGENTS.md](../emr/AGENTS.md) — the SMART primitives this slice
+- [slices/fhir/AGENTS.md](../fhir/AGENTS.md) — the SMART primitives this slice
   builds on
 - [slices/branding/AGENTS.md](../branding/AGENTS.md) — the chrome it renders,
   and "The app landing page"

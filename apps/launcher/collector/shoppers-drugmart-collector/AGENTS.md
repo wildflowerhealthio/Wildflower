@@ -171,5 +171,5 @@ decoded body is committed. Remaining unknowns:
 - [fhir-r4-client-collector](../fhir-r4-client-collector) — the worked example mirrored
 - [rexall-be-well-collector](../rexall-be-well-collector) — the sibling credential
   collector (STU3 dialect; this one is direct-R4 synthesis)
-- [fhir-r4](../../../../slices/emr/fhir-r4) — the R4 resource types and the `upsertResource` write path
+- [fhir-r4](../../../../slices/fhir/fhir-r4) — the R4 resource types and the `upsertResource` write path
 - [collector-fundamentals](../collector-fundamentals) — the descriptor / entity / plan primitives

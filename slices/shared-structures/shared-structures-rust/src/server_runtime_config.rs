@@ -14,7 +14,7 @@ pub struct ServerRuntimeConfig {
 impl ServerRuntimeConfig {
     /// The loopback base URL the embedded API server is reached at, e.g.
     /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The single source of truth
-    /// the host threads into every slice's config (apps / gatekeeper / emr /
+    /// the host threads into every slice's config (apps / gatekeeper / fhir-r4 /
     /// tunnel), parsed once so no downstream rebuilds it from a string. Consumers
     /// that need the bare origin string pass it to
     /// [`crate::origin_string`].

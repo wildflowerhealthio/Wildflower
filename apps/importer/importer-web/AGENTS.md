@@ -29,12 +29,12 @@ Those identities are load-bearing — see
 ## Why this app has a router and a bearer token
 
 The wiring itself is **not this app's** — it lives in
-[`fhir-r4-react/smart`](../../../slices/emr/fhir-r4-react/src/smart/smart-runtime.ts),
+[`fhir-r4-react/smart`](../../../slices/fhir/fhir-r4-react/src/smart/smart-runtime.ts),
 because every SMART app served from its own origin needs the same thing. `app.tsx`
 imports `buildSmartRouterContext` from there directly — there is no local
 re-export to edit, deliberately, so a change to the behaviour has to be made in
 the one place that owns it. The guardrail listing the properties that must
-survive is in [slices/emr/AGENTS.md](../../../slices/emr/AGENTS.md).
+survive is in [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md).
 
 Two facts about an app served off its own origin drive everything in that
 runtime:
@@ -257,7 +257,7 @@ workspace `source` condition at bundle time.
 
 - The auth wiring in isolation — prefix derivation, the relative/absolute split,
   and that an absent token sets no header — is
-  [`fhir-r4-react`'s `smart-runtime.test.ts`](../../../slices/emr/fhir-r4-react/src/smart/smart-runtime.test.ts).
+  [`fhir-r4-react`'s `smart-runtime.test.ts`](../../../slices/fhir/fhir-r4-react/src/smart/smart-runtime.test.ts).
 - The import flow's own semantics — zero writes to reach a preview, `meta.source`
   on every written resource, partial results, cancel — are
   [`importer-react`'s `importer-screen.test.tsx`](../importer-react/src/importer-screen.test.tsx).
@@ -279,7 +279,7 @@ workspace `source` condition at bundle time.
 
 ## References
 
-- [emr slice AGENTS.md](../../../slices/emr/AGENTS.md) — the shared SMART runtime
+- [fhir slice AGENTS.md](../../../slices/fhir/AGENTS.md) — the shared SMART runtime
   this app imports (`fhir-r4-react/smart`), and the auth-critical properties it
   must keep.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) —

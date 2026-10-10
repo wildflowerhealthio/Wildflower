@@ -1,6 +1,6 @@
 # FHIR R4 Client Capabilities (gaps and gotchas)
 
-This is an **internal scratch doc** — not a published FHIR `CapabilityStatement` resource, and **not a description of the server**. It catalogues the capabilities and gaps of the **`fhir-r4` TypeScript client** in `slices/emr/`: what its wire schemas validate and what its `HttpApi` description (and therefore the typed client) declares. Every entry is scoped to that client layer.
+This is an **internal scratch doc** — not a published FHIR `CapabilityStatement` resource, and **not a description of the server**. It catalogues the capabilities and gaps of the **`fhir-r4` TypeScript client** in `slices/fhir/`: what its wire schemas validate and what its `HttpApi` description (and therefore the typed client) declares. Every entry is scoped to that client layer.
 
 Server behaviour — validation, search, pagination, conformance — is **out of scope here**. The server is the off-the-shelf HFS Rust server embedded by `fhir-r4-rust` and mounted at `/fhir-r4`; it lives outside this slice's TypeScript surface and keeps no capability catalogue of its own (HFS implements standard FHIR R4). The client is hand-synchronized to what HFS serves — see "No drift guard against the HFS server" below.
 
@@ -196,7 +196,7 @@ Per FHIR R4 § Binary, the resource explicitly _does not_ extend `DomainResource
 
 ## Unregistered choice-element datatypes (`value[x]` / `effective[x]`)
 
-The fhir-r4 datatype registry (`slices/emr/fhir-r4/src/data-types/base/datatype-registry.ts`) ships wire schemas for a subset of FHIR R4 `Datatype.Name` — primitives (`boolean`, `canonical`, `date`, `dateTime`, `decimal`, `id`, `instant`, `integer`, `positiveInt`, `string`, `time`, `uri`, `url`) plus complex (`Address`, `Annotation`, `Attachment`, `CodeableConcept`, `Coding`, `ContactPoint`, `Duration`, `HumanName`, `Identifier`, `Meta`, `Period`, `Quantity`, `Range`, `Ratio`, `Reference`, `SampledData`, `SimpleQuantity`, `Timing`). Any `value[x]` or `effective[x]` slot whose datatype is **not** registered (e.g. `valueMoney`, `valueAge`, `valueSignature`, `valueDistance`, `valueCount`, `valueBase64Binary`, `valueCode`, `valueMarkdown`, `valueOid`, `valueUuid`, `valueUnsignedInt`, …) behaves as follows on the wire:
+The fhir-r4 datatype registry (`slices/fhir/fhir-r4/src/data-types/base/datatype-registry.ts`) ships wire schemas for a subset of FHIR R4 `Datatype.Name` — primitives (`boolean`, `canonical`, `date`, `dateTime`, `decimal`, `id`, `instant`, `integer`, `positiveInt`, `string`, `time`, `uri`, `url`) plus complex (`Address`, `Annotation`, `Attachment`, `CodeableConcept`, `Coding`, `ContactPoint`, `Duration`, `HumanName`, `Identifier`, `Meta`, `Period`, `Quantity`, `Range`, `Ratio`, `Reference`, `SampledData`, `SimpleQuantity`, `Timing`). Any `value[x]` or `effective[x]` slot whose datatype is **not** registered (e.g. `valueMoney`, `valueAge`, `valueSignature`, `valueDistance`, `valueCount`, `valueBase64Binary`, `valueCode`, `valueMarkdown`, `valueOid`, `valueUuid`, `valueUnsignedInt`, …) behaves as follows on the wire:
 
 - **Decode**: any wire content for an unregistered slot decodes to `null` (the slot exists at the type level so the in-memory shape still matches the decoded resource type).
 - **Encode**: a non-null in-memory value at an unregistered slot **fails encoding** with a `ParseResult.Type` issue naming the unregistered datatype (`UnregisteredDatatype` tagged error in `datatype-registry.ts`). This is intentional — silent drops were the previous (pre-PR-#61) behavior and masked data loss.
@@ -223,7 +223,7 @@ resource silently disappearing. Vendors really do send `valuePositiveInt: 0`:
 carebook writes the remaining-repeats count that way, so a prescription with no
 repeats left would have deleted itself from the medication list. Reject
 out-of-range values where they are read and it matters, not in the wire decode.
-`slices/emr/fhir-r4/src/data-types/base/datatype-registry.test.ts` pins all
+`slices/fhir/fhir-r4/src/data-types/base/datatype-registry.test.ts` pins all
 three cases (positive round-trip, `0` decodes, non-integer still rejected).
 
 `Timing.repeat.boundsDuration` is still absent from `TimingRepeat` — the field was never modeled, only `boundsPeriod` and `boundsRange` are. Registering `Duration` removes the reason it could not be added, but adding the field is a separate change.

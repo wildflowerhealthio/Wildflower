@@ -3,7 +3,7 @@
  *
  * Unlike the other slices' `openapi-drift` tests, the direction is inverted:
  * there is no `utoipa` spec to diff against, because the server is the
- * off-the-shelf HFS router embedded by `fhir-r4-rust` (see the emr slice
+ * off-the-shelf HFS router embedded by `fhir-r4-rust` (see the fhir slice
  * AGENTS.md). Instead, the Effect `HttpApi` here is the source, and the
  * committed snapshot at `fhir-r4/openapi/fhir-r4.openapi.json` is its
  * generated projection — "the system how we use it", not a full description of
@@ -13,7 +13,7 @@
  * remains hand-synchronized — see `docs/Client Capabilities Reference.md`).
  *
  * Regenerate after an `HttpApi` change with:
- *   UPDATE_OPENAPI=1 vp test --config slices/emr/fhir-r4/vite.config.ts openapi-drift
+ *   UPDATE_OPENAPI=1 vp test --config slices/fhir/fhir-r4/vite.config.ts openapi-drift
  */
 
 import * as fs from 'node:fs'
@@ -66,7 +66,7 @@ describe('generateFhirR4OpenApiSpec', () => {
     expect(
       committed,
       'Committed OpenAPI snapshot is stale relative to the FhirResourcesApi HttpApi. ' +
-        'Regenerate with: UPDATE_OPENAPI=1 vp test --config slices/emr/fhir-r4/vite.config.ts openapi-drift'
+        'Regenerate with: UPDATE_OPENAPI=1 vp test --config slices/fhir/fhir-r4/vite.config.ts openapi-drift'
     ).toEqual(spec)
   })
 })
@@ -116,7 +116,7 @@ function generateFhirR4OpenApiSpec(): Spec {
     description:
       'The subset of the embedded HFS FHIR R4 server that the Wildflower client uses — ' +
       'generated from the `fhir-r4` Effect HttpApi, not from the server. ' +
-      'See slices/emr/fhir-r4/docs/Client Capabilities Reference.md.',
+      'See slices/fhir/fhir-r4/docs/Client Capabilities Reference.md.',
   }
 
   for (const operations of Object.values(spec.paths)) {

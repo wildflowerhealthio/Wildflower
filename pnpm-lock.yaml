@@ -255,7 +255,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -338,10 +338,10 @@ importers:
         version: 3.22.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       fhir-sync-pebble-core-js:
         specifier: workspace:*
         version: link:../fhir-sync-pebble-core-js
@@ -426,7 +426,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       health-viewer-fundamentals:
         specifier: workspace:*
         version: link:../health-viewer-fundamentals
@@ -495,7 +495,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       health-viewer-fundamentals:
         specifier: workspace:*
         version: link:../health-viewer-fundamentals
@@ -531,7 +531,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       health-viewer-fundamentals:
         specifier: workspace:*
         version: link:../health-viewer-fundamentals
@@ -634,10 +634,10 @@ importers:
         version: 3.22.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       health-viewer-core-js:
         specifier: workspace:*
         version: link:../health-viewer-core-js
@@ -1378,7 +1378,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       har-importer-core:
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
@@ -1447,10 +1447,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       har-importer-core:
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
@@ -1534,10 +1534,10 @@ importers:
         version: 3.22.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       importer-core-js:
         specifier: workspace:*
         version: link:../importer-core-js
@@ -1871,13 +1871,13 @@ importers:
         version: link:../../../../global/effect-messaging/effect-messaging-react
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-r4
+        version: link:../../../../slices/fhir/fhir-r4
       fhir-r4-client-collector:
         specifier: workspace:*
         version: link:../fhir-r4-client-collector
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-r4-react
+        version: link:../../../../slices/fhir/fhir-r4-react
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
@@ -2012,7 +2012,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-r4
+        version: link:../../../../slices/fhir/fhir-r4
       fhir-r4-source:
         specifier: workspace:*
         version: link:../../../../slices/http-extraction/fhir-r4-source
@@ -2087,10 +2087,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-r4
+        version: link:../../../../slices/fhir/fhir-r4
       fhir-stu3-as-r4:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-stu3-as-r4
+        version: link:../../../../slices/fhir/fhir-stu3-as-r4
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../../../slices/http-extraction/http-extraction-fundamentals
@@ -2165,7 +2165,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-r4
+        version: link:../../../../slices/fhir/fhir-r4
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../../../slices/http-extraction/http-extraction-fundamentals
@@ -2240,7 +2240,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-r4
+        version: link:../../../../slices/fhir/fhir-r4
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../../../slices/http-extraction/http-extraction-fundamentals
@@ -2294,7 +2294,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../../slices/emr/fhir-r4
+        version: link:../../../../slices/fhir/fhir-r4
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../../../slices/http-extraction/http-extraction-fundamentals
@@ -2588,10 +2588,10 @@ importers:
         version: link:../../../global/effect-messaging/effect-messaging-react
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       gatekeeper-core:
         specifier: workspace:*
         version: link:../../../slices/gatekeeper/gatekeeper-core
@@ -2964,7 +2964,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -3063,10 +3063,10 @@ importers:
         version: 3.22.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -3385,7 +3385,7 @@ importers:
         version: 3.22.2
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -3455,7 +3455,7 @@ importers:
         version: 6.1.1(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(babel-plugin-react-compiler@1.0.0)
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
@@ -3701,7 +3701,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       har-importer-core:
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
@@ -3758,7 +3758,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -3791,7 +3791,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-sync-pebble-core-js:
         specifier: workspace:*
         version: link:../../fhir-sync-pebble/fhir-sync-pebble-core-js
@@ -3827,7 +3827,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       http-archive:
         specifier: workspace:*
         version: link:../../../slices/file-formats/http-archive
@@ -3860,7 +3860,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       har-importer-core:
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
@@ -3929,10 +3929,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       jsdom:
         specifier: 'catalog:'
         version: 30.1.1
@@ -3977,10 +3977,10 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-stu3-as-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-stu3-as-r4
+        version: link:../../../slices/fhir/fhir-stu3-as-r4
       har-importer-core:
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
@@ -4031,7 +4031,7 @@ importers:
         version: 3.23.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       har-importer-core:
         specifier: workspace:*
         version: link:../../../slices/importer/har-importer-core
@@ -4094,10 +4094,10 @@ importers:
         version: 3.22.2
       fhir-r4:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4
+        version: link:../../../slices/fhir/fhir-r4
       fhir-r4-react:
         specifier: workspace:*
-        version: link:../../../slices/emr/fhir-r4-react
+        version: link:../../../slices/fhir/fhir-r4-react
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -4847,7 +4847,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/emr/fhir-r4:
+  slices/fhir/fhir-r4:
     devDependencies:
       '@effect/platform':
         specifier: 'catalog:'
@@ -4889,7 +4889,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/emr/fhir-r4-react:
+  slices/fhir/fhir-r4-react:
     dependencies:
       fhirclient:
         specifier: ^2.5.4
@@ -4956,7 +4956,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/emr/fhir-stu3-as-r4:
+  slices/fhir/fhir-stu3-as-r4:
     devDependencies:
       '@types/fhir':
         specifier: 'catalog:'
@@ -4989,7 +4989,7 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/emr/fhir-utility:
+  slices/fhir/fhir-utility:
     devDependencies:
       '@types/node':
         specifier: ^26

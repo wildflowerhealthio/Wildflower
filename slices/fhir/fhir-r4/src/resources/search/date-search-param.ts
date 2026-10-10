@@ -217,7 +217,7 @@ const DateSearchParam = Schema.transformOrFail(Schema.String, DateSearchValue, {
     'prefix (eq/ne/gt/lt/ge/le/sa/eb/ap) in front of a date or dateTime of any ' +
     'precision, e.g. ge2026, 2026-07, or lt2026-07-27T14:27:30Z. The value ' +
     'denotes the period its precision implies. See ' +
-    'slices/emr/fhir-r4/docs/Client Capabilities Reference.md.',
+    'slices/fhir/fhir-r4/docs/Client Capabilities Reference.md.',
 })
 
 export { DateSearchParam as Schema, Prefix, type Decoded as Type }

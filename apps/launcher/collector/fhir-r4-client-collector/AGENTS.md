@@ -153,7 +153,7 @@ Two static edits, per the descriptor seam:
   plan-purity trap in full.
 - [web-trace-core AGENTS.md](../../../../slices/web-trace/web-trace-core/AGENTS.md) — the
   codec and the two body policies the provenance capture picks between.
-- [fhir-r4](../../../../slices/emr/fhir-r4) — the R4 resource schemas and the
+- [fhir-r4](../../../../slices/fhir/fhir-r4) — the R4 resource schemas and the
   `persistResources` / `upsertResource` write path.
 - [rexall-be-well-collector](../rexall-be-well-collector/AGENTS.md) — the other
   production collector, which mirrors this layout and states the same one-line

@@ -4,7 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# The Wildflower server: `serve` composes every server slice (gatekeeper, emr,
+# The Wildflower server: `serve` composes every server slice (gatekeeper, FHIR R4,
 # OHIF, collector, tunnel, request log, apps, databases) into the API and serves
 # it on the loopback port and the tunnel listener, over TLS with a certificate
 # it orders itself, until its shutdown token is cancelled, with its `/health` and the reachability monitor that reads it

@@ -52,4 +52,4 @@ A complex-typed choice slot (`performedPeriod`, `performedRange`, `effectivePeri
 ## See Also
 
 - [Client Capabilities Reference](./Client%20Capabilities%20Reference.md) — where the client narrows or postpones the FHIR R4 spec
-- [slices/emr/AGENTS.md](../../AGENTS.md) — the emr slice overview and guardrails
+- [slices/fhir/AGENTS.md](../../AGENTS.md) — the fhir slice overview and guardrails

@@ -54,7 +54,7 @@ depends on its Rust half.
   `apps/host/wildflower-server/`, with the docs about them; the slice keeps its
   TypeScript packages, its AGENTS.md and the shared docs: `gatekeeper-rust` and
   `token-revocation-rust` left `slices/gatekeeper`, and `fhir-r4-rust` left
-  `slices/emr`. A crate another product also uses stays behind, as
+  `slices/fhir`. A crate another product also uses stays behind, as
   `rathole-settings-rust`, which the relay shares, stayed when `tunnel-rust`
   moved.
 - Either way, a cross-language contract then reads across folders by relative

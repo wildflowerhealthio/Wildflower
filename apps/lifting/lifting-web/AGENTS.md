@@ -115,6 +115,6 @@ they cover.
 - [apps/lifting/AGENTS.md](../AGENTS.md) — the lifting packages this
   app composes.
 - [apps/health-viewer/health-viewer-web/README.md](../../health-viewer/health-viewer-web/README.md) — the template.
-- [slices/emr/AGENTS.md](../../../slices/emr/AGENTS.md) — `fhir-r4-react/smart`'s
+- [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — `fhir-r4-react/smart`'s
   paged reads.
 - [apps/AGENTS.md](../../AGENTS.md) — the rules every app follows.

@@ -5,7 +5,7 @@ request, where that decision shows up (redirects, discovery documents, the links
 HFS emits), and why a token's `iss` and `aud` are the one origin that doesn't
 depend on it. The mechanics live in `shared-structures-rust` ([`origin_string`],
 [`served_origin`]); this is the narrative those modules and their consumers
-(gatekeeper, emr, apps, tunnel) point back to instead of each re-deriving it.
+(gatekeeper, FHIR R4, apps, tunnel) point back to instead of each re-deriving it.
 
 ## Two listeners
 
@@ -38,7 +38,7 @@ A request can arrive having been addressed two different ways:
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
   parsed once at boot and threaded into the configs of the slices that render
-  it (gatekeeper, emr) so nothing reassembles it from a string.
+  it (gatekeeper, FHIR R4) so nothing reassembles it from a string.
 - **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request through the tunnel,
   or one relayed by a front, it is the public `{scheme}://{host}` the browser
@@ -92,7 +92,7 @@ the header itself:
   `for` is the visitor's address from the PROXY header, and is left out when
   the connection had none; the `host` is the domain, normalized.
 
-Every reader of the served origin (gatekeeper, emr, apps, the `404`, the
+Every reader of the served origin (gatekeeper, FHIR R4, apps, the `404`, the
 request log) then sees a tunnel request exactly as it sees one a front
 relayed, served at the public origin.
 

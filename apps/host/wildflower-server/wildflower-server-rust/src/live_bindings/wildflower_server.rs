@@ -215,7 +215,7 @@ pub async fn set_up(
 
     let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
     // The typed loopback base URL is the single source threaded into every
-    // slice's config that renders it (gatekeeper / emr). `loopback_origin` is its
+    // slice's config that renders it (gatekeeper / fhir-r4). `loopback_origin` is its
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
     let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
@@ -239,7 +239,7 @@ pub async fn set_up(
     };
 
     // One shared SQLite database for all persistence-rust-backed slices; each
-    // runs its own namespaced migrations on it. (The FHIR/emr store is managed
+    // runs its own namespaced migrations on it. (The FHIR store is managed
     // separately by helios-persistence.)
     let db_path = runtime.server_dir.join(WILDFLOWER_DB);
     let db =

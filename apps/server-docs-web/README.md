@@ -15,7 +15,7 @@ snapshots**:
 | Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`         |
 | Collector     | `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`         |
 | Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`     |
-| FHIR R4       | `slices/emr/fhir-r4/openapi/fhir-r4.openapi.json`                                   |
+| FHIR R4       | `slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json`                                  |
 
 Those snapshots are the same files the per-slice Rust snapshot tests and the
 `api-sync.yml` drift guard hold to the live routes, so publishing from them

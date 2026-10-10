@@ -268,7 +268,7 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   with no repeats left, and a refinement failure inside an extension fails the
   whole resource, which `medicationOrNull`'s catch-all turns into the
   MedicationRequest silently vanishing from the list. See the deviation note in
-  [fhir-r4's Client Capabilities Reference](../../emr/fhir-r4/docs/Client%20Capabilities%20Reference.md).
+  [fhir-r4's Client Capabilities Reference](../../fhir/fhir-r4/docs/Client%20Capabilities%20Reference.md).
 
 ## Fixtures & the capture
 

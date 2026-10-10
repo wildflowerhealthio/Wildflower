@@ -6,7 +6,7 @@ This describes the **server** — the running FHIR R4 endpoint mounted at `/fhir
 
 This doc records only where `fhir-r4-rust` **diverges from, or adds to, stock HFS**: the handlers we mount ahead of HFS's router, the auth wiring, and the store limitations that change observable behaviour. When a divergence is fixed or a new one is introduced, amend this list in the same change.
 
-> The **client** side — what the `fhir-r4` TypeScript `HttpApi`/schemas declare and validate — is catalogued separately in [`fhir-r4/docs/Client Capabilities Reference.md`](../../../../../slices/emr/fhir-r4/docs/Client%20Capabilities%20Reference.md). There is no automated drift guard between the two; they are hand-synchronized.
+> The **client** side — what the `fhir-r4` TypeScript `HttpApi`/schemas declare and validate — is catalogued separately in [`fhir-r4/docs/Client Capabilities Reference.md`](../../../../../slices/fhir/fhir-r4/docs/Client%20Capabilities%20Reference.md). There is no automated drift guard between the two; they are hand-synchronized.
 
 ## SMART App Launch discovery override
 

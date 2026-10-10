@@ -27,7 +27,7 @@ pub(crate) struct LoopbackOwnerTrust {
 /// `Forwarded` header (a remote caller a front relayed carries one). The desktop
 /// webview holds no credential of its own, so it authenticates on *connection
 /// provenance*: the server attaches the host's owner bearer, and the gatekeeper
-/// gate and emr's own JWKS bearer check both validate it normally — no
+/// gate and fhir-r4-rust's own JWKS bearer check both validate it normally — no
 /// slice-side special-casing.
 ///
 /// SECURITY: this trusts *every* direct-loopback caller as owner, not only the

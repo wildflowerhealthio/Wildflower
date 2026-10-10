@@ -433,7 +433,7 @@ TextEncoder().encode(text)`).
 - [web-trace-core AGENTS.md](../../../slices/web-trace/web-trace-core/AGENTS.md) — the
   coding a HAR source file shares an axis with, and the disjointness of traces
   and source files (a test-fixture dependency here, nothing at runtime).
-- [emr AGENTS.md](../../../slices/emr/AGENTS.md) — `fhir-r4`'s typed client and
+- [fhir AGENTS.md](../../../slices/fhir/AGENTS.md) — `fhir-r4`'s typed client and
   `fhir-r4-react`'s SMART runtime and authed runner.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

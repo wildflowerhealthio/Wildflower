@@ -99,5 +99,5 @@ the app's paged read for it in `useRecordRead`.
 - [Architecture / slice layering](../../slices/AGENTS.md)
 - [http-extraction AGENTS.md](../../slices/http-extraction/AGENTS.md) — the structure
   this folder mirrors.
-- [fhir-r4 Consumer Gotchas Reference](../../slices/emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
+- [fhir-r4 Consumer Gotchas Reference](../../slices/fhir/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
 - [Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md) — property tests are the default here

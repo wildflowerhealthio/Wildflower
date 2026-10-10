@@ -6,7 +6,7 @@ STU3 dialect, response kinds, and source descriptor live in
 [`rexall-be-well-source`](../../../../slices/http-extraction/rexall-be-well-source/AGENTS.md)
 (in `slices/http-extraction/`); this package layers navigation, provenance, and
 persistence on top, mirroring `fhir-r4-client-collector`. The generic STU3⇄R4
-schema machinery lives in `slices/emr/fhir-stu3-as-r4`.
+schema machinery lives in `slices/fhir/fhir-stu3-as-r4`.
 
 The carebook dialect this collector decodes with — extension promotion, the
 capture fixtures, the coding-system constants, and the data-quality notes — is
@@ -135,6 +135,6 @@ stays open:
   example mirrored
 - [web-trace-core](../../../../slices/web-trace/web-trace-core/AGENTS.md) — the codec and the
   two body policies the provenance capture picks between
-- [fhir-stu3-as-r4](../../../../slices/emr/fhir-stu3-as-r4) — the STU3⇄R4 schemas the bundles decode with
-- [fhir-r4](../../../../slices/emr/fhir-r4) — the R4 resource types and the `upsertResource` write path
+- [fhir-stu3-as-r4](../../../../slices/fhir/fhir-stu3-as-r4) — the STU3⇄R4 schemas the bundles decode with
+- [fhir-r4](../../../../slices/fhir/fhir-r4) — the R4 resource types and the `upsertResource` write path
 - [collector-fundamentals](../collector-fundamentals) — the descriptor / entity / plan primitives

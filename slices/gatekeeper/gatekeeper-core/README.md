@@ -232,7 +232,7 @@ page drive a desktop host.
 ### Not the other SMART client
 
 This is **not** the fhirclient-based standalone launch in
-`slices/emr/fhir-r4-react/src/smart/*`, which the React SMART apps use.
+`slices/fhir/fhir-r4-react/src/smart/*`, which the React SMART apps use.
 The two share `normalizeServerUrl` — this package owns the one implementation
 and `fhir-r4-react` re-exports it — but nothing else: the launch here is
 hand-rolled and Effect-native, and the one there delegates to `fhirclient`.

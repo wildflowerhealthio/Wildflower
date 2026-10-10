@@ -12,7 +12,7 @@
  * runner. The runner's requirement `R` is the union of every collector's
  * write requirement (today `FhirR4ResourcesHttpApiClient`); the router
  * context's authed runner provides it. That residual coupling to the FHIR
- * R4 EMR slice is documented as a deliberate slice-layering exception in the
+ * R4 slice is documented as a deliberate slice-layering exception in the
  * `collector-react/package.json` description (per `slices/AGENTS.md`).
  */
 import { useMutation } from '@tanstack/react-query'

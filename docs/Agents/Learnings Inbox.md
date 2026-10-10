@@ -430,7 +430,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 
 **Discovered during**: fhir-sync-pebble-web (the consent page's patient picker vanished on Tauri and the hosted owner UI)
 **Learning**: `HttpClient.mapRequest(client, f)` is `(request) => Effect.map(client.preprocess(request), f)`: the client being wrapped rewrites the request first, and the wrapper's `f` sees the result. `apps/wildflower-react` built its FHIR transport as a `/fhir-r4` `prependApiBaseUrl` wrapper around a layer that had already prefixed the API origin, so the origin went on first and the `/fhir-r4` wrapper saw an absolute URL and skipped it. Every owner-UI FHIR request went to `{origin}/Patient` wherever `apiBaseUrl` is set, from #535 until the fix. The fix joins the mount path onto the origin in one prefix (`apiTransportAt`), and `app-query-runtime.test.ts` pins the URLs. Only same-origin setups (no `apiBaseUrl`) and the SMART apps worked: `smartHttpClientLayer` prepends the whole FHIR base in one step. The existing runtime tests missed it because they only used a single-transport `/fixture` request.
-**Suggested destination**: slices/emr/AGENTS.md (the "provider names the base" guardrail) and apps/wildflower-react's bridge docs
+**Suggested destination**: slices/fhir/AGENTS.md (the "provider names the base" guardrail) and apps/wildflower-react's bridge docs
 
 ## Pebble's libc has no `struct tm`, and PebbleKit JS won't load through Vitest's transform
 

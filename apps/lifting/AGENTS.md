@@ -307,7 +307,7 @@ template rather than a special case.
   and field narrowing (`narrowFields`) are there; add the next one there too,
   with its test.
 - **This package is a `fhir-r4` consumer**, so every
-  [consumer gotcha](../../slices/emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
+  [consumer gotcha](../../slices/fhir/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
   applies. A decoded `Coding.system` is a `URL` (compare with
   `Coding.isInSystem`); the `Quantity` and `Period` choice slots
   (`valueQuantity`, `effectivePeriod`, `performedPeriod`) type as `any`, so
@@ -329,5 +329,5 @@ template rather than a special case.
 ## References
 
 - [Architecture / slice layering](../../slices/AGENTS.md)
-- [fhir-r4 Consumer Gotchas Reference](../../slices/emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
+- [fhir-r4 Consumer Gotchas Reference](../../slices/fhir/fhir-r4/docs/Consumer%20Gotchas%20Reference.md)
 - [Property Testing Reference](../../docs/Testing/Property%20Testing%20Reference.md) — property tests are the default here
