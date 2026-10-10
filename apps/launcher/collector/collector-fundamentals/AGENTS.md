@@ -16,7 +16,7 @@ Domain types shared across the slice:
 - **`ScrapingPlan`** --- the per-run plan: `stepSequence`, `responseKinds`,
   optional `captureProvenance` hook, `maxGeneratedSteps`, `drainedGuardTimeout`.
 - **`Step`** --- `Navigation | Delay | AwaitPageSettled | AwaitPageRequested |
-AwaitUserDismiss | EnsureWindowVisible`.
+  AwaitUserDismiss | EnsureWindowVisible`.
 - **`CollectorHttpResponse`** --- the live, chunk-accumulating `HttpResponse`
   implementation. Exposes `bytes()` (lossless) and `text()` (UTF-8, lossy).
 - **`ResourcePersistenceRuntime`** / `Context` / `Program` --- the existential

@@ -19,7 +19,7 @@ here; the chart math it feeds lives in `health-viewer-fundamentals`.
   `Observation.category`: `CATEGORY_ORDER`, the labels, `OTHER_GROUP`, and
   `observationGroupIdOf`.
 - `src/source.ts` — `observationSource`, the package's surface: `name:
-'observations'`, `idPrefix: 'o'`, the groups, the reader, the key grammar and
+  'observations'`, `idPrefix: 'o'`, the groups, the reader, the key grammar and
   the grouping, in one value.
 
 ## Rules

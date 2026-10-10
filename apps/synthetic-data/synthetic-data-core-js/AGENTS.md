@@ -21,7 +21,7 @@ namespace's name, a union of cases is `Any`, and a value's file codec is a
 
 - `src/snapshot.ts` — **`Snapshot`**: the principal type `Snapshot`
   (`header`, and `entries`, every entry once in path order). `assemble(asOf,
-wildflowerCommit, members)` lays out each `MemberRecords` (`member`, and
+  wildflowerCommit, members)` lays out each `MemberRecords` (`member`, and
   the importer output of their records), merges them (an entry two members
   share, such as a family account's HAR, is held once and listed under both)
   and builds the header; it fails as `Layout.layOut` does, with
@@ -52,7 +52,7 @@ wildflowerCommit, members)` lays out each `MemberRecords` (`member`, and
   paths of their `resources` and `staticFiles`, the attachments) and `totals`
   (members and distinct entries), checked against the members and for unique
   keys. `FileSchema` is its codec to its file at `PATH`. `make(asOf,
-wildflowerCommit, members)` builds it from each member's laid-out entries:
+  wildflowerCommit, members)` builds it from each member's laid-out entries:
   members in the order given, every list sorted and distinct, Patient ids
   read off the member's Patient resources. `pathsOf(header, memberKeys)` is
   the reader's side: a `MemberPaths` of the chosen members' resource and
@@ -84,7 +84,7 @@ wildflowerCommit, members)` builds it from each member's laid-out entries:
   the file at fault.
 - `src/snapshot-write-order.ts` — **`Snapshot.WriteOrder`**: the order a
   reader writes what it read to a FHIR server in. `bundlesOf(resources,
-maxEntries)` orders `StoredResource`s, as `Reader.readResource` gives them,
+  maxEntries)` orders `StoredResource`s, as `Reader.readResource` gives them,
   into the batch bundles to write, each resource in a later bundle than
   every resource among them it references (`referencesOf`: the relative
   `<ResourceType>/<id>` references in it, the id in FHIR's id grammar, a

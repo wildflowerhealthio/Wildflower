@@ -88,9 +88,9 @@ The host app combines slice `Api` definitions into one root `HttpApi`, then prov
 
 ```ts
 import { HttpApi } from '@effect/platform'
-import { Layer } from 'effect'
 import { AppsApi, AppsApiHandlersFor } from '@wildflower/apps-core'
 import { AuthApi, AuthApiHandlersFor } from '@wildflower/gatekeeper-core'
+import { Layer } from 'effect'
 
 const WildflowerNodeApi = HttpApi.make('WildflowerNodeApi').addHttpApi(AuthApi).addHttpApi(AppsApi)
 

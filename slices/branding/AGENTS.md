@@ -126,7 +126,7 @@ the assembled GitHub Pages site. The core tests pin the exact five paths.
   `branding-react` depends on `branding-core`, never the reverse.
 - **`--header-height` must stay in sync with `.site-header__inner` padding and
   the icon size.** The derivation is `padding-top + padding-bottom + icon-size +
-border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
+  border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
 - **App copy lives in `APP_DESCRIPTIONS`, not in a component.** The homepage
   rows (`built`, `infrastructure`, `dev-tools`) and the apps' landing pages
   render the same entries; editing the copy in one component would fork the

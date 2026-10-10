@@ -20,7 +20,7 @@ packages; `rexall-be-well-source`, `shoppers-drugmart-source`, and
 - `src/recognize-fhir-root.ts` — `recognizeFhirRoot(matcher)`, which turns a
   fused `UrlMatch.UrlMatcher` into the kind's `tryRecognize`: `Some` a
   `PROTOCOL`-tier `RecognizedUrlData` whose `source` is `{ system: root, baseUrl:
-root }` (root = the matcher's own capture, so there is no second hand-written
+  root }` (root = the matcher's own capture, so there is no second hand-written
   root regex to keep in step), `None` when the matcher does not claim the URL. A
   FHIR server spells its own references absolutely under that same prefix, which
   is why root rides both `system` and `baseUrl`.
