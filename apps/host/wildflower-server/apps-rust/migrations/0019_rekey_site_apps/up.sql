@@ -1,6 +1,6 @@
 -- Re-key the site's first-party apps to their folders' names, as `0017` did for
 -- Lifting. Each app moved into a product folder (`apps/medications/`,
--- `apps/importer/`, `apps/health-viewer/`, `apps/synthetic-data/`,
+-- `apps/importer-web`, `apps/health-viewer/`, `apps/synthetic-data/`,
 -- `apps/server-docs-web`) and is published under that name, so its tile id is
 -- the product (`medications`, was `medications-app`) and a debug build's dev
 -- tile `<product>-dev` (was `medications-app-dev`). Their OAuth clients get
