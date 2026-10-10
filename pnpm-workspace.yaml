@@ -52,7 +52,7 @@ packages:
 
 catalog:
   '@effect/language-service': ^0.87.2
-  '@effect/opentelemetry': 0.64.1
+  '@effect/opentelemetry': 4.0.2
   '@effect/platform': 0.97.2
   '@cornerstonejs/core': 5.11.0
   '@cornerstonejs/dicom-image-loader': 5.11.0
