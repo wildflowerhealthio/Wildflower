@@ -7,8 +7,8 @@
 //! id, so e.g. a background sniffer scrape and a launched app run concurrently
 //! without colliding — every function here is keyed by `id`. The cross-platform
 //! lifecycle/race protocols this implements live in
-//! [docs/Lifecycle and Races Explanation.md](../docs/Lifecycle%20and%20Races%20Explanation.md); the
-//! higher-level "what / why" in [docs/Explanation.md](../docs/Explanation.md).
+//! [docs/Lifecycle and Races Explanation.md](../../docs/Lifecycle%20and%20Races%20Explanation.md); the
+//! higher-level "what / why" in [docs/Explanation.md](../../docs/Explanation.md).
 //!
 //! ## Layout
 //!

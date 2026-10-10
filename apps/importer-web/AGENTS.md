@@ -216,8 +216,9 @@ the port.
 <https://wildflowerhealth.io>, alongside the other first-party apps. The
 relative `base: './'` in `vite.config.ts` is the whole subpath mechanism. No SPA
 fallback is needed: the router is a memory history, so the site has no deep links
-into it. The marketing site links there from its "collection of apps" section
-(`apps/wildflower-site/marketing-site-web/src/data/convergence.ts`).
+into it. The marketing site links there from its infrastructure section
+(`apps/wildflower-site/marketing-site-web/src/components/infrastructure.tsx`,
+from the shared `APP_DESCRIPTIONS` entry).
 
 ## Boot and chrome
 

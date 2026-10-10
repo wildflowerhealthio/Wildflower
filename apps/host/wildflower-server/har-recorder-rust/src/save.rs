@@ -6,7 +6,7 @@
 //! directory untouched ([Review Standards][rs] rule 5, "gate before side
 //! effects").
 //!
-//! [rs]: ../../../../docs/Agents/Review%20Standards%20Reference.md
+//! [rs]: ../../../../../docs/Agents/Review%20Standards%20Reference.md
 
 use std::fs;
 use std::io;

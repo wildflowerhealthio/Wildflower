@@ -62,14 +62,13 @@ consumer slices.
   wrong one fails. `withElementsSpliced` adds the elements `writeDicom` cannot
   write (private groups, sequences, any attribute) at their place in tag
   order, located with `dicom-parser` rather than `Part10`.
-- **[`dicom-react`](../../slices/file-formats/dicom-react/AGENTS.md)** — browser-side DICOM rendering:
+- **[`dicom-react`](./dicom-react/AGENTS.md)** — browser-side DICOM rendering:
   `DicomFilePreview` (identifying patient and study tags, plus an Encoding
   block, under a cornerstone-rendered image pane) and the `renderInstance`
   seam. Depends on `dicom` for tag parsing, `@cornerstonejs/core` and
   `@cornerstonejs/dicom-image-loader` for image rendering. The `-react` adapter
-  for the `dicom` parser, consumed by `dicom-importer-react` alone, so it lives
-  with the Importer in `apps/importer`; it keeps its role in this slice's
-  layering.
+  for the `dicom` parser, consumed by `dicom-importer-react` alone (in
+  `slices/importer`); it stays in this slice.
 
 The deferred positioned-text preview viewer (React `RunsView`) would join as a
 `positioned-text-react` when it is extracted from `pdf-anonymizer-react`.

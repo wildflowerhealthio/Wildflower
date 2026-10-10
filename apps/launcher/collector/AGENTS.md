@@ -148,8 +148,10 @@ before adding one.
 - **The `/collector` endpoints are owner-only and are NOT gated in-slice.**
   `collector-registry` can't depend on `gatekeeper-core` (slice layering), so
   the composition site must apply `.middleware(RequireAuthMiddleware)`. A future
-  composer that forgets this exposes write endpoints to unauthenticated clients
-  (a compile-time guard lives in `apps/wildflower-server`).
+  composer that forgets this exposes write endpoints to unauthenticated clients.
+  The host's server is `collector-rust`, whose handlers each reach the store
+  through a scope-gated `Scoped<…>` capability (see its `src/http/mod.rs`), so
+  a missing bearer gate there answers 403, not 200.
 
 ## Traps
 

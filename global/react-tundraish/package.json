@@ -13,7 +13,7 @@
   "author": "Ruth Marks <ruthmarks151@gmail.com> (https://github.com/ruthmarks151)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildlflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "global/react-tundraish"
   },
   "files": [

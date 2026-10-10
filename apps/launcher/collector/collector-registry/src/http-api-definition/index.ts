@@ -11,11 +11,9 @@ import * as Remotes from './remotes.ts'
  * not annotate the group with `.middleware(RequireAuthMiddleware)`
  * directly because `gatekeeper-core` isn't an intrinsic dep of
  * `collector-registry` — adding it here would cross the slice-layering
- * boundary in `slices/AGENTS.md`. The wildflower-server composition
- * applies the middleware via
- * `.addHttpApi(CollectorApi.middleware(RequireAuthMiddleware))`; a
- * compile-time regression guard lives in
- * `apps/wildflower-server/tests/auth-middleware-contract.test.ts`.
+ * boundary in `slices/AGENTS.md`. The host serves these endpoints from
+ * `collector-rust`, which gates each one by scope (see its
+ * `src/http/mod.rs`).
  *
  * Future composers of this API in another app surface MUST repeat the
  * `.middleware(RequireAuthMiddleware)` wrapper or write endpoints will

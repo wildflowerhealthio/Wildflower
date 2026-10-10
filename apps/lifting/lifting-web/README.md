@@ -161,7 +161,7 @@ and the debug-only `lifting-dev` tile's client (`seed_dev_app_clients` in
 one place: **the published site**, at
 [`/lifting`](https://wildflowerhealth.io/lifting/). `wildflower-site-web`
 copies `dist/` into the Pages artifact
-([../../wildflower-site-web/README.md](../../wildflower-site/wildflower-site-web/README.md)), and each pull
+([../../wildflower-site/wildflower-site-web/README.md](../../wildflower-site/wildflower-site-web/README.md)), and each pull
 request's `pr-preview.yml` build publishes the same tree under
 `https://wildflowerhealthio.github.io/staging/pr-<n>/lifting/`. The
 published page launches standalone against any SMART server that lets it write

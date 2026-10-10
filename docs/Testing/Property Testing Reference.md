@@ -2,7 +2,7 @@
 
 Property-based testing is the default approach. Describe the general properties of your code rather than checking specific input/output pairs. Use example-based tests only for regression testing or documentation.
 
-Reference implementation: `global/util/src/StreamEither.test.ts`
+Reference implementation: [`scripts/package-graph.test.ts`](../../scripts/package-graph.test.ts)
 
 ## Opaque Arbitraries
 
