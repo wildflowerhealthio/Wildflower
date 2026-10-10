@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { type JSX, type ReactNode, useState } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { Dialog } from './dialog.tsx'
 import { TextField } from './text-field.tsx'

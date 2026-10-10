@@ -12,7 +12,7 @@ import { multiplierFromMap, numRunsFor, scaleNumRuns } from './num-runs-for.ts'
 // with a call-stack fallback). Keying the risk map under that name exercises the
 // real end-to-end path that `test:changed` relies on, proving the multiplier
 // actually reaches `numRunsFor` at runtime.
-const THIS_PACKAGE = 'kitchen-sink'
+const THIS_PACKAGE = '@wildflowerhealthio/kitchen-sink'
 
 // The monorepo root's own package name. The old cwd-based implementation
 // resolved to this when run from the repo root (Vitest projects mode), so the

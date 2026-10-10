@@ -1,8 +1,8 @@
+import { type AdoptableEntity, localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { Effect, Either } from 'effect'
-import { type AdoptableEntity, localResourceId } from 'fhir-r4/identity'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
-import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'

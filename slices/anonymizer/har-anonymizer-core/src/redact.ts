@@ -1,7 +1,7 @@
 import { Data, Effect, Schema } from 'effect'
 
-import type { HttpArchive } from 'http-archive'
-import type { TraceExchange } from 'web-trace-core'
+import type { HttpArchive } from '@wildflowerhealthio/http-archive'
+import type { TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import { hmac, importExportKey, type ExportKey, type WebCryptoUnavailable } from './hmac.ts'
 import { type JsonLeaf, type LeafVisitor, mapEntryLeaves, mapExchangeLeaves } from './leaves.ts'
 import { detectShape, fakeBase64Url, generateFake, prngFromBytes } from './shapes.ts'

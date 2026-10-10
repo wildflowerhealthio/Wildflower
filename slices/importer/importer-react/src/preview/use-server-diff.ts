@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
-import { useRunAuthed } from 'fhir-r4-react'
-import { classifyAgainstServer, diffKey, type ServerComparison } from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
-import { DecodedFile } from 'importer-fundamentals'
+import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import {
+  classifyAgainstServer,
+  diffKey,
+  type ServerComparison,
+} from '@wildflowerhealthio/fhir-r4/clients'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
-import type { BatchDecodeResult, FormatKind } from 'importer-core'
-import { formatKinds } from 'importer-core'
+import type { BatchDecodeResult, FormatKind } from '@wildflowerhealthio/importer-core'
+import { formatKinds } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**

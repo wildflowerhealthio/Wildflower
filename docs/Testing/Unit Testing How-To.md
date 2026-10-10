@@ -98,7 +98,7 @@ Four patterns come up often enough that they live in the shared kitchen-sink:
 
 ```typescript
 import { expect } from 'vite-plus/test'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 
 const { expectDistinct, expectToMultisetEqual, expectRightToEqual, expectLeftToEqual } =
   utilityExpectations(expect)

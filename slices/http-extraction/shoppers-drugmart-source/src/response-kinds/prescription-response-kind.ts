@@ -1,3 +1,10 @@
+import { MedicationDispense, MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  HttpResponseKind,
+  extractJson,
+  recognizePortal,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
   Array as Arr,
   DateTime,
@@ -8,9 +15,6 @@ import {
   RegExp as EffectRegExp,
   Schema,
 } from 'effect'
-import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
-import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { dateTimeOf, decodesAsDateTime, firstDateTime } from '../dates.ts'
 import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'

@@ -1,7 +1,10 @@
 import { Effect, Either, Schema } from 'effect'
 
-import { DecodeFailure, type AnonymizerFormatDescriptor } from 'anonymizer-fundamentals'
-import { HttpArchive } from 'http-archive'
+import {
+  DecodeFailure,
+  type AnonymizerFormatDescriptor,
+} from '@wildflowerhealthio/anonymizer-fundamentals'
+import { HttpArchive } from '@wildflowerhealthio/http-archive'
 
 /**
  * The HAR format descriptor: identification by extension or JSON shape, and

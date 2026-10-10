@@ -1,6 +1,6 @@
 import { render, renderHook } from '@testing-library/react'
+import type { BridgeTransport } from '@wildflowerhealthio/effect-messaging-core'
 import { Effect, Either } from 'effect'
-import type { BridgeTransport } from 'effect-messaging-core'
 import { memo } from 'react'
 import { describe, expect, test } from 'vite-plus/test'
 import { useLateBoundSender } from './late-bound-sender.ts'

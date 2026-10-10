@@ -1,5 +1,5 @@
 {
-  "name": "scopes-react",
+  "name": "@wildflowerhealthio/scopes-react",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -22,24 +22,24 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "scopes-core": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "effect": "catalog:",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "scopes-core": "workspace:*"
+    "react": "catalog:"
   }
 }

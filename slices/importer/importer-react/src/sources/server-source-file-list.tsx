@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { Dialog } from '@wildflowerhealthio/react-tundraish'
 import { DateTime, Match } from 'effect'
-import { useRunAuthed } from 'fhir-r4-react'
-import type { PickedFile } from 'importer-fundamentals'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { Dialog } from 'react-tundraish'
 
-import { DicomFilePreview } from 'dicom-importer-react'
+import { DicomFilePreview } from '@wildflowerhealthio/dicom-importer-react'
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type SourceFileRow,

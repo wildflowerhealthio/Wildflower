@@ -6,9 +6,8 @@
  * lays out the shell.
  *
  * There is nothing here for the import flow itself: `importer-react` ships its
- * own modules for the picker, the preview and the results. The shell stays as
- * wide as the Web Trace viewer's — the preview lists resource references, which
- * read badly when wrapped.
+ * own modules for the picker, the preview and the results. The shell stays wide
+ * — the preview lists resource references, which read badly when wrapped.
  */
 .app {
   max-width: 72rem;
@@ -26,7 +25,7 @@
 
 /*
  * Header controls: the Import | Anonymize toggle. Kept a row so future controls
- * (a settings menu, a help link) sit beside it. Follows the medications-app
+ * (a settings menu, a help link) sit beside it. Follows the medications
  * pattern.
  */
 .controls {

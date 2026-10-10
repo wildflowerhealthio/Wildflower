@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Grant, GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { type JSX, type ReactNode } from 'react'
-import { Grant, GrantDraft, ScopeRequest } from 'scopes-core'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import type { OAuthConsentResource, OAuthConsentResult } from '../../queries/index.ts'
@@ -68,7 +68,7 @@ let patientResources: readonly StubPatient[] = []
 /** The patient list's read failure, or `null` when it reads. */
 let patientsError: Error | null = null
 
-vi.mock('fhir-r4-react', () => ({
+vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
   usePatientsQuery: (): {
     data: readonly StubPatient[] | undefined
     isLoading: boolean

@@ -1,6 +1,6 @@
+import { CanadianCodingSystem } from '@wildflowerhealthio/fhir-r4/data-types'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { CanadianCodingSystem } from 'fhir-r4/data-types'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import { dinOf } from './din.ts'

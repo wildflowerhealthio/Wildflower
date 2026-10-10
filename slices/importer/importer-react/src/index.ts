@@ -14,7 +14,7 @@
  * stamped with the source file it came from.
  *
  * Only three other symbols are exported, and each for a stated reason:
- * {@link ServerSourceFileList}, because the anonymizer slice's shell mounts
+ * {@link ServerSourceFileList}, because the anonymizer's shell mounts
  * it in its own `serverSource` slot; and {@link PREVIEW_HEADING} /
  * {@link COMPLETE_HEADING}, the stable heading strings a host drives its own
  * end-to-end assertions against. Everything else — the registry, the review

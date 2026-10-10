@@ -1,11 +1,11 @@
-import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
-import type { SmartAppTelemetry } from 'smart-app-react'
+import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
  * SMART registration for this app.
  *
  * The scope set **carries writes**, which is what separates this app from the
- * Medications and Web Trace viewers it is otherwise shaped like: importing means
+ * Medications viewer it is otherwise shaped like: importing means
  * persisting the resources a captured session contained, each stamped with the
  * HAR archive it came from. The auto-extracted write set is the archive
  * `DocumentReference` the confirm step uploads, plus the `Patient` and
@@ -41,23 +41,25 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * is served are two different registrations:
  *
  * - A **production** build is published to
- *   `https://wildflowerhealth.io/importer-app/` and launched through the
- *   `importer-app` app row (apps migration
- *   `0006_seed_wildflower_importer_app`), whose client
- *   (`0008_seed_wildflower_importer_client`) registers that absolute Pages URL as
+ *   `https://wildflowerhealth.io/importer/` and launches as the `importer`
+ *   tile's client, `165cd26573e5ac72378e6ad2d2198330` (seeded by
+ *   `0008_seed_wildflower_importer_client`, re-keyed by
+ *   `0028_rekey_site_app_clients`), which registers that absolute Pages URL as
  *   a redirect URI.
- * - The **vite dev server** (`vp run -F wildflower-importer dev`, on the port
- *   `slices/apps/dev-app-ports.json` pins) is launched through the debug-only
- *   `importer-app-dev` row (`apps-rust`'s `seed_dev_apps`) and its
- *   client (`gatekeeper-rust`'s `seed_dev_app_clients`), which registers the
+ * - The **vite dev server** (`vp run -F @wildflowerhealthio/importer-web dev`, on the port
+ *   `dev-app-ports.json` pins) is launched through the debug-only
+ *   `importer-dev` row (`apps-rust`'s `seed_dev_apps`) and its client,
+ *   `57268ff88aea38d6a22de56ae53e2c28` (`gatekeeper-rust`'s
+ *   `seed_dev_app_clients`), which registers the
  *   dev server's loopback root (`http://localhost:{port}/`) as its redirect.
  *
- * Either way `clientId` MUST equal the app row's `client_id`: a launch checks
+ * The ids are random (`openssl rand -hex 16`), not the tile ids. Either way
+ * `clientId` MUST equal the app row's `client_id`: a launch checks
  * the caller's grant against that client's scopes, and `/authorize` matches the
  * redirect against that client's registered URIs.
  *
  * The scope string MUST equal the `allowed_scopes` JSON array the
- * `gatekeeper-rust` migrations seed for `importer-app` — originally
+ * `gatekeeper-rust` migrations seed for the Importer's client — originally
  * `0008_seed_wildflower_importer_client`, widened by
  * `0009_widen_importer_client_write_scopes` (broadens every type to `.cruds` and
  * adds `Practitioner`, `DiagnosticReport`, `Medication`, `MedicationRequest`,
@@ -69,10 +71,10 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * pairing is pinned here, in the migration's own comment, and in
  * [AGENTS.md](../AGENTS.md); the Rust assertion in `gatekeeper-rust`'s
  * `clients.rs` mirrors it on the other side. A **dev** build authorizes against
- * `importer-app-dev` instead (the `clientId` selected above), whose
+ * the `importer-dev` tile's client instead (the `clientId` selected above), whose
  * `allowed_scopes` live in `gatekeeper-rust`'s `seed_dev_app_clients` and carry
  * this same set — widen that copy in step too, or `/authorize` fails only under
- * `vp run -F wildflower-importer dev`.
+ * `vp run -F @wildflowerhealthio/importer-web dev`.
  *
  * The app root authorizes with it for every launch it starts: one its URL
  * carries (`iss` / `launch`, read off the URL by fhirclient) and the standalone
@@ -87,7 +89,9 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * request over it, dropping `launch` is the first thing to try.
  */
 const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
-  clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
+  clientId: import.meta.env.DEV
+    ? '57268ff88aea38d6a22de56ae53e2c28'
+    : '165cd26573e5ac72378e6ad2d2198330',
   scope:
     'launch openid fhirUser system/DocumentReference.cruds system/Patient.cruds system/Observation.cruds system/Practitioner.cruds system/DiagnosticReport.cruds system/Medication.cruds system/MedicationRequest.cruds system/MedicationDispense.cruds system/ServiceRequest.cruds system/ImagingStudy.cruds',
 }

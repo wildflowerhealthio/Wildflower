@@ -1,3 +1,10 @@
+import { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  HttpResponseKind,
+  extractJson,
+  recognizePortal,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
   Array as Arr,
   Effect,
@@ -8,9 +15,6 @@ import {
   Schema,
   String as Str,
 } from 'effect'
-import { MedicationDispense } from 'fhir-r4/resources'
-import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
 import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'

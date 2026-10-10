@@ -1,0 +1,157 @@
+import { cleanup, render, screen, within } from '@testing-library/react'
+import { MARKETING_ANCHORS } from '@wildflowerhealthio/branding-core'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+
+import { App } from './app.tsx'
+
+beforeEach(() => {
+  // jsdom has no `matchMedia`; report reduced motion so the stats count-up
+  // renders its final values synchronously instead of animating across
+  // frames while assertions run.
+  vi.stubGlobal('matchMedia', (query: string): Pick<MediaQueryList, 'matches' | 'media'> => ({
+    matches: true,
+    media: query,
+  }))
+})
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
+
+describe('App', () => {
+  it('should render an element for every marketing anchor', () => {
+    // Arrange — the apps' chrome and the homepage's own in-page references
+    // resolve hrefs against `MARKETING_ANCHORS`, so every one of those has to
+    // land on this page (e.g. the footer's `#note`).
+    const { container } = render(<App />)
+
+    // Act
+    const missing = MARKETING_ANCHORS.filter(
+      (anchor) => container.querySelector(`#${anchor}`) === null
+    )
+
+    // Assert
+    expect(missing).toStrictEqual([])
+  })
+
+  it('should render the hero manifesto title as the only h1, with the wordmark linking back to #top', () => {
+    // Arrange / Act
+    render(<App />)
+
+    // Assert — the hero's manifesto title is the page's only h1; the header
+    // wordmark is a plain link (not a heading) back to the top. Its accessible
+    // name is the shared header's concise "Wildflower, home" aria-label; the
+    // visible text is "Wildflower Health Project".
+    const headings = screen.getAllByRole('heading', { level: 1 })
+    expect(headings).toHaveLength(1)
+    expect(headings[0].textContent).toBe('Patients deserve health data freedom')
+    const wordmark = screen.getByRole('link', { name: 'Wildflower, home' })
+    expect(wordmark.textContent).toContain('Wildflower Health Project')
+    expect(wordmark.getAttribute('href')).toBe('#top')
+  })
+
+  it('should link the header nav to the seven app routes', () => {
+    // Arrange / Act
+    render(<App />)
+
+    // Assert — every "call to action" on the page is a link into an app;
+    // the header carries all seven routes.
+    const nav = screen.getByRole('navigation', { name: 'Apps' })
+    const hrefs = within(nav)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'))
+    // Current-URL-relative — see `sectionHref` in branding-core; a preview
+    // deploy under a sub-path resolves these into sibling preview builds.
+    expect(hrefs).toStrictEqual([
+      './medications',
+      './health-viewer',
+      './lifting',
+      './importer',
+      './server-docs',
+      './ohif-viewer',
+    ])
+  })
+
+  it('should render the stats grid at its final values with aligned plus padding', () => {
+    // Arrange / Act
+    render(<App />)
+
+    // Assert — under reduced motion the numbers render at their final
+    // values. Non-"+" cells end with an invisible "+" that reserves the plus
+    // sign's width so digits right-align against the "10+" rows.
+    const labResultsNumber = screen.getByText('lab results').previousElementSibling
+    expect(labResultsNumber?.textContent).toBe('213+')
+    expect(screen.getAllByText('10+')).toHaveLength(2)
+    const medicationsNumber = screen.getByText('prescription medications').previousElementSibling
+    expect(medicationsNumber?.textContent).toBe('10+')
+  })
+
+  it('should render every section anchor in page order', () => {
+    // Arrange / Act
+    const { container } = render(<App />)
+
+    // Assert — the in-page anchor targets the app chrome links back to.
+    for (const id of ['top', 'built', 'try', 'asks', 'developers', 'note']) {
+      expect(container.querySelector(`#${id}`), `#${id}`).not.toBeNull()
+    }
+  })
+
+  it('should render launcher links into the apps', () => {
+    // Arrange / Act
+    render(<App />)
+
+    // Assert
+    expect(
+      screen.getByRole('link', { name: /Open the Medication Viewer/ }).getAttribute('href')
+    ).toBe('./medications')
+    expect(
+      screen.getByRole('link', { name: /Read the Wildflower server docs/ }).getAttribute('href')
+    ).toBe('./server-docs')
+    expect(screen.getByRole('link', { name: /Open the Importer/ }).getAttribute('href')).toBe(
+      './importer'
+    )
+    expect(
+      screen.getByRole('link', { name: /Open FHIR Sync for Pebble/ }).getAttribute('href')
+    ).toBe('./fhir-sync-pebble')
+    expect(
+      screen.getByRole('link', { name: /Open the Synthetic Data Loader/ }).getAttribute('href')
+    ).toBe('./synthetic-data')
+    expect(
+      screen.getByRole('link', { name: /Open the Synthesized Health Viewer/ }).getAttribute('href')
+    ).toBe('./health-viewer')
+    expect(screen.getByRole('link', { name: /Open Lifting/ }).getAttribute('href')).toBe(
+      './lifting'
+    )
+  })
+
+  it('should render Wildflower FHIR server download links pulled from versions.json', () => {
+    // Arrange / Act — links target the direct-installer URLs baked in at
+    // build time from apps/wildflower-site/marketing-site-web/public/versions.json, which the
+    // tauri-release-prepare workflow rewrites on every version bump.
+    render(<App />)
+
+    // Assert
+    const macos = screen.getByRole('link', { name: /macOS/ })
+    expect(macos.getAttribute('href')).toMatch(
+      /^https:\/\/github\.com\/wildflowerhealthio\/Wildflower\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+[^/]*\/Wildflower_[0-9]+\.[0-9]+\.[0-9]+[^/]*_universal\.dmg$/
+    )
+    const windows = screen.getByRole('link', { name: /Windows/ })
+    expect(windows.getAttribute('href')).toMatch(/_x64_en-US\.msi$/)
+    const linux = screen.getByRole('link', { name: /Linux/ })
+    expect(linux.getAttribute('href')).toMatch(/_amd64\.AppImage$/)
+  })
+
+  it('should end on the contact line and the mono stamp', () => {
+    // Arrange / Act
+    render(<App />)
+
+    // Assert
+    const footer = within(screen.getByRole('contentinfo'))
+    expect(footer.getByRole('link', { name: 'ruthmarks151@gmail.com' }).getAttribute('href')).toBe(
+      'mailto:ruthmarks151@gmail.com'
+    )
+    const year = new Date().getFullYear()
+    expect(footer.getByText(`Wildflower Health Project · Ruth Marks · ${year}`)).toBeDefined()
+  })
+})

@@ -1,7 +1,11 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import {
+  readConsent,
+  type TelemetryConsent,
+  writeConsent,
+} from '@wildflowerhealthio/telemetry-core'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { readConsent, type TelemetryConsent, writeConsent } from 'telemetry-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { mapConsentStorage } from './telemetry-consent.test-helpers.ts'

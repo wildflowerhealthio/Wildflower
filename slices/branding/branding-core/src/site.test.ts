@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -15,7 +15,6 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'marketing',
   'medications',
   'importer',
-  'webTrace',
   'serverDocs',
   'ohifViewer',
   'fhirSyncPebble',
@@ -23,24 +22,23 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'syntheticData',
   'lifting',
   'watchLifts',
-  'app'
+  'launcher'
 )
 
 describe('SECTION_PATHS', () => {
-  it('should contain exactly eleven sections with the correct deploy-contract paths', () => {
+  it('should contain exactly ten sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
-      medications: 'medications-app',
-      importer: 'importer-app',
-      webTrace: 'web-trace-app',
-      serverDocs: 'wildflower-server-docs',
+      medications: 'medications',
+      importer: 'importer',
+      serverDocs: 'server-docs',
       ohifViewer: 'ohif-viewer',
       fhirSyncPebble: 'fhir-sync-pebble',
-      healthViewer: 'health-viewer-app',
-      syntheticData: 'synthetic-data-app',
-      lifting: 'lifting-app',
+      healthViewer: 'health-viewer',
+      syntheticData: 'synthetic-data',
+      lifting: 'lifting',
       watchLifts: 'watch-lifts',
-      app: 'app',
+      launcher: 'launcher',
     })
   })
 })
@@ -51,9 +49,9 @@ describe('sectionUrl', () => {
   })
 
   it('should return absolute URLs for non-marketing sections', () => {
-    expect(sectionUrl('medications')).toBe('https://wildflowerhealth.io/medications-app')
-    expect(sectionUrl('serverDocs')).toBe('https://wildflowerhealth.io/wildflower-server-docs')
-    expect(sectionUrl('app')).toBe('https://wildflowerhealth.io/app')
+    expect(sectionUrl('medications')).toBe('https://wildflowerhealth.io/medications')
+    expect(sectionUrl('serverDocs')).toBe('https://wildflowerhealth.io/server-docs')
+    expect(sectionUrl('launcher')).toBe('https://wildflowerhealth.io/launcher')
   })
 
   it('should always start with SITE_ORIGIN/', () => {
@@ -145,10 +143,10 @@ describe('siteRootFor', () => {
     )
   })
 
-  it("should resolve a PR preview's owner UI to that preview's root", () => {
-    expect(siteRootFor('app', 'https://wildflowerhealthio.github.io/staging/pr-7/app/')).toBe(
-      'https://wildflowerhealthio.github.io/staging/pr-7/'
-    )
+  it("should resolve a PR preview's launcher to that preview's root", () => {
+    expect(
+      siteRootFor('launcher', 'https://wildflowerhealthio.github.io/staging/pr-7/launcher/')
+    ).toBe('https://wildflowerhealthio.github.io/staging/pr-7/')
   })
 
   it('should fall back to the canonical site for a URL that does not end in the section path', () => {

@@ -1,24 +1,24 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Schema, type ParseResult } from 'effect'
-import type { DiffSlot, FieldDiff, ServerComparison } from 'fhir-r4/clients'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
+import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
+import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type BatchDecodeResult,
   type FormatKind,
   type FormatSettings,
   type UnrecognizedFile,
-} from 'importer-core'
+} from '@wildflowerhealthio/importer-core'
 import {
   StagedImport,
   FormatDecode,
   type DecodedFile,
   type PickedFile,
-} from 'importer-fundamentals'
+} from '@wildflowerhealthio/importer-fundamentals'
+import { Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { defaultFormatSettings } from 'importer-core'
+import { defaultFormatSettings } from '@wildflowerhealthio/importer-core'
 import { PreviewPanel, type PreviewPanelProps, type SettingsRegistry } from './preview-panel.tsx'
 import {
   NO_RESOURCES_MESSAGE,

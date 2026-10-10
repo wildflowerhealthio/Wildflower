@@ -13,11 +13,12 @@ public origin.
 
 An app's assets are served from its own origin, never the host's. Growth Chart,
 Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
-Medications (`medications-app`), Web Trace (`web-trace-app`), the Server Docs
-console (`web-server-docs`), Importer (`importer-app`), the OHIF imaging viewer
-(`ohif-viewer`), Lifting (`lifting-app`) and the Synthesized Health Viewer
-(`health-viewer-app`) — are published to
-<https://wildflowerhealth.io> by `apps/github-pages` and launched from there.
+Medications (`medications`), the Server Docs
+console (`server-docs`), Importer (`importer`), the OHIF imaging viewer
+(`ohif-viewer`), Lifting (`lifting`), the Synthesized Health Viewer
+(`health-viewer`) and the Synthetic Data Loader (`synthetic-data`) — are
+published to
+<https://wildflowerhealth.io> by `apps/wildflower-site/wildflower-site-web` and launched from there.
 Serving the deployed copy means a shipped app updates when the site deploys
 rather than when the user installs a new desktop build.
 
@@ -46,7 +47,7 @@ anonymized performance data, each behind its own switch. See the
 
 In **debug builds only** each first-party app additionally gets an `<id>-dev`
 row bound to that app's vite dev-server port (pinned once in
-`slices/apps/dev-app-ports.json`, which the Rust seed embeds and the vite
+`dev-app-ports.json`, which the Rust seed embeds and the vite
 configs read through the shared `devAppServer` helper in the root
 `vite.config.base.ts`), so a developer's local build is what the tile launches.
 Those rows are a runtime seed (`apps-rust/src/dev_seed.rs`), never a migration —
@@ -156,20 +157,20 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
   **resource** scopes (its FHIR / Wildflower data access; the OIDC and SMART
   launch-context scopes are the app's own OAuth concern, so the owner isn't required
   to hold them). A shortfall on the per-app check returns the shared
-  `InsufficientScope` JSON body, which the owner UI's typed client decodes into
+  `InsufficientScope` JSON body, which the launcher's typed client decodes into
   the home banner — keeping the missing scopes structured so the banner names them
   (and a future "request permissions" action can read them).
 - Both the loopback and the forwarded launch ride the same bearer gate: every
-  owner UI launches through the typed client with its bearer. A loopback launch
+  launcher launches through the typed client with its bearer. A loopback launch
   `204`s after the host opens the app in a native popup. A forwarded launch (the
-  hosted owner UI reaching the server through its tunnel) answers `200 { url }`,
+  hosted launcher reaching the server through its tunnel) answers `200 { url }`,
   and the page navigates the tab there — a redirect would be followed invisibly by
-  `fetch` rather than moving the tab. A home tile is a real link to the owner
-  UI's launch route (`/home/launch/{id}`): a plain click launches in place, and
+  `fetch` rather than moving the tab. A home tile is a real link to the
+  launcher's launch route (`/home/launch/{id}`): a plain click launches in place, and
   a ctrl/cmd/shift or middle click opens the new tab inside the click (so no
   popup blocker stops it) and launches into it on this page's session. A tab
   the browser opens by itself from the link has no session. The signed-in
-  owner UI's URLs don't name a server, so that tab lands on the server picker.
+  launcher's URLs don't name a server, so that tab lands on the server picker.
 
 ### No launch sets a cookie
 

@@ -1,8 +1,14 @@
-import type { PathOverride } from 'har-anonymizer-core'
-import type { HttpArchive } from 'http-archive'
+import type { PathOverride } from '@wildflowerhealthio/har-anonymizer-core'
+import type { HttpArchive } from '@wildflowerhealthio/http-archive'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import {
+  ErrorBanner,
+  Field,
+  PageLoading,
+  StatusBadge,
+  ToggleSwitch,
+} from '@wildflowerhealthio/react-tundraish'
 import { useId, type ChangeEvent, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner, Field, PageLoading, StatusBadge, ToggleSwitch } from 'react-tundraish'
 
 import { droppedBodyCount, jsonBodyCount, type PreviewRow } from './redaction-preview.ts'
 import { useAnonymize } from './use-anonymize.ts'

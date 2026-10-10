@@ -54,7 +54,7 @@ In `slices/<slice>/<slice>-rust`:
 
    #[test]
    fn openapi_spec_snapshot_is_up_to_date() {
-       shared_structures_rust::openapi_snapshot::assert_up_to_date(&openapi_spec(), SPEC_PATH);
+       wildflowerhealthio_shared_structures::openapi_snapshot::assert_up_to_date(&openapi_spec(), SPEC_PATH);
    }
    ```
 
@@ -73,7 +73,7 @@ In `slices/<slice>/<slice>-core`, add `shared-structures-core` to
 `openapi-drift` so CI's `vp test openapi-drift` matches it):
 
 ```ts
-import { defineSpecDriftTest } from 'shared-structures-core/openapi-drift/testing'
+import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/openapi-drift/testing'
 import { MyApi } from './index.ts'
 
 defineSpecDriftTest({
@@ -133,7 +133,7 @@ Value)]`. That emits an empty schema `{}`, which the drift engine normalizes to
 ## Publishing the API reference
 
 The committed snapshots are also the published API reference.
-[`apps/wildflower-server-docs`](../../apps/wildflower-server-docs/README.md)
+[`apps/server-docs-web`](../../apps/server-docs-web/README.md)
 bundles them into an interactive [Scalar](https://scalar.com) console, one
 sidebar source per slice, pointed at whichever server the reader chooses. Paths
 in each slice's spec already carry that slice's host mount prefix, so the
@@ -143,12 +143,12 @@ the live routes, so it can't drift from the server — no extra guard is needed.
 FHIR/HFS is the one **inverted** group: HFS (the embedded third-party FHIR
 server) emits no OpenAPI spec, only a FHIR CapabilityStatement at
 `/fhir-r4/metadata`. So its snapshot
-(`slices/emr/emr-rust/openapi/fhir-r4.openapi.json`) is generated **from the TS
+(`slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json`) is generated **from the TS
 side** — `OpenApi.fromApi` on the `fhir-r4` Effect `HttpApi`, kept fresh by
-`slices/emr/fhir-r4/src/http-api-definition/openapi-drift.test.ts` (regenerate
-with `UPDATE_OPENAPI=1 vp test --config slices/emr/fhir-r4/vite.config.ts
+`slices/fhir/fhir-r4/src/http-api-definition/openapi-drift.test.ts` (regenerate
+with `UPDATE_OPENAPI=1 vp test --config slices/fhir/fhir-r4/vite.config.ts
 openapi-drift`). It documents "the surface as the client uses it", and is **not** a drift guard
-against HFS itself (that pairing stays hand-synchronized; see the emr slice
+against HFS itself (that pairing stays hand-synchronized; see the fhir slice
 docs).
 
 To keep the console readable, each handler's `#[utoipa::path]` carries a

@@ -1,0 +1,56 @@
+{
+  "name": "@wildflowerhealthio/navigation-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React-side navigation contract: bridge handler that reports route changes to the host.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "apps/launcher/navigation-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test --passWithNoTests"
+  },
+  "devDependencies": {
+    "@tanstack/react-router": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/effect-messaging-react": "workspace:*",
+    "@wildflowerhealthio/navigation-core": "workspace:*",
+    "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-router": "catalog:",
+    "@wildflowerhealthio/effect-messaging-react": "workspace:*",
+    "@wildflowerhealthio/navigation-core": "workspace:*",
+    "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:"
+  }
+}

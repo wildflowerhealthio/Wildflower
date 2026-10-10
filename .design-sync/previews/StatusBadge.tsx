@@ -1,4 +1,4 @@
-import { StatusBadge } from 'react-tundraish'
+import { StatusBadge } from '@wildflowerhealthio/react-tundraish'
 
 /** The full tone scale — neutral / info / success / warning / danger. */
 export const Tones = () => (

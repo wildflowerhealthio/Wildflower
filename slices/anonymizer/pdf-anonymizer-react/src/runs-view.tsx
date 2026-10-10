@@ -1,6 +1,6 @@
-import type { Document } from 'positioned-text'
+import type { Document } from '@wildflowerhealthio/positioned-text'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { useCallback, useState, type JSX, type KeyboardEvent } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './pdf-anonymize-panel.module.css'
 

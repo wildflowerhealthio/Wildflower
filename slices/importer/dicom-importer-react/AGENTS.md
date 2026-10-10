@@ -8,7 +8,7 @@ The DICOM format needs no interactive review body; the shell's generalized
 sectioned review covers it.
 
 Why a time zone is the knob at all is explained in
-[dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md) and in that
+[dicom-importer-core AGENTS.md](../../../slices/importer/dicom-importer-core/AGENTS.md) and in that
 package's `src/fhir/dates.ts`.
 
 ## Shape
@@ -48,5 +48,5 @@ package's `src/fhir/dates.ts`.
 
 ## References
 
-- [dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md)
+- [dicom-importer-core AGENTS.md](../../../slices/importer/dicom-importer-core/AGENTS.md)
 - [importer-react AGENTS.md](../importer-react/AGENTS.md)

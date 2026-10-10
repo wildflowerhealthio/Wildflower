@@ -1,0 +1,439 @@
+{
+  "listedServers": [
+    {
+      "domain": "ruth.relay.example.com",
+      "relay": { "kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com/" },
+      "tunnelName": "ruth",
+      "launcherUrl": "https://wildflowerhealth.io/launcher",
+      "certificateAuthority": "letsEncrypt",
+      "runPolicy": { "kind": "until", "at": "2026-10-06T17:42:00Z" },
+      "status": {
+        "domain": "ruth.relay.example.com",
+        "runState": "running",
+        "runningSince": "2026-10-06T17:00:00Z",
+        "health": { "kind": "reachable", "status": "pass" },
+        "certificate": {
+          "status": "noRenewalNeeded",
+          "issuer": "letsEncrypt",
+          "held": {
+            "notBefore": "2026-10-01T00:00:00Z",
+            "notAfter": "2026-12-30T00:00:00Z",
+            "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          }
+        }
+      },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    {
+      "domain": "lab.rathole.example.com",
+      "relay": { "kind": "rathole" },
+      "tunnelName": "lab",
+      "launcherUrl": "http://localhost:5200/app",
+      "certificateAuthority": "letsEncryptStaging",
+      "runPolicy": { "kind": "off" },
+      "status": {
+        "domain": "lab.rathole.example.com",
+        "runState": "stopped",
+        "lastStop": {
+          "reason": "endedOnItsOwn",
+          "error": "the server's config couldn't be built",
+          "stoppedAt": "2026-10-06T17:03:00Z"
+        },
+        "certificate": {
+          "status": "expired",
+          "issuer": "letsEncryptStaging",
+          "held": {
+            "notBefore": "2026-10-01T00:00:00Z",
+            "notAfter": "2026-12-30T00:00:00Z",
+            "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          }
+        }
+      },
+      "certificate": {
+        "status": "expired",
+        "issuer": "letsEncryptStaging",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    }
+  ],
+  "serverStatuses": {
+    "runningAndReachable": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "runningAndReachableOnStaging": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncryptStaging",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "runningAndReachableWithACachedCertificate": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "startingUnchecked": {
+      "domain": "ruth.relay.example.com",
+      "runState": "starting",
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "startingCaUnreachable": {
+      "domain": "ruth.relay.example.com",
+      "runState": "starting",
+      "certificate": {
+        "status": "orderFailing",
+        "issuer": "letsEncrypt",
+        "lastError": {
+          "kind": "caUnreachable",
+          "message": "http request error: io error: Connection refused"
+        }
+      }
+    },
+    "runningUnreachable": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "unreachable", "error": "the relay answered 502" },
+      "certificate": {
+        "status": "orderFailing",
+        "issuer": "letsEncrypt",
+        "lastError": { "kind": "rateLimited", "retryAfter": "2026-10-06T17:59:00Z" }
+      }
+    },
+    "runningRenewalFailed": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "certificate": {
+        "status": "renewalDue",
+        "issuer": "letsEncryptStaging",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        },
+        "lastError": { "kind": "challengeFailed", "detail": "Connection refused" }
+      }
+    },
+    "runningCacheFailed": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "certificate": {
+        "status": "ordering",
+        "issuer": "letsEncrypt",
+        "lastError": { "kind": "cache", "message": "account cache store: disk full" }
+      }
+    },
+    "neverRun": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped",
+      "certificate": { "status": "notIssued", "issuer": "letsEncrypt" }
+    },
+    "stoppedWithAnError": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped",
+      "lastStop": {
+        "reason": "endedOnItsOwn",
+        "error": "the server's config couldn't be built",
+        "stoppedAt": "2026-10-06T17:03:00Z"
+      },
+      "certificate": {
+        "status": "expired",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "stoppedByThePlatform": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped",
+      "lastStop": {
+        "reason": "sessionEndedByPlatform",
+        "platformReason": "platformTimeout",
+        "stoppedAt": "2026-10-06T17:09:00Z"
+      },
+      "certificate": {
+        "status": "cacheUnreadable",
+        "issuer": "letsEncrypt",
+        "lastError": {
+          "kind": "cache",
+          "message": "reading the certificate cache failed: Permission denied (os error 13)"
+        }
+      }
+    },
+    "stoppedAsItsPolicyEnded": {
+      "domain": "ruth.relay.example.com",
+      "runState": "stopped",
+      "lastStop": {
+        "reason": "policyInactive",
+        "stoppedAt": "2026-10-06T17:42:00Z"
+      },
+      "certificate": {
+        "status": "renewalDue",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    }
+  },
+  "runPolicies": [
+    { "kind": "off" },
+    { "kind": "whileOpen" },
+    { "kind": "until", "at": "2026-10-06T17:42:00Z" },
+    { "kind": "always" }
+  ],
+  "runPolicyChoices": [
+    { "kind": "off" },
+    { "kind": "whileOpen" },
+    { "kind": "for", "seconds": 1800 },
+    { "kind": "always" }
+  ],
+  "commandErrors": [
+    {
+      "kind": "nonPositiveDuration",
+      "message": "a server can't be run for 0 seconds: the duration must be more than zero"
+    },
+    {
+      "kind": "registry",
+      "message": "the server registry has format version 3, which this build doesn't read"
+    },
+    {
+      "kind": "notRegistered",
+      "message": "no server with the domain lab.relay.example.com is registered"
+    }
+  ],
+  "pendingConsents": [
+    { "domain": "ruth.relay.example.com", "head": { "kind": "device", "userCode": "ABCD-EFGH" } },
+    { "domain": "lab.rathole.example.com", "head": { "kind": "oauth", "id": "req-1" } },
+    { "domain": "ruth.relay.example.com" }
+  ],
+  "consentKeys": [
+    { "kind": "device", "userCode": "ABCD-EFGH" },
+    { "kind": "oauth", "id": "req-1" }
+  ],
+  "consentDetails": {
+    "device": {
+      "kind": "device",
+      "userCode": "ABCD-EFGH",
+      "clientId": "pebble-sync",
+      "clientName": "Pebble sync",
+      "deviceName": "Ruth's watch",
+      "requestedScopes": ["system/Observation.rs"],
+      "registeredScopes": ["system/Observation.rs", "system/Patient.rs"]
+    },
+    "oauthRegistered": {
+      "kind": "oauth",
+      "id": "req-1",
+      "clientId": "lifting",
+      "clientName": "Lifting",
+      "requestedScopes": ["launch/patient", "patient/Observation.rs"],
+      "redirectUri": "https://lifting.example.com/callback",
+      "launchPatient": "pat-1",
+      "registration": { "status": "registered" }
+    },
+    "oauthNew": {
+      "kind": "oauth",
+      "id": "req-2",
+      "clientId": "https://new.example.com/client",
+      "clientName": "https://new.example.com/client",
+      "requestedScopes": ["openid"],
+      "redirectUri": "https://new.example.com/cb",
+      "registration": { "status": "new" }
+    },
+    "oauthChanged": {
+      "kind": "oauth",
+      "id": "req-3",
+      "clientId": "lifting",
+      "clientName": "Lifting",
+      "requestedScopes": ["patient/Observation.rs", "patient/Condition.rs"],
+      "redirectUri": "https://lifting.example.com/elsewhere",
+      "registration": {
+        "status": "changed",
+        "redirectUriIsNew": true,
+        "newScopes": ["patient/Condition.rs"]
+      }
+    }
+  },
+  "consentApprovals": [
+    { "kind": "device", "userCode": "ABCD-EFGH", "approvedScopes": ["system/Observation.rs"] },
+    {
+      "kind": "oauth",
+      "id": "req-1",
+      "approvedScopes": ["launch/patient"],
+      "patient": "pat-1",
+      "acknowledgedRegistration": false
+    }
+  ],
+  "approvalOutcomes": [{ "status": "approved" }, { "status": "denied" }],
+  "consentErrors": [
+    { "kind": "serverNotRunning", "message": "the server ruth.relay.example.com isn't running" },
+    {
+      "kind": "notPending",
+      "message": "the request is no longer waiting: it was answered elsewhere or expired"
+    },
+    {
+      "kind": "registrationNotAcknowledged",
+      "message": "the app is new or asks for more than it registered, so approving it needs that acknowledged"
+    }
+  ],
+  "enteredRelays": {
+    "wildflowerOfficial": { "kind": "wildflowerOfficial" },
+    "selfHostedWildflower": {
+      "kind": "selfHostedWildflower",
+      "baseUrl": "https://relay.example.com"
+    },
+    "selfHostedWildflowerPinned": {
+      "kind": "selfHostedWildflower",
+      "baseUrl": "https://relay.example.com",
+      "pin": {
+        "remoteAddr": "relay.example.com:2333",
+        "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM="
+      }
+    },
+    "rathole": {
+      "kind": "rathole",
+      "remoteAddr": "relay.example.com:2333",
+      "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
+      "domain": "relay.example.com"
+    }
+  },
+  "enrolmentErrors": {
+    "invalidRelaySetting": {
+      "kind": "invalidRelaySetting",
+      "message": "the entered baseUrl \"http://relay.example.com\" is not an https URL"
+    },
+    "relayUnreachable": {
+      "kind": "relayUnreachable",
+      "message": "the relay at https://relay.example.com/ couldn't be reached: connection refused"
+    },
+    "badRelayResponse": {
+      "kind": "badRelayResponse",
+      "message": "the relay's /rathole response was unusable: status 404 Not Found"
+    },
+    "pinMismatch": {
+      "kind": "pinMismatch",
+      "message": "the relay serves remoteAddr \"relay.example.com:2334\", not the pinned \"relay.example.com:2333\""
+    },
+    "invalidTunnelName": {
+      "kind": "invalidTunnelName",
+      "message": "tunnel name \"Ruth\" is not a lowercase DNS label"
+    },
+    "emptyToken": { "kind": "emptyToken", "message": "the tunnel token is empty" },
+    "signedRequestRejected": {
+      "kind": "signedRequestRejected",
+      "message": "the relay rejected the request signed as tunnel ruth: check the tunnel name and token, and that this device's clock is set correctly"
+    },
+    "alreadyRegistered": {
+      "kind": "alreadyRegistered",
+      "message": "a server with the domain ruth.relay.example.com is already registered"
+    },
+    "relayIdentityChanged": {
+      "kind": "relayIdentityChanged",
+      "message": "WARNING: the relay's identity has changed. It now presents publicKey \"Ny0NYH8cmCUs1ZpKr9ezG2UKq1z8f9UWRUXvJ7Ql1yI=\", not the \"24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=\" it had when this server was added. The relay may have been re-keyed, or someone may be impersonating it. Nothing was changed."
+    }
+  },
+  "launchRefusals": {
+    "runningAndReachable": null,
+    "runningAndReachableOnStaging": "untrustedCertificate",
+    "runningAndReachableWithACachedCertificate": null,
+    "startingUnchecked": "serverNotRunning",
+    "startingCaUnreachable": "serverNotRunning",
+    "runningUnreachable": "unreachable",
+    "runningRenewalFailed": "notYetProbed",
+    "runningCacheFailed": "notYetProbed",
+    "neverRun": "serverNotRunning",
+    "stoppedWithAnError": "serverNotRunning",
+    "stoppedByThePlatform": "serverNotRunning",
+    "stoppedAsItsPolicyEnded": "serverNotRunning"
+  },
+  "launchRefusalsByCertificateStatus": {
+    "notIssued": "noValidCertificate",
+    "ordering": "noValidCertificate",
+    "noRenewalNeeded": null,
+    "renewalDue": null,
+    "expired": "noValidCertificate",
+    "cacheUnreadable": "noValidCertificate",
+    "orderFailing": "noValidCertificate"
+  },
+  "launchErrors": [
+    { "kind": "serverNotRunning", "message": "the server ruth.relay.example.com isn't running" },
+    {
+      "kind": "notYetProbed",
+      "message": "the server ruth.relay.example.com hasn't been reached through its relay yet"
+    },
+    {
+      "kind": "unreachable",
+      "message": "the server ruth.relay.example.com can't be reached through its relay: the relay answered 502"
+    },
+    {
+      "kind": "noValidCertificate",
+      "message": "the server ruth.relay.example.com has no valid certificate"
+    },
+    {
+      "kind": "notRegistered",
+      "message": "no server with the domain ruth.relay.example.com is registered"
+    },
+    {
+      "kind": "untrustedCertificate",
+      "message": "the server ruth.relay.example.com's certificate is from Let's Encrypt's staging CA, which browsers don't trust"
+    }
+  ],
+  "browserTrustedCertificateAuthorities": { "letsEncrypt": true, "letsEncryptStaging": false }
+}

@@ -1,5 +1,5 @@
+import { Bridge } from '@wildflowerhealthio/effect-messaging-core'
 import { Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
 
 /**
  * Host → Web: notify-only signal that a fresh bearer is available

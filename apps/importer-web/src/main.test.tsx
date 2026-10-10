@@ -33,9 +33,9 @@ describe('main.tsx', () => {
   })
 
   it('should restore a 404 redirect into the address bar, dropping the redirect parameter', async () => {
-    await importEntry('/importer-app/?redirect=/files&iss=https%3A%2F%2Fexample.com')
+    await importEntry('/importer/?redirect=/files&iss=https%3A%2F%2Fexample.com')
 
-    expect(window.location.pathname).toBe('/importer-app/files')
+    expect(window.location.pathname).toBe('/importer/files')
     expect(new URLSearchParams(window.location.search).has('redirect')).toBe(false)
     expect(new URLSearchParams(window.location.search).get('iss')).toBe('https://example.com')
   })

@@ -1,7 +1,8 @@
 name: API Sync
 
 # Each slice that exposes an HTTP surface pins a cross-language wire contract via
-# a committed OpenAPI snapshot (`slices/<slice>/<slice>-rust/openapi/*.openapi.json`):
+# a committed OpenAPI snapshot (`<slice>-rust/openapi/*.openapi.json`, in `slices/`
+# or `apps/host/wildflower-server/`):
 #   - a Rust snapshot test proves that file matches what `utoipa` emits from the
 #     live axum routes. That half runs in ci-rust.yml, whose full-workspace test
 #     pass includes `openapi_spec_snapshot_is_up_to_date` and which triggers on

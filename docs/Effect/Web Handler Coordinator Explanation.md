@@ -1,6 +1,6 @@
 # Web Handler Coordinator Explanation
 
-The page-side bridge transport is built **once at boot**, outside React: the Tauri entry (`apps/wildflower-tauri/src/main.tsx`) calls `makeTauriTransport` from its `makeTransport` factory, and the standalone web entry uses `stubTransport`. But each slice's real inbound handlers only exist once its React subtree mounts (a sync starts, a recording begins). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
+The page-side bridge transport is built **once at boot**, outside React: the Tauri entry (`apps/host/host-app/src/main.tsx`) calls `makeTauriTransport` from its `makeTransport` factory, and the standalone web entry uses `stubTransport`. But each slice's real inbound handlers only exist once its React subtree mounts (a sync starts, a recording begins). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
 
 ## The mechanism
 
@@ -38,5 +38,5 @@ The page-side transport is intentionally never torn down: its `BRIDGE_EVENT` lis
 
 - [Effect Patterns Reference](./Patterns%20Reference.md)
 - [Bridge Explanation](../Messaging/Bridge%20Explanation.md)
-- `global/effect-messaging/effect-messaging-tauri/src/tauri-transport.ts` — `makeTauriTransport` and its coordinator
+- `global/effect-messaging/effect-messaging-tauri-js/src/tauri-transport.ts` — `makeTauriTransport` and its coordinator
 - `global/effect-messaging/effect-messaging-react/src/handler-coordinator.ts` — `HandlerCoordinatorContext`, `useHandlerCoordinator`, `makeUseSliceRegister`

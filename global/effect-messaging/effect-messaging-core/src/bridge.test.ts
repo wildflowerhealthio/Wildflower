@@ -1,6 +1,6 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { assertType, describe, expect, test } from 'vite-plus/test'
 import * as Bridge from './bridge.ts'
 import type * as MessageHandler from './message-handler.ts'

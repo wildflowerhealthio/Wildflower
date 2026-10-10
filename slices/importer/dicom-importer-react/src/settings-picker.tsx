@@ -1,8 +1,8 @@
-import type { DicomSettings } from 'dicom-importer-core'
+import type { DicomSettings } from '@wildflowerhealthio/dicom-importer-core'
+import type { SettingsPickerProps } from '@wildflowerhealthio/importer-fundamentals'
+import { useDebouncedCallback } from '@wildflowerhealthio/react-kitchen-sink'
 import { DateTime, Option } from 'effect'
-import type { SettingsPickerProps } from 'importer-fundamentals'
 import { type JSX, useId, useState } from 'react'
-import { useDebouncedCallback } from 'react-kitchen-sink'
 
 import { suggestedTimeZones } from './time-zones.ts'
 

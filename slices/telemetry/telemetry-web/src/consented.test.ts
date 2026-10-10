@@ -1,6 +1,6 @@
 import type { BrowserOptions, ErrorEvent } from '@sentry/react'
+import { configFromEnv, type TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
 import { Effect, type Layer, type Tracer } from 'effect'
-import { configFromEnv, type TelemetryConsent } from 'telemetry-core'
 import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import type * as Consented from './consented.ts'
 
@@ -30,7 +30,7 @@ const buildConfig = configFromEnv({
   SENTRY_PROFILES_SAMPLE_RATE: '1',
 })
 
-const tags = { app: 'medications-app', launch: 'launched' } as const
+const tags = { app: 'medications-web', launch: 'launched' } as const
 
 const consentWith = (switches: {
   readonly crashReports: boolean

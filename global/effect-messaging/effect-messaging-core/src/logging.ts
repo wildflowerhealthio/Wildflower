@@ -1,5 +1,5 @@
+import { JsonValue } from '@wildflowerhealthio/kitchen-sink/schema'
 import { Effect, Schema } from 'effect'
-import { JsonValue } from 'kitchen-sink/schema'
 import * as Bridge from './bridge.ts'
 import type * as MessageHandler from './message-handler.ts'
 

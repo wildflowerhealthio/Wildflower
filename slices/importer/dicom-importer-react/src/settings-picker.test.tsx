@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { DicomSettings } from 'dicom-importer-core'
+import type { DicomSettings } from '@wildflowerhealthio/dicom-importer-core'
 import { DateTime, Option } from 'effect'
 import { type JSX, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'

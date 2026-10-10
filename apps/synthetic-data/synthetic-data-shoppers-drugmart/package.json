@@ -1,0 +1,57 @@
+{
+  "name": "@wildflowerhealthio/synthetic-data-shoppers-drugmart",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Shoppers Drug Mart synthetic data generator: a family account's synthetic-data-fundamentals Stories as the HAR a mypharmacy.shoppersdrugmart.ca session exports — the customers, prescription-status and prescription-history XHRs, spelled from shoppers-drugmart-source's URLs and typed by its payload schemas. Pure — no DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "apps/synthetic-data/synthetic-data-shoppers-drugmart"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./test-helpers": {
+      "source": "./src/test-helpers.ts",
+      "default": "./dist/test-helpers.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/shoppers-drugmart-source": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/shoppers-drugmart-source": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
+    "effect": "catalog:"
+  }
+}

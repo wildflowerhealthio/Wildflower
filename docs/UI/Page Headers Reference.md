@@ -1,6 +1,6 @@
 # Page Headers Reference
 
-The per-page header convention for `apps/wildflower-react`. The header itself is
+The per-page header convention for `apps/launcher/launcher-web`. The header itself is
 the generic [`PageHeader`](../../global/react-tundraish/src/page-header.tsx) in
 `react-tundraish`; this doc is the app-level rule for how every screen uses it.
 

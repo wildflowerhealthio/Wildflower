@@ -4,9 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 // The hook under test lives in `.claude/hooks/`, which is excluded from
@@ -77,7 +77,7 @@ describe('pack-before-check-reminder hook', () => {
     // `vp pack` references in vite.config.ts / docs/Agents/Strategies.md.
     ['vp pack'],
     ['vp run -r build'],
-    ['vp run -F kitchen-sink build'],
+    ['vp run -F @wildflowerhealthio/kitchen-sink build'],
   ])('treats `%s` as a build, so a later check is not held', (buildCommand) => {
     const session = `build-${buildCommand}`
     expect(heldReason(runHook(session, buildCommand))).toBeUndefined()
@@ -199,9 +199,12 @@ describe('pack-before-check-reminder hook', () => {
     let session = 0
     fc.assert(
       fc.property(
-        fc.array(fc.constantFrom('--fix', '-r', '--cache', '--filter', 'kitchen-sink'), {
-          maxLength: 4,
-        }),
+        fc.array(
+          fc.constantFrom('--fix', '-r', '--cache', '--filter', '@wildflowerhealthio/kitchen-sink'),
+          {
+            maxLength: 4,
+          }
+        ),
         (extras) => {
           session += 1
           const command = ['vp', 'check', ...extras].join(' ')

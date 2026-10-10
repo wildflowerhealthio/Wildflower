@@ -4,22 +4,26 @@ import {
   writeStudy,
   type StudyFixture,
   type DicomTagMap,
-} from 'dicom/test-helpers'
-import type { Array as Arr } from 'effect'
-import { Effect, Either, Schema } from 'effect'
-import * as fc from 'fast-check'
-import { DocumentReference, type FhirResource, type ImagingStudy } from 'fhir-r4/resources'
+} from '@wildflowerhealthio/dicom/test-helpers'
+import {
+  DocumentReference,
+  type FhirResource,
+  type ImagingStudy,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodeFunction,
   type FileImporter,
   DecodedFile,
   type FormatDecode,
   type PickedFile,
-} from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
+} from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { Array as Arr } from 'effect'
+import { Effect, Either, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { DicomHeader } from 'dicom'
+import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { decodeStudy, studyGroupKey, studyKey } from './decode.ts'
 import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'

@@ -19,11 +19,16 @@
  * (page shell + `PageHeader`, or the `Dialog`) is the caller's.
  */
 
+import {
+  ErrorBanner,
+  Field,
+  FieldDescription,
+  TextField,
+} from '@wildflowerhealthio/react-tundraish'
+import { GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
+import { ScopePicker } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
-import { ErrorBanner, Field, FieldDescription, TextField } from 'react-tundraish'
-import { GrantDraft, ScopeRequest } from 'scopes-core'
-import { ScopePicker } from 'scopes-react'
 
 import { useDeviceConsentMutation, type DeviceConsent } from '../../queries/index.ts'
 import { usePatientOptions } from '../oauth-consent/use-patient-options.ts'

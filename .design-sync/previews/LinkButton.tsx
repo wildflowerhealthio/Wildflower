@@ -1,4 +1,4 @@
-import { LinkButton } from 'react-tundraish'
+import { LinkButton } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * Link-text action at the end of a compact status line — the smart-app

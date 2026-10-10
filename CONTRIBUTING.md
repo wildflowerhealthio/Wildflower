@@ -36,10 +36,9 @@ vp install
 
 This is a pnpm + Vite+ workspace (a polyglot repo — TS packages plus a Cargo workspace). Top-level directories:
 
-- **`apps/`** — User-facing applications: `marketing-website`, `medications-app` (the SMART-on-FHIR medications app, published at `/medications-app`), `web-trace` (the SMART-on-FHIR Web Trace viewer, published at `/web-trace-app`), `wildflower-server-docs` (the static API console published at `/wildflower-server-docs`), `importer-web` (the SMART-on-FHIR Importer, published at `/importer-app`), `ohif-viewer` (the OHIF imaging viewer, published at `/ohif-viewer`), `lifting-app` (the SMART-on-FHIR strength-training app, published at `/lifting-app`), `github-pages` (assembles the marketing site, the medications, Web Trace, Importer and Lifting apps, the OHIF viewer and the server-docs console into the published GitHub Pages artifact), `wildflower-react` (SPA in the Tauri webview), `wildflower-tauri` (Tauri host, Rust in `src-tauri`), `relay` (the tunnel relay: `server`, the Rust `wildflower-relay` binary, and `admin-web`, the admin page it embeds and serves at `admin.<domain>`)
+- **`apps/`** — User-facing applications, most in a product folder with the packages only they use: `wildflower-site` (`wildflower-site-web`, which assembles every section below into the published GitHub Pages artifact, and `marketing-site-web`, the homepage at `/`), `medications` (`medications-web`, the SMART-on-FHIR medications app published at `/medications`, with the interaction, sponsorship and calendar packages only it uses), `importer-web` (the SMART-on-FHIR Importer published at `/importer`, over the `importer` and `anonymizer` slices), `health-viewer` (`health-viewer-web`, the SMART-on-FHIR Health Viewer published at `/health-viewer`, with its core, sources and chart), `synthetic-data` (`synthetic-data-web`, the Synthetic Data Loader published at `/synthetic-data`, with its story model and per-source generators), `server-docs-web` (the static API console published at `/server-docs`), `ohif-viewer-web` (the OHIF imaging viewer, published at `/ohif-viewer`), `lifting/lifting-web` (the SMART-on-FHIR strength-training app, published at `/lifting`), `launcher/launcher-web` (the web app that manages a Wildflower server, published at `/launcher`) with `launcher/wildflower-server-core-js` and `launcher/wildflower-server-react` (the server-status wire and its banner and settings page), `host` (the Tauri host: `host-app`, with its Rust in `src-tauri`, and what it is built from — `servers` (the install's list of servers), `wildflower-server-rust` (the server it runs), `unit-runner`, `shared-structures-tauri` and `tauri-plugin-native-webview`), `relay` (the tunnel relay: `relay-server`, the Rust `wildflowerhealthio-relay-server` binary; `relay-admin-web`, the admin page it embeds and serves at `admin.<domain>`; and `relay-core-js` and `relay-react`, the packages that page is built from), `fhir-sync-pebble` and `watch-lifts` (the Pebble watchapps and their settings pages)
 - **`global/`** — Project-agnostic shared utilities, copy-pastable to other projects
-- **`slices/`** — Vertical product slices (`apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`). Each is a `<name>-core` plus optional platform adapters (`-react`, `-rust`, `-tauri`/`-tauri-rust`, `-node`, `-web`); a few are Rust-only
-- **`plugins/`** — Tauri plugins (`tauri-plugin-native-webview`)
+- **`slices/`** — Vertical product slices (`branding`, `browser-sniffer`, `fhir`, `gatekeeper`, `scopes`, `shared-structures`, `telemetry`, …). Each is a `<name>-core` plus optional platform adapters (`-react`, `-rust`, `-tauri`/`-tauri-js`, `-node`, `-web`); a slice of one package is that package directly in `slices/` (`navigation-core`, `persistence-rust`, …). The full list is in [slices/AGENTS.md](./slices/AGENTS.md)
 - **`scripts/`** — Shared check/build scripts (e.g. `scripts/checks/rust.sh`)
 - **`docs/`** — Project documentation ([four-kinds convention](./docs/Documentation/Explanation.md))
 
@@ -52,7 +51,7 @@ See [slices/AGENTS.md](./slices/AGENTS.md) for the slice layering rules.
 All workflow runs through `vp`:
 
 ```bash
-vp run dev           # Start EVERY package's dev server in parallel (not just marketing-website)
+vp run dev           # Start EVERY package's dev server in parallel (not just marketing-site-web)
 vp run ready         # fmt + lint + lint:comments + lint:docs + pack + test:all — full pre-PR check
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run test:all      # Run the full Vitest test pass
@@ -70,7 +69,7 @@ For the full Vite+ command surface and pitfalls, see the Vite+ block at the bott
 ## Dev-Server Ports
 
 The apps with a debug-only "(Dev)" homescreen tile pin their vite dev server to
-a port from `slices/apps/dev-app-ports.json`. `devAppServer(id)` in the root
+a port from `dev-app-ports.json`. `devAppServer(id)` in the root
 `vite.config.base.ts` is the **only** TypeScript reader of that file — an app
 config spreads it into `server` (or `preview`) rather than parsing the JSON
 itself. The Rust side embeds the same file in `apps-rust/src/dev_seed.rs`. See
@@ -96,6 +95,7 @@ itself. The Rust side embeds the same file in `apps-rust/src/dev_seed.rs`. See
 - **camelCase**: Variables, functions, properties
 - **PascalCase for files**: Component files (`NavHeader.tsx`)
 - **camelCase for files**: Utility files (`clientRuntime.tsx`)
+- **npm packages**: scoped `@wildflowerhealthio/<name>`, where `<name>` is the package's folder. Everything else that names a package (folders, `dev-app-ports.json` keys, Sentry tags, DSN variables, Rust crates, prose) uses the unscoped `<name>`
 
 ### Import Organization
 
@@ -104,7 +104,7 @@ Order imports as follows:
 1. React and React-related libraries
 2. Third-party libraries
 3. Effect-TS imports
-4. Workspace package imports — `global/` shared utilities and other slices' packages, imported by bare package name (e.g. `collector-registry/http-api-definition`)
+4. Workspace package imports — `global/` shared utilities and other slices' packages, imported by package name (e.g. `@wildflowerhealthio/collector-registry/http-api-definition`)
 5. Current slice's `-core` imports
 6. Local utility imports
 7. Relative imports

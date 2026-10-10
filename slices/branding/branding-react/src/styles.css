@@ -1,7 +1,7 @@
 /*
  * Branding layout tokens — the page-composition values the design system
  * (react-tundraish) has no concept of. Consuming apps import this as
- * `import 'branding-react/styles.css'` (source mode) or through the
+ * `import '@wildflowerhealthio/branding-react/styles.css'` (source mode) or through the
  * bundled `dist/style.css` (built consumers, via the `default` export).
  *
  * Per-component `*.module.css` files reach consumers through the JS import

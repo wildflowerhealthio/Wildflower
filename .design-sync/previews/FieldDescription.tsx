@@ -1,4 +1,4 @@
-import { Field, FieldDescription } from 'react-tundraish'
+import { Field, FieldDescription } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * Secondary explanatory text inside a `<Field>` — typeset as `text-body-3` and

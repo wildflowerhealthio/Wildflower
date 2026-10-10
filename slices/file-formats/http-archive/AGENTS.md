@@ -55,7 +55,7 @@ anonymizer reaching sideways into the importer.
 Pure and neutral (`platform: 'neutral'`). Depends on `effect`,
 `browser-sniffer-core` (`HeadersWire`), `http-extraction-fundamentals`
 (`HarMethodValueSchema`, `isHttpMethod`), and — transitionally, until #578
-dissolves `slices/web-trace` — `web-trace-core` (`TraceExchange`,
+dissolves it — `web-trace-core` (`TraceExchange`,
 `contentTypeOf`, `noTimings`). `ajv` + `har-schema` are bundled. Never imports
 `har-importer-core`, any `*-anonymizer-*`, a React package, or `fhir-r4`.
 
@@ -78,9 +78,9 @@ dissolves `slices/web-trace` — `web-trace-core` (`TraceExchange`,
 - [slices/file-formats AGENTS.md](../AGENTS.md) — the slice's role and layering.
 - [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md) — the
   importer binding that decodes through `HttpArchive.LogFromHarJson`.
-- [har-anonymizer-core AGENTS.md](../../anonymizer/har-anonymizer-core/AGENTS.md)
+- [har-anonymizer-core AGENTS.md](../../../slices/anonymizer/har-anonymizer-core/AGENTS.md)
   — the redactor that walks an `HttpArchive.Log`.
-- [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the
+- [web-trace-core AGENTS.md](../../web-trace-core/AGENTS.md) — the
   `TraceExchange` vocabulary this format is built on (slated for dissolution).
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

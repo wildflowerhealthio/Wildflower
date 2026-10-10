@@ -1,6 +1,6 @@
 import { Option, pipe, Struct } from 'effect'
 
-import type { MedicationDispense } from 'fhir-r4/resources'
+import type { MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 
 import { promoteContained } from './contained-medication.ts'
 import { withCanonicalDinOnMedicationConcept } from './din.ts'

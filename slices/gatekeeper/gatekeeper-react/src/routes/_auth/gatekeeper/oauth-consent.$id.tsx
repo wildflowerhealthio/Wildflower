@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { AsyncErrorView, PageHeader } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
 import { oauthConsentQueryOptions, useOAuthConsentQuery } from '../../../queries/index.ts'
 import { OAuthConsentForm } from '../../../screens/oauth-consent/oauth-consent-form.tsx'

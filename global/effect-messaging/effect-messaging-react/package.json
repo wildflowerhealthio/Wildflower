@@ -1,12 +1,12 @@
 {
-  "name": "effect-messaging-react",
+  "name": "@wildflowerhealthio/effect-messaging-react",
   "version": "0.0.0",
   "private": true,
   "description": "React bindings for effect-messaging: handler-coordinator context, per-slice register hooks, late-bound sender.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "global/effect-messaging/effect-messaging-react"
   },
   "files": [
@@ -31,21 +31,21 @@
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*"
+    "react": "catalog:"
   }
 }

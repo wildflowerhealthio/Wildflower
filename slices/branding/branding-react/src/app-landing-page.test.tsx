@@ -1,14 +1,18 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { APP_DESCRIPTIONS, APP_SECTION_IDS, type AppSectionId } from 'branding-core'
+import {
+  APP_DESCRIPTIONS,
+  APP_SECTION_IDS,
+  type AppSectionId,
+} from '@wildflowerhealthio/branding-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { AppLandingPage } from './app-landing-page.tsx'
 
-// The homepage's SMART apps, and the owner UI, which has a landing page but no
+// The homepage's SMART apps, and the launcher, which has a landing page but no
 // homepage row.
-const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS, 'app')
+const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS, 'launcher')
 
 afterEach(() => {
   cleanup()
@@ -57,7 +61,7 @@ describe('AppLandingPage', () => {
   it("should resolve the header's app links absolutely, as from an app", () => {
     // Arrange / Act
     render(
-      <AppLandingPage app="webTrace">
+      <AppLandingPage app="syntheticData">
         <div />
       </AppLandingPage>
     )
@@ -65,7 +69,7 @@ describe('AppLandingPage', () => {
     // Assert — an app bundle on any origin points back at the canonical site
     const header = within(screen.getByRole('banner'))
     expect(header.getByRole('link', { name: 'Medications' }).getAttribute('href')).toBe(
-      'https://wildflowerhealth.io/medications-app'
+      'https://wildflowerhealth.io/medications'
     )
   })
 

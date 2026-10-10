@@ -1,6 +1,11 @@
+import {
+  Code,
+  type CodeableConcept,
+  Extension,
+  IdentifierAndReference,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Code, type CodeableConcept, Extension, IdentifierAndReference } from 'fhir-r4/data-types'
 
 import { CarebookCodingSystem, CarebookExtension, REXALL_SYSTEM_SOURCE } from '../carebook.ts'
 

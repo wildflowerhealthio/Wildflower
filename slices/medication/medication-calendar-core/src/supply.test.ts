@@ -1,6 +1,6 @@
+import type { SupplyDuration } from '@wildflowerhealthio/fhir-utility'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import type { SupplyDuration } from 'fhir-utility'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { nextFillDate } from './supply.ts'

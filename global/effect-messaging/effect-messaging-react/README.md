@@ -1,7 +1,7 @@
 # effect-messaging-react
 
 React bindings for `effect-messaging-core`. The transport itself comes
-from a platform package (`effect-messaging-tauri`'s `makeTauriTransport`);
+from a platform package (`effect-messaging-tauri-js`'s `makeTauriTransport`);
 this package lets React slices reach its `HandlerCoordinator` and
 register their inbound handlers from their own lifecycle.
 

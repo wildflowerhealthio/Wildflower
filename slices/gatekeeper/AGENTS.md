@@ -2,6 +2,8 @@
 
 OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./docs/Jargon%20Explanation.md) before touching auth flows — the domain vocabulary is precise and reviewers hold names to it.
 
+The slice is the TypeScript half every signing-in app shares: `gatekeeper-core` and `gatekeeper-react`. The server, `gatekeeper-rust`, and the revocation store it shares with the FHIR server, `token-revocation-rust`, are used by the host alone, so they live in [`apps/host/wildflower-server/`](../../apps/host/wildflower-server/AGENTS.md); `gatekeeper-rust/…` paths below are relative to that folder.
+
 ## Guardrails
 
 - **Tokens never ride the bridge.** `AuthTokenIssued` is a contentless notify; the bearer is pulled out-of-band via a capability-gated Tauri command. Keep it that way for anything secret.
@@ -12,7 +14,7 @@ OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./d
 
 - The bootstrap-URL / `?token=` minting path is **dev-only** (NODE_ENV-gated) — not a shipping pattern to extend.
 - There are two `AuthTokenStore` factories with different storage policies — see the [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) before picking one.
-- The slice has a committed OpenAPI snapshot; regenerate a stale one per the [OpenAPI Spec Drift How-To](../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
+- `gatekeeper-rust` has a committed OpenAPI snapshot, which `gatekeeper-core`'s drift test and `generate:openapi-schemas` read across folders; regenerate a stale one per the [OpenAPI Spec Drift How-To](../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
 
 ## References
 
@@ -21,5 +23,5 @@ OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./d
 - [gatekeeper-core README](./gatekeeper-core/README.md) — tables, OAuth routes, page-path drift test
 - [Jargon Explanation](./docs/Jargon%20Explanation.md) — the domain vocabulary
 - [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) — token storage policies
-- [Retention Explanation](./docs/Retention%20Explanation.md) — the 90-day / 7-day windows, why they are measured past `expires_at`, and the startup+daily sweep that applies them
+- [Retention Explanation](../../apps/host/wildflower-server/gatekeeper-rust/docs/Retention%20Explanation.md) — the 90-day / 7-day windows, why they are measured past `expires_at`, and the startup+daily sweep that applies them
 - [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) — the webview ↔ host bridge this slice speaks over

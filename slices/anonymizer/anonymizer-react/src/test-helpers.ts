@@ -1,7 +1,11 @@
 import { Effect, Schema } from 'effect'
 
-import { emitHar, HarFromJson } from 'http-archive'
-import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
+import { emitHar, HarFromJson } from '@wildflowerhealthio/http-archive'
+import {
+  CAPTURE_FLOOR,
+  jsonBody,
+  traceExchange,
+} from '@wildflowerhealthio/web-trace-core/test-helpers'
 
 /** A HAR shaped like a real capture — what matters is only that it parses. */
 const RECOGNIZED_HAR: string = Effect.runSync(

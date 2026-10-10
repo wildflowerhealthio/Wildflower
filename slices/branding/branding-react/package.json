@@ -1,5 +1,5 @@
 {
-  "name": "branding-react",
+  "name": "@wildflowerhealthio/branding-react",
   "version": "0.0.0",
   "private": true,
   "description": "Shared Wildflower chrome for every web surface: the full site header and footer, the SMART apps' landing layout (introduction beside the connect menu), a slim brand bar (SMART apps and Tauri), the app icon, and layout tokens.",
@@ -27,20 +27,20 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "branding-core": "workspace:*",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "branding-core": "workspace:*",
-    "react": "catalog:",
-    "react-tundraish": "workspace:*"
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "react": "catalog:"
   }
 }

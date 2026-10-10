@@ -3,7 +3,7 @@
  * launch-context scopes — mirroring `scopes-rust`'s `KnownScope`
  * (`scope/known.rs`). These match exactly; they are never resource scopes.
  *
- * Namespace module (`import { KnownScope } from 'scopes-core'`): the enum is
+ * Namespace module (`import { KnownScope } from '@wildflowerhealthio/scopes-core'`): the enum is
  * {@link KnownScope}, with `KnownScope.scopeParse`, `KnownScope.is`, `KnownScope.ALL`.
  */
 import { Equal, Hash } from 'effect'

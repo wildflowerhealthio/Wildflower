@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
-import type { PendingConsentHead } from 'gatekeeper-core/bridge'
+import type { PendingConsentHead } from '@wildflowerhealthio/gatekeeper-core/bridge'
+import { AuthStateProvider, HostAuthed } from '@wildflowerhealthio/react-kitchen-sink'
 import { useEffect, type JSX, type ReactNode } from 'react'
-import { AuthStateProvider, HostAuthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
@@ -14,7 +14,7 @@ import { makeEmbeddedAuthStateStore } from '../../client/auth-state-store.ts'
 // dismissing the dialog (× / ESC / backdrop) without <dialog> shadow behaviour.
 let lastDialogClose: (() => void) | null = null
 
-vi.mock('react-tundraish', () => ({
+vi.mock('@wildflowerhealthio/react-tundraish', () => ({
   // Minimal Dialog stub: renders its children whenever `open`, and
   // surfaces the `dismissable` and `title` props as data attributes so
   // the assertions can pin them without reaching for portals or

@@ -7,10 +7,10 @@
  * ({@link ReadWritePermission}); the two are never converted into one another — each is
  * edited and compared in its own interactions.
  *
- * Namespace module (`import { CrudsPermission } from 'scopes-core'`).
+ * Namespace module (`import { CrudsPermission } from '@wildflowerhealthio/scopes-core'`).
  */
 
-import { sentenceJoin } from 'kitchen-sink'
+import { sentenceJoin } from '@wildflowerhealthio/kitchen-sink'
 import { BasePermission } from './permission.ts'
 
 /** The five SMART v2 cruds interactions — used by FHIR v2 *and* Wildflower. */

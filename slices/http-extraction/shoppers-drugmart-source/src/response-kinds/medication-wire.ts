@@ -1,4 +1,4 @@
-import { CanadianCodingSystem } from 'fhir-r4/data-types'
+import { CanadianCodingSystem } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /** The medication-naming fields a portal payload carries, whatever its shape. */
 interface MedicationFields {

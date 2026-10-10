@@ -1,4 +1,4 @@
-import { PageBodyError } from 'react-tundraish'
+import { PageBodyError } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * The canonical use — a single-line error message rendered inside a page

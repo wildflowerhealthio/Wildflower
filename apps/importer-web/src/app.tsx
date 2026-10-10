@@ -7,18 +7,18 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import type { PickedFile } from 'anonymizer-fundamentals'
-import { AnonymizerScreen } from 'anonymizer-react'
-import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
+import type { PickedFile } from '@wildflowerhealthio/anonymizer-fundamentals'
+import { AnonymizerScreen } from '@wildflowerhealthio/anonymizer-react'
+import { type FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
 import {
   buildSmartRouterContext,
   useLaunchFailureRedirect,
   useSmartHandshake,
-} from 'fhir-r4-react/smart'
-import { ImporterScreen, ServerSourceFileList } from 'importer-react'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { ImporterScreen, ServerSourceFileList } from '@wildflowerhealthio/importer-react'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBanner, PageLoading, SegmentedToggle } from '@wildflowerhealthio/react-tundraish'
 import { useMemo, useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner, PageLoading, SegmentedToggle } from 'react-tundraish'
 
 import styles from './app.module.css'
 
@@ -74,10 +74,9 @@ const subtitleFor = (tab: Tab): string =>
  * [AGENTS.md](../AGENTS.md) for why splitting a flow across the app boundary is
  * the mistake this shape exists to avoid.
  *
- * The unselected screen is **unmounted**, not hidden — the same lesson
- * `apps/web-trace` records about split surfaces (an accessibility tree only
- * carries the surface the user is on, and the screen holds its own state so a
- * flip-back opens fresh at the picker).
+ * The unselected screen is **unmounted**, not hidden: an accessibility tree
+ * only carries the surface the user is on, and the screen holds its own state
+ * so a flip-back opens fresh at the picker.
  */
 const ImporterHome = (): JSX.Element => {
   // Tab state lives inside `ImporterHome` — a per-render local — so the router

@@ -1,4 +1,4 @@
-import { HeadersWire } from 'browser-sniffer-core'
+import { HeadersWire } from '@wildflowerhealthio/browser-sniffer-core'
 import { Schema } from 'effect'
 
 /**

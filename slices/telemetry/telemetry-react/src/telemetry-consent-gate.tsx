@@ -1,6 +1,6 @@
-import type { TelemetryConsentCopy } from 'branding-core'
+import type { TelemetryConsentCopy } from '@wildflowerhealthio/branding-core'
+import type { ConsentStorage, TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
 import { useMemo, type JSX, type ReactNode } from 'react'
-import type { ConsentStorage, TelemetryConsent } from 'telemetry-core'
 
 import { TelemetryConsentContext } from './telemetry-consent-context.ts'
 import { TelemetryConsentDialog } from './telemetry-consent-dialog.tsx'

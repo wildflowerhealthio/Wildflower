@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import { AccessManagement } from '@wildflowerhealthio/gatekeeper-core/http-api-definition'
 import { Schema } from 'effect'
-import { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 

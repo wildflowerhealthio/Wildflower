@@ -9,10 +9,10 @@ import {
   type AnonymizerFormatDescriptor,
   type DecodeFailure,
   type PickedFile,
-} from 'anonymizer-fundamentals'
-import { harDescriptor } from 'har-anonymizer-core'
-import { AnonymizePanel } from 'har-anonymizer-react'
-import { pdfDescriptor, PdfAnonymizePanel } from 'pdf-anonymizer-react'
+} from '@wildflowerhealthio/anonymizer-fundamentals'
+import { harDescriptor } from '@wildflowerhealthio/har-anonymizer-core'
+import { AnonymizePanel } from '@wildflowerhealthio/har-anonymizer-react'
+import { pdfDescriptor, PdfAnonymizePanel } from '@wildflowerhealthio/pdf-anonymizer-react'
 
 /**
  * The closed format registry: every format the anonymizer shell can identify a

@@ -1,7 +1,7 @@
+import { Timing } from '@wildflowerhealthio/fhir-r4/data-types'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Timing } from 'fhir-r4/data-types'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { DAYS_PER_PERIOD_UNIT, scaleToDailyTotal } from './timing.ts'

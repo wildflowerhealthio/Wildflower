@@ -67,7 +67,7 @@ cornerstone initialization and viewport rendering. Sits alongside the pure
   Same file, second seam: **`observeViewportResize`**, which the component runs
   for the life of a mount and disposes on unmount. Without it cornerstone's
   canvas keeps the backing store it was given at `enableElement` and the image
-  stretches — see the [Cornerstone Rendering Explanation](../docs/Cornerstone%20Rendering%20Explanation.md).
+  stretches — see the [Cornerstone Rendering Explanation](../../../slices/file-formats/docs/Cornerstone%20Rendering%20Explanation.md).
 
 - `src/index.ts` — public API barrel.
 
@@ -82,7 +82,7 @@ decode worker and WASM codec URLs are rewritten to paths that do not exist.
 The second fails in a way that reads as missing codec support rather than a
 build problem — "some DICOM files render and some do not, split by transfer
 syntax" is this. The
-[Cornerstone Rendering Explanation](../docs/Cornerstone%20Rendering%20Explanation.md)
+[Cornerstone Rendering Explanation](../../../slices/file-formats/docs/Cornerstone%20Rendering%20Explanation.md)
 has the dispatch table that causes it and how to tell the two apart.
 
 ## Layering
@@ -95,6 +95,6 @@ has the dispatch table that causes it and how to tell the two apart.
 
 ## References
 
-- [file-formats AGENTS.md](../AGENTS.md) — the slice this package belongs to
+- [file-formats AGENTS.md](../../../slices/file-formats/AGENTS.md) — the slice this package belongs to
 - [dicom-importer-react AGENTS.md](../../importer/dicom-importer-react/AGENTS.md) —
   the re-export consumer

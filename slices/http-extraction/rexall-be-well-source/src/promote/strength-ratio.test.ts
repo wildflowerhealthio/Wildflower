@@ -1,4 +1,4 @@
-import { MedicationRequest } from 'fhir-r4/resources'
+import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { CarebookExtension } from '../carebook.ts'

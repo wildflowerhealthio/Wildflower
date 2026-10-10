@@ -12,7 +12,7 @@ One namespace per module, in the `effect` style: the file is the noun, the
 principal type shares the namespace's name (`HttpResponseKind.HttpResponseKind`),
 and functions read in the namespace's context (`Extraction.routeTo`, not
 `routeExtractionTo`). All are exported from the **flat root entry**:
-`import { HttpResponseKind, Extraction, Specificity, UrlMatch } from 'http-extraction-fundamentals'`.
+`import { HttpResponseKind, Extraction, Specificity, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'`.
 
 - **`HttpResponseKind`** (`src/http-response-kind.ts`) — the recipe for
   recognizing and decoding one response shape: `name` / `tryRecognize` /
@@ -115,7 +115,7 @@ four-way `ExtractionResult` accounting.
 
 - [slices/http-extraction/AGENTS.md](../AGENTS.md) — the slice this package
   anchors, and why there is no `-core`.
-- [slices/collector/AGENTS.md](../../collector/AGENTS.md) — the live consumer.
+- [apps/launcher/collector/AGENTS.md](../../../apps/launcher/collector/AGENTS.md) — the live consumer.
 - [slices/importer/AGENTS.md](../../importer/AGENTS.md) — the archive-driven
   consumer.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)

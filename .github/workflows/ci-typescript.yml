@@ -48,6 +48,12 @@ jobs:
       - name: Run vp check (format, lint, typecheck)
         run: vp check
 
+      # Every import resolves to a dependency its package declares; the
+      # package graph check (scripts/package-graph.test.ts) trusts the
+      # manifests, which hoisted node_modules would otherwise let drift.
+      - name: Check imports are declared (knip)
+        run: vp run lint:deps
+
       - name: Run tests (reduced for unchanged on PR)
         run: vp run test:changed
 

@@ -1,12 +1,12 @@
 {
-  "name": "pebble-configuration",
+  "name": "@wildflowerhealthio/pebble-configuration",
   "version": "0.0.0",
   "private": true,
   "description": "The Pebble \"App Configuration (Static)\" contract, generic over the settings: the allow-listed `return_to` and the hand-off URL, the store that keeps `return_to` across a sign-in, and, as the Effect-free `./pkjs` entry, the `webviewclosed` response decoded for a watchapp's PebbleKit JS. No DOM, no platform imports.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "global/pebble/pebble-configuration"
   },
   "files": [
@@ -32,9 +32,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",

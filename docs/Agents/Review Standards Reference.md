@@ -8,7 +8,7 @@ Testing specifics are out of scope here — see [Testing Reference](../Testing/T
 
 ## 1. One source of truth across boundaries
 
-Never hand-copy a constant, formula, schema, or list across the TS⇄Rust boundary or across crates with a "keep in sync" comment. That is a defect, not a convention — the copies drift the moment one side changes. Shared config values go in `apps/wildflower-tauri/tauri-shared-config.json`; shared Rust helpers go in the shared crate; shared TS helpers in kitchen-sink.
+Never hand-copy a constant, formula, schema, or list across the TS⇄Rust boundary or across crates with a "keep in sync" comment. That is a defect, not a convention — the copies drift the moment one side changes. Shared config values go in `apps/host/host-app/tauri-shared-config.json`; shared Rust helpers go in the shared crate; shared TS helpers in kitchen-sink.
 
 > Lets move all these big shared values into `apps/wildflower-tauri/tauri-shared-config.json` — The issuer, the local token scopes, whatever else might be worth sharing. This may require some config passing but that's worth it. (PR #253)
 

@@ -1,6 +1,6 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Either } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { decodeWebviewResponse } from './pkjs.ts'

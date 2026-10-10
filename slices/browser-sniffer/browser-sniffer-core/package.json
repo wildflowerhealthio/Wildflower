@@ -1,12 +1,12 @@
 {
-  "name": "browser-sniffer-core",
+  "name": "@wildflowerhealthio/browser-sniffer-core",
   "version": "0.0.0",
   "private": true,
   "description": "Cross-process contract (Schema-typed bridge + message schemas) for the injected browser sniffer.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/browser-sniffer/browser-sniffer-core"
   },
   "files": [
@@ -36,17 +36,17 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*"
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

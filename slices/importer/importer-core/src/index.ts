@@ -7,7 +7,7 @@
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
- * `lifelabs-pdf-importer-core`, `dicom-importer-core`) and the React shell
+ * `lifelabs-pdf-importer`, `dicom-importer-core`) and the React shell
  * (`importer-react`), which adds each format's `SettingsPicker` to the
  * registry here and runs these functions from its hooks. No DOM, no `fs`, no
  * React, no client: every export is a value or a service-free Effect.

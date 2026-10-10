@@ -4,7 +4,7 @@
  * `gatekeeper-rust`'s `ACCESS_TOKEN_TTL` (`http/handlers/oauth/internal.rs`) by convention —
  * change both together.
  *
- * Namespace module (`import { AccessToken } from 'scopes-core'`).
+ * Namespace module (`import { AccessToken } from '@wildflowerhealthio/scopes-core'`).
  */
 
 /** The access-token lifetime in minutes — the single source the consent copy phrases from. */

@@ -1,10 +1,10 @@
+import { JsonValue } from '@wildflowerhealthio/kitchen-sink/schema'
 import { Effect, Schema } from 'effect'
-import { JsonValue } from 'kitchen-sink/schema'
 
-import type { TraceExchange } from 'web-trace-core'
-import { contentTypeOf } from 'web-trace-core/capture'
+import type { TraceExchange } from '@wildflowerhealthio/web-trace-core'
+import { contentTypeOf } from '@wildflowerhealthio/web-trace-core/capture'
 
-import type { HttpArchive } from 'http-archive'
+import type { HttpArchive } from '@wildflowerhealthio/http-archive'
 import { detectShape } from './shapes.ts'
 
 /**

@@ -48,7 +48,7 @@ loads a config's package imports with Node, which reads a package's built
 `default` export rather than its `source`.
 
 `pkjs/src/tsconfig.json` is the ES5 program. It has `"lib": ["es5"]` and
-`"types": ["pebble-pkjs/pebble-kit-js"]`, and `"target": "es2015"` only because
+`"types": ["@wildflowerhealthio/pebble-pkjs/pebble-kit-js"]`, and `"target": "es2015"` only because
 `vp check`'s TypeScript 7 refuses ES5 (`checkEs5Library` checks it as ES5).
 `pkjs/tsconfig.json` covers the Node-side config and tests.
 

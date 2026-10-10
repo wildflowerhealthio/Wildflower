@@ -13,7 +13,13 @@ runs:
         path: |
           node_modules/.vite/task-cache
           apps/*/dist
+          apps/health-viewer/*/dist
+          apps/host/*/dist
+          apps/host/servers/*/dist
+          apps/medications/*/dist
           apps/relay/*/dist
+          apps/synthetic-data/*/dist
+          apps/wildflower-site/*/dist
           global/**/dist
           slices/**/dist
         key: vp-pack-${{ runner.os }}-${{ github.sha }}

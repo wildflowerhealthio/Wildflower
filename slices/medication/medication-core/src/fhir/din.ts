@@ -1,6 +1,10 @@
+import {
+  CanadianCodingSystem,
+  Coding,
+  type CodeableConcept,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array as Arr, Option, pipe, String as Str } from 'effect'
-import { CanadianCodingSystem, Coding, type CodeableConcept } from 'fhir-r4/data-types'
-import type { MedicationRequest } from 'fhir-r4/resources'
 
 import { containedMedicationOf, medicationConceptOf } from './medication-slots.ts'
 

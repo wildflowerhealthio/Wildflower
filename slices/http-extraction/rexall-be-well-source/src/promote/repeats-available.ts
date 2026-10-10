@@ -1,8 +1,8 @@
 import { flow, Option, pipe, Schema, Struct } from 'effect'
 
-import { Extension, WildflowerExtension } from 'fhir-r4/data-types'
-import type { MedicationRequestDispenseRequest } from 'fhir-r4/resources'
-import { Lift } from 'kitchen-sink'
+import { Extension, WildflowerExtension } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { MedicationRequestDispenseRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { Lift } from '@wildflowerhealthio/kitchen-sink'
 
 import { CarebookExtension } from '../carebook.ts'
 import { atUrl } from './extension-lift.ts'

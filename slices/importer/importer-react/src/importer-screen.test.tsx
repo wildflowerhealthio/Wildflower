@@ -2,10 +2,10 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
+import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import { Effect, Layer, Schema } from 'effect'
-import { FhirR4ResourcesRouterContext, type RunAuthed } from 'fhir-r4-react'
-import type * as FhirR4React from 'fhir-r4-react'
-import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -46,7 +46,7 @@ import {
  *   writes**.
  */
 
-vi.mock('fhir-r4-react', async (importOriginal) => {
+vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
   const actual = await importOriginal<typeof FhirR4React>()
   return { ...actual, useRunAuthed: (): RunAuthed => currentRunAuthed }
 })

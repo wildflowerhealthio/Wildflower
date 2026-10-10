@@ -1,5 +1,5 @@
 {
-  "name": "scopes-core",
+  "name": "@wildflowerhealthio/scopes-core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,8 +17,8 @@
     "test": "vp test"
   },
   "dependencies": {
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "fast-check": "catalog:",

@@ -1,9 +1,9 @@
-import type { SettingsItem } from 'shared-structures-react'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 
 /**
  * Menu entries the unified `/settings` screen renders for gatekeeper.
  *
- * `apps/wildflower-react/src/routes/settings/index.tsx`
+ * `apps/launcher/launcher-web/src/routes/settings/index.tsx`
  * concatenates this with every other slice's
  * `*SettingsItemsFragment` and feeds the result to `<ItemList>`.
  *

@@ -10,66 +10,69 @@ Every slice is a `<name>-core` (usually) plus optional platform adapters. The su
 slices/<name>/
 ├── <name>-core            # Pure logic: schemas, HttpApi definitions, business rules (no DOM/fs/platform imports)
 ├── <name>-react           # Browser UI adapter — the dominant web adapter
-├── <name>-rust            # Native/server Rust adapter
-├── <name>-tauri           # Tauri host adapter (TS side)
-├── <name>-tauri-rust      # Tauri host adapter (Rust side)
+├── <name>-rust            # Native/server Rust adapter (crate `wildflowerhealthio-<name>`)
+├── <name>-tauri           # Tauri host adapter (Rust side; crate `wildflowerhealthio-<name>-tauri`)
+├── <name>-tauri-js        # Tauri host adapter (TS side; `-tauri-react` if it renders React)
 ├── <name>-node            # Node.js adapter
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
-Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`, `wildflower-server`).
+Each npm package is named `@wildflowerhealthio/<folder>` (`@wildflowerhealthio/fhir-r4-react`), and each Rust crate `wildflowerhealthio-` + its folder's name without `-rust` (`scopes/scopes-rust` is the crate `wildflowerhealthio-scopes`; see [apps/AGENTS.md](../apps/AGENTS.md#names)). Everything else, prose included, uses the folder name.
 
-Current slices: `anonymizer`, `apps`, `background-server-service`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `fhir-sync-pebble`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `lifting`, `medication`, `navigation`, `persistence`, `relay`, `request-log`, `scopes`, `servers`, `shared-structures`, `smart-app`, `synthetic-data`, `telemetry`, `tunnel`, `watch-lifts`, `web-trace`, `wildflower-server`. Verify with `ls slices/` — this list can go stale.
+Slices may also carry slice-specific packages (e.g. `fhir-r4` / `fhir-r4-react` under `fhir`, the `*-source` packages under `http-extraction`).
 
-`http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
+A slice of one package is not a folder: the package sits directly in `slices/`, as `slices/<package>/`, and keeps its own name and layer suffix. Its AGENTS.md (if any) is the package's. When a second package joins it, it becomes a `slices/<name>/` folder again.
 
-`medication` owns a patient's medication list end-to-end — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values; two features build on it, neither owning the base: `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
+Current slices: `anonymizer`, `branding`, `browser-sniffer`, `file-formats`, `fhir`, `gatekeeper`, `http-extraction`, `importer`, `medication`, `scopes`, `shared-structures`, `telemetry`. Lone packages: `fhir-sync-pebble-core`, `navigation-core`, `ohif-server-rust`, `persistence-rust`, `rathole-settings-rust`, `smart-app-react`, `web-trace-core`. Verify with `ls slices/` — this list can go stale.
 
-`health-viewer` plots a patient's own observations and medications on one time
-axis — see [health-viewer/AGENTS.md](./health-viewer/AGENTS.md). Like
+The collectors, the HAR Recorder, databases, the request log and the app registry are not slices: each was used by the launcher alone in TypeScript and by the host alone in Rust, so their TypeScript packages live in `apps/launcher/` (`collector/`, `har-recorder/`, `databases/`, `request-log/`, `apps-core-js`, `apps-react`) and their crates in `apps/host/wildflower-server/` — see [apps/AGENTS.md](../apps/AGENTS.md#what-folds-in). The same folder holds the Rust halves of slices whose TypeScript other products share: `gatekeeper-rust` and `token-revocation-rust` (from `gatekeeper`), `fhir-r4-rust` (from `fhir`) and `tunnel-rust`, whose settings the relay shares as `slices/rathole-settings-rust`. The dev servers' ports, `dev-app-ports.json`, sit at the repo root.
+
+`http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `rexall-be-well-source`, `shoppers-drugmart-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two consumers build on it and neither owns it: the collectors (in `apps/launcher/collector`) run the vocabulary live against a sniffer webview, and `importer` — the per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md). The importer slice holds the fundamentals and format bindings the Synthetic Data Loader also runs, and the core, shell and format screens the Importer app mounts; the anonymizer it pairs with is its own slice, `anonymizer` — see [anonymizer/AGENTS.md](./anonymizer/AGENTS.md). The app itself is [`apps/importer-web`](../apps/importer-web/AGENTS.md).
+
+`medication` is the shared base of a patient's medication list — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values, which the Health Viewer reads too, and `medication-calendar-core` the fill-date arithmetic. Two features build on it, neither owning the base, and live with the medications app in `apps/medications` — see [apps/medications/AGENTS.md](../apps/medications/AGENTS.md): `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
+
+The Health Viewer is not a slice: it plots a patient's own observations and
+medications on one time axis, and its packages live with the app in
+`apps/health-viewer` — see [apps/health-viewer/AGENTS.md](../apps/health-viewer/AGENTS.md). Like
 `http-extraction`, it layers a domain-free vocabulary under per-domain packages:
 `health-viewer-fundamentals` holds the plot vocabulary and chart math (point and
 level series, value axes, the crosshair), `health-viewer-observations` reads FHIR
 `Observation`s into it, `health-viewer-medications` reads `medication-core`'s
-dose regimens into it, and `health-viewer-core` assembles the sources with the
+dose regimens into it, and `health-viewer-core-js` assembles the sources with the
 catalogue, range presets and the URL codec a shared link round-trips through —
 all pure functions, property-tested without a DOM. `health-viewer-react` draws
 the fundamentals' series with Observable Plot, importing no domain package.
 
-`fhir-sync-pebble` holds what the Pebble watchapp's settings page decides — see
-[fhir-sync-pebble/AGENTS.md](./fhir-sync-pebble/AGENTS.md). Its
-`fhir-sync-pebble-core` is the patients the page lists, the settings the watch
-receives, the allow-listed
-`return_to` they are handed back through, and the store that keeps it across
-the SMART login, as pure functions; `apps/fhir-sync-pebble-web` is the page
-that runs them.
+FHIR Sync for Pebble's watchapp and settings page live in
+`apps/fhir-sync-pebble` — see
+[apps/fhir-sync-pebble/AGENTS.md](../apps/fhir-sync-pebble/AGENTS.md). Their
+pure core, `fhir-sync-pebble-core`, is a slice here, because the Synthetic
+Data Loader's Pebble generator writes through it too: the patients the page
+lists, the settings the watch receives, and the phone's decoding of the
+watch's data, as pure functions.
 
-`watch-lifts` holds what the WatchLifts Pebble watchapp's settings page edits
-— see [watch-lifts/AGENTS.md](./watch-lifts/AGENTS.md). Its `watch-lifts-core`
-is the exercises, people and default weights the watch mirrors, the weights
-as the page edits them, and the phone's decoding, storage and message to the
-watch, as pure functions; `apps/watch-lifts-web` is the page.
+WatchLifts is not a slice either: the watchapp, its settings page and their
+pure core live together in `apps/watch-lifts` — see
+[apps/watch-lifts/AGENTS.md](../apps/watch-lifts/AGENTS.md). Its
+`watch-lifts-core-js` is the exercises, people and default weights the watch
+mirrors, the weights as the page edits them, and the phone's decoding, storage
+and message to the watch, as pure functions.
 
-`relay` is the TypeScript side of the tunnel relay — see
-[relay/AGENTS.md](./relay/AGENTS.md). Its `relay-core` is the relay's admin
-API as an `HttpApi`, the RFC 9421 signer every admin call goes through, and
-the store that keeps the admin key as a non-extractable `CryptoKey`; its
-`relay-react` is the admin screen; `apps/relay/admin-web` is the page the relay
-(`apps/relay/server`) embeds and serves at `admin.<domain>`.
+The request log is not a slice: it keeps each forwarded request the server
+served, through the tunnel or relayed by a front run on this machine.
+`request-log-rust` (in `apps/host/wildflower-server/`) owns the
+`logged_requests` table in `wildflower.sqlite`: the server's forwarded-request
+layer reports each request on `RequestLog::forwarded_request_tx`, a writer task
+records them in batches, trimmed to a row cap per caller class, and a sweep
+drops rows past 30 days. It serves the log at `GET /requests` and
+`GET /requests/callers`, gated by `wildflower/RequestLog.r`.
+`request-log-core-js` (in `apps/launcher/request-log/`) is that API as an
+`HttpApi` and its client; `request-log-react` is the `/settings/requests` page:
+the recent-activity card, the filtered log and its CSV export.
 
-`request-log` keeps each forwarded request the server served: through the
-tunnel, or relayed by a front run on this machine. Its `request-log-rust` owns the `logged_requests` table in `wildflower.sqlite`:
-the server's forwarded-request layer reports each request on
-`RequestLog::forwarded_request_tx`, a writer task records them in batches,
-trimmed to a row cap per caller class, and a sweep drops rows past 30
-days. It serves the log at
-`GET /requests` and `GET /requests/callers`, gated by `wildflower/RequestLog.r`.
-`request-log-core` is that API as an `HttpApi` and its client;
-`request-log-react` is the `/settings/requests` page: the recent-activity card,
-the filtered log and its CSV export.
-
-`synthetic-data` is tooling for synthetic health data — see
-[synthetic-data/AGENTS.md](./synthetic-data/AGENTS.md). Like `health-viewer`, it
+Synthetic data is not a slice either: the tooling for synthetic health data
+lives with the Synthetic Data Loader in `apps/synthetic-data` — see
+[apps/synthetic-data/AGENTS.md](../apps/synthetic-data/AGENTS.md). Like the Health Viewer, it
 layers a source-free base under per-source packages:
 `synthetic-data-fundamentals` holds three roles as sub-entries: the story model
 (`/story`: people, prescriptions, lab draws, every date relative to one as-of
@@ -83,42 +86,43 @@ importer (`synthetic-data-rexall-be-well` writes a letsbewell.ca session HAR,
 `synthetic-data-lifelabs` the resources a LifeLabs report imports as, and
 `synthetic-data-fhir-sync-pebble` the Observations a Pebble watch syncs, and
 `synthetic-data-dicom` a de-identified image re-identified as a person);
-`synthetic-data-core` assembles their importer output as a `Snapshot`: its
+`synthetic-data-core-js` assembles their importer output as a `Snapshot`: its
 entries' files and an `index.json` header, and reads them back;
 `synthetic-data-react` loads a published snapshot into a FHIR server, mounted
-by `apps/synthetic-data-app`.
+by `apps/synthetic-data/synthetic-data-web`.
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
-`lifting` holds a person's strength-training plan — see
-[lifting/AGENTS.md](./lifting/AGENTS.md). Its `lifting-core` is the plan as a
-FHIR R4 `PlanDefinition` of workouts and planned exercises, the
-`ServiceRequest` the lifter works at for each exercise, a `Procedure` for each
-workout performed and an `Observation` for each set in it, and the increment /
-hold / deload decision over completed workouts, as pure functions (with
-StrongLifts 5×5 as a template) — each concept a schema narrowing the decoded
-`fhir-r4` type, with a `make` and getters; its `lifting-react` renders the
-planned workout, the submitted workout's outcome, starting a program, the
-plan editor and the workout history over that core; `apps/lifting-app` is the
-SMART app around them.
+Lifting is not a slice either: a person's strength-training plan, its screens
+and the SMART app around them live together in `apps/lifting` — see
+[apps/lifting/AGENTS.md](../apps/lifting/AGENTS.md). Its `lifting-core-js` is
+the plan as FHIR R4 resources (a `PlanDefinition`, the `ServiceRequest` the
+lifter works at per exercise, a `Procedure` per workout and an `Observation`
+per set) and the increment / hold / deload decision over completed workouts,
+as pure functions; its `lifting-react` renders the planned workout, the
+submitted workout's outcome, starting a program, the plan editor and the
+workout history over that core.
 
-`wildflower-server` is the server the Tauri host runs: `wildflower-server-rust`'s
+The host is not a slice either: the Tauri host app, the server it runs and the
+install's list of servers live together in `apps/host` — see
+[apps/host/AGENTS.md](../apps/host/AGENTS.md). `wildflower-server-rust`'s
 `set_up` composes every server slice into one API, binds the loopback port and
 opens the tunnel listener, and `WildflowerServer::serve` serves the API on both
 until its shutdown token is cancelled — see
-[wildflower-server/AGENTS.md](./wildflower-server/AGENTS.md). It has no `tauri`
-dependency; the host passes its native adapters in as trait objects, and
-watches the server through host-owned observer channels.
+[apps/host/wildflower-server/wildflower-server-rust/AGENTS.md](../apps/host/wildflower-server/wildflower-server-rust/AGENTS.md).
+It has no `tauri` dependency; the host passes its native adapters in as trait
+objects, and watches the server through host-owned observer channels.
 
-`background-server-service` is the server-status wire, kept for the web app
-to read a server's status over a future websocket — see
-[background-server-service/AGENTS.md](./background-server-service/AGENTS.md).
-`background-server-service-core` is the wire's TS schema,
-`background-server-service-rust` its serde mirror with golden tests, and
-`background-server-service-react` the banner and `/settings/server` page that
-render a status snapshot. Nothing sends or answers the wire today.
+The server-status wire is not a slice either: `BackgroundServerServiceBridge`,
+kept for the web app to read a server's status over a future websocket, lives
+with the launcher —
+[`wildflower-server-core-js`](../apps/launcher/wildflower-server-core-js/AGENTS.md)
+is the wire's schema, pinned by its golden file, and
+[`wildflower-server-react`](../apps/launcher/wildflower-server-react/AGENTS.md)
+the banner and `/settings/server` page that render a status snapshot. Nothing
+sends or answers the wire today, so it has no Rust mirror.
 
-`servers` is the install's list of servers — see
-[servers/AGENTS.md](./servers/AGENTS.md). `servers-rust` holds a
+`apps/host/servers` is the install's list of servers — see
+[apps/host/servers/AGENTS.md](../apps/host/servers/AGENTS.md). `servers-rust` holds a
 `ServerRecord` per server, identified by its domain
 (`<tunnel name>.<relay domain>`), in `<data root>/servers.json` behind the
 `ServerRegistry` port; the file is versioned, replaced atomically, and the
@@ -130,33 +134,34 @@ no Wildflower relay site, is entered as its settings, which get the same
 checks. A relay's identity (its dial address and noise key) is pinned when
 the server is added, and re-entering a token refuses a relay that presents
 another. Each server runs as a `ServerUnit`, one unit on the Tauri host's
-unit runner (`global/tauri-unit-runner`), keyed by its domain: the host
+unit runner (`apps/host/unit-runner/tauri-unit-runner-rust`), keyed by its domain: the host
 pushes every record with its run policy and a factory that builds a fresh
 unit for each run, and the unit reports its health as its detail.
 `servers-rust` also decides what the host notifies: the per-caller request
-notifications and each new stop of a server's run. `servers-tauri-rust` is
+notifications and each new stop of a server's run. `servers-tauri` is
 the host side: it pushes the servers to `TauriUnitRunner`, emits each server's
 status to the base as the `server-status` event, posts the notifications,
 and holds the base's commands (list, add, re-enter credentials, set the run
 policy, update, remove), which write the registry and then push. See the
-[Server Runs Explanation](./servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
-place of the owner UI, is `servers-react`'s `BaseRoot`: its own telemetry
+[Server Runs Explanation](../apps/host/servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
+place of the launcher, is `servers-react`'s `BaseRoot`: its own telemetry
 consent, then the server list and Host Settings, which reach the host
-only through `servers-core`'s Tauri commands (plain `invoke`, answers
+only through `servers-core-js`'s Tauri commands (plain `invoke`, answers
 decoded by Effect Schema) and the `server-status` event, never the
 effect-messaging bridge.
 
-`smart-app` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app/AGENTS.md](./smart-app/AGENTS.md). It joins `emr`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
+`smart-app-react` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app-react/AGENTS.md](./smart-app-react/AGENTS.md). It joins `fhir`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
-`web-trace` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace/AGENTS.md](./web-trace/AGENTS.md). Its `web-trace-core` sits below both a collector and a React app (`web-trace-react`, the on-device viewer), which is why it is a slice of its own rather than a package inside either. The collector that consumes it, [`web-trace-collector`](./collector/web-trace-collector/AGENTS.md), lives in the `collector` slice — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
+`web-trace-core` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace-core/AGENTS.md](./web-trace-core/AGENTS.md). It sits below both the collectors and the HAR packages (`http-archive`, `har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core`), which is why it stands on its own rather than as a package inside any of them. The collector that consumes it, [`web-trace-collector`](../apps/launcher/collector/web-trace-collector/AGENTS.md), lives with the other collectors in `apps/launcher/collector` — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
 
 ## Rules
 
 - **`<name>-core` is the pure layer** — no DOM, no Node `fs`, no platform-specific imports
 - **Platform adapters depend on `-core`, never the reverse**
+- **Slices don't depend on `apps/`**, not even from their tests. This and the two rules above are checked by `scripts/package-graph.test.ts` — see the [Package Graph Rules Explanation](../docs/Dependencies/Package%20Graph%20Rules%20Explanation.md).
 - **Compose `HttpApi` groups across slices via the phantom-id bridge pattern** — see [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md)
 - **Don't use `topLevel: true` on multiple `HttpApiGroup`s under the same `HttpApi`** — name collision in the generated client. See [HttpApi Composition How-To](../docs/Effect/HttpApi%20Composition%20How-To.md).
-- **In a `<name>-react` route file, annotate `useRouteContext`'s `select`.** A slice type-checks both standalone (`vp run --filter <slice> check`) and mounted under `apps/wildflower-react`. Standalone there is no registered Router, so `RegisteredRouter` falls back to `AnyRouter` and a bare `Route.useRouteContext()` / `useRouteContext()` widens to `any` (`no-unsafe-assignment` under oxlint). Fix without a cast: give the slice its own structural `RouterContext` (`BaseRouterContext.RouterContextWith<…>`, re-declared per slice — never imported from the app), and read context through an annotated select, e.g. `useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })`. `Route.useParams()` needs no annotation (params come from the route's own path). See `slices/collector/collector-react/src/queries/use-run-authed.ts` for the pattern.
+- **In a `<name>-react` route file, annotate `useRouteContext`'s `select`.** A slice type-checks both standalone (`vp run --filter <slice> check`) and mounted under `apps/launcher/launcher-web`. Standalone there is no registered Router, so `RegisteredRouter` falls back to `AnyRouter` and a bare `Route.useRouteContext()` / `useRouteContext()` widens to `any` (`no-unsafe-assignment` under oxlint). Fix without a cast: give the slice its own structural `RouterContext` (`BaseRouterContext.RouterContextWith<…>`, re-declared per slice — never imported from the app), and read context through an annotated select, e.g. `useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runAuthed })`. `Route.useParams()` needs no annotation (params come from the route's own path). See `apps/launcher/collector/collector-react/src/queries/use-run-authed.ts` for the pattern.
 
 ## References
 

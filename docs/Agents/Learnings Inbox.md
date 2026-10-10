@@ -12,7 +12,7 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 ## Scalar's browser defaults reach third parties unless turned off
 
-`@scalar/api-reference` in its `web` layout (what `createApiReference` gives you) defaults `proxyUrl` to `https://proxy.scalar.com` — every "send" against a non-local target is routed through Scalar's hosted proxy, bearer token included — and `withDefaultFonts: true` pulls webfonts from `fonts.scalar.com`. Vendoring the npm package instead of the CDN script does not change either. `apps/wildflower-server-docs` sets `proxyUrl: ''` and `withDefaultFonts: false` and asserts both in `configuration.test.ts`; copy that if another page ever embeds Scalar.
+`@scalar/api-reference` in its `web` layout (what `createApiReference` gives you) defaults `proxyUrl` to `https://proxy.scalar.com` — every "send" against a non-local target is routed through Scalar's hosted proxy, bearer token included — and `withDefaultFonts: true` pulls webfonts from `fonts.scalar.com`. Vendoring the npm package instead of the CDN script does not change either. `apps/server-docs-web` sets `proxyUrl: ''` and `withDefaultFonts: false` and asserts both in `configuration.test.ts`; copy that if another page ever embeds Scalar.
 
 ## A default JSON import inlines the whole file, named imports tree-shake
 
@@ -46,7 +46,7 @@ request-time concern before assuming the split loses it.
 
 ## Adding `tsc` to a SMART app's build script fails on other packages' sources
 
-`apps/importer-web` (and the other SMART apps) set `customConditions: ["source"]`
+`apps/importer/importer-web` (and the other SMART apps) set `customConditions: ["source"]`
 in their tsconfig so `tsc` and the bundler agree on the `QueryClient` type. A
 side effect is that a package-local `tsc` also typechecks every workspace
 package's raw source under **this app's** compiler options — e.g.
@@ -61,12 +61,12 @@ which is CI's gate.
 `history.replaceState` to strip `code`/`state` once the token exchange completes
 (`replaceBrowserHistory` is on by default), so any later re-render flips the gate
 and unmounts the authenticated app. Read the URL once in a `useState` initializer
-(`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer-web`'s
+(`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer/importer-web`'s
 `AppRoot` is the worked example, with a re-render test that pins the latch.
 
 ## Source-only `exports` with no `default` condition work for workspace apps
 
-`medications-app`'s `package.json` exports `{ ".": { "source": "./src/app-root.tsx" } }` with no `default` condition. `vp install`, `vp run pack`, `vp build`, and `vp check` all tolerate this: the `source` condition is sufficient for workspace-internal resolution and Vite's dev/build pipelines. A `default` pointing at a `dist/` entry is only needed if a built consumer outside the workspace resolves the package. This pattern is useful for app packages that export a seam for aggregator-shell composition but have no standalone library build.
+`medications`'s `package.json` exports `{ ".": { "source": "./src/app-root.tsx" } }` with no `default` condition. `vp install`, `vp run pack`, `vp build`, and `vp check` all tolerate this: the `source` condition is sufficient for workspace-internal resolution and Vite's dev/build pipelines. A `default` pointing at a `dist/` entry is only needed if a built consumer outside the workspace resolves the package. This pattern is useful for app packages that export a seam for aggregator-shell composition but have no standalone library build.
 
 ## Migrating an app to branding-react chrome: stylesheet import order matters
 
@@ -80,9 +80,9 @@ values for `--content-max-width`, `--page-padding-x`, `--header-height`, and
 `--radius-pill` must be removed — they are now supplied by `branding-react` and
 duplicating them risks silent drift.
 
-## `web-trace`'s `customConditions: ["source"]` blocks a `tsc` build step
+## A SMART app's `customConditions: ["source"]` blocks a `tsc` build step
 
-`apps/web-trace`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
+`apps/importer/importer-web`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
 bundler agree on which copy of `QueryClient` a slice's router context refers to.
 Under that condition a package-local `tsc` also re-typechecks other workspace
 packages' sources under this app's strict compiler options (notably
@@ -152,7 +152,7 @@ a single commit (mocked fetches in tests; a fast server in prod): no committed
 render ever observes `isFetchingNextPage === true`, so the dep array is
 identical before and after the page lands and the effect never re-fires. Add
 `data.pages.length` to the dependencies — it is the one input guaranteed to
-change once per page. See the driver in `apps/medications-app/src/app.tsx`.
+change once per page. See the driver in `apps/medications/medications-web/src/app.tsx`.
 
 ## A `freeText` pseudonym breaks any consumer that parses the value with a regex
 
@@ -173,7 +173,7 @@ the literal and fakes only the data part.
 ## `tauri-action` picks npm when the lockfile is not inside `projectPath`
 
 **Discovered during**: claude/deploy-actions-failures-s75kxq
-**Learning**: tauri-action detects the package manager from a lockfile in `projectPath` (`apps/wildflower-tauri`), not the workspace root, so it ran `npm run tauri build`. Set `tauriScript: vp run tauri` — `vp run <script> <args>` forwards trailing args to the script, so `--target universal-apple-darwin` reaches the Tauri CLI.
+**Learning**: tauri-action detects the package manager from a lockfile in `projectPath` (`apps/host/host-app`), not the workspace root, so it ran `npm run tauri build`. Set `tauriScript: vp run tauri` — `vp run <script> <args>` forwards trailing args to the script, so `--target universal-apple-darwin` reaches the Tauri CLI.
 **Suggested destination**: Strategies
 
 ## `APPLE_SIGNING_IDENTITY` must match the imported cert's name and be a Developer ID cert
@@ -191,13 +191,13 @@ the literal and fakes only the data part.
 ## OHIF builds live in `ohif-viewer-dist`, and out-of-tree plugins register via `directory`
 
 **Discovered during**: claude/zealous-planck-nxyki7 (adding the OHIF FHIR viewer to the site)
-**Learning**: OHIF/Viewers is its own pnpm 11 workspace with a ~10 min rspack build, so it is never built inside this monorepo: `wildflowerhealthio/ohif-viewer-dist` pins the upstream commits, builds, and publishes a release tarball plus digest that `apps/ohif-viewer/prebuilt.json` pins. OHIF master's `platform/app/.webpack/writePluginImportsFile.js` accepts `{ packageName, directory }` entries in `pluginConfig.json` for extensions and modes outside its workspace, which replaces the yarn-hardcoded `pnpm run cli link-extension` step the FHIR viewer guide describes. OHIF reads `app-config.js` at page load, so runtime config (router basename, data sources, SMART client ID) is overlaid at assembly time here and never needs an upstream rebuild.
+**Learning**: OHIF/Viewers is its own pnpm 11 workspace with a ~10 min rspack build, so it is never built inside this monorepo: `wildflowerhealthio/ohif-viewer-dist` pins the upstream commits, builds, and publishes a release tarball plus digest that `apps/ohif-viewer-web/prebuilt.json` pins. OHIF master's `platform/app/.webpack/writePluginImportsFile.js` accepts `{ packageName, directory }` entries in `pluginConfig.json` for extensions and modes outside its workspace, which replaces the yarn-hardcoded `pnpm run cli link-extension` step the FHIR viewer guide describes. OHIF reads `app-config.js` at page load, so runtime config (router basename, data sources, SMART client ID) is overlaid at assembly time here and never needs an upstream rebuild.
 **Suggested destination**: apps docs / Strategies
 
 ## axum `nest("/prefix", …)` drops the trailing-slash root — it escapes to the outer fallback
 
 **Discovered during**: ruthmarks/importer-tweaks-and-cleanup (POST /fhir-r4/ returned the SPA)
-**Learning**: `Router::nest("/fhir-r4", inner)` registers only an exact `/fhir-r4` matcher and a `/fhir-r4/{*rest}` catch-all, and matchit's catch-all does **not** match zero trailing segments. So a request to the bare-prefix-plus-trailing-slash `/fhir-r4/` matches neither and falls through to the _outer_ router's fallback — in `apps/wildflower-tauri` that is `spa::handle_serving_spa_html`, which answers `200 text/html` for any method, so a `POST /fhir-r4/` (a FHIR batch/transaction Bundle, whose endpoint is conventionally the base URL with a trailing slash) silently returned the web-app shell instead of reaching HFS. `/fhir-r4` (no slash) and `/fhir-r4/Anything` both work — only the trailing-slash root is lost, which is why per-resource PUT/GET tests never caught it. Fix: `nest_service("/fhir-r4", inner)` claims the whole subtree (bare root + trailing slash included) for the inner router. Watch for this on any slice mounted at a prefix that is itself a live endpoint. Pinned by `slices/emr/emr-rust/tests/batch_bundle_at_base.rs`.
+**Learning**: `Router::nest("/fhir-r4", inner)` registers only an exact `/fhir-r4` matcher and a `/fhir-r4/{*rest}` catch-all, and matchit's catch-all does **not** match zero trailing segments. So a request to the bare-prefix-plus-trailing-slash `/fhir-r4/` matches neither and falls through to the _outer_ router's fallback — in `apps/host/host-app` that is `spa::handle_serving_spa_html`, which answers `200 text/html` for any method, so a `POST /fhir-r4/` (a FHIR batch/transaction Bundle, whose endpoint is conventionally the base URL with a trailing slash) silently returned the web-app shell instead of reaching HFS. `/fhir-r4` (no slash) and `/fhir-r4/Anything` both work — only the trailing-slash root is lost, which is why per-resource PUT/GET tests never caught it. Fix: `nest_service("/fhir-r4", inner)` claims the whole subtree (bare root + trailing slash included) for the inner router. Watch for this on any slice mounted at a prefix that is itself a live endpoint. Pinned by `apps/host/wildflower-server/fhir-r4-rust/tests/batch_bundle_at_base.rs`.
 **Suggested destination**: Rust docs / Strategies
 
 ## `dicom-parser` ships no TypeScript types — a local `.d.ts` is required
@@ -209,7 +209,7 @@ the literal and fakes only the data part.
 ## An axum `from_fn` middleware can be returned as a layer value — box the future and coerce to a fn pointer
 
 **Discovered during**: claude/amazing-bohr-93p4wc (gatekeeper `layer_router_with_*` → `*_middleware`)
-**Learning**: To hand a caller a `Layer` instead of a `Router`-wrapping helper, the return type has to be nameable, and neither half of `from_fn_with_state(state, my_async_fn)` is: an `async fn`'s fn-item type is unutterable and its future is opaque, and `impl Layer<Route>` can't work either because `Router::layer` bounds the associated `Service` type (nested `impl Trait` in an associated-type binding isn't allowed). The way through is to box the future and go via a fn pointer, which _is_ nameable: `type Fut = Pin<Box<dyn Future<Output = Response> + Send>>; type Handler = fn(State<S>, HeaderMap, Request<Body>, Next) -> Fut;` then `pub type MyMiddleware = FromFnLayer<Handler, S, (State<S>, HeaderMap, Request<Body>)>;`. The `T` parameter of `FromFnLayer` is the extractor tuple **including** the trailing `Request`. Build it with a non-capturing closure annotated `let handler: Handler = |…| Box::pin(async move { … });`. The result is `Clone`, so a host gating several routers on the same state builds it once and clones it per router (see `slices/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`). `gatekeeper_auth_middleware` / `require_loopback_peer_middleware` are the worked examples.
+**Learning**: To hand a caller a `Layer` instead of a `Router`-wrapping helper, the return type has to be nameable, and neither half of `from_fn_with_state(state, my_async_fn)` is: an `async fn`'s fn-item type is unutterable and its future is opaque, and `impl Layer<Route>` can't work either because `Router::layer` bounds the associated `Service` type (nested `impl Trait` in an associated-type binding isn't allowed). The way through is to box the future and go via a fn pointer, which _is_ nameable: `type Fut = Pin<Box<dyn Future<Output = Response> + Send>>; type Handler = fn(State<S>, HeaderMap, Request<Body>, Next) -> Fut;` then `pub type MyMiddleware = FromFnLayer<Handler, S, (State<S>, HeaderMap, Request<Body>)>;`. The `T` parameter of `FromFnLayer` is the extractor tuple **including** the trailing `Request`. Build it with a non-capturing closure annotated `let handler: Handler = |…| Box::pin(async move { … });`. The result is `Clone`, so a host gating several routers on the same state builds it once and clones it per router (see `apps/host/wildflower-server-rust/src/live_bindings/wildflower_server.rs`). `gatekeeper_auth_middleware` / `require_loopback_peer_middleware` are the worked examples.
 **Suggested destination**: Rust docs / Strategies
 
 ## A slice route directory mounted under a nested `route()` collides on `IndexRoute`
@@ -221,7 +221,7 @@ the literal and fakes only the data part.
 ## A new Tauri-linked crate must be added to `scripts/checks/rust.sh`'s partition lists
 
 **Discovered during**: claude/nifty-knuth-8ywi8f (HAR Recorder, `har-recorder-tauri-rust`)
-**Learning**: `rust.sh` splits the workspace into a non-Tauri partition (`--workspace --exclude …`) and a Tauri partition by crate _name_. A new crate that depends on `tauri` is not excluded automatically, so the GTK-less `pre-commit` step tries to compile it, dies in `gdk-sys`'s build script, and the commit is refused with a wall of pkg-config output. Add the crate to all three lists (`non_tauri` excludes, `tauri`, `tauri_names`) in the same PR that creates it; CI's `clippy-all` / `test-all` compile it regardless. Put anything with testable logic in a tauri-free sibling crate (`har-recorder-rust` next to `har-recorder-tauri-rust`) so its tests run in the container.
+**Learning**: `rust.sh` splits the workspace into a non-Tauri partition (`--workspace --exclude …`) and a Tauri partition by crate _name_. A new crate that depends on `tauri` is not excluded automatically, so the GTK-less `pre-commit` step tries to compile it, dies in `gdk-sys`'s build script, and the commit is refused with a wall of pkg-config output. Add the crate to all three lists (`non_tauri` excludes, `tauri`, `tauri_names`) in the same PR that creates it; CI's `clippy-all` / `test-all` compile it regardless. Put anything with testable logic in a tauri-free sibling crate (`har-recorder-rust` next to `har-recorder-tauri`) so its tests run in the container.
 **Suggested destination**: Rust docs / Strategies (Environment & toolchain)
 
 ## `*.css?raw` imports resolve to an empty string under Vitest
@@ -232,8 +232,8 @@ the literal and fakes only the data part.
 
 ## A correlated union survives registry dispatch through a generic, not a `Match` branch
 
-**Discovered during**: the importer's `importer-core` extraction (registry + batch machinery)
-**Learning**: Indexing a registry record by a union key loses the correlation between the entry and its settings: `registry[kind].decode(files, settings[kind])` with `kind: FormatKind` typechecks each side against the _union_ of every format's `decode` and settings, so the call is rejected and the usual escape is one `Match.when` branch per format. Making the helper generic in the key keeps the correlation instead — `const decodeFormat = <K extends FormatKind>(registry, settings, kind: K, files) => registry[kind].decode(files, settings[kind])` — because inside the body `K` is one format, not the union. `importer-core/src/read-batch.ts` is the worked example: adding a format now touches the registry only, with no branch to widen anywhere in the read half. The second half of the same cleanup: a descriptor's `decode` that **never fails** (a malformed file comes back as an `unreadableFiles` row, data rather than an error channel) removed every `catchAll` from the shell, since the only thing left to handle is a tag.
+**Discovered during**: the importer's `importer-core-js` extraction (registry + batch machinery)
+**Learning**: Indexing a registry record by a union key loses the correlation between the entry and its settings: `registry[kind].decode(files, settings[kind])` with `kind: FormatKind` typechecks each side against the _union_ of every format's `decode` and settings, so the call is rejected and the usual escape is one `Match.when` branch per format. Making the helper generic in the key keeps the correlation instead — `const decodeFormat = <K extends FormatKind>(registry, settings, kind: K, files) => registry[kind].decode(files, settings[kind])` — because inside the body `K` is one format, not the union. `importer-core-js/src/read-batch.ts` is the worked example: adding a format now touches the registry only, with no branch to widen anywhere in the read half. The second half of the same cleanup: a descriptor's `decode` that **never fails** (a malformed file comes back as an `unreadableFiles` row, data rather than an error channel) removed every `catchAll` from the shell, since the only thing left to handle is a tag.
 **Suggested destination**: Strategies / Effect patterns
 
 ## A computed union key is silently unchecked — a correlated record must name every key literally
@@ -289,7 +289,7 @@ store method.
 ## Tauri's mobile `app_data_dir()` is invisible on both phones, and `Info.ios.plist` is the seam for plist keys
 
 **Discovered during**: claude/app-data-directory-visibility-9z52ac (iOS data directory in the Files app)
-**Learning**: `app.path().app_data_dir()` resolves through two entirely different code paths on the two mobile targets, and neither lands anywhere the user can see. iOS goes through `tauri/src/path/desktop.rs` → the `dirs` crate's `mac.rs`, giving `<container>/Library/Application Support/<identifier>`; Android goes through `tauri/src/path/android.rs` → the Kotlin `PathPlugin`, where `getDataDir` is `activity.dataDir`. The reachable ones are `document_dir()`: on iOS `<container>/Documents`, the only part of the container the Files app ever shows — and only if the bundle also sets `UIFileSharingEnabled`, without which the change looks like it did nothing; on Android `getExternalFilesDir(DIRECTORY_DOCUMENTS)`, which Android 11+ hides from the stock Files app anyway because it sits under `Android/data`. Second half, and a correction to the shorthand in the entry above: `tauri ios build` does **not** regenerate `gen/apple` wholesale — `ensure_init` only errors or renames, the identifier and product name are patched into the existing pbxproj, and the Info.plist is _merged_ (`merge_plist` in tauri-cli, last writer wins) from the generated plist, then `src-tauri/Info.plist`, then `src-tauri/Info.ios.plist`. So a plist key belongs in `Info.ios.plist`, where it survives a regenerated Xcode project; the generated plist is still what an Xcode-opened build reads, and the release-prepare workflow `sed`s only its two version keys. Written up in [Data Directory Explanation](../../apps/wildflower-tauri/Data%20Directory%20Explanation.md).
+**Learning**: `app.path().app_data_dir()` resolves through two entirely different code paths on the two mobile targets, and neither lands anywhere the user can see. iOS goes through `tauri/src/path/desktop.rs` → the `dirs` crate's `mac.rs`, giving `<container>/Library/Application Support/<identifier>`; Android goes through `tauri/src/path/android.rs` → the Kotlin `PathPlugin`, where `getDataDir` is `activity.dataDir`. The reachable ones are `document_dir()`: on iOS `<container>/Documents`, the only part of the container the Files app ever shows — and only if the bundle also sets `UIFileSharingEnabled`, without which the change looks like it did nothing; on Android `getExternalFilesDir(DIRECTORY_DOCUMENTS)`, which Android 11+ hides from the stock Files app anyway because it sits under `Android/data`. Second half, and a correction to the shorthand in the entry above: `tauri ios build` does **not** regenerate `gen/apple` wholesale — `ensure_init` only errors or renames, the identifier and product name are patched into the existing pbxproj, and the Info.plist is _merged_ (`merge_plist` in tauri-cli, last writer wins) from the generated plist, then `src-tauri/Info.plist`, then `src-tauri/Info.ios.plist`. So a plist key belongs in `Info.ios.plist`, where it survives a regenerated Xcode project; the generated plist is still what an Xcode-opened build reads, and the release-prepare workflow `sed`s only its two version keys. Written up in [Data Directory Explanation](../../apps/host/host-app/Data%20Directory%20Explanation.md).
 **Suggested destination**: already written up; drop on next triage
 
 ## `@cornerstonejs/core` needs an `events` shim aliased in, and both of its init functions
@@ -333,7 +333,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## Read a Dependabot bump's upstream diff even when the semver says patch
 
 **Discovered during**: claude/dependabot-prs-consolidation-doqq0h (combining the 2026-09-22 Dependabot PRs)
-**Learning**: Two of that week's bumps were broken in ways the version numbers didn't show. `helios-auth` 0.2.1 → 0.2.3, a patch, removed the `JtiCache` trait that `emr-rust` used to enforce per-`jti` revocation. Dependabot also bumped only two of the four exact-pinned helios crates, so the group would have landed on mixed versions. The fix was to move all four pins in lockstep and re-home the check in an `AuthProvider` wrapper that reads `Principal::jti`. `fhirclient` 3.0.0 ships typings that import a `./types` module missing from the tarball, so every option and state type resolves to `any` without a compile error. It also made the bare `fhirclient` entry types-only (the runtime is `fhirclient/browser`). A green Dependabot lockfile is not evidence either way: regenerate it with `vp install` / `cargo update -p`, then build and probe the types before merging.
+**Learning**: Two of that week's bumps were broken in ways the version numbers didn't show. `helios-auth` 0.2.1 → 0.2.3, a patch, removed the `JtiCache` trait that `fhir-r4-rust` used to enforce per-`jti` revocation. Dependabot also bumped only two of the four exact-pinned helios crates, so the group would have landed on mixed versions. The fix was to move all four pins in lockstep and re-home the check in an `AuthProvider` wrapper that reads `Principal::jti`. `fhirclient` 3.0.0 ships typings that import a `./types` module missing from the tarball, so every option and state type resolves to `any` without a compile error. It also made the bare `fhirclient` entry types-only (the runtime is `fhirclient/browser`). A green Dependabot lockfile is not evidence either way: regenerate it with `vp install` / `cargo update -p`, then build and probe the types before merging.
 **Suggested destination**: Dependencies docs
 
 ## Gate the privileged write with a proof type, not the handler with a check
@@ -351,13 +351,13 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## Gatekeeper's in-memory test database fails overlapping writes instead of waiting
 
 **Discovered during**: claude/tender-ride-6y7s0b (the loopback owner dialog, #697)
-**Learning**: `persistence_rust::open_in_memory_pool` opens a `mode=memory&cache=shared` SQLite database. Shared-cache mode uses table-level locks and reports a conflict as `SQLITE_LOCKED` ("database table is locked") right away, so `busy_timeout` never applies. A test fails when two connections touch the same table at once. The existing gatekeeper integration tests never hit this because they are single-threaded `#[tokio::test]`s: the store calls are synchronous, so the startup tasks `setup_gatekeeper` spawns (retention sweep, reapers) only run between the test's own awaits. Two things break that. One is `flavor = "multi_thread"`: the startup sweep then raced the test's first `upsert_client`. The other is work on `spawn_blocking`, such as the loopback dialog's decision, which runs on another thread while the test keeps querying. In the second case the _background_ write is the one that fails, and it fails silently (it is only logged), so the test times out instead of failing where the bug is. Single-threaded tests are not enough once a test has background writes: under nextest each test is a fresh process, so the startup tasks run during the test's first awaits and overlapped the loopback dialog's decision about one run in twenty. Run such tests on a temporary file-backed database (`spin_up_with_loopback_prompt` does), where overlapping access waits on `busy_timeout` as it does in the app. Wait for the background work on an in-memory signal (the pending-consent `watch` channel) rather than by polling.
+**Learning**: `wildflowerhealthio_persistence::open_in_memory_pool` opens a `mode=memory&cache=shared` SQLite database. Shared-cache mode uses table-level locks and reports a conflict as `SQLITE_LOCKED` ("database table is locked") right away, so `busy_timeout` never applies. A test fails when two connections touch the same table at once. The existing gatekeeper integration tests never hit this because they are single-threaded `#[tokio::test]`s: the store calls are synchronous, so the startup tasks `setup_gatekeeper` spawns (retention sweep, reapers) only run between the test's own awaits. Two things break that. One is `flavor = "multi_thread"`: the startup sweep then raced the test's first `upsert_client`. The other is work on `spawn_blocking`, such as the loopback dialog's decision, which runs on another thread while the test keeps querying. In the second case the _background_ write is the one that fails, and it fails silently (it is only logged), so the test times out instead of failing where the bug is. Single-threaded tests are not enough once a test has background writes: under nextest each test is a fresh process, so the startup tasks run during the test's first awaits and overlapped the loopback dialog's decision about one run in twenty. Run such tests on a temporary file-backed database (`spin_up_with_loopback_prompt` does), where overlapping access waits on `busy_timeout` as it does in the app. Wait for the background work on an in-memory signal (the pending-consent `watch` channel) rather than by polling.
 **Suggested destination**: Testing Reference (Rust integration tests) or the Diesel Persistence How-To
 
 ## The Tauri host's unmatched routes now 404; its browser-facing pages live on the hosted owner UI
 
 **Discovered during**: claude/upbeat-darwin-yl1cre (removing the host's embedded single-file owner UI)
-**Learning**: The host's API router used to answer any unmatched path with `200` and the embedded owner-UI shell, so an unimplemented API route surfaced as a client-side `ParseError` (see the SPA-fallback note in the Effect Patterns Reference) and a bare-prefix route like `POST /fhir-r4/` silently got HTML. It now answers `404` (`slices/wildflower-server/wildflower-server-rust/src/http/not_found.rs`): JSON `{ "error": "RouteNotFound", "path", "openInApp" }` for API clients, a small HTML page with the same link for browsers. Every URL the gatekeeper hands a browser (the device `verification_uri`, the `/authorize` polling page) now points at the hosted `main-web` build with `?server=<served origin>`, via `shared_structures_rust::owner_ui::OwnerUiBase` and the `owner_ui_base_url` / `owner_ui_dev_base_url` keys in `tauri-shared-config.json`. A debug host links to the `main-web` dev server on 5200, not to the Tauri dev server on 1420: that one serves `main-tauri`, which needs Tauri IPC and hangs in an ordinary browser.
+**Learning**: The host's API router used to answer any unmatched path with `200` and the embedded owner-UI shell, so an unimplemented API route surfaced as a client-side `ParseError` (see the SPA-fallback note in the Effect Patterns Reference) and a bare-prefix route like `POST /fhir-r4/` silently got HTML. It now answers `404` (`apps/host/wildflower-server-rust/src/http/not_found.rs`): JSON `{ "error": "RouteNotFound", "path", "openInApp" }` for API clients, a small HTML page with the same link for browsers. Every URL the gatekeeper hands a browser (the device `verification_uri`, the `/authorize` polling page) now points at the hosted `main-web` build with `?server=<served origin>`, via `wildflowerhealthio_shared_structures::owner_ui::OwnerUiBase` and the `owner_ui_base_url` / `owner_ui_dev_base_url` keys in `tauri-shared-config.json`. A debug host links to the `main-web` dev server on 5200, not to the Tauri dev server on 1420: that one serves `main-tauri`, which needs Tauri IPC and hangs in an ordinary browser.
 **Suggested destination**: Origins Explanation
 
 ## `bundle.resources` paths must exist at compile time, even in debug builds
@@ -399,7 +399,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## oxlint type-checks plain `.js` files anywhere in the repo, including inside a Rust crate
 
 **Discovered during**: claude/oauth-redirect-routing-9cmhrj (the wait page's `wait.js`, embedded by `gatekeeper-rust` with `include_str!`)
-**Learning**: `vp check` runs oxlint's type-aware rules over every `.js` file, so an untyped parameter counts as `any` and trips `no-unsafe-assignment`, even for a browser asset no TS package imports. JSDoc (`@param {string} x`, `/** @type {unknown} */ let body`) satisfies it without a build step. `consistent-function-scoping` also flags helpers inside an IIFE, so load such a script as `type="module"`, whose scope is already private, and keep the helpers at top level. To test the file from Vitest, read it with `readFileSync` and run it through `new Function('window', 'document', 'fetch', source)` as `apps/github-pages`' 404 test does. Under Vitest a `?raw` import of a `.css` file is an empty string.
+**Learning**: `vp check` runs oxlint's type-aware rules over every `.js` file, so an untyped parameter counts as `any` and trips `no-unsafe-assignment`, even for a browser asset no TS package imports. JSDoc (`@param {string} x`, `/** @type {unknown} */ let body`) satisfies it without a build step. `consistent-function-scoping` also flags helpers inside an IIFE, so load such a script as `type="module"`, whose scope is already private, and keep the helpers at top level. To test the file from Vitest, read it with `readFileSync` and run it through `new Function('window', 'document', 'fetch', source)` as `apps/wildflower-site/wildflower-site-web`' 404 test does. Under Vitest a `?raw` import of a `.css` file is an empty string.
 **Suggested destination**: Testing Reference or CONTRIBUTING.md (code style)
 
 ## A runtime `Schema` import in the sniffer bootstrap costs ~800 KB
@@ -430,7 +430,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 
 **Discovered during**: fhir-sync-pebble-web (the consent page's patient picker vanished on Tauri and the hosted owner UI)
 **Learning**: `HttpClient.mapRequest(client, f)` is `(request) => Effect.map(client.preprocess(request), f)`: the client being wrapped rewrites the request first, and the wrapper's `f` sees the result. `apps/wildflower-react` built its FHIR transport as a `/fhir-r4` `prependApiBaseUrl` wrapper around a layer that had already prefixed the API origin, so the origin went on first and the `/fhir-r4` wrapper saw an absolute URL and skipped it. Every owner-UI FHIR request went to `{origin}/Patient` wherever `apiBaseUrl` is set, from #535 until the fix. The fix joins the mount path onto the origin in one prefix (`apiTransportAt`), and `app-query-runtime.test.ts` pins the URLs. Only same-origin setups (no `apiBaseUrl`) and the SMART apps worked: `smartHttpClientLayer` prepends the whole FHIR base in one step. The existing runtime tests missed it because they only used a single-transport `/fixture` request.
-**Suggested destination**: slices/emr/AGENTS.md (the "provider names the base" guardrail) and apps/wildflower-react's bridge docs
+**Suggested destination**: slices/fhir/AGENTS.md (the "provider names the base" guardrail) and apps/wildflower-react's bridge docs
 
 ## Pebble's libc has no `struct tm`, and PebbleKit JS won't load through Vitest's transform
 
@@ -491,3 +491,21 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: base/896-enrolment (`servers-rust`, checking the token never reaches a log)
 **Learning**: `tracing::subscriber::set_default` only applies to its own thread, and a callsite another test thread has already hit with no subscriber is cached as uninteresting, so the scoped subscriber silently misses it. The capture passed alone and failed under `cargo test`. To read log output back in a test, install the capturing subscriber once per process with `set_global_default` behind a `OnceLock`; nextest runs each test in its own process, so both runners see every event.
 **Suggested destination**: docs/Testing (a Rust testing Reference)
+
+## A moved file's relative link can resolve to the wrong file
+
+**Discovered during**: ruthmarks/move-single-purpose-slices (consolidating the site's apps into product folders)
+**Learning**: Moving `slices/<slice>/AGENTS.md` to `apps/<product>/AGENTS.md` keeps the depth, so `markdownlint`'s `relative-links` passes, but `../AGENTS.md` now names `apps/AGENTS.md` instead of `slices/AGENTS.md`. A broken-link check finds only links that no longer resolve. After a move, resolve each relative link against the file's old location, map the target through the move, and compare it with where the link lands now. A repo root built from `'..'` segments (`join(packageRoot, '..', '..')`) is invisible to a check that looks for `../` strings, and fails only at runtime (`assemble.ts` looked for builds under `apps/apps/`).
+**Suggested destination**: apps/AGENTS.md ("Moving a product in")
+
+## Rewriting `pnpm-lock.yaml` by hand after a move that changes depth leaves stale links
+
+**Discovered during**: ruthmarks/move-single-purpose-slices (flattening `slices/<slice>/<package>` to `slices/<package>`)
+**Learning**: An importer's `link:` values are relative to the importer, so renaming its key from `slices/navigation/navigation-core` to `slices/navigation-core` without touching them leaves `link:../../../global/…` one level too deep. `vp install` trusts the lockfile and recreates the package's `node_modules` with those broken symlinks; tests then fail with `Cannot find package`. A same-depth rename (`slices/emr` → `slices/fhir`) is safe to rewrite by hand. For a depth change, restore the lockfile from `HEAD`, delete the moved packages' `node_modules`, and let `vp install` re-resolve. Relatedly, `perl -pi`/`sed -i` over a file list that includes the `CLAUDE.md` symlinks replaces each symlink with a regular file; list files with `git ls-files -s` and skip mode `120000`. And a path rename inside a markdown table misaligns it (`MD060`), so run `vp fmt` on the changed `.md` files before `vp run lint:docs`.
+**Suggested destination**: apps/AGENTS.md ("Moving a product in")
+
+## `types: []` on a pure package removes `URL`, `TextEncoder` and `crypto` too
+
+**Discovered during**: ruthmarks/move-single-purpose-slices (tightening the `-core` tsconfigs)
+**Learning**: TypeScript has no `lib` for the web globals every runtime shares. With `lib: ["es2024"]` and no `"dom"`, `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `Response`, `crypto` and `structuredClone` are declared only by `@types/node`, so `types: []` gave the cores ~560 errors for legitimate code. Keep `types: ["node"]` and block Node built-ins with oxlint's `import/no-nodejs-modules` on core sources instead; drop `"dom"` from `lib` to keep DOM out. Separately, `nodeLinker: hoisted` had let 17 imports resolve that no manifest declared (`fhirclient`, `jsdom`, `@testing-library/user-event`, `@types/fhir`'s `fhir/r4.d.ts`); `vp run lint:deps` (knip) now fails on them.
+**Suggested destination**: docs/Dependencies/Package Graph Rules Explanation.md, or slices/AGENTS.md (Rules)

@@ -1,4 +1,4 @@
-import { Chip, PageHeader } from 'react-tundraish'
+import { Chip, PageHeader } from '@wildflowerhealthio/react-tundraish'
 
 /** The canonical use — a maturity tag riding inline inside a page title. */
 export const InTitle = () => (

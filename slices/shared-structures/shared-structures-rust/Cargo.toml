@@ -1,5 +1,5 @@
 [package]
-name = "shared-structures-rust"
+name = "wildflowerhealthio-shared-structures"
 version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
@@ -7,7 +7,7 @@ publish.workspace = true
 [features]
 # Opt-in test-support: the OpenAPI snapshot assert/regenerate helper. Gated
 # behind a feature so the production builds of crates that depend on
-# shared-structures-rust (emr-rust, wildflower-tauri) don't pull utoipa /
+# wildflowerhealthio-shared-structures (wildflowerhealthio-fhir-r4, host-app) don't pull utoipa /
 # serde_json — only the `-rust` crates that own a documented surface enable it,
 # as a dev-dependency.
 openapi-snapshot = ["dep:utoipa", "dep:serde_json"]
@@ -24,7 +24,7 @@ http-errors = ["dep:axum", "dep:tracing"]
 # `served_base_url_for`) — the single source of truth for the `Forwarded` header
 # (RFC 7239) the trusted front sets on relayed requests. Gated so non-HTTP
 # crates don't pull `axum`; the slices that resolve a request's served origin
-# (gatekeeper-rust, apps-rust) enable it.
+# (wildflowerhealthio-gatekeeper, wildflowerhealthio-apps) enable it.
 served-origin = ["dep:axum"]
 # Opt-in: the diesel `JsonText` SQLite mapping (a `serde_json::Value` field
 # stored in a JSON TEXT column), shared by the diesel-backed slices. Gated so
@@ -35,12 +35,12 @@ diesel-json-text = ["dep:diesel", "dep:serde_json"]
 [dependencies]
 # `serde` is non-optional: the always-on `bridge` module derives
 # `Deserialize` on its envelope shape, so every downstream crate
-# (`wildflower-tauri`, `browser-sniffer-tauri-rust`, …) needs the
+# (`host-app`, `wildflowerhealthio-browser-sniffer-tauri`, …) needs the
 # trait available unconditionally.
 serde = { workspace = true }
 # `url` is non-optional: the always-on `ServerRuntimeConfig::loopback_origin`
 # returns a `Url` — the single typed source the host threads into every slice's
-# config (apps / gatekeeper / emr), so the loopback origin is parsed
+# config (apps / gatekeeper / fhir-r4), so the loopback origin is parsed
 # once here rather than rebuilt from a string downstream.
 url = { version = "2" }
 utoipa = { workspace = true, optional = true }

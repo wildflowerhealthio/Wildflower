@@ -1,0 +1,51 @@
+{
+  "name": "@wildflowerhealthio/health-viewer-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser UI for the synthesized health viewer: the Observable Plot multi-axis chart with its crosshair readout, band shading and legend, the series panel (grouped, searchable, capped checkboxes), the time-range presets, and the responsive layout that docks the panel beside the chart.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@observablehq/plot": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/health-viewer-core-js": "workspace:*",
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/health-viewer-core-js": "workspace:*",
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:"
+  }
+}

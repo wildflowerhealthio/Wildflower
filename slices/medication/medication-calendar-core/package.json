@@ -1,5 +1,5 @@
 {
-  "name": "medication-calendar-core",
+  "name": "@wildflowerhealthio/medication-calendar-core",
   "version": "0.0.0",
   "private": true,
   "description": "Pure calendar layer for a patient's medication list: supply-duration parsing, next-fill / exhaustion date math, calendar event derivation, and month-grid math. No DOM, no FHIR, no platform imports.",
@@ -20,17 +20,17 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-utility": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-utility": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-utility": "workspace:*"
+    "@wildflowerhealthio/fhir-utility": "workspace:*",
+    "effect": "catalog:"
   }
 }

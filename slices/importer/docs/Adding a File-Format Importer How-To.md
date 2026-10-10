@@ -362,16 +362,16 @@ is a no-op here.
   pick-review-confirm pipeline.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
   `FileImporter` contract, the source-file seam, and the `StagedImport` model.
-- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the closed registry and
+- [importer-core AGENTS.md](../../../slices/importer/importer-core/AGENTS.md) — the closed registry and
   the batch machinery the two registry edits feed.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the worked HAR
   binding this recipe generalizes.
-- [lifelabs-pdf-importer-core AGENTS.md](../lifelabs-pdf-importer-core/AGENTS.md)
+- [lifelabs-pdf-importer AGENTS.md](../lifelabs-pdf-importer/AGENTS.md)
   — the worked document-format binding.
 - [dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md) — the worked
   binding that states a `groupBy`, links its source files, and reads each source file's
   id in the decode.
-- [Adding a Collector How-To](../../collector/docs/Adding%20a%20Collector%20How-To.md)
+- [Adding a Collector How-To](../../../apps/launcher/collector/docs/Adding%20a%20Collector%20How-To.md)
   — the live-transport counterpart, whose descriptor/registry shape this mirrors.
 - [Documentation Reference](../../../docs/Documentation/Reference.md) — the
   four-kinds naming this doc follows.

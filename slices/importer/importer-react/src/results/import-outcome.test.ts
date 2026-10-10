@@ -1,6 +1,6 @@
+import type { BatchEntryOutcome } from '@wildflowerhealthio/fhir-r4/clients'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import type { BatchEntryOutcome } from 'fhir-r4/clients'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import {

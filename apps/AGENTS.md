@@ -4,25 +4,142 @@ Apps compose slice packages. They handle runtime wiring, routing, user interacti
 
 ## Rules
 
-- No business logic (belongs in `slices/<name>/<name>-core`)
-- Always go through slice-core interfaces and APIs — don't reach into a slice's internals from an app
+- No business logic in the app package itself (it belongs in a `-core` package: a slice's `<name>-core`, or a product folder's `<product>-core-js`)
+- Always go through core interfaces and APIs — don't reach into a slice's internals from an app
 - Use `slices/<name>/<name>-{web,node}` adapters when you need a platform-specific implementation; never re-implement an adapter in an app
+
+## Product folders
+
+An app that has packages built only for it lives with them in one folder per
+product, `apps/<product>/`: [`relay`](./relay/AGENTS.md),
+[`fhir-sync-pebble`](./fhir-sync-pebble/AGENTS.md),
+[`watch-lifts`](./watch-lifts/AGENTS.md), [`lifting`](./lifting/AGENTS.md),
+[`launcher`](./launcher/AGENTS.md), [`host`](./host/AGENTS.md),
+[`medications`](./medications/AGENTS.md),
+[`health-viewer`](./health-viewer/AGENTS.md) and
+[`synthetic-data`](./synthetic-data/AGENTS.md).
+[`wildflower-site`](./wildflower-site/AGENTS.md) is a product folder for
+grouping alone: the site assembly and the marketing homepage share no package
+built only for them, but they ship together as wildflowerhealth.io. An app with
+no packages of its own sits directly under `apps/` under its product's name:
+`server-docs-web`, `ohif-viewer-web` and `importer-web`, whose importer and
+anonymizer packages are slices (`slices/importer`, `slices/anonymizer`).
+
+Packages that came from one slice and belong together stay nested in a folder
+for their group, as `apps/host/servers/`, `apps/host/unit-runner/` and
+`apps/launcher/collector/` do (each group also
+listed in `pnpm-workspace.yaml` and the root `vite.config.ts` test projects);
+a lone package, or one from the product's
+namesake slice, sits directly in the product folder.
+
+### What folds in
+
+A package folds into a product folder when that product is its only consumer:
+check every `package.json` that depends on it, and every Rust crate that
+depends on its Rust half.
+
+- **A whole slice** folds in when nothing else uses any of it, in either
+  language (`slices/lifting` → `apps/lifting/`, `slices/relay` → `apps/relay/`,
+  Rust binary included).
+- **A slice splits by language** when one product is the only consumer of its
+  TypeScript packages and the host the only consumer of its Rust crates. The
+  TypeScript packages fold into that product, in a folder named for the slice,
+  with the slice's AGENTS.md and docs (`apps/launcher/collector/`); the crates
+  fold into [`apps/host/wildflower-server/`](./host/wildflower-server/AGENTS.md)
+  beside the server that composes them. No slice may depend on a folded crate,
+  not even as a dev-dependency: a test that drives two slices together moves
+  into `wildflowerhealthio-wildflower-server`'s tests.
+- **Only a slice's Rust crates** fold in when the host is their only consumer
+  but other products share the slice's TypeScript packages. The crates move to
+  `apps/host/wildflower-server/`, with the docs about them; the slice keeps its
+  TypeScript packages, its AGENTS.md and the shared docs: `gatekeeper-rust` and
+  `token-revocation-rust` left `slices/gatekeeper`, and `fhir-r4-rust` left
+  `slices/fhir`. A crate another product also uses stays behind, as
+  `rathole-settings-rust`, which the relay shares, stayed when `tunnel-rust`
+  moved.
+- Either way, a cross-language contract then reads across folders by relative
+  path, such as `apps-core-js`'s OpenAPI drift test reading
+  `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`, or `collector-registry`'s
+  reading `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`.
+- **Shared packages never fold in.** Anything two products use stays in
+  `slices/` or `global/` (`branding`, `telemetry`, `smart-app-react`,
+  `gatekeeper-core`, `global/pebble`); a file every app reads sits at the repo
+  root (`dev-app-ports.json`).
+
+### Names
+
+Everything that identifies the product takes the folder's name. Every npm
+package is scoped `@wildflowerhealthio/`; every other identifier uses the
+unscoped name:
+
+| What                                       | Name                                                                                                                                     | Lifting                           |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Folder                                     | `apps/<product>/`                                                                                                                        | `apps/lifting/`                   |
+| The app's folder                           | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`; a store-shipped Tauri app: `<product>-app`) | `lifting-web`                     |
+| The app's npm package                      | `@wildflowerhealthio/<folder>`                                                                                                           | `@wildflowerhealthio/lifting-web` |
+| Rust crate (and binary)                    | `wildflowerhealthio-` + its folder's name, less a trailing `-rust`                                                                       | `wildflowerhealthio-relay-server` |
+| A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `lifting-core-js`                 |
+| Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `lifting-react`                   |
+| Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/lifting/`                       |
+| Homescreen tile id                         | `<product>`                                                                                                                              | `lifting`                         |
+| Dev tile id and `dev-app-ports.json` key   | `<product>-dev`                                                                                                                          | `lifting-dev`                     |
+| OAuth client id                            | random, from `openssl rand -hex 16`                                                                                                      | `bdf9fc5c…`                       |
+| Sentry DSN build variable                  | `VITE_SENTRY_DSN_<PACKAGE>`                                                                                                              | `VITE_SENTRY_DSN_LIFTING_WEB`     |
+| Sentry `app` tag and OpenTelemetry service | the unscoped package name                                                                                                                | `lifting-web`                     |
+
+A client id is never a name: the host's loopback consent dialog shows the
+client's registered `name`, and nothing looks an app up by its client id, so a
+tile id and its client id are independent.
+
+A crate's name carries the `wildflowerhealthio-` prefix because crates.io has
+no namespaces; it stands in for the npm scope. The folder keeps `-rust`, which
+tells a slice's Rust half from its TypeScript half side by side, but the crate
+drops it (crates are Rust by definition), so `slices/scopes/scopes-rust` is
+the crate `wildflowerhealthio-scopes`. Two crates keep other names because
+Tauri derives something from them: `tauri-plugin-native-webview` (a plugin
+crate needs the `tauri-plugin-` prefix) and the host's `host-app` (Tauri
+names the iOS Xcode project and scheme, `gen/apple/host-app.xcodeproj`, the
+binary and the Linux AppImage after the package). No crate is published: the
+workspace sets `publish = false`.
+
+Ids that predate this are tracked in
+[#1042](https://github.com/wildflowerhealthio/Wildflower/issues/1042).
+
+### Moving a product in
+
+1. Move the folders (an app folder whose name the product folder takes moves
+   aside first), then delete each moved package's `node_modules` and run
+   `vp install`: install does not rewrite the relative symlinks a moved
+   `node_modules` still holds.
+2. Rename the packages, then every import, `vp run -F` filter and path:
+   `pnpm-workspace.yaml` (`apps/<product>/*`), the root `vite.config.ts`
+   test projects, `.github/workflows/*`, `apps/wildflower-site/wildflower-site-web/src/assembly.ts`,
+   and every relative path inside a package that moved deeper.
+3. The slice's AGENTS.md becomes the folder's umbrella `apps/<product>/AGENTS.md`,
+   with a `CLAUDE.md` symlink beside it; `slices/AGENTS.md` notes that the
+   product is not a slice.
+4. Re-key what installs already hold with new migrations, never edits to
+   shipped ones: an apps-rust migration for the tile and dev tile
+   (`0017_rekey_lifting_app`) and a gatekeeper-rust migration for the clients
+   and every table that names them (`0025_rekey_lifting_app_clients`).
 
 ## Dev-server ports
 
-The first-party apps that get a debug-only "(Dev)" homescreen tile pin their
-vite dev server to a port from `slices/apps/dev-app-ports.json`, which
-`apps-rust/src/dev_seed.rs` embeds to seed the matching row. `devAppServer(id)`
+The first-party apps pin their vite dev server to a port from
+`dev-app-ports.json`, keyed `<product>-dev`. For the apps that get
+a debug-only "(Dev)" homescreen tile, `apps-rust/src/dev_seed.rs` embeds it to
+seed the matching row; the launcher has no tile, and `host-app`'s `build.rs`
+reads its `launcher-dev` port instead. `devAppServer(id)`
 in the root [`vite.config.base.ts`](../vite.config.base.ts) is the **only**
 TypeScript reader of that file — spread it into `server` (or `preview`) instead
 of parsing the JSON again:
 
 ```ts
-import base, { devAppServer } from '../../vite.config.base.ts'
+import base, { devAppServer } from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
-  server: devAppServer('medications-app-dev'),
+  server: devAppServer('medications-dev'),
 })
 ```
 

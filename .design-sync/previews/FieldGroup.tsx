@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Checkbox, FieldDescription, FieldGroup } from 'react-tundraish'
+import { Checkbox, FieldDescription, FieldGroup } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * `FieldGroup` labels a *set* of controls rather than a single input — a

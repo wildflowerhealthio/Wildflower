@@ -1,11 +1,11 @@
 {
-  "name": "react-kitchen-sink",
+  "name": "@wildflowerhealthio/react-kitchen-sink",
   "version": "0.0.0",
   "description": "Assorted react hooks, utilities, and components.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "global/react-kitchen-sink"
   },
   "files": [
@@ -34,10 +34,10 @@
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "^30.1.0",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "typescript": "catalog:",
@@ -45,9 +45,9 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*"
+    "react": "catalog:"
   }
 }

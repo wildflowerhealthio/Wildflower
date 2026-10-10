@@ -10,7 +10,7 @@ instead of restating it.
 
 ## One file, two openers (diesel alongside rusqlite)
 
-The Tauri host opens **one** rusqlite `persistence_rust::Connection` (the original
+The Tauri host opens **one** rusqlite `wildflowerhealthio_persistence::Connection` (the original
 persistence primitive the pre-diesel slices write through) **and** builds **one**
 `DieselPool` on the _same_ database file, then shares the pool across every
 diesel-backed slice. SQLite permits multiple connections per file, so the pool's
@@ -30,7 +30,7 @@ connection's pragmas), so a write rides out brief contention instead of failing
 instantly with `SQLITE_BUSY`. For a single-user desktop app with short writes
 that's ample; a pathological stalled write elsewhere can surface as a ≤5 s stall →
 `SQLITE_BUSY` → 500. The composition root
-(`set_up` in `slices/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`) is where
+(`set_up` in `apps/host/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`) is where
 the pool is built and the trade-off is accepted.
 
 ## The store holds the pool
@@ -46,7 +46,7 @@ stays the pool handle plus migration wiring.
 ## Migrations are namespaced per slice
 
 Each slice embeds its own `migrations/` tree and applies it through
-`persistence_rust::run_diesel_migrations` under its own namespace. Diesel's stock
+`wildflowerhealthio_persistence::run_diesel_migrations` under its own namespace. Diesel's stock
 `run_pending_migrations` bookkeeps applied versions in a single, un-namespaced
 `__diesel_schema_migrations` keyed by version — and every slice starts at
 `0001_initial_schema`, so two diesel slices sharing one database would collide and

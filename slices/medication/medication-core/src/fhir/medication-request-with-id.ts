@@ -1,4 +1,4 @@
-import type { MedicationRequest } from 'fhir-r4/resources'
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 
 /**
  * A decoded `MedicationRequest` as the FHIR server returns it: `id` is always

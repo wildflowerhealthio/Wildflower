@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The Tauri crates and wildflower-relay embed generated web bundles that
+      # The Tauri crates and wildflowerhealthio-relay-server embed generated web bundles that
       # a fresh checkout doesn't have; same placeholders ci-rust.yml compiles
       # against.
       - name: Stub the embedded web bundles

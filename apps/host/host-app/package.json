@@ -1,0 +1,47 @@
+{
+  "name": "@wildflowerhealthio/host-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "atool": "xcrun altool --upload-app --type ios --file \"src-tauri/gen/apple/build/arm64/Wildflower.ipa\" --apiKey \"$APP_STORE_CONNECT_KEY_ID\" --apiIssuer \"$APP_STORE_CONNECT_ISSUER_ID\"",
+    "build": "tsc && vp build",
+    "build:ios:prod": "tauri ios build --export-method app-store-connect && vp run atool",
+    "dev": "vp dev",
+    "dev:android": "tauri android dev -- --target aarch64-linux-android",
+    "dev:ios": "tauri ios dev --host=\"$(ipconfig getifaddr en0)\"",
+    "preview": "vp preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@tauri-apps/api": "catalog:",
+    "@tauri-apps/plugin-fs": "catalog:",
+    "@tauri-apps/plugin-opener": "catalog:",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
+    "@wildflowerhealthio/scopes-react": "workspace:*",
+    "@wildflowerhealthio/servers-core-js": "workspace:*",
+    "@wildflowerhealthio/servers-react": "workspace:*",
+    "@wildflowerhealthio/telemetry-core": "workspace:*",
+    "@wildflowerhealthio/telemetry-react": "workspace:*",
+    "@wildflowerhealthio/telemetry-web": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tundra-css": "catalog:"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:"
+  }
+}

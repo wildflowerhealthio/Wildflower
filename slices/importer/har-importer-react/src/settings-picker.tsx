@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 
-import { fhirSources, type HarSettings } from 'har-importer-core'
-import type { SettingsPickerProps } from 'importer-fundamentals'
+import { fhirSources, type HarSettings } from '@wildflowerhealthio/har-importer-core'
+import type { SettingsPickerProps } from '@wildflowerhealthio/importer-fundamentals'
 
 /**
  * The HAR format's settings picker: whole-import include toggles for the

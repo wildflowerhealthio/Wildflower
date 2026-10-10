@@ -11,7 +11,7 @@
  * return the *concrete* partition element that flows back into `grant[id]`. The TS
  * core owns this algebra — `scopes-rust` has none.
  *
- * Namespace + type combo (`import { Scope } from 'scopes-core'` → `Scope.ScopeConfiguration`).
+ * Namespace + type combo (`import { Scope } from '@wildflowerhealthio/scopes-core'` → `Scope.ScopeConfiguration`).
  */
 
 import { Equal } from 'effect'

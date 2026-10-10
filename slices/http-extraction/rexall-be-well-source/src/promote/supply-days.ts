@@ -1,8 +1,8 @@
 import { Option, Struct } from 'effect'
 
-import { Code } from 'fhir-r4/data-types'
-import type { Quantity } from 'fhir-r4/data-types'
-import type { MedicationRequestDispenseRequest } from 'fhir-r4/resources'
+import { Code } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { Quantity } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { MedicationRequestDispenseRequest } from '@wildflowerhealthio/fhir-r4/resources'
 
 /**
  * Supply durations get their unit. The dialect emits `{ value }` with no

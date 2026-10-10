@@ -98,7 +98,7 @@ observer is cheap to leave running.
 
 ## See Also
 
-- [dicom-react AGENTS.md](../dicom-react/AGENTS.md) — the package these notes
+- [dicom-react AGENTS.md](../../../slices/file-formats/dicom-react/AGENTS.md) — the package these notes
   describe
 - [Learnings Inbox](../../../docs/Agents/Learnings%20Inbox.md) — where these
   started

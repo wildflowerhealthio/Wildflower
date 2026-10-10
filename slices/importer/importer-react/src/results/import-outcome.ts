@@ -1,5 +1,9 @@
-import { type BatchEntryOutcome, groupByStatus, type WriteIssue } from 'fhir-r4/clients'
-import type { SkipReason } from 'importer-core'
+import {
+  type BatchEntryOutcome,
+  groupByStatus,
+  type WriteIssue,
+} from '@wildflowerhealthio/fhir-r4/clients'
+import type { SkipReason } from '@wildflowerhealthio/importer-core'
 
 /**
  * What a confirmed import wrote, and what it could not — the value the results

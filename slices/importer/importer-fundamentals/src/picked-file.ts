@@ -19,9 +19,9 @@
  * @packageDocumentation
  */
 
+import { joinIdComponents, localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Context, Effect, Encoding, ParseResult, Schema } from 'effect'
-import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
-import { DocumentReference } from 'fhir-r4/resources'
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { sha256Base64 } from './sha256.ts'

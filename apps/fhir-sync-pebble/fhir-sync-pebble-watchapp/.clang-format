@@ -1,0 +1,53 @@
+# Formats the watch app's C to read like the TypeScript that oxfmt (a
+# Prettier-compatible formatter) formats in the rest of the repo: the same
+# 100-column width and 2-space indent as `fmt` in the root vite.config.ts,
+# braces on the same line, and a call or declaration that doesn't fit broken
+# one argument per line with the closing bracket on its own line.
+# Run with `vp run -F @wildflowerhealthio/fhir-sync-pebble-watchapp fmt:c`.
+BasedOnStyle: LLVM
+ColumnLimit: 100
+IndentWidth: 2
+ContinuationIndentWidth: 2
+UseTab: Never
+BreakBeforeBraces: Attach
+IndentCaseLabels: true
+PointerAlignment: Right
+
+# Prettier breaks a list that doesn't fit into one item per line instead of
+# packing as many as fit, and closes the bracket on its own line.
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+# `(WindowHandlers){ .load = ... }` gets spaces inside and block indents when
+# broken, like a Prettier object literal.
+Cpp11BracedListStyle: false
+
+# Prettier puts operators at the end of the broken line and aligns nothing.
+BreakBeforeBinaryOperators: None
+AlignOperands: DontAlign
+AlignTrailingComments:
+  Kind: Never
+AlignEscapedNewlines: DontAlign
+
+# Break a long signature inside its parentheses, as Prettier would, rather
+# than moving the name onto a line below its return type.
+PenaltyReturnTypeOnItsOwnLine: 1000
+
+# Prettier never puts a block's body on the same line as its header.
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# Prettier leaves comments and string literals as written.
+ReflowComments: false
+BreakStringLiterals: false
+
+MaxEmptyLinesToKeep: 1
+InsertNewlineAtEOF: true
+# Prettier leaves import order alone, and in C each file's own header is
+# deliberately included first.
+SortIncludes: Never

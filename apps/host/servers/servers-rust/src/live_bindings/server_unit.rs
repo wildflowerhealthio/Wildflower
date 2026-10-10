@@ -1,0 +1,157 @@
+//! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
+
+use tokio::sync::{mpsc, watch};
+use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
+use wildflowerhealthio_unit_runner::{RunContext, Unit};
+use wildflowerhealthio_wildflower_server::{
+    CertificateState, HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig,
+};
+
+use crate::domain::ServerDetail;
+use crate::live_bindings::server_consent_decider::ServerConsentDecider;
+use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
+
+/// One run of one server: the Wildflower server `wildflower-server-rust` sets
+/// up and serves, as a unit `UnitRunner` runs.
+///
+/// The host's factory builds a fresh `ServerUnit` for each run, from the
+/// server's record as the host last pushed it, so a run's configuration is
+/// fixed from its start to its end. `UnitRunner` gives each run its own thread
+/// and runtime, and shuts that runtime down when the run ends, which stops
+/// every task the server's slices spawned.
+///
+/// The unit knows nothing of Tauri: the host hands it everything it reads.
+pub struct ServerUnit {
+    config: WildflowerServerConfig,
+    host_ports: HostPorts,
+    forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
+}
+
+impl ServerUnit {
+    /// A run of the server `config` describes, over the host's `host_ports`,
+    /// reporting each request its tunnel relays on `forwarded_request_tx`.
+    #[must_use]
+    pub fn new(
+        config: WildflowerServerConfig,
+        host_ports: HostPorts,
+        forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
+    ) -> Self {
+        Self {
+            config,
+            host_ports,
+            forwarded_request_tx,
+        }
+    }
+}
+
+impl Unit for ServerUnit {
+    type Detail = ServerDetail;
+
+    /// Set the server up, announce it running, and serve it until
+    /// `UnitRunner` stops the run. Its health, its certificate's state, the
+    /// head of its pending-consent queue, and the [`ServerConsentDecider`] and
+    /// [`ServerLaunchMinter`] over its gatekeeper go out as the run's
+    /// [`ServerDetail`].
+    ///
+    /// The run's gatekeeper publishes its queue's head on a channel of the
+    /// run's own, so each server's head is its own; each head is forwarded to
+    /// the host's `active_pending_consent_tx` too, which every run shares.
+    async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
+        let (server_health_tx, server_health_rx) = watch::channel(None);
+        let (certificate_tx, certificate_rx) = watch::channel(None);
+        let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
+        let host_pending_consent_tx = self.host_ports.active_pending_consent_tx.clone();
+        let server = wildflowerhealthio_wildflower_server::set_up(
+            self.config,
+            HostPorts {
+                active_pending_consent_tx: pending_consent_tx,
+                ..self.host_ports
+            },
+            ServerObservers {
+                server_health_tx,
+                certificate_tx,
+                forwarded_request_tx: self.forwarded_request_tx,
+            },
+        )
+        .await?;
+        tokio::spawn(report_detail(
+            DetailSources {
+                consent_decider: ServerConsentDecider::new(
+                    server.consent_decider_for_host().clone(),
+                ),
+                launch_minter: ServerLaunchMinter::new(server.launch_context_minter()),
+                server_health_rx,
+                certificate_rx,
+                pending_consent_rx,
+                host_pending_consent_tx,
+            },
+            ctx.clone(),
+        ));
+        ctx.announce_running();
+        server.serve(ctx.shutdown_token().clone()).await
+    }
+}
+
+/// What a run's detail is read from.
+struct DetailSources {
+    /// The run's consent decider, the same in every detail the run sets.
+    consent_decider: ServerConsentDecider,
+    /// The run's launch minter, the same in every detail the run sets.
+    launch_minter: ServerLaunchMinter,
+    /// The run's reachability monitor's health.
+    server_health_rx: watch::Receiver<Option<ServerHealth>>,
+    /// The run's certificate's state.
+    certificate_rx: watch::Receiver<Option<CertificateState>>,
+    /// The head of the run's gatekeeper's pending-consent queue.
+    pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    /// The host's channel each head is forwarded to.
+    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
+}
+
+/// The task each run spawns to report its [`ServerDetail`]: it merges the
+/// run's health, its certificate's state, the head of its gatekeeper's
+/// pending-consent queue, its consent decider and its launch minter into the
+/// detail, now and each time the health, the certificate state or the head changes. It also
+/// forwards each change of its head to the host's shared
+/// `active_pending_consent_tx`, which the legacy bridge reads until #965
+/// deletes it. The task dies with the run's runtime, and `UnitRunner` clears
+/// the detail when the run ends.
+async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
+    // The monitor drops its sender once it stops; the certificate's and the
+    // head's live as long as the server.
+    let mut health_open = true;
+    let mut certificate_open = true;
+    // The head this run last forwarded. Only a change to the run's own head
+    // is forwarded, so a wake for health never overwrites another run's head.
+    let mut forwarded_head: Option<PendingConsentHead> = None;
+    loop {
+        let pending_consent = sources.pending_consent_rx.borrow_and_update().clone();
+        if pending_consent != forwarded_head {
+            sources
+                .host_pending_consent_tx
+                .send_replace(pending_consent.clone());
+            forwarded_head.clone_from(&pending_consent);
+        }
+        ctx.set_detail(ServerDetail {
+            health: sources.server_health_rx.borrow_and_update().clone(),
+            certificate: sources.certificate_rx.borrow_and_update().clone(),
+            pending_consent,
+            consent_decider: Some(sources.consent_decider.clone()),
+            launch_minter: Some(sources.launch_minter.clone()),
+        });
+        tokio::select! {
+            changed = sources.server_health_rx.changed(), if health_open => {
+                health_open = changed.is_ok();
+            }
+            changed = sources.certificate_rx.changed(), if certificate_open => {
+                certificate_open = changed.is_ok();
+            }
+            changed = sources.pending_consent_rx.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+            }
+        }
+    }
+}

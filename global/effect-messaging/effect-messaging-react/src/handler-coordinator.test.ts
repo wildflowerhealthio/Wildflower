@@ -1,8 +1,8 @@
 import { renderHook } from '@testing-library/react'
+import { Bridge } from '@wildflowerhealthio/effect-messaging-core'
+import { NoContextException } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
 import { createElement, type ReactNode } from 'react'
-import { NoContextException } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   type BridgeHandlerRecord,

@@ -51,9 +51,9 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
 
-use scopes_rust::{Grant, Scope};
+use wildflowerhealthio_scopes::{Grant, Scope};
 
-use shared_structures_rust::http_errors::InternalError;
+use wildflowerhealthio_shared_structures::http_errors::InternalError;
 
 /// Parse a token's space-separated `scope` claim into a coverage-checkable
 /// [`Grant`]. A missing claim yields an empty grant (covers nothing) — the one
@@ -113,7 +113,7 @@ impl MissingScopes {
     /// The scopes a token failed to cover, rendered for the wire.
     #[must_use]
     pub fn uncovered(scopes: &[Scope]) -> Self {
-        Self(scopes_rust::render_scopes(scopes))
+        Self(wildflowerhealthio_scopes::render_scopes(scopes))
     }
 
     /// The rendered scopes, for a slice's `InsufficientScope { missing_scopes }`.
@@ -347,7 +347,7 @@ pub fn insufficient_scope(missing_scopes: Vec<String>) -> Response {
 ///
 /// It injects only the `403` *response* (a `$ref` to `InsufficientScopeBody`).
 /// Register the schema itself declaratively — add
-/// `#[openapi(components(schemas(scope_capabilities_rust::InsufficientScopeBody)))]`
+/// `#[openapi(components(schemas(wildflowerhealthio_scope_capabilities::InsufficientScopeBody)))]`
 /// to the slice's `ApiDoc` — so the `$ref` resolves. Apply it after the routes
 /// are merged (the paths must be present), e.g. in the slice's `openapi_spec()`:
 ///

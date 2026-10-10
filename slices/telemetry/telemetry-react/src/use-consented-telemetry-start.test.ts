@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
-import type { TelemetryConsent } from 'telemetry-core'
-import type * as TelemetryWeb from 'telemetry-web'
+import type { TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
+import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { useConsentedTelemetryStart } from './use-consented-telemetry-start.ts'
@@ -11,13 +11,13 @@ import { useConsentedTelemetryStart } from './use-consented-telemetry-start.ts'
 const { initConsentedTelemetryMock } = vi.hoisted(() => ({
   initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
 }))
-vi.mock('telemetry-web', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: initConsentedTelemetryMock,
 }))
 
 const APP_DSN = 'https://key@sentry.example/9'
-const TAGS = { app: 'wildflower-react', entry: 'main-web' } as const
+const TAGS = { app: 'launcher-web', entry: 'main-web' } as const
 
 const consentWith = (switches: {
   readonly crashReports: boolean

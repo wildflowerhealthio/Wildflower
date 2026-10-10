@@ -1,7 +1,7 @@
 import { Effect, Either } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { PickedFile, FormatDetector } from 'importer-fundamentals'
+import type { PickedFile, FormatDetector } from '@wildflowerhealthio/importer-fundamentals'
 import { acceptLocalFile, type ReadableFile, REJECTION_MESSAGE } from './local-file.ts'
 
 /**

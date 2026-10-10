@@ -1,4 +1,4 @@
-import type { Timing } from 'fhir-r4/data-types'
+import type { Timing } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /** What a dosage's `Timing` says about how often a dose is taken, as a rate per day. */
 

@@ -1,12 +1,12 @@
 {
-  "name": "telemetry-react",
+  "name": "@wildflowerhealthio/telemetry-react",
   "version": "0.0.0",
   "private": true,
   "description": "The browser side of Wildflower telemetry in React: the telemetry consent gate every web app starts behind (the non-dismissable consent dialog, the hook that keeps the answer in localStorage, and the status control that reopens it), and what an app root does with the answer (`useConsentedTelemetryStart`, which starts telemetry with the app's own DSN and tags, and `CrashReportingBoundary`, which reports render crashes).",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/telemetry/telemetry-react"
   },
   "files": [
@@ -33,27 +33,27 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "branding-core": "workspace:*",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/telemetry-core": "workspace:*",
+    "@wildflowerhealthio/telemetry-web": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "telemetry-core": "workspace:*",
-    "telemetry-web": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "branding-core": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "telemetry-core": "workspace:*",
-    "telemetry-web": "workspace:*"
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/telemetry-core": "workspace:*",
+    "@wildflowerhealthio/telemetry-web": "workspace:*",
+    "react": "catalog:"
   }
 }

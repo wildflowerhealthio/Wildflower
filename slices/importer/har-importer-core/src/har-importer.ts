@@ -1,15 +1,22 @@
 import { Effect } from 'effect'
 
-import type { FhirResource } from 'fhir-r4/resources'
-import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-import { DecodeFunction, type FileImporter, type DecodedFile } from 'importer-fundamentals'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type HttpResponseKind,
+  SourceDescriptor,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
+import {
+  DecodeFunction,
+  type FileImporter,
+  type DecodedFile,
+} from '@wildflowerhealthio/importer-fundamentals'
 
 import {
   HAR_ARCHIVE_CODE,
   WEB_TRACE_CODE_SYSTEM,
   WEB_TRACE_RAW_CODE,
   WEB_TRACE_REDACTION_SYSTEM,
-} from 'web-trace-core/codec'
+} from '@wildflowerhealthio/web-trace-core/codec'
 
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'

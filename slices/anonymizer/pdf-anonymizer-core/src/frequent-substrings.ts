@@ -1,5 +1,5 @@
+import { Document } from '@wildflowerhealthio/positioned-text'
 import { Array as Arr, Order, pipe } from 'effect'
-import { Document } from 'positioned-text'
 
 interface FrequentSubstring {
   readonly text: string

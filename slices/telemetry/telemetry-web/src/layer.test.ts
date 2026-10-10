@@ -1,5 +1,5 @@
 import { context, createContextKey, ROOT_CONTEXT } from '@opentelemetry/api'
-import { configFromEnv } from 'telemetry-core'
+import { configFromEnv } from '@wildflowerhealthio/telemetry-core'
 import { describe, expect, test } from 'vite-plus/test'
 import { initWebTelemetry } from './layer.ts'
 

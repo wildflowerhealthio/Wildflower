@@ -1,9 +1,12 @@
 import { Either, Encoding, ParseResult, Schema } from 'effect'
 
-import { HeadersWire } from 'browser-sniffer-core'
+import { HeadersWire } from '@wildflowerhealthio/browser-sniffer-core'
 
-import { HarMethodValueSchema, isHttpMethod } from 'http-extraction-fundamentals'
-import { contentTypeOf } from 'web-trace-core/capture'
+import {
+  HarMethodValueSchema,
+  isHttpMethod,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
+import { contentTypeOf } from '@wildflowerhealthio/web-trace-core/capture'
 import { Har, type HarBody, type HarEntry, NOT_MEASURED } from './har.ts'
 
 /**

@@ -1,0 +1,63 @@
+{
+  "name": "@wildflowerhealthio/synthetic-data-fundamentals",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The base of the synthetic data generators, one sub-entry per role: story (the story model — Story, Person, Prescription, DrugProduct, LabDraw — with every date a StoryDay relative to one as-of date), seeding (deterministic values, hashed with kitchen-sink's FNV-1a and fmix64 over fhir-r4's id fold) and chrome-har (the synthetic defaults a generated Chrome DevTools capture's entries are written with; the format and DevTools vocabulary are http-archive's). The root exports nothing. Per-source generator packages build on it. Pure — no DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "apps/synthetic-data/synthetic-data-fundamentals"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./chrome-har": {
+      "source": "./src/chrome-har.ts",
+      "default": "./dist/chrome-har.js"
+    },
+    "./seeding": {
+      "source": "./src/seeding.ts",
+      "default": "./dist/seeding.js"
+    },
+    "./story": {
+      "source": "./src/story/index.ts",
+      "default": "./dist/story/index.js"
+    },
+    "./test-helpers": {
+      "source": "./src/test-helpers.ts",
+      "default": "./dist/test-helpers.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
+  }
+}

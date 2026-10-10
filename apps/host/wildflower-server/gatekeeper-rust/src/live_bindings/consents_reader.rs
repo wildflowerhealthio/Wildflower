@@ -1,0 +1,34 @@
+//! The consent bindings — where the store-generic [`ConsentReader`] /
+//! [`ConsentDecider`] capabilities meet the concrete `SqliteGatekeeperStore` and
+//! the `Arc<GatekeeperState>` router state. [`LiveConsentDecider`] is the
+//! variable-scope flavour ([`Capability`], built with the caller's [`Grant`]);
+//! [`LiveConsentReader`] is fixed-scope. See the [module docs](super) for the
+//! binding seam.
+
+use std::sync::Arc;
+
+use wildflowerhealthio_scopes::Scope;
+
+use super::state::GatekeeperState;
+use crate::db::SqliteGatekeeperStore;
+use crate::domain::capabilities::access::consents::consent_reader_scopes;
+use crate::domain::capabilities::{ConsentReader, FixedScopeCapability};
+use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::domain::token::VerifiedClaims;
+
+/// Read pending consent prompts.
+pub(crate) type LiveConsentReader = ConsentReader<SqliteGatekeeperStore>;
+
+impl FixedScopeCapability for LiveConsentReader {
+    type State = Arc<GatekeeperState>;
+    type Claims = VerifiedClaims;
+    type Error = GatekeeperError;
+
+    fn required_scopes() -> Vec<Scope> {
+        consent_reader_scopes()
+    }
+
+    fn build(state: Arc<GatekeeperState>) -> Self {
+        ConsentReader::new(state.store.clone())
+    }
+}

@@ -1,6 +1,6 @@
 import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
 
-import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
+import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 /**
  * The HAR-specific preview pipeline: given decoded responses and the enabled

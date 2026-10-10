@@ -25,14 +25,14 @@ per-resource include/edit) covers it.
 
 ## Layering
 
-Depends on `lifelabs-pdf-importer-core` (the settings type),
+Depends on `lifelabs-pdf-importer` (the settings type),
 `importer-fundamentals` (`SettingsPickerProps`), `effect`, and `react`. Never
 imports `importer-react`, a sibling format's UI package, or
-`slices/collector`.
+`apps/launcher/collector`.
 
 ## References
 
-- [lifelabs-pdf-importer-core AGENTS.md](../lifelabs-pdf-importer-core/AGENTS.md)
+- [lifelabs-pdf-importer AGENTS.md](../../../slices/importer/lifelabs-pdf-importer/AGENTS.md)
   — the binding this is the UI for.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
   registers this picker and mounts the general per-resource review body for

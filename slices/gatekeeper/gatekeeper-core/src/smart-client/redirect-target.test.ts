@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
@@ -7,38 +7,35 @@ import { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 describe('redirectUriForPage', () => {
   it('derives a page’s own directory, wherever the build is served from', () => {
     // Arrange / Act / Assert — the three addresses one build actually runs at.
-    expect(redirectUriForPage('https://wildflowerhealth.io/wildflower-server-docs/')).toBe(
-      'https://wildflowerhealth.io/wildflower-server-docs/'
+    expect(redirectUriForPage('https://wildflowerhealth.io/server-docs/')).toBe(
+      'https://wildflowerhealth.io/server-docs/'
     )
     expect(
-      redirectUriForPage(
-        'https://wildflowerhealthio.github.io/staging/pr-713/wildflower-server-docs/'
-      )
-    ).toBe('https://wildflowerhealthio.github.io/staging/pr-713/wildflower-server-docs/')
+      redirectUriForPage('https://wildflowerhealthio.github.io/staging/pr-713/server-docs/')
+    ).toBe('https://wildflowerhealthio.github.io/staging/pr-713/server-docs/')
     expect(redirectUriForPage('http://127.0.0.1:5192/')).toBe('http://127.0.0.1:5192/')
   })
 
   it('reduces a file within the directory to the directory itself', () => {
     // Arrange
-    const href = 'https://wildflowerhealth.io/wildflower-server-docs/index.html'
+    const href = 'https://wildflowerhealth.io/server-docs/index.html'
 
     // Act
     const redirectUri = redirectUriForPage(href)
 
     // Assert
-    expect(redirectUri).toBe('https://wildflowerhealth.io/wildflower-server-docs/')
+    expect(redirectUri).toBe('https://wildflowerhealth.io/server-docs/')
   })
 
   it('drops the console’s own query and fragment', () => {
     // Arrange — a reader deep-linked into a tag with a server already chosen.
-    const href =
-      'https://wildflowerhealth.io/wildflower-server-docs/?server=https%3A%2F%2Fx.test#tag/apps'
+    const href = 'https://wildflowerhealth.io/server-docs/?server=https%3A%2F%2Fx.test#tag/apps'
 
     // Act
     const redirectUri = redirectUriForPage(href)
 
     // Assert
-    expect(redirectUri).toBe('https://wildflowerhealth.io/wildflower-server-docs/')
+    expect(redirectUri).toBe('https://wildflowerhealth.io/server-docs/')
   })
 
   it('accepts plain http only on a loopback host', () => {
@@ -53,7 +50,7 @@ describe('redirectUriForPage', () => {
     expect(redirectUriForPage('file:///tmp/docs/index.html')).toBeUndefined()
     expect(redirectUriForPage('blob:https://example.test/abc')).toBeUndefined()
     expect(redirectUriForPage('javascript:alert(1)')).toBeUndefined()
-    expect(redirectUriForPage('/wildflower-server-docs/')).toBeUndefined()
+    expect(redirectUriForPage('/server-docs/')).toBeUndefined()
     expect(redirectUriForPage('')).toBeUndefined()
   })
 
@@ -226,19 +223,19 @@ describe('redirectUriForRoute', () => {
   })
 
   it('re-roots the route under a subpath base when one is given', () => {
-    // Arrange / Act / Assert — a copy published under `/app/` (or a PR preview's
-    // `/staging/pr-<n>/app/`) returns under its own served root — `/app/home` in
+    // Arrange / Act / Assert — a copy published under `/launcher/` (or a PR preview's
+    // `/staging/pr-<n>/launcher/`) returns under its own served root — `/launcher/home` in
     // production, not `<origin>/home` off the app.
-    expect(redirectUriForRoute('https://wildflowerhealth.io/app/', '/home', '/app/')).toBe(
-      'https://wildflowerhealth.io/app/home'
-    )
+    expect(
+      redirectUriForRoute('https://wildflowerhealth.io/launcher/', '/home', '/launcher/')
+    ).toBe('https://wildflowerhealth.io/launcher/home')
     expect(
       redirectUriForRoute(
-        'https://wildflowerhealthio.github.io/staging/pr-719/app/',
+        'https://wildflowerhealthio.github.io/staging/pr-719/launcher/',
         '/home',
-        '/staging/pr-719/app/'
+        '/staging/pr-719/launcher/'
       )
-    ).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/home')
+    ).toBe('https://wildflowerhealthio.github.io/staging/pr-719/launcher/home')
   })
 
   it('a missing or root base keeps the origin-rooted value', () => {
@@ -257,7 +254,7 @@ describe('redirectUriForRoute', () => {
     // 404 redirect restored — both re-root to the same `<base>home`.
     fc.assert(
       fc.property(securePageUrl, servedBase, fc.string(), (href, base, code) => {
-        // Arrange — `base` is an origin-absolute served directory (`/app/`, …).
+        // Arrange — `base` is an origin-absolute served directory (`/launcher/`, …).
         const started = new URL(base, href)
         const callback = new URL('home', started)
         callback.search = new URLSearchParams({ code }).toString()
@@ -274,9 +271,9 @@ describe('redirectUriForRoute', () => {
   it('a subpath base still cannot point the redirect off-origin', () => {
     // The origin screen runs before the base is applied, so neither the route
     // nor the base can move the token to another origin.
-    const here = 'https://wildflowerhealth.io/app/'
-    expect(redirectUriForRoute(here, '//evil.test/home', '/app/')).toBeUndefined()
-    expect(redirectUriForRoute(here, '/\\evil.test/home', '/app/')).toBeUndefined()
+    const here = 'https://wildflowerhealth.io/launcher/'
+    expect(redirectUriForRoute(here, '//evil.test/home', '/launcher/')).toBeUndefined()
+    expect(redirectUriForRoute(here, '/\\evil.test/home', '/launcher/')).toBeUndefined()
   })
 })
 
@@ -291,8 +288,8 @@ const securePageUrl = fc
   .map((url) => url.replace(/^http:/, 'https:'))
 
 /**
- * A served base directory: origin-absolute and slash-suffixed (`/`, `/app/`,
- * `/staging/pr-719/app/`), built from safe segments so `new URL(base, origin)`
+ * A served base directory: origin-absolute and slash-suffixed (`/`, `/launcher/`,
+ * `/staging/pr-719/launcher/`), built from safe segments so `new URL(base, origin)`
  * always parses — the shape `basenameOf(location.pathname)` yields.
  */
 const servedBase = fc

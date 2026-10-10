@@ -1,9 +1,9 @@
 import { flow, Option, pipe, Schema, String as Str, Struct } from 'effect'
 
-import { IdentifierAndReference } from 'fhir-r4/data-types'
-import type { Extension } from 'fhir-r4/data-types'
-import type { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
-import { Lift } from 'kitchen-sink'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { Extension } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { MedicationDispense, MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { Lift } from '@wildflowerhealthio/kitchen-sink'
 
 import { CarebookExtension, REXALL_SYSTEM_SOURCE } from '../carebook.ts'
 import { DecodedReference } from './decoded-r4.ts'

@@ -1,7 +1,7 @@
 import { Option } from 'effect'
 
-import type { FhirResource } from 'fhir-r4/resources'
-import type { SourceDescriptor } from 'http-extraction-fundamentals'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import type { PreviewedResource, PreviewedResponse } from './review.ts'
 

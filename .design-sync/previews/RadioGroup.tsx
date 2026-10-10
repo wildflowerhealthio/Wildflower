@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RadioGroup } from 'react-tundraish'
+import { RadioGroup } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * A named group via `legend` — the canonical use. The `radiogroup` the group

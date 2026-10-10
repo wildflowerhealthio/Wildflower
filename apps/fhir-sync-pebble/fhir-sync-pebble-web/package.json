@@ -1,0 +1,56 @@
+{
+  "name": "@wildflowerhealthio/fhir-sync-pebble-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/app-root.tsx"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp build",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
+    "test": "vp test --passWithNoTests"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-react": "workspace:*",
+    "@wildflowerhealthio/fhir-sync-pebble-core": "workspace:*",
+    "@wildflowerhealthio/pebble-configuration": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
+    "@wildflowerhealthio/scopes-react": "workspace:*",
+    "@wildflowerhealthio/smart-app-react": "workspace:*",
+    "@wildflowerhealthio/telemetry-core": "workspace:*",
+    "@wildflowerhealthio/telemetry-react": "workspace:*",
+    "@wildflowerhealthio/telemetry-web": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tundra-css": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "fhirclient": "^2.5.4",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

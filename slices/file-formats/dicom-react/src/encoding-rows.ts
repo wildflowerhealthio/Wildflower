@@ -18,7 +18,7 @@ import {
   TransferSyntax,
   type DicomHeader,
   type PixelDataDescription,
-} from 'dicom'
+} from '@wildflowerhealthio/dicom'
 
 /**
  * One labelled line. `value` is `undefined` when the tag is absent, which the

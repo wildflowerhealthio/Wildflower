@@ -1,1 +1,1 @@
-export { extractJson } from 'http-extraction-fundamentals'
+export { extractJson } from '@wildflowerhealthio/http-extraction-fundamentals'

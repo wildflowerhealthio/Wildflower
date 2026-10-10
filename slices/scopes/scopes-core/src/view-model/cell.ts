@@ -7,7 +7,7 @@
  * {@link Scope.MultiScope.partition}), so no cross-style conversion. A view-model
  * concern with no `scopes-rust` counterpart.
  *
- * Namespace module (`import { Cell } from 'scopes-core'`).
+ * Namespace module (`import { Cell } from '@wildflowerhealthio/scopes-core'`).
  */
 
 import { Scope } from '../domain/index.ts'

@@ -1,6 +1,10 @@
 import { Schema } from 'effect'
 
-import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
+import {
+  Bundle,
+  MedicationDispense,
+  MedicationRequest,
+} from '@wildflowerhealthio/fhir-stu3-as-r4/schemas'
 
 /**
  * The concrete carebook STU3 searchset Bundles the Rexall tunnel

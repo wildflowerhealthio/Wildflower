@@ -1,8 +1,12 @@
+import {
+  Bridge,
+  BridgeTransport,
+  type MessageHandler,
+} from '@wildflowerhealthio/effect-messaging-core'
+import * as TestPlatformAdapterLayer from '@wildflowerhealthio/effect-messaging-core/test'
+import { LoggingLayerTest, numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Deferred, Effect, Schema } from 'effect'
-import { Bridge, BridgeTransport, type MessageHandler } from 'effect-messaging-core'
-import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 import * as fc from 'fast-check'
-import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import { BrowserSnifferBridge } from './bridge.ts'
 import {

@@ -1,4 +1,7 @@
-import type { DicomHeader, PersonName } from 'dicom'
+import type { DicomHeader, PersonName } from '@wildflowerhealthio/dicom'
+import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
+import { ImagingStudy, Patient, ServiceRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 /**
  * Synthesize FHIR R4 resources from one study's parsed
  * {@link DicomHeader.Type}s: a `Patient`, optionally a `ServiceRequest` (when
@@ -16,16 +19,13 @@ import type { DicomHeader, PersonName } from 'dicom'
  * Ids are deterministic — the same tags produce the same ids — so re-importing
  * the same study overwrites rather than duplicates, and the order the files
  * were picked in changes nothing (see {@link compareInstances}). The
- * derivation mirrors `lifelabs-pdf-importer-core`'s wire-builder pattern: a
+ * derivation mirrors `lifelabs-pdf-importer`'s wire-builder pattern: a
  * `sourceId` from `joinIdComponents` through `fnv1a64`, validated through the
  * `fhir-r4` schemas' `Schema.decodeUnknown`.
  *
  * @packageDocumentation
  */
 import { Array as Arr, DateTime, Effect, Option, Order, type ParseResult, Schema } from 'effect'
-import { joinIdComponents } from 'fhir-r4/identity'
-import { ImagingStudy, Patient, ServiceRequest } from 'fhir-r4/resources'
-import { fnv1a64 } from 'kitchen-sink'
 
 import type { DicomSettings } from '../settings.ts'
 import { DICOM_SYSTEM } from '../source-system.ts'

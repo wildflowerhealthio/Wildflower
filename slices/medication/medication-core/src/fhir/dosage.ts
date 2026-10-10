@@ -1,5 +1,5 @@
-import type { Dosage, SimpleQuantity, Timing } from 'fhir-r4/data-types'
-import type { MedicationRequest } from 'fhir-r4/resources'
+import type { Dosage, SimpleQuantity, Timing } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 
 import { scaleToDailyTotal } from './timing.ts'
 

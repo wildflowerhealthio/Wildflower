@@ -4,7 +4,7 @@
  * apart from the picker component so the component file exports only components
  * (fast-refresh rule).
  */
-import type { Cell, Rows, Scope } from 'scopes-core'
+import type { Cell, Rows, Scope } from '@wildflowerhealthio/scopes-core'
 
 import type { PickerItem } from './permission-picker.tsx'
 

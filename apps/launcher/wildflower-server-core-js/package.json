@@ -1,0 +1,44 @@
+{
+  "name": "@wildflowerhealthio/wildflower-server-core-js",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The background server service's pure core: `BackgroundServerServiceBridge`, the Tauri host's `ServerServiceStatus` snapshot of the Wildflower server it runs and the page's `RestartServer`. No DOM, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "apps/launcher/wildflower-server-core-js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "effect": "catalog:"
+  }
+}

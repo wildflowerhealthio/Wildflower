@@ -1,11 +1,11 @@
+import { SmartAppRoot } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
-import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
 import { smartAppTelemetry, smartRegistration } from './config.ts'
 
 /**
- * The hybrid seam for `wildflower-importer`: the shared `SmartAppRoot` around
+ * The hybrid seam for `importer-web`: the shared `SmartAppRoot` around
  * `App`. `App` completes the SMART handshake as a query on the shell's one
  * `QueryClient`, then hands that same instance to its router context, so the
  * exchange and every app read/write share one cache.

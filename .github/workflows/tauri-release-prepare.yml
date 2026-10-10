@@ -2,10 +2,10 @@ name: Tauri Release — Prepare
 
 # Manually-dispatched. Enter a semver version (no leading `v`); the workflow
 # cuts a `release/v<version>` branch off the dispatched ref, bumps
-# `apps/wildflower-tauri/src-tauri/tauri.conf.json`, its `Cargo.toml`
+# `apps/host/host-app/src-tauri/tauri.conf.json`, its `Cargo.toml`
 # (plus `Cargo.lock`), the iOS `Info.plist`, the two Pebble apps'
 # `package.json` manifests, and rewrites
-# `apps/marketing-website/public/versions.json`,
+# `apps/wildflower-site/marketing-site-web/public/versions.json`,
 # then opens a PR back to the dispatched branch. A human reviews and merges
 # the PR the same way as any other change — no direct push to a protected
 # branch. Tagging and the platform builds happen in Tauri Release — Publish,
@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           version='${{ steps.vars.outputs.version }}'
-          conf='apps/wildflower-tauri/src-tauri/tauri.conf.json'
+          conf='apps/host/host-app/src-tauri/tauri.conf.json'
           tmp="$(mktemp)"
           jq --arg v "$version" '.version = $v' "$conf" > "$tmp"
           mv "$tmp" "$conf"
@@ -107,22 +107,22 @@ jobs:
         run: |
           set -euo pipefail
           version='${{ steps.vars.outputs.version }}'
-          # `--package` scopes the bump to wildflower-tauri; Cargo.lock is
+          # `--package` scopes the bump to host-app; Cargo.lock is
           # updated in place so the release-branch commit stays
           # lockfile-consistent.
-          cargo set-version --package wildflower-tauri "$version"
+          cargo set-version --package host-app "$version"
 
       - name: Bump iOS Info.plist version
         run: |
           set -euo pipefail
           version='${{ steps.vars.outputs.version }}'
-          plist='apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist'
+          plist='apps/host/host-app/src-tauri/gen/apple/host-app_iOS/Info.plist'
           sed -i '/<key>CFBundleShortVersionString<\/key>/{n;s/<string>[^<]*<\/string>/<string>'"$version"'<\/string>/;}' "$plist"
           sed -i '/<key>CFBundleVersion<\/key>/{n;s/<string>[^<]*<\/string>/<string>'"$version"'<\/string>/;}' "$plist"
 
       - name: Bump Pebble app versions
         id: pebble
-        # `apps/watch-lifts` and `apps/fhir-sync-pebble` ship on the same
+        # `apps/watch-lifts/watch-lifts-watchapp` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp` ship on the same
         # release: Publish builds their .pbws from the tag. `pebble build`
         # takes MAJOR.MINOR.PATCH only, with MAJOR and MINOR in 0-255, and
         # fails on a prerelease suffix (`1.2.3-beta.1` is four dot-separated
@@ -139,8 +139,7 @@ jobs:
             echo "::error::Pebble apps need a major and minor version in 0-255; $version has $major.$minor."
             exit 1
           fi
-          for app in watch-lifts fhir-sync-pebble; do
-            manifest="apps/$app/package.json"
+          for manifest in apps/watch-lifts/watch-lifts-watchapp/package.json apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json; do
             tmp="$(mktemp)"
             jq --arg v "$pebble_version" '.version = $v' "$manifest" > "$tmp"
             mv "$tmp" "$manifest"
@@ -165,7 +164,7 @@ jobs:
             --arg releaseUrl "https://github.com/$repo/releases/tag/$tag" \
             --arg macos "$download/Wildflower_${version}_universal.dmg" \
             --arg windows "$download/Wildflower_${version}_x64_en-US.msi" \
-            --arg linux "$download/wildflower-tauri_${version}_amd64.AppImage" \
+            --arg linux "$download/host-app_${version}_amd64.AppImage" \
             '{
               version: $version,
               tag: $tag,
@@ -175,14 +174,14 @@ jobs:
                 "windows-x86_64":   { url: $windows },
                 "linux-x86_64":     { url: $linux }
               }
-            }' > apps/marketing-website/public/versions.json
+            }' > apps/wildflower-site/marketing-site-web/public/versions.json
 
       - name: Generate changelog and prepend to CHANGELOG.md
         # Every commit since the previous `v*` tag (or the whole history on the
         # very first release) is listed as `- <subject> (<short sha>)` under a
         # `## v<version> — <YYYY-MM-DD>` heading, inserted right below the
         # `<!-- release-notes-start -->` marker in
-        # `apps/wildflower-tauri/CHANGELOG.md`. Merge commits are excluded so
+        # `apps/host/host-app/CHANGELOG.md`. Merge commits are excluded so
         # the list matches what a reviewer sees on the PR without duplicating
         # the "Merge pull request #N" noise. The section becomes the body of
         # the GitHub Release once the release PR merges — see
@@ -190,7 +189,7 @@ jobs:
         run: |
           set -euo pipefail
           tag='${{ steps.vars.outputs.tag }}'
-          changelog='apps/wildflower-tauri/CHANGELOG.md'
+          changelog='apps/host/host-app/CHANGELOG.md'
           date="$(date -u +%Y-%m-%d)"
           prev_tag="$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)"
           notes="$(mktemp)"
@@ -246,8 +245,8 @@ jobs:
           set -euo pipefail
           vp install
           vp fmt \
-            apps/wildflower-tauri/CHANGELOG.md \
-            apps/marketing-website/public/versions.json
+            apps/host/host-app/CHANGELOG.md \
+            apps/wildflower-site/marketing-site-web/public/versions.json
           vp run lint:docs
 
       - name: Create release branch, commit and push
@@ -259,14 +258,14 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git checkout -b "$branch"
           git add \
-            apps/wildflower-tauri/src-tauri/tauri.conf.json \
-            apps/wildflower-tauri/src-tauri/Cargo.toml \
+            apps/host/host-app/src-tauri/tauri.conf.json \
+            apps/host/host-app/src-tauri/Cargo.toml \
             Cargo.lock \
-            apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist \
-            apps/watch-lifts/package.json \
-            apps/fhir-sync-pebble/package.json \
-            apps/marketing-website/public/versions.json \
-            apps/wildflower-tauri/CHANGELOG.md
+            apps/host/host-app/src-tauri/gen/apple/host-app_iOS/Info.plist \
+            apps/watch-lifts/watch-lifts-watchapp/package.json \
+            apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json \
+            apps/wildflower-site/marketing-site-web/public/versions.json \
+            apps/host/host-app/CHANGELOG.md
           if git diff --cached --quiet; then
             echo "::error::No version-bump changes to commit. Was the workspace already at $tag?"
             exit 1
@@ -295,12 +294,12 @@ jobs:
           {
             printf 'Version bump for **%s**.\n\n' "$tag"
             printf 'Files updated:\n'
-            printf -- '- `apps/wildflower-tauri/src-tauri/tauri.conf.json`\n'
-            printf -- '- `apps/wildflower-tauri/src-tauri/Cargo.toml` (+ `Cargo.lock`)\n'
-            printf -- '- `apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist`\n'
-            printf -- '- `apps/watch-lifts/package.json` and `apps/fhir-sync-pebble/package.json` (Pebble version `%s`)\n' "$pebble_version"
-            printf -- '- `apps/marketing-website/public/versions.json`\n'
-            printf -- '- `apps/wildflower-tauri/CHANGELOG.md` (prepended with the section below)\n\n'
+            printf -- '- `apps/host/host-app/src-tauri/tauri.conf.json`\n'
+            printf -- '- `apps/host/host-app/src-tauri/Cargo.toml` (+ `Cargo.lock`)\n'
+            printf -- '- `apps/host/host-app/src-tauri/gen/apple/host-app_iOS/Info.plist`\n'
+            printf -- '- `apps/watch-lifts/watch-lifts-watchapp/package.json` and `apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json` (Pebble version `%s`)\n' "$pebble_version"
+            printf -- '- `apps/wildflower-site/marketing-site-web/public/versions.json`\n'
+            printf -- '- `apps/host/host-app/CHANGELOG.md` (prepended with the section below)\n\n'
             printf '## Changes since previous release\n\n'
             cat /tmp/release-commits.md
             printf '\n---\n\n'

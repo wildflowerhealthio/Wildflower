@@ -60,6 +60,10 @@ jobs:
               - '**/*.mjs'
               - '**/package.json'
               - '**/tsconfig*.json'
+              # scripts/package-graph.test.ts checks the crates' dependencies
+              # too, so a manifest-only Rust change must still run it.
+              - 'Cargo.toml'
+              - '**/Cargo.toml'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - '.github/workflows/ci.yml'
@@ -79,19 +83,20 @@ jobs:
               # (run as part of the workspace test suite) verifies each still
               # matches what utoipa emits from the live axum routes; a
               # snapshot-only regen (no *.rs change) must still trigger that
-              # check, so match the generated JSON.
-              - 'slices/**/*-rust/openapi/*.openapi.json'
-              # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri-rust
+              # check, so match the generated JSON. Snapshots sit in `slices/`
+              # and in `apps/host/wildflower-server/`.
+              - '**/*-rust/openapi/*.openapi.json'
+              # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri
               # `include_str!`s a JS bundle generated from this TS package, and
               # the lockfiles affect that bootstrap build — a change to either
               # can break the Tauri crates' compile/tests.
-              - 'slices/browser-sniffer/browser-sniffer-tauri/**'
+              - 'slices/browser-sniffer/browser-sniffer-tauri-js/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
-              # wildflower-relay's signature test verifies the request the
+              # wildflowerhealthio-relay-server's signature test verifies the request the
               # admin UI's TypeScript signer committed here. (The UI itself
               # is stubbed for the Rust job, so its sources don't count.)
-              - 'slices/relay/relay-core/src/signing/fixtures/*.json'
+              - 'apps/relay/relay-core-js/src/signing/fixtures/*.json'
               # What the job runs, and the stub placeholders it compiles against.
               - 'scripts/checks/rust.sh'
               - 'scripts/ci/stub-embedded-bundles.sh'
@@ -102,12 +107,11 @@ jobs:
             # change runs nothing else: ci-typescript.yml runs the same
             # host-side tests, but only when TS/JS changes.
             pebble:
+              # Each app's folder holds its watchapp and the core its
+              # PebbleKit JS bundles into the .pbw, which the host-side tests
+              # check the watch's bytes against.
               - 'apps/watch-lifts/**'
               - 'apps/fhir-sync-pebble/**'
-              # Each app's PebbleKit JS bundles its core into the .pbw, and
-              # the host-side tests check the watch's bytes against it.
-              - 'slices/fhir-sync-pebble/**'
-              - 'slices/watch-lifts/**'
               # The PebbleKit JS build tooling and the App Configuration
               # hand-off both apps' PebbleKit JS and settings pages build on.
               - 'global/pebble/**'
@@ -121,12 +125,16 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/workflows/lint-markdown.yml'
             api-sync:
-              # Any slice's Effect HttpApi definition + its TS drift test.
-              - 'slices/**/http-api-definition/**'
+              # Any Effect HttpApi definition + its TS drift test, in a slice
+              # or folded into an app (`apps/launcher/`).
+              - '**/http-api-definition/**'
               # The committed snapshots the drift test diffs against. A Rust
               # route change instead lands as *.rs and is gated by
               # ci-rust.yml's Rust snapshot half.
-              - 'slices/**/*-rust/openapi/*.openapi.json'
+              - '**/*-rust/openapi/*.openapi.json'
+              # The FHIR R4 snapshot, which `fhir-r4`'s drift test writes from
+              # the TS `HttpApi` (HFS serves the routes; no Rust test emits it).
+              - 'slices/fhir/fhir-r4/openapi/*.openapi.json'
               # The shared wire-shape engine + the spec-drift test factory.
               - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
               - '.github/workflows/ci.yml'

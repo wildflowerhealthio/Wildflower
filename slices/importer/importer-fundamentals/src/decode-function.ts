@@ -22,9 +22,9 @@
  * @packageDocumentation
  */
 
+import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ParseResult } from 'effect'
 import { Array as Arr, Effect, Either, Schema } from 'effect'
-import type { DocumentReference } from 'fhir-r4/resources'
 
 import * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'

@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
+import type { GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
 import { Effect, Layer, pipe } from 'effect'
-import type { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'

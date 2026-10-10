@@ -1,0 +1,44 @@
+{
+  "name": "@wildflowerhealthio/servers-core-js",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The base's pure core: the Tauri commands it calls, as Effects over a `TauriInvoke` port, with Effect Schema decoders for their answers; and a server's `/health` report, read over `@effect/platform`'s `HttpClient`. No DOM, no React, no `@tauri-apps/api`.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "apps/host/servers/servers-core-js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "effect": "catalog:"
+  }
+}

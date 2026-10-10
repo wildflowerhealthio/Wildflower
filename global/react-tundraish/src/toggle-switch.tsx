@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { ChangeEvent, JSX, ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './toggle-switch.module.css'
 

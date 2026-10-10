@@ -94,7 +94,7 @@ interface SignInEnvironment {
   readonly store: PendingStore
   /**
    * The `sessionStorage` key the pending record lives at. Namespace it with the
-   * app's own name (`wildflower-server-docs.pending-authorization`): these pages
+   * app's own name (`server-docs-web.pending-authorization`): these pages
    * share an origin, so a key chosen here would be one key for all of them, and
    * one tab's return leg could consume a record another tab was waiting on.
    */

@@ -1,6 +1,6 @@
 import { Match } from 'effect'
 
-import { Document } from 'positioned-text'
+import { Document } from '@wildflowerhealthio/positioned-text'
 
 /**
  * One user-entered literal substring to mask in the extracted text.

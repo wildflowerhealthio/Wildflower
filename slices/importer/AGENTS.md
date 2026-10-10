@@ -15,6 +15,11 @@ The slice mirrors the collector slice's shape: a resource-agnostic
 pure **core** (the registry and the batch machinery) and a **shell**. See the [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
 before adding a format.
 
+The Importer web app that mounts the shell is
+[`apps/importer-web`](../../apps/importer-web/AGENTS.md), published at
+<https://wildflowerhealth.io/importer/>. The Synthetic Data Loader proves its
+generators through the same `importer-fundamentals` and format bindings.
+
 Part of the offline FHIR HAR importer epic (#489).
 
 ## Package roles
@@ -51,7 +56,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `HarSettingsPicker`, the whole-import kind toggles grouped by source. The
   format has no review UI of its own; the shell's generalized sectioned
   review covers it.
-- **[`lifelabs-pdf-importer-core`](./lifelabs-pdf-importer-core/AGENTS.md)** (the
+- **[`lifelabs-pdf-importer`](./lifelabs-pdf-importer/AGENTS.md)** (the
   LifeLabs PDF binding) — `lifeLabsPdfImporter` for format
   `'lifelabs-pdf'`: takes a picked LifeLabs report PDF's raw bytes end-to-end,
   running `positioned-text-web`'s extraction seam (the same one the PDF
@@ -93,7 +98,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   anonymizer slice's shell takes through its `serverSource` slot.
 
 A host that provides the FHIR write client and the authed runner sits above
-`importer-react` and mounts `ImporterScreen` — the Importer web app pairs it
+`importer-react` and mounts `ImporterScreen` — the Importer web app
+([apps/importer-web](../../apps/importer-web/AGENTS.md)) pairs it
 with the anonymizer slice's `AnonymizerScreen`
 ([slices/anonymizer](../anonymizer/AGENTS.md), home of the HAR anonymizer's
 engine and panel) under one Import | Anonymize tabstrip.
@@ -110,7 +116,7 @@ assembly belongs to none of them:
 - **`fhir-r4-source`** (same slice) owns the FHIR R4 source descriptor
   (`fhirR4Source`, its `responseKinds` pre-adopted) but knows nothing about HAR
   or about a registry of formats.
-- **`web-trace-core`** (in `slices/web-trace`) owns the HAR codec but is
+- **`web-trace-core`** owns the HAR codec but is
   deliberately consumer-agnostic.
 
 `har-importer-core` is the one place those three meet: HAR text in, a per-URL
@@ -177,7 +183,7 @@ sits above `http-extraction` and below every binding, exactly as
   `importer-fundamentals` — plus `http-extraction-fundamentals`
   (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),
   `importer-fundamentals` (the contract), and `fhir-r4` (resources). It
-  re-derives none of them. Nothing here imports from `slices/collector`,
+  re-derives none of them. Nothing here imports from `apps/launcher/collector`,
   in code or in concept.
 - **A future file format gets its own binding, not a widened HAR one.** A CSV
   or another imaging import decodes a _document_: its decode belongs in a pure dialect package
@@ -206,7 +212,7 @@ sits above `http-extraction` and below every binding, exactly as
   registry's React half, and the pick-review-confirm flow.
 - [slices/http-extraction/AGENTS.md](../http-extraction/AGENTS.md) — the
   vocabulary and source packages the HAR importer recognizes and extracts with.
-- [web-trace-core AGENTS.md](../web-trace/web-trace-core/AGENTS.md) — the HAR
+- [web-trace-core AGENTS.md](../web-trace-core/AGENTS.md) — the HAR
   codec (the `HttpArchive` namespace) and the coding constants the HAR source
   file shares an axis with.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

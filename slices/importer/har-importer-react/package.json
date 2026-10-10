@@ -1,12 +1,12 @@
 {
-  "name": "har-importer-react",
+  "name": "@wildflowerhealthio/har-importer-react",
   "version": "0.0.0",
   "private": true,
   "description": "The HAR format's UI for the importer slice: the HarSettingsPicker's whole-import response-kind toggles, grouped by source. Presentation and interaction only — the shell re-decodes through the format's importer when the settings change.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
     "directory": "slices/importer/har-importer-react"
   },
   "files": [
@@ -32,8 +32,8 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "har-importer-core": "workspace:*",
-    "importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -42,8 +42,8 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "har-importer-core": "workspace:*",
-    "importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "react": "catalog:"
   }
 }

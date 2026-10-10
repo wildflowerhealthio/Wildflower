@@ -1,4 +1,4 @@
-import { GrantDraft } from 'scopes-core'
+import { GrantDraft } from '@wildflowerhealthio/scopes-core'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { exclusionStatementsFrom } from './exclusion-statements.ts'

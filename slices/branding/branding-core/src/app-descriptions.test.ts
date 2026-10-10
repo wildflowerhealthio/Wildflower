@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -12,15 +12,15 @@ import { MARKETING_ANCHORS } from './nav.ts'
 import { SECTION_PATHS, SITE_ORIGIN, siteRootFor } from './site.ts'
 
 /**
- * Every described app: the homepage's SMART apps, and the Synthetic Data Loader
- * and the owner UI, which have a landing page but no homepage row.
+ * Every described app: the homepage's SMART apps, and the launcher, which has a
+ * landing page but no homepage row.
  */
-const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'syntheticData', 'app']
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'launcher']
 
 const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app but the data loader and the owner UI exactly once, and nothing else', () => {
+  it('should list every described app but the launcher exactly once, and nothing else', () => {
     expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 
@@ -70,7 +70,7 @@ describe('APP_DESCRIPTIONS', () => {
 })
 
 describe('smartAppLaunchPages', () => {
-  it('should list the six first-party SMART apps, at their roots on the canonical site', () => {
+  it('should list the five first-party SMART apps, at their roots on the canonical site', () => {
     // Act
     const launchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
 
@@ -78,19 +78,18 @@ describe('smartAppLaunchPages', () => {
     expect(launchPages).toStrictEqual([
       {
         app: 'medications',
-        launchPageUrl: 'https://wildflowerhealth.io/medications-app/',
+        launchPageUrl: 'https://wildflowerhealth.io/medications/',
       },
-      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer-app/' },
-      { app: 'webTrace', launchPageUrl: 'https://wildflowerhealth.io/web-trace-app/' },
+      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer/' },
       {
         app: 'healthViewer',
-        launchPageUrl: 'https://wildflowerhealth.io/health-viewer-app/',
+        launchPageUrl: 'https://wildflowerhealth.io/health-viewer/',
       },
       {
         app: 'syntheticData',
-        launchPageUrl: 'https://wildflowerhealth.io/synthetic-data-app/',
+        launchPageUrl: 'https://wildflowerhealth.io/synthetic-data/',
       },
-      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting-app/' },
+      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting/' },
     ])
   })
 
@@ -110,9 +109,9 @@ describe('smartAppLaunchPages', () => {
     )
   })
 
-  it('should leave out the owner UI and FHIR Sync for Pebble, which no URL launches', () => {
+  it('should leave out the launcher and FHIR Sync for Pebble, which no URL launches', () => {
     const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
-    expect(listedApps).not.toContain('app')
+    expect(listedApps).not.toContain('launcher')
     expect(listedApps).not.toContain('fhirSyncPebble')
   })
 
@@ -120,13 +119,13 @@ describe('smartAppLaunchPages', () => {
     fc.assert(
       fc.property(
         fc.constantFrom(
-          'https://wildflowerhealth.io/app/',
-          'https://wildflowerhealthio.github.io/staging/pr-7/app/',
+          'https://wildflowerhealth.io/launcher/',
+          'https://wildflowerhealthio.github.io/staging/pr-7/launcher/',
           'http://localhost:5173/'
         ),
-        (ownerUiBaseUrl) => {
+        (launcherBaseUrl) => {
           // Arrange
-          const siteRoot = siteRootFor('app', ownerUiBaseUrl)
+          const siteRoot = siteRootFor('launcher', launcherBaseUrl)
 
           // Act
           const launchPages = smartAppLaunchPages(siteRoot)

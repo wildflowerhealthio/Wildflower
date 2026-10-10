@@ -67,7 +67,8 @@ consumer slices.
   block, under a cornerstone-rendered image pane) and the `renderInstance`
   seam. Depends on `dicom` for tag parsing, `@cornerstonejs/core` and
   `@cornerstonejs/dicom-image-loader` for image rendering. The `-react` adapter
-  for the `dicom` parser, consumed by `dicom-importer-react`.
+  for the `dicom` parser, consumed by `dicom-importer-react` alone (in
+  `slices/importer`); it stays in this slice.
 
 The deferred positioned-text preview viewer (React `RunsView`) would join as a
 `positioned-text-react` when it is extracted from `pdf-anonymizer-react`.
@@ -89,6 +90,6 @@ The deferred positioned-text preview viewer (React `RunsView`) would join as a
   why `dicom-react`'s image pane needs a resize observer, which transfer
   syntaxes decode where, and what a host app's build must configure.
 - [slices/importer AGENTS.md](../importer/AGENTS.md) — the parse-side consumer.
-- [slices/anonymizer AGENTS.md](../anonymizer/AGENTS.md) — the redact-side
+- [slices/anonymizer AGENTS.md](../../slices/anonymizer/AGENTS.md) — the redact-side
   consumer whose sibling shape this slice sits beneath.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

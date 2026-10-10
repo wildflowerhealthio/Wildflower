@@ -1,12 +1,12 @@
-import type { Effect } from 'effect'
 import type {
   Bridge,
   BridgeTransport,
   HandlerCoordinator,
   MessageHandler,
-} from 'effect-messaging-core'
+} from '@wildflowerhealthio/effect-messaging-core'
+import { useContextOrThrow } from '@wildflowerhealthio/react-kitchen-sink'
+import type { Effect } from 'effect'
 import { createContext, useMemo } from 'react'
-import { useContextOrThrow } from 'react-kitchen-sink'
 
 const HandlerCoordinatorContext = createContext<HandlerCoordinator | null>(null)
 HandlerCoordinatorContext.displayName = 'HandlerCoordinatorContext'
@@ -69,5 +69,8 @@ export { HandlerCoordinatorContext, makeUseSliceRegister, useHandlerCoordinator 
 // `BridgeHandlerRecord` and `HandlerCoordinator` now live in
 // effect-messaging-core (the contract is platform-agnostic); re-exported
 // here so existing React consumers keep importing them from this module.
-export type { BridgeHandlerRecord, HandlerCoordinator } from 'effect-messaging-core'
+export type {
+  BridgeHandlerRecord,
+  HandlerCoordinator,
+} from '@wildflowerhealthio/effect-messaging-core'
 export type { SliceRegister }

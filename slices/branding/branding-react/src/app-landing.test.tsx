@@ -5,16 +5,16 @@ import {
   anchorHref,
   fromApp,
   type AppSectionId,
-} from 'branding-core'
+} from '@wildflowerhealthio/branding-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { AppLanding } from './app-landing.tsx'
 
-// The homepage's SMART apps, and the owner UI, which has a landing page but no
+// The homepage's SMART apps, and the launcher, which has a landing page but no
 // homepage row.
-const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS, 'app')
+const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS, 'launcher')
 
 afterEach(() => {
   cleanup()

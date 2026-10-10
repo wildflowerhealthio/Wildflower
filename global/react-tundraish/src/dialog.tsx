@@ -1,3 +1,4 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import {
   useId,
   useLayoutEffect,
@@ -6,7 +7,6 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './dialog.module.css'
 

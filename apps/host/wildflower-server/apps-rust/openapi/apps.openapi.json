@@ -1,0 +1,540 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Apps Catalogue API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/apps": {
+      "get": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`GET /apps` — the full registry in display order. Scope-gated on\n`wildflower/Apps.r` through [`Scoped<LiveAppsReader>`]; the host wraps the router\nwith the bearer gate that inserts the caller's scope claims.",
+        "operationId": "handle_list_apps",
+        "responses": {
+          "200": {
+            "description": "Every app in the registry, ordered by position",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppRegistration"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`POST /apps` — create an app. Scope-gated on `wildflower/Apps.c` through\n[`Scoped<LiveAppsCreator>`].",
+        "operationId": "handle_create_app",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The created app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRegistration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/apps/{id}": {
+      "get": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`GET /apps/{id}` — one app. Scope-gated on `wildflower/Apps.r` through\n[`Scoped<LiveAppsReader>`].",
+        "operationId": "handle_get_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRegistration"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`PUT /apps/{id}` — replace an app's content. Scope-gated on\n`wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`].",
+        "operationId": "handle_update_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRegistration"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty name (`InvalidName`) or bad url (`InvalidUrl`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidFieldBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Launch"
+        ],
+        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). Every launcher\ndrives this through the typed client so the owner bearer rides along.\nScope-gated on the `wildflower/launch` umbrella through\n[`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant\nto cover its OAuth client's scopes (checked here). See the module docs for the\nresolve-then-dispatch flow and the auth posture.",
+        "operationId": "handle_launch_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resolved launch URL, for a forwarded caller's page to navigate to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchTargetBody"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Host sink opened the launch URL for a loopback caller"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "`DELETE /apps/{id}` — remove an app. Scope-gated on `wildflower/Apps.d`\nthrough [`Scoped<LiveAppsDeleter>`].",
+        "operationId": "handle_delete_app",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "App id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The app was removed"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.d`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No app has this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/home-screen": {
+      "put": {
+        "tags": [
+          "Home screen"
+        ],
+        "summary": "`PUT /home-screen` — atomically reorder + enable/disable every app. Scope-gated\non `wildflower/Apps.u` through [`Scoped<LiveAppsEditor>`]. The body must list\n**every** registry app exactly once (its order is the new display order); a\nmissing / duplicated / unknown id is `400 InvalidHomeScreen`. Returns the\nresulting catalogue in its new order.",
+        "operationId": "handle_replace_home_screen",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HomeScreenEntry"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The whole registry in its new order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppRegistration"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body wasn't an exact permutation of the registry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidHomeScreenBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Apps.u`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppBody": {
+        "type": "object",
+        "description": "The JSON body shared by `POST /apps` (create) and `PUT /apps/{id}` (content\nreplace): an app's editable content. `url` is read as a raw string so a bad\nvalue yields the structured `400 InvalidUrl` rather than a generic deserialize\nerror. Matches the TS `AppBodySchema`.",
+        "required": [
+          "name",
+          "url",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "The launch URL template (`{origin}` / `{launch}` tokens), validated to\n`400 InvalidUrl` through the write-side [`AppUrl`](crate::domain::AppUrl)\nfilter."
+          },
+          "requiresTunnel": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppNotFoundBody": {
+        "type": "object",
+        "description": "Wire shape for `AppNotFound`. Matches the TS `AppNotFoundSchema`.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "AppRegistration": {
+        "type": "object",
+        "description": "A registration row — one app's whole record. Diesel maps it to/from\n`app_registrations` (the [`AppUrlColumn`] mapping on `url`); serde projects it\nonto the wire item (`position` omitted, `client_id` → `isSmart`).",
+        "required": [
+          "id",
+          "onHomescreen",
+          "name",
+          "url",
+          "isSmart",
+          "requiresTunnel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable id, globally unique (the registration PK)."
+          },
+          "onHomescreen": {
+            "type": "boolean",
+            "description": "Whether the app's tile shows on the home screen. Curated atomically by\n`PUT /home-screen` (see [`replace_placements`](super::AppsStore::replace_placements))."
+          },
+          "name": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`None` means \"no subtitle\"; the wire omits an absent one."
+          },
+          "url": {
+            "type": "string",
+            "description": "The launch URL template: `{origin}` is replaced with the server's public\norigin at launch time, `{launch}` with a fresh single-use SMART launch for\na SMART app, or nothing for a non-SMART one (see [`AppUrl`]). It\nis origin-independent, never a request-resolved redirect target — see\n`docs/Apps/Explanation.md`. Serialized as its canonical string."
+          },
+          "isSmart": {
+            "type": "boolean",
+            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `isSmart` boolean."
+          },
+          "requiresTunnel": {
+            "type": "boolean",
+            "description": "The app's Tunnel pill. It has no effect on launch (every launch resolves\n`{origin}` to the server's public origin); #967 removes it."
+          }
+        }
+      },
+      "HomeScreenEntry": {
+        "type": "object",
+        "description": "One entry in the `PUT /home-screen` body: an app id and its desired\n`onHomescreen` flag. The entry's index in the array is its new display\n`position`. Matches the TS `HomeScreenEntrySchema`.",
+        "required": [
+          "id",
+          "onHomescreen"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "onHomescreen": {
+            "type": "boolean"
+          }
+        }
+      },
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
+          }
+        }
+      },
+      "InvalidFieldBody": {
+        "type": "object",
+        "description": "Wire shape for a 400 carrying a discriminant + human-readable reason. Reused\nfor `InvalidUrl` (a bad app URL) and `InvalidName` (an empty name) — both\nwrite-side field validations the client renders inline. The `error` discriminant lets a client\ntell them apart.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "InvalidHomeScreenBody": {
+        "type": "object",
+        "description": "Wire shape for a 400 `InvalidHomeScreen` — the `PUT /home-screen` body wasn't\nan exact permutation of the registry. Matches the TS `InvalidHomeScreenSchema`.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "LaunchTargetBody": {
+        "type": "object",
+        "description": "Wire shape of a forwarded launch's `200`: the resolved launch URL, for the\ncaller's page to navigate to.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The absolute launch URL (the app's rendered template)."
+          }
+        }
+      }
+    }
+  }
+}

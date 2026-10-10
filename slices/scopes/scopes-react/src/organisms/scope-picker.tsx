@@ -1,3 +1,12 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { Chip } from '@wildflowerhealthio/react-tundraish'
+import {
+  GrantDraft,
+  Rows,
+  Scope,
+  ResourceSection,
+  ScopeRequest,
+} from '@wildflowerhealthio/scopes-core'
 /**
  * The Wildflower scope picker — the whole grant-editing surface over one
  * {@link ScopeRequest.ScopeRequest}: the plain-language statement list and the
@@ -10,9 +19,6 @@
 import { Equal } from 'effect'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { Chip } from 'react-tundraish'
-import { GrantDraft, Rows, Scope, ResourceSection, ScopeRequest } from 'scopes-core'
 
 import { AddRuleButton, type AddRuleOption } from '../atoms/add-rule-button.tsx'
 import { ExclusionRow } from '../atoms/exclusion-row.tsx'

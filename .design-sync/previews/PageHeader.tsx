@@ -1,4 +1,4 @@
-import { PageHeader } from 'react-tundraish'
+import { PageHeader } from '@wildflowerhealthio/react-tundraish'
 
 /** Top-level surface: just a title, no back affordance (a tab destination). */
 export const TopLevel = () => (

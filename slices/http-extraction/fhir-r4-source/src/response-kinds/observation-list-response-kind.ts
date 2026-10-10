@@ -1,7 +1,7 @@
+import { Bundle } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import { HttpResponseKind, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Schema } from 'effect'
-import { Bundle } from 'fhir-r4/data-types'
-import { Observation } from 'fhir-r4/resources'
-import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 import { recognizeFhirRoot } from '../recognize-fhir-root.ts'

@@ -1,5 +1,5 @@
+import type { Bridge, BridgeTransport } from '@wildflowerhealthio/effect-messaging-core'
 import { Effect } from 'effect'
-import type { Bridge, BridgeTransport } from 'effect-messaging-core'
 
 interface RecordingSender<B extends ReadonlyArray<Bridge.AnyBridge>, Dir extends Bridge.Direction> {
   readonly sender: BridgeTransport.MessageSender<B, Dir>

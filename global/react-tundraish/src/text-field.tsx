@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { useId, type ChangeEvent, type JSX, type ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { Field, FieldDescription } from './field.tsx'
 import styles from './text-field.module.css'
