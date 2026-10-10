@@ -73,7 +73,7 @@ catalog:
   # side-by-side, and the mismatched `Client` types break
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-web).
   '@sentry/opentelemetry': 10.74.0
-  '@sentry/react': 10.74.0
+  '@sentry/react': 11.5.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the
   # static server-docs console at /server-docs ships self-contained.
   '@scalar/api-reference': ^1.72.1
