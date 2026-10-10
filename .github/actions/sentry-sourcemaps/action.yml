@@ -61,7 +61,7 @@ runs:
     # its own app's debug IDs.
     - name: Create Sentry release and upload source maps
       if: inputs.auth-token != '' && steps.projects.outputs.ids != ''
-      uses: getsentry/action-release@v3.7.0
+      uses: getsentry/action-release@v3.7.1
       env:
         SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
         SENTRY_ORG: ${{ inputs.org }}
