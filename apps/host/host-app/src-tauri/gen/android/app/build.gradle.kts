@@ -13,6 +13,19 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// The upload key a release build is signed with, in the keystore.properties
+// format Tauri's Android signing guide uses: storeFile, keyAlias, and one
+// password for both the store and the key. CI writes the file from the
+// `android-play` environment and .gitignore keeps it out of the repository.
+// Without it the release build is unsigned, so a local `tauri android build`
+// needs no key. See docs/Rust/Android Release Signing Explanation.md.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     compileSdk = 36
     namespace = "io.wildflowerhealth.hostapp"
@@ -23,6 +36,16 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("password")
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("password")
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -37,6 +60,13 @@ android {
             }
         }
         getByName("release") {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+            // Packs the Rust library's symbol table into the bundle, which
+            // Play reads to symbolicate native crashes and ANRs. The release
+            // profile carries no debug info, so SYMBOL_TABLE is all there is.
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
