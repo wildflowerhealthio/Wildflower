@@ -1,13 +1,19 @@
 import type { JSX } from 'react'
 
-import { PolicyDataCard, PolicyPage, PolicySection } from '../components/policy-page.tsx'
+import {
+  PolicyDataCard,
+  PolicyDataGroup,
+  PolicyPage,
+  PolicySection,
+} from '../components/policy-page.tsx'
 
 const EMAIL = 'ruthmarks151@gmail.com'
 
 /**
  * `/privacy-policy/` — what the website, the apps, and the relay collect, where
- * it goes, and who else sees it. Structured to be scanned: a summary, one card
- * per kind of data with the same four facts, then the services involved. Every
+ * it goes, and who else sees it. Structured to be scanned: a summary, then one
+ * card per kind of data with the same four facts, grouped by the app it belongs
+ * to, then the services involved. Every
  * claim here has to stay true of the code (the telemetry consent copy in
  * `branding-core`, the relay's `tunnels` table), so change this page with them.
  */
@@ -44,67 +50,96 @@ function PrivacyPolicy(): JSX.Element {
       </PolicySection>
 
       <PolicySection title="What is kept, and where">
-        <PolicyDataCard
-          title="Health records you connect to"
-          where="On the FHIR server you connect the web apps to. Your browser holds them only while an app is open."
-          when="Whenever you use a web app. Records an app writes, such as Lifting's workouts, are saved to that server."
-          keptFor="Whatever that server's own policies say."
-          delete="On that server, or by asking whoever runs it."
-        />
-        <PolicyDataCard
-          title="Records in Wildflower Host"
-          where="On your device only."
-          when="When you load records into the app."
-          keptFor="Until you delete them or the app."
-          delete={
-            <>
-              Clear the app&rsquo;s storage or uninstall it. See{' '}
-              <a href="../deletion/">Deleting your data</a>.
-            </>
-          }
-        />
-        <PolicyDataCard
-          title="Pebble watchapp settings and synced data"
-          where="In the Pebble phone app and on your watch."
-          when="When you set up a watchapp and it syncs."
-          keptFor="Until you remove the watchapp."
-          delete="Remove the watchapp from the Pebble phone app."
-        />
-        <PolicyDataCard
-          title="Your telemetry answer and sign-in state"
-          where="In your browser's storage for wildflowerhealth.io, or in Wildflower Host on your device."
-          when="When you answer the telemetry question and sign in to a FHIR server."
-          keptFor="Until you clear it."
-          delete="Clear the site data in your browser, or the app's storage."
-        />
-        <PolicyDataCard
-          title="Crash reports"
-          where="Sentry, a third-party error-reporting service in the United States."
-          when="Only if you turn Crash reports on."
-          keptFor="Sentry's standard retention period."
-          delete="Email me with the app and roughly when you used it."
-        />
-        <PolicyDataCard
-          title="Performance data and session counts"
-          where="Sentry, in the United States."
-          when="Only if you turn Performance data on. Session counts are sent while either switch is on."
-          keptFor="Sentry's standard retention period."
-          delete="Email me, the same as for crash reports."
-        />
-        <PolicyDataCard
-          title="Relay tunnel details"
-          where="On the relay server, hosted by DigitalOcean."
-          when="Only if I set up a relay tunnel for you."
-          keptFor="Until the tunnel is deleted."
-          delete="Email me from the address the tunnel was set up with."
-        />
-        <PolicyDataCard
-          title="Emails you send me"
-          where="My email account."
-          when="When you email me."
-          keptFor="Until you ask me to delete them."
-          delete="Email me and ask."
-        />
+        <p>
+          Grouped by the app you use. Each card says where the data is kept, when, for how long, and
+          how to delete it.
+        </p>
+
+        <PolicyDataGroup title="Web apps on wildflowerhealth.io">
+          <PolicyDataCard
+            title="Health records you connect to"
+            where="On the FHIR server you connect the app to. Your browser holds them only while the app is open."
+            when="Whenever you use an app. Records an app writes, such as Lifting's workouts, are saved to that server."
+            keptFor="Whatever that server's own policies say."
+            delete="On that server, or by asking whoever runs it."
+          />
+          <PolicyDataCard
+            title="Your telemetry answer and sign-in state"
+            where="Your browser's storage for wildflowerhealth.io."
+            when="When you answer the telemetry question and sign in to a FHIR server."
+            keptFor="Until you clear it."
+            delete="Clear the site data for wildflowerhealth.io in your browser."
+          />
+        </PolicyDataGroup>
+
+        <PolicyDataGroup title="Wildflower Host (desktop, iOS and Android)">
+          <PolicyDataCard
+            title="Records you load into it"
+            where="On your device only."
+            when="When you load records into the app."
+            keptFor="Until you delete them or the app."
+            delete={
+              <>
+                Clear the app&rsquo;s storage or uninstall it. See{' '}
+                <a href="../deletion/">Deleting your data</a>.
+              </>
+            }
+          />
+          <PolicyDataCard
+            title="Your telemetry answer"
+            where="In the app's storage on your device."
+            when="When you answer the telemetry question."
+            keptFor="Until you clear it."
+            delete="Clear the app's storage or uninstall it."
+          />
+        </PolicyDataGroup>
+
+        <PolicyDataGroup title="Web apps and Wildflower Host, if you opt in">
+          <PolicyDataCard
+            title="Crash reports"
+            where="Sentry, a third-party error-reporting service in the United States."
+            when="Only if you turn Crash reports on."
+            keptFor="Sentry's standard retention period."
+            delete="Email me with the app and roughly when you used it."
+          />
+          <PolicyDataCard
+            title="Performance data and session counts"
+            where="Sentry, in the United States."
+            when="Only if you turn Performance data on. Session counts are sent while either switch is on."
+            keptFor="Sentry's standard retention period."
+            delete="Email me, the same as for crash reports."
+          />
+        </PolicyDataGroup>
+
+        <PolicyDataGroup title="Pebble watchapps">
+          <PolicyDataCard
+            title="Settings and synced data"
+            where="In the Pebble phone app and on your watch."
+            when="When you set up a watchapp and it syncs."
+            keptFor="Until you remove the watchapp."
+            delete="Remove the watchapp from the Pebble phone app."
+          />
+        </PolicyDataGroup>
+
+        <PolicyDataGroup title="The relay">
+          <PolicyDataCard
+            title="Tunnel details"
+            where="On the relay server, hosted by DigitalOcean."
+            when="Only if I set up a relay tunnel for you."
+            keptFor="Until the tunnel is deleted."
+            delete="Email me from the address the tunnel was set up with."
+          />
+        </PolicyDataGroup>
+
+        <PolicyDataGroup title="Emailing me">
+          <PolicyDataCard
+            title="Your emails"
+            where="My email account."
+            when="When you email me."
+            keptFor="Until you ask me to delete them."
+            delete="Email me and ask."
+          />
+        </PolicyDataGroup>
       </PolicySection>
 
       <PolicySection title="What a crash report can contain">

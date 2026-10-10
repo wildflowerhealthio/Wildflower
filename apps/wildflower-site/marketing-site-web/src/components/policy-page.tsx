@@ -50,7 +50,7 @@ function PolicySection({
 }): JSX.Element {
   return (
     <section className={styles['policy-page__section']}>
-      <h2 className={layout['block-title']}>{title}</h2>
+      <h2 className={styles['policy-page__section-title']}>{title}</h2>
       {children}
     </section>
   )
@@ -71,7 +71,7 @@ type PolicyDataKind = {
 }
 
 /**
- * One kind of data as a titled card of four facts — where, when, how long and
+ * One kind of data as a titled card (an `h4`, under its app's group) of four facts — where, when, how long and
  * how to delete — so every kind reads the same way and the page can be scanned
  * rather than read through. A description list rather than a table, so it
  * stacks at phone width.
@@ -85,7 +85,7 @@ function PolicyDataCard({
 }: PolicyDataKind): JSX.Element {
   return (
     <div className={styles['policy-page__card']}>
-      <h3 className={styles['policy-page__card-title']}>{title}</h3>
+      <h4 className={styles['policy-page__card-title']}>{title}</h4>
       <dl className={styles['policy-page__facts']}>
         <dt>Where</dt>
         <dd>{where}</dd>
@@ -100,4 +100,23 @@ function PolicyDataCard({
   )
 }
 
-export { PolicyDataCard, PolicyPage, PolicySection, type PolicyDataKind }
+/**
+ * The data cards for one kind of app, under an `h3` naming it, so a reader can
+ * go straight to the app they use.
+ */
+function PolicyDataGroup({
+  title,
+  children,
+}: {
+  readonly title: string
+  readonly children: ReactNode
+}): JSX.Element {
+  return (
+    <div className={styles['policy-page__group']}>
+      <h3 className={styles['policy-page__group-title']}>{title}</h3>
+      {children}
+    </div>
+  )
+}
+
+export { PolicyDataCard, PolicyDataGroup, PolicyPage, PolicySection, type PolicyDataKind }

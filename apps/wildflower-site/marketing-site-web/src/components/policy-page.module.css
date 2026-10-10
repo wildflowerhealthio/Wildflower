@@ -30,6 +30,15 @@
   gap: var(--space-5);
 }
 
+/* A step above the app-group and card titles beneath it. */
+.policy-page__section-title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-6);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
+}
+
 .policy-page__section p,
 .policy-page__section ul,
 .policy-page__section ol {
@@ -43,6 +52,21 @@
   display: grid;
   gap: var(--space-3);
   padding-left: var(--space-9);
+}
+
+/* The cards for one kind of app, under its name. */
+.policy-page__group {
+  display: grid;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+}
+
+.policy-page__group-title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
 }
 
 /* One kind of data: a hairline card with its four facts. */
