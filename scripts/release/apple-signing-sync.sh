@@ -91,7 +91,7 @@ key_path="${APP_STORE_CONNECT_ADMIN_KEY_PATH:-$signing_dir/AuthKey_$key_id.p8}"
 
 # The app's bundle identifier is the one Tauri builds with, read rather than
 # repeated here.
-bundle_identifier="$(asc_json identifier "$repo_root/apps/wildflower-tauri/src-tauri/tauri.conf.json")"
+bundle_identifier="$(asc_json identifier "$repo_root/apps/host/host-app/src-tauri/tauri.conf.json")"
 
 # gh resolves {owner}/{repo} from the checkout it runs in.
 cd "$repo_root"
