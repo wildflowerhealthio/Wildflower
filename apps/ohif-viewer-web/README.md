@@ -83,15 +83,18 @@ The Wildflower server seeds what the viewer needs:
 
 - apps migration `0007_seed_ohif_viewer_app` registers the `ohif-viewer`
   app row whose launch URL is the worklist launch above;
-- gatekeeper migration `0009_seed_ohif_viewer_client` registers the `ohif-viewer`
-  public PKCE client with `https://wildflowerhealth.io/ohif-viewer/` as its
+- gatekeeper migration `0009_seed_ohif_viewer_client` registers the
+  viewer's public PKCE client with `https://wildflowerhealth.io/ohif-viewer/` as its
   redirect URI and the read-only scopes the viewer requests;
   `0010_ohif_viewer_client_fhir_viewer_redirect` repoints that redirect at the
   `/fhir-viewer` route, and `0016_repair_ohif_viewer_client` seeds the client in
   that end state on an install that skipped `0009` (it shares its version with
-  another migration).
+  another migration). `0029_rekey_ohif_viewer_clients` re-keys it to a
+  random id (`941de68e6b59eb9dcc32df8ede89e636`) and the dev client to another,
+  and apps migration `0020_rekey_ohif_viewer_clients` points the tiles and their
+  launch URLs' `clientId` at them.
 
-`app-config.js` sends `smartClientId: 'ohif-viewer'` and a `smartScope` that
+`app-config.js` sends that client ID as `smartClientId` and a `smartScope` that
 must stay equal, element for element, to that client's `allowed_scopes` (and to
 the dev client's in `gatekeeper-rust/src/seeding.rs`). `?client_id=` on the
 launch URL or a value saved from the SMART Preferences panel still overrides
@@ -102,8 +105,8 @@ the client ID, for launching from another FHIR server.
 A debug build of the host also seeds an `ohif-viewer-dev` row and client
 (`apps-rust/src/dev_seed.rs`, `gatekeeper-rust/src/seeding.rs`) on the port
 `dev-app-ports.json` names. `vp run -F ohif-viewer-web dev` previews
-`dist/` on that port, and `app-config.js` sends the `ohif-viewer-dev` client ID
-when served from a loopback origin.
+`dist/` on that port, and `app-config.js` sends the dev client's ID
+(`f9866f7b1d0d8505dc65ef4f749664b5`) when served from a loopback origin.
 
 Like the other first-party apps' dev rows, this one launches
 `http://localhost:<port>/fhir-viewer?…`, the production launch template against

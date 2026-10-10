@@ -40,9 +40,12 @@
     )
   }
 
-  // Loopback = dev client, published site = production client. A `?client_id=`
+  // Loopback = dev client, published site = production client: the random ids
+  // of the `ohif-viewer-dev` and `ohif-viewer` tiles' clients. A `?client_id=`
   // on the launch URL or the SMART Preferences panel still overrides this.
-  var smartClientId = loopback ? 'ohif-viewer-dev' : 'ohif-viewer'
+  var smartClientId = loopback
+    ? 'f9866f7b1d0d8505dc65ef4f749664b5'
+    : '941de68e6b59eb9dcc32df8ede89e636'
 
   window.config = {
     name: 'wildflower/app-config.js',
@@ -77,9 +80,9 @@
           // Wildflower server does not implement). Read-only: the launch
           // Patient plus the ImagingStudy and DocumentReference searches the
           // FHIR data source issues. MUST equal, element for element and in
-          // order, the `allowed_scopes` of the `ohif-viewer` client (gatekeeper
-          // migration `0009_seed_ohif_viewer_client`) and of the
-          // `ohif-viewer-dev` client (`gatekeeper-rust/src/seeding.rs`): a
+          // order, the `allowed_scopes` of the production client (gatekeeper
+          // migration `0009_seed_ohif_viewer_client`) and of the dev client
+          // (`gatekeeper-rust/src/seeding.rs`): a
           // requested scope the client is not allowed fails `/authorize`.
           smartScope:
             'launch openid fhirUser system/Patient.rs system/ImagingStudy.rs system/DocumentReference.rs',

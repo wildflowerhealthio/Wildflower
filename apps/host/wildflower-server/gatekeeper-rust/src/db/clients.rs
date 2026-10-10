@@ -294,7 +294,7 @@ mod tests {
     /// `0019`, the Synthesized Health Viewer by `0022`, and the Synthetic Data
     /// Loader by `0028` (which re-keys Medications, the console, the Importer and
     /// the Health Viewer to random ids, as `0025` / `0026` did Lifting and the
-    /// launcher) — so a
+    /// launcher, and `0029` does the OHIF viewer) — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -311,7 +311,7 @@ mod tests {
             "664a01e8614050cd82ffe90350b81413",
             "03a513940b52f8c2649a5366d1a26d19",
             "165cd26573e5ac72378e6ad2d2198330",
-            "ohif-viewer",
+            "941de68e6b59eb9dcc32df8ede89e636",
             "fhir-sync-pebble",
             "bdf9fc5cb5a28c6683b49896b0ef8a75",
             "474e103de61f9141c4b640d59bfa130e",
@@ -521,15 +521,19 @@ mod tests {
                 "system/ImagingStudy.cruds".to_string(),
             ],
         );
-        // `ohif-viewer` (the OHIF imaging viewer) carries its published-site
-        // redirect, seeded by `0009` and repointed onto the `/fhir-viewer` route
-        // by `0010`, and is read-only. This vector must stay
+        // The OHIF imaging viewer's client (seeded by `0009` as `ohif-viewer`,
+        // re-keyed to a random id by `0029`) carries its published-site
+        // redirect, repointed onto the `/fhir-viewer` route by `0010`, and is
+        // read-only. This vector must stay
         // element-for-element equal to the `smartScope` string in
         // `apps/ohif-viewer-web/config/app-config.js` — nothing spans the JS/Rust
         // boundary to check it, so this assertion is the Rust-side mirror of that
         // pin, and a scope added on one side alone fails `/authorize` on a real
         // device.
-        let ohif = store.client_by_id("ohif-viewer").unwrap().unwrap();
+        let ohif = store
+            .client_by_id("941de68e6b59eb9dcc32df8ede89e636")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             ohif.redirect_uris,
             vec![

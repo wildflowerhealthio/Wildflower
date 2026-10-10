@@ -38,13 +38,15 @@ use crate::db::SqliteAppsStore;
 /// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
 /// tile ids. gatekeeper-rust's `seed_dev_app_clients` registers each (but
 /// Server Docs', whose console signs in as its production client), and each
-/// app's `src/config.ts` launches as its own under the dev server.
+/// app's `src/config.ts` (the OHIF viewer's `config/app-config.js` and launch
+/// URL) launches as its own under the dev server.
 const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
 const SERVER_DOCS_DEV_CLIENT_ID: &str = "022dcbd37461a19669e24caf6345e8bb";
 const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
 const HEALTH_VIEWER_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
 const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 
 /// One debug-only row: an app id, its display fields, its OAuth client, and the
 /// launch URL pointing at the local dev server.
@@ -72,11 +74,11 @@ fn dev_launch_url(port: i32) -> String {
 }
 
 /// The OHIF viewer's dev launch URL — `/fhir-viewer` route with the **dev**
-/// client id.
+/// client id, which OHIF reads off the URL.
 fn ohif_viewer_dev_url(port: i32) -> String {
     format!(
         "http://localhost:{port}/fhir-viewer\
-         ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId=ohif-viewer-dev"
+         ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId={OHIF_VIEWER_DEV_CLIENT_ID}"
     )
 }
 
@@ -144,7 +146,7 @@ fn dev_apps() -> [DevApp; 7] {
         },
         DevApp {
             id: "ohif-viewer-dev",
-            client_id: "ohif-viewer-dev",
+            client_id: OHIF_VIEWER_DEV_CLIENT_ID,
             name: "Imaging (Dev)",
             subtitle: "Local preview server for apps/ohif-viewer-web",
             url: ohif_viewer_dev_url(ports.ohif_viewer_dev),
@@ -348,8 +350,12 @@ mod tests {
             registration.url.to_string(),
             format!(
                 "http://localhost:{port}/fhir-viewer\
-                 ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId=ohif-viewer-dev"
+                 ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId={OHIF_VIEWER_DEV_CLIENT_ID}"
             ),
+        );
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some(OHIF_VIEWER_DEV_CLIENT_ID)
         );
     }
 
@@ -426,7 +432,7 @@ mod tests {
         for (id, client_id) in [
             ("medications", "9769f8b274370708d0d3ebb2e3e59b7c"),
             ("importer", "165cd26573e5ac72378e6ad2d2198330"),
-            ("ohif-viewer", "ohif-viewer"),
+            ("ohif-viewer", "941de68e6b59eb9dcc32df8ede89e636"),
             ("lifting", "bdf9fc5cb5a28c6683b49896b0ef8a75"),
             ("health-viewer", "474e103de61f9141c4b640d59bfa130e"),
             ("synthetic-data", "225ba6af034a3acec6be7ff8010df67f"),

@@ -136,7 +136,7 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
     // Seeded by boot (the host) and by migration (a SMART app).
     let host = find_client(&clients, "wildflower-host").expect("the host client is listed");
     assert_eq!(host["firstParty"], true);
-    assert!(find_client(&clients, "ohif-viewer").is_some());
+    assert!(find_client(&clients, "941de68e6b59eb9dcc32df8ede89e636").is_some());
 
     // Created by the TOFU approval, exactly as it was registered.
     let tofu = find_client(&clients, "brand-new-app").expect("the TOFU client is listed");

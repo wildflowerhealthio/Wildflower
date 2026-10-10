@@ -1236,6 +1236,72 @@ mod tests {
         assert!(column_for_client(&mut conn, "client_id", SYNTHETIC_DATA).is_empty());
     }
 
+    /// An install already at `0028` re-keys the OHIF viewer's clients when
+    /// `0029` runs: the production client and a debug build's dev client take
+    /// their random ids and keep their redirects, and what was issued to them
+    /// (here a launch) follows. Reverting `0029` restores the old ids.
+    #[test]
+    fn an_install_already_at_0028_rekeys_the_ohif_viewer_clients() {
+        use diesel::connection::SimpleConnection as _;
+        const OHIF_VIEWER: &str = "941de68e6b59eb9dcc32df8ede89e636";
+        const OHIF_VIEWER_DEV: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0028"),
+        )
+        .expect("migrate to 0028");
+        conn.batch_execute(
+            "INSERT INTO clients \
+             (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+              secret_hash, registered_at, disabled_at) \
+             VALUES ('ohif-viewer-dev', 'Imaging (Dev)', 'public', \
+                     '[\"http://localhost:5194/fhir-viewer\"]', '[\"launch\"]', \
+                     '[\"authorization_code\"]', NULL, '2024-01-01 00:00:00+00:00', NULL); \
+             INSERT INTO launch_contexts (nonce, client_id, patient, created_at, expires_at) \
+             VALUES ('issued', 'ohif-viewer', 'pat-1', \
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z')",
+        )
+        .expect("a dev client and a launch at 0028");
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0029");
+
+        assert!(column_for_client(&mut conn, "client_id", "ohif-viewer").is_empty());
+        assert!(column_for_client(&mut conn, "client_id", "ohif-viewer-dev").is_empty());
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", OHIF_VIEWER)[0].name,
+            r#"["https://wildflowerhealth.io/ohif-viewer/fhir-viewer"]"#,
+        );
+        assert_eq!(
+            column_for_client(&mut conn, "redirect_uris", OHIF_VIEWER_DEV)[0].name,
+            r#"["http://localhost:5194/fhir-viewer"]"#,
+        );
+        let launch: Vec<Name> = diesel::sql_query(
+            "SELECT client_id AS name FROM launch_contexts WHERE nonce = 'issued'",
+        )
+        .load(&mut conn)
+        .expect("read the launch");
+        assert_eq!(launch[0].name, OHIF_VIEWER);
+
+        let migration_0029 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0029"))
+            .expect("0029 is embedded");
+        migration_0029.revert(&mut conn).expect("revert 0029");
+        for client_id in ["ohif-viewer", "ohif-viewer-dev"] {
+            assert_eq!(
+                column_for_client(&mut conn, "client_id", client_id).len(),
+                1
+            );
+        }
+        assert!(column_for_client(&mut conn, "client_id", OHIF_VIEWER).is_empty());
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

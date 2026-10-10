@@ -81,7 +81,7 @@ describe('config/app-config.js', () => {
           namespace: '@ohif/fhir-viewer.dataSourcesModule.fhir',
           sourceName: 'fhir',
           configuration: {
-            smartClientId: 'ohif-viewer',
+            smartClientId: '941de68e6b59eb9dcc32df8ede89e636',
             smartScope:
               'launch openid fhirUser system/Patient.rs system/ImagingStudy.rs system/DocumentReference.rs',
           },
@@ -99,7 +99,7 @@ describe('config/app-config.js', () => {
           const config = evaluateConfig({ src: `http://${host}:${port}/app-config.js` })
           expect(config).toMatchObject({
             routerBasename: '/',
-            dataSources: [{ configuration: { smartClientId: 'ohif-viewer-dev' } }],
+            dataSources: [{ configuration: { smartClientId: 'f9866f7b1d0d8505dc65ef4f749664b5' } }],
           })
         }
       ),
@@ -114,7 +114,7 @@ describe('config/app-config.js', () => {
         fc.pre(!/^https:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(origin))
         const config = evaluateConfig({ src: `${origin}/app-config.js` })
         expect(config).toMatchObject({
-          dataSources: [{ configuration: { smartClientId: 'ohif-viewer' } }],
+          dataSources: [{ configuration: { smartClientId: '941de68e6b59eb9dcc32df8ede89e636' } }],
         })
       }),
       { numRuns: numRunsFor({ base: 50 }) }

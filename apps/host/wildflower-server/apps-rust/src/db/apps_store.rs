@@ -803,8 +803,9 @@ mod migration_tests {
     /// launched from its published Pages copy. Its launch URL is a route, not the
     /// app root: OHIF reads the SMART parameters off whichever route it is
     /// opened on. `0008` moved that route from the viewer's root to the FHIR
-    /// Viewer mode (`/fhir-viewer`) and added `clientId`, so the template asserted
-    /// here is the composed end state of `0007` + `0008`.
+    /// Viewer mode (`/fhir-viewer`) and added `clientId`, which `0020` points at
+    /// the random client id, so the template asserted here is the composed end
+    /// state of `0007`, `0008` and `0020`.
     #[test]
     fn ohif_viewer_launches_at_the_fhir_viewer_route() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
@@ -813,8 +814,10 @@ mod migration_tests {
             .find_app("ohif-viewer")
             .unwrap()
             .expect("ohif-viewer must exist");
-        // A first-party app's client_id equals its id.
-        assert_eq!(registration.client_id.as_deref(), Some("ohif-viewer"));
+        assert_eq!(
+            registration.client_id.as_deref(),
+            Some("941de68e6b59eb9dcc32df8ede89e636")
+        );
         assert!(
             registration.requires_tunnel,
             "the published page's `iss={{origin}}` fetch must resolve through the \
@@ -822,7 +825,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
+            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=941de68e6b59eb9dcc32df8ede89e636",
         );
     }
 
@@ -1021,6 +1024,65 @@ mod migration_tests {
             medications_dev.client_id.as_deref(),
             Some("medications-app-dev")
         );
+    }
+
+    /// An install at `0019` re-keys the OHIF viewer's clients when `0020` runs:
+    /// the tile and its dev tile keep their ids and point at random client ids,
+    /// a seeded launch URL names the new client, and a launch URL the user edited
+    /// is left as it is. Reverting `0020` restores the old client ids.
+    #[test]
+    fn an_install_already_at_0019_rekeys_the_ohif_viewer_clients() {
+        let pool = pool_migrated_through("0019");
+        let mut conn = pool.get().unwrap();
+        let edited = "https://ohif.example/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer";
+        sql_query("UPDATE app_registrations SET url = ? WHERE id = 'ohif-viewer'")
+            .bind::<Text, _>(edited)
+            .execute(&mut conn)
+            .expect("the user edits the viewer's launch URL");
+        let seeded_dev =
+            "http://localhost:5194/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer-dev";
+        insert_registration(&mut conn, "ohif-viewer-dev", Some("ohif-viewer-dev"));
+        sql_query("UPDATE app_registrations SET url = ? WHERE id = 'ohif-viewer-dev'")
+            .bind::<Text, _>(seeded_dev)
+            .execute(&mut conn)
+            .expect("a dev row seeded before 0020");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool.clone()).expect("0020 must apply");
+        let ohif = store.find_app("ohif-viewer").unwrap().expect("ohif-viewer");
+        assert_eq!(
+            ohif.client_id.as_deref(),
+            Some("941de68e6b59eb9dcc32df8ede89e636")
+        );
+        assert_eq!(
+            stored_url(&store, "ohif-viewer"),
+            edited,
+            "the user's edit stays"
+        );
+        let dev = store
+            .find_app("ohif-viewer-dev")
+            .unwrap()
+            .expect("ohif-viewer-dev");
+        assert_eq!(
+            dev.client_id.as_deref(),
+            Some("f9866f7b1d0d8505dc65ef4f749664b5")
+        );
+        assert_eq!(
+            stored_url(&store, "ohif-viewer-dev"),
+            "http://localhost:5194/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=f9866f7b1d0d8505dc65ef4f749664b5",
+        );
+
+        embedded_migration("0020")
+            .revert(&mut pool.get().unwrap())
+            .expect("revert 0020");
+        let ohif = store.find_app("ohif-viewer").unwrap().expect("ohif-viewer");
+        assert_eq!(ohif.client_id.as_deref(), Some("ohif-viewer"));
+        let dev = store
+            .find_app("ohif-viewer-dev")
+            .unwrap()
+            .expect("ohif-viewer-dev");
+        assert_eq!(dev.client_id.as_deref(), Some("ohif-viewer-dev"));
+        assert_eq!(stored_url(&store, "ohif-viewer-dev"), seeded_dev);
     }
 
     /// The Synthetic Data Loader ships as a first-party app (`0019`), launched
@@ -1228,7 +1290,8 @@ mod migration_tests {
     /// root with no `clientId` — a launch that lands on the worklist and
     /// authorizes with no client hint. Driving a database to `0007` first, then
     /// letting the rest run, is the only way to observe that: a fresh open
-    /// applies both migrations and cannot tell the two apart.
+    /// applies both migrations and cannot tell the two apart. (`0020` then
+    /// points the `clientId` at the viewer's random client id.)
     #[test]
     fn an_install_already_at_0007_is_upgraded_onto_the_fhir_viewer_launch() {
         let pool = pool_migrated_through("0007");
@@ -1246,7 +1309,7 @@ mod migration_tests {
         let store = SqliteAppsStore::new(pool).expect("the later migrations must apply");
         assert_eq!(
             stored_url(&store, "ohif-viewer"),
-            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
+            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=941de68e6b59eb9dcc32df8ede89e636",
         );
     }
 

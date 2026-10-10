@@ -130,8 +130,8 @@ struct DevAppPorts {
 
 /// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
 /// tile ids (`medications-dev` and so on). `apps_rust::dev_seed` points each tile
-/// at its client, and each app's `src/config.ts` launches as it under the dev
-/// server.
+/// at its client, and each app's `src/config.ts` (the OHIF viewer's
+/// `config/app-config.js` and launch URL) launches as it under the dev server.
 #[cfg(debug_assertions)]
 const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
 #[cfg(debug_assertions)]
@@ -142,6 +142,8 @@ const HEALTH_VIEWER_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
 const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 #[cfg(debug_assertions)]
 const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+#[cfg(debug_assertions)]
+const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 
 /// The Health Viewer dev client's scopes: exactly the scope string in
 /// `apps/health-viewer/health-viewer-web/src/config.ts`, which requests the same set for an EHR
@@ -234,13 +236,13 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// build also gets an `<app>-dev` row (`apps_rust::dev_seed`) whose launch
 /// URL points at the app's local vite dev server on the port
 /// `dev-app-ports.json` pins, and that row needs its own client — named after
-/// the dev app id for the OHIF viewer and FHIR Sync, a random id for the rest —
+/// the dev app id for FHIR Sync, a random id for the rest —
 /// whose absolute
 /// `http://localhost:{port}` redirect is what the authorize flow matches. They are separate clients rather than extra
 /// redirect entries on the production ones because adding a plaintext loopback
 /// redirect there would register it on a client that a public website uses.
 ///
-/// The redirect path is the origin root for every app but `ohif-viewer-dev`,
+/// The redirect path is the origin root for every app but the OHIF viewer,
 /// whose launch lands on `/fhir-viewer` — redirect matching is exact-URL.
 ///
 /// Scopes mirror each app's production client exactly — a dev build of the app
@@ -305,9 +307,9 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            "ohif-viewer-dev",
+            OHIF_VIEWER_DEV_CLIENT_ID,
             "Imaging (Dev)",
-            // Mirrors the production `ohif-viewer` client's read-only set (the
+            // Mirrors the production OHIF viewer client's read-only set (the
             // `smartScope` in `apps/ohif-viewer-web/config/app-config.js`, seeded
             // by migration `0009`): the launch Patient plus the ImagingStudy and
             // DocumentReference searches the OHIF FHIR data source issues.
