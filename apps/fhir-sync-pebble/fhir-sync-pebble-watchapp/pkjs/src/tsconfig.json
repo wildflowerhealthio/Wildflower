@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "es2015",
     "lib": ["es5"],
-    "types": ["pebble-pkjs/pebble-kit-js"],
+    "types": ["@wildflowerhealthio/pebble-pkjs/pebble-kit-js"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "customConditions": ["source"],
