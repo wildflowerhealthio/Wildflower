@@ -30,9 +30,10 @@ function Deletion(): JSX.Element {
             matching reports and session counts from Sentry.
           </li>
           <li>
-            <strong>A relay tunnel.</strong> Send the email from the address the tunnel was set up
-            with, and name the tunnel. I delete the tunnel and everything the relay stores about it:
-            its name, your email address, its access token and its creation date.
+            <strong>A relay tunnel.</strong> Send the email from the address the tunnel is
+            registered to, and name the tunnel. I delete the tunnel and everything the relay stores
+            about it: its name, the registered email address, its access token and its registration
+            date.
           </li>
           <li>
             <strong>Our emails.</strong> I delete our conversation from my email account.
@@ -68,8 +69,9 @@ function Deletion(): JSX.Element {
 
       <PolicySection title="Data in your browser">
         <p>
-          The web apps keep only your telemetry answer and your sign-in state in your browser. To
-          delete them, clear the site data for wildflowerhealth.io in your browser&rsquo;s settings.
+          The web apps keep only your telemetry preferences and your sign-in state in your browser.
+          To delete them, clear the site data for wildflowerhealth.io in your browser&rsquo;s
+          settings.
         </p>
       </PolicySection>
 

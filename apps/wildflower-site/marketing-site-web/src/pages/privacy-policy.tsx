@@ -25,7 +25,7 @@ function PrivacyPolicy(): JSX.Element {
           <li>Your health records go between you and the FHIR server you choose, not to me.</li>
           <li>Nothing is reported unless you turn crash reports or performance data on.</li>
           <li>There are no accounts, no ads, no analytics on the website, and nothing is sold.</li>
-          <li>The relay stores your email address only if I set up a tunnel for you.</li>
+          <li>The relay stores an email address only for tunnels registered with it.</li>
           <li>
             This is early-stage software, unaudited and provided as is. Use your own judgement about
             which records you connect.
@@ -64,9 +64,9 @@ function PrivacyPolicy(): JSX.Element {
             delete="On that server, or by asking whoever runs it."
           />
           <PolicyDataCard
-            title="Your telemetry answer and sign-in state"
+            title="Your telemetry preferences and sign-in state"
             where="Your browser's storage for wildflowerhealth.io."
-            when="When you answer the telemetry question and sign in to a FHIR server."
+            when="When you set your telemetry preferences and sign in to a FHIR server."
             keptFor="Until you clear it."
             delete="Clear the site data for wildflowerhealth.io in your browser."
           />
@@ -86,9 +86,9 @@ function PrivacyPolicy(): JSX.Element {
             }
           />
           <PolicyDataCard
-            title="Your telemetry answer"
+            title="Your telemetry preferences"
             where="In the app's storage on your device."
-            when="When you answer the telemetry question."
+            when="When you set your telemetry preferences."
             keptFor="Until you clear it."
             delete="Clear the app's storage or uninstall it."
           />
@@ -125,9 +125,9 @@ function PrivacyPolicy(): JSX.Element {
           <PolicyDataCard
             title="Tunnel details"
             where="On the relay server, hosted by DigitalOcean."
-            when="Only if I set up a relay tunnel for you."
+            when="Only when a tunnel is registered with the relay."
             keptFor="Until the tunnel is deleted."
-            delete="Email me from the address the tunnel was set up with."
+            delete="Email me from the address the tunnel is registered to."
           />
         </PolicyDataGroup>
 
@@ -170,8 +170,9 @@ function PrivacyPolicy(): JSX.Element {
       <PolicySection title="What the relay sees">
         <ul>
           <li>
-            The relay stores a tunnel&rsquo;s name, your email address, its access token and when it
-            was created. I use the email address only to contact you about the tunnel.
+            For each registered tunnel, the relay stores its name, the email address it is
+            registered to, its access token and when it was registered. The email address is used
+            only for contact about that tunnel.
           </li>
           <li>
             It forwards each connection to your device by the address it asks for, without
