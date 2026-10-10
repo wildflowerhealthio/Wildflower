@@ -1,8 +1,8 @@
 import * as Plot from '@observablehq/plot'
 import { type RenderResult, act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
@@ -12,7 +12,7 @@ import {
   Series,
   type TimeDomain,
   ValueAxis,
-} from 'health-viewer-fundamentals'
+} from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { bucketCountFor, bucketVertices, chartOptions, levelRuns } from './chart-marks.ts'
 import { MultiAxisChart } from './multi-axis-chart.tsx'

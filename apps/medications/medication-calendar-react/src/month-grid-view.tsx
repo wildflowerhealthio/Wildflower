@@ -1,7 +1,7 @@
-import { monthGrid } from 'medication-calendar-core'
-import type { CalendarEvent } from 'medication-calendar-core'
+import { monthGrid } from '@wildflowerhealthio/medication-calendar-core'
+import type { CalendarEvent } from '@wildflowerhealthio/medication-calendar-core'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { EventLine } from './event-line.tsx'
 import styles from './calendar-view.module.css'

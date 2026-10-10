@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
+import type { BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 import { Effect, Layer } from 'effect'
-import type { BaseRouterContext } from 'shared-structures-react'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import { buildQueryClient } from './query-client.ts'

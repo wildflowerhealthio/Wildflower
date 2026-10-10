@@ -1,7 +1,7 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { DoseRegimen } from '@wildflowerhealthio/medication-core/fhir'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import type { DoseRegimen } from 'medication-core/fhir'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { medicationSeriesIdOf } from './medication-series-key.ts'

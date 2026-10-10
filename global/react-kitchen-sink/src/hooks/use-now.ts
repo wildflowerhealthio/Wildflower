@@ -1,4 +1,4 @@
-import { pad2 } from 'kitchen-sink'
+import { pad2 } from '@wildflowerhealthio/kitchen-sink'
 import { useSyncExternalStore } from 'react'
 
 // A store that never notifies: "now" is sampled on renders the caller already

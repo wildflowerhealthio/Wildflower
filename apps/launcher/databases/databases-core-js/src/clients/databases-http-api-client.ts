@@ -1,4 +1,4 @@
-import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
+import { defineSliceHttpClient } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 
 import { DatabasesApi } from '../http-api-definition/index.ts'
 

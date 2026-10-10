@@ -1,4 +1,4 @@
-import { GateCard } from 'react-tundraish'
+import { GateCard } from '@wildflowerhealthio/react-tundraish'
 
 /** Waiting on a load the body depends on, with an escape hatch. */
 export const Loading = () => (

@@ -1,14 +1,14 @@
+import { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
+import { traceResourceId } from '@wildflowerhealthio/web-trace-core'
+import { fromDocumentReference, isWebTrace } from '@wildflowerhealthio/web-trace-core/codec'
 import { DateTime, Duration, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { DocumentReference } from 'fhir-r4/resources'
-import { Specificity } from 'http-extraction-fundamentals'
-import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import { traceResourceId } from 'web-trace-core'
-import { fromDocumentReference, isWebTrace } from 'web-trace-core/codec'
 
-import { BodyDigestUnavailable } from 'web-trace-core/capture'
+import { BodyDigestUnavailable } from '@wildflowerhealthio/web-trace-core/capture'
 
 import {
   type BodyPolicy,

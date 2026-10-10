@@ -1,4 +1,8 @@
-import { type Selection, decodeSelection, withSelection } from 'health-viewer-core-js'
+import {
+  type Selection,
+  decodeSelection,
+  withSelection,
+} from '@wildflowerhealthio/health-viewer-core-js'
 import { useCallback, useEffect, useState } from 'react'
 
 /** A change to the selection, computed from the latest one. */

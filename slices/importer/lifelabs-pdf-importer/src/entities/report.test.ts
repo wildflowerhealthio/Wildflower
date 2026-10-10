@@ -1,7 +1,7 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { Document, Run } from '@wildflowerhealthio/positioned-text'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import type { Document, Run } from 'positioned-text'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { layoutDocument, layoutReport } from '../test-helpers.ts'

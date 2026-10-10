@@ -1,3 +1,5 @@
+import type { LabDraw, Story } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import { personArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
 /**
  * fast-check arbitraries for the LifeLabs generator's inputs beyond the
  * person (which `synthetic-data-fundamentals/test-helpers` draws): a
@@ -7,8 +9,6 @@
  * @packageDocumentation
  */
 import * as fc from 'fast-check'
-import type { LabDraw, Story } from 'synthetic-data-fundamentals/story'
-import { personArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 
 import { type LabRequisition, type Laboratory, PrintedRange } from './story/index.ts'
 

@@ -2,10 +2,10 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { RelayAdminHttpApiClient } from '@wildflowerhealthio/relay-core-js/clients'
+import { Tunnels } from '@wildflowerhealthio/relay-core-js/http-api-definition'
+import { AdminKeyStore, importAdminKey } from '@wildflowerhealthio/relay-core-js/key-store'
 import { Effect, Layer, ManagedRuntime, Option, Schema } from 'effect'
-import { RelayAdminHttpApiClient } from 'relay-core-js/clients'
-import { Tunnels } from 'relay-core-js/http-api-definition'
-import { AdminKeyStore, importAdminKey } from 'relay-core-js/key-store'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { KEY_REFUSED_MESSAGE } from './admin-key-form.tsx'

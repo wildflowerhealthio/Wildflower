@@ -1,5 +1,5 @@
+import type { Medication } from '@wildflowerhealthio/medication-core'
 import { Schema } from 'effect'
-import type { Medication } from 'medication-core'
 
 import { Province } from './province.ts'
 

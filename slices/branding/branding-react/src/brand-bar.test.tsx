@@ -1,5 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { sectionUrl } from 'branding-core'
+import { sectionUrl } from '@wildflowerhealthio/branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { BrandBar } from './brand-bar.tsx'

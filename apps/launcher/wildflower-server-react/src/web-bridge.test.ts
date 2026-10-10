@@ -1,6 +1,6 @@
+import type { ServerServiceStatus } from '@wildflowerhealthio/wildflower-server-core-js'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
-import type { ServerServiceStatus } from 'wildflower-server-core-js'
 
 import { makeServerServiceStatusStore } from './server-service-status-store.ts'
 import { makeBackgroundServerServiceWebHandlers } from './web-bridge.ts'

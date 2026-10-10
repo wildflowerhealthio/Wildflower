@@ -1,5 +1,5 @@
 {
-  "name": "medication-core",
+  "name": "@wildflowerhealthio/medication-core",
   "version": "0.0.0",
   "private": true,
   "description": "Fuzzy medication-name matching shared by the medication slices: the minimal `Medication` value type, name normalization / tokenization, and the exact / strong / partial containment scoring — plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values. No DOM, no platform imports.",
@@ -25,22 +25,22 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-utility": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-calendar-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-utility": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "medication-calendar-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-utility": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "medication-calendar-core": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-utility": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-calendar-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

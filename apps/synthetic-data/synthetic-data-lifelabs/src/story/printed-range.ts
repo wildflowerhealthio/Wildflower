@@ -1,5 +1,5 @@
+import type { AdministrativeGender } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Match } from 'effect'
-import type { AdministrativeGender } from 'fhir-r4/data-types'
 
 /**
  * A reference range as a LifeLabs report prints it in its `Reference Range`

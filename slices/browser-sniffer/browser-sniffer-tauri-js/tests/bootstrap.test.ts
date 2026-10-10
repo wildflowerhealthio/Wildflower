@@ -1,7 +1,7 @@
 // oxlint-disable typescript/no-implied-eval -- intentional sandbox eval of the bundled IIFE bootstrap; the whole point of the test is to run that IIFE in a controlled fake-window environment.
 
-import { BrowserSnifferBridge } from 'browser-sniffer-core/bridge'
-import type { TauriEventApi } from 'effect-messaging-tauri-js'
+import { BrowserSnifferBridge } from '@wildflowerhealthio/browser-sniffer-core/bridge'
+import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { tauriSnifferBootstrapScript } from '../src/index.ts'

@@ -151,7 +151,7 @@ doc comment in `config.ts`, the migration's header, the vector asserted in
 
 ## Development
 
-`vp run -F fhir-sync-pebble-web dev` serves on the port
+`vp run -F @wildflowerhealthio/fhir-sync-pebble-web dev` serves on the port
 `dev-app-ports.json` pins for `fhir-sync-pebble-dev` (5195), whose
 debug-only client registers `http://localhost:5195/` as its redirect. Open the
 root and connect; append `?return_to=http://localhost:<port>/` to try the

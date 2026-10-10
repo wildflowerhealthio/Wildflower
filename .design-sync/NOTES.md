@@ -116,7 +116,7 @@ router isn't in the bundle). Props stay documented in the `.d.ts`.
 
 - **Entry**: `global/react-tundraish/dist/index.js` (built by `vp pack`). `dist/` is **gitignored** (root `.gitignore` ignores `dist`), so on a fresh clone it won't exist until you build — run the build command below before the converter runs.
 - **`--node-modules ./node_modules`** (repo root) — react/react-dom/@types/react are pnpm-hoisted there; the package's own `node_modules` is sparse.
-- **Build command** to produce/refresh dist before re-sync: `vp run -F "react-tundraish..." build` (the `...` pulls workspace deps). Drive the build through `vp`, never `pnpm` directly (repo toolchain rule).
+- **Build command** to produce/refresh dist before re-sync: `vp run -F "@wildflowerhealthio/react-tundraish..." build` (the `...` pulls workspace deps). Drive the build through `vp`, never `pnpm` directly (repo toolchain rule).
 - Converter deps + playwright install into `.ds-sync/` with `COREPACK_ENABLE_STRICT=0`. Chromium cache: `~/Library/Caches/ms-playwright` (macOS — NOT `~/.cache`). playwright 1.61.0 matches the cached `chromium-1228` build.
 
 ## Repo change required for detection (already applied, in the PR)
@@ -175,7 +175,7 @@ Resumed the interrupted first sync on the real toolchain (converter staged, dist
 - **Conventions header**: `.design-sync/conventions.md` exists, wired via `readmeHeader`; the latest build stitched it into the README. **Still TODO on resume: re-validate the header's enumerated class/token/component names against the fresh build** (the "Author the conventions header" validation pass — file exists, so validate-don't-rewrite).
 
 ### TO RESUME (atomic path — config is pinned)
-1. Re-stage scripts (`cp -r` per skill §7), rebuild dist if source changed (`vp run -F "react-tundraish..." build`), re-run `package-build.mjs` + `package-validate.mjs` (entry: `./global/react-tundraish/dist/index.js`, node-modules: `./node_modules`). Output is deterministic — grades carry forward if sources unchanged.
+1. Re-stage scripts (`cp -r` per skill §7), rebuild dist if source changed (`vp run -F "@wildflowerhealthio/react-tundraish..." build`), re-run `package-build.mjs` + `package-validate.mjs` (entry: `./global/react-tundraish/dist/index.js`, node-modules: `./node_modules`). Output is deterministic — grades carry forward if sources unchanged.
 2. Validate the conventions header against the fresh build; rebuild if it changed.
 3. **Human review**: serve `ds-bundle/.review.html` (`node .ds-sync/storybook/http-serve.mjs ./ds-bundle`) and let the user skim before upload.
 4. **Atomic upload (§5)**: `finalize_plan` (full writes; deletes — project is un-anchored so no diff: review remote `list_files` for paths this build doesn't produce. NOTE: remote currently has only 8 component dirs from the first sync's batches — AsyncErrorView, Awaited, Checkbox, ErrorBoundary, Field, Menu, PageBodyError, PageLoading. This build produces all 15, so the upload ADDS the missing 7; no deletes expected unless StatusBadge was uploaded before — it was not). Sentinel-fence → content writes → deletes → sentinel re-arm → `_ds_sync.json` LAST. Verify `list_files` count.
@@ -185,7 +185,7 @@ Resumed the interrupted first sync on the real toolchain (converter staged, dist
 
 - **Previews are accepted-but-provisional (user, 2026-06-18).** The user reviewed `.review.html` and judged all 9 authored previews "serviceable for now, but will need to be reworked later." They are graded `good` and shipped, but a future sync should plan a rework pass — likely richer/more brand-accurate compositions, and revisit the deferred StatusBadge (needs `.status-badge`/`.sr-only` CSS shipped first) and PageHeader's dropped back-link cells (needs a memory RouterProvider). Don't treat the current cards as final.
 - The upload plan (`finalize_plan`) is session-scoped — a resumed sync must re-approve it. Resuming arrives **pinned** (config has `projectId`) so it routes to the **atomic** path, not incremental — that's expected.
-- `dist/` is gitignored, so it must be (re)built before the converter runs; `vp run -F "react-tundraish..." build` (never `pnpm` directly) on a fresh clone or if the DS source changed.
+- `dist/` is gitignored, so it must be (re)built before the converter runs; `vp run -F "@wildflowerhealthio/react-tundraish..." build` (never `pnpm` directly) on a fresh clone or if the DS source changed.
 - The `types` field fix lives in the repo (committed) — if it's ever reverted, detection breaks again with `[ZERO_MATCH]`.
 - Grades for Checkbox/Field/Menu live in `.design-sync/.cache/review/` (gitignored). They are NOT carried across machines until the project's `_ds_sync.json` anchor is written by a completed close-out. A resume on this machine reuses them; a fresh clone re-grades.
 - `tundra-css` is a published catalog dep pinned `^0.14.0` — a token rename upstream would shift the styling vocabulary in this NOTES file.

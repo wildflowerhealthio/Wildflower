@@ -1,4 +1,4 @@
-import { decodeWebviewResponse } from 'pebble-configuration/pkjs'
+import { decodeWebviewResponse } from '@wildflowerhealthio/pebble-configuration/pkjs'
 
 import { DEFAULT_WEIGHTS, EXERCISES, MAX_WEIGHT, PEOPLE } from './lifts.ts'
 

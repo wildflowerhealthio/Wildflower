@@ -1,4 +1,4 @@
-import type { Quantity, SimpleQuantity } from 'fhir-r4/data-types'
+import type { Quantity, SimpleQuantity } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /**
  * Narrow an R4 `Quantity` back to a carebook `SimpleQuantity`, dropping the

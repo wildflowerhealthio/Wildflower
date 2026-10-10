@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
+import { type ListedServer, ServerStatus } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
 import type { JSX } from 'react'
-import { type ListedServer, ServerStatus } from 'servers-core-js'
 
 import { LaunchButton } from './launch-button.tsx'
 import type { RunHostCommand } from './router-context.ts'

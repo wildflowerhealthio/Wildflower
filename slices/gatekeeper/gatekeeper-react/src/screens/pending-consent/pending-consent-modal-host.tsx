@@ -16,8 +16,15 @@
  * can be open at a time.
  */
 
-import type { PendingConsentHead } from 'gatekeeper-core/bridge'
-import { unknownErrorToString } from 'kitchen-sink'
+import type { PendingConsentHead } from '@wildflowerhealthio/gatekeeper-core/bridge'
+import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
+import {
+  isAuthed,
+  useAuthStateSubscribable,
+  usePreviousDistinctValue,
+  useSubscribable,
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Dialog } from '@wildflowerhealthio/react-tundraish'
 import {
   Component,
   Suspense,
@@ -27,13 +34,6 @@ import {
   type JSX,
   type ReactNode,
 } from 'react'
-import {
-  isAuthed,
-  useAuthStateSubscribable,
-  usePreviousDistinctValue,
-  useSubscribable,
-} from 'react-kitchen-sink'
-import { Dialog } from 'react-tundraish'
 
 import { useActivePendingConsent } from '../../active-pending-consent/use-active-pending-consent.ts'
 import { useDeviceConsentQuery, useOAuthConsentQuery } from '../../queries/index.ts'

@@ -1,4 +1,4 @@
-import type { Page, Run } from 'positioned-text'
+import type { Page, Run } from '@wildflowerhealthio/positioned-text'
 
 /**
  * One run of text on a line, positioned by its left edge — the unit the

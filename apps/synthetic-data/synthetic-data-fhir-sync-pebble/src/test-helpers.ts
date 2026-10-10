@@ -11,7 +11,7 @@
  */
 import * as fc from 'fast-check'
 
-import type { StoryDay } from 'synthetic-data-fundamentals/story'
+import type { StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import * as PebbleWatch from './pebble-watch.ts'
 import type { Night, Physiology, PhysiologyDay, Span, Walk } from './physiology.ts'
 

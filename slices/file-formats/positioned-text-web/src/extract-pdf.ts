@@ -1,4 +1,4 @@
-import type { Document, Page, Run } from 'positioned-text'
+import type { Document, Page, Run } from '@wildflowerhealthio/positioned-text'
 
 /**
  * Extract positioned text from a PDF's raw bytes via pdfjs-dist.

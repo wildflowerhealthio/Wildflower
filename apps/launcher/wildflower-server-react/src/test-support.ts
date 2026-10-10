@@ -1,5 +1,5 @@
+import type { ServerServiceStatus } from '@wildflowerhealthio/wildflower-server-core-js'
 import { Effect } from 'effect'
-import type { ServerServiceStatus } from 'wildflower-server-core-js'
 
 import type {
   BackgroundServerServiceOutboundMessage,

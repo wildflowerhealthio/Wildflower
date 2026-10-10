@@ -1,10 +1,13 @@
-import type { ConfigFormProps } from 'collector-fundamentals/config-form'
-import { type CollectorTag, type ConfigForTag } from 'collector-registry/registry'
-import { FhirR4ConfigForm } from 'fhir-r4-client-collector'
+import type { ConfigFormProps } from '@wildflowerhealthio/collector-fundamentals/config-form'
+import {
+  type CollectorTag,
+  type ConfigForTag,
+} from '@wildflowerhealthio/collector-registry/registry'
+import { FhirR4ConfigForm } from '@wildflowerhealthio/fhir-r4-client-collector'
+import { RexallConfigForm } from '@wildflowerhealthio/rexall-be-well-collector'
+import { ShoppersDrugMartConfigForm } from '@wildflowerhealthio/shoppers-drugmart-collector'
+import { WebTraceConfigForm } from '@wildflowerhealthio/web-trace-collector'
 import { createElement, type JSX } from 'react'
-import { RexallConfigForm } from 'rexall-be-well-collector'
-import { ShoppersDrugMartConfigForm } from 'shoppers-drugmart-collector'
-import { WebTraceConfigForm } from 'web-trace-collector'
 
 /**
  * A per-collector config form, keyed to its tag: the form for `T` is written

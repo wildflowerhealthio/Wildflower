@@ -5,20 +5,20 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { Effect } from 'effect'
 import {
   ActivePendingConsentProvider,
   makeActivePendingConsentStore,
   makeEmbeddedAuthStateStore,
-} from 'gatekeeper-react'
-import type { JSX, ReactNode } from 'react'
-import { AuthStateProvider } from 'react-kitchen-sink'
-import { afterEach, describe, expect, it } from 'vite-plus/test'
+} from '@wildflowerhealthio/gatekeeper-react'
+import { AuthStateProvider } from '@wildflowerhealthio/react-kitchen-sink'
 import {
   makeServerServiceStatusStore,
   ServerServiceStatusProvider,
   ServerStatusBanner,
-} from 'wildflower-server-react'
+} from '@wildflowerhealthio/wildflower-server-react'
+import { Effect } from 'effect'
+import type { JSX, ReactNode } from 'react'
+import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { RootShell } from '../session/root-shell.tsx'
 import { ServerKind } from '../session/server-kind.ts'

@@ -1,5 +1,5 @@
 {
-  "name": "importer-fundamentals",
+  "name": "@wildflowerhealthio/importer-fundamentals",
   "version": "0.0.0",
   "private": true,
   "description": "Resource-agnostic upstream of the importer slice: the FileImporter contract (a batch decode built from one per-file decodeOne, the source-file DocumentReference mint and read-back, and per-file review-key namespacing) and the per-resource review/selection model. Names no archive format and no resource type. No DOM, no fs, no React.",
@@ -30,18 +30,18 @@
     "@effect/platform": "catalog:",
     "@types/fhir": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

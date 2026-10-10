@@ -1,4 +1,4 @@
-import { ExerciseConcept, ExerciseRequest } from 'lifting-core-js'
+import { ExerciseConcept, ExerciseRequest } from '@wildflowerhealthio/lifting-core-js'
 
 /**
  * The lifter's current load at each exercise, by exercise id, read off their

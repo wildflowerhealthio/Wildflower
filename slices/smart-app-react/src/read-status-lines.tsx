@@ -1,4 +1,4 @@
-import { unknownErrorToString } from 'kitchen-sink'
+import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import type { JSX } from 'react'
 
 import styles from './read-status-lines.module.css'

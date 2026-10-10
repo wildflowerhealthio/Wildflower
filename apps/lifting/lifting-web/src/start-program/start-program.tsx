@@ -1,6 +1,9 @@
+import { ExerciseRequest, type TrainingPlanDefinition } from '@wildflowerhealthio/lifting-core-js'
+import {
+  StartTrainingPlanDefinitionView,
+  type TrainingPlanDefinitionStart,
+} from '@wildflowerhealthio/lifting-react'
 import { type Array as Arr, type DateTime, Either, Option } from 'effect'
-import { ExerciseRequest, type TrainingPlanDefinition } from 'lifting-core-js'
-import { StartTrainingPlanDefinitionView, type TrainingPlanDefinitionStart } from 'lifting-react'
 import { type JSX, useState } from 'react'
 
 import { now } from '../clock.ts'

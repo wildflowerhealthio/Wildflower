@@ -8,17 +8,17 @@ import {
   RouterProvider,
   useRouteContext,
 } from '@tanstack/react-router'
-import type { Either } from 'effect'
-import type { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
+import type { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
 import {
   buildSmartRouterContext,
   useLaunchFailureRedirect,
   useSmartHandshake,
-} from 'fhir-r4-react/smart'
-import { PebbleSettings } from 'fhir-sync-pebble-core'
-import { ReturnTargetStore } from 'pebble-configuration'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
+import { ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
+import { ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import type { Either } from 'effect'
 import { useMemo, useState, type JSX } from 'react'
-import { ErrorBanner, PageLoading } from 'react-tundraish'
 
 import { RETURN_TO_STORAGE_KEY } from './config.ts'
 import { SettingsPage, type SettingsPageProps } from './settings-page.tsx'

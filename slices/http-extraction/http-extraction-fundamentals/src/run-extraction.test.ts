@@ -1,6 +1,6 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { assert, describe, expect, it, test } from 'vite-plus/test'
 
 import { arbitraryScenarios, type Scenario } from './extraction.test-helpers.ts'

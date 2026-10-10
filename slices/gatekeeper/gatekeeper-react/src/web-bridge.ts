@@ -1,7 +1,7 @@
+import type { MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
+import type { GatekeeperBridge } from '@wildflowerhealthio/gatekeeper-core/bridge'
+import { type AuthStateStore, HostAuthed } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
-import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { type AuthStateStore, HostAuthed } from 'react-kitchen-sink'
 
 import type { ActivePendingConsentStore } from './active-pending-consent/store.ts'
 

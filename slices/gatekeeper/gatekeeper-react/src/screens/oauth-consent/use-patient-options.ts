@@ -1,6 +1,6 @@
-import { usePatientsQuery } from 'fhir-r4-react'
-import { HumanName } from 'fhir-r4/data-types'
-import type { PatientOption } from 'scopes-react'
+import { usePatientsQuery } from '@wildflowerhealthio/fhir-r4-react'
+import { HumanName } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { PatientOption } from '@wildflowerhealthio/scopes-react'
 
 interface PatientOptionsState {
   readonly options: readonly PatientOption[]

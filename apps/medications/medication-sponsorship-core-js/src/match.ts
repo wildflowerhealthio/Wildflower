@@ -1,4 +1,9 @@
-import { confidenceRank, type MatchConfidence, type Medication, scoreName } from 'medication-core'
+import {
+  confidenceRank,
+  type MatchConfidence,
+  type Medication,
+  scoreName,
+} from '@wildflowerhealthio/medication-core'
 
 import type { SponsoredDrug } from './sponsor.ts'
 

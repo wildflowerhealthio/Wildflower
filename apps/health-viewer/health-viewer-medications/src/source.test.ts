@@ -1,12 +1,12 @@
-import { Schema } from 'effect'
-import * as fc from 'fast-check'
-import { withMandatoryId } from 'fhir-r4/data-types'
-import { MedicationRequest } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   type MedicationRequestWithId,
   medicationRequestsToDoseRegimens,
-} from 'medication-core/fhir'
+} from '@wildflowerhealthio/medication-core/fhir'
+import { Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { MEDICATIONS_GROUP } from './medication-groups.ts'

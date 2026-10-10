@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { pageLayoutStyles } from 'react-tundraish'
 
 /**
  * Recorder-level layout route: wraps the page beneath it in the shared

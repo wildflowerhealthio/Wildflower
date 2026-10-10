@@ -1,18 +1,23 @@
+import { GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
+import { FIRST_PARTY_CLIENT_ID } from '@wildflowerhealthio/gatekeeper-core/contexts'
+import { OAuth } from '@wildflowerhealthio/gatekeeper-core/http-api-definition'
+import { GatekeeperPaths } from '@wildflowerhealthio/gatekeeper-core/page-paths'
 /* oxlint-disable react/only-export-components ---
   Neither export changes often; sanitizeReturnTo is a pure helper reused by
   the launcher-web web entry's return leg (and this screen's own tests) */
 import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
-import { OAuth } from 'gatekeeper-core/http-api-definition'
-import { GatekeeperPaths } from 'gatekeeper-core/page-paths'
 
+import { AuthedUntil, cn, useAuthStateSetter } from '@wildflowerhealthio/react-kitchen-sink'
+import {
+  Field,
+  FieldDescription,
+  pageLayoutStyles,
+  TextField,
+} from '@wildflowerhealthio/react-tundraish'
+import { GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
+import type { GrantDraft as GrantDraftModel } from '@wildflowerhealthio/scopes-core'
+import { ScopePicker } from '@wildflowerhealthio/scopes-react'
 import { Fragment, useEffect, useMemo, useRef, useState, type JSX } from 'react'
-import { AuthedUntil, cn, useAuthStateSetter } from 'react-kitchen-sink'
-import { Field, FieldDescription, pageLayoutStyles, TextField } from 'react-tundraish'
-import { GrantDraft, ScopeRequest } from 'scopes-core'
-import type { GrantDraft as GrantDraftModel } from 'scopes-core'
-import { ScopePicker } from 'scopes-react'
 
 import { useTokenResponseHandler } from '../client/token-response-handler.ts'
 import { parseDeviceLoginSearch, parseRequestScopes } from '../device-login-route.ts'

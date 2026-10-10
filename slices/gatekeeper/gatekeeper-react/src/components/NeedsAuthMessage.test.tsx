@@ -1,16 +1,16 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Effect, Layer, SubscriptionRef } from 'effect'
-import * as fc from 'fast-check'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { numRunsFor } from 'kitchen-sink/test'
-import type { JSX, ReactNode } from 'react'
+import { GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   type AuthState,
   AuthStateProvider,
   type AuthStateStore,
   Unauthed,
-} from 'react-kitchen-sink'
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Effect, Layer, SubscriptionRef } from 'effect'
+import * as fc from 'fast-check'
+import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**

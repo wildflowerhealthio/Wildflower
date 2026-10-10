@@ -1,6 +1,6 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX, ReactNode } from 'react'
 import { useId, useState } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import styles from './health-viewer-layout.module.css'
 

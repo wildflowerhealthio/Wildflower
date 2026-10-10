@@ -1,11 +1,11 @@
-import type { ReferenceType } from 'fhir-r4/data-types'
-import { adoptedReferenceOf } from 'fhir-r4/identity'
+import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   type CustomerPayload,
   SHOPPERS_DRUGMART_SYSTEM,
   type SourcePatient,
-} from 'shoppers-drugmart-source'
-import type { Story } from 'synthetic-data-fundamentals/story'
+} from '@wildflowerhealthio/shoppers-drugmart-source'
+import type { Story } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 
 /**
  * A family's Shoppers Drug Mart "mypharmacy" account: the account the portal

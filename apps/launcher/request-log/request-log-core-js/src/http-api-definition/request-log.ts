@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
+import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
-import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 
 /**
  * Why a bearer gate refused a logged request with a `401`. Mirrors the Rust

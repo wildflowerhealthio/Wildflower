@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { HttpArchive } from '@wildflowerhealthio/http-archive'
 import { DateTime, Schema } from 'effect'
-import { HttpArchive } from 'http-archive'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AnonymizePanel } from './anonymize-panel.tsx'

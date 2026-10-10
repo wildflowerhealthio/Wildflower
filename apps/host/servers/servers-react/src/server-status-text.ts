@@ -1,6 +1,6 @@
+import type { StatusTone } from '@wildflowerhealthio/react-tundraish'
+import { type HealthReport, ServerStatus } from '@wildflowerhealthio/servers-core-js'
 import { DateTime, Option } from 'effect'
-import type { StatusTone } from 'react-tundraish'
-import { type HealthReport, ServerStatus } from 'servers-core-js'
 
 /** How the base shows an instant, in the device's locale and time zone. */
 const INSTANT_FORMAT = new Intl.DateTimeFormat(undefined, {

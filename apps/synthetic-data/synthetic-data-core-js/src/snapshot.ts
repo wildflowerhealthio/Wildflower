@@ -1,5 +1,5 @@
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { type DateTime, Either, type ParseResult, Schema } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
 
 import * as Entry from './snapshot-entry.ts'
 import * as SnapshotFile from './snapshot-file.ts'

@@ -1,14 +1,14 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from '@wildflowerhealthio/collector-fundamentals/test-helpers'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
+import { traceResourceId } from '@wildflowerhealthio/web-trace-core'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { localResourceId } from 'fhir-r4/identity'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import { traceResourceId } from 'web-trace-core'
 
-import { REXALL_CAREBOOK_SYSTEM } from 'rexall-be-well-source'
+import { REXALL_CAREBOOK_SYSTEM } from '@wildflowerhealthio/rexall-be-well-source'
 
 import { InstanceConfig, RexallCollectorDescriptor, defaultConfig, scrapingPlan } from './config.ts'
 import prescriptions from './fixtures/prescriptions-searchset.json' with { type: 'json' }

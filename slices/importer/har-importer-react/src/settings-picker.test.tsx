@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { defaultHarSettings, fhirSources } from 'har-importer-core'
+import { defaultHarSettings, fhirSources } from '@wildflowerhealthio/har-importer-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { HarSettingsPicker } from './settings-picker.tsx'

@@ -1,6 +1,6 @@
+import { anonymizedJsonFileName } from '@wildflowerhealthio/pdf-anonymizer-core'
+import { Document } from '@wildflowerhealthio/positioned-text'
 import { Schema } from 'effect'
-import { anonymizedJsonFileName } from 'pdf-anonymizer-core'
-import { Document } from 'positioned-text'
 
 const JSON_MEDIA_TYPE = 'application/json'
 

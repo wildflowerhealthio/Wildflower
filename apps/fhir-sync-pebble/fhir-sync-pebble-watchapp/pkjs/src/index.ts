@@ -5,7 +5,11 @@
 // they become are fhir-sync-pebble-core's; this is the glue to Pebble's events,
 // AppMessage, localStorage, XMLHttpRequest and timers.
 
-import { PhoneSettings, WatchDevice, WatchSync } from 'fhir-sync-pebble-core/pkjs'
+import {
+  PhoneSettings,
+  WatchDevice,
+  WatchSync,
+} from '@wildflowerhealthio/fhir-sync-pebble-core/pkjs'
 
 const CONFIGURATION_URL = 'https://wildflowerhealth.io/fhir-sync-pebble/'
 

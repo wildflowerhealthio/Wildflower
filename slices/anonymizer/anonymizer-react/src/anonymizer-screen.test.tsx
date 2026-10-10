@@ -3,9 +3,9 @@ import { userEvent } from '@testing-library/user-event'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import type { PickedFile } from 'anonymizer-fundamentals'
+import type { PickedFile } from '@wildflowerhealthio/anonymizer-fundamentals'
 
-import { HAR_PARSE_ERROR } from 'har-anonymizer-core'
+import { HAR_PARSE_ERROR } from '@wildflowerhealthio/har-anonymizer-core'
 import { AnonymizerScreen, UNIDENTIFIED_ERROR } from './anonymizer-screen.tsx'
 import { RECOGNIZED_HAR } from './test-helpers.ts'
 

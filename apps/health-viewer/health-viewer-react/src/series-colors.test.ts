@@ -1,8 +1,8 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { ValueAxis } from 'health-viewer-fundamentals'
+import { ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { seriesColors } from './series-colors.ts'
 

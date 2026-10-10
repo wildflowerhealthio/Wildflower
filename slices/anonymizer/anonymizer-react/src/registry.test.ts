@@ -1,11 +1,11 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { PickedFile } from 'anonymizer-fundamentals'
+import type { PickedFile } from '@wildflowerhealthio/anonymizer-fundamentals'
 
-import { HAR_PARSE_ERROR, harDescriptor } from 'har-anonymizer-core'
+import { HAR_PARSE_ERROR, harDescriptor } from '@wildflowerhealthio/har-anonymizer-core'
 import { RECOGNIZED_HAR } from './test-helpers.ts'
 
 describe('harDescriptor', () => {

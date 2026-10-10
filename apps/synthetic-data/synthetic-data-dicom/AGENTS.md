@@ -11,7 +11,7 @@ no React.
 ## Shape
 
 The root entry exports `DicomImage`:
-`import { DicomImage } from 'synthetic-data-dicom'`.
+`import { DicomImage } from '@wildflowerhealthio/synthetic-data-dicom'`.
 
 - `src/dicom-image.ts` — `DicomImage.reidentify(asOf, file, reidentification)`
   reads the file with `dicom`'s `Part10`, refuses one not marked

@@ -1,9 +1,9 @@
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
+import type * as GatekeeperReact from '@wildflowerhealthio/gatekeeper-react'
+import { type AuthState, Unauthed } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Layer, SubscriptionRef } from 'effect'
-import type * as GatekeeperReact from 'gatekeeper-react'
 import { useEffect, type JSX, type ReactNode } from 'react'
-import { type AuthState, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 /**
@@ -63,7 +63,7 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
 // under test import. `authTokenRef` is a non-component export and is
 // reduced to a stub `Subscribable` that reports null and never
 // publishes — the mocked AuthStateProvider doesn't use it.
-vi.mock('react-kitchen-sink', () => ({
+vi.mock('@wildflowerhealthio/react-kitchen-sink', () => ({
   AuthStateProvider: makePassthrough('AuthStateProvider'),
   // The test seeds the store with `Unauthed()`; the mock only needs a value the
   // `SubscriptionRef` can hold (nothing asserts on it).
@@ -85,7 +85,7 @@ vi.mock('react-kitchen-sink', () => ({
 // passthrough and `PendingConsentModalHost` to nothing — the popup
 // surface isn't what's being pinned here, and the real Effect
 // `SubscriptionRef` plumbing would drag a runtime into this harness.
-vi.mock('gatekeeper-react', async (importOriginal) => {
+vi.mock('@wildflowerhealthio/gatekeeper-react', async (importOriginal) => {
   const actual = await importOriginal<typeof GatekeeperReact>()
   return {
     GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
@@ -101,16 +101,16 @@ vi.mock('gatekeeper-react', async (importOriginal) => {
     TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
   }
 })
-vi.mock('collector-react', () => ({
+vi.mock('@wildflowerhealthio/collector-react', () => ({
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 // fhir-r4-react no longer ships a client provider — the app composes its
 // `sliceRuntimeLayer` into the runtime layer (see `router-context.ts`),
 // so the mock now mirrors the other migrated slices' router-context shape.
-vi.mock('fhir-r4-react', () => ({
+vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
   FhirR4ResourcesRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
-vi.mock('apps-react', () => ({
+vi.mock('@wildflowerhealthio/apps-react', () => ({
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))
 vi.mock('../bridges/collector-sender-forwarder.tsx', () => ({
@@ -126,7 +126,7 @@ vi.mock('../bridges/background-server-service-sender-forwarder.tsx', () => ({
 // `react-kitchen-sink` store plumbing, which this harness mocks away; the
 // provider is a passthrough and the store a no-op, as for the pending-consent
 // store above.
-vi.mock('wildflower-server-react', () => ({
+vi.mock('@wildflowerhealthio/wildflower-server-react', () => ({
   ServerServiceStatusProvider: makePassthrough('ServerServiceStatusProvider'),
   makeServerServiceStatusStore: () => ({
     subscribable: {
@@ -141,7 +141,7 @@ vi.mock('wildflower-server-react', () => ({
 // `ErrorBoundary` would mask assertion failures by swallowing them into
 // Sentry — so reduce the boundary to a passthrough and `Sentry` to a
 // no-op.
-vi.mock('telemetry-web', () => ({
+vi.mock('@wildflowerhealthio/telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
 }))

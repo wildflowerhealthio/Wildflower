@@ -1,5 +1,5 @@
+import { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { DateTime, type Duration, Effect, Either, ParseResult, Schema } from 'effect'
-import { DocumentReference } from 'fhir-r4/resources'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 

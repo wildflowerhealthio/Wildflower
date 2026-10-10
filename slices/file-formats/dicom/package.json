@@ -1,5 +1,5 @@
 {
-  "name": "dicom",
+  "name": "@wildflowerhealthio/dicom",
   "version": "0.0.0",
   "private": true,
   "description": "Pure DICOM Part 10 tag reader and element-stream writer: parseDicomFile wraps dicom-parser into a typed DicomHeader — the identifying tags an importer synthesizes FHIR from, plus the Image Pixel and Pixel Data encoding a preview needs to explain a file that will not render; Part10 reads a file's top-level data elements as raw bytes and writes them back. No DOM, no fs, no React.",
@@ -35,9 +35,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite-plus": "catalog:"

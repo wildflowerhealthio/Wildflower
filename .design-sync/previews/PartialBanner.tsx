@@ -1,4 +1,4 @@
-import { PartialBanner } from 'react-tundraish'
+import { PartialBanner } from '@wildflowerhealthio/react-tundraish'
 
 /** The still-filling-in state: amber breathing dot and one line of copy. */
 export const StillLoading = () => (

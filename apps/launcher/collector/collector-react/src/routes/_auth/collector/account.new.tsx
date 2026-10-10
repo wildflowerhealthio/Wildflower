@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { CollectorTag, descriptors } from 'collector-registry/registry'
+import { CollectorTag, descriptors } from '@wildflowerhealthio/collector-registry/registry'
 import { Schema } from 'effect'
 import type { JSX } from 'react'
 

@@ -1,6 +1,10 @@
-import { HeadersWire, ResponseStartMessageBody, SnifferRequestId } from 'browser-sniffer-core'
+import {
+  HeadersWire,
+  ResponseStartMessageBody,
+  SnifferRequestId,
+} from '@wildflowerhealthio/browser-sniffer-core'
+import { joinIdComponents, localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import { Schema } from 'effect'
-import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
 
 import { WEB_TRACE_SESSION_IDENTIFIER_SYSTEM } from './codec/systems.ts'
 

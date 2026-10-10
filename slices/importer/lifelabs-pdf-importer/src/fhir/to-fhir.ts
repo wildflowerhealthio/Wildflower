@@ -1,11 +1,11 @@
-import { Effect, type ParseResult, Schema } from 'effect'
 import {
   DiagnosticReport,
   type FhirResource,
   Observation,
   Patient,
   Practitioner,
-} from 'fhir-r4/resources'
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { Effect, type ParseResult, Schema } from 'effect'
 
 import type * as Report from '../entities/report.ts'
 import { diagnosticReportWire, reportOriginalId } from './wire/diagnostic-report.ts'

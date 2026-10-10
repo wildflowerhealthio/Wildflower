@@ -1,5 +1,5 @@
-import { WatchDevice } from 'fhir-sync-pebble-core'
-import * as Seeding from 'synthetic-data-fundamentals/seeding'
+import { WatchDevice } from '@wildflowerhealthio/fhir-sync-pebble-core'
+import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
 
 /**
  * The watch a synthetic Pebble data set was recorded on, as PebbleKit JS

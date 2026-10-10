@@ -12,7 +12,7 @@ fn main() {
     assert!(
         dist.join("index.html").is_file(),
         "apps/relay/relay-admin-web/dist/index.html is missing: build the admin UI first \
-         (`vp run -F relay-admin-web build`), or write a placeholder with \
+         (`vp run -F @wildflowerhealthio/relay-admin-web build`), or write a placeholder with \
          `scripts/ci/stub-embedded-bundles.sh relay-admin-web`"
     );
 }

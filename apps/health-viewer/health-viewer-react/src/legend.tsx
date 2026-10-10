@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import type { ValueAxis } from 'health-viewer-fundamentals'
+import type { ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { seriesColors } from './series-colors.ts'
 import { labelWithUnit } from './value-format.ts'

@@ -1,8 +1,8 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -30,7 +30,9 @@ describe('the workspace package graph', () => {
     const byName = new Map(packages.map((p) => [`${p.ecosystem}:${p.name}`, p]))
     // A TS package and a Rust crate each with a known workspace dependency:
     // reading either manifest wrong would drop the edge.
-    expect(byName.get('npm:importer-react')?.runtimeDependencyNames).toContain('importer-core')
+    expect(byName.get('npm:@wildflowerhealthio/importer-react')?.runtimeDependencyNames).toContain(
+      '@wildflowerhealthio/importer-core'
+    )
     expect(byName.get('cargo:host-app')?.runtimeDependencyNames).toContain('browser-sniffer-tauri')
   })
 })
@@ -226,16 +228,19 @@ describe('packageGraphViolations', () => {
     })
 
     it("is open to the site assembly for an app's -web entry only", () => {
-      const site = packageAt('wildflower-site-web', 'apps/wildflower-site/wildflower-site-web')
-      const entry = packageAt('lifting-web', 'apps/lifting/lifting-web')
-      const core = packageAt('lifting-core-js', 'apps/lifting/lifting-core-js')
+      const site = packageAt(
+        '@wildflowerhealthio/wildflower-site-web',
+        'apps/wildflower-site/wildflower-site-web'
+      )
+      const entry = packageAt('@wildflowerhealthio/lifting-web', 'apps/lifting/lifting-web')
+      const core = packageAt('@wildflowerhealthio/lifting-core-js', 'apps/lifting/lifting-core-js')
       expect(
         packageGraphViolations([dependingOn(site, entry, 'runtime'), entry]).map(formatViolation)
       ).toEqual([])
       expect(
         packageGraphViolations([dependingOn(site, core, 'runtime'), core]).map(formatViolation)
       ).toEqual([
-        'wildflower-site-web (apps/wildflower-site/wildflower-site-web) depends on lifting-core-js, which is private to apps/lifting/',
+        '@wildflowerhealthio/wildflower-site-web (apps/wildflower-site/wildflower-site-web) depends on @wildflowerhealthio/lifting-core-js, which is private to apps/lifting/',
       ])
     })
   })

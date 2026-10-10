@@ -1,19 +1,19 @@
-import { DateTime, Effect, Option, Schema } from 'effect'
-import * as fc from 'fast-check'
-import { Quantity } from 'fhir-r4/data-types'
-import { adoptedReferenceOf } from 'fhir-r4/identity'
+import { Quantity } from '@wildflowerhealthio/fhir-r4/data-types'
+import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   DiagnosticReport,
   type FhirResource,
   FhirResourceSchema,
   Observation,
   Practitioner,
-} from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
-import { decodeLifeLabsPdfDocument, Report } from 'lifelabs-pdf-importer'
-import { layoutDocument } from 'lifelabs-pdf-importer/test-helpers'
-import { type Story, StoryDay } from 'synthetic-data-fundamentals/story'
-import { asOfArbitrary } from 'synthetic-data-fundamentals/test-helpers'
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { decodeLifeLabsPdfDocument, Report } from '@wildflowerhealthio/lifelabs-pdf-importer'
+import { layoutDocument } from '@wildflowerhealthio/lifelabs-pdf-importer/test-helpers'
+import { type Story, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
+import { DateTime, Effect, Option, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as LifeLabs from './lifelabs.ts'

@@ -1,9 +1,9 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
-import { appsListQueryOptions } from 'apps-react'
-import { remotesQueryOptions } from 'collector-react'
+import { appsListQueryOptions } from '@wildflowerhealthio/apps-react'
+import { remotesQueryOptions } from '@wildflowerhealthio/collector-react'
+import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import { Effect } from 'effect'
 import type { JSX } from 'react'
-import { Sentry } from 'telemetry-web'
 
 import type { RouterContext } from '../router-context.ts'
 import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'

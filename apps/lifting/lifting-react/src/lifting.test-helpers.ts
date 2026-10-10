@@ -1,12 +1,12 @@
-import { Array as Arr, DateTime } from 'effect'
 import {
   ExerciseRequest,
   type ExerciseSetObservation,
   PlannedWorkout,
   type TrainingPlanDefinition,
   type WorkoutProcedure,
-} from 'lifting-core-js'
-import { AUTHORED_ON, made, SUBJECT } from 'lifting-core-js/test-helpers'
+} from '@wildflowerhealthio/lifting-core-js'
+import { AUTHORED_ON, made, SUBJECT } from '@wildflowerhealthio/lifting-core-js/test-helpers'
+import { Array as Arr, DateTime } from 'effect'
 
 /**
  * Everything a lifter has written under one training plan definition: every

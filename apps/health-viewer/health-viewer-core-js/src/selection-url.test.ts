@@ -1,10 +1,10 @@
+import { ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { ValueAxis } from 'health-viewer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { medicationSource } from 'health-viewer-medications'
-import { observationSource } from 'health-viewer-observations'
+import { medicationSource } from '@wildflowerhealthio/health-viewer-medications'
+import { observationSource } from '@wildflowerhealthio/health-viewer-observations'
 import {
   DEFAULT_RANGE,
   RANGE_PARAM,

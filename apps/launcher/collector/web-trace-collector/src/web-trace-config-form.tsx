@@ -1,8 +1,8 @@
-import type { ConfigFormProps } from 'collector-fundamentals/config-form'
+import type { ConfigFormProps } from '@wildflowerhealthio/collector-fundamentals/config-form'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import { Either, ParseResult, Schema } from 'effect'
 import { useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { pageLayoutStyles } from 'react-tundraish'
 
 import { defaultConfig, InstanceConfig } from './config.ts'
 import fields from './web-trace-config-form.module.css'

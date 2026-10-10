@@ -1,7 +1,11 @@
-import { descriptorForTag, type CollectorTag, type ConfigForTag } from 'collector-registry/registry'
+import {
+  descriptorForTag,
+  type CollectorTag,
+  type ConfigForTag,
+} from '@wildflowerhealthio/collector-registry/registry'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBanner, PageHeader } from '@wildflowerhealthio/react-tundraish'
 import { useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner, PageHeader } from 'react-tundraish'
 
 import { renderConfigForm } from './config-form.tsx'
 import styles from './account-form.module.css'

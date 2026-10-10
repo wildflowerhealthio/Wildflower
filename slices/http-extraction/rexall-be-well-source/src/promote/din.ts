@@ -1,7 +1,7 @@
 import { Array as Arr, Equivalence, Option, pipe, String as Str, Struct } from 'effect'
 
-import { CanadianCodingSystem, Code, Coding } from 'fhir-r4/data-types'
-import { modifyIfDecodes } from 'kitchen-sink/schema'
+import { CanadianCodingSystem, Code, Coding } from '@wildflowerhealthio/fhir-r4/data-types'
+import { modifyIfDecodes } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import { CarebookCodingSystem } from '../carebook.ts'
 import { DecodedCodeableConcept } from './decoded-r4.ts'

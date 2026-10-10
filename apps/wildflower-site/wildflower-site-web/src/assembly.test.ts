@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SECTION_PATHS } from 'branding-core'
+import { SECTION_PATHS } from '@wildflowerhealthio/branding-core'
 
 import type { SiteSection } from './assembly.ts'
 import {
@@ -57,7 +57,9 @@ const escapingSectionArb: fc.Arbitrary<SiteSection> = fc.record({
 
 describe('site layout', () => {
   it('serves the marketing site from the root of the artifact', () => {
-    const [marketing] = resolveSections(repoRoot, outDir, [sectionFor('marketing-site-web')])
+    const [marketing] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/marketing-site-web'),
+    ])
     expect(marketing?.to).toBe(outDir)
     // GitHub Pages only honours the custom domain when CNAME is at the root of
     // the uploaded artifact.
@@ -66,37 +68,49 @@ describe('site layout', () => {
   })
 
   it('serves the medications app from /medications with its one SMART entry', () => {
-    const [medication] = resolveSections(repoRoot, outDir, [sectionFor('medications-web')])
+    const [medication] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/medications-web'),
+    ])
     expect(medication?.to).toBe(join(outDir, 'medications'))
     expect(medication?.requiredPaths).toEqual([join(outDir, 'medications', 'index.html')])
   })
 
   it('serves the importer app from /importer with its one SMART entry', () => {
-    const [importer] = resolveSections(repoRoot, outDir, [sectionFor('importer-web')])
+    const [importer] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/importer-web'),
+    ])
     expect(importer?.to).toBe(join(outDir, 'importer'))
     expect(importer?.requiredPaths).toEqual([join(outDir, 'importer', 'index.html')])
   })
 
   it('serves the Pebble settings app from /fhir-sync-pebble with its one SMART entry', () => {
-    const [pebble] = resolveSections(repoRoot, outDir, [sectionFor('fhir-sync-pebble-web')])
+    const [pebble] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/fhir-sync-pebble-web'),
+    ])
     expect(pebble?.to).toBe(join(outDir, 'fhir-sync-pebble'))
     expect(pebble?.requiredPaths).toEqual([join(outDir, 'fhir-sync-pebble', 'index.html')])
   })
 
   it('serves the server-docs console from /server-docs', () => {
-    const [serverDocs] = resolveSections(repoRoot, outDir, [sectionFor('server-docs-web')])
+    const [serverDocs] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/server-docs-web'),
+    ])
     expect(serverDocs?.to).toBe(join(outDir, 'server-docs'))
     expect(serverDocs?.requiredPaths).toEqual([join(outDir, 'server-docs', 'index.html')])
   })
 
   it('serves the OHIF viewer from /ohif-viewer', () => {
-    const [ohif] = resolveSections(repoRoot, outDir, [sectionFor('ohif-viewer-web')])
+    const [ohif] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/ohif-viewer-web'),
+    ])
     expect(ohif?.to).toBe(join(outDir, 'ohif-viewer'))
     expect(ohif?.requiredPaths).toEqual([join(outDir, 'ohif-viewer', 'index.html')])
   })
 
   it('serves the health viewer from /health-viewer with its one SMART entry', () => {
-    const [healthViewer] = resolveSections(repoRoot, outDir, [sectionFor('health-viewer-web')])
+    const [healthViewer] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/health-viewer-web'),
+    ])
     expect(healthViewer?.from).toBe(
       join(repoRoot, 'apps', 'health-viewer', 'health-viewer-web', 'dist')
     )
@@ -105,20 +119,26 @@ describe('site layout', () => {
   })
 
   it('serves the lifting app from /lifting with its one SMART entry', () => {
-    const [lifting] = resolveSections(repoRoot, outDir, [sectionFor('lifting-web')])
+    const [lifting] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/lifting-web'),
+    ])
     expect(lifting?.from).toBe(join(repoRoot, 'apps', 'lifting', 'lifting-web', 'dist'))
     expect(lifting?.to).toBe(join(outDir, 'lifting'))
     expect(lifting?.requiredPaths).toEqual([join(outDir, 'lifting', 'index.html')])
   })
 
   it('serves the WatchLifts settings page from /watch-lifts with its one entry', () => {
-    const [watchLifts] = resolveSections(repoRoot, outDir, [sectionFor('watch-lifts-web')])
+    const [watchLifts] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/watch-lifts-web'),
+    ])
     expect(watchLifts?.to).toBe(join(outDir, 'watch-lifts'))
     expect(watchLifts?.requiredPaths).toEqual([join(outDir, 'watch-lifts', 'index.html')])
   })
 
   it('serves the synthetic data loader from /synthetic-data with its one SMART entry', () => {
-    const [loader] = resolveSections(repoRoot, outDir, [sectionFor('synthetic-data-web')])
+    const [loader] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/synthetic-data-web'),
+    ])
     expect(loader?.from).toBe(
       join(repoRoot, 'apps', 'synthetic-data', 'synthetic-data-web', 'dist')
     )
@@ -127,7 +147,9 @@ describe('site layout', () => {
   })
 
   it('serves the hosted launcher from /launcher with its SPA entry', () => {
-    const [launcher] = resolveSections(repoRoot, outDir, [sectionFor('launcher-web')])
+    const [launcher] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/launcher-web'),
+    ])
     expect(launcher?.to).toBe(join(outDir, 'launcher'))
     expect(launcher?.requiredPaths).toEqual([join(outDir, 'launcher', 'index.html')])
   })
@@ -244,11 +266,14 @@ describe('layout reconciliation with the packages it assembles', () => {
    * folder, or directly under `apps/` for an app with no packages of its own.
    */
   const firstPartyApps = [
-    { packageName: 'medications-web', appDir: 'medications/medications-web' },
-    { packageName: 'importer-web', appDir: 'importer-web' },
-    { packageName: 'fhir-sync-pebble-web', appDir: 'fhir-sync-pebble/fhir-sync-pebble-web' },
-    { packageName: 'watch-lifts-web', appDir: 'watch-lifts/watch-lifts-web' },
-    { packageName: 'lifting-web', appDir: 'lifting/lifting-web' },
+    { packageName: '@wildflowerhealthio/medications-web', appDir: 'medications/medications-web' },
+    { packageName: '@wildflowerhealthio/importer-web', appDir: 'importer-web' },
+    {
+      packageName: '@wildflowerhealthio/fhir-sync-pebble-web',
+      appDir: 'fhir-sync-pebble/fhir-sync-pebble-web',
+    },
+    { packageName: '@wildflowerhealthio/watch-lifts-web', appDir: 'watch-lifts/watch-lifts-web' },
+    { packageName: '@wildflowerhealthio/lifting-web', appDir: 'lifting/lifting-web' },
   ] as const
 
   it.each(firstPartyApps)(
@@ -300,7 +325,7 @@ describe('layout reconciliation with the packages it assembles', () => {
     expect(
       existsSync(join(repoRoot, 'apps', 'wildflower-site', 'marketing-site-web', 'public', 'CNAME'))
     ).toBe(true)
-    expect(sectionFor('marketing-site-web').sourceDir).toBe(
+    expect(sectionFor('@wildflowerhealthio/marketing-site-web').sourceDir).toBe(
       'apps/wildflower-site/marketing-site-web/dist'
     )
   })
@@ -312,7 +337,9 @@ describe('layout reconciliation with the packages it assembles', () => {
     const configPath = join(repoRoot, 'apps', 'server-docs-web', 'vite.config.ts')
     const config = readFileSync(configPath, 'utf8')
     expect(config).not.toMatch(/\boutDir\s*:/)
-    expect(sectionFor('server-docs-web').sourceDir).toBe('apps/server-docs-web/dist')
+    expect(sectionFor('@wildflowerhealthio/server-docs-web').sourceDir).toBe(
+      'apps/server-docs-web/dist'
+    )
   })
 
   it('reads the hosted launcher source dir from the launcher-web web vite config', () => {
@@ -324,7 +351,7 @@ describe('layout reconciliation with the packages it assembles', () => {
     const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
     expect(declared).toBeDefined()
     const expected = resolve(appDir, declared ?? '')
-    expect(join(repoRoot, sectionFor('launcher-web').sourceDir)).toBe(expected)
+    expect(join(repoRoot, sectionFor('@wildflowerhealthio/launcher-web').sourceDir)).toBe(expected)
   })
 
   it('reads the OHIF viewer from the dist its build script writes', () => {
@@ -334,7 +361,9 @@ describe('layout reconciliation with the packages it assembles', () => {
     const buildPath = join(repoRoot, 'apps', 'ohif-viewer-web', 'src', 'build.ts')
     const build = readFileSync(buildPath, 'utf8')
     expect(build).toMatch(/join\(packageRoot, 'dist'\)/)
-    expect(sectionFor('ohif-viewer-web').sourceDir).toBe('apps/ohif-viewer-web/dist')
+    expect(sectionFor('@wildflowerhealthio/ohif-viewer-web').sourceDir).toBe(
+      'apps/ohif-viewer-web/dist'
+    )
   })
 
   it('declares every assembled package as a workspace dependency', () => {

@@ -1,5 +1,5 @@
+import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Schema } from 'effect'
-import { MedicationRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 import { describe, expect, test } from 'vite-plus/test'
 

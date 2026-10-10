@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX, ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { Checkbox } from './checkbox.tsx'
 import styles from './checkbox-group.module.css'

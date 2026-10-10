@@ -1,4 +1,3 @@
-import { Option } from 'effect'
 import {
   diffJson,
   type DiffStatus,
@@ -8,10 +7,11 @@ import {
   normalizedEncode,
   resetFieldToServer,
   type ServerComparison,
-} from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
+} from '@wildflowerhealthio/fhir-r4/clients'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Chip } from '@wildflowerhealthio/react-tundraish'
+import { Option } from 'effect'
 import { type JSX, useState } from 'react'
-import { Chip } from 'react-tundraish'
 
 import { plural } from './preview-text.ts'
 import styles from './diff-badge.module.css'

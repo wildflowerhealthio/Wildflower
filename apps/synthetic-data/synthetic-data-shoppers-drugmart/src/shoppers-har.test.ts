@@ -1,8 +1,8 @@
+import { HttpArchive } from '@wildflowerhealthio/http-archive'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
 import { DateTime, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { HttpArchive } from 'http-archive'
-import { numRunsFor } from 'kitchen-sink/test'
-import { asOfArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
 import type { ShoppersAccount } from './shoppers-account.ts'

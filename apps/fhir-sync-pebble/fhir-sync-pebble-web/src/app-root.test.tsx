@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { APP_DESCRIPTIONS, TELEMETRY_CONSENT_COPY } from 'branding-core'
-import { writeConsent } from 'telemetry-core'
-import type * as TelemetryWeb from 'telemetry-web'
+import { APP_DESCRIPTIONS, TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { writeConsent } from '@wildflowerhealthio/telemetry-core'
+import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
@@ -18,7 +18,7 @@ const { SENTRY_DSN } = vi.hoisted(() => {
 const { initConsentedTelemetryMock } = vi.hoisted(() => ({
   initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
 }))
-vi.mock('telemetry-web', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: initConsentedTelemetryMock,
 }))

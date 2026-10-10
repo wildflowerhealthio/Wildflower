@@ -1,13 +1,13 @@
 import { DateTime, Effect, Either, Encoding, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Extraction } from 'http-extraction-fundamentals'
+import { Extraction } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
   echoResponseKind,
   makeExtractionInput,
   runExtraction,
   type Echo,
-} from 'http-extraction-fundamentals/test-helpers'
+} from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { CollectorHttpResponse } from '../model/index.ts'
 import { runHandlerSync } from './collector-bridge-message-handler.test-helpers.ts'
 import * as RunRecorder from './run-recorder.ts'

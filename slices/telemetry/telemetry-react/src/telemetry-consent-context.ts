@@ -1,7 +1,7 @@
-import type { TelemetryConsentCopy } from 'branding-core'
+import type { TelemetryConsentCopy } from '@wildflowerhealthio/branding-core'
+import { useContextOrThrow } from '@wildflowerhealthio/react-kitchen-sink'
+import type { TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
 import { createContext } from 'react'
-import { useContextOrThrow } from 'react-kitchen-sink'
-import type { TelemetryConsent } from 'telemetry-core'
 
 /**
  * What a `TelemetryConsentGate` hands the app it reveals: the answer, the

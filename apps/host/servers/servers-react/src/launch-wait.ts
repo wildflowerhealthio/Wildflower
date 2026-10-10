@@ -1,5 +1,5 @@
+import { LaunchError, ServerStatus } from '@wildflowerhealthio/servers-core-js'
 import { DateTime, Duration, Option } from 'effect'
-import { LaunchError, ServerStatus } from 'servers-core-js'
 
 import { lastStopText } from './server-status-text.ts'
 

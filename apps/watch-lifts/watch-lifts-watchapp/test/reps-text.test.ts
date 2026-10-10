@@ -1,7 +1,11 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  buildHostCDriver,
+  type HostCDriver,
+  numRunsFor,
+} from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 // reps-text.c is the watch's pure formatting code. The Pebble SDK isn't

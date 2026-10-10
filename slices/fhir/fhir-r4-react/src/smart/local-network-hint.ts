@@ -19,7 +19,7 @@
  * about, so neither gets the hint.
  */
 
-import { isLoopbackHost } from 'gatekeeper-core/smart-client'
+import { isLoopbackHost } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 
 /**
  * The Local Network Access hint for `serverUrl`, or `undefined` when it does not

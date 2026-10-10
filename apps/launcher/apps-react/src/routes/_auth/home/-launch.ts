@@ -1,8 +1,8 @@
-import { AppsHttpApiClient } from 'apps-core-js/clients'
-import { Schemas } from 'apps-core-js/http-api-definition'
+import { AppsHttpApiClient } from '@wildflowerhealthio/apps-core-js/clients'
+import { Schemas } from '@wildflowerhealthio/apps-core-js/http-api-definition'
+import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
+import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Effect, Either, Schema } from 'effect'
-import { unwrapFiberFailure } from 'kitchen-sink'
-import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
 
 import type { RunAuthed } from '../../../router-context.ts'
 import { encodeLaunchError, type LaunchErrorBody } from './-launch-error.ts'

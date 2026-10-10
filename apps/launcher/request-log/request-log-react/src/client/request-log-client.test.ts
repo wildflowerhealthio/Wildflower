@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientResponse, UrlParams } from '@effect/platform'
+import { RequestLogHttpApiClient } from '@wildflowerhealthio/request-log-core-js/clients'
 import { Effect, Layer, Option } from 'effect'
-import { RequestLogHttpApiClient } from 'request-log-core-js/clients'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { buildRequestLogClientLayer } from './request-log-client.ts'

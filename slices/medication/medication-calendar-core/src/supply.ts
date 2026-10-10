@@ -1,5 +1,5 @@
+import { type SupplyDuration, supplyDurationToParts } from '@wildflowerhealthio/fhir-utility'
 import { DateTime, Option } from 'effect'
-import { type SupplyDuration, supplyDurationToParts } from 'fhir-utility'
 
 /**
  * Estimated next-fill date as an ISO instant: `authoredOnIso` advanced by

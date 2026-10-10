@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
+import { formatRelativeTime } from '@wildflowerhealthio/kitchen-sink'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ItemList, type ItemListItem } from '@wildflowerhealthio/react-tundraish'
 import { DateTime, Duration } from 'effect'
-import { formatRelativeTime } from 'kitchen-sink'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ItemList, type ItemListItem } from 'react-tundraish'
 
 import { REFUSED_STREAK_WINDOW, type ActivityCounts, type RefusedStreak } from '../activity-feed.ts'
 import { accessLabelOf, type RequestAccess } from '../request-log.ts'

@@ -1,5 +1,5 @@
+import { FormatDetector, type PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect } from 'effect'
-import { FormatDetector, type PickedFile } from 'importer-fundamentals'
 
 /**
  * Reading a file the user dropped or chose, and rejecting one that no

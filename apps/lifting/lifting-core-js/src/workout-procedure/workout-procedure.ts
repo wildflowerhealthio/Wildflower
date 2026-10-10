@@ -1,4 +1,14 @@
 import {
+  CodeableConcept,
+  Coding,
+  IdentifierAndReference,
+  narrowFields,
+  Period,
+  WildflowerCodeSystem,
+  withMandatoryId,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { Procedure } from '@wildflowerhealthio/fhir-r4/resources'
+import {
   Array as Arr,
   type Brand,
   Data,
@@ -10,16 +20,6 @@ import {
   pipe,
   Schema,
 } from 'effect'
-import {
-  CodeableConcept,
-  Coding,
-  IdentifierAndReference,
-  narrowFields,
-  Period,
-  WildflowerCodeSystem,
-  withMandatoryId,
-} from 'fhir-r4/data-types'
-import { Procedure } from 'fhir-r4/resources'
 
 // Type-only: a workout is made from its training plan definition and the
 // `ExerciseRequest`s it carries out, but both modules read workouts at

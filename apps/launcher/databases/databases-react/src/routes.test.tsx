@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, type AnyRoute } from '@tanstack/react-router'
-import type { Databases } from 'databases-core-js/http-api-definition'
+import type { Databases } from '@wildflowerhealthio/databases-core-js/http-api-definition'
 import { Effect, Layer, pipe } from 'effect'
 import { describe, expect, test } from 'vite-plus/test'
 

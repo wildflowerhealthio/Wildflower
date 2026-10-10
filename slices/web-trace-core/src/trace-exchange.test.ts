@@ -1,8 +1,12 @@
-import { HeadersWire, ResponseStartMessageBody, SnifferRequestId } from 'browser-sniffer-core'
+import {
+  HeadersWire,
+  ResponseStartMessageBody,
+  SnifferRequestId,
+} from '@wildflowerhealthio/browser-sniffer-core'
+import { joinIdComponents, localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { WEB_TRACE_SESSION_IDENTIFIER_SYSTEM } from './codec/systems.ts'

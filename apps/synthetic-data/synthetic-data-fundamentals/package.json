@@ -1,5 +1,5 @@
 {
-  "name": "synthetic-data-fundamentals",
+  "name": "@wildflowerhealthio/synthetic-data-fundamentals",
   "version": "0.0.0",
   "private": true,
   "description": "The base of the synthetic data generators, one sub-entry per role: story (the story model — Story, Person, Prescription, DrugProduct, LabDraw — with every date a StoryDay relative to one as-of date), seeding (deterministic values, hashed with kitchen-sink's FNV-1a and fmix64 over fhir-r4's id fold) and chrome-har (the synthetic defaults a generated Chrome DevTools capture's entries are written with; the format and DevTools vocabulary are http-archive's). The root exports nothing. Per-source generator packages build on it. Pure — no DOM, no fs, no React.",
@@ -44,20 +44,20 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-archive": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-archive": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

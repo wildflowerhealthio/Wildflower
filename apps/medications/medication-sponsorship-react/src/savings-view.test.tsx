@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type { Medication, SponsorCatalog, SponsoredDrug } from 'medication-sponsorship-core-js'
+import type {
+  Medication,
+  SponsorCatalog,
+  SponsoredDrug,
+} from '@wildflowerhealthio/medication-sponsorship-core-js'
 
 import { SavingsView } from './savings-view.tsx'
 

@@ -11,7 +11,7 @@ payload schemas. No DOM, no `fs`, no React.
 
 The root entry exports `ShoppersHar`, the account types and
 `shoppersPatientReferenceOf`:
-`import { ShoppersHar, type ShoppersAccount } from 'synthetic-data-shoppers-drugmart'`.
+`import { ShoppersHar, type ShoppersAccount } from '@wildflowerhealthio/synthetic-data-shoppers-drugmart'`.
 
 - `src/shoppers-account.ts` — `ShoppersAccount`, the generator's input: the
   account's `pcid`, its phone and address, the `ShoppersStore` that fills for

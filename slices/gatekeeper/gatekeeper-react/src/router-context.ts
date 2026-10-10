@@ -1,7 +1,7 @@
 import { useRouteContext, useRouter } from '@tanstack/react-router'
+import { type GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
+import { type BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 import { type Layer } from 'effect'
-import { type GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
-import { type BaseRouterContext } from 'shared-structures-react'
 
 import { buildGatekeeperClientLayer } from './client/gatekeeper-client.ts'
 

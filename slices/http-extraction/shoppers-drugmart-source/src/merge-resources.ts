@@ -1,6 +1,9 @@
-import type { CodeableConcept, IdentifierAndReference } from 'fhir-r4/data-types'
-import type { FhirResource, MedicationDispense } from 'fhir-r4/resources'
-import type { SourceDescriptor } from 'http-extraction-fundamentals'
+import type {
+  CodeableConcept,
+  IdentifierAndReference,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { ShoppersIdentifierSystem } from './shoppers.ts'
 

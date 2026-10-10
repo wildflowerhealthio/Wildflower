@@ -1,13 +1,13 @@
-import { DateTime, type Effect, type ParseResult } from 'effect'
-import { chromeHarOf, chromeHarToJson, chromePageOf } from 'http-archive'
+import { chromeHarOf, chromeHarToJson, chromePageOf } from '@wildflowerhealthio/http-archive'
 import {
   customerUrlOf,
   prescriptionHistoryUrlOf,
   prescriptionStatusUrlOf,
   SHOPPERS_PORTAL_ORIGIN,
-} from 'shoppers-drugmart-source'
-import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'
-import { StoryDay } from 'synthetic-data-fundamentals/story'
+} from '@wildflowerhealthio/shoppers-drugmart-source'
+import * as ChromeHar from '@wildflowerhealthio/synthetic-data-fundamentals/chrome-har'
+import { StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import { DateTime, type Effect, type ParseResult } from 'effect'
 
 import { customerPayloadOf } from './customer-payload.ts'
 import { prescriptionHistoryPayloadOf } from './prescription-history-payload.ts'

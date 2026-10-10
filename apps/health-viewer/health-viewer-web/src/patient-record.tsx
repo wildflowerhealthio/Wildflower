@@ -1,11 +1,21 @@
+import {
+  type RangePreset,
+  type Selection,
+  groupForPanel,
+  xDomain,
+} from '@wildflowerhealthio/health-viewer-core-js'
+import { Series, ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
+import {
+  HealthViewerLayout,
+  MultiAxisChart,
+  RangePresets,
+  SeriesPanel,
+} from '@wildflowerhealthio/health-viewer-react'
+import { LoadingLine, LoadingMoreLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
 import type { DateTime } from 'effect'
 import { Match } from 'effect'
-import { type RangePreset, type Selection, groupForPanel, xDomain } from 'health-viewer-core-js'
-import { Series, ValueAxis } from 'health-viewer-fundamentals'
-import { HealthViewerLayout, MultiAxisChart, RangePresets, SeriesPanel } from 'health-viewer-react'
 import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo } from 'react'
-import { LoadingLine, LoadingMoreLine, ReadFailureLine } from 'smart-app-react'
 
 import type { SmartClient } from './smart-client.ts'
 import { type RecordRead, useRecordRead } from './use-record-read.ts'

@@ -1,8 +1,8 @@
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import { utf8Bytes } from '@wildflowerhealthio/kitchen-sink'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary } from 'effect'
 import * as fc from 'fast-check'
-import { localResourceId } from 'fhir-r4/identity'
-import { utf8Bytes } from 'kitchen-sink'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as PebbleSettings from './pebble-settings.ts'

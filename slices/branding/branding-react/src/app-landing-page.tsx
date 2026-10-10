@@ -1,6 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 
-import { fromApp, type AppSectionId } from 'branding-core'
+import { fromApp, type AppSectionId } from '@wildflowerhealthio/branding-core'
 
 import { AppLanding } from './app-landing.tsx'
 import { SiteFooter } from './site-footer.tsx'

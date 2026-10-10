@@ -4,10 +4,10 @@ import { createRoot } from 'react-dom/client'
 // The design-system stylesheet stack (tundra-css, the Wildflower palette and
 // type scale, the self-hosted fonts) in its load-bearing order. Imported before
 // the app's own CSS modules so app styles win on tied specificity.
-import 'react-tundraish/styles'
+import '@wildflowerhealthio/react-tundraish/styles'
 
-import { restoreRedirectedUrl } from 'branding-core'
-import { addOsColorSchemeListener } from 'react-tundraish'
+import { restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
+import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { AppRoot } from './app-root.tsx'
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see

@@ -19,7 +19,7 @@ pebble install --phone <ip>             # install to a paired phone
 which bundles the PebbleKit JS into `src/pkjs/index.js`, the one file the SDK
 packs (gitignored). It runs the repository's `node_modules/.bin/vp`, so
 `vp install` must have run (without it, a `vp` on the `PATH`), and Node must be
-on the `PATH`. To build the bundle alone, `vp run -F watch-lifts-pkjs build`.
+on the `PATH`. To build the bundle alone, `vp run -F @wildflowerhealthio/watch-lifts-pkjs build`.
 
 ## Settings
 
@@ -104,9 +104,9 @@ The build is `kitchen-sink/test`'s `buildHostCDriver`, which
   its build puts `test/pebble-stand-in/` on the include path: its `pebble.h`
   declares the persist calls, and the driver keeps them in memory.
 
-`vp test --project watch-lifts-pkjs` runs the PebbleKit JS over stand-ins for
+`vp test --project @wildflowerhealthio/watch-lifts-pkjs` runs the PebbleKit JS over stand-ins for
 the PebbleKit JS globals (`pkjs/index.test.ts`). Run the C ones with
-`vp test --project watch-lifts-test`; the root `vp test` includes both.
+`vp test --project @wildflowerhealthio/watch-lifts-test`; the root `vp test` includes both.
 `test/` and `pkjs/` are separate packages because this `package.json` is also
 the Pebble manifest, and `pebble build` runs `npm install` if it lists any
 dependencies.
@@ -118,8 +118,8 @@ install the version `.github/workflows/ci-pebble.yml` pins, with
 then:
 
 ```sh
-vp run -F watch-lifts-watchapp fmt:c         # format src/ and test/
-vp run -F watch-lifts-watchapp fmt:c:check   # fail if anything isn't formatted
+vp run -F @wildflowerhealthio/watch-lifts-watchapp fmt:c         # format src/ and test/
+vp run -F @wildflowerhealthio/watch-lifts-watchapp fmt:c:check   # fail if anything isn't formatted
 ```
 
 ## CI

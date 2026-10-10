@@ -1,22 +1,28 @@
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { defaultHarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import { sha256Base64 } from '@wildflowerhealthio/importer-fundamentals'
 import type { DateTime } from 'effect'
 import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
-import type { FhirResource } from 'fhir-r4/resources'
-import { defaultHarSettings, harImporter } from 'har-importer-core'
-import { sha256Base64 } from 'importer-fundamentals'
 
-import { DicomImage } from 'synthetic-data-dicom'
-import { deidentifiedFileArbitrary } from 'synthetic-data-dicom/test-helpers'
-import type { Story } from 'synthetic-data-fundamentals/story'
-import { asOfArbitrary, storyCaseArbitrary } from 'synthetic-data-fundamentals/test-helpers'
+import { DicomImage } from '@wildflowerhealthio/synthetic-data-dicom'
+import { deidentifiedFileArbitrary } from '@wildflowerhealthio/synthetic-data-dicom/test-helpers'
+import type { Story } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import {
+  asOfArbitrary,
+  storyCaseArbitrary,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
 import {
   type RexallAccount,
   RexallHar,
   rexallPatientReferenceOf,
-} from 'synthetic-data-rexall-be-well'
-import { rexallAccountArbitrary } from 'synthetic-data-rexall-be-well/test-helpers'
-import { type ShoppersAccount, ShoppersHar } from 'synthetic-data-shoppers-drugmart'
-import { shoppersCaseArbitrary } from 'synthetic-data-shoppers-drugmart/test-helpers'
+} from '@wildflowerhealthio/synthetic-data-rexall-be-well'
+import { rexallAccountArbitrary } from '@wildflowerhealthio/synthetic-data-rexall-be-well/test-helpers'
+import {
+  type ShoppersAccount,
+  ShoppersHar,
+} from '@wildflowerhealthio/synthetic-data-shoppers-drugmart'
+import { shoppersCaseArbitrary } from '@wildflowerhealthio/synthetic-data-shoppers-drugmart/test-helpers'
 
 import type * as SnapshotFile from './snapshot-file.ts'
 import * as Reader from './snapshot-reader.ts'

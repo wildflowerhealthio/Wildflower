@@ -1,6 +1,6 @@
+import { PartialBanner } from '@wildflowerhealthio/react-tundraish'
 import { Option } from 'effect'
 import type { JSX } from 'react'
-import { PartialBanner } from 'react-tundraish'
 
 import { countOf } from './count-of.ts'
 import type { TrainingRecord } from './training-record.ts'

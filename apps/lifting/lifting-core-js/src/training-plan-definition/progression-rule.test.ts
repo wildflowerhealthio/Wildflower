@@ -1,7 +1,7 @@
+import { Extension, WildflowerExtension } from '@wildflowerhealthio/fhir-r4/data-types'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Either, Record, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Extension, WildflowerExtension } from 'fhir-r4/data-types'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as Load from '../load/load.ts'

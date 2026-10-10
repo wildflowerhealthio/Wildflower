@@ -1,13 +1,22 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from '@wildflowerhealthio/collector-fundamentals/test-helpers'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
+import type { TraceBody } from '@wildflowerhealthio/web-trace-core'
 import { Effect, Encoding } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import type { TraceBody } from 'web-trace-core'
 
-import { contentTypeOf, sha256Base64, UNKNOWN_CONTENT_TYPE } from 'web-trace-core/capture'
+import {
+  contentTypeOf,
+  sha256Base64,
+  UNKNOWN_CONTENT_TYPE,
+} from '@wildflowerhealthio/web-trace-core/capture'
 
-import { type BodyPolicy, contentTypeTokens, decideBody, isAllowlisted } from 'web-trace-source'
+import {
+  type BodyPolicy,
+  contentTypeTokens,
+  decideBody,
+  isAllowlisted,
+} from '@wildflowerhealthio/web-trace-source'
 import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from './config.ts'
 
 const defaultPolicy: BodyPolicy = {

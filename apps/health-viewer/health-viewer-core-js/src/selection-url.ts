@@ -1,4 +1,4 @@
-import { ValueAxis } from 'health-viewer-fundamentals'
+import { ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { isKnownSeriesId } from './series-sources.ts'
 import { type RangePreset, isRangePreset } from './time-range.ts'

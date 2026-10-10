@@ -1,8 +1,11 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { StrongLifts5x5 } from '@wildflowerhealthio/lifting-core-js'
+import {
+  someOrFail,
+  trainingPlanDefinitionArb,
+} from '@wildflowerhealthio/lifting-core-js/test-helpers'
 import { Array as Arr, Either, Option } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { StrongLifts5x5 } from 'lifting-core-js'
-import { someOrFail, trainingPlanDefinitionArb } from 'lifting-core-js/test-helpers'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DraftPath, type DraftProblems } from './draft-problems.ts'

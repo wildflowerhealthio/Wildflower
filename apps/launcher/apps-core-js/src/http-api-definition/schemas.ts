@@ -1,5 +1,5 @@
+import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
-import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 
 /**
  * Validates an app launch-URL string. Stricter than the Rust server's `AppUrl`,

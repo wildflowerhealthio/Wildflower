@@ -2,20 +2,20 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { DateTime, Effect, Either, Layer, Schema } from 'effect'
-import * as fc from 'fast-check'
-import { FhirR4ResourcesRouterContext, type RunAuthed } from 'fhir-r4-react'
-import type * as FhirR4React from 'fhir-r4-react'
-import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { JSX, ReactNode } from 'react'
-import { Snapshot, type SnapshotFile } from 'synthetic-data-core-js'
+import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
+import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Snapshot, type SnapshotFile } from '@wildflowerhealthio/synthetic-data-core-js'
 import {
   importRexallPerson,
   importShoppersFamily,
   rexallPersonCaseArbitrary,
   shoppersFamilyCaseArbitrary,
-} from 'synthetic-data-core-js/test-helpers'
+} from '@wildflowerhealthio/synthetic-data-core-js/test-helpers'
+import { DateTime, Effect, Either, Layer, Schema } from 'effect'
+import * as fc from 'fast-check'
+import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { COMPLETE_HEADING, PARTIAL_HEADING } from './load-results.tsx'
@@ -48,7 +48,7 @@ vi.hoisted(() => {
   globalThis.TextEncoder = RealmSafeTextEncoder
 })
 
-vi.mock('fhir-r4-react', async (importOriginal) => {
+vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
   const actual = await importOriginal<typeof FhirR4React>()
   return { ...actual, useRunAuthed: (): RunAuthed => currentRunAuthed }
 })

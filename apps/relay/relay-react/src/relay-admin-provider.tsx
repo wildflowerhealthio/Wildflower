@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { AdminKeyStore } from '@wildflowerhealthio/relay-core-js/key-store'
 import { Effect, Option } from 'effect'
 import { useMemo, useState, type JSX, type ReactNode } from 'react'
-import { AdminKeyStore } from 'relay-core-js/key-store'
 
 import { ADMIN_KEY_QUERY_KEY, TUNNELS_QUERY_KEY } from './queries/keys.ts'
 import {

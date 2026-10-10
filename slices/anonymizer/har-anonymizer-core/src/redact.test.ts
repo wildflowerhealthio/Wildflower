@@ -1,10 +1,14 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { TraceBody, TraceExchange } from 'web-trace-core'
-import { arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
+import type { TraceBody, TraceExchange } from '@wildflowerhealthio/web-trace-core'
+import {
+  arbitraries,
+  jsonBody,
+  traceExchange,
+} from '@wildflowerhealthio/web-trace-core/test-helpers'
 import { type JsonLeaf, type LeafVisitor, mapExchangeLeaves } from './leaves.ts'
 import {
   buildRedactionPolicy,

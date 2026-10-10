@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import type * as TelemetryWeb from 'telemetry-web'
+import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { CrashReportingBoundary } from './crash-reporting-boundary.tsx'
@@ -14,7 +14,7 @@ interface CaptureHint {
 const { captureExceptionMock } = vi.hoisted(() => ({
   captureExceptionMock: vi.fn<(exception: unknown, hint?: CaptureHint) => string>(() => 'event-id'),
 }))
-vi.mock('telemetry-web', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   Sentry: { captureException: captureExceptionMock },
 }))

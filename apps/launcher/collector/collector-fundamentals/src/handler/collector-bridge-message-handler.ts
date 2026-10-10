@@ -1,7 +1,10 @@
-import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
+import {
+  type CancelSnifferRequestMessage,
+  type PageActionMessage,
+} from '@wildflowerhealthio/browser-sniffer-core'
+import type { MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
+import { Extraction } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, type Mailbox, type MutableHashMap, Option, Schema } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
-import { Extraction } from 'http-extraction-fundamentals'
 import {
   type CollectorBridge,
   type EnsureSnifferVisible as EnsureSnifferVisibleMessage,

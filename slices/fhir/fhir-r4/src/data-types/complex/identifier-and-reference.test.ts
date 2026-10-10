@@ -1,7 +1,7 @@
+import { pickField } from '@wildflowerhealthio/kitchen-sink/schema'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { pickField } from 'kitchen-sink/schema'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import {

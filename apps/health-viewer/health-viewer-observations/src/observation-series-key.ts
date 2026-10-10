@@ -1,4 +1,4 @@
-import { SeriesId } from 'health-viewer-fundamentals'
+import { SeriesId } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 /**
  * Identity of an observation series: its code, that code's system, and the

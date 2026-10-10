@@ -1,5 +1,5 @@
 {
-  "name": "fhir-r4-react",
+  "name": "@wildflowerhealthio/fhir-r4-react",
   "version": "0.0.0",
   "private": true,
   "description": "React surface for the FHIR R4 slice — a tokenless `buildFhirR4ResourcesClientLayer()` (the host's `HttpClient` carries the credential) + structural router-context (`sliceRuntimeLayer`, `useFhirR4ResourcesRuntimeLayer`) the host app merges into its composed `runtimeLayer`, plus the `Patient` TanStack-Query read. Cross-slice consumers: `gatekeeper-react`'s patient picker (`usePatientsQuery`) and `collector-react`'s `useSyncRunner` (imperative per-resource PUT via the runtime layer). Mirrors gatekeeper-react's migrated pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
@@ -33,15 +33,15 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/gatekeeper-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-react": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "gatekeeper-core": "workspace:*",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
@@ -50,11 +50,11 @@
     "@effect/platform": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/gatekeeper-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-react": "workspace:*",
     "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "gatekeeper-core": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "react": "catalog:",
-    "shared-structures-react": "workspace:*"
+    "react": "catalog:"
   }
 }

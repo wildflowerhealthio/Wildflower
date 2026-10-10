@@ -1,4 +1,4 @@
-import { decodeWebviewResponse } from 'pebble-configuration/pkjs'
+import { decodeWebviewResponse } from '@wildflowerhealthio/pebble-configuration/pkjs'
 
 import { type Fields, isFields } from './fields.ts'
 import { localResourceId } from './local-resource-id.ts'

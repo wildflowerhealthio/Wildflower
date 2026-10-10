@@ -1,5 +1,5 @@
-import { SeriesSource } from 'health-viewer-fundamentals'
-import type { MedicationRequestWithId } from 'medication-core/fhir'
+import { SeriesSource } from '@wildflowerhealthio/health-viewer-fundamentals'
+import type { MedicationRequestWithId } from '@wildflowerhealthio/medication-core/fhir'
 
 import { MEDICATION_GROUPS, medicationGroupIdOf } from './medication-groups.ts'
 import {

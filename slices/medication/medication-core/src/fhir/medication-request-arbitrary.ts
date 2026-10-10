@@ -1,7 +1,17 @@
+import {
+  Dosage,
+  Duration,
+  Period,
+  Quantity,
+  SimpleQuantity,
+  Timing,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  MedicationRequest,
+  MedicationRequestDispenseRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Dosage, Duration, Period, Quantity, SimpleQuantity, Timing } from 'fhir-r4/data-types'
-import { MedicationRequest, MedicationRequestDispenseRequest } from 'fhir-r4/resources'
 
 import type { MedicationRequestWithId } from './medication-request-with-id.ts'
 

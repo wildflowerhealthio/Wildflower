@@ -1,7 +1,11 @@
+import {
+  ExerciseConcept,
+  type Load,
+  TrainingPlanDefinition,
+} from '@wildflowerhealthio/lifting-core-js'
+import { TextField } from '@wildflowerhealthio/react-tundraish'
 import { Either } from 'effect'
-import { ExerciseConcept, type Load, TrainingPlanDefinition } from 'lifting-core-js'
 import type { JSX } from 'react'
-import { TextField } from 'react-tundraish'
 
 import { problemDescription } from '../form/problem-description.tsx'
 import { formatUnit } from '../load-format.ts'

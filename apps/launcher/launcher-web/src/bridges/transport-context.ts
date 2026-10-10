@@ -1,8 +1,8 @@
+import type { BridgeTransport } from '@wildflowerhealthio/effect-messaging-core'
+import type { HandlerCoordinator } from '@wildflowerhealthio/effect-messaging-react'
+import { useContextOrThrow } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect } from 'effect'
-import type { BridgeTransport } from 'effect-messaging-core'
-import type { HandlerCoordinator } from 'effect-messaging-react'
 import { createContext } from 'react'
-import { useContextOrThrow } from 'react-kitchen-sink'
 
 import type { Bridges } from './bridges.ts'
 

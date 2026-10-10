@@ -1,5 +1,5 @@
 {
-  "name": "watch-lifts-test",
+  "name": "@wildflowerhealthio/watch-lifts-test",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "watch-lifts-core-js": "workspace:*"
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/watch-lifts-core-js": "workspace:*",
+    "fast-check": "catalog:"
   }
 }

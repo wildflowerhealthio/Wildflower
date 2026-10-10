@@ -9,7 +9,7 @@
  * injects that row itself ({@link Rows.build}, `spec.md §2/§3`). A view-model concern
  * with no `scopes-rust` counterpart.
  *
- * Namespace module (`import { Sections } from 'scopes-core'`).
+ * Namespace module (`import { Sections } from '@wildflowerhealthio/scopes-core'`).
  */
 
 import { Equal } from 'effect'

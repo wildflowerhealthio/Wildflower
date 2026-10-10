@@ -33,7 +33,7 @@ export default defineConfig({
     },
   },
   // The homescreen's "Imaging (Dev)" tile launches this port, so the preview
-  // server must hold exactly it. Run with `vp run -F ohif-viewer-web dev`.
+  // server must hold exactly it. Run with `vp run -F @wildflowerhealthio/ohif-viewer-web dev`.
   preview: devAppServer('ohif-viewer-dev'),
   test: {
     ...base.test,

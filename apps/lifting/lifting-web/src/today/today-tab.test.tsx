@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ExerciseSetObservation, WorkoutProcedure } from '@wildflowerhealthio/lifting-core-js'
 import { DateTime, Option } from 'effect'
-import { ExerciseSetObservation, WorkoutProcedure } from 'lifting-core-js'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { type FakeFhirServer, idsOf } from '../fake-fhir-server.test-helpers.ts'

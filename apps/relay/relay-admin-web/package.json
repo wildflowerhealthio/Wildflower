@@ -1,5 +1,5 @@
 {
-  "name": "relay-admin-web",
+  "name": "@wildflowerhealthio/relay-admin-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,13 +15,13 @@
     "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/relay-core-js": "workspace:*",
+    "@wildflowerhealthio/relay-react": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "relay-core-js": "workspace:*",
-    "relay-react": "workspace:*",
     "tundra-css": "catalog:"
   },
   "devDependencies": {

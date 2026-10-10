@@ -1,5 +1,5 @@
 import { createApiReference } from '@scalar/api-reference'
-import { restoreRedirectedUrl } from 'branding-core'
+import { restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import { Effect, Option } from 'effect'
 
 import '@scalar/api-reference/style.css'
@@ -19,7 +19,7 @@ import {
   type Session,
   type SignInEnvironment,
   type SignInError,
-} from 'gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
 
 import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'

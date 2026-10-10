@@ -1,6 +1,6 @@
 import type { HttpClient } from '@effect/platform'
+import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import type { Layer } from 'effect'
-import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 
 /**
  * Union of services a `FhirR4ResourcesHttpApiClient` consumer needs in

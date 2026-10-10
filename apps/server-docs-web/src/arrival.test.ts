@@ -1,7 +1,10 @@
+import {
+  arrivingSmartLaunchFrom,
+  isAuthorizationResponse,
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
-import { arrivingSmartLaunchFrom, isAuthorizationResponse } from 'gatekeeper-core/smart-client'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'

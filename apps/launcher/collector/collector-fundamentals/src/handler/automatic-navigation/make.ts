@@ -1,5 +1,5 @@
+import type { MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
 import { Duration, Effect, HashMap, Match, Ref, SynchronizedRef } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
 import type { RuntimeFiber } from 'effect/Fiber'
 
 import type { CollectorBridge } from '../../bridge.ts'

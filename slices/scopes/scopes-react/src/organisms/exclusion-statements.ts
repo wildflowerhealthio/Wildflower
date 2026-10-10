@@ -7,8 +7,8 @@
  * Never the auto-computed complement of the grant — informational only, rendered by the
  * `ScopePicker`'s `ExclusionRow` group.
  */
-import { AccessToken, Scope } from 'scopes-core'
-import type { GrantDraft } from 'scopes-core'
+import { AccessToken, Scope } from '@wildflowerhealthio/scopes-core'
+import type { GrantDraft } from '@wildflowerhealthio/scopes-core'
 
 /** One "It won't be able to…" line — a statement about something the draft doesn't grant. */
 type ExclusionStatement = {

@@ -1,6 +1,10 @@
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import {
+  type ConsentApproval,
+  ConsentDetails,
+  ConsentKey,
+} from '@wildflowerhealthio/servers-core-js'
 import type { JSX, ReactNode } from 'react'
-import { ErrorBanner } from 'react-tundraish'
-import { type ConsentApproval, ConsentDetails, ConsentKey } from 'servers-core-js'
 
 import type { ConsentDecision } from './consent-queries.ts'
 import styles from './consent-form-layout.module.css'

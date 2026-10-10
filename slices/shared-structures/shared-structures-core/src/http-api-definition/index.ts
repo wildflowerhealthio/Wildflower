@@ -26,7 +26,7 @@ import type { Simplify } from 'effect/Types'
  *
  * @example
  * ```ts
- * import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
+ * import { defineSliceHttpClient } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
  *
  * const { ClientTag, makeLayerFactory } = defineSliceHttpClient({
  *   name: 'DatabasesHttpApiClient',

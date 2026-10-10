@@ -1,8 +1,8 @@
+import type { MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
+import { Bridge } from '@wildflowerhealthio/effect-messaging-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Schema } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
-import { Bridge } from 'effect-messaging-core'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { BRIDGE_EVENT } from './event-names.ts'

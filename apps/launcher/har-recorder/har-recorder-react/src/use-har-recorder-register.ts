@@ -1,5 +1,5 @@
-import { makeUseSliceRegister } from 'effect-messaging-react'
-import { HarRecorderBridge } from 'har-recorder-core-js'
+import { makeUseSliceRegister } from '@wildflowerhealthio/effect-messaging-react'
+import { HarRecorderBridge } from '@wildflowerhealthio/har-recorder-core-js'
 
 /**
  * Slice-bound coordinator accessor for {@link HarRecorderBridge}: `register` /

@@ -1,9 +1,12 @@
+import { useNowDay } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
-import { useNowDay } from 'react-kitchen-sink'
 
-import { deriveCalendarEvents, type CalendarEvent } from 'medication-calendar-core'
-import type { MedicationView } from 'medication-core/fhir'
+import {
+  deriveCalendarEvents,
+  type CalendarEvent,
+} from '@wildflowerhealthio/medication-calendar-core'
+import type { MedicationView } from '@wildflowerhealthio/medication-core/fhir'
 
 import { AgendaPane } from './agenda-pane.tsx'
 import * as CalendarMedicationInput from './calendar-medication-input.ts'

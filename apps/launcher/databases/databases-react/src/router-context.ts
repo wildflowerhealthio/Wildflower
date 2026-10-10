@@ -1,6 +1,6 @@
-import type { DatabasesHttpApiClient } from 'databases-core-js/clients'
+import type { DatabasesHttpApiClient } from '@wildflowerhealthio/databases-core-js/clients'
+import { type BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 import { type Layer } from 'effect'
-import { type BaseRouterContext } from 'shared-structures-react'
 
 import { buildDatabasesClientLayer } from './client/databases-client.ts'
 

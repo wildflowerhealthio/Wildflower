@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { CollectorHttpApiClient } from 'collector-registry/clients'
+import { CollectorHttpApiClient } from '@wildflowerhealthio/collector-registry/clients'
 import type { Layer } from 'effect'
 
 /**

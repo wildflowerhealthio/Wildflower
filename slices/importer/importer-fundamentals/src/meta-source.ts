@@ -13,7 +13,7 @@
  * @packageDocumentation
  */
 
-import type { Meta } from 'fhir-r4/data-types'
+import type { Meta } from '@wildflowerhealthio/fhir-r4/data-types'
 
 import type * as DecodedFile from './decoded-file.ts'
 

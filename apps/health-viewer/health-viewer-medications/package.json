@@ -1,5 +1,5 @@
 {
-  "name": "health-viewer-medications",
+  "name": "@wildflowerhealthio/health-viewer-medications",
   "version": "0.0.0",
   "private": true,
   "description": "The health viewer's medication source: FHIR R4 `MedicationRequest`s read through medication-core's dose regimens into health-viewer-fundamentals `LevelSeries` (one step line per medication, dose unit and dose basis), the `m:` series-id grammar, and the Medications catalogue group — exported as one `SeriesSource` value. No DOM, no React.",
@@ -20,21 +20,21 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "health-viewer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "medication-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "health-viewer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "medication-core": "workspace:*"
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

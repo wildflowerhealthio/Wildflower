@@ -1,8 +1,8 @@
+import { chromeHarOf, chromeHarToJson, chromePageOf } from '@wildflowerhealthio/http-archive'
+import { REXALL_PROFILE_URL } from '@wildflowerhealthio/rexall-be-well-source'
+import * as ChromeHar from '@wildflowerhealthio/synthetic-data-fundamentals/chrome-har'
+import { type Story, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { DateTime, type Effect, type ParseResult } from 'effect'
-import { chromeHarOf, chromeHarToJson, chromePageOf } from 'http-archive'
-import { REXALL_PROFILE_URL } from 'rexall-be-well-source'
-import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'
-import { type Story, StoryDay } from 'synthetic-data-fundamentals/story'
 
 import { profileOf } from './carebook-profile.ts'
 import { medicationListUrlFor, searchsetOf } from './carebook-searchset.ts'

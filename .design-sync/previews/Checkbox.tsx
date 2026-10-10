@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Checkbox } from 'react-tundraish'
+import { Checkbox } from '@wildflowerhealthio/react-tundraish'
 
 /** Single checkbox, checked, with a typeset label — the canonical use. */
 export const Checked = () => {

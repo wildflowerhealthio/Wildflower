@@ -1,3 +1,4 @@
+import { AdministrativeGender } from '@wildflowerhealthio/fhir-r4/data-types'
 /**
  * fast-check arbitraries for the story model: as-of instants, people, drug
  * products, prescriptions and whole stories, shared with every generator
@@ -11,7 +12,6 @@
  */
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import { AdministrativeGender } from 'fhir-r4/data-types'
 
 import type * as DrugProduct from './story/drug-product.ts'
 import type * as Person from './story/person.ts'

@@ -1,6 +1,9 @@
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
+import {
+  TelemetryConsentContext,
+  telemetryConsentSummary,
+} from '@wildflowerhealthio/telemetry-react'
 import { useContext } from 'react'
-import type { SettingsItem } from 'shared-structures-react'
-import { TelemetryConsentContext, telemetryConsentSummary } from 'telemetry-react'
 
 /**
  * The `/settings` Telemetry row: the user's answer, read by the switch labels

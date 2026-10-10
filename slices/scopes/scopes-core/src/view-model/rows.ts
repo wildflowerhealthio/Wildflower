@@ -7,7 +7,7 @@
  * {@link Cell.resolver} per section (the partitions are folded once, not once per cell).
  * A view-model concern with no `scopes-rust` counterpart.
  *
- * Namespace module (`import { Rows } from 'scopes-core'`).
+ * Namespace module (`import { Rows } from '@wildflowerhealthio/scopes-core'`).
  */
 
 import { Equal } from 'effect'

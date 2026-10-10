@@ -1,5 +1,5 @@
 {
-  "name": "har-recorder-core-js",
+  "name": "@wildflowerhealthio/har-recorder-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "The HAR Recorder's pure core: `Recording` accumulates the browser-sniffer's response events into an `HttpArchive.Log`, `isOmittedFromRecording` decides what a recording keeps, `recordingFileName` names the file, `toHar` emits the archive through `http-archive`, and `HarRecorderBridge` carries the finished text to the host that writes it. No DOM, no fs, no React.",
@@ -28,23 +28,23 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
-    "http-archive": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "browser-sniffer-core": "workspace:*",
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "http-archive": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

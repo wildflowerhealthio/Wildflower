@@ -1,6 +1,6 @@
 import { DateTime } from 'effect'
 
-import { emitHarFromLog, type Har } from 'http-archive'
+import { emitHarFromLog, type Har } from '@wildflowerhealthio/http-archive'
 
 import { MAX_BODY_BYTES, type Recording } from './recording.ts'
 

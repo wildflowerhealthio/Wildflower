@@ -1,4 +1,4 @@
-import { ValueAxis } from 'health-viewer-fundamentals'
+import { ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 /** A series' colours: its mark colour and the fill behind its `low` / `high` band. */
 interface SeriesColors {

@@ -1,4 +1,4 @@
-import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
+import { type CancelSnifferRequestMessage } from '@wildflowerhealthio/browser-sniffer-core'
 import { Effect, Either, Mailbox, Ref } from 'effect'
 
 import type { SniffResult } from './sniffer-response-tracker.ts'

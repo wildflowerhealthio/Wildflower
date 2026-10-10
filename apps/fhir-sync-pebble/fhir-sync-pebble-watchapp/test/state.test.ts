@@ -1,8 +1,12 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PhoneSettings } from '@wildflowerhealthio/fhir-sync-pebble-core/pkjs'
+import {
+  buildHostCDriver,
+  type HostCDriver,
+  numRunsFor,
+} from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { PhoneSettings } from 'fhir-sync-pebble-core/pkjs'
-import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 // state.c keeps the watch's connection and last-sync times in persist

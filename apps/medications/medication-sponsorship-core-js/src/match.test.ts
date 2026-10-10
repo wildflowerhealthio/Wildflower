@@ -1,7 +1,7 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { normalizeName } from '@wildflowerhealthio/medication-core'
 import { Arbitrary } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { normalizeName } from 'medication-core'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { matchDrug, matchMedication } from './match.ts'

@@ -1,7 +1,7 @@
 // oxlint-disable no-underscore-dangle -- `__nativeWebviewReceive` is the exact global the native plugin calls; the test drives it directly.
 
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { makeNativeBridgeEventBus } from '../src/native-bridge.ts'

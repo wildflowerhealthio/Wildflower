@@ -1,5 +1,5 @@
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import type { JSX, ReactNode } from 'react'
-import type { SettingsItem } from 'shared-structures-react'
 
 import { PlatformSettingsItemsContext } from './platform-settings-items-context.ts'
 

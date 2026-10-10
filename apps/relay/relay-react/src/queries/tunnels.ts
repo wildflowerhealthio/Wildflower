@@ -5,9 +5,9 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
+import { RelayAdminHttpApiClient } from '@wildflowerhealthio/relay-core-js/clients'
+import type { Tunnels } from '@wildflowerhealthio/relay-core-js/http-api-definition'
 import { Effect, type Schema } from 'effect'
-import { RelayAdminHttpApiClient } from 'relay-core-js/clients'
-import type { Tunnels } from 'relay-core-js/http-api-definition'
 
 import { useRelayAdmin } from '../relay-admin-context.ts'
 import { TUNNELS_QUERY_KEY } from './keys.ts'

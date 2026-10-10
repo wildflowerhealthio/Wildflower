@@ -1,8 +1,8 @@
+import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import { GateCard, SegmentedToggle } from '@wildflowerhealthio/react-tundraish'
+import { type PatientChoice, PatientChoiceLine } from '@wildflowerhealthio/smart-app-react'
 import { Match } from 'effect'
-import type { RunAuthed } from 'fhir-r4-react'
 import { type JSX, useState } from 'react'
-import { GateCard, SegmentedToggle } from 'react-tundraish'
-import { type PatientChoice, PatientChoiceLine } from 'smart-app-react'
 
 import { HistoryTab } from '../history/history-tab.tsx'
 import { mintResourceId } from '../ids/mint-resource-id.ts'

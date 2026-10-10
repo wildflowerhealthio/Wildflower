@@ -1,7 +1,7 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { Chip, StatusBadge } from '@wildflowerhealthio/react-tundraish'
+import type { Cell, Rows, Scope, ResourceSection } from '@wildflowerhealthio/scopes-core'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { Chip, StatusBadge } from 'react-tundraish'
-import type { Cell, Rows, Scope, ResourceSection } from 'scopes-core'
 
 import { PermissionPicker } from '../molecules/permission-picker.tsx'
 import { pickerItemsFor } from '../molecules/picker-items.ts'

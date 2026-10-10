@@ -1,3 +1,10 @@
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  HttpResponseKind,
+  extractJson,
+  recognizePortal,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
   Array as Arr,
   Effect,
@@ -6,9 +13,6 @@ import {
   RegExp as EffectRegExp,
   Schema,
 } from 'effect'
-import { Patient } from 'fhir-r4/resources'
-import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'

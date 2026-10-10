@@ -1,7 +1,7 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 // oxlint-disable no-underscore-dangle -- `_initiator`, `_priority` and `_resourceType` are the exact keys a DevTools export writes; these tests read them back.
 import { DateTime, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {

@@ -1,4 +1,4 @@
-import { FNV_1A_64_OFFSET_BASIS, fnv1a64, utf8Bytes } from 'kitchen-sink'
+import { FNV_1A_64_OFFSET_BASIS, fnv1a64, utf8Bytes } from '@wildflowerhealthio/kitchen-sink'
 
 /**
  * The standard FNV-1a 64 offset basis xored with the 64-bit golden-ratio

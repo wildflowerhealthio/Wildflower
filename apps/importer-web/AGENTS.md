@@ -206,7 +206,7 @@ A **debug build** additionally seeds an `importer-dev` row
 (`apps-rust`'s `dev_seed.rs`) whose launch URL names this app's vite dev-server
 port (`dev-app-ports.json` → `5193`), plus its sibling OAuth client
 (`gatekeeper-rust`'s `seed_dev_app_clients`) carrying the same write scopes. That
-row is what a developer running `vp run -F importer-web dev` launches;
+row is what a developer running `vp run -F @wildflowerhealthio/importer-web dev` launches;
 there is no fallback build, so the tile opens nothing when vite is not holding
 the port.
 

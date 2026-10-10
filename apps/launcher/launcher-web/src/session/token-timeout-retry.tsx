@@ -1,8 +1,8 @@
 import { useRouter } from '@tanstack/react-router'
+import { TokenTimeout } from '@wildflowerhealthio/gatekeeper-react'
+import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import { Match } from 'effect'
-import { TokenTimeout } from 'gatekeeper-react'
 import { type JSX, useRef } from 'react'
-import { Sentry } from 'telemetry-web'
 
 /**
  * `errorComponent` body for the auth-gated layouts; offers a retry that

@@ -1,5 +1,5 @@
+import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
 import { Either, Schema } from 'effect'
-import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
 
 /**
  * Pure helpers for the inline resource editor: the truncating

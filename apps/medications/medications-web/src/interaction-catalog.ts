@@ -1,4 +1,7 @@
-import { decodeDdinterFile, type InteractionCatalog } from 'medication-interaction-core-js'
+import {
+  decodeDdinterFile,
+  type InteractionCatalog,
+} from '@wildflowerhealthio/medication-interaction-core-js'
 
 import ddinterUrl from './data/ddinter/ddinter.json?url'
 
@@ -18,7 +21,7 @@ let cached: InteractionCatalog | null = null
  * the initial bundle, downloaded only when the Interactions tab is first opened.
  *
  * `src/data/ddinter/ddinter.json` is generated from DDInter's download CSVs by
- * `vp run -F medications-web data:ddinter -- <dir>` (see the README); an empty
+ * `vp run -F @wildflowerhealthio/medications-web data:ddinter -- <dir>` (see the README); an empty
  * file — nothing bundled yet — decodes to an empty catalog, which the
  * interactions view reports as such.
  */

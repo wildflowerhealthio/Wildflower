@@ -5,10 +5,10 @@ import {
   IdentifierAndReference,
   Narrative,
   WildflowerExtension,
-} from 'fhir-r4/data-types'
-import type { MedicationRequest } from 'fhir-r4/resources'
-import { Lift } from 'kitchen-sink'
-import { modifyIfDecodes } from 'kitchen-sink/schema'
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { Lift } from '@wildflowerhealthio/kitchen-sink'
+import { modifyIfDecodes } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import { CarebookExtension } from '../carebook.ts'
 import { decodeCodeableConcept, decodeReference } from './decoded-r4.ts'

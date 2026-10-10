@@ -1,9 +1,9 @@
-import { CollectorBridge } from 'collector-fundamentals/bridge'
-import { Logging } from 'effect-messaging-core'
-import { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { HarRecorderBridge } from 'har-recorder-core-js'
-import { NavigationBridge } from 'navigation-core'
-import { BackgroundServerServiceBridge } from 'wildflower-server-core-js'
+import { CollectorBridge } from '@wildflowerhealthio/collector-fundamentals/bridge'
+import { Logging } from '@wildflowerhealthio/effect-messaging-core'
+import { GatekeeperBridge } from '@wildflowerhealthio/gatekeeper-core/bridge'
+import { HarRecorderBridge } from '@wildflowerhealthio/har-recorder-core-js'
+import { NavigationBridge } from '@wildflowerhealthio/navigation-core'
+import { BackgroundServerServiceBridge } from '@wildflowerhealthio/wildflower-server-core-js'
 
 /**
  * The tuple of slice bridges wired into the page-side transport.

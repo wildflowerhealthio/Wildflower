@@ -1,7 +1,11 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ExerciseConcept, StrongLifts5x5, TrainingPlanDefinition } from 'lifting-core-js'
-import { someOrFail } from 'lifting-core-js/test-helpers'
+import {
+  ExerciseConcept,
+  StrongLifts5x5,
+  TrainingPlanDefinition,
+} from '@wildflowerhealthio/lifting-core-js'
+import { someOrFail } from '@wildflowerhealthio/lifting-core-js/test-helpers'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { TrainingPlanDefinitionEditor } from './training-plan-definition-editor.tsx'

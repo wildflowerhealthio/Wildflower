@@ -10,7 +10,7 @@
  * assumes when the URL names none.
  */
 
-import { serverUrlFromSearch as parseServerUrl } from 'gatekeeper-core/smart-client'
+import { serverUrlFromSearch as parseServerUrl } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 
 import { HOST_LOOPBACK_ORIGIN } from './host-defaults.ts'
 

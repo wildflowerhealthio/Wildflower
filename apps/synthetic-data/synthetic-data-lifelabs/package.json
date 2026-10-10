@@ -1,5 +1,5 @@
 {
-  "name": "synthetic-data-lifelabs",
+  "name": "@wildflowerhealthio/synthetic-data-lifelabs",
   "version": "0.0.0",
   "private": true,
   "description": "The LifeLabs synthetic data generator: a synthetic-data-fundamentals Story's lab draws as the LifeLabs reports a laboratory prints, and as the FHIR R4 resources lifelabs-pdf-importer makes of them, filed on the person's pharmacy Patient. Pure — no DOM, no fs, no React.",
@@ -36,25 +36,25 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-rexall-be-well": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-shoppers-drugmart": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "har-importer-core": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "lifelabs-pdf-importer": "workspace:*",
-    "synthetic-data-fundamentals": "workspace:*",
-    "synthetic-data-rexall-be-well": "workspace:*",
-    "synthetic-data-shoppers-drugmart": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "lifelabs-pdf-importer": "workspace:*",
-    "synthetic-data-fundamentals": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
+    "effect": "catalog:"
   }
 }

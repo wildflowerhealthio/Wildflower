@@ -1,7 +1,5 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { useNavigate, useRouteContext } from '@tanstack/react-router'
-import { type DateTime, Match, Option } from 'effect'
-import { type JSX, type ReactNode, useId, useState } from 'react'
 import {
   ConfirmDialog,
   ErrorBanner,
@@ -12,7 +10,7 @@ import {
   PageHeader,
   StatusBadge,
   TextField,
-} from 'react-tundraish'
+} from '@wildflowerhealthio/react-tundraish'
 import {
   type CertificateAuthority,
   CertificateState,
@@ -21,7 +19,9 @@ import {
   type HostCommandError,
   type ListedServer,
   ServerStatus,
-} from 'servers-core-js'
+} from '@wildflowerhealthio/servers-core-js'
+import { type DateTime, Match, Option } from 'effect'
+import { type JSX, type ReactNode, useId, useState } from 'react'
 
 import { failureText } from './failure-text.ts'
 import { LaunchButton } from './launch-button.tsx'

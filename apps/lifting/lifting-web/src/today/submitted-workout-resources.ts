@@ -1,6 +1,6 @@
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { PlannedWorkout } from '@wildflowerhealthio/lifting-core-js'
 import { Option } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { PlannedWorkout } from 'lifting-core-js'
 
 /**
  * Everything a submitted workout writes, in one batch: the completed workout

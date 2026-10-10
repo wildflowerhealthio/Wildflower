@@ -4,8 +4,8 @@ import {
   HttpClientRequest,
   HttpClientResponse,
 } from '@effect/platform'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Effect, Either, FastCheck as fc, Layer, Schema } from 'effect'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { FhirResourceSchema, Patient, Observation, type FhirResource } from '../resources/index.ts'

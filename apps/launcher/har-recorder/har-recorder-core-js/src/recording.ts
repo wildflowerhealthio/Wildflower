@@ -6,9 +6,9 @@ import type {
   ResponseDataMessage,
   ResponseFinishedMessage,
   ResponseStartMessage,
-} from 'browser-sniffer-core'
-import { HttpArchive } from 'http-archive'
-import { contentTypeOf } from 'web-trace-core/capture'
+} from '@wildflowerhealthio/browser-sniffer-core'
+import { HttpArchive } from '@wildflowerhealthio/http-archive'
+import { contentTypeOf } from '@wildflowerhealthio/web-trace-core/capture'
 
 import { isOmittedFromRecording } from './omitted.ts'
 

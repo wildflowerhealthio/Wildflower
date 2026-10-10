@@ -2,12 +2,12 @@ import { HttpClient, HttpClientResponse, UrlParams } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type * as SmartModule from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
+import { ReturnTarget, type ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
 import { Effect, Either, Layer } from 'effect'
-import type * as SmartModule from 'fhir-r4-react/smart'
-import type { SmartHandshake } from 'fhir-r4-react/smart'
-import type { PebbleSettings } from 'fhir-sync-pebble-core'
 import type Client from 'fhirclient/lib/Client'
-import { ReturnTarget, type ReturnTargetStore } from 'pebble-configuration'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 /**
@@ -22,13 +22,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 const { handshakeMock } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
 }))
-vi.mock('fhir-r4-react/smart', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   ...(await importOriginal<typeof SmartModule>()),
   useSmartHandshake: () => handshakeMock(),
   useLaunchFailureRedirect: (): void => undefined,
 }))
 
-const { buildSmartRouterContext } = await import('fhir-r4-react/smart')
+const { buildSmartRouterContext } = await import('@wildflowerhealthio/fhir-r4-react/smart')
 const { App, SettingsApp } = await import('./app.tsx')
 
 const SERVER_URL = 'https://fhir.example/r4'

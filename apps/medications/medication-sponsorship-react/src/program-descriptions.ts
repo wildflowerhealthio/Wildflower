@@ -1,4 +1,4 @@
-import type { SponsorProgram } from 'medication-sponsorship-core-js'
+import type { SponsorProgram } from '@wildflowerhealthio/medication-sponsorship-core-js'
 
 interface ProgramDescription {
   /** A short plain-text summary of the program, in the program's own terms. */

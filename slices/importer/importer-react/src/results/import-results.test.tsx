@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import type { BatchEntryOutcome, WriteIssue } from 'fhir-r4/clients'
+import type { BatchEntryOutcome, WriteIssue } from '@wildflowerhealthio/fhir-r4/clients'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { type BatchOutcome, type FileImportResult, importOutcome } from './import-outcome.ts'

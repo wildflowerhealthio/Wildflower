@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ExerciseRequest, StrongLifts5x5 } from 'lifting-core-js'
+import { ExerciseRequest, StrongLifts5x5 } from '@wildflowerhealthio/lifting-core-js'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import type { FakeFhirServer } from '../fake-fhir-server.test-helpers.ts'

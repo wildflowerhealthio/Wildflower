@@ -1,5 +1,5 @@
+import { utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
-import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { UriSchema } from './web-view-source.ts'

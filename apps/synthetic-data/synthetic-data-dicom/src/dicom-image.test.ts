@@ -1,20 +1,24 @@
-import { DicomHeader, type Part10 } from 'dicom'
-import { detectDicom, dicomImporter } from 'dicom-importer-core'
-import { parseDicom } from 'dicom-parser'
+import { DicomHeader, type Part10 } from '@wildflowerhealthio/dicom'
+import { detectDicom, dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
 import {
   parserKeyOf,
   textOf,
   valueBytesOf,
   withElementsSpliced,
   writeDicom,
-} from 'dicom/test-helpers'
+} from '@wildflowerhealthio/dicom/test-helpers'
+import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4/identity'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { Person } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import {
+  ageOn,
+  asOfArbitrary,
+  personArbitrary,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
+import { parseDicom } from 'dicom-parser'
 import { DateTime, Effect, Either } from 'effect'
 import * as fc from 'fast-check'
-import { adoptedReferenceOf } from 'fhir-r4/identity'
-import type { FhirResource } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
-import type { Person } from 'synthetic-data-fundamentals/story'
-import { ageOn, asOfArbitrary, personArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as DicomImage from './dicom-image.ts'

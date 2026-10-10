@@ -1,6 +1,6 @@
-import type { FormatKind } from 'importer-core'
-import { formatKinds } from 'importer-core'
-import { StagedImport, DecodedFile } from 'importer-fundamentals'
+import type { FormatKind } from '@wildflowerhealthio/importer-core'
+import { formatKinds } from '@wildflowerhealthio/importer-core'
+import { StagedImport, DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'

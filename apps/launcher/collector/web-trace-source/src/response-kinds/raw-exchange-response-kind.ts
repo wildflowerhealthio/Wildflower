@@ -1,11 +1,11 @@
+import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
+import { HttpResponseKind, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { TraceExchange } from '@wildflowerhealthio/web-trace-core'
+import { toDocumentReference } from '@wildflowerhealthio/web-trace-core/codec'
+import { toExchangeFields } from '@wildflowerhealthio/web-trace-core/provenance'
 import { DateTime, Effect, Option, ParseResult } from 'effect'
-import type { DocumentReference } from 'fhir-r4/resources'
-import { HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
-import { TraceExchange } from 'web-trace-core'
-import { toDocumentReference } from 'web-trace-core/codec'
-import { toExchangeFields } from 'web-trace-core/provenance'
 
-import type { BodyDigestUnavailable } from 'web-trace-core/capture'
+import type { BodyDigestUnavailable } from '@wildflowerhealthio/web-trace-core/capture'
 
 import { type BodyPolicy, decideBody } from '../body-policy.ts'
 

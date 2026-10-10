@@ -1,5 +1,5 @@
+import { Bridge, type Message } from '@wildflowerhealthio/effect-messaging-core'
 import { Schema } from 'effect'
-import { Bridge, type Message } from 'effect-messaging-core'
 
 // `Message` is imported so tsgo can resolve `RecordFromPairs` through the
 // public namespace when emitting declaration files (TS2883 otherwise).

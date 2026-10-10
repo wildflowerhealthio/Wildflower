@@ -7,15 +7,15 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
+import { type FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
 import {
   buildSmartRouterContext,
   useLaunchFailureRedirect,
   useSmartHandshake,
-} from 'fhir-r4-react/smart'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import { SyntheticDataScreen } from '@wildflowerhealthio/synthetic-data-react'
 import { type JSX, useMemo } from 'react'
-import { ErrorBanner, PageLoading } from 'react-tundraish'
-import { SyntheticDataScreen } from 'synthetic-data-react'
 
 import { PUBLISHED_SNAPSHOT_ADDRESS } from './config.ts'
 import styles from './app.module.css'

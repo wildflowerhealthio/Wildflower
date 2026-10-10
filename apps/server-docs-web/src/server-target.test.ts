@@ -1,6 +1,9 @@
+import {
+  normalizeServerUrl,
+  SERVER_QUERY_PARAM,
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { normalizeServerUrl, SERVER_QUERY_PARAM } from 'gatekeeper-core/smart-client'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DEFAULT_SERVER_URL, serverUrlFromSearch } from './server-target.ts'

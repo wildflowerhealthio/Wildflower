@@ -5,8 +5,6 @@ import {
   type UseMutationResult,
   type UseQueryOptions,
 } from '@tanstack/react-query'
-import { Effect, Either } from 'effect'
-import { useEffect } from 'react'
 import {
   type ApprovalOutcome,
   approveConsent,
@@ -18,7 +16,9 @@ import {
   listPendingConsents,
   PendingConsent,
   readConsent,
-} from 'servers-core-js'
+} from '@wildflowerhealthio/servers-core-js'
+import { Effect, Either } from 'effect'
+import { useEffect } from 'react'
 
 import type { ListenToHostEvent, RunHostCommand } from './router-context.ts'
 

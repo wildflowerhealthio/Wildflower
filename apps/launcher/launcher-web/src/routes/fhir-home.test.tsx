@@ -6,7 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { APP_DESCRIPTIONS, smartAppLaunchPages } from 'branding-core'
+import { APP_DESCRIPTIONS, smartAppLaunchPages } from '@wildflowerhealthio/branding-core'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { ServerKind, ServerKindContext } from '../session/server-kind.ts'

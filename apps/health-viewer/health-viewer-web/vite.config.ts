@@ -18,7 +18,7 @@ export default defineConfig({
   plugins: [react()],
   // The homescreen's "Health Viewer (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
-  // `vp run -F health-viewer-web dev`.
+  // `vp run -F @wildflowerhealthio/health-viewer-web dev`.
   server: devAppServer('health-viewer-dev'),
   build: {
     // Emitted for the deploy's Sentry upload, unreferenced from the bundle;

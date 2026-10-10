@@ -1,9 +1,14 @@
-import type { CollectorBridge } from 'collector-fundamentals/bridge'
-import { useCollectorRegister, useCollectorSender } from 'collector-react'
+import type { CollectorBridge } from '@wildflowerhealthio/collector-fundamentals/bridge'
+import { useCollectorRegister, useCollectorSender } from '@wildflowerhealthio/collector-react'
+import type { MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
+import {
+  type HarRecorderBridge,
+  Recording,
+  recordingFileName,
+  toHar,
+} from '@wildflowerhealthio/har-recorder-core-js'
+import { harToJson } from '@wildflowerhealthio/http-archive'
 import { DateTime, Effect } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
-import { type HarRecorderBridge, Recording, recordingFileName, toHar } from 'har-recorder-core-js'
-import { harToJson } from 'http-archive'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useHarRecorderRegister } from './use-har-recorder-register.ts'

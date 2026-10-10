@@ -1,9 +1,9 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import type { TimeDomain } from 'health-viewer-fundamentals'
+import type { TimeDomain } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import {
   PRESET_LOOKBACK,

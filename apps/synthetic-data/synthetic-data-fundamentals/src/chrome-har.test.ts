@@ -1,6 +1,3 @@
-// oxlint-disable no-underscore-dangle -- `_initiator`, `_priority` and `_resourceType` are the exact keys a DevTools export writes; these tests read them back.
-import { DateTime, Effect } from 'effect'
-import * as fc from 'fast-check'
 import {
   CHROME_CREATOR,
   type ChromePageSpec,
@@ -9,9 +6,12 @@ import {
   chromeHarOf,
   chromeHarToJson,
   chromePageOf,
-} from 'http-archive'
-import { utf8Bytes } from 'kitchen-sink'
-import { numRunsFor } from 'kitchen-sink/test'
+} from '@wildflowerhealthio/http-archive'
+import { utf8Bytes } from '@wildflowerhealthio/kitchen-sink'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+// oxlint-disable no-underscore-dangle -- `_initiator`, `_priority` and `_resourceType` are the exact keys a DevTools export writes; these tests read them back.
+import { DateTime, Effect } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as ChromeHar from './chrome-har.ts'

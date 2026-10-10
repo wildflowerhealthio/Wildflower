@@ -77,8 +77,8 @@ jobs:
         run: |
           set -euo pipefail
           corepack enable
-          pnpm install --frozen-lockfile --filter relay-admin-web...
-          pnpm --filter relay-admin-web run build
+          pnpm install --frozen-lockfile --filter @wildflowerhealthio/relay-admin-web...
+          pnpm --filter @wildflowerhealthio/relay-admin-web run build
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2

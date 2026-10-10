@@ -1,5 +1,5 @@
-import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
-import type { SmartAppTelemetry } from 'smart-app-react'
+import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
  * SMART registration for this app.
@@ -46,7 +46,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  *   `0008_seed_wildflower_importer_client`, re-keyed by
  *   `0028_rekey_site_app_clients`), which registers that absolute Pages URL as
  *   a redirect URI.
- * - The **vite dev server** (`vp run -F importer-web dev`, on the port
+ * - The **vite dev server** (`vp run -F @wildflowerhealthio/importer-web dev`, on the port
  *   `dev-app-ports.json` pins) is launched through the debug-only
  *   `importer-dev` row (`apps-rust`'s `seed_dev_apps`) and its client,
  *   `57268ff88aea38d6a22de56ae53e2c28` (`gatekeeper-rust`'s
@@ -74,7 +74,7 @@ import type { SmartAppTelemetry } from 'smart-app-react'
  * the `importer-dev` tile's client instead (the `clientId` selected above), whose
  * `allowed_scopes` live in `gatekeeper-rust`'s `seed_dev_app_clients` and carry
  * this same set — widen that copy in step too, or `/authorize` fails only under
- * `vp run -F importer-web dev`.
+ * `vp run -F @wildflowerhealthio/importer-web dev`.
  *
  * The app root authorizes with it for every launch it starts: one its URL
  * carries (`iss` / `launch`, read off the URL by fhirclient) and the standalone

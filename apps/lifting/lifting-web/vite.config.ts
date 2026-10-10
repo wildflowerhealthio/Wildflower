@@ -18,7 +18,7 @@ export default defineConfig({
   plugins: [react()],
   // The homescreen's "Lifting (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
-  // `vp run -F lifting-web dev`.
+  // `vp run -F @wildflowerhealthio/lifting-web dev`.
   server: devAppServer('lifting-dev'),
   build: {
     rolldownOptions: {

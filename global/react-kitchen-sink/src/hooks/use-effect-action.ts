@@ -1,4 +1,4 @@
-import 'kitchen-sink/polyfills/promise-with-resolvers'
+import '@wildflowerhealthio/kitchen-sink/polyfills/promise-with-resolvers'
 
 import { Cause, Chunk, Effect, Exit, Fiber, type Layer, type Scope } from 'effect'
 import { useCallback, useEffect, useRef } from 'react'

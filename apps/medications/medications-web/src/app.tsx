@@ -1,16 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { Match, Option } from 'effect'
-import { useLaunchFailureRedirect, useSmartHandshake } from 'fhir-r4-react/smart'
-import { CalendarView } from 'medication-calendar-react'
-import { InteractionsView } from 'medication-interaction-react'
+import {
+  useLaunchFailureRedirect,
+  useSmartHandshake,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { CalendarView } from '@wildflowerhealthio/medication-calendar-react'
+import { InteractionsView } from '@wildflowerhealthio/medication-interaction-react'
 import {
   dedupeMedicationsByName,
   type Medication,
   type Province,
-} from 'medication-sponsorship-core-js'
-import { MedicationsView, SavingsView } from 'medication-sponsorship-react'
-import type { JSX } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+} from '@wildflowerhealthio/medication-sponsorship-core-js'
+import { MedicationsView, SavingsView } from '@wildflowerhealthio/medication-sponsorship-react'
 import {
   ChunkBar,
   ErrorBanner,
@@ -18,7 +18,7 @@ import {
   PartialBanner,
   SegmentedToggle,
   type ChunkBarPhase,
-} from 'react-tundraish'
+} from '@wildflowerhealthio/react-tundraish'
 import {
   LoadingLine,
   LoadingMoreLine,
@@ -26,7 +26,10 @@ import {
   PatientPicker,
   ReadFailureLine,
   usePatientChoice,
-} from 'smart-app-react'
+} from '@wildflowerhealthio/smart-app-react'
+import { Match, Option } from 'effect'
+import type { JSX } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { catalogs } from './catalogs.ts'
 import { getInteractionCatalog } from './interaction-catalog.ts'

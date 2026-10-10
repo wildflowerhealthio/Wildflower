@@ -1,22 +1,22 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Either } from 'effect'
-import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   ExerciseConcept,
   ExerciseRequest,
   Load,
   StrongLifts5x5,
   TrainingPlanDefinition,
-} from 'lifting-core-js'
+} from '@wildflowerhealthio/lifting-core-js'
 import {
   AUTHORED_ON,
   made,
   someOrFail,
   SUBJECT,
   trainingPlanDefinitionArb,
-} from 'lifting-core-js/test-helpers'
+} from '@wildflowerhealthio/lifting-core-js/test-helpers'
+import { Either } from 'effect'
+import * as fc from 'fast-check'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {

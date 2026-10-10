@@ -17,7 +17,7 @@ export {
   type Medication,
   normalizeName,
   tokenize,
-} from 'medication-core'
+} from '@wildflowerhealthio/medication-core'
 
 export { type DrugMatch, matchDrug, type MatchField, matchMedication } from './match.ts'
 

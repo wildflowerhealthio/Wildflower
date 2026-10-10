@@ -3,7 +3,7 @@
 # 100-column width and 2-space indent as `fmt` in the root vite.config.ts,
 # braces on the same line, and a call or declaration that doesn't fit broken
 # one argument per line with the closing bracket on its own line.
-# Run with `vp run -F watch-lifts-watchapp fmt:c`.
+# Run with `vp run -F @wildflowerhealthio/watch-lifts-watchapp fmt:c`.
 BasedOnStyle: LLVM
 ColumnLimit: 100
 IndentWidth: 2

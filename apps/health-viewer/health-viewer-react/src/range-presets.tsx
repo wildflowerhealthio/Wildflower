@@ -1,7 +1,7 @@
+import { SegmentedToggle, type SegmentedToggleOption } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { SegmentedToggle, type SegmentedToggleOption } from 'react-tundraish'
 
-import { RANGE_PRESETS, type RangePreset } from 'health-viewer-core-js'
+import { RANGE_PRESETS, type RangePreset } from '@wildflowerhealthio/health-viewer-core-js'
 
 /** What each preset's button reads. A `Record` so a new preset is a type error here. */
 const PRESET_LABELS: Readonly<Record<RangePreset, string>> = {

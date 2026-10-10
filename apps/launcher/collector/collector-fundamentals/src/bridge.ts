@@ -8,9 +8,9 @@ import {
   ResponseDataMessage,
   ResponseFinishedMessage,
   ResponseStartMessage,
-} from 'browser-sniffer-core'
+} from '@wildflowerhealthio/browser-sniffer-core'
+import { Bridge } from '@wildflowerhealthio/effect-messaging-core'
 import { Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
 
 import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
 

@@ -1,5 +1,5 @@
 {
-  "name": "pebble-pkjs",
+  "name": "@wildflowerhealthio/pebble-pkjs",
   "version": "0.0.0",
   "private": true,
   "description": "Build tooling for a Pebble watchapp's PebbleKit JS written in TypeScript: the `vp pack` config that bundles it to one ES5 file for the Pebble SDK, the ES5 lowering and checks that config runs, the PebbleKit JS globals' types (`./pebble-kit-js`), and the waf helpers that bundle it before `pebble build`.",

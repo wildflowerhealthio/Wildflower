@@ -1,5 +1,5 @@
 {
-  "name": "medication-calendar-react",
+  "name": "@wildflowerhealthio/medication-calendar-react",
   "version": "0.0.0",
   "private": true,
   "description": "Browser UI for the medication-calendar slice: the month-grid calendar view of upcoming pickups, renewal appointments and supply-exhaustion markers derived from the patient's prescriptions.",
@@ -23,25 +23,25 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-calendar-core": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "medication-calendar-core": "workspace:*",
-    "medication-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "medication-calendar-core": "workspace:*",
-    "medication-core": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*"
+    "@wildflowerhealthio/medication-calendar-core": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "react": "catalog:"
   }
 }

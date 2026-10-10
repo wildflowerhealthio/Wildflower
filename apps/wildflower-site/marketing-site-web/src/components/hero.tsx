@@ -1,6 +1,6 @@
 import { useEffect, useState, type JSX } from 'react'
 
-import { prefersReducedMotion } from 'react-kitchen-sink'
+import { prefersReducedMotion } from '@wildflowerhealthio/react-kitchen-sink'
 
 import { otherAppImages } from '../assets/remote-images.ts'
 import styles from './hero.module.css'

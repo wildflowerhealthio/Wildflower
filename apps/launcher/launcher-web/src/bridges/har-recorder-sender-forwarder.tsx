@@ -1,4 +1,4 @@
-import { HarRecorderSenderProvider } from 'har-recorder-react'
+import { HarRecorderSenderProvider } from '@wildflowerhealthio/har-recorder-react'
 
 import { makeSliceSenderForwarder } from './make-sender-forwarder.tsx'
 

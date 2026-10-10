@@ -1,7 +1,7 @@
 import { type DateTime, Effect, type ParseResult } from 'effect'
 
-import type { Meta } from 'fhir-r4/data-types'
-import type { DocumentReference } from 'fhir-r4/resources'
+import type { Meta } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 
 import {
   type BodyDigestUnavailable,

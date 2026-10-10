@@ -1,6 +1,6 @@
-import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
+import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4/identity'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts'
 import { PrescriptionHistoryResponseKind } from './response-kinds/prescription-history-response-kind.ts'

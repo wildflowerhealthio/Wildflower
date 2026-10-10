@@ -1,7 +1,7 @@
+import type { LevelSeries, PointSeries } from '@wildflowerhealthio/health-viewer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import type { LevelSeries, PointSeries } from 'health-viewer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { type CatalogRow, groupForPanel, matchesSearch } from './catalog.ts'

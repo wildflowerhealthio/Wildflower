@@ -1,9 +1,9 @@
-import { trimTrailingSlashes } from 'fhir-r4/clients'
+import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   insecureTargetReason,
   normalizeServerUrl,
   serverUrlNamedBy,
-} from 'gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
 
 import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
 

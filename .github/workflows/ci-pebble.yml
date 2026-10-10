@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Check C formatting
-        run: vp run -F watch-lifts-watchapp -F fhir-sync-pebble-watchapp fmt:c:check
+        run: vp run -F @wildflowerhealthio/watch-lifts-watchapp -F @wildflowerhealthio/fhir-sync-pebble-watchapp fmt:c:check
 
       # The C builds with the host `cc` under ASan and UBSan; no SDK needed.
       # watch-lifts-test and watch-lifts-pkjs cover watch-lifts-watchapp's C and
@@ -54,7 +54,7 @@ jobs:
       # fhir-sync-pebble-watchapp's; pebble-pkjs and pebble-configuration, the shared
       # PebbleKit JS tooling and hand-off.
       - name: Run host-side tests
-        run: vp run -F watch-lifts-test -F watch-lifts-pkjs -F fhir-sync-pebble-test -F fhir-sync-pebble-pkjs -F pebble-pkjs -F pebble-configuration test
+        run: vp run -F @wildflowerhealthio/watch-lifts-test -F @wildflowerhealthio/watch-lifts-pkjs -F @wildflowerhealthio/fhir-sync-pebble-test -F @wildflowerhealthio/fhir-sync-pebble-pkjs -F @wildflowerhealthio/pebble-pkjs -F @wildflowerhealthio/pebble-configuration test
 
   # One job for `pebble build` of both watch apps: the SDK is installed (or
   # restored) ONCE and both .pbw files come from it, each uploaded as an

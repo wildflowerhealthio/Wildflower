@@ -8,8 +8,8 @@ import {
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
-import { AppsAdminHttpApiClient, AppsHttpApiClient } from 'apps-core-js/clients'
-import type { Schemas } from 'apps-core-js/http-api-definition'
+import { AppsAdminHttpApiClient, AppsHttpApiClient } from '@wildflowerhealthio/apps-core-js/clients'
+import type { Schemas } from '@wildflowerhealthio/apps-core-js/http-api-definition'
 import { Effect, type Schema } from 'effect'
 
 import type { RouterContext, RunAuthed } from './router-context.ts'

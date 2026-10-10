@@ -1,5 +1,5 @@
-import type { PendingConsentHead } from 'gatekeeper-core/bridge'
-import { useContextOrThrow, useSubscribable } from 'react-kitchen-sink'
+import type { PendingConsentHead } from '@wildflowerhealthio/gatekeeper-core/bridge'
+import { useContextOrThrow, useSubscribable } from '@wildflowerhealthio/react-kitchen-sink'
 
 import { ActivePendingConsentContext } from './context.ts'
 

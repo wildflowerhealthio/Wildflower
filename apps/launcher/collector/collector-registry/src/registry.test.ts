@@ -1,12 +1,12 @@
-import type { ScrapingPlan } from 'collector-fundamentals/model'
-import { Arbitrary, Schema } from 'effect'
-import * as fc from 'fast-check'
+import type { ScrapingPlan } from '@wildflowerhealthio/collector-fundamentals/model'
 import {
   FhirR4CollectorDescriptor,
   InstanceConfig as FhirR4InstanceConfig,
   scrapingPlan as fhirR4ScrapingPlan,
-} from 'fhir-r4-client-collector'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
+} from '@wildflowerhealthio/fhir-r4-client-collector'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
+import { Arbitrary, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {

@@ -1,11 +1,11 @@
-import { Array as Arr, Option, pipe } from 'effect'
 import {
   ExerciseConcept,
   ExerciseRequest,
   ExerciseSetObservation,
   type WorkoutProcedure,
-} from 'lifting-core-js'
-import { type ItemListItem, StatusBadge } from 'react-tundraish'
+} from '@wildflowerhealthio/lifting-core-js'
+import { type ItemListItem, StatusBadge } from '@wildflowerhealthio/react-tundraish'
+import { Array as Arr, Option, pipe } from 'effect'
 
 import { formatLoad, formatSetReps } from '../load-format.ts'
 

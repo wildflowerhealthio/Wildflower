@@ -1,6 +1,6 @@
+import type { ExerciseRequest, TrainingPlanDefinition } from '@wildflowerhealthio/lifting-core-js'
+import { TrainingPlanDefinitionEditor } from '@wildflowerhealthio/lifting-react'
 import { Array as Arr, Option } from 'effect'
-import type { ExerciseRequest, TrainingPlanDefinition } from 'lifting-core-js'
-import { TrainingPlanDefinitionEditor } from 'lifting-react'
 import { type JSX, useState } from 'react'
 
 import { mintResourceId } from '../ids/mint-resource-id.ts'

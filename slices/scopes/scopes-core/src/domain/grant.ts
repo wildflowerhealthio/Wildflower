@@ -9,7 +9,7 @@
  * state — and the ScopeContext-aware wildcard dedupe — live in the view-model
  * ({@link GrantDraft}), not here.
  *
- * Namespace module (`import { Grant } from 'scopes-core'`): the grant is
+ * Namespace module (`import { Grant } from '@wildflowerhealthio/scopes-core'`): the grant is
  * {@link Grant}, with `Grant.parse`, `Grant.render`, `Grant.resourceScopes`, …
  */
 

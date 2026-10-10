@@ -1,4 +1,4 @@
-import { base64UrlEncode } from 'gatekeeper-core/smart-client'
+import { base64UrlEncode } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 
 /**
  * The SMART server an app is launched against: the FHIR base a session is for,

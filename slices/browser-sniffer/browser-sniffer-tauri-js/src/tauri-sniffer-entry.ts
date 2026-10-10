@@ -13,7 +13,7 @@
  * must be present, or we no-op.
  */
 
-import type { TauriEventApi } from 'effect-messaging-tauri-js'
+import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 
 import { makeCommandEmitEventBus } from './command-event-bus.ts'
 import { makeFilteringEventBus } from './filter-tauri-internal.ts'

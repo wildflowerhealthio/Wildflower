@@ -1,4 +1,4 @@
-import type { CustomerPayload, SourcePatient } from 'shoppers-drugmart-source'
+import type { CustomerPayload, SourcePatient } from '@wildflowerhealthio/shoppers-drugmart-source'
 
 import type { ShoppersAccount, ShoppersPatient } from './shoppers-account.ts'
 

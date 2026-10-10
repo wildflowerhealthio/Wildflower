@@ -1,6 +1,6 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { Field, FieldDescription } from '@wildflowerhealthio/react-tundraish'
 import { useId, useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { Field, FieldDescription } from 'react-tundraish'
 
 import { DEVICE_CODE_PATTERN, normalize } from './device-code.ts'
 import deviceCode from '../../styles/device-code.module.css'

@@ -1,5 +1,5 @@
 {
-  "name": "fhir-r4",
+  "name": "@wildflowerhealthio/fhir-r4",
   "version": "0.0.1",
   "description": "FHIR R4 wire schemas, HttpApi description, and HTTP client",
   "license": "UNLICENSED",
@@ -46,12 +46,12 @@
     "@effect/platform": "catalog:",
     "@types/fhir": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/navigation-core": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "bumpp": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "navigation-core": "workspace:*",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -59,9 +59,9 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "navigation-core": "workspace:*",
-    "shared-structures-core": "workspace:*"
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/navigation-core": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

@@ -1,4 +1,4 @@
-import { DecodeFunction, type FileImporter } from 'importer-fundamentals'
+import { DecodeFunction, type FileImporter } from '@wildflowerhealthio/importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'

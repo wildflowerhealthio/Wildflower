@@ -1,6 +1,6 @@
+import type { DocumentReference, FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { MetaSource } from '@wildflowerhealthio/importer-fundamentals'
 import { Data, Either, Encoding, Order, type ParseResult, Schema } from 'effect'
-import type { DocumentReference, FhirResource } from 'fhir-r4/resources'
-import { MetaSource } from 'importer-fundamentals'
 
 import * as Entry from './snapshot-entry.ts'
 import * as SnapshotFile from './snapshot-file.ts'

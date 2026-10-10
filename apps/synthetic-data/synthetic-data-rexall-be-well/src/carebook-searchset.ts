@@ -1,7 +1,11 @@
-import { DateTime } from 'effect'
-import type { CodeableConcept, Extension, IdentifierAndReference, Meta } from 'fhir-r4/data-types'
-import type { Medication as R4Medication } from 'fhir-r4/resources'
-import type { Medication as Stu3Medication } from 'fhir-stu3-as-r4/schemas'
+import type {
+  CodeableConcept,
+  Extension,
+  IdentifierAndReference,
+  Meta,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import type { Medication as R4Medication } from '@wildflowerhealthio/fhir-r4/resources'
+import type { Medication as Stu3Medication } from '@wildflowerhealthio/fhir-stu3-as-r4/schemas'
 import {
   CarebookCodingSystem,
   CarebookExtension,
@@ -13,9 +17,14 @@ import {
   REXALL_STU3_BASE_URL,
   REXALL_SYSTEM_SOURCE,
   RequestTypeCode,
-} from 'rexall-be-well-source'
-import * as Seeding from 'synthetic-data-fundamentals/seeding'
-import { DrugProduct, Prescription, StoryDay } from 'synthetic-data-fundamentals/story'
+} from '@wildflowerhealthio/rexall-be-well-source'
+import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
+import {
+  DrugProduct,
+  Prescription,
+  StoryDay,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import { DateTime } from 'effect'
 
 import type { RexallAccount } from './rexall-account.ts'
 

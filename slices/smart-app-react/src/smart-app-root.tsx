@@ -1,16 +1,20 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { APP_DESCRIPTIONS, TELEMETRY_CONSENT_COPY, type AppSectionId } from 'branding-core'
-import { AppLandingPage, BrandBar } from 'branding-react'
-import { Option } from 'effect'
-import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import {
+  APP_DESCRIPTIONS,
+  TELEMETRY_CONSENT_COPY,
+  type AppSectionId,
+} from '@wildflowerhealthio/branding-core'
+import { AppLandingPage, BrandBar } from '@wildflowerhealthio/branding-react'
 import {
   CrashReportingBoundary,
   TelemetryConsentGate,
   TelemetryStatusControl,
   useConsentedTelemetryStart,
   useTelemetryConsentControls,
-} from 'telemetry-react'
-import { Sentry, setFhirServerHost } from 'telemetry-web'
+} from '@wildflowerhealthio/telemetry-react'
+import { Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
+import { Option } from 'effect'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 
 import {
   appRootRedirectUri,
@@ -21,7 +25,7 @@ import {
   shouldCompleteSmartLaunch,
   whenSmartHandshakeReady,
   type SmartLaunchConfig,
-} from 'fhir-r4-react/smart'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { ConnectMenu } from './connect-menu.tsx'

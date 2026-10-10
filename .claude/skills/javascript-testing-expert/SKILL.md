@@ -116,7 +116,7 @@ const age = computeAge(user)
 
 ```ts
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 describe('computeAge', () => {
@@ -369,7 +369,7 @@ Synchronous property — wrap `fc.property` in `fc.assert`:
 
 ```ts
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { it } from 'vite-plus/test'
 
 it('...', () => {
@@ -386,7 +386,7 @@ Asynchronous property — use `fc.asyncProperty` and **await** `fc.assert`:
 
 ```ts
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { it } from 'vite-plus/test'
 
 it('...', async () => {
@@ -421,7 +421,7 @@ Property tests import the test API from `vite-plus/test`, import fast-check as a
 
 ```ts
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 ```
 

@@ -9,8 +9,8 @@ import {
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
-import { DatabasesHttpApiClient } from 'databases-core-js/clients'
-import type { Databases } from 'databases-core-js/http-api-definition'
+import { DatabasesHttpApiClient } from '@wildflowerhealthio/databases-core-js/clients'
+import type { Databases } from '@wildflowerhealthio/databases-core-js/http-api-definition'
 import { Effect, type Schema } from 'effect'
 
 import { buildDatabasesClientLayer } from './client/databases-client.ts'

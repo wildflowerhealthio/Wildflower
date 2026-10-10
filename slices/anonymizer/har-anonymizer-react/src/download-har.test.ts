@@ -1,7 +1,7 @@
+import { emitHarFromLog, type HttpArchive } from '@wildflowerhealthio/http-archive'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { emitHarFromLog, type HttpArchive } from 'http-archive'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { anonymizedFileName, HAR_MEDIA_TYPE, harBlob } from './download-har.ts'

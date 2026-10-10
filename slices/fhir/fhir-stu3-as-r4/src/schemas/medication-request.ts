@@ -1,6 +1,10 @@
 import { ParseResult, Schema } from 'effect'
 
-import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
+import {
+  OrNullAsOptional,
+  StructNoContext,
+  mutableEncoded,
+} from '@wildflowerhealthio/kitchen-sink/schema'
 
 import {
   Annotation,
@@ -14,11 +18,11 @@ import {
   Period,
   Quantity,
   SimpleQuantity,
-} from 'fhir-r4/data-types'
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   MedicationRequest as R4MedicationRequest,
   MedicationRequestDispenseRequest as R4DispenseRequest,
-} from 'fhir-r4/resources'
+} from '@wildflowerhealthio/fhir-r4/resources'
 
 import { toSimpleQuantity } from './internal.ts'
 

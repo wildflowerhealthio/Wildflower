@@ -1,6 +1,6 @@
 import { HttpApiError, HttpClientError } from '@effect/platform'
-import { unwrapFiberFailure } from 'kitchen-sink'
-import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
+import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
+import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 
 /**
  * Classification of the auth failures the router runtime reacts to — 401

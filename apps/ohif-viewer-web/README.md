@@ -33,8 +33,8 @@ nav link.
 ## Build
 
 ```bash
-vp run -F ohif-viewer-web build   # dist/ = pinned release + config/app-config.js
-vp run -F ohif-viewer-web dev     # vp preview of dist/
+vp run -F @wildflowerhealthio/ohif-viewer-web build   # dist/ = pinned release + config/app-config.js
+vp run -F @wildflowerhealthio/ohif-viewer-web dev     # vp preview of dist/
 vp test                       # unit tests
 ```
 
@@ -104,7 +104,7 @@ the client ID, for launching from another FHIR server.
 
 A debug build of the host also seeds an `ohif-viewer-dev` row and client
 (`apps-rust/src/dev_seed.rs`, `gatekeeper-rust/src/seeding.rs`) on the port
-`dev-app-ports.json` names. `vp run -F ohif-viewer-web dev` previews
+`dev-app-ports.json` names. `vp run -F @wildflowerhealthio/ohif-viewer-web dev` previews
 `dist/` on that port, and `app-config.js` sends the dev client's ID
 (`f9866f7b1d0d8505dc65ef4f749664b5`) when served from a loopback origin.
 
@@ -122,5 +122,5 @@ the preview is running.
    release.
 2. Copy the release's asset URL and the contents of `ohif-viewer.tar.gz.sha256`
    into `prebuilt.json`.
-3. `vp run -F ohif-viewer-web build`, then `vp run -F wildflower-site-web build` to see it
+3. `vp run -F @wildflowerhealthio/ohif-viewer-web build`, then `vp run -F @wildflowerhealthio/wildflower-site-web build` to see it
    assembled; the PR preview shows it live.

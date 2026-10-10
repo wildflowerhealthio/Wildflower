@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { LifeLabsPdfSettings } from 'lifelabs-pdf-importer'
+import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-importer'
 import { type JSX, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 

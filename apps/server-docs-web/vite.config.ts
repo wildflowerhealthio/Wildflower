@@ -31,7 +31,7 @@ export default defineConfig({
     conditions: [...(base.resolve?.conditions ?? []), 'module', 'browser'],
   },
   // The homescreen's "Server Docs (Dev)" tile launches this port, so the dev
-  // server must hold exactly it. Run with `vp run -F server-docs-web dev`.
+  // server must hold exactly it. Run with `vp run -F @wildflowerhealthio/server-docs-web dev`.
   server: devAppServer('server-docs-dev'),
   build: {
     // Vendoring the whole Scalar reference (plus the bundled OpenAPI

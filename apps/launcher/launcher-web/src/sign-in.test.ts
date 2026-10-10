@@ -1,6 +1,4 @@
-import { sectionUrl } from 'branding-core'
-import { Effect, Equal, Option } from 'effect'
-import * as fc from 'fast-check'
+import { sectionUrl } from '@wildflowerhealthio/branding-core'
 import {
   STANDALONE_LAUNCH_SCOPES,
   standaloneLaunchScopeParameter,
@@ -9,9 +7,9 @@ import {
   type SignInPage,
   PlainSmartServer,
   WildflowerServer,
-} from 'gatekeeper-core/smart-client'
-import { makeBearerAuthStateStore } from 'gatekeeper-react'
-import { numRunsFor } from 'kitchen-sink/test'
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   AuthedUntil,
   type AuthState,
@@ -19,7 +17,9 @@ import {
   isAuthed,
   isFreshlyAuthed,
   Unauthed,
-} from 'react-kitchen-sink'
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Effect, Equal, Option } from 'effect'
+import * as fc from 'fast-check'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ServerKind } from './session/server-kind.ts'

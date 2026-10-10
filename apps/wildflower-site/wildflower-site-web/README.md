@@ -77,7 +77,7 @@ reads it from.
 
 ```bash
 vp run pack                    # builds every section, then assembles dist/
-vp run -F wildflower-site-web build   # assembles dist/ from already-built sections
+vp run -F @wildflowerhealthio/wildflower-site-web build   # assembles dist/ from already-built sections
 vp test                        # unit tests for the layout
 ```
 

@@ -1,5 +1,5 @@
-import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
-import type { SmartAppTelemetry } from 'smart-app-react'
+import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
  * The scopes the medications app asks for, the same for an EHR launch and a
@@ -33,7 +33,7 @@ const MEDICATIONS_SCOPE =
  *   `https://wildflowerhealth.io/medications/` and launches as the
  *   `medications` tile's client, `9769f8b274370708d0d3ebb2e3e59b7c`, which
  *   registers that absolute Pages URL as its redirect URI.
- * - The **vite dev server** (`vp run -F medications-web dev`, on the port
+ * - The **vite dev server** (`vp run -F @wildflowerhealthio/medications-web dev`, on the port
  *   `dev-app-ports.json` pins) launches as the `medications-dev`
  *   tile's client, `4be2ee91360733fdcb99b43a3822de5f` (`gatekeeper-rust`'s
  *   `seed_dev_app_clients`), which registers the dev server's loopback root

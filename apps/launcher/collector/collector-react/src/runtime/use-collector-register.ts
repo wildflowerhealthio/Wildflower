@@ -1,5 +1,5 @@
-import { CollectorBridge } from 'collector-fundamentals/bridge'
-import { makeUseSliceRegister } from 'effect-messaging-react'
+import { CollectorBridge } from '@wildflowerhealthio/collector-fundamentals/bridge'
+import { makeUseSliceRegister } from '@wildflowerhealthio/effect-messaging-react'
 
 /**
  * Slice-bound coordinator accessor: returns `register` / `unregister`

@@ -1,10 +1,10 @@
 import { cleanup, render } from '@testing-library/react'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { type PointSeries, ValueAxis } from 'health-viewer-fundamentals'
+import { type PointSeries, ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { Legend } from './legend.tsx'
 import { seriesColors } from './series-colors.ts'

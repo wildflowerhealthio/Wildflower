@@ -1,12 +1,12 @@
 import { QueryClient } from '@tanstack/react-query'
-import { Deferred, Effect, Fiber, SubscriptionRef } from 'effect'
 import {
   AuthedUntil,
   type AuthState,
   type AuthStateStore,
   HostAuthed,
   Unauthed,
-} from 'react-kitchen-sink'
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Deferred, Effect, Fiber, SubscriptionRef } from 'effect'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { forkTokenRotationInvalidator } from './app-root.tsx'

@@ -1,6 +1,10 @@
 import { Schema } from 'effect'
 
-import { OrNullAsOptional, mutableEncoded, type FieldsNoContext } from 'kitchen-sink/schema'
+import {
+  OrNullAsOptional,
+  mutableEncoded,
+  type FieldsNoContext,
+} from '@wildflowerhealthio/kitchen-sink/schema'
 
 import * as Extension from '../special-purpose/extension.ts'
 import * as Narrative from '../special-purpose/narrative.ts'

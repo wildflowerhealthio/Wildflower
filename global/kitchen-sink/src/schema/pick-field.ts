@@ -8,7 +8,7 @@ import { Schema } from 'effect'
  *
  * ```ts
  * import { Schema } from "effect"
- * import { pickField } from "kitchen-sink/schema"
+ * import { pickField } from "@wildflowerhealthio/kitchen-sink/schema"
  *
  * const Person = Schema.Struct({ name: Schema.String, age: Schema.Number })
  *

@@ -1,9 +1,9 @@
+import { StrongLifts5x5, type TrainingPlanDefinition } from '@wildflowerhealthio/lifting-core-js'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
 import { Either } from 'effect'
-import { StrongLifts5x5, type TrainingPlanDefinition } from 'lifting-core-js'
 import type { JSX, SubmitEvent } from 'react'
 import { useState } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner, TextField } from 'react-tundraish'
 
 import { problemDescription } from '../form/problem-description.tsx'
 import { useFormState } from '../form/use-form-state.ts'

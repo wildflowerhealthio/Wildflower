@@ -1,5 +1,5 @@
 {
-  "name": "lifting-react",
+  "name": "@wildflowerhealthio/lifting-react",
   "version": "0.0.0",
   "private": true,
   "description": "Browser UI for Lifting: the planned workout the lifter enters reps for and submits, the outcome of a submitted workout, starting a training plan definition at chosen loads, the training plan definition editor, and the workout history. Plain props and callbacks over lifting-core-js's narrowed FHIR resources; nothing here fetches, mints ids or decides a progression.",
@@ -23,25 +23,25 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/lifting-core-js": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "lifting-core-js": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@wildflowerhealthio/lifting-core-js": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "effect": "catalog:",
-    "lifting-core-js": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*"
+    "react": "catalog:"
   }
 }

@@ -1,6 +1,6 @@
 import { useCanGoBack, useLocation } from '@tanstack/react-router'
+import type { NavigationBridge } from '@wildflowerhealthio/navigation-core'
 import { Effect } from 'effect'
-import type { NavigationBridge } from 'navigation-core'
 import { type JSX, useEffect, useRef } from 'react'
 
 /**

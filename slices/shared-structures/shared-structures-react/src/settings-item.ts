@@ -1,4 +1,4 @@
-import type { ItemListItem } from 'react-tundraish'
+import type { ItemListItem } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * One entry in the unified `/settings` menu.

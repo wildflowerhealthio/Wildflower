@@ -1,6 +1,9 @@
+import type { MedicationView } from '@wildflowerhealthio/medication-core/fhir'
+import {
+  dedupeMedicationsByName,
+  type Medication,
+} from '@wildflowerhealthio/medication-sponsorship-core-js'
 import { Array as EArray, Option } from 'effect'
-import type { MedicationView } from 'medication-core/fhir'
-import { dedupeMedicationsByName, type Medication } from 'medication-sponsorship-core-js'
 
 /**
  * The completed prescriptions worth showing on the savings page: every

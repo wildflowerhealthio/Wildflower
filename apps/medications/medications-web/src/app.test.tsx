@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { MedicationRequest, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { Schema } from 'effect'
-import { withMandatoryId } from 'fhir-r4/data-types'
-import { MedicationRequest, Patient } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
-import type { InteractionCatalog } from 'medication-interaction-core-js'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -13,7 +13,7 @@ import type {
   MedicationRequestPage,
   PatientPage,
   SmartHandshake,
-} from 'fhir-r4-react/smart'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 
 // The seams `App` composes: the handshake hook (its state is driven per
 // test), the paged MedicationRequest read (whose page / rejection is stubbed,
@@ -31,7 +31,7 @@ const { handshakeMock, fetchMock, patientPageMock, catalogMock, launchFailureRed
     catalogMock: vi.fn<() => Promise<unknown>>(),
     launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
   }))
-vi.mock('fhir-r4-react/smart', async () => {
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async () => {
   const { Effect, Option: EffectOption } = await import('effect')
   return {
     useSmartHandshake: () => handshakeMock(),

@@ -1,6 +1,6 @@
-import type { StatusTone } from 'react-tundraish'
+import type { StatusTone } from '@wildflowerhealthio/react-tundraish'
 
-import type { Severity } from 'medication-interaction-core-js'
+import type { Severity } from '@wildflowerhealthio/medication-interaction-core-js'
 
 /**
  * The design-system tone each DDInter level is painted in: Major is danger

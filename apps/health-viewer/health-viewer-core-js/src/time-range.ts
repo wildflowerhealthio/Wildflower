@@ -1,5 +1,5 @@
+import type { TimeDomain } from '@wildflowerhealthio/health-viewer-fundamentals'
 import { DateTime } from 'effect'
-import type { TimeDomain } from 'health-viewer-fundamentals'
 
 /** The time windows the viewer offers along the x axis. */
 type RangePreset = 'all' | '5y' | '1y' | '90d' | '28d' | '7d' | '24h'

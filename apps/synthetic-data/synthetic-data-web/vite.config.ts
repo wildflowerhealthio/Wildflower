@@ -18,7 +18,7 @@ export default defineConfig({
   plugins: [react()],
   // The homescreen's "Synthetic Data (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
-  // `vp run -F synthetic-data-web dev`.
+  // `vp run -F @wildflowerhealthio/synthetic-data-web dev`.
   server: devAppServer('synthetic-data-dev'),
   build: {
     // Emitted for the deploy's Sentry upload, unreferenced from the bundle;

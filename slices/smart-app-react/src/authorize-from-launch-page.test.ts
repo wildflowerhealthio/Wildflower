@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { launchErrorFrom, type SmartLaunchConfig } from 'fhir-r4-react/smart'
-import type * as Smart from 'fhir-r4-react/smart'
+import { launchErrorFrom, type SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 
 // Stub the one call that leaves the page: fhirclient's authorize redirect.
 const { authorizeSmartLaunchMock } = vi.hoisted(() => ({
   authorizeSmartLaunchMock: vi.fn<(config: SmartLaunchConfig) => Promise<void>>(),
 }))
-vi.mock('fhir-r4-react/smart', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   ...(await importOriginal<typeof Smart>()),
   authorizeSmartLaunch: authorizeSmartLaunchMock,
 }))

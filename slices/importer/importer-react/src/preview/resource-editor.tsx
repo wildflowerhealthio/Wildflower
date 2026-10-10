@@ -1,7 +1,7 @@
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Dialog, ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Either } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
 import { type JSX, useRef, useState } from 'react'
-import { Dialog, ErrorBanner } from 'react-tundraish'
 
 import {
   PlaceholderEditedWarning,

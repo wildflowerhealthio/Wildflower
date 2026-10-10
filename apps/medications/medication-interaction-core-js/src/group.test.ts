@@ -1,7 +1,7 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { Medication } from '@wildflowerhealthio/medication-core'
+import { tokenize } from '@wildflowerhealthio/medication-core'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import type { Medication } from 'medication-core'
-import { tokenize } from 'medication-core'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { type DdinterFile, decodeDdinterFile, type InteractionCatalog } from './ddinter.ts'

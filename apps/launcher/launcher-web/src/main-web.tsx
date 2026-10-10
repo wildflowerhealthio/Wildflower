@@ -1,17 +1,24 @@
 import { createBrowserHistory } from '@tanstack/react-router'
-import 'react-tundraish/styles'
+import '@wildflowerhealthio/react-tundraish/styles'
 // The shared chrome's layout tokens, which the landing page's header, footer
 // and `AppLanding` read. `branding-react`'s entry imports this stylesheet
 // itself; naming it here too (one module, so one copy) puts it ahead of this
 // app's own `global.css`, after the design system it builds on.
-import 'branding-react/styles.css'
-import { basenameOf, restoreRedirectedUrl, TELEMETRY_CONSENT_COPY } from 'branding-core'
+import '@wildflowerhealthio/branding-react/styles.css'
+import {
+  basenameOf,
+  restoreRedirectedUrl,
+  TELEMETRY_CONSENT_COPY,
+} from '@wildflowerhealthio/branding-core'
+import {
+  isAuthorizationResponse,
+  searchAfterArrivingLaunch,
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { sanitizeReturnTo, type TokenResponseHandler } from '@wildflowerhealthio/gatekeeper-react'
+import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
+import { consentedTelemetryLayer } from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
-import { isAuthorizationResponse, searchAfterArrivingLaunch } from 'gatekeeper-core/smart-client'
-import { sanitizeReturnTo, type TokenResponseHandler } from 'gatekeeper-react'
 import type { JSX } from 'react'
-import { addOsColorSchemeListener } from 'react-tundraish'
-import { consentedTelemetryLayer } from 'telemetry-web'
 import './styles/global.css'
 import { buildAppTree, mountAtRoot } from './app-root.tsx'
 import { ConsentedEntryRoot } from './session/consented-entry-root.tsx'

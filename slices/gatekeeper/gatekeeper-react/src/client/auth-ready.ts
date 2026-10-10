@@ -1,8 +1,8 @@
 import { redirect, type AnyRedirect } from '@tanstack/react-router'
+import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
 import { Data, Duration, Effect, Option, pipe, Stream, type Subscribable } from 'effect'
-import { unwrapFiberFailure } from 'kitchen-sink'
 
-import { type AuthState, isAuthed } from 'react-kitchen-sink'
+import { type AuthState, isAuthed } from '@wildflowerhealthio/react-kitchen-sink'
 
 /**
  * Embedded WebView waited the full {@link EMBEDDED_TOKEN_TIMEOUT} for

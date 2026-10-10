@@ -1,5 +1,5 @@
 {
-  "name": "fhir-sync-pebble-test",
+  "name": "@wildflowerhealthio/fhir-sync-pebble-test",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "fast-check": "catalog:",
-    "fhir-sync-pebble-core": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-sync-pebble-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "fast-check": "catalog:"
   }
 }

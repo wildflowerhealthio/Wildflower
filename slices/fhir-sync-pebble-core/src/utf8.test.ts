@@ -1,6 +1,6 @@
+import { utf8Bytes as textEncoderBytes } from '@wildflowerhealthio/kitchen-sink'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { utf8Bytes as textEncoderBytes } from 'kitchen-sink'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { truncateUtf8, utf8Bytes } from './utf8.ts'

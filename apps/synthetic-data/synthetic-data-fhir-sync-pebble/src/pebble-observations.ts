@@ -1,7 +1,11 @@
+import {
+  HealthActivity,
+  type MinuteHistory,
+  WatchSync,
+} from '@wildflowerhealthio/fhir-sync-pebble-core'
+import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
+import { StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { DateTime } from 'effect'
-import { HealthActivity, type MinuteHistory, WatchSync } from 'fhir-sync-pebble-core'
-import * as Seeding from 'synthetic-data-fundamentals/seeding'
-import { StoryDay } from 'synthetic-data-fundamentals/story'
 
 import { MINUTES_PER_DAY, minuteTimelineOf, sleepStretchesOf } from './minute-timeline.ts'
 import * as PebbleWatch from './pebble-watch.ts'

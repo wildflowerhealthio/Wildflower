@@ -1,5 +1,5 @@
-import type { PlannedWorkout } from 'lifting-core-js'
-import { TrainingPlanDefinition } from 'lifting-core-js'
+import type { PlannedWorkout } from '@wildflowerhealthio/lifting-core-js'
+import { TrainingPlanDefinition } from '@wildflowerhealthio/lifting-core-js'
 import type { JSX } from 'react'
 
 import { PlannedWorkoutForm, type PlannedWorkoutFormProps } from './planned-workout-form.tsx'

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { AsyncErrorView } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { AsyncErrorView } from 'react-tundraish'
 
 import { appQueryOptions, useAppQuery } from '../../../queries.ts'
 import { AppDetailPage } from './-app-detail-page.tsx'

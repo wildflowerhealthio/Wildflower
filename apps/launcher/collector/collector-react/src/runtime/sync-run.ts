@@ -34,9 +34,9 @@
  * holds' `timeout`s) and in the handler (the drained guard bounding the tail),
  * not in a rolling timer here.
  */
-import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
-import type { CollectorDescriptor } from 'collector-fundamentals/model'
-import * as Telemetry from 'collector-fundamentals/telemetry'
+import { CollectorBridgeMessageHandler } from '@wildflowerhealthio/collector-fundamentals/handler'
+import type { CollectorDescriptor } from '@wildflowerhealthio/collector-fundamentals/model'
+import * as Telemetry from '@wildflowerhealthio/collector-fundamentals/telemetry'
 import type { Mailbox } from 'effect'
 import { Effect, Either, Option, Stream } from 'effect'
 

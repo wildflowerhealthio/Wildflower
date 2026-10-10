@@ -12,7 +12,7 @@ One namespace per module, in the `effect` style: the file is the noun, the
 principal type shares the namespace's name (`HttpResponseKind.HttpResponseKind`),
 and functions read in the namespace's context (`Extraction.routeTo`, not
 `routeExtractionTo`). All are exported from the **flat root entry**:
-`import { HttpResponseKind, Extraction, Specificity, UrlMatch } from 'http-extraction-fundamentals'`.
+`import { HttpResponseKind, Extraction, Specificity, UrlMatch } from '@wildflowerhealthio/http-extraction-fundamentals'`.
 
 - **`HttpResponseKind`** (`src/http-response-kind.ts`) — the recipe for
   recognizing and decoding one response shape: `name` / `tryRecognize` /

@@ -4,7 +4,7 @@ import {
   type SponsoredDrug,
   type SponsorProgram,
   sponsorProgramLabels,
-} from 'medication-sponsorship-core-js'
+} from '@wildflowerhealthio/medication-sponsorship-core-js'
 
 import styles from './sponsor-chip.module.css'
 

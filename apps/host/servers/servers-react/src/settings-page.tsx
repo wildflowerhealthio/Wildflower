@@ -1,9 +1,12 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
+import { ItemList, type ItemListItem, PageHeader } from '@wildflowerhealthio/react-tundraish'
+import type { HostCommandError, NotificationPermission } from '@wildflowerhealthio/servers-core-js'
+import {
+  telemetryConsentSummary,
+  useTelemetryConsentControls,
+} from '@wildflowerhealthio/telemetry-react'
 import type { JSX } from 'react'
-import { ItemList, type ItemListItem, PageHeader } from 'react-tundraish'
-import type { HostCommandError, NotificationPermission } from 'servers-core-js'
-import { telemetryConsentSummary, useTelemetryConsentControls } from 'telemetry-react'
 
 import {
   appVersionQueryOptions,

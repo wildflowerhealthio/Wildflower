@@ -17,7 +17,7 @@ Put the screens under `src/routes/settings/<name>/` in the slice's `*-react` pac
 In `<name>-react/src/settings-fragments.ts`, declare a `readonly SettingsItem[]` named `<name>SettingsItemsFragment`. Each item's `href` should match a route from step 1 (typically the index landing for the slice).
 
 ```ts
-import type { SettingsItem } from 'shared-structures-react'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 
 const exampleSettingsItemsFragment: readonly SettingsItem[] = [
   {

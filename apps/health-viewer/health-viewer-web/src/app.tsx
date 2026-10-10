@@ -1,8 +1,8 @@
-import { DateTime, Match, Option } from 'effect'
-import { useLaunchFailureRedirect, useSmartHandshake } from 'fhir-r4-react/smart'
-import type { JSX } from 'react'
-import { useState } from 'react'
-import { ErrorBanner } from 'react-tundraish'
+import {
+  useLaunchFailureRedirect,
+  useSmartHandshake,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import {
   LoadingLine,
   PatientChoiceLine,
@@ -10,7 +10,10 @@ import {
   patientChoiceKeyOf,
   patientScopeOf,
   usePatientChoice,
-} from 'smart-app-react'
+} from '@wildflowerhealthio/smart-app-react'
+import { DateTime, Match, Option } from 'effect'
+import type { JSX } from 'react'
+import { useState } from 'react'
 
 import { PatientRecord } from './patient-record.tsx'
 import { useUrlSelection } from './use-url-selection.ts'

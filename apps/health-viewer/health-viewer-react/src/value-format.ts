@@ -1,6 +1,6 @@
 import type { DateTime } from 'effect'
 
-import { type Series, ValueAxis } from 'health-viewer-fundamentals'
+import { type Series, ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 /** Slack, in powers of ten, for float error in a tick step read back from two ticks. */
 const STEP_TOLERANCE = 1e-9

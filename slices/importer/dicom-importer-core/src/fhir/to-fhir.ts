@@ -1,4 +1,7 @@
-import type { DicomHeader, PersonName } from 'dicom'
+import type { DicomHeader, PersonName } from '@wildflowerhealthio/dicom'
+import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
+import { ImagingStudy, Patient, ServiceRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 /**
  * Synthesize FHIR R4 resources from one study's parsed
  * {@link DicomHeader.Type}s: a `Patient`, optionally a `ServiceRequest` (when
@@ -23,9 +26,6 @@ import type { DicomHeader, PersonName } from 'dicom'
  * @packageDocumentation
  */
 import { Array as Arr, DateTime, Effect, Option, Order, type ParseResult, Schema } from 'effect'
-import { joinIdComponents } from 'fhir-r4/identity'
-import { ImagingStudy, Patient, ServiceRequest } from 'fhir-r4/resources'
-import { fnv1a64 } from 'kitchen-sink'
 
 import type { DicomSettings } from '../settings.ts'
 import { DICOM_SYSTEM } from '../source-system.ts'

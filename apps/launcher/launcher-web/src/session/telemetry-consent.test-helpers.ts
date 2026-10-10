@@ -1,6 +1,6 @@
 import { fireEvent, screen } from '@testing-library/react'
-import { TELEMETRY_CONSENT_COPY } from 'branding-core'
-import { type TelemetryConsent, writeConsent } from 'telemetry-core'
+import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { type TelemetryConsent, writeConsent } from '@wildflowerhealthio/telemetry-core'
 
 /** The two switches of the consent dialog. */
 type ConsentSwitches = Pick<TelemetryConsent, 'crashReports' | 'performance'>

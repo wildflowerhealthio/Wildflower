@@ -1,12 +1,12 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from '@wildflowerhealthio/collector-fundamentals/test-helpers'
+import { localResourceId, originalIdOf } from '@wildflowerhealthio/fhir-r4/identity'
+import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
+import { traceResourceId } from '@wildflowerhealthio/web-trace-core'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { localResourceId, originalIdOf } from 'fhir-r4/identity'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import { traceResourceId } from 'web-trace-core'
 
 import { FhirR4CollectorDescriptor, InstanceConfig, defaultConfig, scrapingPlan } from './config.ts'
 

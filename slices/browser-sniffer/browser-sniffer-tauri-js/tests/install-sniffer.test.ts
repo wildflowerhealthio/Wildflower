@@ -8,12 +8,12 @@ import {
   ResponseDataMessage,
   ResponseFinishedMessage,
   ResponseStartMessage,
-} from 'browser-sniffer-core'
+} from '@wildflowerhealthio/browser-sniffer-core'
+import { Logging } from '@wildflowerhealthio/effect-messaging-core'
+import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
-import { Logging } from 'effect-messaging-core'
-import type { TauriEventApi } from 'effect-messaging-tauri-js'
 import * as fc from 'fast-check'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {

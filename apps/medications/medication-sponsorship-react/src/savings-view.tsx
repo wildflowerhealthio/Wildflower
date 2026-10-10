@@ -9,7 +9,7 @@ import {
   type Province,
   type SponsorCatalog,
   type SponsorProgram,
-} from 'medication-sponsorship-core-js'
+} from '@wildflowerhealthio/medication-sponsorship-core-js'
 
 import { programDescriptions } from './program-descriptions.ts'
 import { ProvincePicker } from './province-picker.tsx'

@@ -1,11 +1,11 @@
 // oxlint-disable import/max-dependencies -- the tree root provides every platform contribution and slice sender
 import { type AnyRouter, RouterProvider } from '@tanstack/react-router'
-import { HandlerCoordinatorContext } from 'effect-messaging-react'
-import { NavigationBridgeHandler } from 'navigation-react'
+import { HandlerCoordinatorContext } from '@wildflowerhealthio/effect-messaging-react'
+import { NavigationBridgeHandler } from '@wildflowerhealthio/navigation-react'
+import { usePromiseOrDefault } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBodyRendererContext } from '@wildflowerhealthio/react-tundraish'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Fragment, useMemo, type JSX, type PropsWithChildren, type ReactNode } from 'react'
-import { usePromiseOrDefault } from 'react-kitchen-sink'
-import { ErrorBodyRendererContext } from 'react-tundraish'
-import type { SettingsItem } from 'shared-structures-react'
 
 import { renderScopeError } from '../scope-error-renderer.tsx'
 import { PlatformBannerContext } from '../session/platform-banner-context.ts'

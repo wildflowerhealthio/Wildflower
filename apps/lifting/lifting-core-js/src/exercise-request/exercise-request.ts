@@ -1,4 +1,11 @@
 import {
+  CodeableConcept,
+  IdentifierAndReference,
+  narrowFields,
+  withMandatoryId,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { ServiceRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import {
   Array as Arr,
   type Brand,
   Data,
@@ -10,13 +17,6 @@ import {
   Record as EffectRecord,
   Schema,
 } from 'effect'
-import {
-  CodeableConcept,
-  IdentifierAndReference,
-  narrowFields,
-  withMandatoryId,
-} from 'fhir-r4/data-types'
-import { ServiceRequest } from 'fhir-r4/resources'
 
 import {
   countExerciseParameterAmong,

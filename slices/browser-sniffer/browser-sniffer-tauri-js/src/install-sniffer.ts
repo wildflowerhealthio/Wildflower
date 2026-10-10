@@ -10,11 +10,11 @@ import type {
   ResponseDataMessageBody,
   ResponseFinishedMessageBody,
   ResponseStartMessageBody,
-} from 'browser-sniffer-core'
+} from '@wildflowerhealthio/browser-sniffer-core'
+import type { Logging } from '@wildflowerhealthio/effect-messaging-core'
+import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
+import type { JsonValue } from '@wildflowerhealthio/kitchen-sink/schema'
 import { type Schema, Match, Predicate } from 'effect'
-import type { Logging } from 'effect-messaging-core'
-import type { TauriEventApi } from 'effect-messaging-tauri-js'
-import type { JsonValue } from 'kitchen-sink/schema'
 
 /**
  * Browser-side sniffer installed into an arbitrary third-party page.

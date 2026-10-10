@@ -1,5 +1,5 @@
 {
-  "name": "kitchen-sink",
+  "name": "@wildflowerhealthio/kitchen-sink",
   "version": "0.0.0",
   "description": "Shared schema and type utilities for the Wildflower monorepo.",
   "license": "MIT",

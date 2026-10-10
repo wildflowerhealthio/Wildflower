@@ -1,8 +1,8 @@
+import { CodeableConcept, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, DateTime, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { CodeableConcept, IdentifierAndReference } from 'fhir-r4/data-types'
-import { Observation } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ExerciseRequest from '../exercise-request/exercise-request.ts'

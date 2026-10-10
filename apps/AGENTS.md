@@ -68,20 +68,23 @@ depends on its Rust half.
 
 ### Names
 
-Everything that identifies the product takes the folder's name:
+Everything that identifies the product takes the folder's name. Every npm
+package is scoped `@wildflowerhealthio/`; every other identifier uses the
+unscoped name:
 
-| What                                       | Name                                                                                                                                     | Lifting                       |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| Folder                                     | `apps/<product>/`                                                                                                                        | `apps/lifting/`               |
-| The app's folder and npm package           | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`; a store-shipped Tauri app: `<product>-app`) | `lifting-web`                 |
-| A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `lifting-core-js`             |
-| Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `lifting-react`               |
-| Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/lifting/`                   |
-| Homescreen tile id                         | `<product>`                                                                                                                              | `lifting`                     |
-| Dev tile id and `dev-app-ports.json` key   | `<product>-dev`                                                                                                                          | `lifting-dev`                 |
-| OAuth client id                            | random, from `openssl rand -hex 16`                                                                                                      | `bdf9fc5c…`                   |
-| Sentry DSN build variable                  | `VITE_SENTRY_DSN_<PACKAGE>`                                                                                                              | `VITE_SENTRY_DSN_LIFTING_WEB` |
-| Sentry `app` tag and OpenTelemetry service | the package name                                                                                                                         | `lifting-web`                 |
+| What                                       | Name                                                                                                                                     | Lifting                           |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Folder                                     | `apps/<product>/`                                                                                                                        | `apps/lifting/`                   |
+| The app's folder                           | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`; a store-shipped Tauri app: `<product>-app`) | `lifting-web`                     |
+| The app's npm package                      | `@wildflowerhealthio/<folder>`                                                                                                           | `@wildflowerhealthio/lifting-web` |
+| A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `lifting-core-js`                 |
+| Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `lifting-react`                   |
+| Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/lifting/`                       |
+| Homescreen tile id                         | `<product>`                                                                                                                              | `lifting`                         |
+| Dev tile id and `dev-app-ports.json` key   | `<product>-dev`                                                                                                                          | `lifting-dev`                     |
+| OAuth client id                            | random, from `openssl rand -hex 16`                                                                                                      | `bdf9fc5c…`                       |
+| Sentry DSN build variable                  | `VITE_SENTRY_DSN_<PACKAGE>`                                                                                                              | `VITE_SENTRY_DSN_LIFTING_WEB`     |
+| Sentry `app` tag and OpenTelemetry service | the unscoped package name                                                                                                                | `lifting-web`                     |
 
 A client id is never a name: the host's loopback consent dialog shows the
 client's registered `name`, and nothing looks an app up by its client id, so a

@@ -1,5 +1,5 @@
-import { Unauthed } from 'react-kitchen-sink'
-import type { SettingsItem } from 'shared-structures-react'
+import { Unauthed } from '@wildflowerhealthio/react-kitchen-sink'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import type { BearerAuthStateStore } from './client/bearer-auth-state-store.ts'
 
 /** What {@link logOutBearerSession} needs from the entry's wiring. */

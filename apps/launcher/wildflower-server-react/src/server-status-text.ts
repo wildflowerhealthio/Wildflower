@@ -1,10 +1,10 @@
-import type { StatusTone } from 'react-tundraish'
+import type { StatusTone } from '@wildflowerhealthio/react-tundraish'
 import type {
   NotificationPermission,
   ServerServiceState,
   ServerServiceStatus,
   ServiceStopReason,
-} from 'wildflower-server-core-js'
+} from '@wildflowerhealthio/wildflower-server-core-js'
 
 /**
  * The state the page shows a status as: the host's own state, plus

@@ -1,4 +1,4 @@
-import { normalizeServerUrl } from 'fhir-r4-react/smart'
+import { normalizeServerUrl } from '@wildflowerhealthio/fhir-r4-react/smart'
 
 /**
  * What a connect menu connects: a SMART app launching against a FHIR R4 base

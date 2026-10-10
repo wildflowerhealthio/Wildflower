@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type ElementType, type JSX, type ReactNode } from 'react'
 
-import { HEADER_NAV_LINKS, navHref, sectionUrl, type NavContext } from 'branding-core'
+import {
+  HEADER_NAV_LINKS,
+  navHref,
+  sectionUrl,
+  type NavContext,
+} from '@wildflowerhealthio/branding-core'
 
 import { AppIcon } from './app-icon.tsx'
 import styles from './site-header.module.css'

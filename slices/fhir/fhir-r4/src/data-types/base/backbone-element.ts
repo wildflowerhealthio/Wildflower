@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { mutableEncoded, type FieldsNoContext } from 'kitchen-sink/schema'
+import { mutableEncoded, type FieldsNoContext } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 

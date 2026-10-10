@@ -8,7 +8,7 @@ import {
   type PointSeries,
   type TimeDomain,
   ValueAxis,
-} from 'health-viewer-fundamentals'
+} from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { seriesColors } from './series-colors.ts'
 import { axisTickFormat, labelWithUnit } from './value-format.ts'

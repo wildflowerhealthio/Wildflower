@@ -10,13 +10,17 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
+import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { TauriInvoke } from '@wildflowerhealthio/servers-core-js'
+import {
+  type ConsentStorage,
+  type TelemetryConsent,
+  writeConsent,
+} from '@wildflowerhealthio/telemetry-core'
+import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { type Context, DateTime, Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import type { TauriInvoke } from 'servers-core-js'
-import { type ConsentStorage, type TelemetryConsent, writeConsent } from 'telemetry-core'
-import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
@@ -28,7 +32,7 @@ import { formatInstant } from './server-status-text.ts'
 const { initConsentedTelemetryMock } = vi.hoisted(() => ({
   initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
 }))
-vi.mock('telemetry-web', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: initConsentedTelemetryMock,
 }))

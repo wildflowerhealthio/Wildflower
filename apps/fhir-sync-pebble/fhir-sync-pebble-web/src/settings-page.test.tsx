@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
+import { ReturnTarget, type ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
 import { Either } from 'effect'
-import { PebbleSettings } from 'fhir-sync-pebble-core'
-import { ReturnTarget, type ReturnTargetStore } from 'pebble-configuration'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { SettingsPage } from './settings-page.tsx'

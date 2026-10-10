@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { clientsQueryOptions, useRunAuthed as useGatekeeperRunAuthed } from 'gatekeeper-react'
+import {
+  clientsQueryOptions,
+  useRunAuthed as useGatekeeperRunAuthed,
+} from '@wildflowerhealthio/gatekeeper-react'
 import { useMemo } from 'react'
 
 /**

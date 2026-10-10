@@ -1,4 +1,6 @@
-import { type CancelSnifferRequestMessage } from 'browser-sniffer-core'
+import { type CancelSnifferRequestMessage } from '@wildflowerhealthio/browser-sniffer-core'
+import type { MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
+import { type HttpMethod, isHttpMethod } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
   Cause,
   Data,
@@ -10,9 +12,7 @@ import {
   Option,
   type ParseResult,
 } from 'effect'
-import type { MessageHandler } from 'effect-messaging-core'
 import { UnknownException } from 'effect/Cause'
-import { type HttpMethod, isHttpMethod } from 'http-extraction-fundamentals'
 import type { CollectorBridge } from '../bridge.ts'
 import type * as CollectorHttpResponseKind from '../model/collector-http-response-kind.ts'
 import { CollectorHttpResponse } from '../model/index.ts'

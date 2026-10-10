@@ -1,4 +1,4 @@
-import { BackgroundServerServiceSenderProvider } from 'wildflower-server-react'
+import { BackgroundServerServiceSenderProvider } from '@wildflowerhealthio/wildflower-server-react'
 
 import { makeSliceSenderForwarder } from './make-sender-forwarder.tsx'
 

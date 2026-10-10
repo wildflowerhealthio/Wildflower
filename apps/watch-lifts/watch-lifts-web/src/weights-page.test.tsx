@@ -1,9 +1,9 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ReturnTarget } from '@wildflowerhealthio/pebble-configuration'
+import { LiftSettings, Lifts, PhoneSettings } from '@wildflowerhealthio/watch-lifts-core-js'
 import { Either } from 'effect'
-import { ReturnTarget } from 'pebble-configuration'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
-import { LiftSettings, Lifts, PhoneSettings } from 'watch-lifts-core-js'
 
 import { readPageUrl } from './page-url.ts'
 import { WeightsPage } from './weights-page.tsx'

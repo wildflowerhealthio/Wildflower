@@ -1,5 +1,5 @@
 {
-  "name": "effect-messaging-tauri-js",
+  "name": "@wildflowerhealthio/effect-messaging-tauri-js",
   "version": "0.0.0",
   "private": true,
   "description": "Tauri adapter for effect-messaging: a bridge transport over per-tag Tauri events with structured payloads.",
@@ -28,10 +28,10 @@
   },
   "devDependencies": {
     "@tauri-apps/api": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -39,7 +39,7 @@
   },
   "peerDependencies": {
     "@tauri-apps/api": "catalog:",
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*"
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

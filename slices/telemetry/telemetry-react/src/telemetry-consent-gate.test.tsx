@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { TELEMETRY_CONSENT_COPY } from 'branding-core'
+import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import {
+  readConsent,
+  type TelemetryConsent,
+  writeConsent,
+} from '@wildflowerhealthio/telemetry-core'
 import { useEffect, type JSX } from 'react'
-import { readConsent, type TelemetryConsent, writeConsent } from 'telemetry-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { useTelemetryConsentControls } from './telemetry-consent-context.ts'

@@ -4,8 +4,11 @@ import {
   useQueryClient,
   type UseMutationResult,
 } from '@tanstack/react-query'
-import { type BatchEntryOutcome, persistBatchBundleOrFail } from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
+import {
+  type BatchEntryOutcome,
+  persistBatchBundleOrFail,
+} from '@wildflowerhealthio/fhir-r4/clients'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 
 import { liftingKeyOf, type LiftingSession } from './lifting-session.ts'
 

@@ -1,8 +1,11 @@
-import { DecodeFailure, type AnonymizerFormatDescriptor } from 'anonymizer-fundamentals'
+import {
+  DecodeFailure,
+  type AnonymizerFormatDescriptor,
+} from '@wildflowerhealthio/anonymizer-fundamentals'
+import type { Document } from '@wildflowerhealthio/positioned-text'
 import { Effect } from 'effect'
-import type { Document } from 'positioned-text'
 
-import { extractPositionedText } from 'positioned-text-web'
+import { extractPositionedText } from '@wildflowerhealthio/positioned-text-web'
 
 const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])
 

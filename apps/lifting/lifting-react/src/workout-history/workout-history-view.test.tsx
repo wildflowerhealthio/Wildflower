@@ -1,9 +1,13 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import {
+  ExerciseRequest,
+  StrongLifts5x5,
+  WorkoutProcedure,
+} from '@wildflowerhealthio/lifting-core-js'
+import { progressionCaseArb } from '@wildflowerhealthio/lifting-core-js/test-helpers'
 import { Array as Arr } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { ExerciseRequest, StrongLifts5x5, WorkoutProcedure } from 'lifting-core-js'
-import { progressionCaseArb } from 'lifting-core-js/test-helpers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { afterWorkout, type LifterRecord, startedLifterRecord } from '../lifting.test-helpers.ts'

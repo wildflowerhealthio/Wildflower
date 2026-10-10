@@ -1,8 +1,8 @@
+import { CodeableConcept } from '@wildflowerhealthio/fhir-r4/data-types'
+import { PlanDefinitionAction } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { CodeableConcept } from 'fhir-r4/data-types'
-import { PlanDefinitionAction } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as ExerciseParameter from '../exercise-parameter/exercise-parameter.ts'

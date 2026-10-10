@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { attachBearer } from './attach-bearer.ts'

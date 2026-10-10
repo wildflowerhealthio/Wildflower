@@ -1,5 +1,5 @@
 {
-  "name": "positioned-text-web",
+  "name": "@wildflowerhealthio/positioned-text-web",
   "version": "0.0.0",
   "private": true,
   "description": "The browser (non-React) extraction seam of the file-formats slice: `extractPositionedText` turns a PDF's raw bytes into a `Document.Type` via a dynamically imported `pdfjs-dist`. Both the PDF anonymizer and a future PDF importer feed off this one seam. Untested by design — everything downstream is tested on hand-written fixture documents.",
@@ -28,15 +28,15 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/positioned-text": "workspace:*",
     "pdfjs-dist": "catalog:",
-    "positioned-text": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "pdfjs-dist": "catalog:",
-    "positioned-text": "workspace:*"
+    "@wildflowerhealthio/positioned-text": "workspace:*",
+    "pdfjs-dist": "catalog:"
   }
 }

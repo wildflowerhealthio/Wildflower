@@ -1,5 +1,5 @@
 {
-  "name": "wildflower-server-core-js",
+  "name": "@wildflowerhealthio/wildflower-server-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "The background server service's pure core: `BackgroundServerServiceBridge`, the Tauri host's `ServerServiceStatus` snapshot of the Wildflower server it runs and the page's `RestartServer`. No DOM, no React.",
@@ -28,17 +28,17 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*"
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

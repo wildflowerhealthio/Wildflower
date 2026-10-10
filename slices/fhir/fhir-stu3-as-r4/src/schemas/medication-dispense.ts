@@ -1,6 +1,10 @@
 import { ParseResult, Schema } from 'effect'
 
-import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
+import {
+  OrNullAsOptional,
+  StructNoContext,
+  mutableEncoded,
+} from '@wildflowerhealthio/kitchen-sink/schema'
 
 import {
   ChoiceElementSet,
@@ -10,8 +14,8 @@ import {
   IdentifierAndReference,
   Quantity,
   SimpleQuantity,
-} from 'fhir-r4/data-types'
-import { MedicationDispense as R4MedicationDispense } from 'fhir-r4/resources'
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { MedicationDispense as R4MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 
 import { toSimpleQuantity } from './internal.ts'
 

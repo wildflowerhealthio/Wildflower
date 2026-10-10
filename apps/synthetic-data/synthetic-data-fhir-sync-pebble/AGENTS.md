@@ -11,7 +11,7 @@ writes. No DOM, no `fs`, no React.
 
 The root entry exports `PebbleObservations`, `PebbleWatch` and the
 `Physiology` types:
-`import { PebbleObservations, PebbleWatch, type Physiology } from 'synthetic-data-fhir-sync-pebble'`.
+`import { PebbleObservations, PebbleWatch, type Physiology } from '@wildflowerhealthio/synthetic-data-fhir-sync-pebble'`.
 
 - `src/physiology.ts` — `Physiology`, the generator's input and plain data a
   data set writes: the wearer's UTC offset (whole hours), a circadian

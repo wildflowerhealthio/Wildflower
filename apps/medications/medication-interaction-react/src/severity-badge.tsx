@@ -1,7 +1,7 @@
+import { StatusBadge } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { StatusBadge } from 'react-tundraish'
 
-import { type Severity, severityLabels } from 'medication-interaction-core-js'
+import { type Severity, severityLabels } from '@wildflowerhealthio/medication-interaction-core-js'
 
 import { severityTones } from './severity-tone.ts'
 

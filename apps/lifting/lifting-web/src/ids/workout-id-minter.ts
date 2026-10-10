@@ -1,4 +1,4 @@
-import { ExerciseRequest, PlannedWorkout } from 'lifting-core-js'
+import { ExerciseRequest, PlannedWorkout } from '@wildflowerhealthio/lifting-core-js'
 
 import { exerciseSetObservationIdOf } from './exercise-set-observation-id.ts'
 import { mintResourceId } from './mint-resource-id.ts'

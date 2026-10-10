@@ -1,5 +1,5 @@
-import { joinIdComponents } from 'fhir-r4/identity'
-import { fmix64, fnv1a64, FNV_1A_64_OFFSET_BASIS } from 'kitchen-sink'
+import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
+import { fmix64, fnv1a64, FNV_1A_64_OFFSET_BASIS } from '@wildflowerhealthio/kitchen-sink'
 
 /**
  * Deterministic stand-ins for the values a real system would draw at random —

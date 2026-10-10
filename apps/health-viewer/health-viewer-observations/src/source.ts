@@ -1,4 +1,4 @@
-import { SeriesSource } from 'health-viewer-fundamentals'
+import { SeriesSource } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { OBSERVATION_GROUPS, observationGroupIdOf } from './observation-groups.ts'
 import {

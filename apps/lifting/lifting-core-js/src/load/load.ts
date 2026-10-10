@@ -1,5 +1,5 @@
+import { Code, narrowFields, Quantity } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type Either, type Brand, type ParseResult, Schema } from 'effect'
-import { Code, narrowFields, Quantity } from 'fhir-r4/data-types'
 
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 

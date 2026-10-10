@@ -1,5 +1,5 @@
+import { StrongLifts5x5 } from '@wildflowerhealthio/lifting-core-js'
 import { Array as Arr, Match, Option } from 'effect'
-import { StrongLifts5x5 } from 'lifting-core-js'
 import type { JSX } from 'react'
 
 import { PlanTab } from '../plan/plan-tab.tsx'

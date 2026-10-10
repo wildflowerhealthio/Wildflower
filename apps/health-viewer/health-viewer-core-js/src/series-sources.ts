@@ -1,16 +1,16 @@
-import type { Series, SeriesSource } from 'health-viewer-fundamentals'
+import type { Series, SeriesSource } from '@wildflowerhealthio/health-viewer-fundamentals'
 import {
   type MedicationSeries,
   type MedicationSeriesKey,
   medicationSource,
-} from 'health-viewer-medications'
+} from '@wildflowerhealthio/health-viewer-medications'
 import {
   type ObservationResource,
   type ObservationSeries,
   type ObservationSeriesKey,
   observationSource,
-} from 'health-viewer-observations'
-import type { MedicationRequestWithId } from 'medication-core/fhir'
+} from '@wildflowerhealthio/health-viewer-observations'
+import type { MedicationRequestWithId } from '@wildflowerhealthio/medication-core/fhir'
 
 /**
  * The domain sources the viewer plots, in the order their catalogue groups

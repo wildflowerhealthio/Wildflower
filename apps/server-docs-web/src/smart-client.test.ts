@@ -1,4 +1,7 @@
-import { redirectUriForPage, STANDALONE_LAUNCH_SCOPES } from 'gatekeeper-core/smart-client'
+import {
+  redirectUriForPage,
+  STANDALONE_LAUNCH_SCOPES,
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { CLIENT_ID, PENDING_AUTHORIZATION_KEY, REGISTERED_REDIRECT_URI } from './smart-client.ts'

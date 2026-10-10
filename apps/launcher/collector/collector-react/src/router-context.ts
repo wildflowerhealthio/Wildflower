@@ -1,7 +1,7 @@
-import { type CollectorHttpApiClient } from 'collector-registry/clients'
+import { type CollectorHttpApiClient } from '@wildflowerhealthio/collector-registry/clients'
+import { type FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import { type BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 import { type Layer } from 'effect'
-import { type FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { type BaseRouterContext } from 'shared-structures-react'
 
 import { buildCollectorClientLayer } from './client/collector-client.ts'
 

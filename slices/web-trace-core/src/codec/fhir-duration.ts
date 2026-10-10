@@ -1,5 +1,5 @@
+import { Duration as FhirDuration } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Duration, ParseResult, Schema } from 'effect'
-import { Duration as FhirDuration } from 'fhir-r4/data-types'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 

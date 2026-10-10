@@ -9,7 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_SENTRY_DSN_LAUNCHER_WEB?: string
 }
 
-declare module 'scopes-react/styles.css'
+declare module '@wildflowerhealthio/scopes-react/styles.css'
 
 declare module '*.module.css' {
   const classes: Readonly<Record<string, string>>

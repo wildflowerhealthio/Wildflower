@@ -1,10 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import type userEvent from '@testing-library/user-event'
-import { DateTime, Option, Schema } from 'effect'
-import { buildSmartRouterContext } from 'fhir-r4-react/smart'
-import { IdentifierAndReference } from 'fhir-r4/data-types'
-import { Observation, PlanDefinition, Procedure, ServiceRequest } from 'fhir-r4/resources'
+import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  Observation,
+  PlanDefinition,
+  Procedure,
+  ServiceRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import {
   ExerciseConcept,
   ExerciseRequest,
@@ -15,10 +19,11 @@ import {
   StrongLifts5x5,
   TrainingPlanDefinition,
   WorkoutProcedure,
-} from 'lifting-core-js'
-import { made } from 'lifting-core-js/test-helpers'
+} from '@wildflowerhealthio/lifting-core-js'
+import { made } from '@wildflowerhealthio/lifting-core-js/test-helpers'
+import type { PatientChoice } from '@wildflowerhealthio/smart-app-react'
+import { DateTime, Option, Schema } from 'effect'
 import { createElement, type ReactNode, StrictMode } from 'react'
-import type { PatientChoice } from 'smart-app-react'
 import { vi } from 'vite-plus/test'
 
 import {

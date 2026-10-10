@@ -1,7 +1,7 @@
 import { useMatchRoute } from '@tanstack/react-router'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { Array as Arr, Option } from 'effect'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { useServerServiceStatus } from './server-service-status-store.ts'
 import type { ServerDisplayState } from './server-status-text.ts'

@@ -1,5 +1,5 @@
 {
-  "name": "medication-sponsorship-react",
+  "name": "@wildflowerhealthio/medication-sponsorship-react",
   "version": "0.0.0",
   "private": true,
   "description": "Browser UI for the medication-sponsorship slice: the province picker, the grouped medication view and sponsor cards.",
@@ -23,21 +23,21 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/medication-sponsorship-core-js": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "medication-core": "workspace:*",
-    "medication-sponsorship-core-js": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "medication-core": "workspace:*",
-    "medication-sponsorship-core-js": "workspace:*",
-    "react": "catalog:",
-    "react-tundraish": "workspace:*"
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/medication-sponsorship-core-js": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "react": "catalog:"
   }
 }

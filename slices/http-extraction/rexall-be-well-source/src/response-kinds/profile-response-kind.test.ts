@@ -1,9 +1,9 @@
+import type { Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
-import type { Patient } from 'fhir-r4/resources'
-import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
-import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import profileMe from '../fixtures/profile-me.json' with { type: 'json' }

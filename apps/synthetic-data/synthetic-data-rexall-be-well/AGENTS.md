@@ -11,7 +11,7 @@ No DOM, no `fs`, no React.
 
 The root entry exports `RexallHar`, the `RexallAccount` type and
 `rexallPatientReferenceOf`:
-`import { RexallHar, type RexallAccount } from 'synthetic-data-rexall-be-well'`.
+`import { RexallHar, type RexallAccount } from '@wildflowerhealthio/synthetic-data-rexall-be-well'`.
 
 - `src/rexall-account.ts` — `RexallAccount`, the generator's input beside the
   story: the profile's `uid` and `reportingGuid` (typed from

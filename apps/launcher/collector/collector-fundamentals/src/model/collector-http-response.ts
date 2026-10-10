@@ -1,5 +1,5 @@
+import type { HttpMethod, HttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals'
 import type { DateTime, Option } from 'effect'
-import type { HttpMethod, HttpResponse } from 'http-extraction-fundamentals'
 
 /**
  * One in-flight (then settled) sniffed response, as an `HttpResponseKind.parse`

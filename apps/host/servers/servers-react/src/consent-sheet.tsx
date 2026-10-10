@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
+import { Dialog, ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import {
+  ApprovalOutcome,
+  ConsentKey,
+  type PendingConsent,
+} from '@wildflowerhealthio/servers-core-js'
 import { Match } from 'effect'
 import { type JSX, useState } from 'react'
-import { Dialog, ErrorBanner, PageLoading } from 'react-tundraish'
-import { ApprovalOutcome, ConsentKey, type PendingConsent } from 'servers-core-js'
 
 import {
   type ConsentDecision,

@@ -5,7 +5,7 @@
  * project it to the wire scope list, with the per-partition `spec.md §3` dedupe delegated
  * to {@link Scope.MultiScope.serialize}. None of it has a `scopes-rust` counterpart.
  *
- * Namespace module (`import { GrantDraft } from 'scopes-core'`).
+ * Namespace module (`import { GrantDraft } from '@wildflowerhealthio/scopes-core'`).
  */
 
 import { Scope, Grant } from '../domain/index.ts'

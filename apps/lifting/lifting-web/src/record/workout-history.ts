@@ -1,15 +1,15 @@
-import { Array as Arr, Effect } from 'effect'
 import {
   fetchAllResourcePages,
   fetchProcedurePage,
   fetchServiceRequestPage,
-} from 'fhir-r4-react/smart'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   ExerciseRequest,
   type ExerciseSetObservation,
   LiftingFeature,
   WorkoutProcedure,
-} from 'lifting-core-js'
+} from '@wildflowerhealthio/lifting-core-js'
+import { Array as Arr, Effect } from 'effect'
 
 import type { SmartClient } from '../smart-client.ts'
 import {

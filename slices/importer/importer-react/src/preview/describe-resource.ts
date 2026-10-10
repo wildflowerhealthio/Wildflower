@@ -1,6 +1,10 @@
 import { DateTime, Either, Schema } from 'effect'
 
-import { choiceElementSetPassthroughFields, ChoiceElementSet, HumanName } from 'fhir-r4/data-types'
+import {
+  choiceElementSetPassthroughFields,
+  ChoiceElementSet,
+  HumanName,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 
 /**
  * The one-line description one previewed FHIR resource is listed under, on its

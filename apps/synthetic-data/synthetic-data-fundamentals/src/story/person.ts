@@ -1,5 +1,5 @@
+import type { AdministrativeGender } from '@wildflowerhealthio/fhir-r4/data-types'
 import { DateTime } from 'effect'
-import type { AdministrativeGender } from 'fhir-r4/data-types'
 
 import * as StoryDay from './story-day.ts'
 

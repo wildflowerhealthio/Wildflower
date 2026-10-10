@@ -1,17 +1,26 @@
+import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { defaultHarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { Story } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import {
+  asOfArbitrary,
+  storyCaseArbitrary,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
+import {
+  RexallHar,
+  rexallPatientReferenceOf,
+} from '@wildflowerhealthio/synthetic-data-rexall-be-well'
+import { rexallAccountArbitrary } from '@wildflowerhealthio/synthetic-data-rexall-be-well/test-helpers'
+import {
+  ShoppersHar,
+  shoppersPatientReferenceOf,
+} from '@wildflowerhealthio/synthetic-data-shoppers-drugmart'
+import { shoppersCaseArbitrary } from '@wildflowerhealthio/synthetic-data-shoppers-drugmart/test-helpers'
 // oxlint-disable import/max-dependencies -- a round trip through both pharmacy generators, their importer and this generator
 import { type DateTime, Effect } from 'effect'
 import * as fc from 'fast-check'
-import type { ReferenceType } from 'fhir-r4/data-types'
-import type { FhirResource, Patient } from 'fhir-r4/resources'
-import { defaultHarSettings, harImporter } from 'har-importer-core'
-import type { PickedFile } from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
-import type { Story } from 'synthetic-data-fundamentals/story'
-import { asOfArbitrary, storyCaseArbitrary } from 'synthetic-data-fundamentals/test-helpers'
-import { RexallHar, rexallPatientReferenceOf } from 'synthetic-data-rexall-be-well'
-import { rexallAccountArbitrary } from 'synthetic-data-rexall-be-well/test-helpers'
-import { ShoppersHar, shoppersPatientReferenceOf } from 'synthetic-data-shoppers-drugmart'
-import { shoppersCaseArbitrary } from 'synthetic-data-shoppers-drugmart/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { LifeLabs } from './index.ts'

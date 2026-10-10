@@ -1,8 +1,12 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { MinuteHistory } from '@wildflowerhealthio/fhir-sync-pebble-core/pkjs'
+import {
+  buildHostCDriver,
+  type HostCDriver,
+  numRunsFor,
+} from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { MinuteHistory } from 'fhir-sync-pebble-core/pkjs'
-import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 // minute-wire.c packs each minute of HealthMinuteData for the phone, and

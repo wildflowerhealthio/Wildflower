@@ -1,5 +1,5 @@
+import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Option, Schema } from 'effect'
-import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 
 /**
  * A launch failure the home screen names with its own sentence; a scope error

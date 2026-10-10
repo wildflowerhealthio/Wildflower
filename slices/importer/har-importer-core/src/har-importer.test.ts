@@ -1,17 +1,19 @@
-import { Effect, Schema } from 'effect'
-import * as fc from 'fast-check'
-import type { DocumentReference, FhirResource } from 'fhir-r4/resources'
-import { HarFromJson, HttpArchive, emitHar } from 'http-archive'
-import { SourceDescriptor } from 'http-extraction-fundamentals'
-import { MetaSource, PickedFile, FormatDecode, type DecodedFile } from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
+import type { DocumentReference, FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
+import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
+import {
+  MetaSource,
+  PickedFile,
+  FormatDecode,
+  type DecodedFile,
+} from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   customerUrlOf,
   prescriptionHistoryUrlOf,
   prescriptionStatusUrlOf,
-} from 'shoppers-drugmart-source'
-import { describe, expect, it, test } from 'vite-plus/test'
-import { type TraceBody, type TraceExchange } from 'web-trace-core'
+} from '@wildflowerhealthio/shoppers-drugmart-source'
+import { type TraceBody, type TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import {
   HAR_ARCHIVE_CODE,
   WEB_TRACE_CODE_SYSTEM,
@@ -19,8 +21,16 @@ import {
   WEB_TRACE_REDACTION_SYSTEM,
   isWebTrace,
   toDocumentReference,
-} from 'web-trace-core/codec'
-import { arbitraries, CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
+} from '@wildflowerhealthio/web-trace-core/codec'
+import {
+  arbitraries,
+  CAPTURE_FLOOR,
+  jsonBody,
+  traceExchange,
+} from '@wildflowerhealthio/web-trace-core/test-helpers'
+import { Effect, Schema } from 'effect'
+import * as fc from 'fast-check'
+import { describe, expect, it, test } from 'vite-plus/test'
 
 import { fhirSources } from './fhir-pool.ts'
 import { harImporter } from './har-importer.ts'

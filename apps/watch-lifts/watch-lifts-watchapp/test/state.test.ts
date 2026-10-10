@@ -1,9 +1,13 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  buildHostCDriver,
+  type HostCDriver,
+  numRunsFor,
+} from '@wildflowerhealthio/kitchen-sink/test'
+import { Lifts } from '@wildflowerhealthio/watch-lifts-core-js/pkjs'
 import * as fc from 'fast-check'
-import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
-import { Lifts } from 'watch-lifts-core-js/pkjs'
 
 // state.c holds what the menu shows, and keeps the weights in persist
 // storage. It includes pebble.h, so buildHostCDriver builds it against the

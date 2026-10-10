@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
-import type { PickedFile } from 'anonymizer-fundamentals'
+import type { PickedFile } from '@wildflowerhealthio/anonymizer-fundamentals'
 
 import styles from './local-file-picker.module.css'
 

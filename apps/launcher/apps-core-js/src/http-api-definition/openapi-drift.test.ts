@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { OpenApi } from '@effect/platform'
-import { defineSpecDriftTest } from 'shared-structures-core/openapi-drift/testing'
+import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/openapi-drift/testing'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { AppsAdminApi, AppsApi } from './index.ts'

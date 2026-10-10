@@ -1,5 +1,5 @@
+import type { Document } from '@wildflowerhealthio/positioned-text'
 import { Data, Effect } from 'effect'
-import type { Document } from 'positioned-text'
 
 import * as Grid from '../document/grid.ts'
 import * as PageHeader from '../document/page-header.ts'

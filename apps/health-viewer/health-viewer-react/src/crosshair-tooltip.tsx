@@ -1,7 +1,12 @@
 import type { DateTime } from 'effect'
 import type { JSX } from 'react'
 
-import { Buckets, type Level, Series, type ValueAxis } from 'health-viewer-fundamentals'
+import {
+  Buckets,
+  type Level,
+  Series,
+  type ValueAxis,
+} from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { seriesColors } from './series-colors.ts'
 import { formatDate, formatReading } from './value-format.ts'

@@ -7,8 +7,6 @@ import {
   type UseMutationResult,
   type UseQueryOptions,
 } from '@tanstack/react-query'
-import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
-import { useEffect } from 'react'
 import {
   addServer,
   type CertificateAuthority,
@@ -30,7 +28,9 @@ import {
   setServerCredentials,
   setServerRunPolicy,
   updateServer,
-} from 'servers-core-js'
+} from '@wildflowerhealthio/servers-core-js'
+import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
+import { useEffect } from 'react'
 
 import type { ListenToHostEvent, RunHostCommand, RunHttpRequest } from './router-context.ts'
 

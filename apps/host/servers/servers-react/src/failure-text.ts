@@ -1,5 +1,5 @@
+import { HostCommandFailed, type HostCommandError } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
-import { HostCommandFailed, type HostCommandError } from 'servers-core-js'
 
 /** The sentence a failed host command shows: the host's own message, when it ran. */
 const failureText = (error: HostCommandError): string =>

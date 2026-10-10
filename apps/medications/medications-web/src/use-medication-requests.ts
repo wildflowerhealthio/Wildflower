@@ -4,17 +4,24 @@ import {
   skipToken,
   useInfiniteQuery,
 } from '@tanstack/react-query'
-import { Effect, Option } from 'effect'
 import {
   fetchMedicationRequestPage,
   type MedicationRequestCursor,
   type MedicationRequestPage,
   type SmartHandshake,
-} from 'fhir-r4-react/smart'
-import { type MedicationView, medicationRequestsToMedicationViews } from 'medication-core/fhir'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  type MedicationView,
+  medicationRequestsToMedicationViews,
+} from '@wildflowerhealthio/medication-core/fhir'
+import { useFetchEveryPage } from '@wildflowerhealthio/react-kitchen-sink'
+import {
+  type PatientChoice,
+  patientChoiceKeyOf,
+  patientScopeOf,
+} from '@wildflowerhealthio/smart-app-react'
+import { Effect, Option } from 'effect'
 import { useMemo } from 'react'
-import { useFetchEveryPage } from 'react-kitchen-sink'
-import { type PatientChoice, patientChoiceKeyOf, patientScopeOf } from 'smart-app-react'
 
 /** The SMART client a completed handshake hands the app. */
 type SmartClient = Extract<SmartHandshake, { readonly kind: 'ready' }>['client']

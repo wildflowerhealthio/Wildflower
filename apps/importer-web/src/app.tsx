@@ -7,18 +7,18 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import type { PickedFile } from 'anonymizer-fundamentals'
-import { AnonymizerScreen } from 'anonymizer-react'
-import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
+import type { PickedFile } from '@wildflowerhealthio/anonymizer-fundamentals'
+import { AnonymizerScreen } from '@wildflowerhealthio/anonymizer-react'
+import { type FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
 import {
   buildSmartRouterContext,
   useLaunchFailureRedirect,
   useSmartHandshake,
-} from 'fhir-r4-react/smart'
-import { ImporterScreen, ServerSourceFileList } from 'importer-react'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { ImporterScreen, ServerSourceFileList } from '@wildflowerhealthio/importer-react'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBanner, PageLoading, SegmentedToggle } from '@wildflowerhealthio/react-tundraish'
 import { useMemo, useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner, PageLoading, SegmentedToggle } from 'react-tundraish'
 
 import styles from './app.module.css'
 

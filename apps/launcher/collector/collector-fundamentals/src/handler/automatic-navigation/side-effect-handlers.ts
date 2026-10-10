@@ -1,4 +1,4 @@
-import { PageActionMessage } from 'browser-sniffer-core'
+import { PageActionMessage } from '@wildflowerhealthio/browser-sniffer-core'
 import { Duration, Effect, Fiber, HashMap, Option, Ref, Schema } from 'effect'
 import type { RuntimeFiber } from 'effect/Fiber'
 

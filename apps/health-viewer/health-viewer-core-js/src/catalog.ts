@@ -1,4 +1,4 @@
-import { Series, type TimeDomain } from 'health-viewer-fundamentals'
+import { Series, type TimeDomain } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { CATALOG_GROUPS, type FiledSeries } from './series-sources.ts'
 

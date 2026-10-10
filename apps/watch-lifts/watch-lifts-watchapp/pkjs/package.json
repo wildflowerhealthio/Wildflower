@@ -1,5 +1,5 @@
 {
-  "name": "watch-lifts-pkjs",
+  "name": "@wildflowerhealthio/watch-lifts-pkjs",
   "version": "0.0.0",
   "private": true,
   "description": "The WatchLifts watchapp's PebbleKit JS, in TypeScript: the glue from Pebble's events, AppMessage and localStorage to watch-lifts-core-js, bundled to ES5 as ../src/pkjs/index.js for the Pebble SDK.",
@@ -10,10 +10,10 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "pebble-pkjs": "workspace:*",
+    "@wildflowerhealthio/pebble-pkjs": "workspace:*",
+    "@wildflowerhealthio/watch-lifts-core-js": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "watch-lifts-core-js": "workspace:*"
+    "vite-plus": "catalog:"
   }
 }

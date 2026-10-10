@@ -1,5 +1,5 @@
 {
-  "name": "http-archive",
+  "name": "@wildflowerhealthio/http-archive",
   "version": "0.0.0",
   "private": true,
   "description": "The HTTP Archive (HAR 1.2) format as one schema read in both directions: `emitHar`/`emitHarFromLog` build an archive from captured exchanges, `HarFromJson` reads a foreign one, `ChromeHar` keeps a DevTools export's `_`-prefixed entry extras, and the `HttpArchive` projection (`Entry`, `Log`, `LogFromHarJson`) is what an importer and a replay consume. A pure format seam of the file-formats slice, below both the importer (parse) and the anonymizer (redact). No DOM, no fs, no React.",
@@ -28,23 +28,23 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
     "ajv": "catalog:",
-    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "har-schema": "catalog:",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "browser-sniffer-core": "workspace:*",
-    "effect": "catalog:",
-    "http-extraction-fundamentals": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

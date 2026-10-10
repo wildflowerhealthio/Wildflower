@@ -1,8 +1,8 @@
-import { fhirR4Source } from 'fhir-r4-source'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { SourceDescriptor } from 'http-extraction-fundamentals'
-import { rexallBeWellSource } from 'rexall-be-well-source'
-import { shoppersDrugMartSource } from 'shoppers-drugmart-source'
+import { fhirR4Source } from '@wildflowerhealthio/fhir-r4-source'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { rexallBeWellSource } from '@wildflowerhealthio/rexall-be-well-source'
+import { shoppersDrugMartSource } from '@wildflowerhealthio/shoppers-drugmart-source'
 
 /**
  * The registered sources a HAR archive's traffic is recognized and decoded

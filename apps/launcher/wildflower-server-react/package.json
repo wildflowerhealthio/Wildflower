@@ -1,5 +1,5 @@
 {
-  "name": "wildflower-server-react",
+  "name": "@wildflowerhealthio/wildflower-server-react",
   "version": "0.0.0",
   "private": true,
   "description": "The background server service's browser surface: `ServerStatusBanner` (shown while the Wildflower server isn't running) and the `/settings/server` page, both rendering the host's latest `ServerServiceStatus` from a store its boot-stable bridge handler fills, and sending `RestartServer` over `BackgroundServerServiceBridge`.",
@@ -36,31 +36,31 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "@wildflowerhealthio/wildflower-server-core-js": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "wildflower-server-core-js": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "@wildflowerhealthio/wildflower-server-core-js": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "shared-structures-react": "workspace:*",
-    "wildflower-server-core-js": "workspace:*"
+    "react": "catalog:"
   }
 }

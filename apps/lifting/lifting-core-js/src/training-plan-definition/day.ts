@@ -1,6 +1,6 @@
+import { narrowFields } from '@wildflowerhealthio/fhir-r4/data-types'
+import { PlanDefinitionAction } from '@wildflowerhealthio/fhir-r4/resources'
 import { type Array as Arr, type Brand, type Either, type ParseResult, Schema } from 'effect'
-import { narrowFields } from 'fhir-r4/data-types'
-import { PlanDefinitionAction } from 'fhir-r4/resources'
 
 import { narrowedFrom } from '../internal/narrowed-from.ts'
 import * as TrainingPlanDefinitionExercise from './exercise.ts'

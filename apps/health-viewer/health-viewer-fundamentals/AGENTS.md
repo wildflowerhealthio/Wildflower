@@ -13,7 +13,7 @@ One namespace per module, in the `effect` style: the file is the noun, the
 principal type shares the namespace's name (`PointSeries.PointSeries`), and
 functions read in the namespace's context (`ValueAxis.assign`, not
 `assignAxes`). All are exported from the **flat root entry**:
-`import { PointSeries, ValueAxis, Crosshair } from 'health-viewer-fundamentals'`.
+`import { PointSeries, ValueAxis, Crosshair } from '@wildflowerhealthio/health-viewer-fundamentals'`.
 
 - **`Level`** (`src/level.ts`) — a value held from `start` until `end` (both
   inclusive; `end: null` = open), with an optional band (`low` / `high`) and an

@@ -24,7 +24,7 @@ in the namespace's context (`Prescription.statusOf`).
 
 ### Story model — `synthetic-data-fundamentals/story`
 
-`import { Prescription, StoryDay } from 'synthetic-data-fundamentals/story'`
+`import { Prescription, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'`
 (`src/story/`). Owns the domain objects; borrows `AdministrativeGender` from
 `fhir-r4` and draws times of day through `Seeding`.
 
@@ -61,7 +61,7 @@ in the namespace's context (`Prescription.statusOf`).
 
 ### Deterministic values — `synthetic-data-fundamentals/seeding`
 
-`import * as Seeding from 'synthetic-data-fundamentals/seeding'`
+`import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'`
 (`src/seeding.ts`). `uuidOf`, `integerOf`, `digitsOf`: values hashed from the
 keys naming what they belong to, so adding a prescription leaves every other
 one's ids and times untouched.
@@ -79,7 +79,7 @@ one's ids and times untouched.
 
 ### Chrome capture defaults — `synthetic-data-fundamentals/chrome-har`
 
-`import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'`
+`import * as ChromeHar from '@wildflowerhealthio/synthetic-data-fundamentals/chrome-har'`
 (`src/chrome-har.ts`).
 
 - **Owns** only what is synthetic: `ExchangeSpec` and `entryOf`, which writes
@@ -98,8 +98,8 @@ one's ids and times untouched.
 
   ```ts
   import { Effect } from 'effect'
-  import { chromeHarOf, chromeHarToJson, chromePageOf } from 'http-archive'
-  import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'
+  import { chromeHarOf, chromeHarToJson, chromePageOf } from '@wildflowerhealthio/http-archive'
+  import * as ChromeHar from '@wildflowerhealthio/synthetic-data-fundamentals/chrome-har'
 
   const archive = chromeHarOf(pages.map(chromePageOf), exchanges.map(ChromeHar.entryOf))
   const text = Effect.runSync(chromeHarToJson(archive, { pretty: true }))

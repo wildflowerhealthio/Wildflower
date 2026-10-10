@@ -1,6 +1,9 @@
+import {
+  arrivingSmartLaunchFrom,
+  type ArrivingSmartLaunch,
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import type Client from 'fhirclient/lib/Client'
 import type { fhirclient } from 'fhirclient/lib/types'
-import { arrivingSmartLaunchFrom, type ArrivingSmartLaunch } from 'gatekeeper-core/smart-client'
 
 /** The slice of fhirclient's `module.exports` this module actually uses. */
 interface FhirClientModule {

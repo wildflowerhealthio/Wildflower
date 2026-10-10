@@ -1,5 +1,5 @@
 {
-  "name": "fhir-sync-pebble-watchapp",
+  "name": "@wildflowerhealthio/fhir-sync-pebble-watchapp",
   "version": "0.3.0",
   "private": true,
   "keywords": [

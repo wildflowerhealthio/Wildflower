@@ -1,9 +1,9 @@
+import { type TransportAdapter } from '@wildflowerhealthio/effect-messaging-core'
+import * as TestPlatformAdapterLayer from '@wildflowerhealthio/effect-messaging-core/test'
 import { Chunk, Effect, Encoding } from 'effect'
-import { type TransportAdapter } from 'effect-messaging-core'
-import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 
-import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
-import { SimpleResponseKind } from 'http-extraction-fundamentals/test-helpers'
+import { type Step, ScrapingPlan } from '@wildflowerhealthio/collector-fundamentals/model'
+import { SimpleResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 import type { SniffResult } from './sniffer-response-tracker.ts'
 

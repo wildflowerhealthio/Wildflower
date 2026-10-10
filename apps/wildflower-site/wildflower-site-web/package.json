@@ -1,5 +1,5 @@
 {
-  "name": "wildflower-site-web",
+  "name": "@wildflowerhealthio/wildflower-site-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,22 +10,22 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "branding-core": "workspace:*",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/fhir-sync-pebble-web": "workspace:*",
+    "@wildflowerhealthio/health-viewer-web": "workspace:*",
+    "@wildflowerhealthio/importer-web": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/launcher-web": "workspace:*",
+    "@wildflowerhealthio/lifting-web": "workspace:*",
+    "@wildflowerhealthio/marketing-site-web": "workspace:*",
+    "@wildflowerhealthio/medications-web": "workspace:*",
+    "@wildflowerhealthio/ohif-viewer-web": "workspace:*",
+    "@wildflowerhealthio/server-docs-web": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-web": "workspace:*",
+    "@wildflowerhealthio/watch-lifts-web": "workspace:*",
     "fast-check": "catalog:",
-    "fhir-sync-pebble-web": "workspace:*",
-    "health-viewer-web": "workspace:*",
-    "importer-web": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "launcher-web": "workspace:*",
-    "lifting-web": "workspace:*",
-    "marketing-site-web": "workspace:*",
-    "medications-web": "workspace:*",
-    "ohif-viewer-web": "workspace:*",
-    "server-docs-web": "workspace:*",
-    "synthetic-data-web": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "watch-lifts-web": "workspace:*"
+    "vite-plus": "catalog:"
   }
 }

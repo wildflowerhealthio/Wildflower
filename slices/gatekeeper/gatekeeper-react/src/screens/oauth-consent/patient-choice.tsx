@@ -1,6 +1,6 @@
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import { PatientPillPicker, type PatientOption } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
-import { ErrorBanner } from 'react-tundraish'
-import { PatientPillPicker, type PatientOption } from 'scopes-react'
 
 import styles from '../../styles/consent-card.module.css'
 

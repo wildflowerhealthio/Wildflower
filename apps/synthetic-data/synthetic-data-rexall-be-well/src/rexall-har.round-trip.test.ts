@@ -1,10 +1,16 @@
-import { DateTime, Effect, Option, Schema } from 'effect'
-import * as fc from 'fast-check'
-import { CanadianCodingSystem, CodeableConcept, Coding } from 'fhir-r4/data-types'
-import type { FhirResource, MedicationDispense, Patient } from 'fhir-r4/resources'
-import { defaultHarSettings, harImporter } from 'har-importer-core'
-import type { PickedFile } from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
+import {
+  CanadianCodingSystem,
+  CodeableConcept,
+  Coding,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import type {
+  FhirResource,
+  MedicationDispense,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { defaultHarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   dinOf,
   displayNameOf,
@@ -12,15 +18,17 @@ import {
   repeatsAllowedOf,
   repeatsAvailableOf,
   type MedicationRequestWithId,
-} from 'medication-core/fhir'
-import { REXALL_CAREBOOK_SYSTEM } from 'rexall-be-well-source'
+} from '@wildflowerhealthio/medication-core/fhir'
+import { REXALL_CAREBOOK_SYSTEM } from '@wildflowerhealthio/rexall-be-well-source'
 import {
   ageOn,
   asOfArbitrary,
   type ExpectedPrescription,
   type StoryCase,
   storyCaseArbitrary,
-} from 'synthetic-data-fundamentals/test-helpers'
+} from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
+import { DateTime, Effect, Option, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { type RexallAccount, rexallPatientReferenceOf } from './rexall-account.ts'

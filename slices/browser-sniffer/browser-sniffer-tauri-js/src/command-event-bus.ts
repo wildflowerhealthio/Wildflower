@@ -1,4 +1,4 @@
-import type { TauriEventApi } from 'effect-messaging-tauri-js'
+import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 
 import { BRIDGE_EVENT } from './install-sniffer.ts'
 

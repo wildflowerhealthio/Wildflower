@@ -1,8 +1,8 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { contentTypeOf } from '@wildflowerhealthio/web-trace-core/capture'
 import { DateTime, Encoding } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import { contentTypeOf } from 'web-trace-core/capture'
 
 import { isOmittedFromRecording } from './omitted.ts'
 import { MAX_BODY_BYTES, Recording } from './recording.ts'

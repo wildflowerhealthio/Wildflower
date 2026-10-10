@@ -37,7 +37,6 @@
  * `?returnTo=` survives the round trip (see {@link returnToOnPage}).
  */
 
-import { Effect, Option } from 'effect'
 import {
   beginSignIn,
   browserSignInEnvironment,
@@ -50,8 +49,14 @@ import {
   type SignInEnvironment,
   type SignInError,
   type SignInPage,
-} from 'gatekeeper-core/smart-client'
-import { AuthedUntil, type AuthState, HostAuthed, Unauthed } from 'react-kitchen-sink'
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import {
+  AuthedUntil,
+  type AuthState,
+  HostAuthed,
+  Unauthed,
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Effect, Option } from 'effect'
 
 import { ServerKind } from './session/server-kind.ts'
 

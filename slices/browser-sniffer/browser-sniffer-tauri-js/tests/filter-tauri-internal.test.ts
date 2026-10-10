@@ -1,4 +1,4 @@
-import type { TauriEventApi } from 'effect-messaging-tauri-js'
+import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { makeFilteringEventBus } from '../src/filter-tauri-internal.ts'

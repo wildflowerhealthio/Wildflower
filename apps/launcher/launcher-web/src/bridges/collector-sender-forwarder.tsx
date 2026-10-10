@@ -1,4 +1,4 @@
-import { CollectorSenderProvider } from 'collector-react'
+import { CollectorSenderProvider } from '@wildflowerhealthio/collector-react'
 
 import { makeSliceSenderForwarder } from './make-sender-forwarder.tsx'
 

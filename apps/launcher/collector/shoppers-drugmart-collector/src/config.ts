@@ -1,11 +1,11 @@
-import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from '@wildflowerhealthio/collector-fundamentals/model'
+import { persistResources } from '@wildflowerhealthio/fhir-r4/clients'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { makeFhirProvenanceCapture } from '@wildflowerhealthio/web-trace-core/provenance'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
-import { persistResources } from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
-import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { shoppersDrugMartSource } from 'shoppers-drugmart-source'
+import { shoppersDrugMartSource } from '@wildflowerhealthio/shoppers-drugmart-source'
 
 const { responseKinds } = shoppersDrugMartSource
 

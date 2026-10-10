@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { Load, StrongLifts5x5 } from 'lifting-core-js'
-import { made } from 'lifting-core-js/test-helpers'
+import { Load, StrongLifts5x5 } from '@wildflowerhealthio/lifting-core-js'
+import { made } from '@wildflowerhealthio/lifting-core-js/test-helpers'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { afterWorkout, startedLifterRecord, submittedOf } from '../lifting.test-helpers.ts'

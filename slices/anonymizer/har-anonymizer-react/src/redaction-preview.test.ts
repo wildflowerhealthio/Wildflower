@@ -1,5 +1,5 @@
+import type { HttpArchive } from '@wildflowerhealthio/http-archive'
 import { DateTime, Effect } from 'effect'
-import type { HttpArchive } from 'http-archive'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {

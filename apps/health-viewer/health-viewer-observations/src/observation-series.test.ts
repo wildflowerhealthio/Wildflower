@@ -1,8 +1,14 @@
+import {
+  Code,
+  CodeableConcept,
+  Period,
+  type Quantity,
+  type SampledData,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Code, CodeableConcept, Period, type Quantity, type SampledData } from 'fhir-r4/data-types'
-import { Observation } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { observationSeriesIdOf } from './observation-series-key.ts'

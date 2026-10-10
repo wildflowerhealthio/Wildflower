@@ -1,11 +1,15 @@
+import { AnnotateArrayWithArbitrary } from '@wildflowerhealthio/kitchen-sink/schema'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { IdentifierAndReference, Quantity, SimpleQuantity } from 'fhir-r4/data-types'
-import { MedicationDispense as R4MedicationDispense } from 'fhir-r4/resources'
+import {
+  IdentifierAndReference,
+  Quantity,
+  SimpleQuantity,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { MedicationDispense as R4MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 
 import * as MedicationDispense from './medication-dispense.ts'
 

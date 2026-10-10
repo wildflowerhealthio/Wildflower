@@ -1,7 +1,7 @@
+import { HarFromJson, HttpArchive, harToJson } from '@wildflowerhealthio/http-archive'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime, Effect, Encoding, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { HarFromJson, HttpArchive, harToJson } from 'http-archive'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Recording } from './recording.ts'

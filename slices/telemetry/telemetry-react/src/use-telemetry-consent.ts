@@ -1,10 +1,10 @@
-import { useCallback, useEffectEvent, useLayoutEffect, useState } from 'react'
 import {
   readConsent,
   type ConsentStorage,
   type TelemetryConsent,
   writeConsent,
-} from 'telemetry-core'
+} from '@wildflowerhealthio/telemetry-core'
+import { useCallback, useEffectEvent, useLayoutEffect, useState } from 'react'
 
 /** The two switches of the telemetry consent dialog, as the visitor set them. */
 type TelemetryConsentSwitches = Pick<TelemetryConsent, 'crashReports' | 'performance'>

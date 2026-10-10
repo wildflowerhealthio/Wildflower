@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { Match } from 'effect'
 import {
   insecureTargetReason as sharedInsecureTargetReason,
   normalizeServerUrl as sharedNormalizeServerUrl,
   serverUrlNamedBy as sharedServerUrlNamedBy,
-} from 'gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { Match } from 'effect'
 import {
   detectSmartSupport,
   insecureTargetReason,

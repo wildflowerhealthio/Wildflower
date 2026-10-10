@@ -1,5 +1,5 @@
 // oxlint-disable no-underscore-dangle
-import type { TauriEventApi } from 'effect-messaging-tauri-js'
+import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 
 import { isRecord } from './is-record.ts'
 

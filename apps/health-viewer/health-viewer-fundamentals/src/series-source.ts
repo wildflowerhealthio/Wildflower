@@ -1,4 +1,4 @@
-import { deepFreeze } from 'kitchen-sink'
+import { deepFreeze } from '@wildflowerhealthio/kitchen-sink'
 
 import type * as Series from './series.ts'
 

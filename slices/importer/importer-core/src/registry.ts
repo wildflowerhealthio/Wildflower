@@ -1,7 +1,10 @@
-import { type DicomSettings, dicomImporter } from 'dicom-importer-core'
-import { type HarSettings, harImporter } from 'har-importer-core'
-import type { FileImporter } from 'importer-fundamentals'
-import { type LifeLabsPdfSettings, lifeLabsPdfImporter } from 'lifelabs-pdf-importer'
+import { type DicomSettings, dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
+import { type HarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import type { FileImporter } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  type LifeLabsPdfSettings,
+  lifeLabsPdfImporter,
+} from '@wildflowerhealthio/lifelabs-pdf-importer'
 
 /**
  * The closed, compile-time format registry: every registered

@@ -1,6 +1,10 @@
+import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
+import {
+  type DrugProduct,
+  type Prescription,
+  StoryDay,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import type { DateTime } from 'effect'
-import * as Seeding from 'synthetic-data-fundamentals/seeding'
-import { type DrugProduct, type Prescription, StoryDay } from 'synthetic-data-fundamentals/story'
 
 import type { ShoppersAccount, ShoppersPatient } from './shoppers-account.ts'
 

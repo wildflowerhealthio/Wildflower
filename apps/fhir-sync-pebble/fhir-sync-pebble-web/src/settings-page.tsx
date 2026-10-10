@@ -1,9 +1,9 @@
+import type { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
+import type { ReturnTarget, ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Either, Match } from 'effect'
-import type { PebbleSettings } from 'fhir-sync-pebble-core'
-import type { ReturnTarget, ReturnTargetStore } from 'pebble-configuration'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner } from 'react-tundraish'
 
 import { PatientConfirmation } from './patient-confirmation.tsx'
 import styles from './settings-page.module.css'

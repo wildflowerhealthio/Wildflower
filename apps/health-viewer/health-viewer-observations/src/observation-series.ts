@@ -1,6 +1,6 @@
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import type { PointSeries, SeriesSource } from '@wildflowerhealthio/health-viewer-fundamentals'
 import { DateTime, Option, Schema } from 'effect'
-import { Observation } from 'fhir-r4/resources'
-import type { PointSeries, SeriesSource } from 'health-viewer-fundamentals'
 
 import { type ObservationSeriesKey, observationSeriesIdOf } from './observation-series-key.ts'
 

@@ -1,3 +1,4 @@
+import { adoptResource } from '@wildflowerhealthio/fhir-r4/identity'
 /**
  * The FHIR synthesis on its own: the parsed `Report` model's types,
  * `toFhirResources`, and {@link adoptedResourcesOf} — synthesis then adoption
@@ -13,7 +14,6 @@
  * @packageDocumentation
  */
 import { Effect, type ParseResult } from 'effect'
-import { adoptResource } from 'fhir-r4/identity'
 
 import type * as Report from './entities/report.ts'
 import { type ReportResources, type SynthesisOptions, toFhirResources } from './fhir/to-fhir.ts'

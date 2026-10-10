@@ -1,6 +1,6 @@
 import type { HttpApi, HttpApiClient, HttpApiError, HttpClient } from '@effect/platform'
+import { defineSliceHttpClient } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Context, type Layer } from 'effect'
-import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { FhirResourcesApi } from '../http-api-definition/index.ts'
 

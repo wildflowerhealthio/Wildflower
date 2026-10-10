@@ -1,5 +1,5 @@
 {
-  "name": "lifelabs-pdf-importer",
+  "name": "@wildflowerhealthio/lifelabs-pdf-importer",
   "version": "0.0.0",
   "private": true,
   "description": "The LifeLabs PDF binding of the importer slice: the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports, the FHIR R4 synthesis, and the format's FileImporter. It carries no layer suffix because it is not a pure -core: its decode binds positioned-text-web's pdfjs extraction seam to read a picked PDF's bytes. The /synthesis subpath stays free of that seam. No fs, no React.",
@@ -41,24 +41,24 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/positioned-text": "workspace:*",
+    "@wildflowerhealthio/positioned-text-web": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*",
-    "positioned-text-web": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*",
-    "positioned-text-web": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/positioned-text": "workspace:*",
+    "@wildflowerhealthio/positioned-text-web": "workspace:*",
+    "effect": "catalog:"
   }
 }

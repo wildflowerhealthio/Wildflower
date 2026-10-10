@@ -1,8 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
+import { WorkoutHistoryView } from '@wildflowerhealthio/lifting-react'
+import {
+  LoadingLine,
+  type PatientChoice,
+  patientScopeOf,
+  ReadFailureLine,
+} from '@wildflowerhealthio/smart-app-react'
 import { Effect } from 'effect'
-import { WorkoutHistoryView } from 'lifting-react'
 import type { JSX } from 'react'
-import { LoadingLine, type PatientChoice, patientScopeOf, ReadFailureLine } from 'smart-app-react'
 
 import { UnreadableNotice } from '../record/unreadable-notice.tsx'
 import { readWorkoutHistory } from '../record/workout-history.ts'

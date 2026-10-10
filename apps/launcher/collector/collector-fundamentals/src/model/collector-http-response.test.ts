@@ -1,9 +1,9 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime, Option } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { HttpMethod } from 'http-extraction-fundamentals'
+import type { HttpMethod } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { CollectorHttpResponse } from './collector-http-response.ts'
 

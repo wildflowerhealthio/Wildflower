@@ -1,7 +1,11 @@
+import { ErrorBanner, type StatusTone } from '@wildflowerhealthio/react-tundraish'
+import {
+  type ListedServer,
+  RunPolicy,
+  type RunPolicyChoice,
+} from '@wildflowerhealthio/servers-core-js'
 import { DateTime } from 'effect'
 import type { ChangeEvent, JSX } from 'react'
-import { ErrorBanner, type StatusTone } from 'react-tundraish'
-import { type ListedServer, RunPolicy, type RunPolicyChoice } from 'servers-core-js'
 
 import { failureText } from './failure-text.ts'
 import { useSetServerRunPolicy } from './queries.ts'

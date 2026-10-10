@@ -5,7 +5,7 @@ import {
   StructNoContext,
   TimelessDateFromString,
   mutableEncoded,
-} from 'kitchen-sink/schema'
+} from '@wildflowerhealthio/kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 

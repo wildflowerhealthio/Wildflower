@@ -7,7 +7,7 @@ import {
   type Series,
   type TimeDomain,
   ValueAxis,
-} from 'health-viewer-fundamentals'
+} from '@wildflowerhealthio/health-viewer-fundamentals'
 
 const DAY = 86_400_000
 const WINDOW_START = Date.UTC(2024, 0, 1)

@@ -1,12 +1,15 @@
 /**
  * Convert DDInter's download CSVs into the compact JSON the app bundles:
- * `vp run -F medications-web data:ddinter -- <dir>` (see the README). Only the
+ * `vp run -F @wildflowerhealthio/medications-web data:ddinter -- <dir>` (see the README). Only the
  * file I/O lives here; the conversion is `medication-interaction-core-js`'s.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-import { buildDdinterFile, parseDdinterCsv } from 'medication-interaction-core-js'
+import {
+  buildDdinterFile,
+  parseDdinterCsv,
+} from '@wildflowerhealthio/medication-interaction-core-js'
 
 // `vp run … -- <dir>` forwards the `--` separator itself; it is not the directory.
 const [dir] = process.argv.slice(2).filter((argument) => argument !== '--')

@@ -1,6 +1,4 @@
 import { emit, listen } from '@tauri-apps/api/event'
-import type { ParseResult } from 'effect'
-import { Cause, Effect, Queue, Schema, Stream } from 'effect'
 import type {
   Bridge,
   BridgeHandlerRecord,
@@ -8,8 +6,10 @@ import type {
   HandlerCoordinator,
   Message,
   MessageHandler,
-} from 'effect-messaging-core'
-import { HandlerHelpers } from 'effect-messaging-core'
+} from '@wildflowerhealthio/effect-messaging-core'
+import { HandlerHelpers } from '@wildflowerhealthio/effect-messaging-core'
+import type { ParseResult } from 'effect'
+import { Cause, Effect, Queue, Schema, Stream } from 'effect'
 
 import { BRIDGE_EVENT, READY_TAG } from './event-names.ts'
 

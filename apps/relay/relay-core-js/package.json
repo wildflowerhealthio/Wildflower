@@ -1,5 +1,5 @@
 {
-  "name": "relay-core-js",
+  "name": "@wildflowerhealthio/relay-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "The relay admin API (HttpApi definition and client), the RFC 9421 request signer and the admin key store.",
@@ -45,10 +45,10 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -56,7 +56,7 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "effect": "catalog:",
-    "shared-structures-core": "workspace:*"
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

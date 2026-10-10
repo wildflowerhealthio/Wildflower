@@ -16,8 +16,8 @@
  * `collector-react/package.json` description (per `slices/AGENTS.md`).
  */
 import { useMutation } from '@tanstack/react-query'
-import type { Remotes } from 'collector-registry/http-api-definition'
-import { resourcePersistenceRuntimeForConfig } from 'collector-registry/registry'
+import type { Remotes } from '@wildflowerhealthio/collector-registry/http-api-definition'
+import { resourcePersistenceRuntimeForConfig } from '@wildflowerhealthio/collector-registry/registry'
 import { Match } from 'effect'
 import { useCallback, useEffect, useRef, useState } from 'react'
 

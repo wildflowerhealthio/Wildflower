@@ -9,7 +9,7 @@ import {
   type RefObject,
 } from 'react'
 
-import type { PickedFile, FormatDetector } from 'importer-fundamentals'
+import type { PickedFile, FormatDetector } from '@wildflowerhealthio/importer-fundamentals'
 import { acceptLocalFile, type ReadableFile, type RejectedFile } from './local-file.ts'
 import { ServerSourceFileList } from './server-source-file-list.tsx'
 import styles from './source-picker.module.css'

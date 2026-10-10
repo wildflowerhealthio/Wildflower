@@ -72,8 +72,8 @@ jobs:
         run: |
           set -euo pipefail
           corepack enable
-          pnpm install --frozen-lockfile --filter browser-sniffer-tauri-js...
-          pnpm --filter browser-sniffer-tauri-js run generate-tauri-bootstrap
+          pnpm install --frozen-lockfile --filter @wildflowerhealthio/browser-sniffer-tauri-js...
+          pnpm --filter @wildflowerhealthio/browser-sniffer-tauri-js run generate-tauri-bootstrap
       - name: Stub Sniffer bootstrap
         if: steps.filter.outputs.bootstrap != 'true'
         run: ./scripts/ci/stub-embedded-bundles.sh sniffer

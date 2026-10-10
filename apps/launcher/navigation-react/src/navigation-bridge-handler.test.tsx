@@ -6,8 +6,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, render, waitFor } from '@testing-library/react'
+import type { NavigationBridge } from '@wildflowerhealthio/navigation-core'
 import { Effect } from 'effect'
-import type { NavigationBridge } from 'navigation-core'
 import { type JSX, useSyncExternalStore } from 'react'
 import { describe, expect, test } from 'vite-plus/test'
 

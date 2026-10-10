@@ -1,8 +1,12 @@
-import { dicomImporter } from 'dicom-importer-core'
+import { dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
+import {
+  type DocumentReference,
+  type FhirResource,
+  FhirResourceSchema,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { harImporter } from '@wildflowerhealthio/har-importer-core'
+import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { Array as Arr, Either, Encoding, ParseResult, Schema, Struct } from 'effect'
-import { type DocumentReference, type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
-import { harImporter } from 'har-importer-core'
-import { PickedFile } from 'importer-fundamentals'
 
 import * as SnapshotFile from './snapshot-file.ts'
 

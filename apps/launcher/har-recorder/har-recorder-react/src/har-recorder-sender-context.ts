@@ -1,6 +1,6 @@
+import type { Message } from '@wildflowerhealthio/effect-messaging-core'
+import type { HarRecorderBridge } from '@wildflowerhealthio/har-recorder-core-js'
 import type { Effect } from 'effect'
-import type { Message } from 'effect-messaging-core'
-import type { HarRecorderBridge } from 'har-recorder-core-js'
 import { createContext } from 'react'
 
 /**

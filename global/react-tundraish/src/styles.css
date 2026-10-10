@@ -1,6 +1,6 @@
 /*
  * Tundraish global stylesheet — the single entry point a consuming app
- * imports (`import 'react-tundraish/styles.css'`). The actual rules live
+ * imports (`import '@wildflowerhealthio/react-tundraish/styles.css'`). The actual rules live
  * in the topic-scoped files below; this file's only job is to pull them
  * in, in cascade order, so the build emits one combined stylesheet.
  *

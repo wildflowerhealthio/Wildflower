@@ -10,10 +10,10 @@ restates either. No PDF is written. No DOM, no `fs`, no React.
 ## Shape
 
 The root entry exports only `LifeLabs`:
-`import { LifeLabs } from 'synthetic-data-lifelabs'`. The story objects it
+`import { LifeLabs } from '@wildflowerhealthio/synthetic-data-lifelabs'`. The story objects it
 reads are the `/story` subpath (`src/story/index.ts`), one namespace per
 module as in `synthetic-data-fundamentals/story`:
-`import { Laboratory, LabRequisition, PrintedRange } from 'synthetic-data-lifelabs/story'`.
+`import { Laboratory, LabRequisition, PrintedRange } from '@wildflowerhealthio/synthetic-data-lifelabs/story'`.
 
 - `src/story/laboratory.ts` — `Laboratory`: a generator input naming how a
   lab prints each test a story draws (`LifeLabsTest`: the story's test name,

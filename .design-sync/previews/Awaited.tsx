@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Awaited } from 'react-tundraish'
+import { Awaited } from '@wildflowerhealthio/react-tundraish'
 
 type Account = { readonly id: string; readonly name: string; readonly status: string }
 

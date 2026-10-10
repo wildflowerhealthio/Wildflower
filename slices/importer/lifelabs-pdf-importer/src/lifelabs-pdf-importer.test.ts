@@ -1,14 +1,14 @@
-import { Effect, ParseResult, Schema } from 'effect'
-import * as fc from 'fast-check'
-import type { DocumentReference } from 'fhir-r4/resources'
+import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodeFunction,
   type FileImporter,
   PickedFile,
   DecodedFile,
   FormatDecode,
-} from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
+} from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Effect, ParseResult, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdfDocument } from './decode.ts'

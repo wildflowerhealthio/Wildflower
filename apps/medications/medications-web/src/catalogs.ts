@@ -2,7 +2,7 @@ import {
   decodeInnovicaresFile,
   decodeRxHelpFile,
   type SponsorCatalog,
-} from 'medication-sponsorship-core-js'
+} from '@wildflowerhealthio/medication-sponsorship-core-js'
 
 import innovicaresData from './data/innovicares.json'
 import rxhelpData from './data/rxhelp.json'

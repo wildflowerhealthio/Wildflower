@@ -1,5 +1,5 @@
 {
-  "name": "web-trace-source",
+  "name": "@wildflowerhealthio/web-trace-source",
   "version": "0.0.0",
   "private": true,
   "description": "The web-trace source: the catch-all recording entity and the capture-time body policy that define how any HTTP exchange becomes a FHIR DocumentReference trace, parameterized per-session. No DOM, no fs, no React.",
@@ -28,21 +28,21 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

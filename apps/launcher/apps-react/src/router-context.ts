@@ -1,8 +1,8 @@
 import { type QueryClient } from '@tanstack/react-query'
+import { type BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 import { type Effect, Layer } from 'effect'
-import { type BaseRouterContext } from 'shared-structures-react'
 
-import { AppsAdminHttpApiClient, AppsHttpApiClient } from 'apps-core-js/clients'
+import { AppsAdminHttpApiClient, AppsHttpApiClient } from '@wildflowerhealthio/apps-core-js/clients'
 
 type RuntimeLayer = Layer.Layer<AppsHttpApiClient | AppsAdminHttpApiClient, never, never>
 

@@ -1,8 +1,8 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX, ReactNode } from 'react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { cn } from 'react-kitchen-sink'
 
-import type { Medication } from 'medication-core'
+import type { Medication } from '@wildflowerhealthio/medication-core'
 import {
   findInteractions,
   type InteractionCatalog,
@@ -18,7 +18,7 @@ import {
   severityLabels,
   tallyTotal,
   worstSeverity,
-} from 'medication-interaction-core-js'
+} from '@wildflowerhealthio/medication-interaction-core-js'
 
 import { PrescriberAvatar } from './prescriber-avatar.tsx'
 import { SeverityBadge } from './severity-badge.tsx'

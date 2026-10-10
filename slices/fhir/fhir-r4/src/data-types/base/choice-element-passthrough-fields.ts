@@ -9,7 +9,7 @@ import {
 import type { LazyArg } from 'effect/Function'
 import { capitalize } from 'effect/String'
 
-import { OrNullAsOptional, suspendWithShallowJson } from 'kitchen-sink/schema'
+import { OrNullAsOptional, suspendWithShallowJson } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import { baseDatatypes, resolveDatatypeSchema } from './datatype-registry.ts'
 import type * as Datatype from './datatype.ts'

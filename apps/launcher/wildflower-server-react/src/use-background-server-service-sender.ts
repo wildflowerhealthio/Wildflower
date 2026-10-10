@@ -1,4 +1,4 @@
-import { useContextOrThrow } from 'react-kitchen-sink'
+import { useContextOrThrow } from '@wildflowerhealthio/react-kitchen-sink'
 
 import {
   BackgroundServerServiceSenderContext,

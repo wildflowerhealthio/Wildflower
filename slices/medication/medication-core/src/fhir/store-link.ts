@@ -1,5 +1,5 @@
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option, pipe, String as Str } from 'effect'
-import type { MedicationRequest } from 'fhir-r4/resources'
 
 /** A link to the dispensing store's public web page: where it goes, and what it reads. */
 interface StoreLink {

@@ -1,7 +1,7 @@
+import { AnnotateArrayWithArbitrary } from '@wildflowerhealthio/kitchen-sink/schema'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'

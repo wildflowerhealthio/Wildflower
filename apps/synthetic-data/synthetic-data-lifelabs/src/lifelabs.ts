@@ -1,15 +1,20 @@
-import { Data, DateTime, Effect, type ParseResult } from 'effect'
-import type { ReferenceType } from 'fhir-r4/data-types'
-import { type FhirResource, withSubject } from 'fhir-r4/resources'
+import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   adoptedResourcesOf,
   type LifeLabsReport,
   type ReportPatient,
   type ReportRow,
   type ReportSection,
-} from 'lifelabs-pdf-importer/synthesis'
-import * as Seeding from 'synthetic-data-fundamentals/seeding'
-import { type LabDraw, Person, type Story, StoryDay } from 'synthetic-data-fundamentals/story'
+} from '@wildflowerhealthio/lifelabs-pdf-importer/synthesis'
+import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
+import {
+  type LabDraw,
+  Person,
+  type Story,
+  StoryDay,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/story'
+import { Data, DateTime, Effect, type ParseResult } from 'effect'
 
 import { type LabRequisition, Laboratory, PrintedRange } from './story/index.ts'
 

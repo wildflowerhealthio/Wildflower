@@ -1,4 +1,4 @@
-import type { SeriesSource } from 'health-viewer-fundamentals'
+import type { SeriesSource } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import type { ObservationSeries } from './observation-series.ts'
 

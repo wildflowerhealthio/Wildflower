@@ -1,5 +1,5 @@
 {
-  "name": "watch-lifts-web",
+  "name": "@wildflowerhealthio/watch-lifts-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -19,15 +19,15 @@
   "dependencies": {
     "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
-    "branding-core": "workspace:*",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/pebble-configuration": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/watch-lifts-core-js": "workspace:*",
     "effect": "catalog:",
-    "pebble-configuration": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
-    "tundra-css": "catalog:",
-    "watch-lifts-core-js": "workspace:*"
+    "tundra-css": "catalog:"
   },
   "devDependencies": {
     "@testing-library/dom": "catalog:",

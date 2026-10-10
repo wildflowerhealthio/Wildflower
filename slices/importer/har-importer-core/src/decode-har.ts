@@ -1,7 +1,7 @@
 import { Effect, Option, type ParseResult, Schema } from 'effect'
 
-import { HttpArchive } from 'http-archive'
-import type { Extraction } from 'http-extraction-fundamentals'
+import { HttpArchive } from '@wildflowerhealthio/http-archive'
+import type { Extraction } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import type { HarSettings } from './har-settings.ts'
 

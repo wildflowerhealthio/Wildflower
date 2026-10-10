@@ -6,11 +6,17 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { TELEMETRY_CONSENT_COPY, WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
-import { gatekeeperLogoutSettingsItem, makeBearerAuthStateStore } from 'gatekeeper-react'
+import {
+  TELEMETRY_CONSENT_COPY,
+  WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
+} from '@wildflowerhealthio/branding-core'
+import {
+  gatekeeperLogoutSettingsItem,
+  makeBearerAuthStateStore,
+} from '@wildflowerhealthio/gatekeeper-react'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
+import { TelemetryConsentGate } from '@wildflowerhealthio/telemetry-react'
 import type { JSX } from 'react'
-import type { SettingsItem } from 'shared-structures-react'
-import { TelemetryConsentGate } from 'telemetry-react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {

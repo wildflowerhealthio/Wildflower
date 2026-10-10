@@ -10,7 +10,11 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { DEVICE_LOGIN_ROUTE, parseDeviceLoginSearch, parseRequestScopes } from 'gatekeeper-react'
+import {
+  DEVICE_LOGIN_ROUTE,
+  parseDeviceLoginSearch,
+  parseRequestScopes,
+} from '@wildflowerhealthio/gatekeeper-react'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 

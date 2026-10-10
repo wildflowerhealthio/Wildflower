@@ -1,11 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type * as SmartReads from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { MedicationRequest, Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  SERIES_PARAM,
+  decodeSelection,
+  readRecord,
+} from '@wildflowerhealthio/health-viewer-core-js'
 import { Schema } from 'effect'
-import type * as SmartReads from 'fhir-r4-react/smart'
-import type { SmartHandshake } from 'fhir-r4-react/smart'
-import { withMandatoryId } from 'fhir-r4/data-types'
-import { MedicationRequest, Observation } from 'fhir-r4/resources'
-import { SERIES_PARAM, decodeSelection, readRecord } from 'health-viewer-core-js'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -19,7 +23,7 @@ const { handshakeMock, launchFailureRedirectMock } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
   launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
 }))
-vi.mock('fhir-r4-react/smart', async (importOriginal) => {
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
   const actual: typeof SmartReads = await importOriginal()
   return {
     ...actual,

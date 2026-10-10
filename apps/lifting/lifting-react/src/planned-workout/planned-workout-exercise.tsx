@@ -3,9 +3,9 @@ import {
   ExerciseRequest,
   PlannedWorkout,
   TrainingPlanDefinition,
-} from 'lifting-core-js'
+} from '@wildflowerhealthio/lifting-core-js'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { formatLoad } from '../load-format.ts'
 import type { EnteredSetReps } from './entered-set-reps.ts'

@@ -1,5 +1,5 @@
+import { Har } from '@wildflowerhealthio/http-archive'
 import { Schema } from 'effect'
-import { Har } from 'http-archive'
 
 /**
  * Handing a finished archive to the reader — as a blob from the app's own

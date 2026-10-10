@@ -1,6 +1,6 @@
 import { Array as Arr, flow, Option, pipe, Schema, Struct } from 'effect'
 
-import type { MedicationRequest } from 'fhir-r4/resources'
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 
 import { CarebookExtension } from '../carebook.ts'
 import { linkContainedMedication, promoteContained } from './contained-medication.ts'

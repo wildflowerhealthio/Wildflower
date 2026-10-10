@@ -1,5 +1,5 @@
 {
-  "name": "health-viewer-observations",
+  "name": "@wildflowerhealthio/health-viewer-observations",
   "version": "0.0.0",
   "private": true,
   "description": "The health viewer's observation source: FHIR R4 `Observation`s read into health-viewer-fundamentals `PointSeries` (quantities, integers, booleans, components and `valueSampledData`), the `o:` series-id grammar, and the catalogue grouping by `Observation.category` — exported as one `SeriesSource` value. No DOM, no React.",
@@ -20,20 +20,20 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "health-viewer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "health-viewer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

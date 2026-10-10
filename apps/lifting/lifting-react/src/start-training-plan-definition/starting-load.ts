@@ -1,5 +1,9 @@
+import {
+  type ExerciseRequest,
+  Load,
+  TrainingPlanDefinition,
+} from '@wildflowerhealthio/lifting-core-js'
 import { Either, Option, pipe, Record as EffectRecord, Schema } from 'effect'
-import { type ExerciseRequest, Load, TrainingPlanDefinition } from 'lifting-core-js'
 
 import { enteredNumber, numberText } from '../form/entered-number.ts'
 import { parseIssuesOf } from '../form/parse-issues.ts'

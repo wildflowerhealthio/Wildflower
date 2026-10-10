@@ -1,5 +1,5 @@
+import { Bridge } from '@wildflowerhealthio/effect-messaging-core'
 import { Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
 
 /**
  * The background server service's channel: the host's status snapshot of the

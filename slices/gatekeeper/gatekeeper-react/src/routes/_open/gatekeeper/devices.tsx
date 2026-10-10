@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { PageHeader } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { PageHeader } from 'react-tundraish'
 
 import { DeviceCodeEntryForm } from '../../../screens/device/device-code-entry-form.tsx'
 

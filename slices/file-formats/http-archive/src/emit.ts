@@ -1,7 +1,7 @@
 import { DateTime, Duration, type Effect, Encoding, type ParseResult, Schema } from 'effect'
 
-import type { TraceExchange } from 'web-trace-core'
-import { contentTypeOf } from 'web-trace-core/capture'
+import type { TraceExchange } from '@wildflowerhealthio/web-trace-core'
+import { contentTypeOf } from '@wildflowerhealthio/web-trace-core/capture'
 
 import {
   Har,

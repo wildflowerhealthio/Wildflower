@@ -19,7 +19,7 @@ export default defineConfig({
   plugins: [react()],
   // The debug-only `fhir-sync-pebble-dev` client registers this port's root as
   // its redirect, so the dev server must hold exactly it. Run with
-  // `vp run -F fhir-sync-pebble-web dev`.
+  // `vp run -F @wildflowerhealthio/fhir-sync-pebble-web dev`.
   server: devAppServer('fhir-sync-pebble-dev'),
   build: {
     // Emitted for the deploy's Sentry upload, unreferenced from the bundle;

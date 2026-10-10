@@ -1,6 +1,6 @@
 import { join, relative, sep } from 'node:path'
 
-import { SECTION_PATHS } from 'branding-core'
+import { SECTION_PATHS } from '@wildflowerhealthio/branding-core'
 
 /**
  * One already-built tree that gets copied into the assembled GitHub Pages
@@ -32,7 +32,7 @@ interface SiteSection {
  */
 const siteSections: readonly SiteSection[] = [
   {
-    packageName: 'marketing-site-web',
+    packageName: '@wildflowerhealthio/marketing-site-web',
     sourceDir: 'apps/wildflower-site/marketing-site-web/dist',
     destPath: SECTION_PATHS.marketing,
     // `CNAME` (copied from the marketing site's `public/`) has to land at the
@@ -40,7 +40,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'CNAME'],
   },
   {
-    packageName: 'medications-web',
+    packageName: '@wildflowerhealthio/medications-web',
     sourceDir: 'apps/medications/medications-web/dist',
     destPath: SECTION_PATHS.medications,
     // One entry: the app root starts a SMART launch its URL carries, is the
@@ -49,7 +49,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'importer-web',
+    packageName: '@wildflowerhealthio/importer-web',
     // The package lives in `apps/importer-web`; its published path is
     // `/${SECTION_PATHS.importer}`.
     sourceDir: 'apps/importer-web/dist',
@@ -60,14 +60,14 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'server-docs-web',
+    packageName: '@wildflowerhealthio/server-docs-web',
     sourceDir: 'apps/server-docs-web/dist',
     destPath: SECTION_PATHS.serverDocs,
     // A single-page console; the bundled assets hang off it.
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'fhir-sync-pebble-web',
+    packageName: '@wildflowerhealthio/fhir-sync-pebble-web',
     // The package lives in `apps/fhir-sync-pebble/fhir-sync-pebble-web`; its
     // published path is `/${SECTION_PATHS.fhirSyncPebble}`.
     sourceDir: 'apps/fhir-sync-pebble/fhir-sync-pebble-web/dist',
@@ -78,7 +78,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'health-viewer-web',
+    packageName: '@wildflowerhealthio/health-viewer-web',
     // The package lives in `apps/health-viewer/health-viewer-web`; its published path is
     // `/${SECTION_PATHS.healthViewer}`.
     sourceDir: 'apps/health-viewer/health-viewer-web/dist',
@@ -89,7 +89,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'synthetic-data-web',
+    packageName: '@wildflowerhealthio/synthetic-data-web',
     // The package lives in `apps/synthetic-data/synthetic-data-web`; its published path is
     // `/${SECTION_PATHS.syntheticData}`.
     sourceDir: 'apps/synthetic-data/synthetic-data-web/dist',
@@ -100,7 +100,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'lifting-web',
+    packageName: '@wildflowerhealthio/lifting-web',
     // The package lives in `apps/lifting/lifting-web`; its published path is
     // `/${SECTION_PATHS.lifting}`.
     sourceDir: 'apps/lifting/lifting-web/dist',
@@ -111,7 +111,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'watch-lifts-web',
+    packageName: '@wildflowerhealthio/watch-lifts-web',
     // The package lives in `apps/watch-lifts/watch-lifts-web`; its published
     // path is `/${SECTION_PATHS.watchLifts}`.
     sourceDir: 'apps/watch-lifts/watch-lifts-web/dist',
@@ -121,7 +121,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'ohif-viewer-web',
+    packageName: '@wildflowerhealthio/ohif-viewer-web',
     // The prebuilt OHIF viewer pinned in apps/ohif-viewer-web/prebuilt.json (or
     // the stub page while nothing is pinned), with Wildflower's runtime
     // app-config.js laid over it by that package's build.
@@ -132,7 +132,7 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: 'launcher-web',
+    packageName: '@wildflowerhealthio/launcher-web',
     // The hosted, cross-origin copy of the launcher (#694): its `web` build
     // (`vite.config.web.ts`, `base: './'`, `outDir: 'dist-web'`, input
     // `index.html`) holds the in-memory bearer, the `?server=` picker, and the

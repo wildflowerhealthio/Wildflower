@@ -1,5 +1,9 @@
+import {
+  Extension,
+  narrowFields,
+  WildflowerExtension,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import { type Brand, type Either, Option, type ParseResult, pipe, Schema } from 'effect'
-import { Extension, narrowFields, WildflowerExtension } from 'fhir-r4/data-types'
 
 import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
 import {

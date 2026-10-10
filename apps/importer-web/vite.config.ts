@@ -57,7 +57,7 @@ export default defineConfig({
   worker: { format: 'es' },
   // The homescreen's "Importer (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
-  // `vp run -F importer-web dev`.
+  // `vp run -F @wildflowerhealthio/importer-web dev`.
   server: devAppServer('importer-dev'),
   build: {
     // Emitted for the deploy's Sentry upload, unreferenced from the bundle;

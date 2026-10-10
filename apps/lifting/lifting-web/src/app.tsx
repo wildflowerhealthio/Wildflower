@@ -1,14 +1,19 @@
 import { FetchHttpClient } from '@effect/platform'
 import { useQueryClient } from '@tanstack/react-query'
-import { Match, Option } from 'effect'
 import {
   buildSmartRouterContext,
   useLaunchFailureRedirect,
   useSmartHandshake,
-} from 'fhir-r4-react/smart'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import {
+  LoadingLine,
+  PatientPicker,
+  patientChoiceKeyOf,
+  usePatientChoice,
+} from '@wildflowerhealthio/smart-app-react'
+import { Match, Option } from 'effect'
 import { type JSX, useMemo } from 'react'
-import { ErrorBanner } from 'react-tundraish'
-import { LoadingLine, PatientPicker, patientChoiceKeyOf, usePatientChoice } from 'smart-app-react'
 
 import { LiftingApp } from './lifting-app/lifting-app.tsx'
 import type { SmartClient } from './smart-client.ts'

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Checkbox, Field, FieldDescription, FieldGroup } from 'react-tundraish'
+import { Checkbox, Field, FieldDescription, FieldGroup } from '@wildflowerhealthio/react-tundraish'
 
 /** A field labelling a single input — `htmlFor` ties the label to the control. */
 export const LabelledInput = () => (

@@ -1,11 +1,11 @@
-import type { ReferenceType } from 'fhir-r4/data-types'
-import { adoptedReferenceOf } from 'fhir-r4/identity'
+import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   type CarebookProfile,
   type medicationListUrlOf,
   REXALL_CAREBOOK_SYSTEM,
-} from 'rexall-be-well-source'
-import type { StoryDay } from 'synthetic-data-fundamentals/story'
+} from '@wildflowerhealthio/rexall-be-well-source'
+import type { StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 
 /** The profile's `identifiers`, as the carebook profile body spells them. */
 type ProfileIdentifiers = Required<(typeof CarebookProfile.Encoded)['data']['identifiers']>

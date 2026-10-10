@@ -1,11 +1,11 @@
-import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from '@wildflowerhealthio/collector-fundamentals/model'
+import { persistResources } from '@wildflowerhealthio/fhir-r4/clients'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
-import { persistResources } from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
-import { makeRawExchangeResponseKind } from 'web-trace-source'
+import { makeRawExchangeResponseKind } from '@wildflowerhealthio/web-trace-source'
 
 /**
  * An absolute `http(s)` URL — the page the recording starts on. Validated by

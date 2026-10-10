@@ -1,5 +1,5 @@
 {
-  "name": "web-trace-core",
+  "name": "@wildflowerhealthio/web-trace-core",
   "version": "0.0.0",
   "private": true,
   "description": "Pure core of web-trace: the TraceExchange ⇄ FHIR DocumentReference codec, the shape-preserving pseudonymizer that is the epic's privacy boundary, and the HAR 1.2 emitter and parser. No DOM, no fs, no UI — consumed by both a collector and the web-trace SMART app.",
@@ -45,20 +45,20 @@
   "devDependencies": {
     "@types/fhir": "catalog:",
     "@types/node": "catalog:",
-    "browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "browser-sniffer-core": "workspace:*",
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

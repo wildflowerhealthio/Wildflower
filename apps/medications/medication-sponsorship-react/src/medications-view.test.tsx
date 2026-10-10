@@ -1,8 +1,8 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import type { MedicationView } from 'medication-core/fhir'
-import type { Medication } from 'medication-sponsorship-core-js'
+import type { MedicationView } from '@wildflowerhealthio/medication-core/fhir'
+import type { Medication } from '@wildflowerhealthio/medication-sponsorship-core-js'
 
 import { MedicationsView } from './medications-view.tsx'
 

@@ -1,5 +1,5 @@
+import { normalizeName } from '@wildflowerhealthio/medication-core'
 import { Schema } from 'effect'
-import { normalizeName } from 'medication-core'
 
 import { nonDrugNames } from './non-drug.ts'
 import { type Severity, SeverityCode, severityFromCode } from './severity.ts'

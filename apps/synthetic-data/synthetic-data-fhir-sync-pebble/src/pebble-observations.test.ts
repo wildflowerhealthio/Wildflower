@@ -1,9 +1,9 @@
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import type { WatchSync } from '@wildflowerhealthio/fhir-sync-pebble-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
 import { DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Observation } from 'fhir-r4/resources'
-import type { WatchSync } from 'fhir-sync-pebble-core'
-import { numRunsFor } from 'kitchen-sink/test'
-import { asOfArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as PebbleObservations from './pebble-observations.ts'

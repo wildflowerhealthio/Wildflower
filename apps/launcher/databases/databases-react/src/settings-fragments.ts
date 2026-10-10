@@ -1,4 +1,4 @@
-import type { SettingsItem } from 'shared-structures-react'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 
 /**
  * Menu entries the unified `/settings` screen renders for data management.

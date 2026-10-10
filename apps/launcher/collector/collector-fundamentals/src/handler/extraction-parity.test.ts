@@ -1,13 +1,17 @@
 import { Effect, Either, Encoding, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Extraction, type HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
+import {
+  Extraction,
+  type HttpResponseKind,
+  Specificity,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
   echoResponseKind,
   makeExtractionInput,
   runExtraction,
   type Echo,
-} from 'http-extraction-fundamentals/test-helpers'
+} from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { runHandlerSync } from './collector-bridge-message-handler.test-helpers.ts'
 import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 

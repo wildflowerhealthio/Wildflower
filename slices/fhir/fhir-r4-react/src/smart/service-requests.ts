@@ -1,6 +1,6 @@
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { ServiceRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import { withMandatoryId } from 'fhir-r4/data-types'
-import { ServiceRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 
 import {

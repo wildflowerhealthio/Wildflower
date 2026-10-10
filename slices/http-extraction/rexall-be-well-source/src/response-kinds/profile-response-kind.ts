@@ -1,6 +1,10 @@
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  HttpResponseKind,
+  extractJson,
+  recognizePortal,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Option, RegExp as EffectRegExp, pipe, Schema, String as Str } from 'effect'
-import { Patient } from 'fhir-r4/resources'
-import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 import { CarebookProfile } from '../carebook-profile.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 import { REXALL_PROFILE_URL } from '../tunnel-url.ts'

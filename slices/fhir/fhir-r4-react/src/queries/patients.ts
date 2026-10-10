@@ -4,9 +4,9 @@ import {
   type UseQueryOptions,
   type UseQueryResult,
 } from '@tanstack/react-query'
+import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import type { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, type Schema } from 'effect'
-import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import type { Patient } from 'fhir-r4/resources'
 
 import type { RunAuthed } from '../router-context.ts'
 import { PATIENTS_QUERY_KEY } from './keys.ts'

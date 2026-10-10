@@ -1,5 +1,5 @@
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import { Observation } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 
 import {

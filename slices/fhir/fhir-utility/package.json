@@ -1,5 +1,5 @@
 {
-  "name": "fhir-utility",
+  "name": "@wildflowerhealthio/fhir-utility",
   "version": "0.0.0",
   "private": true,
   "description": "Small FHIR-shaped helpers reused across slices — supply-duration parsing today. Not `fhir-r4`: does not import the wire schemas, and speaks in plain field shapes so a caller can hand it either a decoded resource or its own mirror of the same slot.",
@@ -20,9 +20,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",

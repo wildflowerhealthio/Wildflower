@@ -1,7 +1,7 @@
+import { AccessManagement } from '@wildflowerhealthio/gatekeeper-core/http-api-definition'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { AccessManagement } from 'gatekeeper-core/http-api-definition'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Client } from '../queries/index.ts'

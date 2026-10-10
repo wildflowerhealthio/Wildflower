@@ -1,15 +1,19 @@
+import { Checkbox, TextField } from '@wildflowerhealthio/react-tundraish'
 import { DateTime } from 'effect'
 import type { JSX } from 'react'
 import { useCallback, useMemo, useState } from 'react'
-import { Checkbox, TextField } from 'react-tundraish'
 
 import {
   type CatalogGroup,
   type CatalogRow,
   matchesSearch,
   normaliseForSearch,
-} from 'health-viewer-core-js'
-import { type Series, type TimeDomain, ValueAxis } from 'health-viewer-fundamentals'
+} from '@wildflowerhealthio/health-viewer-core-js'
+import {
+  type Series,
+  type TimeDomain,
+  ValueAxis,
+} from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import styles from './series-panel.module.css'
 

@@ -1,9 +1,13 @@
 import { ParseResult, Schema } from 'effect'
 
-import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
+import {
+  OrNullAsOptional,
+  StructNoContext,
+  mutableEncoded,
+} from '@wildflowerhealthio/kitchen-sink/schema'
 
-import { CodeableConcept, DomainResource } from 'fhir-r4/data-types'
-import { Medication as R4Medication } from 'fhir-r4/resources'
+import { CodeableConcept, DomainResource } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Medication as R4Medication } from '@wildflowerhealthio/fhir-r4/resources'
 
 /**
  * Just-enough STU3 `Medication`, as it appears in `MedicationRequest.contained`.

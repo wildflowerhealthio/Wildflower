@@ -1,5 +1,5 @@
+import { PhoneSettings } from '@wildflowerhealthio/watch-lifts-core-js/pkjs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
-import { PhoneSettings } from 'watch-lifts-core-js/pkjs'
 
 // src/index.ts is the glue between PebbleKit JS and the core: what the page's
 // response means and the bytes the watch receives are PhoneSettings', tested

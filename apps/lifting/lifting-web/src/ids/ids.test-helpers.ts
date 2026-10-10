@@ -1,5 +1,5 @@
+import { ExerciseConcept } from '@wildflowerhealthio/lifting-core-js'
 import * as fc from 'fast-check'
-import { ExerciseConcept } from 'lifting-core-js'
 
 /** FHIR R4's `id` grammar. */
 const FHIR_ID = /^[A-Za-z0-9\-.]{1,64}$/

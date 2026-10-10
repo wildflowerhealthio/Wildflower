@@ -1,6 +1,6 @@
+import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
+import { HumanName } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Data, Either, Schema } from 'effect'
-import { trimTrailingSlashes } from 'fhir-r4/clients'
-import { HumanName } from 'fhir-r4/data-types'
 
 import type * as PatientSummary from './patient-summary.ts'
 import type * as PhoneSettings from './phone-settings.ts'

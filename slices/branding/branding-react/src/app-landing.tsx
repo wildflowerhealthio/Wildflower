@@ -1,6 +1,11 @@
 import type { JSX, ReactNode } from 'react'
 
-import { APP_DESCRIPTIONS, anchorHref, fromApp, type AppSectionId } from 'branding-core'
+import {
+  APP_DESCRIPTIONS,
+  anchorHref,
+  fromApp,
+  type AppSectionId,
+} from '@wildflowerhealthio/branding-core'
 
 import styles from './app-landing.module.css'
 

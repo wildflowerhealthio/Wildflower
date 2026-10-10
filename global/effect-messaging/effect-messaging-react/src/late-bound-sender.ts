@@ -1,5 +1,5 @@
+import type { Bridge, BridgeTransport } from '@wildflowerhealthio/effect-messaging-core'
 import { Effect } from 'effect'
-import type { Bridge, BridgeTransport } from 'effect-messaging-core'
 import { useCallback, type RefObject } from 'react'
 
 /**

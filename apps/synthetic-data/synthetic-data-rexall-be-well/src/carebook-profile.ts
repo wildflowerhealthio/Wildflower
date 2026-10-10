@@ -1,6 +1,9 @@
+import {
+  type CarebookProfile,
+  carebookTimestampOf,
+} from '@wildflowerhealthio/rexall-be-well-source'
+import { Person, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { DateTime } from 'effect'
-import { type CarebookProfile, carebookTimestampOf } from 'rexall-be-well-source'
-import { Person, StoryDay } from 'synthetic-data-fundamentals/story'
 
 import type { RexallAccount } from './rexall-account.ts'
 

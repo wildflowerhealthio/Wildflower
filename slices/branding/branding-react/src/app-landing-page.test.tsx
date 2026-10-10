@@ -1,7 +1,11 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { APP_DESCRIPTIONS, APP_SECTION_IDS, type AppSectionId } from 'branding-core'
+import {
+  APP_DESCRIPTIONS,
+  APP_SECTION_IDS,
+  type AppSectionId,
+} from '@wildflowerhealthio/branding-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { AppLandingPage } from './app-landing-page.tsx'

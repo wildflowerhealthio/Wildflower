@@ -7,8 +7,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { TokenTimeout } from '@wildflowerhealthio/gatekeeper-react'
 import { Effect, Layer } from 'effect'
-import { TokenTimeout } from 'gatekeeper-react'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 

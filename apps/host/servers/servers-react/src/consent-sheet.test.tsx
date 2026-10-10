@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ConsentKey, type TauriInvoke } from '@wildflowerhealthio/servers-core-js'
 import { type Context, Schema } from 'effect'
-import { ConsentKey, type TauriInvoke } from 'servers-core-js'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }

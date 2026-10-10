@@ -1,5 +1,5 @@
 {
-  "name": "apps-core-js",
+  "name": "@wildflowerhealthio/apps-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "App registry and HTTP API for launching FHIR apps.",
@@ -37,10 +37,10 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -48,8 +48,8 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "shared-structures-core": "workspace:*"
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

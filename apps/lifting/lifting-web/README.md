@@ -194,7 +194,7 @@ equal the client's allowed scopes.
 ## Running locally
 
 ```bash
-vp run -F lifting-web dev     # strictPort, from dev-app-ports.json
+vp run -F @wildflowerhealthio/lifting-web dev     # strictPort, from dev-app-ports.json
 ```
 
 Open the printed `http://localhost:<port>/`, pick a server on the connect menu,

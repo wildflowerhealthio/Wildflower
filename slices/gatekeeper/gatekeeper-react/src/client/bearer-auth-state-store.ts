@@ -19,13 +19,13 @@
  * entry and transport wrapper use.
  */
 
-import { Equal } from 'effect'
 import {
   type AuthState,
   type AuthStateStore,
   makeSubscribableStore,
   Unauthed,
-} from 'react-kitchen-sink'
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Equal } from 'effect'
 
 interface BearerAuthStateStore extends AuthStateStore {
   /**

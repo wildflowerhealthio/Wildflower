@@ -2,7 +2,7 @@ import type {
   PageActionMessage,
   PageLoadedMessageBody,
   PageRequestedMessageBody,
-} from 'browser-sniffer-core'
+} from '@wildflowerhealthio/browser-sniffer-core'
 
 import type {
   EnsureSnifferVisible as EnsureSnifferVisibleMessage,

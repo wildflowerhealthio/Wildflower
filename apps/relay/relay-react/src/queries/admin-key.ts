@@ -5,8 +5,8 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
+import { AdminKeyStore, importAdminKey } from '@wildflowerhealthio/relay-core-js/key-store'
 import { Effect, Option } from 'effect'
-import { AdminKeyStore, importAdminKey } from 'relay-core-js/key-store'
 
 import { useRelayAdmin } from '../relay-admin-context.ts'
 import { ADMIN_KEY_QUERY_KEY, RELAY_QUERY_KEY } from './keys.ts'

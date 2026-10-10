@@ -1,5 +1,5 @@
 {
-  "name": "anonymizer-fundamentals",
+  "name": "@wildflowerhealthio/anonymizer-fundamentals",
   "version": "0.0.0",
   "private": true,
   "description": "Format-agnostic upstream of the anonymizer: the PickedFile value a picker produces, the AnonymizerFormatDescriptor contract every format binding implements (accept/detect/decode), the structural DecodeFailure a decode reports, and the pure identification helpers the shell routes with. Names no file format. No DOM, no fs, no React.",
@@ -28,9 +28,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",

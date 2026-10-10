@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from 'branding-core'
+import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from '@wildflowerhealthio/branding-core'
 
 import { wildflowerServerImages } from '../assets/remote-images.ts'
 import { AppRow } from './app-row.tsx'

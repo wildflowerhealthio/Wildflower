@@ -3,7 +3,7 @@
  * verbatim so it round-trips unchanged. Mirrors `scopes-rust`'s `UnknownScope`
  * (`scope/unknown.rs`) — the total-parse fallback.
  *
- * Namespace module (`import { UnknownScope } from 'scopes-core'`): the value is
+ * Namespace module (`import { UnknownScope } from '@wildflowerhealthio/scopes-core'`): the value is
  * {@link UnknownScope}, with `UnknownScope.make`, `UnknownScope.scopeSerialize`.
  */
 

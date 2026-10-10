@@ -1,4 +1,3 @@
-import { Option } from 'effect'
 import {
   arrivingSmartLaunchFrom,
   normalizeServerUrl,
@@ -6,13 +5,14 @@ import {
   searchWithServerUrl,
   serverUrlFromSearch,
   serverUrlNamedBy,
-} from 'gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import {
   gatekeeperLogoutSettingsItem,
   makeAwaitLandingAuthReady,
   makeBearerAuthStateStore,
   type BearerAuthStateStore,
-} from 'gatekeeper-react'
+} from '@wildflowerhealthio/gatekeeper-react'
+import { Option } from 'effect'
 // Named imports, not the whole document: only these two fields concern this
 // entry, and importing them individually keeps the rest of the host's
 // configuration out of a published bundle. The same read

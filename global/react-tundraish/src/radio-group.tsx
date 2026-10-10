@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { type JSX, type ReactNode, useId } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 type RadioOption<T extends string> = {
   readonly value: T

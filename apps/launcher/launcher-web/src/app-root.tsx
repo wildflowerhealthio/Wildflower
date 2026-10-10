@@ -1,7 +1,6 @@
 // oxlint-disable import/max-dependencies -- the app root builds every slice store and provider the tree shares
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
-import { Effect, type Fiber, type Layer, type Subscribable, Stream } from 'effect'
 import {
   ActivePendingConsentProvider,
   buildDeviceLoginTarget,
@@ -10,18 +9,23 @@ import {
   type ActivePendingConsentStore,
   TokenResponseHandlerContext,
   type TokenResponseHandler,
-} from 'gatekeeper-react'
-import { StrictMode, type JSX, type ReactNode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { type AuthState, AuthStateProvider, type AuthStateStore } from 'react-kitchen-sink'
-import { ErrorBoundary } from 'react-tundraish'
-import type { BaseRouterContext, SettingsItem } from 'shared-structures-react'
-import { Sentry } from 'telemetry-web'
+} from '@wildflowerhealthio/gatekeeper-react'
+import {
+  type AuthState,
+  AuthStateProvider,
+  type AuthStateStore,
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBoundary } from '@wildflowerhealthio/react-tundraish'
+import type { BaseRouterContext, SettingsItem } from '@wildflowerhealthio/shared-structures-react'
+import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import {
   makeServerServiceStatusStore,
   ServerServiceStatusProvider,
   type ServerServiceStatusStore,
-} from 'wildflower-server-react'
+} from '@wildflowerhealthio/wildflower-server-react'
+import { Effect, type Fiber, type Layer, type Subscribable, Stream } from 'effect'
+import { StrictMode, type JSX, type ReactNode } from 'react'
+import { createRoot } from 'react-dom/client'
 
 import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppRootTree, type AppRootTreeProps } from './bridges/app-root-tree.tsx'
@@ -32,7 +36,7 @@ import type { ServerKind } from './session/server-kind.ts'
 // entry (web and the Tauri shell via `launcher-web/app-root`) picks it up.
 // An entry that already imported part of it gets no second copy: the bundler
 // dedupes each stylesheet by module id.
-import 'react-tundraish/styles'
+import '@wildflowerhealthio/react-tundraish/styles'
 
 /**
  * Per-entry transport factory. Receives a `writeIssuedToken` writer

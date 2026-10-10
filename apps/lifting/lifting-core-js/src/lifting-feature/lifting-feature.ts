@@ -1,4 +1,4 @@
-import { CodeableConcept, WildflowerCodeSystem } from 'fhir-r4/data-types'
+import { CodeableConcept, WildflowerCodeSystem } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /** The `WildflowerCodeSystem.Feature` code every lifting resource is filed under. */
 const CODE = 'strength-training'

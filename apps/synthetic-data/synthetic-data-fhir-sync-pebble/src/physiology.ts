@@ -1,4 +1,4 @@
-import type { StoryDay } from 'synthetic-data-fundamentals/story'
+import type { StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 
 /**
  * What a wrist-worn watch measures, as plain data a story writes day by day:

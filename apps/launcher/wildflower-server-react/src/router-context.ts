@@ -1,4 +1,4 @@
-import type { BaseRouterContext } from 'shared-structures-react'
+import type { BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 
 /**
  * Slice-local router context: the shared base, with no slice client — the

@@ -1,5 +1,5 @@
-import type { TelemetryConsentCopy } from 'branding-core'
-import type { TelemetryConsent } from 'telemetry-core'
+import type { TelemetryConsentCopy } from '@wildflowerhealthio/branding-core'
+import type { TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
 
 /** How a summary reads one switch. */
 const onOff = (switchedOn: boolean): string => (switchedOn ? 'on' : 'off')

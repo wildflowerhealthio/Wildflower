@@ -1,7 +1,7 @@
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
-import type { FhirResource } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { arbitrary as reportArbitrary } from '../entities/report-arbitrary.ts'

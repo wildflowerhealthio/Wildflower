@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type * as Smart from 'fhir-r4-react/smart'
+import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
 import { ConnectMenu } from './connect-menu.tsx'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
@@ -15,7 +15,7 @@ import {
 // validation path under test is the production one, not a mock.
 const startStandaloneLaunchMock = vi.hoisted(() => vi.fn())
 
-vi.mock('fhir-r4-react/smart', async (importOriginal) => {
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => {
   const actual = await importOriginal<typeof Smart>()
   return { ...actual, startStandaloneLaunch: startStandaloneLaunchMock }
 })

@@ -1,5 +1,5 @@
+import { deepFreeze } from '@wildflowerhealthio/kitchen-sink'
 import { type Effect, Schema } from 'effect'
-import { deepFreeze } from 'kitchen-sink'
 import type { CollectorDisplay } from './collector-display.ts'
 import {
   ResourcePersistenceRuntime,

@@ -1,13 +1,13 @@
-import { Array as Arr, DateTime } from 'effect'
 import {
   type ExerciseRequest,
   type ExerciseSetObservation,
   WorkoutProcedure,
-} from 'lifting-core-js'
+} from '@wildflowerhealthio/lifting-core-js'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ItemList } from '@wildflowerhealthio/react-tundraish'
+import { Array as Arr, DateTime } from 'effect'
 import type { JSX } from 'react'
 import { useId } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ItemList } from 'react-tundraish'
 
 import { workoutExerciseItemOf } from './workout-exercise-item.tsx'
 import styles from './workout-history-view.module.css'

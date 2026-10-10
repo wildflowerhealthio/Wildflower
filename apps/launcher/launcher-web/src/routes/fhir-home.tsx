@@ -1,10 +1,14 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { appTileStyles } from 'apps-react'
-import { APP_DESCRIPTIONS, siteRootFor, smartAppLaunchPages } from 'branding-core'
-import { appLaunchUrl, type AppLaunchServer } from 'fhir-r4-react/smart'
+import { appTileStyles } from '@wildflowerhealthio/apps-react'
+import {
+  APP_DESCRIPTIONS,
+  siteRootFor,
+  smartAppLaunchPages,
+} from '@wildflowerhealthio/branding-core'
+import { appLaunchUrl, type AppLaunchServer } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { PageHeader, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { PageHeader, pageLayoutStyles } from 'react-tundraish'
 
 import type { RouterContext } from '../router-context.ts'
 import { plainSmartRouteOptions } from '../session/auth-gated-route-options.ts'

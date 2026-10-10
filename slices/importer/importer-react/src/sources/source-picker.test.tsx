@@ -3,13 +3,22 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/source-file'
+import {
+  DICOM_SOURCE_FILE_CODE,
+  DICOM_SYSTEM,
+} from '@wildflowerhealthio/dicom-importer-core/source-file'
+import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
+import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  HAR_ARCHIVE_CODE,
+  WEB_TRACE_CODE_SYSTEM,
+} from '@wildflowerhealthio/har-importer-core/source-file'
+import type { FormatDetector } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_SYSTEM,
+} from '@wildflowerhealthio/lifelabs-pdf-importer/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
-import type * as FhirR4React from 'fhir-r4-react'
-import { buildSmartRouterContext } from 'fhir-r4-react/smart'
-import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
-import type { FormatDetector } from 'importer-fundamentals'
-import { LIFELABS_PDF_SOURCE_FILE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer/source-file'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -41,7 +50,7 @@ const testDetectors: readonly FormatDetector.Type[] = [harDetector]
  * stored source file.
  */
 
-vi.mock('fhir-r4-react', async (importOriginal) => {
+vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
   const actual = await importOriginal<typeof FhirR4React>()
   return { ...actual, useRunAuthed: (): FhirR4React.RunAuthed => currentRunAuthed }
 })

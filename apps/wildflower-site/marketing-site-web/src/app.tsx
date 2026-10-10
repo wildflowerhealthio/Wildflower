@@ -1,4 +1,4 @@
-import { SiteFooter, SiteHeader, onMarketingSite } from 'branding-react'
+import { SiteFooter, SiteHeader, onMarketingSite } from '@wildflowerhealthio/branding-react'
 import type { JSX } from 'react'
 
 import { Asks } from './components/asks.tsx'

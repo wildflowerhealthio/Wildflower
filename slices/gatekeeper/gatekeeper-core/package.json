@@ -1,5 +1,5 @@
 {
-  "name": "gatekeeper-core",
+  "name": "@wildflowerhealthio/gatekeeper-core",
   "version": "0.0.0",
   "description": "OAuth domain package: HTTP API definitions, generated clients, bridge contract, and page paths for the gatekeeper slice (served by gatekeeper-rust).",
   "license": "MIT",
@@ -53,17 +53,17 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "bumpp": "catalog:",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "jose": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
     "openapi-to-effect": "^0.9.3",
     "prettier": "^3.9.9",
     "prettier-plugin-jsdoc": "^1.3.0",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -72,10 +72,10 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "jose": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "shared-structures-core": "workspace:*"
+    "jose": "catalog:"
   }
 }

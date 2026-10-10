@@ -1,4 +1,4 @@
-import type { Document, Page, Run } from 'positioned-text'
+import type { Document, Page, Run } from '@wildflowerhealthio/positioned-text'
 
 import type * as Report from './entities/report.ts'
 import type * as TestTableRow from './entities/test-table-row.ts'

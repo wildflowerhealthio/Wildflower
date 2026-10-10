@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
+import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
-import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definition'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
  * A `Grant` is a materialized consent decision — the Owner approved a client for

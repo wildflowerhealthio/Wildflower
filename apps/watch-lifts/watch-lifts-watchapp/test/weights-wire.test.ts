@@ -1,9 +1,13 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  buildHostCDriver,
+  type HostCDriver,
+  numRunsFor,
+} from '@wildflowerhealthio/kitchen-sink/test'
+import { Lifts, PhoneSettings } from '@wildflowerhealthio/watch-lifts-core-js/pkjs'
 import * as fc from 'fast-check'
-import { buildHostCDriver, type HostCDriver, numRunsFor } from 'kitchen-sink/test'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
-import { Lifts, PhoneSettings } from 'watch-lifts-core-js/pkjs'
 
 // weights-wire.c decodes the weights the phone sends, and watch-lifts-core-js's
 // PhoneSettings.toWatchMessage encodes them. The watch side needs no SDK to

@@ -1,6 +1,6 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { StatusBadge } from '@wildflowerhealthio/react-tundraish'
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { StatusBadge } from 'react-tundraish'
 
 import styles from './permission-statement.module.css'
 

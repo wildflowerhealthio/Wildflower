@@ -1,5 +1,9 @@
+import {
+  ExerciseConcept,
+  type Load,
+  TrainingPlanDefinition,
+} from '@wildflowerhealthio/lifting-core-js'
 import { Array as Arr, Option } from 'effect'
-import { ExerciseConcept, type Load, TrainingPlanDefinition } from 'lifting-core-js'
 
 import { numberText } from '../form/entered-number.ts'
 

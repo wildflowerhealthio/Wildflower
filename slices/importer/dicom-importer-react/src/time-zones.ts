@@ -9,7 +9,7 @@
  *
  * @packageDocumentation
  */
-import { runtimeTimeZone } from 'dicom-importer-core'
+import { runtimeTimeZone } from '@wildflowerhealthio/dicom-importer-core'
 
 /**
  * North America's distinct civil zones, east to west, plus `UTC`.

@@ -1,10 +1,10 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers are typed as `any`; the unsafe-assignment lint fires on idiomatic `expect.objectContaining` nesting here
 
+import { utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Chunk, Effect, MutableHashMap, Option } from 'effect'
-import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SimpleResponseKind } from 'http-extraction-fundamentals/test-helpers'
+import { SimpleResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import {
   noopSendMessage,
   responseData,

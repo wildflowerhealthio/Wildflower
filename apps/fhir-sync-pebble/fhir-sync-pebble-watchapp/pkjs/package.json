@@ -1,5 +1,5 @@
 {
-  "name": "fhir-sync-pebble-pkjs",
+  "name": "@wildflowerhealthio/fhir-sync-pebble-pkjs",
   "version": "0.0.0",
   "private": true,
   "description": "The FHIR Sync for Pebble watchapp's PebbleKit JS, in TypeScript: the glue from Pebble's events, AppMessage, localStorage and XMLHttpRequest to fhir-sync-pebble-core, bundled to ES5 as ../src/pkjs/index.js for the Pebble SDK.",
@@ -10,8 +10,8 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "fhir-sync-pebble-core": "workspace:*",
-    "pebble-pkjs": "workspace:*",
+    "@wildflowerhealthio/fhir-sync-pebble-core": "workspace:*",
+    "@wildflowerhealthio/pebble-pkjs": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

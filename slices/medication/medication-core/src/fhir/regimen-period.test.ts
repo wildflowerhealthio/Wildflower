@@ -1,7 +1,7 @@
+import type { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import type { MedicationRequest } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { medicationRequestWithIdArb } from './medication-request-arbitrary.ts'

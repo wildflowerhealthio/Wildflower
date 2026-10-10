@@ -1,5 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { MARKETING_ANCHORS } from 'branding-core'
+import { MARKETING_ANCHORS } from '@wildflowerhealthio/branding-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { App } from './app.tsx'

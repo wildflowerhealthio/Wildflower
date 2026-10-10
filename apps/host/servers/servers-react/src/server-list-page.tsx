@@ -1,8 +1,8 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { Link, useRouteContext } from '@tanstack/react-router'
+import { GateCard, PageBodyError, PageHeader } from '@wildflowerhealthio/react-tundraish'
+import type { HostCommandError, ListedServer } from '@wildflowerhealthio/servers-core-js'
 import type { JSX } from 'react'
-import { GateCard, PageBodyError, PageHeader } from 'react-tundraish'
-import type { HostCommandError, ListedServer } from 'servers-core-js'
 
 import { serversQueryOptions, useServerStatusEvents } from './queries.ts'
 import type { RouterContext, RunHostCommand } from './router-context.ts'

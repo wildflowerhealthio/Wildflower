@@ -1,5 +1,5 @@
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { createContext, useContext } from 'react'
-import type { SettingsItem } from 'shared-structures-react'
 
 /**
  * Per-entry settings rows the `/settings` route appends after every slice's

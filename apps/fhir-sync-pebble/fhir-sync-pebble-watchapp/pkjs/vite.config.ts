@@ -18,7 +18,7 @@ export default defineConfig({
   pack: pkjsPack({
     entry: { index: 'src/index.ts' },
     outDir: '../src/pkjs',
-    alwaysBundle: ['fhir-sync-pebble-core'],
+    alwaysBundle: ['@wildflowerhealthio/fhir-sync-pebble-core'],
     es5Tsconfig: fileURLToPath(new URL('src/tsconfig.json', import.meta.url)),
   }),
   test: {

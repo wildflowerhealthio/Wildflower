@@ -1,3 +1,4 @@
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   Array as Arr,
   Data,
@@ -8,7 +9,6 @@ import {
   pipe,
   Record as EffectRecord,
 } from 'effect'
-import type { IdentifierAndReference } from 'fhir-r4/data-types'
 
 import * as ExerciseRequest from '../exercise-request/exercise-request.ts'
 import * as ExerciseSetObservation from '../exercise-set-observation/exercise-set-observation.ts'

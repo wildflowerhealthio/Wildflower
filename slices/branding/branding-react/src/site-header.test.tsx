@@ -1,5 +1,10 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { fromApp, onMarketingSite, sectionHref, sectionUrl } from 'branding-core'
+import {
+  fromApp,
+  onMarketingSite,
+  sectionHref,
+  sectionUrl,
+} from '@wildflowerhealthio/branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { SiteHeader } from './site-header.tsx'

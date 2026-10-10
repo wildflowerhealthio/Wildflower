@@ -1,4 +1,4 @@
-import { pad2 } from 'kitchen-sink'
+import { pad2 } from '@wildflowerhealthio/kitchen-sink'
 
 /**
  * Reduce an ISO instant to the viewer's **local** calendar day (`YYYY-MM-DD`).

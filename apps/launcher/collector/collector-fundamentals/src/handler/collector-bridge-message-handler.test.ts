@@ -1,17 +1,17 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment lint fires on idiomatic `mock.calls[0]` access here
 
+import { LoggingLayerTest } from '@wildflowerhealthio/kitchen-sink/test'
 import { Duration, Effect, Layer, Option, Schema, TestClock, TestContext } from 'effect'
-import { LoggingLayerTest } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { OpenMessage } from 'collector-fundamentals/bridge'
+import { OpenMessage } from '@wildflowerhealthio/collector-fundamentals/bridge'
 import {
   CollectorHttpResponseKind,
   ScrapingPlan,
   type Step,
   WebViewSource,
-} from 'collector-fundamentals/model'
-import type { TransportAdapter } from 'effect-messaging-core'
+} from '@wildflowerhealthio/collector-fundamentals/model'
+import type { TransportAdapter } from '@wildflowerhealthio/effect-messaging-core'
 
 import {
   adapterLayer,

@@ -1,7 +1,11 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import {
+  ExerciseRequest,
+  PlannedWorkout,
+  StrongLifts5x5,
+} from '@wildflowerhealthio/lifting-core-js'
+import { AUTHORED_ON, made, SUBJECT } from '@wildflowerhealthio/lifting-core-js/test-helpers'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
-import { ExerciseRequest, PlannedWorkout, StrongLifts5x5 } from 'lifting-core-js'
-import { AUTHORED_ON, made, SUBJECT } from 'lifting-core-js/test-helpers'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { FHIR_ID } from './ids.test-helpers.ts'

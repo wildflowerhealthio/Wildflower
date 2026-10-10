@@ -13,7 +13,7 @@
  *  - skipped entirely under `prefers-reduced-motion: reduce`
  */
 
-import { prefersReducedMotion } from 'react-kitchen-sink'
+import { prefersReducedMotion } from '@wildflowerhealthio/react-kitchen-sink'
 
 type CountUpOptions = {
   readonly duration?: number

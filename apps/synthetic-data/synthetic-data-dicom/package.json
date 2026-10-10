@@ -1,5 +1,5 @@
 {
-  "name": "synthetic-data-dicom",
+  "name": "@wildflowerhealthio/synthetic-data-dicom",
   "version": "0.0.0",
   "private": true,
   "description": "The DICOM synthetic data generator: a real, de-identified DICOM Part 10 image re-identified as a synthetic-data-fundamentals person on a story day (patient, dates and UIDs written with dicom's Part10, pixels untouched), and read back through dicom-importer-core onto the person's Patient from another source. Pure — no DOM, no fs, no React.",
@@ -32,24 +32,24 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "dicom": "workspace:*",
-    "dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/dicom": "workspace:*",
+    "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
     "dicom-parser": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "synthetic-data-fundamentals": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "dicom": "workspace:*",
-    "dicom-importer-core": "workspace:*",
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "synthetic-data-fundamentals": "workspace:*"
+    "@wildflowerhealthio/dicom": "workspace:*",
+    "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
+    "effect": "catalog:"
   }
 }

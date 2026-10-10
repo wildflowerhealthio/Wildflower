@@ -1,11 +1,11 @@
 // oxlint-disable typescript-eslint/no-unsafe-assignment -- vitest matchers and `vi.fn()` call args are typed as `any`; the unsafe-assignment lint fires on idiomatic `mock.calls[0]` access here
 
+import { LoggingLayerTest, numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Duration, Effect, TestClock, TestContext } from 'effect'
 import * as fc from 'fast-check'
-import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
+import { type Step, ScrapingPlan } from '@wildflowerhealthio/collector-fundamentals/model'
 
 /** The guard bound every test here relies on unless it overrides it per-plan. */
 const DEFAULT_DRAINED_GUARD_TIMEOUT = ScrapingPlan.DEFAULT_DRAINED_GUARD_TIMEOUT

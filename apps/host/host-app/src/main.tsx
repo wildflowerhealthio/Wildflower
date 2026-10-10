@@ -1,11 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import 'tundra-css'
-import 'react-tundraish/styles.css'
+import '@wildflowerhealthio/react-tundraish/styles.css'
+import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
+import { BaseRoot } from '@wildflowerhealthio/servers-react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { addOsColorSchemeListener } from 'react-tundraish'
-import { BaseRoot } from 'servers-react'
 // Named imports, so only these fields of the host's configuration reach the
 // bundle.
 import {

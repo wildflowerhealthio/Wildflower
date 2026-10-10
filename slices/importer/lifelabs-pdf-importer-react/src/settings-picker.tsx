@@ -1,6 +1,6 @@
+import type { SettingsPickerProps } from '@wildflowerhealthio/importer-fundamentals'
+import type { LifeLabsPdfSettings } from '@wildflowerhealthio/lifelabs-pdf-importer'
 import { DateTime, Option } from 'effect'
-import type { SettingsPickerProps } from 'importer-fundamentals'
-import type { LifeLabsPdfSettings } from 'lifelabs-pdf-importer'
 import { type JSX, useId } from 'react'
 
 const SUGGESTED_TIME_ZONES = ['America/Toronto', 'America/Vancouver'] as const

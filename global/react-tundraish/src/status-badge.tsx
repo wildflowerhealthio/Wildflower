@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX, ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 

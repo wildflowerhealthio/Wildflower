@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type * as FhirR4ReactSmart from 'fhir-r4-react/smart'
-import type { SmartHandshake } from 'fhir-r4-react/smart'
+import type * as FhirR4ReactSmart from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { type FakeFhirServer, resourceTypeOfQuery } from './fake-fhir-server.test-helpers.ts'
@@ -17,7 +17,7 @@ import {
 const { handshakeMock } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
 }))
-vi.mock('fhir-r4-react/smart', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   ...(await importOriginal<typeof FhirR4ReactSmart>()),
   useSmartHandshake: () => handshakeMock(),
   useLaunchFailureRedirect: (): void => undefined,

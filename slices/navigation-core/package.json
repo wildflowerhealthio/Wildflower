@@ -1,5 +1,5 @@
 {
-  "name": "navigation-core",
+  "name": "@wildflowerhealthio/navigation-core",
   "version": "0.0.0",
   "private": true,
   "description": "Slice-neutral navigation contract shared between embedded web and its native host: cross-process navigation bridge and origin URL tag.",
@@ -29,10 +29,10 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
@@ -40,8 +40,8 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "effect": "catalog:",
-    "effect-messaging-core": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

@@ -1,10 +1,10 @@
-import { Array as Arr, Option, pipe, Schema } from 'effect'
 import {
   CodeableConcept,
   Extension,
   WildflowerCodeSystem,
   WildflowerExtension,
-} from 'fhir-r4/data-types'
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { Array as Arr, Option, pipe, Schema } from 'effect'
 
 import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
 import type { ArrayElementsCheck } from '../internal/filter-array-with-every-check.ts'

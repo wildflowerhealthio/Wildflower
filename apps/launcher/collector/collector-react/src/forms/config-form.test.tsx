@@ -6,8 +6,8 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { descriptors, type CollectorConfig } from 'collector-registry/registry'
-import { defaultConfig } from 'fhir-r4-client-collector'
+import { descriptors, type CollectorConfig } from '@wildflowerhealthio/collector-registry/registry'
+import { defaultConfig } from '@wildflowerhealthio/fhir-r4-client-collector'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 

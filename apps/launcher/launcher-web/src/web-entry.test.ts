@@ -1,7 +1,10 @@
+import {
+  arrivingSmartLaunchFrom,
+  normalizeServerUrl,
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
-import { arrivingSmartLaunchFrom, normalizeServerUrl } from 'gatekeeper-core/smart-client'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { PENDING_AUTHORIZATION_KEY } from './sign-in.ts'

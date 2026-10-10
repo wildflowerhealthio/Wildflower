@@ -1,6 +1,6 @@
+import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
+import { Snapshot } from '@wildflowerhealthio/synthetic-data-core-js'
 import { Effect, Either } from 'effect'
-import { unknownErrorToString } from 'kitchen-sink'
-import { Snapshot } from 'synthetic-data-core-js'
 
 /**
  * A published snapshot's files, fetched from the address it is served at.

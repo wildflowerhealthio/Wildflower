@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { TELEMETRY_CONSENT_COPY } from 'branding-core'
-import type { TelemetryConsent } from 'telemetry-core'
+import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import type { TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { TelemetryStatusControl } from './telemetry-status-control.tsx'

@@ -1,4 +1,4 @@
-import type { PageActionMessage } from 'browser-sniffer-core'
+import type { PageActionMessage } from '@wildflowerhealthio/browser-sniffer-core'
 import type { Duration } from 'effect'
 
 import type { OpenMessage } from '../bridge.ts'

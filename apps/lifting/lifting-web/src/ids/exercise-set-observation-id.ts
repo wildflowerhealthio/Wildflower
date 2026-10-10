@@ -1,4 +1,4 @@
-import { fnv1a64 } from 'kitchen-sink'
+import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 
 /** The longest id FHIR R4 allows: an `id` is `[A-Za-z0-9\-\.]{1,64}`. */
 const FHIR_ID_MAX_LENGTH = 64

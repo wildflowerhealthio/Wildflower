@@ -1,3 +1,7 @@
+import {
+  type StoryCase,
+  storyCaseArbitrary,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
 /**
  * fast-check arbitraries for the Shoppers generator's inputs: a family account
  * whose managed people each have a story drawn from
@@ -7,7 +11,6 @@
  * @packageDocumentation
  */
 import * as fc from 'fast-check'
-import { type StoryCase, storyCaseArbitrary } from 'synthetic-data-fundamentals/test-helpers'
 
 import type { ShoppersAccount } from './shoppers-account.ts'
 

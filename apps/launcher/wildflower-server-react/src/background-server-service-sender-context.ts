@@ -1,7 +1,7 @@
+import type { Message } from '@wildflowerhealthio/effect-messaging-core'
+import type { BackgroundServerServiceBridge } from '@wildflowerhealthio/wildflower-server-core-js'
 import type { Effect } from 'effect'
-import type { Message } from 'effect-messaging-core'
 import { createContext } from 'react'
-import type { BackgroundServerServiceBridge } from 'wildflower-server-core-js'
 
 /**
  * Decoded union of every Web→Host `BackgroundServerServiceBridge` message —

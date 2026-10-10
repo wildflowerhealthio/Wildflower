@@ -1,4 +1,4 @@
-import type { AdministrativeGender } from 'fhir-r4/data-types'
+import type { AdministrativeGender } from '@wildflowerhealthio/fhir-r4/data-types'
 
 import type { PrintedRange } from './printed-range.ts'
 

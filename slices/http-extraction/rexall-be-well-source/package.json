@@ -1,5 +1,5 @@
 {
-  "name": "rexall-be-well-source",
+  "name": "@wildflowerhealthio/rexall-be-well-source",
   "version": "0.0.0",
   "private": true,
   "description": "The Rexall Be Well source: the carebook STU3 dialect (extension/identifier/coding-system constants, Bundle shapes, extension promotion) and the profile/medication-list response kinds that define how Rexall letsbewell.ca traffic decodes into FHIR R4 resources, assembled as a SourceDescriptor for both live and archive extraction. No DOM, no fs, no React.",
@@ -28,22 +28,22 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-stu3-as-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-stu3-as-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-stu3-as-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-stu3-as-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

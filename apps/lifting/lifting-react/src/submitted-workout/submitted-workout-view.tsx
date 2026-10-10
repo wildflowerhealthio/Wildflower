@@ -1,15 +1,15 @@
-import { Option } from 'effect'
 import {
   ExerciseConcept,
   ExerciseRequest,
   ExerciseSetObservation,
   type PlannedWorkout,
   WorkoutProcedure,
-} from 'lifting-core-js'
+} from '@wildflowerhealthio/lifting-core-js'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ItemList, StatusBadge, type StatusTone } from '@wildflowerhealthio/react-tundraish'
+import { Option } from 'effect'
 import type { JSX } from 'react'
 import { useId } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ItemList, StatusBadge, type StatusTone } from 'react-tundraish'
 
 import { formatLoad, formatSetReps } from '../load-format.ts'
 import styles from './submitted-workout-view.module.css'

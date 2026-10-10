@@ -1,11 +1,11 @@
-import { DateTime } from 'effect'
-import type { LevelSeries, SeriesSource } from 'health-viewer-fundamentals'
+import type { LevelSeries, SeriesSource } from '@wildflowerhealthio/health-viewer-fundamentals'
 import {
   type DoseBasis,
   type DoseRegimen,
   type MedicationRequestWithId,
   medicationRequestsToDoseRegimens,
-} from 'medication-core/fhir'
+} from '@wildflowerhealthio/medication-core/fhir'
+import { DateTime } from 'effect'
 
 import { type MedicationSeriesKey, medicationSeriesIdOf } from './medication-series-key.ts'
 

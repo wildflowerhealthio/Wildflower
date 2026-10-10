@@ -1,5 +1,5 @@
-import type { PatientResource } from 'fhir-r4-react/smart'
-import { HumanName } from 'fhir-r4/data-types'
+import type { PatientResource } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { HumanName } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /** What a patient without a renderable name is called. */
 const UNNAMED_PATIENT = 'No name on record'

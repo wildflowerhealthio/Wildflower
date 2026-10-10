@@ -1,5 +1,5 @@
 {
-  "name": "medication-interaction-core-js",
+  "name": "@wildflowerhealthio/medication-interaction-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "Pure logic for drug-interaction checking against the DDInter database: the compact bundled-file schema and decoder, the CSV-to-compact converter, severity model, curated OTC / non-drug lists, medication-to-catalog matching, and the three-group interaction report. No DOM, no FHIR, no platform imports.",
@@ -20,17 +20,17 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "medication-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "medication-core": "workspace:*"
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

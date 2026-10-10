@@ -1,5 +1,5 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { useErrorBodyRenderer, type ErrorBodyRenderer } from './error-body-renderer.ts'
 import { formatErrorDetails } from './error-details.ts'

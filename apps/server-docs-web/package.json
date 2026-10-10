@@ -1,5 +1,5 @@
 {
-  "name": "server-docs-web",
+  "name": "@wildflowerhealthio/server-docs-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,13 +12,13 @@
   },
   "dependencies": {
     "@scalar/api-reference": "catalog:",
-    "branding-core": "workspace:*",
-    "effect": "catalog:",
-    "gatekeeper-core": "workspace:*"
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/gatekeeper-core": "workspace:*",
+    "effect": "catalog:"
   },
   "devDependencies": {
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",

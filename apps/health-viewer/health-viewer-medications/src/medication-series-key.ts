@@ -1,5 +1,5 @@
-import { SeriesId } from 'health-viewer-fundamentals'
-import type { DoseBasis } from 'medication-core/fhir'
+import { SeriesId } from '@wildflowerhealthio/health-viewer-fundamentals'
+import type { DoseBasis } from '@wildflowerhealthio/medication-core/fhir'
 
 /**
  * Identity of a medication series: which medication, the unit its doses are

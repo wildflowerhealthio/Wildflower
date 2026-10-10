@@ -1,6 +1,9 @@
+import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  HttpResponseKind,
+  SourceDescriptor,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import { Effect, Option, Schema } from 'effect'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
-import { HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { mergeSharedResources } from './merge-shared-resources.ts'

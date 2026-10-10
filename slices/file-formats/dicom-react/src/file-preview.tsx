@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-import { DicomHeader } from 'dicom'
+import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { Either } from 'effect'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 

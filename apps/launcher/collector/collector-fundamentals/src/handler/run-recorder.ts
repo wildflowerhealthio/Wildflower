@@ -1,4 +1,7 @@
-import { type Extraction, isOmittedContentType } from 'http-extraction-fundamentals'
+import {
+  type Extraction,
+  isOmittedContentType,
+} from '@wildflowerhealthio/http-extraction-fundamentals'
 import type { CollectorHttpResponse } from '../model/index.ts'
 
 /**

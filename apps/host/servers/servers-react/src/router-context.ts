@@ -1,7 +1,7 @@
 import type { HttpClient } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
+import { TauriInvoke } from '@wildflowerhealthio/servers-core-js'
 import { Cause, type Context, Effect, Exit, type Layer } from 'effect'
-import { TauriInvoke } from 'servers-core-js'
 
 import type { PendingLaunches } from './pending-launches.ts'
 

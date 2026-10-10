@@ -1,5 +1,5 @@
 {
-  "name": "synthetic-data-shoppers-drugmart",
+  "name": "@wildflowerhealthio/synthetic-data-shoppers-drugmart",
   "version": "0.0.0",
   "private": true,
   "description": "The Shoppers Drug Mart synthetic data generator: a family account's synthetic-data-fundamentals Stories as the HAR a mypharmacy.shoppersdrugmart.ca session exports — the customers, prescription-status and prescription-history XHRs, spelled from shoppers-drugmart-source's URLs and typed by its payload schemas. Pure — no DOM, no fs, no React.",
@@ -32,26 +32,26 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/shoppers-drugmart-source": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "har-importer-core": "workspace:*",
-    "http-archive": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "medication-core": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
-    "synthetic-data-fundamentals": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-archive": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
-    "synthetic-data-fundamentals": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/shoppers-drugmart-source": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
+    "effect": "catalog:"
   }
 }

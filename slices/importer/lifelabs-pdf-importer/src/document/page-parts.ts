@@ -1,4 +1,4 @@
-import type { Page } from 'positioned-text'
+import type { Page } from '@wildflowerhealthio/positioned-text'
 
 import * as PageFooter from './page-footer.ts'
 import * as PageHeader from './page-header.ts'

@@ -1,6 +1,6 @@
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { FocusEvent, JSX } from 'react'
 import { useState } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { LinkButton } from './link-button.tsx'
 import styles from './chunk-bar.module.css'

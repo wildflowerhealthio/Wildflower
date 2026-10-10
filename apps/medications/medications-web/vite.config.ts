@@ -18,7 +18,7 @@ export default defineConfig({
   plugins: [react()],
   // The homescreen's "Medications (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
-  // `vp run -F medications-web dev`.
+  // `vp run -F @wildflowerhealthio/medications-web dev`.
   server: devAppServer('medications-dev'),
   build: {
     // Emitted for the deploy's Sentry upload, unreferenced from the bundle;

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { ChunkBar } from 'react-tundraish'
+import { ChunkBar } from '@wildflowerhealthio/react-tundraish'
 
 /** Pages arrived by scrolling; no fetch running. One block per page. */
 export const Idle = () => <ChunkBar phase="idle" pagesReceived={8} loadedCount={400} onLoadAll={() => {}} />

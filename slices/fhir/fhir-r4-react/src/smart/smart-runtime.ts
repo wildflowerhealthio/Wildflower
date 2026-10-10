@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { QueryCache, QueryClient, type Query } from '@tanstack/react-query'
+import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import { Duration, Effect, Layer, pipe } from 'effect'
-import { trimTrailingSlashes } from 'fhir-r4/clients'
 
 import {
   sliceRuntimeLayer,

@@ -1,6 +1,9 @@
+import type {
+  SourceDispense,
+  SourcePrescription,
+} from '@wildflowerhealthio/shoppers-drugmart-source'
+import { Prescription, type StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import type { DateTime } from 'effect'
-import type { SourceDispense, SourcePrescription } from 'shoppers-drugmart-source'
-import { Prescription, type StoryDay } from 'synthetic-data-fundamentals/story'
 
 import type { ShoppersAccount } from './shoppers-account.ts'
 import {

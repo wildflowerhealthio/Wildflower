@@ -1,4 +1,3 @@
-import { Array as Arr, type Effect, Schema } from 'effect'
 import {
   type BundleDecodeError,
   fetchAllResourcePages,
@@ -8,9 +7,10 @@ import {
   type ResourcePage,
   type ResourcePageCycleError,
   type ResourcePageRequestError,
-} from 'fhir-r4-react/smart'
-import { Observation } from 'fhir-r4/resources'
-import { ExerciseSetObservation } from 'lifting-core-js'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import { ExerciseSetObservation } from '@wildflowerhealthio/lifting-core-js'
+import { Array as Arr, type Effect, Schema } from 'effect'
 
 import type { SmartClient } from '../smart-client.ts'
 

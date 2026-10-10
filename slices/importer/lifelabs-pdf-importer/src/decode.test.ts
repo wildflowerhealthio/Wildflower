@@ -1,7 +1,7 @@
+import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, ParseResult } from 'effect'
 import * as fc from 'fast-check'
-import { DecodedFile } from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'

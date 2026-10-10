@@ -1,4 +1,10 @@
 import {
+  narrowFields,
+  WILDFLOWER_CANONICAL_BASE,
+  withMandatoryId,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { PlanDefinition } from '@wildflowerhealthio/fhir-r4/resources'
+import {
   Array as Arr,
   type Brand,
   type Either,
@@ -7,8 +13,6 @@ import {
   pipe,
   Schema,
 } from 'effect'
-import { narrowFields, WILDFLOWER_CANONICAL_BASE, withMandatoryId } from 'fhir-r4/data-types'
-import { PlanDefinition } from 'fhir-r4/resources'
 
 import * as ExerciseConcept from '../exercise/exercise-concept.ts'
 import { narrowedFrom } from '../internal/narrowed-from.ts'

@@ -1,6 +1,6 @@
-import { sentenceJoin } from 'kitchen-sink'
+import { sentenceJoin } from '@wildflowerhealthio/kitchen-sink'
+import { PartialBanner } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { PartialBanner } from 'react-tundraish'
 
 import { countOf } from './count-of.ts'
 import type { UnreadableCounts } from './unreadable-counts.ts'

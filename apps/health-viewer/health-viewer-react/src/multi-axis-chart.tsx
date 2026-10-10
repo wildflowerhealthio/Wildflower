@@ -7,7 +7,7 @@ import {
   Crosshair,
   type TimeDomain,
   type ValueAxis,
-} from 'health-viewer-fundamentals'
+} from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { FRAME_HEIGHT, MARGIN_TOP, bucketCountFor, chartOptions } from './chart-marks.ts'
 import { CrosshairTooltip } from './crosshair-tooltip.tsx'

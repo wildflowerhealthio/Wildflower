@@ -1,6 +1,6 @@
 import type { HttpClient } from '@effect/platform'
+import { RequestLogHttpApiClient } from '@wildflowerhealthio/request-log-core-js/clients'
 import type { Layer } from 'effect'
-import { RequestLogHttpApiClient } from 'request-log-core-js/clients'
 
 /**
  * Union of services a `RequestLogHttpApiClient` consumer needs in context. The

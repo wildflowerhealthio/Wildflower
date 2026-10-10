@@ -5,9 +5,9 @@ import {
   anchorHref,
   fromApp,
   type AppSectionId,
-} from 'branding-core'
+} from '@wildflowerhealthio/branding-core'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { AppLanding } from './app-landing.tsx'

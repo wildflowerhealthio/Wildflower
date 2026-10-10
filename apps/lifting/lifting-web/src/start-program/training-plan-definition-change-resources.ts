@@ -1,6 +1,6 @@
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { ExerciseRequest, TrainingPlanDefinition } from '@wildflowerhealthio/lifting-core-js'
 import { Option } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { ExerciseRequest, TrainingPlanDefinition } from 'lifting-core-js'
 
 /**
  * Everything starting a training plan definition writes, in one batch: the

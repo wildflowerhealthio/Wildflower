@@ -1,4 +1,4 @@
-import { Load } from 'lifting-core-js'
+import { Load } from '@wildflowerhealthio/lifting-core-js'
 
 /** Up to two decimals — enough for 1.25 lb micro-plates — and no trailing zeros. */
 const amountFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })

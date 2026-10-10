@@ -1,3 +1,4 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 /**
  * Wire tests over `test/bridge-wire-golden.json`, the exact strings the host
  * writes and reads. Pinning the text, not just the schema, means a field
@@ -5,7 +6,6 @@
  */
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import golden from '../test/bridge-wire-golden.json' with { type: 'json' }

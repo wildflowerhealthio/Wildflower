@@ -1,7 +1,5 @@
 import { QueryErrorResetBoundary, useQueryErrorResetBoundary } from '@tanstack/react-query'
 import { CatchBoundary, type ErrorComponentProps } from '@tanstack/react-router'
-import type { JSX } from 'react'
-import { Suspense, useState } from 'react'
 import {
   AsyncErrorView,
   ConfirmDialog,
@@ -9,7 +7,9 @@ import {
   ItemList,
   Menu,
   type MenuItem,
-} from 'react-tundraish'
+} from '@wildflowerhealthio/react-tundraish'
+import type { JSX } from 'react'
+import { Suspense, useState } from 'react'
 
 import { useClientsQuery, useUpdateClientMutation, type Client } from '../queries/index.ts'
 import { trustedAppRow, type TrustedAppRow } from './trusted-app-row.ts'

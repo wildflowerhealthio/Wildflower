@@ -1,5 +1,5 @@
-import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
-import type { SmartAppTelemetry } from 'smart-app-react'
+import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
  * The scopes the lifting app asks for, the same for an EHR launch and a
@@ -37,7 +37,7 @@ const LIFTING_SCOPE =
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/lifting/` and launches as the `lifting` tile's
  *   client, `bdf9fc5cb5a28c6683b49896b0ef8a75`.
- * - The **vite dev server** (`vp run -F lifting-web dev`, on the port
+ * - The **vite dev server** (`vp run -F @wildflowerhealthio/lifting-web dev`, on the port
  *   `dev-app-ports.json` pins) launches as the `lifting-dev` tile's
  *   client, `8467e680a05f1e92e22864e923144e5a`.
  *

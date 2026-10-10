@@ -1,6 +1,6 @@
-import { BrandBar } from 'branding-react'
+import { BrandBar } from '@wildflowerhealthio/branding-react'
+import { PageLoading } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { PageLoading } from 'react-tundraish'
 
 /**
  * The launch page: the slim `BrandBar` over one loading line — the shape

@@ -1,5 +1,5 @@
 {
-  "name": "request-log-core-js",
+  "name": "@wildflowerhealthio/request-log-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "Request-log HTTP API + client. Host-agnostic Effect /requests endpoints (the log's pages and its caller summaries).",
@@ -33,10 +33,10 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",

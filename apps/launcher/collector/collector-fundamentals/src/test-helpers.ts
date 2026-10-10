@@ -1,5 +1,5 @@
+import type { HttpMethod, HttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { DateTime, Option } from 'effect'
-import type { HttpMethod, HttpResponse } from 'http-extraction-fundamentals'
 
 import { CollectorHttpResponse } from './model/collector-http-response.ts'
 

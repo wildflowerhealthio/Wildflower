@@ -5,7 +5,7 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { basenameOf } from 'branding-core'
+import { basenameOf } from '@wildflowerhealthio/branding-core'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { underBasepath } from './web-entry.ts'

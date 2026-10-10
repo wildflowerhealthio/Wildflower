@@ -4,7 +4,7 @@ import {
   launchErrorBodyFor,
   launchErrorRedirect,
   type SmartLaunchConfig,
-} from 'fhir-r4-react/smart'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 
 /**
  * Authorize the SMART launch the app root at `launchPageHref` was opened to

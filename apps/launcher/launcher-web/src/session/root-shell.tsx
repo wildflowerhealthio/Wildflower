@@ -1,5 +1,5 @@
 import { Outlet } from '@tanstack/react-router'
-import { PendingConsentModalHost } from 'gatekeeper-react'
+import { PendingConsentModalHost } from '@wildflowerhealthio/gatekeeper-react'
 import type { JSX } from 'react'
 
 import { usePlatformBanner } from './platform-banner-context.ts'

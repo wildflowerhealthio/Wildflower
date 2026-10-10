@@ -1,5 +1,5 @@
 {
-  "name": "health-viewer-core-js",
+  "name": "@wildflowerhealthio/health-viewer-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "The health viewer's assembly: the closed list of domain sources a record is read through (observations, medications), the catalogue panel's grouping and search, the x-axis range presets, and the URL codec a shared link round-trips through. Chart math lives in health-viewer-fundamentals; what a record means lives in each domain package. No DOM, no platform imports.",
@@ -20,25 +20,25 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/health-viewer-medications": "workspace:*",
+    "@wildflowerhealthio/health-viewer-observations": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "health-viewer-fundamentals": "workspace:*",
-    "health-viewer-medications": "workspace:*",
-    "health-viewer-observations": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "medication-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "health-viewer-fundamentals": "workspace:*",
-    "health-viewer-medications": "workspace:*",
-    "health-viewer-observations": "workspace:*",
-    "medication-core": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/health-viewer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/health-viewer-medications": "workspace:*",
+    "@wildflowerhealthio/health-viewer-observations": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

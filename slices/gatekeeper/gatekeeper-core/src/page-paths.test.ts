@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { expect, test } from 'vite-plus/test'
 import { GatekeeperPaths } from './page-paths.ts'
 

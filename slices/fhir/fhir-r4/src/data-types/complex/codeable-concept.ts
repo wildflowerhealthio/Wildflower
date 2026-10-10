@@ -1,6 +1,10 @@
 import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
 
-import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/schema'
+import {
+  OrNullAsOptional,
+  StructNoContext,
+  mutableEncoded,
+} from '@wildflowerhealthio/kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 

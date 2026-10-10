@@ -18,7 +18,7 @@ export default defineConfig({
   pack: pkjsPack({
     entry: { index: 'src/index.ts' },
     outDir: '../src/pkjs',
-    alwaysBundle: ['watch-lifts-core-js'],
+    alwaysBundle: ['@wildflowerhealthio/watch-lifts-core-js'],
     es5Tsconfig: fileURLToPath(new URL('src/tsconfig.json', import.meta.url)),
   }),
   test: {

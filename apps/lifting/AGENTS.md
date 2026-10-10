@@ -314,7 +314,7 @@ template rather than a special case.
   they are decoded through `Schema.typeSchema(…)` of a narrowed schema
   (`Load.Schema`, a set's or a workout's span); and a `dateTime` re-encodes as
   a UTC instant. `vp pack` (not `vp check`) is the gate for the TS2883 dts
-  trap: run `vp run -F lifting-core-js build` when a schema's types change.
+  trap: run `vp run -F @wildflowerhealthio/lifting-core-js build` when a schema's types change.
   Every exported `Schema` is annotated with its `Type` for the same reason.
 - **Property tests build through the `make`s.** A generated training plan
   definition, `ExerciseRequest`, workout or set is made from generated

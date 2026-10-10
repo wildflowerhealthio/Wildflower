@@ -1,5 +1,5 @@
+import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
-import { type FhirResource } from 'fhir-r4/resources'
 
 import type * as DecodedFile from './decoded-file.ts'
 

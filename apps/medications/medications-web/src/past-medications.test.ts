@@ -1,5 +1,5 @@
-import type { MedicationView } from 'medication-core/fhir'
-import type { Medication } from 'medication-sponsorship-core-js'
+import type { MedicationView } from '@wildflowerhealthio/medication-core/fhir'
+import type { Medication } from '@wildflowerhealthio/medication-sponsorship-core-js'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { pastEligibleMedications } from './past-medications.ts'

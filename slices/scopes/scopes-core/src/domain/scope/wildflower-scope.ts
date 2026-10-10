@@ -8,7 +8,7 @@
  * SMART v1 word forms (`read`/`write`/`*`) are FHIR-only, so `wildflower/Grant.read`
  * does not parse (it falls back to {@link UnknownScope}).
  *
- * Namespace module (`import { Wildflower } from 'scopes-core'`): the scope value
+ * Namespace module (`import { Wildflower } from '@wildflowerhealthio/scopes-core'`): the scope value
  * is {@link WildflowerResourceScope}, with `Wildflower.scopeParse`, `Wildflower.Resource`, …
  */
 import * as Contexts from './contexts'

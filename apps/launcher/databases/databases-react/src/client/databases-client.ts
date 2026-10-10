@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { DatabasesHttpApiClient } from 'databases-core-js/clients'
+import { DatabasesHttpApiClient } from '@wildflowerhealthio/databases-core-js/clients'
 import type { Layer } from 'effect'
 
 /**

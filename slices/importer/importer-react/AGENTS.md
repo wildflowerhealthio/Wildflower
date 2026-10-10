@@ -386,7 +386,7 @@ and [React Testing Reference](../../../docs/Testing/React%20Testing%20Reference.
 Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
 
 - `sources/source-picker.test.tsx` mocks only the router seam
-  (`vi.mock('fhir-r4-react', … useRunAuthed …)`) and drives the whole picker over
+  (`vi.mock('@wildflowerhealthio/fhir-r4-react', … useRunAuthed …)`) and drives the whole picker over
   a stub `HttpClient`; the runner is built through `fhir-r4-react/smart`'s
   `buildSmartRouterContext` so a bearer token rides the wire and the test can
   assert `Authorization: Bearer …` and the search URL against the recorded

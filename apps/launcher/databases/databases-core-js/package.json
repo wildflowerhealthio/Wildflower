@@ -1,5 +1,5 @@
 {
-  "name": "databases-core-js",
+  "name": "@wildflowerhealthio/databases-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "Data-management HTTP API + client. Host-agnostic Effect /databases endpoints (list + delete) for exporting and erasing the host's SQLite databases.",
@@ -33,9 +33,9 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",

@@ -1,11 +1,18 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { basenameOf } from 'branding-core'
-import { AppLandingPage } from 'branding-react'
-import { withLocalNetworkAccessHint } from 'fhir-r4-react/smart'
-import { insecureTargetReason, searchWithServerUrl } from 'gatekeeper-core/smart-client'
+import { basenameOf } from '@wildflowerhealthio/branding-core'
+import { AppLandingPage } from '@wildflowerhealthio/branding-react'
+import { withLocalNetworkAccessHint } from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  insecureTargetReason,
+  searchWithServerUrl,
+} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import {
+  isAuthed,
+  useSubscribable,
+  useAuthStateSubscribable,
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { ConnectMenu } from '@wildflowerhealthio/smart-app-react'
 import { type JSX, useEffect } from 'react'
-import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
-import { ConnectMenu } from 'smart-app-react'
 
 import type { RouterContext } from '../router-context.ts'
 import {

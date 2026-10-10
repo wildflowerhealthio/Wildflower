@@ -1,5 +1,5 @@
+import { ExerciseConcept, TrainingPlanDefinition } from '@wildflowerhealthio/lifting-core-js'
 import { Array as Arr, Either, Option, type ParseResult, pipe } from 'effect'
-import { ExerciseConcept, TrainingPlanDefinition } from 'lifting-core-js'
 
 import { enteredNumber } from '../form/entered-number.ts'
 import { type ParseIssue, parseIssuesOf } from '../form/parse-issues.ts'

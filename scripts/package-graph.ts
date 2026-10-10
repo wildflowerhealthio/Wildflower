@@ -195,7 +195,7 @@ const appOf = (workspacePackage: WorkspacePackage): string | undefined => {
  * The one package allowed outside its app's folder: the site assembles every
  * app's `-web` entry into wildflowerhealth.io.
  */
-const SITE_ASSEMBLY = 'wildflower-site-web'
+const SITE_ASSEMBLY = '@wildflowerhealthio/wildflower-site-web'
 
 /**
  * Whether a dependency into another app's folder is allowed: the site's

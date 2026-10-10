@@ -1,6 +1,6 @@
+import type { PendingConsentHead } from '@wildflowerhealthio/gatekeeper-core/bridge'
+import { type AuthState, HostAuthed } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Equal } from 'effect'
-import type { PendingConsentHead } from 'gatekeeper-core/bridge'
-import { type AuthState, HostAuthed } from 'react-kitchen-sink'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 import { makeGatekeeperWebHandlers } from './web-bridge.ts'

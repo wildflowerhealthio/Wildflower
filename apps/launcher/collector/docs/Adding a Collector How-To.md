@@ -205,7 +205,7 @@ every collector so far — import `fhir-r4`'s, which already owns all of the
 above, and hand it to the descriptor:
 
 ```ts
-import { persistResources } from 'fhir-r4/clients'
+import { persistResources } from '@wildflowerhealthio/fhir-r4/clients'
 ```
 
 There is nothing per-collector to configure: the retry schedule, the
@@ -244,7 +244,7 @@ Add `web-trace-core` to the package's `devDependencies` **and**
 plan:
 
 ```ts
-import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
+import { makeFhirProvenanceCapture } from '@wildflowerhealthio/web-trace-core/provenance'
 
 // Module-level, NOT built inside the factory: two plans built from one config
 // share the reference, so tests can deep-equal them.
@@ -294,7 +294,7 @@ just **applying adoption once at module scope** by mapping the kind list through
 module, and widen-then-map:
 
 ```ts
-import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
+import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4/identity'
 
 // source-system.ts — persisted wire format: the hash domain and `Identifier.system`.
 export const MY_SOURCE_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/my-portal'

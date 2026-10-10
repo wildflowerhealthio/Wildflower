@@ -15,7 +15,7 @@ export default defineConfig({
   ...base,
   base: './',
   plugins: [react()],
-  // Run with `vp run -F watch-lifts-web dev`.
+  // Run with `vp run -F @wildflowerhealthio/watch-lifts-web dev`.
   server: devAppServer('watch-lifts-dev'),
   build: {
     rolldownOptions: {

@@ -1,5 +1,5 @@
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import devAppPortsFile from '../dev-app-ports.json' with { type: 'json' }

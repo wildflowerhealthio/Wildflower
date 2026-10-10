@@ -1,6 +1,6 @@
-import type { TelemetryConsentCopy } from 'branding-core'
+import type { TelemetryConsentCopy } from '@wildflowerhealthio/branding-core'
+import type { TelemetryConsent } from '@wildflowerhealthio/telemetry-core'
 import type { JSX } from 'react'
-import type { TelemetryConsent } from 'telemetry-core'
 
 import { telemetryConsentSummary } from './telemetry-consent-summary.ts'
 import styles from './telemetry-status-control.module.css'

@@ -1,7 +1,5 @@
-import { Effect } from 'effect'
-import { formatBytes } from 'kitchen-sink'
-import { useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { formatBytes } from '@wildflowerhealthio/kitchen-sink'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import {
   Dialog,
   ErrorBanner,
@@ -11,7 +9,9 @@ import {
   pageLayoutStyles,
   type ItemListItem,
   type MenuItem,
-} from 'react-tundraish'
+} from '@wildflowerhealthio/react-tundraish'
+import { Effect } from 'effect'
+import { useState, type JSX } from 'react'
 
 import { describeDatabase } from './format.ts'
 import type { DatabaseMetadata } from './queries.ts'

@@ -1,5 +1,5 @@
+import type { PlannedWorkout } from '@wildflowerhealthio/lifting-core-js'
 import type { DateTime } from 'effect'
-import type { PlannedWorkout } from 'lifting-core-js'
 
 /**
  * A planned workout as the lifter performed it: what `PlannedWorkout.submit`

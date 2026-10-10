@@ -8,7 +8,7 @@
  * converted into cruds; the v1 grammar mirrors the v1 half of `scopes-rust`'s permission
  * model.
  *
- * Namespace module (`import { ReadWritePermission } from 'scopes-core'`).
+ * Namespace module (`import { ReadWritePermission } from '@wildflowerhealthio/scopes-core'`).
  */
 import { BasePermission } from './permission.ts'
 

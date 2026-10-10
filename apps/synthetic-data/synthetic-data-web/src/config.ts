@@ -1,5 +1,5 @@
-import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
-import type { SmartAppTelemetry } from 'smart-app-react'
+import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
  * The scopes the loader asks for, the same for an EHR launch and a standalone
@@ -27,7 +27,7 @@ const SYNTHETIC_DATA_SCOPE =
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/synthetic-data/` and launches as the
  *   `synthetic-data` tile's client, `225ba6af034a3acec6be7ff8010df67f`.
- * - The **vite dev server** (`vp run -F synthetic-data-web dev`, on the port
+ * - The **vite dev server** (`vp run -F @wildflowerhealthio/synthetic-data-web dev`, on the port
  *   `dev-app-ports.json` pins) launches as the `synthetic-data-dev`
  *   tile's client, `07a31e58db3367afda5c6480e03ed993`.
  *

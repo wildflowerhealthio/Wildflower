@@ -1,8 +1,8 @@
-import type { CollectorDescriptor } from 'collector-fundamentals/model'
+import type { CollectorDescriptor } from '@wildflowerhealthio/collector-fundamentals/model'
+import { LoggingLayerTest, numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, Fiber, Mailbox, Stream, TestContext } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import * as fc from 'fast-check'
-import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import {

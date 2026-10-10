@@ -76,7 +76,7 @@ The header toggle switches `<App />` between views over the same loaded
   with
 
   ```bash
-  vp run -F medications-web data:ddinter -- <directory holding the CSVs>
+  vp run -F @wildflowerhealthio/medications-web data:ddinter -- <directory holding the CSVs>
   ```
 
   The script (`scripts/convert-ddinter.ts`) runs `node --conditions=source` so
@@ -132,7 +132,7 @@ production client (its scopes as gatekeeper migration
 ## Running the dev server
 
 ```bash
-vp run -F medications-web dev     # strictPort, from dev-app-ports.json
+vp run -F @wildflowerhealthio/medications-web dev     # strictPort, from dev-app-ports.json
 ```
 
 Debug builds of the host additionally seed a `medications-dev`

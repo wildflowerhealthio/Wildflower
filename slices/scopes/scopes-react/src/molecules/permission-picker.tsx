@@ -1,6 +1,6 @@
+import { CheckboxGroup, type CheckboxGroupItem } from '@wildflowerhealthio/react-tundraish'
+import type { Cell } from '@wildflowerhealthio/scopes-core'
 import type { JSX } from 'react'
-import { CheckboxGroup, type CheckboxGroupItem } from 'react-tundraish'
-import type { Cell } from 'scopes-core'
 
 /**
  * One selectable control in a {@link PermissionPicker} — a permission item (its id,

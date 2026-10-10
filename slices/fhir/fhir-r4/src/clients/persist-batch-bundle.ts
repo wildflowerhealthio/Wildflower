@@ -1,5 +1,5 @@
+import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Data, Effect, Schema } from 'effect'
-import { unknownErrorToString } from 'kitchen-sink'
 
 import type * as Bundle from '../data-types/resources/bundle.ts'
 import { type FhirResource, FhirResourceSchema } from '../resources/index.ts'

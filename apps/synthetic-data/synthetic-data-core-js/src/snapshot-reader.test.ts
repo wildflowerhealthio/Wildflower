@@ -1,7 +1,7 @@
+import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import type * as SnapshotFile from './snapshot-file.ts'

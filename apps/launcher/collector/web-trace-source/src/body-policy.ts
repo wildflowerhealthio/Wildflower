@@ -1,7 +1,11 @@
+import type { HttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals'
+import type { TraceBody } from '@wildflowerhealthio/web-trace-core'
+import {
+  type BodyDigestUnavailable,
+  contentTypeOf,
+  sha256Base64,
+} from '@wildflowerhealthio/web-trace-core/capture'
 import { Effect, Encoding } from 'effect'
-import type { HttpResponse } from 'http-extraction-fundamentals'
-import type { TraceBody } from 'web-trace-core'
-import { type BodyDigestUnavailable, contentTypeOf, sha256Base64 } from 'web-trace-core/capture'
 
 /**
  * The capture-time body policy: whether a sniffed response's body is stored in

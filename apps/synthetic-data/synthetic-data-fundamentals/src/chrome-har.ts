@@ -1,4 +1,3 @@
-import type { DateTime } from 'effect'
 import {
   type ChromeHarEntry,
   type ChromeHarExtras,
@@ -6,8 +5,9 @@ import {
   chromeExtrasOf,
   NOT_MEASURED,
   queryStringOf,
-} from 'http-archive'
-import { utf8Bytes } from 'kitchen-sink'
+} from '@wildflowerhealthio/http-archive'
+import { utf8Bytes } from '@wildflowerhealthio/kitchen-sink'
+import type { DateTime } from 'effect'
 
 /**
  * The synthetic defaults a generated Chrome DevTools capture is written with;

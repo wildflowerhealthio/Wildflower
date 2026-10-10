@@ -1,5 +1,5 @@
 {
-  "name": "servers-core-js",
+  "name": "@wildflowerhealthio/servers-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "The base's pure core: the Tauri commands it calls, as Effects over a `TauriInvoke` port, with Effect Schema decoders for their answers; and a server's `/health` report, read over `@effect/platform`'s `HttpClient`. No DOM, no React, no `@tauri-apps/api`.",
@@ -29,9 +29,9 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",

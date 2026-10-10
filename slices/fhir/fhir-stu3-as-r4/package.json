@@ -1,5 +1,5 @@
 {
-  "name": "fhir-stu3-as-r4",
+  "name": "@wildflowerhealthio/fhir-stu3-as-r4",
   "version": "0.0.1",
   "description": "Just-enough FHIR STU3 wire schemas that decode straight to fhir-r4 resource types via Effect schema transforms",
   "license": "UNLICENSED",
@@ -25,18 +25,18 @@
   "devDependencies": {
     "@types/fhir": "catalog:",
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

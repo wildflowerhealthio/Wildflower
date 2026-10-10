@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { RANGE_PRESETS } from 'health-viewer-core-js'
+import { RANGE_PRESETS } from '@wildflowerhealthio/health-viewer-core-js'
 
 import { RangePresets } from './range-presets.tsx'
 

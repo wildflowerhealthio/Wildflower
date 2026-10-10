@@ -29,7 +29,7 @@ pebble install --phone <ip>           # install to a paired phone
 which bundles the PebbleKit JS into `src/pkjs/index.js`, the one file the SDK
 packs (gitignored). It runs the repository's `node_modules/.bin/vp`, so
 `vp install` must have run (without it, a `vp` on the `PATH`), and Node must be
-on the `PATH`. To build the bundle alone, `vp run -F fhir-sync-pebble-pkjs build`; `vp run pack` builds it
+on the `PATH`. To build the bundle alone, `vp run -F @wildflowerhealthio/fhir-sync-pebble-pkjs build`; `vp run pack` builds it
 with the rest of the monorepo.
 
 The Pebble SDK and the `pebble` tool are needed only for these; the tests use
@@ -246,7 +246,7 @@ restart. With nothing checked, Sync Now succeeds without asking the phone.
 ## Tests
 
 What the phone decodes and builds is tested in `fhir-sync-pebble-core`, where
-it lives. Here, `vp test --project fhir-sync-pebble-test` (the root `vp test`
+it lives. Here, `vp test --project @wildflowerhealthio/fhir-sync-pebble-test` (the root `vp test`
 includes it):
 
 - `menu-text.test.ts` compiles `menu-text.c` with `kitchen-sink/test`'s
@@ -271,7 +271,7 @@ includes it):
 drivers define them. One driver command line is one scenario. Each driver call
 spawns a process, so the C properties run fewer cases than usual.
 
-`vp test --project fhir-sync-pebble-pkjs` runs `src/index.ts` over stand-ins
+`vp test --project @wildflowerhealthio/fhir-sync-pebble-pkjs` runs `src/index.ts` over stand-ins
 for the PebbleKit JS globals with fake timers (`index.test.ts`): the settings sent again, one
 answer per sync, the request timeout. What each message does is the core's
 `WatchSync.receive`, tested there.
@@ -316,7 +316,7 @@ than the stand-in has, so only `pebble build` compiles it.
 - **Never renumber a persist key** (`state.c`): an installed watch still holds
   the old value under it.
 
-C is formatted with clang-format (`vp run -F fhir-sync-pebble-watchapp fmt:c`), at the
+C is formatted with clang-format (`vp run -F @wildflowerhealthio/fhir-sync-pebble-watchapp fmt:c`), at the
 version `ci-pebble.yml` pins: other releases format differently.
 
 ## CI

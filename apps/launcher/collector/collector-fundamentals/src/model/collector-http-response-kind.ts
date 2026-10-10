@@ -1,5 +1,5 @@
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
-import { deepFreeze } from 'kitchen-sink'
+import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { deepFreeze } from '@wildflowerhealthio/kitchen-sink'
 import type { CollectorHttpResponse } from './collector-http-response.ts'
 import type * as Step from './step.ts'
 

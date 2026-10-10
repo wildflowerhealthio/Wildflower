@@ -95,6 +95,7 @@ itself. The Rust side embeds the same file in `apps-rust/src/dev_seed.rs`. See
 - **camelCase**: Variables, functions, properties
 - **PascalCase for files**: Component files (`NavHeader.tsx`)
 - **camelCase for files**: Utility files (`clientRuntime.tsx`)
+- **npm packages**: scoped `@wildflowerhealthio/<name>`, where `<name>` is the package's folder. Everything else that names a package (folders, `dev-app-ports.json` keys, Sentry tags, DSN variables, Rust crates, prose) uses the unscoped `<name>`
 
 ### Import Organization
 
@@ -103,7 +104,7 @@ Order imports as follows:
 1. React and React-related libraries
 2. Third-party libraries
 3. Effect-TS imports
-4. Workspace package imports — `global/` shared utilities and other slices' packages, imported by bare package name (e.g. `collector-registry/http-api-definition`)
+4. Workspace package imports — `global/` shared utilities and other slices' packages, imported by package name (e.g. `@wildflowerhealthio/collector-registry/http-api-definition`)
 5. Current slice's `-core` imports
 6. Local utility imports
 7. Relative imports

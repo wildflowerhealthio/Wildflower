@@ -1,4 +1,4 @@
-import { Bridge, type MessageHandler } from 'effect-messaging-core'
+import { Bridge, type MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
 import {
   CancelSnifferRequestMessage,
   CancelledMessage,

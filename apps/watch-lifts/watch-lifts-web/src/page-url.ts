@@ -1,6 +1,6 @@
+import { ReturnTarget } from '@wildflowerhealthio/pebble-configuration'
+import { LiftSettings, PhoneSettings } from '@wildflowerhealthio/watch-lifts-core-js'
 import { Either } from 'effect'
-import { ReturnTarget } from 'pebble-configuration'
-import { LiftSettings, PhoneSettings } from 'watch-lifts-core-js'
 
 /** What the page is opened with: the weights to start from and where to hand them back. */
 interface PageInputs {

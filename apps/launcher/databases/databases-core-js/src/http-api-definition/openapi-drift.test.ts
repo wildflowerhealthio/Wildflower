@@ -17,7 +17,7 @@
  *   UPDATE_OPENAPI=1 cargo test -p databases-rust openapi_spec_snapshot_is_up_to_date
  */
 
-import { defineSpecDriftTest } from 'shared-structures-core/openapi-drift/testing'
+import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/openapi-drift/testing'
 import { DatabasesApi } from './index.ts'
 
 defineSpecDriftTest({

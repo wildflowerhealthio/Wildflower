@@ -1,7 +1,7 @@
 import { Option, pipe, Schema } from 'effect'
 
-import { Extension } from 'fhir-r4/data-types'
-import { Lift } from 'kitchen-sink'
+import { Extension } from '@wildflowerhealthio/fhir-r4/data-types'
+import { Lift } from '@wildflowerhealthio/kitchen-sink'
 
 /**
  * `kitchen-sink`'s {@link Lift} applied to FHIR extension lists: reading an

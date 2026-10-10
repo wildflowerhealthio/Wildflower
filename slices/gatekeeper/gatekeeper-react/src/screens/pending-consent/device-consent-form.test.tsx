@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
 import { Effect, Layer } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -45,7 +45,7 @@ let patientResources: readonly StubPatient[] = []
 
 // The which-patient pill's data source — stubbed like oauth-consent-form.test.tsx,
 // defaulting to empty; per-test overrides via `patientResources`.
-vi.mock('fhir-r4-react', () => ({
+vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
   usePatientsQuery: (): { data: readonly StubPatient[]; isLoading: boolean } => ({
     data: patientResources,
     isLoading: false,

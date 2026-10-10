@@ -1,6 +1,9 @@
+import type {
+  HistoryPayload,
+  SourceHistoryDispense,
+} from '@wildflowerhealthio/shoppers-drugmart-source'
+import { Prescription, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import type { DateTime } from 'effect'
-import type { HistoryPayload, SourceHistoryDispense } from 'shoppers-drugmart-source'
-import { Prescription, StoryDay } from 'synthetic-data-fundamentals/story'
 
 import type { ShoppersAccount, ShoppersAddress } from './shoppers-account.ts'
 import { chemicalNameOf, type ShoppersPrescription } from './shoppers-prescription.ts'

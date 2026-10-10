@@ -1,9 +1,9 @@
+import { ReturnTarget } from '@wildflowerhealthio/pebble-configuration'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import { LiftSettings, Lifts } from '@wildflowerhealthio/watch-lifts-core-js'
 import { Either, ParseResult, Schema } from 'effect'
-import { ReturnTarget } from 'pebble-configuration'
 import { useState, type SubmitEvent, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner } from 'react-tundraish'
-import { LiftSettings, Lifts } from 'watch-lifts-core-js'
 
 import styles from './weights-page.module.css'
 

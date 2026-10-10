@@ -1,4 +1,4 @@
-import type { FhirResource } from 'fhir-r4/resources'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 
 interface Resource {
   readonly key: string

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SegmentedToggle } from 'react-tundraish'
+import { SegmentedToggle } from '@wildflowerhealthio/react-tundraish'
 
 type Tab = 'medications' | 'calendar' | 'interactions' | 'savings'
 

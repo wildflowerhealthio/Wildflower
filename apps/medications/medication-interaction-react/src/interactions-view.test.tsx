@@ -2,8 +2,11 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import type { Medication } from 'medication-core'
-import { decodeDdinterFile, type OtcCategory } from 'medication-interaction-core-js'
+import type { Medication } from '@wildflowerhealthio/medication-core'
+import {
+  decodeDdinterFile,
+  type OtcCategory,
+} from '@wildflowerhealthio/medication-interaction-core-js'
 
 import { InteractionsView } from './interactions-view.tsx'
 

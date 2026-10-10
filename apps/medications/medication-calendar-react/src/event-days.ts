@@ -1,4 +1,4 @@
-import type { CalendarEvent } from 'medication-calendar-core'
+import type { CalendarEvent } from '@wildflowerhealthio/medication-calendar-core'
 
 /** Consecutive events sharing a day, in derived (sorted) order. */
 interface EventDay {

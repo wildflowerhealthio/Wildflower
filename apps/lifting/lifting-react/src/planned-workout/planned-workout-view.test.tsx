@@ -1,20 +1,20 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Array as Arr, DateTime } from 'effect'
-import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   ExerciseConcept,
   PlannedWorkout,
   StrongLifts5x5,
   TrainingPlanDefinition,
-} from 'lifting-core-js'
+} from '@wildflowerhealthio/lifting-core-js'
 import {
   made,
   startingLoadsAtFloorOf,
   SUBJECT,
   trainingPlanDefinitionArb,
-} from 'lifting-core-js/test-helpers'
+} from '@wildflowerhealthio/lifting-core-js/test-helpers'
+import { Array as Arr, DateTime } from 'effect'
+import * as fc from 'fast-check'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { afterWorkout, plannedWorkoutOf, startedLifterRecord } from '../lifting.test-helpers.ts'

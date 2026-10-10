@@ -1,7 +1,7 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { buildStepUpTarget } from 'gatekeeper-react'
+import { buildStepUpTarget } from '@wildflowerhealthio/gatekeeper-react'
+import { AuthorizationFailure } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
-import { AuthorizationFailure } from 'scopes-react'
 
 interface ScopeErrorSurfaceProps {
   /** The scopes the caller lacks, from the `403 InsufficientScope` body. */

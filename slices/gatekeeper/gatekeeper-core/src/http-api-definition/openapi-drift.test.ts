@@ -13,7 +13,7 @@
  *   UPDATE_OPENAPI=1 cargo test -p gatekeeper-rust openapi_spec_snapshot_is_up_to_date
  */
 
-import { defineSpecDriftTest } from 'shared-structures-core/openapi-drift/testing'
+import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/openapi-drift/testing'
 import { GatekeeperApi } from './index.ts'
 
 defineSpecDriftTest({

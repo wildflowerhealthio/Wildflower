@@ -1,5 +1,5 @@
+import { Scope } from '@wildflowerhealthio/scopes-core'
 import type { JSX } from 'react'
-import { Scope } from 'scopes-core'
 
 import type { OAuthConsentResource } from '../../queries/index.ts'
 import styles from './registration-warning.module.css'

@@ -1,9 +1,13 @@
+import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FormatDecode,
+  DecodedFile,
+  StagedImport,
+} from '@wildflowerhealthio/importer-fundamentals'
+import { Chip } from '@wildflowerhealthio/react-tundraish'
 import { Option } from 'effect'
-import type { ServerComparison } from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
-import { type FormatDecode, DecodedFile, StagedImport } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
-import { Chip } from 'react-tundraish'
 
 import { describeResource, resourceTypeOf } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'

@@ -18,7 +18,7 @@
  * The core cross-partition logic lives here so adding a variant touches {@link ResourceVariant}
  * plus its `configuration`.
  *
- * Namespace + type combo (`import { Scope } from 'scopes-core'` → `Scope.MultiScope`).
+ * Namespace + type combo (`import { Scope } from '@wildflowerhealthio/scopes-core'` → `Scope.MultiScope`).
  */
 
 import { Array } from 'effect'

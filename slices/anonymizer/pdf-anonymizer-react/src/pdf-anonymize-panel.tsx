@@ -2,10 +2,10 @@ import {
   applySubstitutions,
   extractFrequentSubstrings,
   type SubstitutionRule,
-} from 'pdf-anonymizer-core'
-import type { Document } from 'positioned-text'
+} from '@wildflowerhealthio/pdf-anonymizer-core'
+import type { Document } from '@wildflowerhealthio/positioned-text'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { useCallback, useMemo, useState, type JSX } from 'react'
-import { cn } from 'react-kitchen-sink'
 
 import { anonymizedJsonFileName, downloadBlob, positionedTextBlob } from './download-json.ts'
 import { RulesEditor } from './rules-editor.tsx'

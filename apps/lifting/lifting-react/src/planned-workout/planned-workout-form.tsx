@@ -1,9 +1,13 @@
+import {
+  ExerciseRequest,
+  PlannedWorkout,
+  TrainingPlanDefinition,
+} from '@wildflowerhealthio/lifting-core-js'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Array as Arr, type DateTime, Option, Record as EffectRecord } from 'effect'
-import { ExerciseRequest, PlannedWorkout, TrainingPlanDefinition } from 'lifting-core-js'
 import type { JSX, SubmitEvent } from 'react'
 import { useId } from 'react'
-import { cn } from 'react-kitchen-sink'
-import { ErrorBanner } from 'react-tundraish'
 
 import { useFormState } from '../form/use-form-state.ts'
 import { type EnteredSetReps, setRepsAfterTap } from './entered-set-reps.ts'

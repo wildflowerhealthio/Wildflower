@@ -4,7 +4,7 @@ import {
   type MatchConfidence,
   scoreName,
   tokenize,
-} from 'medication-core'
+} from '@wildflowerhealthio/medication-core'
 
 import type { CatalogDrug, InteractionCatalog } from './ddinter.ts'
 

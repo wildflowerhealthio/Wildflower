@@ -1,5 +1,5 @@
-import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
-import type { SmartAppTelemetry } from 'smart-app-react'
+import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
  * The scopes the health viewer asks for, the same for an EHR launch and a
@@ -31,7 +31,7 @@ const HEALTH_VIEWER_SCOPE =
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/health-viewer/` and launches as the
  *   `health-viewer` tile's client, `474e103de61f9141c4b640d59bfa130e`.
- * - The **vite dev server** (`vp run -F health-viewer-web dev`, on the port
+ * - The **vite dev server** (`vp run -F @wildflowerhealthio/health-viewer-web dev`, on the port
  *   `dev-app-ports.json` pins) launches as the `health-viewer-dev`
  *   tile's client, `e7efc7c805f5f8f640bb3b3d48a2d7aa`.
  *

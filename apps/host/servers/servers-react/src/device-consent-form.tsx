@@ -1,8 +1,8 @@
+import { GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
+import { ScopePicker } from '@wildflowerhealthio/scopes-react'
+import { ConsentApproval, ConsentDetails } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
 import { type JSX, useMemo, useState } from 'react'
-import { GrantDraft, ScopeRequest } from 'scopes-core'
-import { ScopePicker } from 'scopes-react'
-import { ConsentApproval, ConsentDetails } from 'servers-core-js'
 
 import { ConsentFormLayout, type ConsentFormProps } from './consent-form-layout.tsx'
 

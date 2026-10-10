@@ -1,5 +1,5 @@
+import { sha256Base64 } from '@wildflowerhealthio/importer-fundamentals'
 import { Data, Effect, ParseResult, Schema } from 'effect'
-import { sha256Base64 } from 'importer-fundamentals'
 
 import * as Entry from './snapshot-entry.ts'
 import * as Header from './snapshot-header.ts'

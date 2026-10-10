@@ -1,9 +1,9 @@
-import type { CollectorDescriptor } from 'collector-fundamentals/model'
+import type { CollectorDescriptor } from '@wildflowerhealthio/collector-fundamentals/model'
+import { FhirR4CollectorDescriptor } from '@wildflowerhealthio/fhir-r4-client-collector'
+import { RexallCollectorDescriptor } from '@wildflowerhealthio/rexall-be-well-collector'
+import { ShoppersDrugMartCollectorDescriptor } from '@wildflowerhealthio/shoppers-drugmart-collector'
+import { WebTraceCollectorDescriptor } from '@wildflowerhealthio/web-trace-collector'
 import { Schema } from 'effect'
-import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
-import { RexallCollectorDescriptor } from 'rexall-be-well-collector'
-import { ShoppersDrugMartCollectorDescriptor } from 'shoppers-drugmart-collector'
-import { WebTraceCollectorDescriptor } from 'web-trace-collector'
 
 /**
  * The ordered, **closed, compile-time** list of every collector.

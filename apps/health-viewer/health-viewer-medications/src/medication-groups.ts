@@ -1,4 +1,4 @@
-import type { SeriesSource } from 'health-viewer-fundamentals'
+import type { SeriesSource } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 /** The one catalogue group every medication series is filed under. */
 const MEDICATIONS_GROUP = 'medications'

@@ -1,9 +1,9 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
-import type { CollectorHttpApiClient } from 'collector-registry/clients'
+import type { CollectorHttpApiClient } from '@wildflowerhealthio/collector-registry/clients'
+import { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
+import { type FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import { Effect, Layer, pipe } from 'effect'
-import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
-import { type FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 

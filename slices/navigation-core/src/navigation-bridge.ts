@@ -1,5 +1,5 @@
+import { Bridge } from '@wildflowerhealthio/effect-messaging-core'
 import { Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
 
 /**
  * Host → Web: the native host detected a back-navigation gesture (header chevron,

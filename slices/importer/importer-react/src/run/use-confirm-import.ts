@@ -2,15 +2,18 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Effect } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
-import { useRunAuthed } from 'fhir-r4-react'
-import { type FhirR4ResourcesHttpApiClient, persistBatchBundle } from 'fhir-r4/clients'
+import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import {
+  type FhirR4ResourcesHttpApiClient,
+  persistBatchBundle,
+} from '@wildflowerhealthio/fhir-r4/clients'
 import {
   type BatchDecodeResult,
   claimedFormats,
   type FormatKind,
   planFormatWrite,
-} from 'importer-core'
-import type { FormatDecode, StagedImport } from 'importer-fundamentals'
+} from '@wildflowerhealthio/importer-core'
+import type { FormatDecode, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {

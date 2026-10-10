@@ -1,5 +1,5 @@
+import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { pageLayoutStyles } from 'react-tundraish'
 
 import type { ErrorRouteComponent } from '@tanstack/react-router'
 import { TokenTimeoutRetry } from './token-timeout-retry.tsx'

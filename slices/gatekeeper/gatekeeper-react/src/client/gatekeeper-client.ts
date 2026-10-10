@@ -1,6 +1,6 @@
 import type { HttpClient } from '@effect/platform'
+import { GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
 import type { Layer } from 'effect'
-import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 
 /**
  * Union of services a `GatekeeperHttpApiClient` consumer needs in

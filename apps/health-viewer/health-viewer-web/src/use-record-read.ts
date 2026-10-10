@@ -1,13 +1,21 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Effect } from 'effect'
 import {
   fetchMedicationRequestPage,
   fetchObservationPage,
   type ResourcePage,
-} from 'fhir-r4-react/smart'
-import { type RecordReading, type RecordResources, readRecord } from 'health-viewer-core-js'
+} from '@wildflowerhealthio/fhir-r4-react/smart'
+import {
+  type RecordReading,
+  type RecordResources,
+  readRecord,
+} from '@wildflowerhealthio/health-viewer-core-js'
+import {
+  type PagedQueryStatus,
+  pagedQueryStatusOf,
+  useFetchEveryPage,
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Effect } from 'effect'
 import { useMemo } from 'react'
-import { type PagedQueryStatus, pagedQueryStatusOf, useFetchEveryPage } from 'react-kitchen-sink'
 
 import type { SmartClient } from './smart-client.ts'
 

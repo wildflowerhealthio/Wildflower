@@ -14,8 +14,8 @@ import { createRoot } from 'react-dom/client'
 // `data-color-scheme="dark"` on `<html>`, so there is no OS-scheme listener —
 // the palette never flips.
 import 'tundra-css'
-import 'react-tundraish/styles.css'
-import 'branding-react/styles.css'
+import '@wildflowerhealthio/react-tundraish/styles.css'
+import '@wildflowerhealthio/branding-react/styles.css'
 
 import { App } from './app.tsx'
 import './styles/fonts.ts'

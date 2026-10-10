@@ -1,10 +1,10 @@
-import { writeDicom } from 'dicom/test-helpers'
+import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
+import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { PickedFile } from 'importer-fundamentals'
-import { FormatDecode } from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {

@@ -1,9 +1,9 @@
-import type { DicomHeader } from 'dicom'
-import { dicomHeaderArb } from 'dicom/test-helpers'
+import type { DicomHeader } from '@wildflowerhealthio/dicom'
+import { dicomHeaderArb } from '@wildflowerhealthio/dicom/test-helpers'
+import type { ImagingStudy } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
-import type { ImagingStudy } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { DicomSettings } from '../settings.ts'

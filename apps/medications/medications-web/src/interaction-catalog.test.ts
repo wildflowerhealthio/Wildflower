@@ -1,4 +1,7 @@
-import { decodeDdinterFile, severityBetween } from 'medication-interaction-core-js'
+import {
+  decodeDdinterFile,
+  severityBetween,
+} from '@wildflowerhealthio/medication-interaction-core-js'
 import { describe, expect, test } from 'vite-plus/test'
 
 import ddinterData from './data/ddinter/ddinter.json'

@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import { SERVER_QUERY_PARAM } from 'gatekeeper-core/smart-client'
+import { SERVER_QUERY_PARAM } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { rootSearchOptions } from './__root.tsx'

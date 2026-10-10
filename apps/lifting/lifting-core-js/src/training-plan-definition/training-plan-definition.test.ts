@@ -1,8 +1,11 @@
+import {
+  WILDFLOWER_CANONICAL_BASE,
+  WildflowerCodeSystem,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { PlanDefinition } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array as Arr, DateTime, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { WILDFLOWER_CANONICAL_BASE, WildflowerCodeSystem } from 'fhir-r4/data-types'
-import { PlanDefinition } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as StrongLifts5x5 from '../plans/strong-lifts.ts'

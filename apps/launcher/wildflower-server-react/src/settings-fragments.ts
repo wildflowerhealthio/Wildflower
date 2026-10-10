@@ -1,4 +1,4 @@
-import type { SettingsItem } from 'shared-structures-react'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 
 /**
  * The Settings row for `/settings/server`.

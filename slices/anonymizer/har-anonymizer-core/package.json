@@ -1,5 +1,5 @@
 {
-  "name": "har-anonymizer-core",
+  "name": "@wildflowerhealthio/har-anonymizer-core",
   "version": "0.0.0",
   "private": true,
   "description": "The HAR engine of the anonymizer: the shape-preserving pseudonymizer that redacts a captured session at the export boundary — the redaction policy (enum carve-out, namespace URIs, per-path overrides), the HMAC-keyed value→pseudonym table, the shape detectors and fake generators, and the leaf walkers over both TraceExchange and HttpArchive entries. No DOM, no fs, no React.",
@@ -28,24 +28,24 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/anonymizer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
     "ajv": "catalog:",
-    "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "har-schema": "catalog:",
-    "http-archive": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "anonymizer-fundamentals": "workspace:*",
-    "effect": "catalog:",
-    "http-archive": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "@wildflowerhealthio/anonymizer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
+    "effect": "catalog:"
   }
 }

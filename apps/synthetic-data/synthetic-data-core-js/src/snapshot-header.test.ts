@@ -1,10 +1,10 @@
+import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Array as Arr, DateTime, Either, Order, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { asOfArbitrary } from 'synthetic-data-fundamentals/test-helpers'
+import { asOfArbitrary } from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
 import * as Entry from './snapshot-entry.ts'
 import * as Header from './snapshot-header.ts'
 

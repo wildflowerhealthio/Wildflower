@@ -135,7 +135,7 @@ clients to it.
 ## Running locally
 
 ```bash
-vp run -F health-viewer-web dev     # strictPort, from dev-app-ports.json
+vp run -F @wildflowerhealthio/health-viewer-web dev     # strictPort, from dev-app-ports.json
 ```
 
 **Standalone**: open the printed `http://localhost:<port>/`, pick a server on the

@@ -1,6 +1,6 @@
-import type { CollectorBridge } from 'collector-fundamentals/bridge'
+import type { CollectorBridge } from '@wildflowerhealthio/collector-fundamentals/bridge'
+import type { Message } from '@wildflowerhealthio/effect-messaging-core'
 import type { Effect } from 'effect'
-import type { Message } from 'effect-messaging-core'
 import { createContext } from 'react'
 
 /**

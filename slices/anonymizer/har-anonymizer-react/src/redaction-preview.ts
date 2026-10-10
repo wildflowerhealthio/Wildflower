@@ -1,4 +1,3 @@
-import { Effect } from 'effect'
 import {
   buildPolicyForLog,
   isJsonEntry,
@@ -9,8 +8,9 @@ import {
   redactLog,
   type RedactionError,
   type RedactionOptions,
-} from 'har-anonymizer-core'
-import type { HttpArchive } from 'http-archive'
+} from '@wildflowerhealthio/har-anonymizer-core'
+import type { HttpArchive } from '@wildflowerhealthio/http-archive'
+import { Effect } from 'effect'
 
 /**
  * The before → after the anonymize preview renders, taken from the

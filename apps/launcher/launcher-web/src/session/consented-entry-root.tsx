@@ -1,11 +1,11 @@
-import type { TelemetryConsentCopy } from 'branding-core'
-import { Suspense, use, useRef, useState, type JSX, type ReactNode } from 'react'
+import type { TelemetryConsentCopy } from '@wildflowerhealthio/branding-core'
 import {
   CrashReportingBoundary,
   TelemetryConsentGate,
   type TelemetryConsentGateProps,
   useConsentedTelemetryStart,
-} from 'telemetry-react'
+} from '@wildflowerhealthio/telemetry-react'
+import { Suspense, use, useRef, useState, type JSX, type ReactNode } from 'react'
 
 import type { RouterContext } from '../router-context.ts'
 

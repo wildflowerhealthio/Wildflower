@@ -1,10 +1,10 @@
-import { DataElement, Part10 } from 'dicom'
-import { dicomImporter } from 'dicom-importer-core'
+import { DataElement, Part10 } from '@wildflowerhealthio/dicom'
+import { dicomImporter } from '@wildflowerhealthio/dicom-importer-core'
+import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResource, withSubject } from '@wildflowerhealthio/fhir-r4/resources'
+import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'
+import { Person, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'
 import { Data, DateTime, Effect, Either, type ParseResult } from 'effect'
-import type { ReferenceType } from 'fhir-r4/data-types'
-import { type FhirResource, withSubject } from 'fhir-r4/resources'
-import * as Seeding from 'synthetic-data-fundamentals/seeding'
-import { Person, StoryDay } from 'synthetic-data-fundamentals/story'
 
 /**
  * The DICOM generator: a real, already de-identified image re-identified as a

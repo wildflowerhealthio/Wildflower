@@ -1,11 +1,11 @@
-import { type Brand, type Either, Option, type ParseResult, pipe, Schema } from 'effect'
 import {
   CodeableConcept,
   Code,
   Coding,
   narrowFields,
   WildflowerCodeSystem,
-} from 'fhir-r4/data-types'
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { type Brand, type Either, Option, type ParseResult, pipe, Schema } from 'effect'
 
 import { checkArrayHasOneMatchingElement } from '../internal/check-array-has-one-matching-element.ts'
 import { guaranteed } from '../internal/guaranteed.ts'

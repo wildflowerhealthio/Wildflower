@@ -1,9 +1,9 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from '@wildflowerhealthio/collector-fundamentals/test-helpers'
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
+import { traceResourceId } from '@wildflowerhealthio/web-trace-core'
 import { Arbitrary, Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import { traceResourceId } from 'web-trace-core'
 
 import {
   DEFAULT_BODY_CONTENT_TYPES,

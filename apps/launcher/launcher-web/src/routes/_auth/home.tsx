@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
-import { pageLayoutStyles } from 'react-tundraish'
 
 /**
  * Apps landing layout. Wraps the apps-slice landing screen in the

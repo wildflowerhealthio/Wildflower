@@ -1,5 +1,5 @@
-import type { RunAuthed } from 'fhir-r4-react'
-import { IdentifierAndReference } from 'fhir-r4/data-types'
+import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 
 import type { SmartClient } from '../smart-client.ts'
 

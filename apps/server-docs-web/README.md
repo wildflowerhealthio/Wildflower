@@ -187,7 +187,7 @@ URL, which is what the fhirclient-based apps (`apps/medications/medications-web`
 `apps/importer-web`) have always done. One build
 therefore signs in from the published site, from a PR preview under
 `https://wildflowerhealthio.github.io/staging/pr-<n>/server-docs/`,
-and from `vp run -F server-docs-web dev`, with nothing to keep in step.
+and from `vp run -F @wildflowerhealthio/server-docs-web dev`, with nothing to keep in step.
 
 `/oauth/authorize` still matches `redirect_uri` by exact string equality, and
 the seed carries only the published URL. The other addresses are **not**
@@ -232,7 +232,7 @@ there is no proxy — so they are cross-origin and subject to the browser's rule
   mixed content. Chromium and Safari treat `http://127.0.0.1` as a
   potentially-trustworthy origin and allow it; other browsers may block it. When
   a request fails with no response at all, that is the likely cause — run the
-  console from `vp run -F server-docs-web dev` (an `http://localhost`
+  console from `vp run -F @wildflowerhealthio/server-docs-web dev` (an `http://localhost`
   origin) or point it at the server's public tunnel origin instead.
 - The server also gates on a loopback peer address: a forwarded request only
   passes through the tunnel relay. Pointing this console at a device's loopback
@@ -241,8 +241,8 @@ there is no proxy — so they are cross-origin and subject to the browser's rule
 ## Development
 
 ```bash
-vp run -F server-docs-web dev     # local dev server
-vp run -F server-docs-web build   # bundle into dist/
+vp run -F @wildflowerhealthio/server-docs-web dev     # local dev server
+vp run -F @wildflowerhealthio/server-docs-web build   # bundle into dist/
 vp test                                  # unit tests for the parsing/transforms
 ```
 

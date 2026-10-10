@@ -85,7 +85,7 @@ catalog onto it.
   `CodeableConcept` / `Reference`; `contained` holds raw wire JSON, so an entry
   goes through the full `Medication.Schema`. And `vp pack` is the
   gate for the TS2883 dts trap, not `vp check` — when the adapter's inferred
-  types change, run `vp run -F medication-core build`.
+  types change, run `vp run -F @wildflowerhealthio/medication-core build`.
 - **The adapter is dialect-free, and stored data is not read around.** A
   resource in a pharmacy's pre-promotion shape — a vendor-only DIN coding, the
   carebook description extension, the store as `external-*` extensions or a

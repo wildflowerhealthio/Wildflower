@@ -1,12 +1,16 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { type CatalogGroup, type CatalogRow, matchesSearch } from 'health-viewer-core-js'
-import { type Series, ValueAxis } from 'health-viewer-fundamentals'
+import {
+  type CatalogGroup,
+  type CatalogRow,
+  matchesSearch,
+} from '@wildflowerhealthio/health-viewer-core-js'
+import { type Series, ValueAxis } from '@wildflowerhealthio/health-viewer-fundamentals'
 
 import { SeriesPanel } from './series-panel.tsx'
 

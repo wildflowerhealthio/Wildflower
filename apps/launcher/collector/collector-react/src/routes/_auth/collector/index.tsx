@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { descriptors, listSubtitleForConfig } from 'collector-registry/registry'
-import { useState, type JSX } from 'react'
-import { cn, unwrapCause } from 'react-kitchen-sink'
+import { descriptors, listSubtitleForConfig } from '@wildflowerhealthio/collector-registry/registry'
+import { cn, unwrapCause } from '@wildflowerhealthio/react-kitchen-sink'
 import {
   AsyncErrorView,
   Dialog,
@@ -10,7 +9,8 @@ import {
   Menu,
   PageHeader,
   type MenuItem,
-} from 'react-tundraish'
+} from '@wildflowerhealthio/react-tundraish'
+import { useState, type JSX } from 'react'
 
 import { formatInstant } from '../../../format-date.ts'
 import {

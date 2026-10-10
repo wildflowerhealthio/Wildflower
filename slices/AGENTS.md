@@ -17,6 +17,8 @@ slices/<name>/
 └── <name>-web             # Browser (non-React) adapter — currently only telemetry
 ```
 
+Each npm package is named `@wildflowerhealthio/<folder>` (`@wildflowerhealthio/fhir-r4-react`); everything else, prose included, uses the unscoped folder name.
+
 Slices may also carry slice-specific packages (e.g. `fhir-r4` / `fhir-r4-react` under `fhir`, the `*-source` packages under `http-extraction`).
 
 A slice of one package is not a folder: the package sits directly in `slices/`, as `slices/<package>/`, and keeps its own name and layer suffix. Its AGENTS.md (if any) is the package's. When a second package joins it, it becomes a `slices/<name>/` folder again.

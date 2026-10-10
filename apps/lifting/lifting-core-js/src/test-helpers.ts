@@ -1,3 +1,4 @@
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 /**
  * fast-check arbitraries and helpers that build lifting resources through
  * the `make`s, for this package's tests and, through the
@@ -7,7 +8,6 @@
  */
 import { Array as Arr, DateTime, Either, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { IdentifierAndReference } from 'fhir-r4/data-types'
 
 import * as ExerciseRequest from './exercise-request/exercise-request.ts'
 import * as ExerciseSetObservation from './exercise-set-observation/exercise-set-observation.ts'

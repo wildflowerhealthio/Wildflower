@@ -1,8 +1,12 @@
+import { type ExerciseRequest, PlannedWorkout } from '@wildflowerhealthio/lifting-core-js'
+import {
+  PlannedWorkoutView,
+  SubmittedWorkoutView,
+  type WorkoutSubmission,
+} from '@wildflowerhealthio/lifting-react'
+import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Array as Arr, Either, Option } from 'effect'
-import { type ExerciseRequest, PlannedWorkout } from 'lifting-core-js'
-import { PlannedWorkoutView, SubmittedWorkoutView, type WorkoutSubmission } from 'lifting-react'
 import { type JSX, useMemo, useState } from 'react'
-import { ErrorBanner } from 'react-tundraish'
 
 import { now } from '../clock.ts'
 import { workoutIdMinter } from '../ids/workout-id-minter.ts'

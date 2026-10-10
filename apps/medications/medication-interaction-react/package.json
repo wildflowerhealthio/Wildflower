@@ -1,5 +1,5 @@
 {
-  "name": "medication-interaction-react",
+  "name": "@wildflowerhealthio/medication-interaction-react",
   "version": "0.0.0",
   "private": true,
   "description": "Browser UI for the medication-interaction slice: the three-group interactions view (between the patient's medications, with non-drugs, with common OTC actives) with severity badges and DDInter links.",
@@ -23,25 +23,25 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/medication-interaction-core-js": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "medication-core": "workspace:*",
-    "medication-interaction-core-js": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "medication-core": "workspace:*",
-    "medication-interaction-core-js": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*",
-    "react-tundraish": "workspace:*"
+    "@wildflowerhealthio/medication-core": "workspace:*",
+    "@wildflowerhealthio/medication-interaction-core-js": "workspace:*",
+    "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "react": "catalog:"
   }
 }

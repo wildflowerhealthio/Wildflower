@@ -1,6 +1,6 @@
 import type { Schema } from 'effect'
 
-import { Bundle } from 'fhir-r4/data-types'
+import { Bundle } from '@wildflowerhealthio/fhir-r4/data-types'
 
 /**
  * A generic STU3 searchset Bundle. The STU3 searchset wire shape

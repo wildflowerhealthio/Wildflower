@@ -1,4 +1,3 @@
-import { Layer } from 'effect'
 import {
   isTelemetryEnabled,
   makeEffectTracerLayer,
@@ -6,7 +5,8 @@ import {
   type TelemetryConfig,
   type TelemetryConsent,
   telemetryConfigFor,
-} from 'telemetry-core'
+} from '@wildflowerhealthio/telemetry-core'
+import { Layer } from 'effect'
 import { initWebTelemetry } from './layer.ts'
 import { type InitSentryWebOptions, Sentry } from './sentry.ts'
 

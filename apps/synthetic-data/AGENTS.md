@@ -26,17 +26,17 @@ importer output, and the browser layer that loads a published snapshot.
     `effect`-style namespaces — `Story`, `Person`, `Prescription`,
     `DrugProduct`, `LabDraw`, and `StoryDay` (days relative to the as-of
     date, and `instantOn` for the time of day an event happens).
-    `import { Prescription, StoryDay } from 'synthetic-data-fundamentals/story'`.
+    `import { Prescription, StoryDay } from '@wildflowerhealthio/synthetic-data-fundamentals/story'`.
   - **Deterministic values** — `synthetic-data-fundamentals/seeding`: ids and
     numbers hashed from the keys naming what they belong to, with
     `kitchen-sink`'s `fnv1a64` and `fmix64` over `fhir-r4`'s
     `joinIdComponents`.
-    `import * as Seeding from 'synthetic-data-fundamentals/seeding'`.
+    `import * as Seeding from '@wildflowerhealthio/synthetic-data-fundamentals/seeding'`.
   - **Chrome capture defaults** — `synthetic-data-fundamentals/chrome-har`:
     the synthetic defaults a generated Chrome DevTools capture's entries are
     written with; the format, the DevTools vocabulary and the page and archive
     builders are `http-archive`'s.
-    `import * as ChromeHar from 'synthetic-data-fundamentals/chrome-har'`.
+    `import * as ChromeHar from '@wildflowerhealthio/synthetic-data-fundamentals/chrome-har'`.
 
   Its `./test-helpers` subpath holds the fast-check arbitraries every
   generator's tests draw stories from. See its

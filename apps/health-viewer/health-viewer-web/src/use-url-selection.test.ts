@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
-import { SERIES_PARAM, decodeSelection } from 'health-viewer-core-js'
+import { SERIES_PARAM, decodeSelection } from '@wildflowerhealthio/health-viewer-core-js'
 import { beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import { useUrlSelection } from './use-url-selection.ts'

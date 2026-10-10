@@ -1,6 +1,6 @@
+import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
-import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as HttpResponseKind from './http-response-kind.ts'

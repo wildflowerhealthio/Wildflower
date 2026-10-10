@@ -1,4 +1,11 @@
 import {
+  IdentifierAndReference,
+  narrowFields,
+  Period,
+  withMandatoryId,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
+import {
   Array as Arr,
   type Brand,
   DateTime,
@@ -8,8 +15,6 @@ import {
   type ParseResult,
   Schema,
 } from 'effect'
-import { IdentifierAndReference, narrowFields, Period, withMandatoryId } from 'fhir-r4/data-types'
-import { Observation } from 'fhir-r4/resources'
 
 // Type-only: a set is made from its `ExerciseRequest` and its workout, but
 // both modules read sets at runtime, so importing them back would be a cycle.

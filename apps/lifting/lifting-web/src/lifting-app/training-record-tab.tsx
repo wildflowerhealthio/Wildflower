@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import { LoadingLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
 import { Effect } from 'effect'
-import type { RunAuthed } from 'fhir-r4-react'
 import { type JSX, useMemo } from 'react'
-import { LoadingLine, ReadFailureLine } from 'smart-app-react'
 
 import { TrainingRecordNotices } from '../record/training-record-notices.tsx'
 import { readTrainingRecord } from '../record/training-record.ts'

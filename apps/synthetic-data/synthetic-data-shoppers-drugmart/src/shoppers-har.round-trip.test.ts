@@ -1,9 +1,11 @@
-import { DateTime, Effect } from 'effect'
-import * as fc from 'fast-check'
-import type { FhirResource, MedicationDispense, Patient } from 'fhir-r4/resources'
-import { defaultHarSettings, harImporter } from 'har-importer-core'
-import type { PickedFile } from 'importer-fundamentals'
-import { numRunsFor } from 'kitchen-sink/test'
+import type {
+  FhirResource,
+  MedicationDispense,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { defaultHarSettings, harImporter } from '@wildflowerhealthio/har-importer-core'
+import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   dinOf,
   displayNameOf,
@@ -12,9 +14,14 @@ import {
   repeatsAllowedOf,
   repeatsAvailableOf,
   type MedicationRequestWithId,
-} from 'medication-core/fhir'
-import { ShoppersIdentifierSystem } from 'shoppers-drugmart-source'
-import { asOfArbitrary, type ExpectedPrescription } from 'synthetic-data-fundamentals/test-helpers'
+} from '@wildflowerhealthio/medication-core/fhir'
+import { ShoppersIdentifierSystem } from '@wildflowerhealthio/shoppers-drugmart-source'
+import {
+  asOfArbitrary,
+  type ExpectedPrescription,
+} from '@wildflowerhealthio/synthetic-data-fundamentals/test-helpers'
+import { DateTime, Effect } from 'effect'
+import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { shoppersPatientReferenceOf } from './shoppers-account.ts'

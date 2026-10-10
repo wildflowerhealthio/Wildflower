@@ -5,15 +5,19 @@ import {
   APP_SECTION_IDS,
   TELEMETRY_CONSENT_COPY,
   type AppSectionId,
-} from 'branding-core'
+} from '@wildflowerhealthio/branding-core'
+import { type TelemetryConsent, writeConsent } from '@wildflowerhealthio/telemetry-core'
+import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 import { StrictMode, type JSX } from 'react'
-import { type TelemetryConsent, writeConsent } from 'telemetry-core'
-import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { decodeLaunchError, encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
+import {
+  decodeLaunchError,
+  encodeLaunchError,
+  useSmartHandshake,
+} from '@wildflowerhealthio/fhir-r4-react/smart'
 
 import type * as AuthorizeFromLaunchPage from './authorize-from-launch-page.ts'
 import type { ConnectMenuProps } from './connect-menu.tsx'
@@ -38,7 +42,7 @@ const { initConsentedTelemetryMock, setFhirServerHostMock, captureExceptionMock 
     ),
   })
 )
-vi.mock('telemetry-web', async (importOriginal) => {
+vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => {
   const actual = await importOriginal<typeof TelemetryWeb>()
   return {
     ...actual,

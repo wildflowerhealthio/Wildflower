@@ -1,5 +1,5 @@
+import { Bridge } from '@wildflowerhealthio/effect-messaging-core'
 import { Schema } from 'effect'
-import { Bridge } from 'effect-messaging-core'
 
 /**
  * The HAR Recorder's save channel: the SPA builds the archive, the host writes

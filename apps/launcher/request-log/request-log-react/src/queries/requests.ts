@@ -11,9 +11,9 @@ import {
   type UseQueryOptions,
   type UseQueryResult,
 } from '@tanstack/react-query'
+import { RequestLogHttpApiClient } from '@wildflowerhealthio/request-log-core-js/clients'
+import type { RequestLog } from '@wildflowerhealthio/request-log-core-js/http-api-definition'
 import { Effect, type Layer, Option, type Schema } from 'effect'
-import { RequestLogHttpApiClient } from 'request-log-core-js/clients'
-import type { RequestLog } from 'request-log-core-js/http-api-definition'
 
 import { buildRequestLogClientLayer } from '../client/request-log-client.ts'
 import type { RunAuthed, RuntimeLayer } from '../router-context.ts'

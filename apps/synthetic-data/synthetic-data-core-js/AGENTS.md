@@ -12,7 +12,7 @@ pharmacy or importer: it lays out importer output. No DOM, no `fs`, no React
 ## Shape
 
 The root entry exports two namespaces:
-`import { Snapshot, SnapshotFile } from 'synthetic-data-core-js'`. `Snapshot`
+`import { Snapshot, SnapshotFile } from '@wildflowerhealthio/synthetic-data-core-js'`. `Snapshot`
 nests `Snapshot.Entry`, `Snapshot.Header`, `Snapshot.Layout`,
 `Snapshot.Reader` and `Snapshot.WriteOrder`. Each module is a namespace in the
 `effect` style: the file is the noun, the principal type shares the

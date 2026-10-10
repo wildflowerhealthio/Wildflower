@@ -77,7 +77,7 @@ unless it requests exactly them and launches as both clients.
 ## Running locally
 
 ```bash
-vp run -F synthetic-data-web dev     # strictPort, from dev-app-ports.json
+vp run -F @wildflowerhealthio/synthetic-data-web dev     # strictPort, from dev-app-ports.json
 ```
 
 Open the printed `http://localhost:5198/`, connect to a FHIR server (a

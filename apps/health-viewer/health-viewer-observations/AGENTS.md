@@ -56,7 +56,7 @@ here; the chart math it feeds lives in `health-viewer-fundamentals`.
   form is a string — so the reader reads the resource as `unknown` through a
   permissive local schema that accepts both shapes. And `vp pack` (not
   `vp check`) is the gate for the TS2883 dts trap: run
-  `vp run -F health-viewer-observations build` when the reader's inferred
+  `vp run -F @wildflowerhealthio/health-viewer-observations build` when the reader's inferred
   types change.
 
 ## References

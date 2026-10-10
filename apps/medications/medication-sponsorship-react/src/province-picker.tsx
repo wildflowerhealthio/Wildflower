@@ -5,7 +5,7 @@ import {
   type Province,
   provinceCodes,
   provinceNames,
-} from 'medication-sponsorship-core-js'
+} from '@wildflowerhealthio/medication-sponsorship-core-js'
 
 import styles from './province-picker.module.css'
 

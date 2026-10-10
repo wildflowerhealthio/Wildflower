@@ -1,8 +1,8 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import type { Query } from '@tanstack/react-query'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Layer } from 'effect'
 import fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 import {

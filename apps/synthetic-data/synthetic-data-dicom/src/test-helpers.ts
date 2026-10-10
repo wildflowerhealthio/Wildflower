@@ -16,7 +16,7 @@ import {
   headerToTagMap,
   withElementsSpliced,
   writeDicom,
-} from 'dicom/test-helpers'
+} from '@wildflowerhealthio/dicom/test-helpers'
 import * as fc from 'fast-check'
 
 const SOURCE_FRAME_OF_REFERENCE_UID = '1.3.6.1.4.1.14519.5.2.1.99.2'

@@ -1,21 +1,21 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createBrowserHistory, RouterProvider, type RouterHistory } from '@tanstack/react-router'
-import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
-import { type Context, Effect, type Layer } from 'effect'
-import { useEffect, useState, type JSX } from 'react'
+import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import {
   enableBackgroundSessionRecovery,
   type BackgroundServiceStartConfig,
   TauriInvoke,
-} from 'servers-core-js'
-import type { ConsentStorage } from 'telemetry-core'
+} from '@wildflowerhealthio/servers-core-js'
+import type { ConsentStorage } from '@wildflowerhealthio/telemetry-core'
 import {
   CrashReportingBoundary,
   TelemetryConsentGate,
   useConsentedTelemetryStart,
-} from 'telemetry-react'
-import { Sentry } from 'telemetry-web'
+} from '@wildflowerhealthio/telemetry-react'
+import { Sentry } from '@wildflowerhealthio/telemetry-web'
+import { type Context, Effect, type Layer } from 'effect'
+import { useEffect, useState, type JSX } from 'react'
 
 import { makeEmptyPendingLaunches } from './pending-launches.ts'
 import { type ListenToHostEvent, runHostCommandWith, runHttpRequestWith } from './router-context.ts'

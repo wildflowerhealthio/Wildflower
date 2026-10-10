@@ -1,5 +1,5 @@
 {
-  "name": "pdf-anonymizer-core",
+  "name": "@wildflowerhealthio/pdf-anonymizer-core",
   "version": "0.0.0",
   "private": true,
   "description": "The PDF engine of the anonymizer: literal-substring substitution with class-preserving same-length masking over a Document.Type (the schema lives in the positioned-text package), frequent-substring suggestions, and the anonymized-JSON file-name helper. No DOM, no fs, no React.",
@@ -28,17 +28,17 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/positioned-text": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "positioned-text": "workspace:*"
+    "@wildflowerhealthio/positioned-text": "workspace:*",
+    "effect": "catalog:"
   }
 }

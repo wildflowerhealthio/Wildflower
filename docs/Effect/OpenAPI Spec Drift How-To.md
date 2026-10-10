@@ -73,7 +73,7 @@ In `slices/<slice>/<slice>-core`, add `shared-structures-core` to
 `openapi-drift` so CI's `vp test openapi-drift` matches it):
 
 ```ts
-import { defineSpecDriftTest } from 'shared-structures-core/openapi-drift/testing'
+import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/openapi-drift/testing'
 import { MyApi } from './index.ts'
 
 defineSpecDriftTest({

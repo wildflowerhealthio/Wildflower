@@ -1,8 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { TELEMETRY_CONSENT_COPY, WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from 'branding-core'
+import {
+  TELEMETRY_CONSENT_COPY,
+  WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
+} from '@wildflowerhealthio/branding-core'
+import { ItemList } from '@wildflowerhealthio/react-tundraish'
+import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { StrictMode, type JSX, type ReactNode } from 'react'
-import { ItemList } from 'react-tundraish'
-import type * as TelemetryWeb from 'telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ConsentedEntryRoot, type ConsentedEntryRootProps } from './consented-entry-root.tsx'
@@ -29,7 +32,7 @@ const { initConsentedTelemetryMock, captureExceptionMock } = vi.hoisted(() => ({
   initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
   captureExceptionMock: vi.fn<(exception: unknown, hint?: CaptureHint) => string>(() => 'event-id'),
 }))
-vi.mock('telemetry-web', async (importOriginal) => ({
+vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: initConsentedTelemetryMock,
   Sentry: { captureException: captureExceptionMock },

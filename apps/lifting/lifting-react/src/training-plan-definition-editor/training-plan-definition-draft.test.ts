@@ -1,4 +1,4 @@
-import { StrongLifts5x5 } from 'lifting-core-js'
+import { StrongLifts5x5 } from '@wildflowerhealthio/lifting-core-js'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {

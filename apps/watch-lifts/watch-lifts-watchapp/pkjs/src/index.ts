@@ -4,7 +4,7 @@
 // response means and the message the watch receives are watch-lifts-core-js's;
 // this is the glue to Pebble's events, AppMessage and localStorage.
 
-import { PhoneSettings } from 'watch-lifts-core-js/pkjs'
+import { PhoneSettings } from '@wildflowerhealthio/watch-lifts-core-js/pkjs'
 
 const CONFIGURATION_URL = 'https://wildflowerhealth.io/watch-lifts/'
 

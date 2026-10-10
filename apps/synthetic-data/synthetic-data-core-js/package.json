@@ -1,5 +1,5 @@
 {
-  "name": "synthetic-data-core-js",
+  "name": "@wildflowerhealthio/synthetic-data-core-js",
   "version": "0.0.0",
   "private": true,
   "description": "The synthetic data snapshot assembler: importer output as a Snapshot of a FHIR store — a header (index.json: as-of, generator, members, totals) and entries, one per resource (fhir/<ResourceType>/<id>.json) and one per source file an importer read (har/ or dicom/, linked from its DocumentReference), each with a Schema codec to the file a static host serves it as — the reader that fetches them back, checked, into the resources the import wrote, and the reference order a reader writes those resources to a FHIR server in. Pure — no DOM, no fs, no React.",
@@ -32,27 +32,27 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-dicom": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-rexall-be-well": "workspace:*",
+    "@wildflowerhealthio/synthetic-data-shoppers-drugmart": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "har-importer-core": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "synthetic-data-dicom": "workspace:*",
-    "synthetic-data-fundamentals": "workspace:*",
-    "synthetic-data-rexall-be-well": "workspace:*",
-    "synthetic-data-shoppers-drugmart": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "dicom-importer-core": "workspace:*",
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "har-importer-core": "workspace:*",
-    "importer-fundamentals": "workspace:*"
+    "@wildflowerhealthio/dicom-importer-core": "workspace:*",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/har-importer-core": "workspace:*",
+    "@wildflowerhealthio/importer-fundamentals": "workspace:*",
+    "effect": "catalog:"
   }
 }

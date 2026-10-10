@@ -1,5 +1,5 @@
 {
-  "name": "shoppers-drugmart-source",
+  "name": "@wildflowerhealthio/shoppers-drugmart-source",
   "version": "0.0.0",
   "private": true,
   "description": "The Shoppers Drug Mart source: Customer / Prescription / PrescriptionHistory response kinds that synthesize FHIR R4 Patient / MedicationRequest / MedicationDispense from the portal's bespoke JSON, each with its own tryRecognize, the assembled shoppersDrugMartSource descriptor consumers extract with, and the portal JSON's schemas, API URLs and identifier catalogue for a producer to spell it from. No DOM, no fs, no React.",
@@ -28,20 +28,20 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:"
   }
 }

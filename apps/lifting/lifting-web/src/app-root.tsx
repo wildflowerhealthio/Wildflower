@@ -1,5 +1,5 @@
+import { SmartAppRoot } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
-import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
 import { smartAppTelemetry, smartRegistration } from './config.ts'
