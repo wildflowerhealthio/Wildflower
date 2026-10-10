@@ -173,15 +173,16 @@ minutes later, which is exactly the outcome that holds today without it.
 The certificates and profiles are stored per channel, in GitHub Actions
 environments, rather than as repository secrets:
 
-| Environment            | Secrets                                                                                                                                    | Variables                                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| `apple-ios`            | `IOS_CERTIFICATE`, `IOS_CERTIFICATE_PASSWORD`                                                                                              | `IOS_PROVISIONING_PROFILE`                                                                          |
-| `apple-macos-appstore` | `MACOS_APPSTORE_CERTIFICATE`, `MACOS_APPSTORE_CERTIFICATE_PASSWORD`, `MACOS_INSTALLER_CERTIFICATE`, `MACOS_INSTALLER_CERTIFICATE_PASSWORD` | `MACOS_APPSTORE_SIGNING_IDENTITY`, `MACOS_INSTALLER_SIGNING_IDENTITY`, `MACOS_PROVISIONING_PROFILE` |
-| `apple-macos-direct`   | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`                                                                                          | `APPLE_SIGNING_IDENTITY`                                                                            |
+| Environment            | Declared by                           | Secrets                                                                                                                                    | Variables                                                                                           |
+| ---------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `apple-ios`            | `build-ios`                           | `IOS_CERTIFICATE`, `IOS_CERTIFICATE_PASSWORD`                                                                                              | `IOS_PROVISIONING_PROFILE`                                                                          |
+| `apple-macos-appstore` | `build-macos-testflight`              | `MACOS_APPSTORE_CERTIFICATE`, `MACOS_APPSTORE_CERTIFICATE_PASSWORD`, `MACOS_INSTALLER_CERTIFICATE`, `MACOS_INSTALLER_CERTIFICATE_PASSWORD` | `MACOS_APPSTORE_SIGNING_IDENTITY`, `MACOS_INSTALLER_SIGNING_IDENTITY`, `MACOS_PROVISIONING_PROFILE` |
+| `apple-macos-direct`   | `build`, for the `macos` matrix entry | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`                                                                                          | `APPLE_SIGNING_IDENTITY`                                                                            |
 
 Each holds the names the workflow and the preflights read. Only a job that
 declares an environment can see it, so a channel's `.p12` reaches only the job
-that signs with it. An environment secret or variable takes precedence over a
+that signs with it. The `build` job's matrix carries the environment per
+entry, and the Windows and Linux entries name none. An environment secret or variable takes precedence over a
 repository one of the same name, which keeps the repository-level copies
 working as a fallback until the first release has run on the environments;
 they are then deleted by hand with `gh secret delete <name>` and `gh variable
