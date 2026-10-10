@@ -38,9 +38,7 @@
   },
   "plugins": {
     "background-service": {
-      "androidForegroundServiceTypes": [
-        "specialUse"
-      ],
+      "androidForegroundServiceTypes": ["specialUse"],
       "iosRequiresNetworkConnectivity": true
     }
   }
