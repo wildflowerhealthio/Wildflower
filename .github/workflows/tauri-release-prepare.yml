@@ -194,10 +194,16 @@ jobs:
           prev_tag="$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)"
           notes="$(mktemp)"
           if [[ -n "$prev_tag" ]]; then
-            git log "$prev_tag..HEAD" --no-merges --pretty=format:'- %s (%h)' > "$notes"
+            range="$prev_tag..HEAD"
           else
-            git log HEAD --no-merges --pretty=format:'- %s (%h)' > "$notes"
+            range='HEAD'
           fi
+          # Subjects are markdown here, so a `<` outside a code span becomes
+          # `\<`. Otherwise a subject like `servers/<domain>/` reads as an
+          # inline HTML tag: markdownlint fails it (MD033) and GitHub drops it
+          # from the release PR body and the release notes.
+          git log "$range" --no-merges --pretty=format:'- %s (%h)' \
+            | perl -pe 's/(`[^`]*`)|</defined $1 ? $1 : "\\<"/ge' > "$notes"
           # A file with `-c core.autocrlf` off ends without a trailing newline
           # after `--pretty=format`; a trailing newline keeps the markdown
           # block well-formed.
@@ -244,8 +250,12 @@ jobs:
         run: |
           set -euo pipefail
           vp install
+          # Every file jq rewrote too: jq's layout isn't oxfmt's.
           vp fmt \
             apps/host/host-app/CHANGELOG.md \
+            apps/host/host-app/src-tauri/tauri.conf.json \
+            apps/watch-lifts/watch-lifts-watchapp/package.json \
+            apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json \
             apps/wildflower-site/marketing-site-web/public/versions.json
           vp run lint:docs
 
