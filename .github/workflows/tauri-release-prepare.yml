@@ -250,8 +250,12 @@ jobs:
         run: |
           set -euo pipefail
           vp install
+          # Every file jq rewrote too: jq's layout isn't oxfmt's.
           vp fmt \
             apps/host/host-app/CHANGELOG.md \
+            apps/host/host-app/src-tauri/tauri.conf.json \
+            apps/watch-lifts/watch-lifts-watchapp/package.json \
+            apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/package.json \
             apps/wildflower-site/marketing-site-web/public/versions.json
           vp run lint:docs
 
