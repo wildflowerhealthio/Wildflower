@@ -19,9 +19,14 @@ stores, and the packages beside it that only the host uses. The app itself is
   platform-neutral `unit-runner-rust`, which runs units under run policies, and
   [`tauri-unit-runner-rust`](./unit-runner/tauri-unit-runner-rust/AGENTS.md),
   its Tauri binding over `tauri-plugin-background-service`.
-- [`wildflower-server-rust`](./wildflower-server-rust/AGENTS.md) — the
-  Wildflower server the host runs: it composes the server slices' Rust crates
-  (gatekeeper, emr, OHIF, collector, request log, apps, databases) into one API.
+- [`wildflower-server/`](./wildflower-server/AGENTS.md) — the Wildflower
+  server the host runs,
+  [`wildflower-server-rust`](./wildflower-server/wildflower-server-rust/AGENTS.md),
+  which composes the server slices' Rust crates (gatekeeper, emr, OHIF,
+  collector, request log, apps, databases) into one API; beside it the crates
+  only the host composes: `collector-rust`, `databases-rust`,
+  `request-log-rust`, and the HAR Recorder's `har-recorder-rust` and
+  `har-recorder-tauri`.
 - [`shared-structures-tauri-rust`](./shared-structures-tauri-rust) — the host's
   Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)
@@ -30,8 +35,10 @@ stores, and the packages beside it that only the host uses. The app itself is
 ## Rules
 
 - **Only the host uses these.** A package lives here because the host is its
-  only consumer. Anything a second product needs moves back to `slices/` or
-  `global/` ([What folds in](../AGENTS.md#what-folds-in)).
+  only consumer; a crate in `wildflower-server/`, because the host is its only
+  Rust consumer, its TypeScript half living with the launcher. Anything a
+  second product needs moves back to `slices/` or `global/`
+  ([What folds in](../AGENTS.md#what-folds-in)).
 - **One exception reads across.** `slices/browser-sniffer/browser-sniffer-tauri-rust`
   depends on `tauri-plugin-native-webview`; the plugin lives here with its only
   app.

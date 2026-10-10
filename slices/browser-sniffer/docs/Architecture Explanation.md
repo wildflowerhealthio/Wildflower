@@ -38,7 +38,7 @@ The slice rule says "slices should not depend on other slices unless intrinsic �
 
 ## Data flow in the wider system
 
-The sniffer is half of a two-bridge sync. The other half — `CollectorBridge` — lives in `slices/collector/collector-registry` and is added when the collector slice migrates. The flow once both are in place:
+The sniffer is half of a two-bridge sync. The other half — `CollectorBridge` — lives in `apps/launcher/collector/collector-registry` and is added when the collector slice migrates. The flow once both are in place:
 
 ```text
 [collector-react SPA, inside the main Tauri webview]
@@ -89,4 +89,4 @@ This places a constraint on the function: **no module-scope dependencies**. Ever
 - `browser-sniffer-tauri/src/install-sniffer.ts` — the shimming code.
 - `browser-sniffer-tauri/src/tauri-sniffer-entry.ts` — the IIFE wrapper that gates on `__TAURI__`, injects the `BrowserTopBar`, and hands `event` to `installSniffer`.
 - `browser-sniffer-tauri-rust/src/lib.rs` — the Rust host plumbing that opens / navigates / closes the sniffer `WebviewWindow`.
-- `slices/collector/collector-fundamentals/src/bridge.ts` — the consumer-side bridge; re-uses message schemas from `browser-sniffer-core` so the wire format stays in lockstep.
+- `apps/launcher/collector/collector-fundamentals/src/bridge.ts` — the consumer-side bridge; re-uses message schemas from `browser-sniffer-core` so the wire format stays in lockstep.

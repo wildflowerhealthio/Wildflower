@@ -30,7 +30,7 @@ An adapter. Depends on `har-anonymizer-core-js` (the redactor),
 `http-archive` (the `HttpArchive` projection and `emitHarFromLog` emitter),
 `effect`, `react`, `react-kitchen-sink`, `react-tundraish`. Never imports `web-trace-core`
 (the redactor and emitter are HAR-native here — this package does not speak
-`TraceExchange`), `importer-react`, or `slices/collector`.
+`TraceExchange`), `importer-react`, or `apps/launcher/collector`.
 
 ## Traps
 

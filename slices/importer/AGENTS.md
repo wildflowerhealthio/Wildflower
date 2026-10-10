@@ -185,7 +185,7 @@ sits above `http-extraction` and below every binding, exactly as
   `importer-fundamentals` — plus `http-extraction-fundamentals`
   (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),
   `importer-fundamentals` (the contract), and `fhir-r4` (resources). It
-  re-derives none of them. Nothing here imports from `slices/collector`,
+  re-derives none of them. Nothing here imports from `apps/launcher/collector`,
   in code or in concept.
 - **A future file format gets its own binding, not a widened HAR one.** A CSV
   or another imaging import decodes a _document_: its decode belongs in a pure dialect package

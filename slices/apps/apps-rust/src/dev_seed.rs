@@ -20,7 +20,7 @@
 //! would also exist in every release database. This runtime path is compiled
 //! out entirely in release: the whole module is behind
 //! `#[cfg(debug_assertions)]` in `lib.rs`, as is its single call site in
-//! `apps/host/wildflower-server-rust/src/live_bindings/wildflower_server.rs`,
+//! `apps/host/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`,
 //! so a release build contains no code that could write these ids.
 //!
 //! Each app's dev gatekeeper client (`seed_dev_app_clients` in

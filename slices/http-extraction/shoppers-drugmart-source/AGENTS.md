@@ -5,7 +5,7 @@ The **Shoppers Drug Mart source**: the single definition of how the Shoppers
 one `SourceDescriptor` value — `shoppersDrugMartSource`, whose pre-adopted
 `responseKinds` an archive import extracts with. The live
 `shoppers-drugmart-collector` scraping plan (browser-driven, in
-`slices/collector`) consumes the same response-kind tuple by reference, so the
+`apps/launcher/collector`) consumes the same response-kind tuple by reference, so the
 two consumers can never disagree on a decode. Unlike `fhir-r4-source` (which
 decodes native FHIR JSON) and `rexall-be-well-source` (which decodes a carebook
 STU3 dialect), this source **synthesizes** R4 resources directly from
@@ -66,7 +66,7 @@ Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
 `RecognizedUrlData`), `fhir-r4` (resources + `identity`'s
 `adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
-particular it must **never** import anything from `slices/collector`
+particular it must **never** import anything from `apps/launcher/collector`
 (`shoppers-drugmart-collector` depends on this package; the live
 config/plan/form are its concern) or `slices/importer` (whose
 `har-importer-core` consumes this package's
@@ -140,8 +140,8 @@ and `rexall-be-well-source` alike:
   belongs to.
 - [http-extraction-fundamentals AGENTS.md](../http-extraction-fundamentals/AGENTS.md)
   — the vocabulary this package is written against.
-- [shoppers-drugmart-collector AGENTS.md](../../collector/shoppers-drugmart-collector/AGENTS.md)
+- [shoppers-drugmart-collector AGENTS.md](../../../apps/launcher/collector/shoppers-drugmart-collector/AGENTS.md)
   — the live collector built from these entities (config, plan, provenance,
   form).
-- [Source Identity Explanation](../../collector/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../../../apps/launcher/collector/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

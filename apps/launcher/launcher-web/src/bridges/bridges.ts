@@ -1,7 +1,7 @@
 import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Logging } from 'effect-messaging-core'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import { HarRecorderBridge } from 'har-recorder-core'
+import { HarRecorderBridge } from 'har-recorder-core-js'
 import { NavigationBridge } from 'navigation-core'
 import { BackgroundServerServiceBridge } from 'wildflower-server-core-js'
 

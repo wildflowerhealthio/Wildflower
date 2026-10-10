@@ -71,7 +71,7 @@ Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`),
 the three `*-importer-core` bindings (the importers the registry lists),
 `fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
 `importer-react`. Imports no `*-importer-react`, no `web-trace-core`, and
-nothing from `slices/collector` or `slices/http-extraction`.
+nothing from `apps/launcher/collector` or `slices/http-extraction`.
 
 ## Guardrails
 

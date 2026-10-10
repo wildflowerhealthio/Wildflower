@@ -14,8 +14,8 @@ retroactively to sessions already recorded.
   and the translations built on it. See its
   [AGENTS.md](./web-trace-core/AGENTS.md).
 
-The capture half lives outside this slice, in the collector slice where the
-descriptor seam is: [`web-trace-collector`](../collector/web-trace-collector/AGENTS.md)
+The capture half lives outside this slice, with the collectors where the
+descriptor seam is: [`web-trace-collector`](../../apps/launcher/collector/web-trace-collector/AGENTS.md)
 is the `*-client-collector` that records a hand-driven session and writes each
 exchange through `web-trace-core`'s codec. It imports the encoding; it never
 re-derives it.
@@ -30,7 +30,7 @@ The FHIR encoding of a trace cannot live anywhere it already had a home:
   package in it knows about FHIR.
 
 It is consumed by both the collectors and the HAR packages (`http-archive`,
-`har-importer-core`, `har-recorder-core`, `har-anonymizer-core-js`), so it has to
+`har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core-js`), so it has to
 sit below all of them.
 
 ## Guardrails

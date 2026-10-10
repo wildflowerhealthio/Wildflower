@@ -23,7 +23,7 @@ tauri-unit-runner-rust = { path = "../../unit-runner/tauri-unit-runner-rust" }
 servers-rust = { path = "../servers-rust" }
 # The config and host ports each server's run reads, and a stopped server's
 # certificate state, read from its cache.
-wildflower-server-rust = { path = "../../wildflower-server-rust" }
+wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
 # The gatekeeper's failure a consent or launch command that couldn't run
 # answers with.
 gatekeeper-rust = { path = "../../../../slices/gatekeeper/gatekeeper-rust" }

@@ -10,8 +10,7 @@ import { Bridge } from 'effect-messaging-core'
  * {@link ServerServiceStatus} on every change and in reply to every `__Ready`,
  * and the page renders the latest one.
  *
- * The wire strings below are the contract `background-server-service-rust`'s
- * serde mirror is pinned to by its golden tests — see the
+ * The wire strings below are pinned by `test/bridge-wire-golden.json` — see the
  * [Wire Pinning How-To](../../../../docs/Messaging/Wire%20Pinning%20How-To.md).
  *
  * @packageDocumentation

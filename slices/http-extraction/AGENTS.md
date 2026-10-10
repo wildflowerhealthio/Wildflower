@@ -3,7 +3,8 @@
 The abstract fundamentals of **extracting entities from HTTP traffic**, plus
 per-source implementations. Two consumers build on this slice and neither owns
 it: the `collector` slice runs the vocabulary **live** (a sniffer webview
-streams responses through the same entities), and the `importer` slice's HAR
+streams responses through the same entities; it lives with the launcher in
+`apps/launcher/collector`), and the `importer` slice's HAR
 importer runs it **over archives** (each archived response recognized and
 decoded through `Extraction.recognize` / `parseWith`). Nothing here knows about sniffers,
 navigation, persistence, HAR, files, or apps.
@@ -27,11 +28,6 @@ navigation, persistence, HAR, files, or apps.
   each resource keys under the root of the URL it arrived on — the single
   definition both a live plan and an archive import consume. See its
   [AGENTS.md](./fhir-r4-source/AGENTS.md).
-- **`web-trace-source`** — the catch-all recording entity and the capture-time
-  body policy. Unlike the other source packages it exports a **factory**
-  (`makeRawExchangeResponseKind`) parameterized per-run rather than a static
-  `SourceDescriptor`, because the recording entity closes over a per-session id
-  and body policy. See its [AGENTS.md](./web-trace-source/AGENTS.md).
 - **`rexall-be-well-source`** — the Rexall Be Well source: three response kinds
   (Patient, MedicationRequest, MedicationDispense) that decode Rexall's carebook
   STU3 dialect into FHIR R4 resources, plus that dialect's catalogue, wire
@@ -43,6 +39,11 @@ navigation, persistence, HAR, files, or apps.
   JSON, plus that JSON's schemas, API URLs and identifier catalogue for a
   producer of portal traffic to spell it from. See its
   [AGENTS.md](./shoppers-drugmart-source/AGENTS.md).
+
+`web-trace-source`, the catch-all recording entity and capture-time body
+policy, is written against this vocabulary too, but lives beside its one
+consumer in
+[`apps/launcher/collector/`](../../apps/launcher/collector/web-trace-source/AGENTS.md).
 
 ## There is deliberately no `http-extraction-core`
 
@@ -86,9 +87,9 @@ which is exactly what keeps the dependency graph acyclic.
   — the vocabulary and its namespaces.
 - [fhir-r4-source AGENTS.md](./fhir-r4-source/AGENTS.md) — the worked example
   source package.
-- [web-trace-source AGENTS.md](./web-trace-source/AGENTS.md) — the catch-all
-  recording source package.
-- [slices/collector/AGENTS.md](../collector/AGENTS.md) — the live consumer.
+- [web-trace-source AGENTS.md](../../apps/launcher/collector/web-trace-source/AGENTS.md)
+  — the catch-all recording source package.
+- [apps/launcher/collector/AGENTS.md](../../apps/launcher/collector/AGENTS.md) — the live consumer.
 - [slices/importer/AGENTS.md](../importer/AGENTS.md) — the archive-driven
   consumer.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

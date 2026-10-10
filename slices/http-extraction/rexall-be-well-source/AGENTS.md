@@ -4,7 +4,7 @@ The **Rexall Be Well source**: the single definition of how the Rexall Be Well
 portal's carebook STU3 dialect decodes into FHIR R4 resources, exported as one
 `SourceDescriptor` value — `rexallBeWellSource`, whose pre-adopted
 `responseKinds` an archive import extracts with. The live
-`rexall-be-well-collector` scraping plan (browser-driven, in `slices/collector`)
+`rexall-be-well-collector` scraping plan (browser-driven, in `apps/launcher/collector`)
 consumes the same response-kind tuple by reference, so the two consumers can
 never disagree on a decode.
 
@@ -58,7 +58,7 @@ rather than a copy, and what it writes is what the response kinds read.
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals`, `fhir-r4`, `fhir-stu3-as-r4` (the STU3⇄R4 schemas
 the bundles decode with), `effect`, and `kitchen-sink`. Never imports from
-`slices/collector` or `slices/importer` — those consume this package, never the
+`apps/launcher/collector` or `slices/importer` — those consume this package, never the
 reverse.
 
 ## Extension Promotion
@@ -329,7 +329,7 @@ Observed, not acted on — worth knowing before trusting a field:
 
 - [slices/http-extraction/AGENTS.md](../AGENTS.md) — the slice this package
   belongs to.
-- [rexall-be-well-collector AGENTS.md](../../collector/rexall-be-well-collector/AGENTS.md)
+- [rexall-be-well-collector AGENTS.md](../../../apps/launcher/collector/rexall-be-well-collector/AGENTS.md)
   — the live collector built from these entities.
-- [Source Identity Explanation](../../collector/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../../../apps/launcher/collector/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

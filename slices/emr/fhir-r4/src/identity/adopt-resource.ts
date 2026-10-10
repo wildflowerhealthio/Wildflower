@@ -566,7 +566,7 @@ const adoptProcedure = (
  *
  * The per-type rewrite table, the fields deliberately left alone, and why there
  * is no "already adopted?" guard are all in
- * `slices/collector/docs/Source Identity Explanation.md`.
+ * `apps/launcher/collector/docs/Source Identity Explanation.md`.
  *
  * **Every branch below maps a variant to itself, by construction and not by the
  * type system.** TypeScript cannot correlate the discriminant matched here with

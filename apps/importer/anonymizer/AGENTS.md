@@ -54,7 +54,7 @@ A host mounts `AnonymizerScreen` directly — the Importer web app pairs it with
   (the `HttpArchive` projection, in `slices/file-formats`) and `web-trace-core`
   (`TraceExchange`) — the HAR _format_ is owned by the `file-formats` slice;
   the anonymizer owns only the redaction of it. Nothing here imports
-  `har-importer-core`, `importer-react`, or `slices/collector`.
+  `har-importer-core`, `importer-react`, or `apps/launcher/collector`.
 - **The registry is closed and compile-time.** `anonymizer-react`'s registry is
   a literal `as const`; a format missing a part fails to compile.
 - **Nothing here writes.** No package in the anonymizer may depend on a FHIR write

@@ -4,7 +4,7 @@ Just-enough FHIR **STU3** wire schemas that decode **straight to the `fhir-r4`
 slice's R4 resource types**. Part of the Rexall collector epic: the Rexall tunnel
 serves STU3 searchset payloads, and the local store accepts R4 — this slice is
 the STU3⇄R4 bridge. The Rexall-specific carebook dialect (extension URLs,
-concrete bundle shapes, fixtures) lives in `slices/collector/rexall-be-well-collector`,
+concrete bundle shapes, fixtures) lives in `slices/http-extraction/rexall-be-well-source`,
 not here.
 
 ## Decided scope: just-enough STU3, not faithful STU3
@@ -71,5 +71,5 @@ Relocated shared logic now lives in `fhir-r4`, not here: `Quantity.fromSimpleQua
 - [slices/emr/AGENTS.md](../AGENTS.md) — the emr slice overview
 - [fhir-r4](../fhir-r4) — the R4 target types, datatype schemas, `.empty` defaults,
   and `Quantity.fromSimpleQuantity` this slice builds on
-- [rexall-be-well-collector](../../collector/rexall-be-well-collector) — the
+- [rexall-be-well-collector](../../../apps/launcher/collector/rexall-be-well-collector) — the
   carebook dialect (constants, concrete bundles, fixtures) that consumes these schemas

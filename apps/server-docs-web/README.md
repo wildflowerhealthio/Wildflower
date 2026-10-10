@@ -8,14 +8,14 @@ pointed at whichever running server the reader chooses.
 It documents six slices, one sidebar group each, from the **committed OpenAPI
 snapshots**:
 
-| Sidebar group | Snapshot                                                                  |
-| ------------- | ------------------------------------------------------------------------- |
-| Gatekeeper    | `slices/gatekeeper/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json` |
-| Apps          | `slices/apps/apps-rust/openapi/apps.openapi.json`                         |
-| Databases     | `slices/databases/databases-rust/openapi/databases.openapi.json`          |
-| Collector     | `slices/collector/collector-rust/openapi/collector.openapi.json`          |
-| Request log   | `slices/request-log/request-log-rust/openapi/request-log.openapi.json`    |
-| FHIR R4       | `slices/emr/emr-rust/openapi/fhir-r4.openapi.json`                        |
+| Sidebar group | Snapshot                                                                        |
+| ------------- | ------------------------------------------------------------------------------- |
+| Gatekeeper    | `slices/gatekeeper/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json`       |
+| Apps          | `slices/apps/apps-rust/openapi/apps.openapi.json`                               |
+| Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`     |
+| Collector     | `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`     |
+| Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json` |
+| FHIR R4       | `slices/emr/emr-rust/openapi/fhir-r4.openapi.json`                              |
 
 Those snapshots are the same files the per-slice Rust snapshot tests and the
 `api-sync.yml` drift guard hold to the live routes, so publishing from them
@@ -224,7 +224,7 @@ Requests are sent **straight from the reader's browser** to the chosen server â€
 there is no proxy â€” so they are cross-origin and subject to the browser's rules:
 
 - The Wildflower API applies one CORS layer across its whole surface
-  (`api_cors_layer` in `apps/host/wildflower-server-rust/src/http/middleware/cors.rs`),
+  (`api_cors_layer` in `apps/host/wildflower-server/wildflower-server-rust/src/http/middleware/cors.rs`),
   which mirrors the requesting origin and headers back rather than sending `*`,
   so the `Authorization` header is allowed and a cross-origin call from this
   page is accepted by the server.

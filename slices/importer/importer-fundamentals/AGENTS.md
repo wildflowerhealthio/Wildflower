@@ -156,7 +156,7 @@ web-trace direction. A HAR binding passes web-trace's coding constants in as
 data. Names no source file _format_ (each binding supplies its `decodeFileSet` and
 its coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
 `har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
-an `importer-core-js`, a `*-importer-react`, `slices/collector`, or
+an `importer-core-js`, a `*-importer-react`, `apps/launcher/collector`, or
 `slices/http-extraction`.
 
 ## Guardrails

@@ -118,7 +118,7 @@ through), `importer-fundamentals` (the contract), `http-extraction-fundamentals`
 (`sha256Base64` from `capture`, and the trace-side codec constants the source file
 codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
 (resources), and `effect`. Never imports `importer-react`,
-`har-importer-react`, or `slices/collector`.
+`har-importer-react`, or `apps/launcher/collector`.
 
 ## Guardrails
 

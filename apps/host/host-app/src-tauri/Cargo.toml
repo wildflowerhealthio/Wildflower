@@ -35,7 +35,7 @@ apps-rust = { path = "../../../../slices/apps/apps-rust" }
 browser-sniffer-tauri-rust = { path = "../../../../slices/browser-sniffer/browser-sniffer-tauri-rust" }
 # Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
 # recorded archive into `<data root>/saved_data`.
-har-recorder-tauri = { path = "../../../../slices/har-recorder/har-recorder-tauri" }
+har-recorder-tauri = { path = "../../wildflower-server/har-recorder-tauri" }
 # The install's servers on the unit runner, the notifications about them, and
 # the base's commands for adding a server and re-entering its token, over the
 # install's `servers.json`. Hosted from `.setup()`; the commands registered in
@@ -62,7 +62,7 @@ shared-structures-tauri-rust = { path = "../../shared-structures-tauri-rust" }
 # The `RelaySettings` the host builds from the server's record for its tunnel.
 tunnel-rust = { path = "../../../../slices/tunnel/tunnel-rust" }
 # The Wildflower server's config and ports, which the host builds.
-wildflower-server-rust = { path = "../../wildflower-server-rust" }
+wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust" }
 anyhow.workspace = true
 # Typed loopback base URL for the server's `ServerRuntimeConfig`.
 url = "2"

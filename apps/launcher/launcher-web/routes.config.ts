@@ -59,17 +59,17 @@ const launcherRoutesDir = (packageDir: string, bucket: string): string =>
 export const routes = rootRoute('__root.tsx', [
   route('/settings', 'settings.tsx', [
     index('settings/index.tsx'),
-    physical('', sliceRoutesDir('request-log', 'settings')),
+    physical('', launcherRoutesDir('request-log/request-log-react', 'settings')),
     physical('', sliceRoutesDir('gatekeeper', 'settings')),
-    physical('', sliceRoutesDir('databases', 'settings')),
+    physical('', launcherRoutesDir('databases/databases-react', 'settings')),
     physical('', launcherRoutesDir('apps-react', 'settings')),
     physical('', launcherRoutesDir('wildflower-server-react', 'settings')),
   ]),
   index('index.tsx'),
   route('/fhir-home', 'fhir-home.tsx'),
   layout('_auth', '_auth.tsx', [
-    physical('', sliceRoutesDir('collector', '_auth')),
-    physical('', sliceRoutesDir('har-recorder', '_auth')),
+    physical('', launcherRoutesDir('collector/collector-react', '_auth')),
+    physical('', launcherRoutesDir('har-recorder/har-recorder-react', '_auth')),
     route('/home', '_auth/home.tsx', [physical('', launcherRoutesDir('apps-react', '_auth/home'))]),
     route('/gatekeeper', '_auth/gatekeeper.tsx', [
       physical('', sliceRoutesDir('gatekeeper', '_auth/gatekeeper')),

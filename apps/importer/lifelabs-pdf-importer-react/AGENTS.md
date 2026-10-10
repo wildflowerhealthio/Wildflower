@@ -28,7 +28,7 @@ per-resource include/edit) covers it.
 Depends on `lifelabs-pdf-importer-core` (the settings type),
 `importer-fundamentals` (`SettingsPickerProps`), `effect`, and `react`. Never
 imports `importer-react`, a sibling format's UI package, or
-`slices/collector`.
+`apps/launcher/collector`.
 
 ## References
 

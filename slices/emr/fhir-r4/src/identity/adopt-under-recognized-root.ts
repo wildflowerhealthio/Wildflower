@@ -59,7 +59,7 @@ type ParsedBy<TEntity extends AdoptableEntity> =
  * subtype (return types are covariant), so a constraint cannot reject one; the
  * intersection form keeps `TEntity` inferable off the naked half. The fix for a
  * kind that trips it is widen-first (see
- * `slices/collector/docs/Source Identity Explanation.md`).
+ * `apps/launcher/collector/docs/Source Identity Explanation.md`).
  */
 type EntityParsesEveryResource<TEntity extends AdoptableEntity> =
   FhirResource extends ParsedBy<TEntity>
@@ -95,7 +95,7 @@ const notAdoptableError = (name: string, url: string, reason: string): ParseResu
  *
  * @remarks
  * Design, rationale, and the live-keying consequences are in
- * `slices/collector/docs/Source Identity Explanation.md`. The contract here:
+ * `apps/launcher/collector/docs/Source Identity Explanation.md`. The contract here:
  * only `parse` is wrapped, and only with `Effect.map` over a successful decode,
  * so the error channel and synchronous runnability are untouched. A `parse` on
  * a URL the kind does not recognize — or recognizes without minting a `source`

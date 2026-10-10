@@ -110,7 +110,7 @@ When a server uses a catch-all SPA fallback (`Router::fallback(serve_spa_fallbac
 
 - **Diagnose** with `curl -i http://127.0.0.1:8080/<route>` — a `200` plus an HTML body confirms it.
 - **Mind wire prefixes** when stubbing the missing route: a group with `.prefix('/collector')` serves `ListRemotes` at `/collector/remotes`, not `/remotes`.
-- Worked case: the Tauri host's Rust server (`apps/host/wildflower-server-rust`) served only gatekeeper + FHIR, so `GET /apps`, `/tunnel`, `/collector/remotes` (implemented only in the TS `wildflower-server`) fell through to the fallback and crashed the webview.
+- Worked case: the Tauri host's Rust server (`apps/host/wildflower-server/wildflower-server-rust`) served only gatekeeper + FHIR, so `GET /apps`, `/tunnel`, `/collector/remotes` (implemented only in the TS `wildflower-server`) fell through to the fallback and crashed the webview.
 
 ### `HttpApiSchema.withEncoding` on a `Schema.Union` payload
 

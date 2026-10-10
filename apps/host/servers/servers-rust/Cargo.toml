@@ -59,7 +59,7 @@ unit-runner-rust = { path = "../../unit-runner/unit-runner-rust" }
 # The server a `ServerUnit` sets up and serves, the `ServerHealth` and
 # `CertificateState` its detail carries, and the `CertificateAuthority` a
 # record names. Tauri-free too.
-wildflower-server-rust = { path = "../../wildflower-server-rust" }
+wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust"}
 # `ForwardedRequest`/`RequestCaller`, which a run reports and the request
 # notifications count, and `HealthStatus`, which a server's status carries.
 shared-structures-rust = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["health-check"] }
@@ -81,7 +81,7 @@ workspace = true
 tempfile = "3"
 # `CertificateAuthority::UnreachableForTests`, the CA `tests/server_unit.rs`'s
 # server orders from, so no test reaches a real CA.
-wildflower-server-rust = { path = "../../wildflower-server-rust", features = [
+wildflower-server-rust = { path = "../../wildflower-server/wildflower-server-rust", features = [
   "test-support",
 ] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }

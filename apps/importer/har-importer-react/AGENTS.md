@@ -32,7 +32,7 @@ always takes the top-specificity enabled candidate.
 An adapter: depends on `har-importer-core` (`fhirSources`, `HarSettings`),
 `importer-fundamentals` (`SettingsPickerProps`), and `react`. Never imports
 `importer-react` (the shell depends on this, not the reverse) or
-`slices/collector`.
+`apps/launcher/collector`.
 
 ## Guardrails
 

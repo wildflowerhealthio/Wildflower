@@ -26,8 +26,10 @@ no packages of its own sits directly under `apps/` under its product's name:
 `server-docs-web` and `ohif-viewer-web`.
 
 Packages that came from one slice and belong together stay nested in a folder
-for their group, as `apps/host/servers/`, `apps/host/unit-runner/` and
-`apps/importer/anonymizer/` do; a lone package, or one from the product's
+for their group, as `apps/host/servers/`, `apps/host/unit-runner/`,
+`apps/importer/anonymizer/` and `apps/launcher/collector/` do (each group also
+listed in `pnpm-workspace.yaml` and the root `vite.config.ts` test projects);
+a lone package, or one from the product's
 namesake slice, sits directly in the product folder.
 
 ### What folds in
@@ -39,15 +41,23 @@ depends on its Rust half.
 - **A whole slice** folds in when nothing else uses any of it, in either
   language (`slices/lifting` → `apps/lifting/`, `slices/relay` → `apps/relay/`,
   Rust binary included).
+- **A slice splits by language** when one product is the only consumer of its
+  TypeScript packages and the host the only consumer of its Rust crates. The
+  TypeScript packages fold into that product, in a folder named for the slice,
+  with the slice's AGENTS.md and docs (`apps/launcher/collector/`); the crates
+  fold into [`apps/host/wildflower-server/`](./host/wildflower-server/AGENTS.md)
+  beside the server that composes them. No slice may depend on a folded crate,
+  not even as a dev-dependency: a test that drives two slices together moves
+  into `wildflower-server-rust`'s tests.
 - **Only a slice's TypeScript packages** fold in when one product is their only
-  consumer but the slice's Rust half is composed into the server
-  (`apps/host/wildflower-server-rust`) or another crate. The slice keeps its Rust crate,
-  its AGENTS.md and any file both languages read: `slices/apps` keeps
-  `apps-rust` while `apps-core-js` and `apps-react` sit in `apps/launcher/`. A
-  cross-language contract then reads across folders by relative path, such as
-  `apps-core-js`'s OpenAPI drift test reading
-  `slices/apps/apps-rust/openapi/apps.openapi.json`, and the golden JSON
-  `wildflower-server-core-js` shares with `background-server-service-rust`.
+  consumer but something else needs the slice's Rust half or a file beside it.
+  The slice keeps its Rust crate, its AGENTS.md and that file: `slices/apps`
+  keeps `apps-rust` beside `dev-app-ports.json`, which every app reads, while
+  `apps-core-js` and `apps-react` sit in `apps/launcher/`.
+- Either way, a cross-language contract then reads across folders by relative
+  path, such as `apps-core-js`'s OpenAPI drift test reading
+  `slices/apps/apps-rust/openapi/apps.openapi.json`, or `collector-registry`'s
+  reading `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`.
 - **Shared packages never fold in.** Anything two products use stays in
   `slices/` or `global/` (`branding`, `telemetry`, `smart-app`, `gatekeeper`,
   `global/pebble`).

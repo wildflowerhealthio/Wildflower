@@ -45,27 +45,15 @@ catalogs:
     '@opentelemetry/exporter-trace-otlp-http':
       specifier: ^0.222.0
       version: 0.222.0
-    '@opentelemetry/resources':
-      specifier: 2.11.0
-      version: 2.11.0
     '@opentelemetry/sdk-trace-base':
-      specifier: ^2.11.0
-      version: 2.11.0
-    '@opentelemetry/sdk-trace-node':
       specifier: ^2.11.0
       version: 2.11.0
     '@opentelemetry/sdk-trace-web':
       specifier: ^2.11.0
       version: 2.11.0
-    '@opentelemetry/semantic-conventions':
-      specifier: ^1.43.0
-      version: 1.43.0
     '@scalar/api-reference':
       specifier: ^1.72.1
       version: 1.72.2
-    '@sentry/node':
-      specifier: 10.74.0
-      version: 10.74.0
     '@sentry/opentelemetry':
       specifier: 10.74.0
       version: 10.74.0
@@ -1798,6 +1786,756 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
+  apps/launcher/collector/collector-fundamentals:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../../global/effect-messaging/effect-messaging-core
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/http-extraction-fundamentals
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
+  apps/launcher/collector/collector-react:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.104.0(react@19.3.0)
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/router-plugin':
+        specifier: 'catalog:'
+        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      collector-registry:
+        specifier: workspace:*
+        version: link:../collector-registry
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../../global/effect-messaging/effect-messaging-core
+      effect-messaging-react:
+        specifier: workspace:*
+        version: link:../../../../global/effect-messaging/effect-messaging-react
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-r4
+      fhir-r4-client-collector:
+        specifier: workspace:*
+        version: link:../fhir-r4-client-collector
+      fhir-r4-react:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-r4-react
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      rexall-be-well-collector:
+        specifier: workspace:*
+        version: link:../rexall-be-well-collector
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../../../slices/shared-structures/shared-structures-react
+      shoppers-drugmart-collector:
+        specifier: workspace:*
+        version: link:../shoppers-drugmart-collector
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../../../slices/telemetry/telemetry-react
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-collector:
+        specifier: workspace:*
+        version: link:../web-trace-collector
+
+  apps/launcher/collector/collector-registry:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../../global/effect-messaging/effect-messaging-core
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4-client-collector:
+        specifier: workspace:*
+        version: link:../fhir-r4-client-collector
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      rexall-be-well-collector:
+        specifier: workspace:*
+        version: link:../rexall-be-well-collector
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../../../slices/shared-structures/shared-structures-core
+      shoppers-drugmart-collector:
+        specifier: workspace:*
+        version: link:../shoppers-drugmart-collector
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-collector:
+        specifier: workspace:*
+        version: link:../web-trace-collector
+
+  apps/launcher/collector/fhir-r4-client-collector:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-r4
+      fhir-r4-source:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/fhir-r4-source
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/http-extraction-fundamentals
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../../../slices/web-trace/web-trace-core
+
+  apps/launcher/collector/rexall-be-well-collector:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-r4
+      fhir-stu3-as-r4:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-stu3-as-r4
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/http-extraction-fundamentals
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      rexall-be-well-source:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/rexall-be-well-source
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../../../slices/web-trace/web-trace-core
+
+  apps/launcher/collector/shoppers-drugmart-collector:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-r4
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/http-extraction-fundamentals
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      shoppers-drugmart-source:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/shoppers-drugmart-source
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../../../slices/web-trace/web-trace-core
+
+  apps/launcher/collector/web-trace-collector:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../collector-fundamentals
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-r4
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/http-extraction-fundamentals
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../../../slices/web-trace/web-trace-core
+      web-trace-source:
+        specifier: workspace:*
+        version: link:../web-trace-source
+
+  apps/launcher/collector/web-trace-source:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../../../slices/emr/fhir-r4
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../../../slices/http-extraction/http-extraction-fundamentals
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../../../slices/web-trace/web-trace-core
+
+  apps/launcher/databases/databases-core-js:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../../../slices/shared-structures/shared-structures-core
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
+  apps/launcher/databases/databases-react:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.104.0(react@19.3.0)
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/router-plugin':
+        specifier: 'catalog:'
+        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      databases-core-js:
+        specifier: workspace:*
+        version: link:../databases-core-js
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../../../slices/shared-structures/shared-structures-react
+      telemetry-react:
+        specifier: workspace:*
+        version: link:../../../../slices/telemetry/telemetry-react
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
+  apps/launcher/har-recorder/har-recorder-core-js:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../../global/effect-messaging/effect-messaging-core
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      http-archive:
+        specifier: workspace:*
+        version: link:../../../../slices/file-formats/http-archive
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../../../slices/web-trace/web-trace-core
+
+  apps/launcher/har-recorder/har-recorder-react:
+    devDependencies:
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/router-plugin':
+        specifier: 'catalog:'
+        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../../../slices/browser-sniffer/browser-sniffer-core
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../../collector/collector-fundamentals
+      collector-react:
+        specifier: workspace:*
+        version: link:../../collector/collector-react
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      effect-messaging-core:
+        specifier: workspace:*
+        version: link:../../../../global/effect-messaging/effect-messaging-core
+      effect-messaging-react:
+        specifier: workspace:*
+        version: link:../../../../global/effect-messaging/effect-messaging-react
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      har-recorder-core-js:
+        specifier: workspace:*
+        version: link:../har-recorder-core-js
+      http-archive:
+        specifier: workspace:*
+        version: link:../../../../slices/file-formats/http-archive
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
   apps/launcher/launcher-web:
     dependencies:
       '@effect/platform':
@@ -1829,16 +2567,16 @@ importers:
         version: link:../../../slices/branding/branding-react
       collector-fundamentals:
         specifier: workspace:*
-        version: link:../../../slices/collector/collector-fundamentals
+        version: link:../collector/collector-fundamentals
       collector-react:
         specifier: workspace:*
-        version: link:../../../slices/collector/collector-react
+        version: link:../collector/collector-react
       collector-registry:
         specifier: workspace:*
-        version: link:../../../slices/collector/collector-registry
+        version: link:../collector/collector-registry
       databases-react:
         specifier: workspace:*
-        version: link:../../../slices/databases/databases-react
+        version: link:../databases/databases-react
       effect:
         specifier: 'catalog:'
         version: 3.22.2
@@ -1860,12 +2598,12 @@ importers:
       gatekeeper-react:
         specifier: workspace:*
         version: link:../../../slices/gatekeeper/gatekeeper-react
-      har-recorder-core:
+      har-recorder-core-js:
         specifier: workspace:*
-        version: link:../../../slices/har-recorder/har-recorder-core
+        version: link:../har-recorder/har-recorder-core-js
       har-recorder-react:
         specifier: workspace:*
-        version: link:../../../slices/har-recorder/har-recorder-react
+        version: link:../har-recorder/har-recorder-react
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -1874,7 +2612,7 @@ importers:
         version: link:../../../slices/navigation/navigation-core
       navigation-react:
         specifier: workspace:*
-        version: link:../../../slices/navigation/navigation-react
+        version: link:../navigation-react
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -1889,7 +2627,7 @@ importers:
         version: link:../../../global/react-tundraish
       request-log-react:
         specifier: workspace:*
-        version: link:../../../slices/request-log/request-log-react
+        version: link:../request-log/request-log-react
       scopes-react:
         specifier: workspace:*
         version: link:../../../slices/scopes/scopes-react
@@ -1945,6 +2683,159 @@ importers:
       telemetry-core:
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-core
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
+  apps/launcher/navigation-react:
+    devDependencies:
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      effect-messaging-react:
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-react
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      navigation-core:
+        specifier: workspace:*
+        version: link:../../../slices/navigation/navigation-core
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../../slices/shared-structures/shared-structures-react
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
+  apps/launcher/request-log/request-log-core-js:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../../../slices/shared-structures/shared-structures-core
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
+  apps/launcher/request-log/request-log-react:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.104.0(react@19.3.0)
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/router-plugin':
+        specifier: 'catalog:'
+        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      gatekeeper-react:
+        specifier: workspace:*
+        version: link:../../../../slices/gatekeeper/gatekeeper-react
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../../global/react-kitchen-sink
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../../global/react-tundraish
+      request-log-core-js:
+        specifier: workspace:*
+        version: link:../request-log-core-js
+      shared-structures-react:
+        specifier: workspace:*
+        version: link:../../../../slices/shared-structures/shared-structures-react
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -3956,600 +4847,6 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/collector/collector-fundamentals:
-    devDependencies:
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      http-extraction-fundamentals:
-        specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/collector/collector-react:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.104.0(react@19.3.0)
-      '@tanstack/react-router':
-        specifier: 'catalog:'
-        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-plugin':
-        specifier: 'catalog:'
-        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../collector-fundamentals
-      collector-registry:
-        specifier: workspace:*
-        version: link:../collector-registry
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
-      effect-messaging-react:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-react
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
-      fhir-r4-client-collector:
-        specifier: workspace:*
-        version: link:../fhir-r4-client-collector
-      fhir-r4-react:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4-react
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      rexall-be-well-collector:
-        specifier: workspace:*
-        version: link:../rexall-be-well-collector
-      shared-structures-react:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-react
-      shoppers-drugmart-collector:
-        specifier: workspace:*
-        version: link:../shoppers-drugmart-collector
-      telemetry-react:
-        specifier: workspace:*
-        version: link:../../telemetry/telemetry-react
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-collector:
-        specifier: workspace:*
-        version: link:../web-trace-collector
-
-  slices/collector/collector-registry:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../collector-fundamentals
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      fhir-r4-client-collector:
-        specifier: workspace:*
-        version: link:../fhir-r4-client-collector
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      rexall-be-well-collector:
-        specifier: workspace:*
-        version: link:../rexall-be-well-collector
-      shared-structures-core:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-core
-      shoppers-drugmart-collector:
-        specifier: workspace:*
-        version: link:../shoppers-drugmart-collector
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-collector:
-        specifier: workspace:*
-        version: link:../web-trace-collector
-
-  slices/collector/fhir-r4-client-collector:
-    devDependencies:
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.7(@testing-library/dom@10.4.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../collector-fundamentals
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
-      fhir-r4-source:
-        specifier: workspace:*
-        version: link:../../http-extraction/fhir-r4-source
-      http-extraction-fundamentals:
-        specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-core:
-        specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
-
-  slices/collector/rexall-be-well-collector:
-    devDependencies:
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.7(@testing-library/dom@10.4.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../collector-fundamentals
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
-      fhir-stu3-as-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-stu3-as-r4
-      http-extraction-fundamentals:
-        specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      rexall-be-well-source:
-        specifier: workspace:*
-        version: link:../../http-extraction/rexall-be-well-source
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-core:
-        specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
-
-  slices/collector/shoppers-drugmart-collector:
-    devDependencies:
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.7(@testing-library/dom@10.4.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../collector-fundamentals
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
-      http-extraction-fundamentals:
-        specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      shoppers-drugmart-source:
-        specifier: workspace:*
-        version: link:../../http-extraction/shoppers-drugmart-source
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-core:
-        specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
-
-  slices/collector/web-trace-collector:
-    devDependencies:
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.7(@testing-library/dom@10.4.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../collector-fundamentals
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
-      http-extraction-fundamentals:
-        specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-core:
-        specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
-      web-trace-source:
-        specifier: workspace:*
-        version: link:../../http-extraction/web-trace-source
-
-  slices/databases/databases-core:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      shared-structures-core:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-core
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/databases/databases-react:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.104.0(react@19.3.0)
-      '@tanstack/react-router':
-        specifier: 'catalog:'
-        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-plugin':
-        specifier: 'catalog:'
-        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      databases-core:
-        specifier: workspace:*
-        version: link:../databases-core
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      shared-structures-react:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-react
-      telemetry-react:
-        specifier: workspace:*
-        version: link:../../telemetry/telemetry-react
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
   slices/emr/fhir-r4:
     devDependencies:
       '@effect/platform':
@@ -4981,126 +5278,6 @@ importers:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
-  slices/har-recorder/har-recorder-core:
-    devDependencies:
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      http-archive:
-        specifier: workspace:*
-        version: link:../../file-formats/http-archive
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-core:
-        specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
-
-  slices/har-recorder/har-recorder-react:
-    devDependencies:
-      '@tanstack/react-router':
-        specifier: 'catalog:'
-        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-plugin':
-        specifier: 'catalog:'
-        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.7(@testing-library/dom@10.4.2)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../../collector/collector-fundamentals
-      collector-react:
-        specifier: workspace:*
-        version: link:../../collector/collector-react
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      effect-messaging-core:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
-      effect-messaging-react:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-react
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      har-recorder-core:
-        specifier: workspace:*
-        version: link:../har-recorder-core
-      http-archive:
-        specifier: workspace:*
-        version: link:../../file-formats/http-archive
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
   slices/http-extraction/fhir-r4-source:
     devDependencies:
       '@types/node':
@@ -5229,42 +5406,6 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/http-extraction/web-trace-source:
-    devDependencies:
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
-      http-extraction-fundamentals:
-        specifier: workspace:*
-        version: link:../http-extraction-fundamentals
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      web-trace-core:
-        specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
 
   slices/importer/dicom-importer-core:
     devDependencies:
@@ -5523,159 +5664,6 @@ importers:
       typescript-7:
         specifier: 'catalog:'
         version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/navigation/navigation-react:
-    devDependencies:
-      '@tanstack/react-router':
-        specifier: 'catalog:'
-        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      effect-messaging-react:
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-react
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      navigation-core:
-        specifier: workspace:*
-        version: link:../navigation-core
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      shared-structures-react:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-react
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/request-log/request-log-core:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      shared-structures-core:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-core
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/request-log/request-log-react:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.104.0(react@19.3.0)
-      '@tanstack/react-router':
-        specifier: 'catalog:'
-        version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-plugin':
-        specifier: 'catalog:'
-        version: 1.168.41(@tanstack/react-router@1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      gatekeeper-react:
-        specifier: workspace:*
-        version: link:../../gatekeeper/gatekeeper-react
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      request-log-core:
-        specifier: workspace:*
-        version: link:../request-log-core
-      shared-structures-react:
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-react
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
@@ -5965,60 +5953,6 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.0.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.0.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.1(vitest@5.0.1))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/telemetry/telemetry-node:
-    devDependencies:
-      '@effect/opentelemetry':
-        specifier: 'catalog:'
-        version: 0.64.1(@effect/platform@0.97.2(effect@3.22.2))(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-web@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@3.22.2)
-      '@opentelemetry/api':
-        specifier: 'catalog:'
-        version: 1.9.1
-      '@opentelemetry/exporter-trace-otlp-http':
-        specifier: 'catalog:'
-        version: 0.222.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources':
-        specifier: 'catalog:'
-        version: 2.11.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base':
-        specifier: 'catalog:'
-        version: 2.11.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-node':
-        specifier: 'catalog:'
-        version: 2.11.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions':
-        specifier: 'catalog:'
-        version: 1.43.0
-      '@sentry/node':
-        specifier: 'catalog:'
-        version: 10.74.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.222.0(@opentelemetry/api@1.9.1))
-      '@sentry/opentelemetry':
-        specifier: 'catalog:'
-        version: 10.74.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      bumpp:
-        specifier: 'catalog:'
-        version: 12.3.0
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      telemetry-core:
-        specifier: workspace:*
-        version: link:../telemetry-core
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -7374,10 +7308,6 @@ packages:
     resolution: {integrity: sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==}
     engines: {node: '>=20.0'}
 
-  '@opentelemetry/api-logs@0.220.0':
-    resolution: {integrity: sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==}
-    engines: {node: '>=8.0.0'}
-
   '@opentelemetry/api-logs@0.222.0':
     resolution: {integrity: sha512-9mb1If+IF6u0ZVXkHQ6ogEae5HwA6ajIVUgpSDQyRASxft6BSXHvBvPooRle3yFN/fKnCdSOnuu0OC3PLcF6+g==}
     engines: {node: '>=8.0.0'}
@@ -7404,12 +7334,6 @@ packages:
 
   '@opentelemetry/exporter-trace-otlp-http@0.222.0':
     resolution: {integrity: sha512-RCnPWcHppwiquQ+cV3nWvNwdf0MG1w26e5jewW2T83nTZOlXgcg88sY9ulCVgagGHcq1mj0L0GP6YHgzk2v8oA==}
-    engines: {node: ^18.19.0 || >=20.6.0}
-    peerDependencies:
-      '@opentelemetry/api': ^1.3.0
-
-  '@opentelemetry/instrumentation@0.220.0':
-    resolution: {integrity: sha512-xQx3E2WxP1mDvKzxLxX+CTCtNLa560YJZ3087qYHerl2YmiKpv7AH+dAy7vmx+eVrZ5BwhfWUAVoKOoxCNHcpw==}
     engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
@@ -8435,31 +8359,6 @@ packages:
     resolution: {integrity: sha512-WwUao9K2XgRIxTUTaBhm7aglhsyP7LQTGi2lxvFbXzlSagUzwew/EL2c5oqQ23Mjn94i5SY+rM4wMdgyWdtpAw==}
     engines: {node: '>=18'}
 
-  '@sentry/node-core@10.74.0':
-    resolution: {integrity: sha512-btgZXcGmkOGgojbxHo/gfGiyqYpzC9E8zVR78Q3MtM6Xnemk9gwJiQlhNmEX/FM+C36WBRPZrdcZcnMaJhbfJw==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@opentelemetry/api': ^1.9.0
-      '@opentelemetry/core': ^1.30.1 || ^2.1.0
-      '@opentelemetry/exporter-trace-otlp-http': '>=0.57.0 <1'
-      '@opentelemetry/instrumentation': '>=0.57.1 <1'
-      '@opentelemetry/sdk-trace-base': ^1.30.1 || ^2.1.0
-    peerDependenciesMeta:
-      '@opentelemetry/api':
-        optional: true
-      '@opentelemetry/core':
-        optional: true
-      '@opentelemetry/exporter-trace-otlp-http':
-        optional: true
-      '@opentelemetry/instrumentation':
-        optional: true
-      '@opentelemetry/sdk-trace-base':
-        optional: true
-
-  '@sentry/node@10.74.0':
-    resolution: {integrity: sha512-u1wsarTOWHn9CCev81Da5T4IQHZgdcosXRfX2+4DMII/lVJMBYesKixTQuMwXexjVG2+pkf16zTmgjZDa+75jA==}
-    engines: {node: '>=18'}
-
   '@sentry/opentelemetry@10.74.0':
     resolution: {integrity: sha512-ua5mt0NDBfye+/ACKjAw9Ad2i+y42lOLvhxXZepZXjszblMz80MEsIZflMB7uLZUCTNH7MbZN8tlzCy8KsJKmQ==}
     engines: {node: '>=18'}
@@ -8480,10 +8379,6 @@ packages:
 
   '@sentry/replay@10.74.0':
     resolution: {integrity: sha512-amIu0zKzhQJZoWmlwfFnn/uKRGyF+Tikph3lBgYwj5XbHv4U94PQXi9Ll8CYzzLVS7BkrCVc2Hl7RvpRg5M2Yg==}
-    engines: {node: '>=18'}
-
-  '@sentry/server-utils@10.74.0':
-    resolution: {integrity: sha512-AHmPIGE8yVRyywpZRhAkm/H0cHTgsQSPhFZFbaeQLcYHFE/eOP9bAMh8Nj/Apr7WMagFXYHd04tR/63BxtLgKw==}
     engines: {node: '>=18'}
 
   '@sinclair/typebox@0.27.12':
@@ -9618,11 +9513,6 @@ packages:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
     engines: {node: '>= 0.6'}
 
-  acorn-import-attributes@1.9.5:
-    resolution: {integrity: sha512-n02Vykv5uA3eHGM/Z2dQrcD56kL8TyDb2p1+0P83PClMnC/nc+anbQRhIOWnSq4Ke/KvDPrY3C9hDtC/A3eHnQ==}
-    peerDependencies:
-      acorn: ^8
-
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
@@ -9953,9 +9843,6 @@ packages:
   ci-info@3.9.0:
     resolution: {integrity: sha512-NIxF55hv4nSqQswkAeiOi1r83xy8JldOFDTWiug55KBu9Jnblncd2U6ViHmYgHf01TPZS77NJBhBMKdWj9HQMQ==}
     engines: {node: '>=8'}
-
-  cjs-module-lexer@2.2.0:
-    resolution: {integrity: sha512-4bHTS2YuzUvtoLjdy+98ykbNB5jS0+07EvFNXerqZQJ89F7DI6ET7OQo/HJuW6K0aVsKA9hj9/RVb2kQVOrPDQ==}
 
   cli-cursor@2.1.0:
     resolution: {integrity: sha512-8lgKz8LmCRYZZQDpRyT2m5rKJ08TnU4tR9FFFW2rxpxR1FzWi4PQ/NfyODchAatHaUgnSPVcx/R5w6NuTBzFiw==}
@@ -10870,10 +10757,6 @@ packages:
   immutable-json-patch@6.0.2:
     resolution: {integrity: sha512-KwCA5DXJiyldda8SPha1zB+6+vbEi5/jRRcYii/6yFXlyu9ZjiSH/wPq8Ri2Hk8iGjjTMcHW3Z21S4MOpl7sOw==}
 
-  import-in-the-middle@3.2.0:
-    resolution: {integrity: sha512-vR2B6HKIhaBjcZr2bLpFiJ1VbzOlRQ7aby4/gw5WPIzToLjqpfWw3VJ4sk1uDchoOODEirvO2jyrSPtUSL5CrQ==}
-    engines: {node: '>=18'}
-
   import-without-cache@0.4.1:
     resolution: {integrity: sha512-vXoV9PjKHEednCUu01e98TkImxy67e3BJXbTIOmIq4Hyzw3IAwYRcuPkfeTzJzwyyts4kjuA73x+pWJLc4f86A==}
     engines: {node: ^22.18.0 || >=24.0.0}
@@ -11584,9 +11467,6 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  module-details-from-path@1.0.4:
-    resolution: {integrity: sha512-EGWKgxALGMgzvxYF1UyGTy0HXX/2vHLkw6+NvDKW2jypWbHpjQuj4UMcqQWXHERJhVGKikolT06G3bcKe4fi7w==}
-
   mrmime@2.0.1:
     resolution: {integrity: sha512-Y3wQdFg2Va6etvQ5I82yUhGdsKrcYox6p7FfL1LbK2J4V01F9TGlepTIhnK24t7koZibmg82KGglhA1XK5IsLQ==}
     engines: {node: '>=10'}
@@ -12068,10 +11948,6 @@ packages:
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
-
-  require-in-the-middle@8.0.1:
-    resolution: {integrity: sha512-QT7FVMXfWOYFbeRBF6nu+I6tr2Tf3u0q8RIEjNob/heKY/nh7drD/k7eeMFmSQgnTtCzLDcCu/XEnpW2wk4xCQ==}
-    engines: {node: '>=9.3.0 || >=8.10.0 <9.0.0'}
 
   resolve-from@5.0.0:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
@@ -14603,10 +14479,6 @@ snapshots:
 
   '@oozcitak/util@10.0.0': {}
 
-  '@opentelemetry/api-logs@0.220.0':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-
   '@opentelemetry/api-logs@0.222.0':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -14630,15 +14502,6 @@ snapshots:
       '@opentelemetry/otlp-exporter-base': 0.222.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/otlp-transformer': 0.222.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace': 2.11.0(@opentelemetry/api@1.9.1)
-
-  '@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1)':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/api-logs': 0.220.0
-      import-in-the-middle: 3.2.0
-      require-in-the-middle: 8.0.1
-    transitivePeerDependencies:
-      - supports-color
 
   '@opentelemetry/otlp-exporter-base@0.222.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -15626,35 +15489,6 @@ snapshots:
     dependencies:
       '@sentry/core': 10.74.0
 
-  '@sentry/node-core@10.74.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))':
-    dependencies:
-      '@sentry/conventions': 0.16.0
-      '@sentry/core': 10.74.0
-      '@sentry/opentelemetry': 10.74.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
-      import-in-the-middle: 3.2.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/exporter-trace-otlp-http': 0.222.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/instrumentation': 0.220.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 2.11.0(@opentelemetry/api@1.9.1)
-
-  '@sentry/node@10.74.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.222.0(@opentelemetry/api@1.9.1))':
-    dependencies:
-      '@opentelemetry/api': 1.9.1
-      '@opentelemetry/instrumentation': 0.220.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-trace-base': 2.11.0(@opentelemetry/api@1.9.1)
-      '@sentry/conventions': 0.16.0
-      '@sentry/core': 10.74.0
-      '@sentry/node-core': 10.74.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
-      '@sentry/opentelemetry': 10.74.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
-      '@sentry/server-utils': 10.74.0
-      import-in-the-middle: 3.2.0
-    transitivePeerDependencies:
-      - '@opentelemetry/core'
-      - '@opentelemetry/exporter-trace-otlp-http'
-      - supports-color
-
   '@sentry/opentelemetry@10.74.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -15678,11 +15512,6 @@ snapshots:
   '@sentry/replay@10.74.0':
     dependencies:
       '@sentry/browser-utils': 10.74.0
-      '@sentry/core': 10.74.0
-
-  '@sentry/server-utils@10.74.0':
-    dependencies:
-      '@sentry/conventions': 0.16.0
       '@sentry/core': 10.74.0
 
   '@sinclair/typebox@0.27.12':
@@ -16672,10 +16501,6 @@ snapshots:
       negotiator: 1.1.0
     optional: true
 
-  acorn-import-attributes@1.9.5(acorn@8.18.0):
-    dependencies:
-      acorn: 8.18.0
-
   acorn-jsx@5.3.2(acorn@8.18.0):
     dependencies:
       acorn: 8.18.0
@@ -17081,8 +16906,6 @@ snapshots:
 
   ci-info@3.9.0:
     optional: true
-
-  cjs-module-lexer@2.2.0: {}
 
   cli-cursor@2.1.0:
     dependencies:
@@ -18175,13 +17998,6 @@ snapshots:
   ignore@7.0.5: {}
 
   immutable-json-patch@6.0.2: {}
-
-  import-in-the-middle@3.2.0:
-    dependencies:
-      acorn: 8.18.0
-      acorn-import-attributes: 1.9.5(acorn@8.18.0)
-      cjs-module-lexer: 2.2.0
-      module-details-from-path: 1.0.4
 
   import-without-cache@0.4.1: {}
 
@@ -19345,8 +19161,6 @@ snapshots:
   mkdirp@1.0.4:
     optional: true
 
-  module-details-from-path@1.0.4: {}
-
   mrmime@2.0.1: {}
 
   ms@2.0.0:
@@ -19992,13 +19806,6 @@ snapshots:
     optional: true
 
   require-from-string@2.0.2: {}
-
-  require-in-the-middle@8.0.1:
-    dependencies:
-      debug: 4.4.3
-      module-details-from-path: 1.0.4
-    transitivePeerDependencies:
-      - supports-color
 
   resolve-from@5.0.0:
     optional: true

@@ -840,15 +840,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "background-server-service-rust"
-version = "0.0.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "backoff"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2856,7 +2847,6 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "chrono",
- "databases-rust",
  "diesel",
  "diesel_migrations",
  "http",

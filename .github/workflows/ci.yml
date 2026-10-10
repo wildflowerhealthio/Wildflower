@@ -79,8 +79,9 @@ jobs:
               # (run as part of the workspace test suite) verifies each still
               # matches what utoipa emits from the live axum routes; a
               # snapshot-only regen (no *.rs change) must still trigger that
-              # check, so match the generated JSON.
-              - 'slices/**/*-rust/openapi/*.openapi.json'
+              # check, so match the generated JSON. Snapshots sit in `slices/`
+              # and in `apps/host/wildflower-server/`.
+              - '**/*-rust/openapi/*.openapi.json'
               # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri-rust
               # `include_str!`s a JS bundle generated from this TS package, and
               # the lockfiles affect that bootstrap build — a change to either
@@ -120,12 +121,13 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/workflows/lint-markdown.yml'
             api-sync:
-              # Any slice's Effect HttpApi definition + its TS drift test.
-              - 'slices/**/http-api-definition/**'
+              # Any Effect HttpApi definition + its TS drift test, in a slice
+              # or folded into an app (`apps/launcher/`).
+              - '**/http-api-definition/**'
               # The committed snapshots the drift test diffs against. A Rust
               # route change instead lands as *.rs and is gated by
               # ci-rust.yml's Rust snapshot half.
-              - 'slices/**/*-rust/openapi/*.openapi.json'
+              - '**/*-rust/openapi/*.openapi.json'
               # The shared wire-shape engine + the spec-drift test factory.
               - 'slices/shared-structures/shared-structures-core/src/openapi-drift/**'
               - '.github/workflows/ci.yml'

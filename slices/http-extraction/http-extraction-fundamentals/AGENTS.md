@@ -115,7 +115,7 @@ four-way `ExtractionResult` accounting.
 
 - [slices/http-extraction/AGENTS.md](../AGENTS.md) — the slice this package
   anchors, and why there is no `-core`.
-- [slices/collector/AGENTS.md](../../collector/AGENTS.md) — the live consumer.
+- [apps/launcher/collector/AGENTS.md](../../../apps/launcher/collector/AGENTS.md) — the live consumer.
 - [slices/importer/AGENTS.md](../../importer/AGENTS.md) — the archive-driven
   consumer.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)

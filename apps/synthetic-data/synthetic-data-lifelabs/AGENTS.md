@@ -87,5 +87,5 @@ the Rexall and Shoppers generators, as dev dependencies only. Never imports a
 - [apps/synthetic-data/AGENTS.md](../AGENTS.md) — the slice and its packages.
 - [lifelabs-pdf-importer-core AGENTS.md](../../../slices/importer/lifelabs-pdf-importer-core/AGENTS.md)
   — the report model, the synthesis and the `/synthesis` subpath.
-- [Source Identity Explanation](../../../slices/collector/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../../launcher/collector/docs/Source%20Identity%20Explanation.md)
   — how adoption keys a Patient, and `adoptedReferenceOf`.

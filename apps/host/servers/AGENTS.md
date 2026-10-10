@@ -514,7 +514,7 @@ lastError?: {kind, …}}`.
   background-service packaging.
 - [unit-runner Design Explanation](../unit-runner/unit-runner-rust/docs/Design%20Explanation.md)
   — `UnitRunner`'s contract and vocabulary.
-- [wildflower-server-rust AGENTS.md](../wildflower-server-rust/AGENTS.md) — the server
+- [wildflower-server-rust AGENTS.md](../wildflower-server/wildflower-server-rust/AGENTS.md) — the server
   each run sets up and serves.
 - [slices/AGENTS.md](../../../slices/AGENTS.md) — slice layering rules these packages follow.
 - `slices/tunnel/rathole-settings-rust` — `PublicRatholeSettings`, the

@@ -60,7 +60,7 @@ literal is unused across:
 
 - Every `slices/*/<name>-core/src/bridge.ts` bridge schema.
 - The raw sniffer's web-side bootstrap.
-- Every Rust `match tag.as_str()` arm under `apps/host/host-app/src-tauri/src/`, `apps/host/**/*-tauri-rust/src/`, `slices/*/<name>-tauri-rust/src/` and `slices/har-recorder/har-recorder-tauri/src/`.
+- Every Rust `match tag.as_str()` arm under `apps/host/host-app/src-tauri/src/`, `apps/host/**/*-tauri-rust/src/`, `slices/*/<name>-tauri-rust/src/` and `apps/host/wildflower-server/har-recorder-tauri/src/`.
 
 Each Rust listener also logs its complete tag set at attach time
 (`info!("[<crate>] listening on bridge for tags: [...]")`) — grep the

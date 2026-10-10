@@ -85,11 +85,6 @@ workspace = true
 
 [dev-dependencies]
 persistence-rust = { path = "../../persistence/persistence-rust" }
-# A real downstream slice router, used only by the cross-slice contract test that
-# proves the bearer gate inserts the `ScopeClaims` a `Scoped<…>` capability
-# reads — the producer (this gate) and consumer (databases' capabilities) driven
-# together rather than each mocking the seam.
-databases-rust = { path = "../../databases/databases-rust" }
 # The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
 # the snapshot test uses it, so it's an extra dev-only feature on the existing
 # `[dependencies]` entry above (cargo unifies the feature set across both

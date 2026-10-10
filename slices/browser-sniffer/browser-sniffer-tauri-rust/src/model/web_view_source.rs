@@ -2,7 +2,7 @@ use serde::Deserialize;
 use tauri::WebviewUrl;
 
 /// Wire shape of the `WebViewSource` tagged union from
-/// `slices/collector/collector-fundamentals/src/model/web-view-source.ts`.
+/// `apps/launcher/collector/collector-fundamentals/src/model/web-view-source.ts`.
 /// The `Uri` variant carries an `http(s)://`-only URL; we validate that
 /// invariant at decode time as defense-in-depth alongside the SPA-side
 /// schema check (which likewise accepts both schemes so a FHIR server

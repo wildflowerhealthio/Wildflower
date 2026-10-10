@@ -19,8 +19,12 @@ packages:
   - apps/importer/*
   - apps/importer/anonymizer/*
   # The launcher: the web app that manages a Wildflower server, and the
-  # packages it is built from.
+  # packages it is built from, grouped by the slice they came from.
   - apps/launcher/*
+  - apps/launcher/collector/*
+  - apps/launcher/databases/*
+  - apps/launcher/har-recorder/*
+  - apps/launcher/request-log/*
   # Lifting: the app and the core and screens it is built from.
   - apps/lifting/*
   # Medications: the app and the calendar, interaction and sponsorship
@@ -66,14 +70,12 @@ catalog:
   '@opentelemetry/exporter-trace-otlp-http': ^0.222.0
   '@opentelemetry/resources': 2.11.0
   '@opentelemetry/sdk-trace-base': ^2.11.0
-  '@opentelemetry/sdk-trace-node': ^2.11.0
   '@opentelemetry/sdk-trace-web': ^2.11.0
   '@opentelemetry/semantic-conventions': ^1.43.0
   # Keep the `@sentry/*` packages aligned on a single version so only one
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
-  # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
-  '@sentry/node': 10.74.0
+  # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-web).
   '@sentry/opentelemetry': 10.74.0
   '@sentry/react': 10.74.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the

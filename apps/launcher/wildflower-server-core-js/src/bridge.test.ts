@@ -1,16 +1,14 @@
 /**
- * Cross-language contract tests over
- * `slices/background-server-service/bridge-wire-golden.json`, the wire strings
- * `background-server-service-rust`'s `bridge.rs` golden tests serialize to.
- * Both suites read the same file, so a field renamed, reordered or re-cased on
- * one side fails the other side's tests instead of drifting silently.
+ * Wire tests over `test/bridge-wire-golden.json`, the exact strings the host
+ * writes and reads. Pinning the text, not just the schema, means a field
+ * renamed, reordered or re-cased fails here instead of drifting from the host.
  */
 import { Arbitrary, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import golden from '../../../../slices/background-server-service/bridge-wire-golden.json' with { type: 'json' }
+import golden from '../test/bridge-wire-golden.json' with { type: 'json' }
 import {
   BackgroundServerServiceBridge,
   RestartServer,

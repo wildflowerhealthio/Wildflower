@@ -344,7 +344,7 @@ lets a guard test assert `domain/` never imports `crate::http`.
   `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
   concrete store in `gatekeeper-rust/src/live_bindings/`. Their privileged writes
   go through the writers under an authority proof (see the section above).
-- **Data-dependent:** `slices/databases/databases-rust/src/domain/capabilities.rs` —
+- **Data-dependent:** `apps/host/wildflower-server/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
   the `DatabaseFiles` port (stubbed with an in-memory fake in the unit tests).

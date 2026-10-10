@@ -102,5 +102,5 @@ dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
   — the story model, `Seeding` and `ChromeHar`.
 - [shoppers-drugmart-source AGENTS.md](../../../slices/http-extraction/shoppers-drugmart-source/AGENTS.md)
   — the portal JSON and how it imports.
-- [shoppers-drugmart-collector AGENTS.md](../../../slices/collector/shoppers-drugmart-collector/AGENTS.md)
+- [shoppers-drugmart-collector AGENTS.md](../../launcher/collector/shoppers-drugmart-collector/AGENTS.md)
   — the session the generated capture follows.

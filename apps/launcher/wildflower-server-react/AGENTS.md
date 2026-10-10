@@ -75,8 +75,8 @@ page. Both render the host's latest `ServerServiceStatus` and send
 
 ## References
 
-- [slices/background-server-service AGENTS.md](../../../slices/background-server-service/AGENTS.md)
-  — the slice's role, its Rust crate and the wire.
+- [wildflower-server-core-js AGENTS.md](../wildflower-server-core-js/AGENTS.md)
+  — the wire this package renders.
 - [apps/launcher/AGENTS.md](../AGENTS.md) — the folder this package sits in.
 - [Web Handler Coordinator Explanation](../../../docs/Effect/Web%20Handler%20Coordinator%20Explanation.md)
   — why the handler is boot-stable.
