@@ -74,7 +74,7 @@ runs:
           apps/wildflower-site/wildflower-site-web/dist/health-viewer
           apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble
           apps/wildflower-site/wildflower-site-web/dist/synthetic-data
-          apps/wildflower-site/wildflower-site-web/dist/app
+          apps/wildflower-site/wildflower-site-web/dist/launcher
         projects: ${{ steps.projects.outputs.ids }}
         # Sentry's GitHub integration is not installed and the checkout is
         # shallow, so there are no commits to associate.
@@ -92,5 +92,5 @@ runs:
           apps/wildflower-site/wildflower-site-web/dist/health-viewer \
           apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble \
           apps/wildflower-site/wildflower-site-web/dist/synthetic-data \
-          apps/wildflower-site/wildflower-site-web/dist/app \
+          apps/wildflower-site/wildflower-site-web/dist/launcher \
           -name '*.map' -type f -print -delete

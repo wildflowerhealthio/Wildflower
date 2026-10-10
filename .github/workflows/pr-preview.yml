@@ -166,7 +166,7 @@ jobs:
       # root — here the staging repo root, not `pr-<n>/`. The assembled
       # artifact's own `404.html` lands at `pr-<n>/404.html`, which Pages never
       # consults, so without this step every deep link into a preview
-      # (`pr-<n>/app/gatekeeper/…`) is GitHub's stock 404 instead of the SPA
+      # (`pr-<n>/launcher/gatekeeper/…`) is GitHub's stock 404 instead of the SPA
       # redirect. The redirect page probes ancestors site-absolutely, so the
       # one copy at the root serves every `pr-<n>/` prefix. Synced on every
       # run (not create-once) so a change to the redirect page reaches staging;

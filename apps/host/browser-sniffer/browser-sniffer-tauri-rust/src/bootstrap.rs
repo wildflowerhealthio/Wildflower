@@ -22,8 +22,9 @@
 /// including this would trip `dead_code` since the desktop content-webview path
 /// is `cfg`-gated out.
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-pub(crate) const SNIFFER_BOOTSTRAP: &str =
-    include_str!("../../../../../slices/browser-sniffer/browser-sniffer-tauri/dist/tauri-bootstrap.js");
+pub(crate) const SNIFFER_BOOTSTRAP: &str = include_str!(
+    "../../../../../slices/browser-sniffer/browser-sniffer-tauri/dist/tauri-bootstrap.js"
+);
 
 /// Native-webview bootstrap IIFE — the `initScript` arg passed to
 /// `tauri-plugin-native-webview::open` on iOS/Android. Built from
@@ -36,5 +37,6 @@ pub(crate) const SNIFFER_BOOTSTRAP: &str =
 /// Close + URL chrome. Same `installSniffer` body runs over a bridge-backed
 /// event bus.
 #[cfg(any(target_os = "ios", target_os = "android"))]
-pub(crate) const NATIVE_SNIFFER_BOOTSTRAP: &str =
-    include_str!("../../../../../slices/browser-sniffer/browser-sniffer-tauri/dist/native-bootstrap.js");
+pub(crate) const NATIVE_SNIFFER_BOOTSTRAP: &str = include_str!(
+    "../../../../../slices/browser-sniffer/browser-sniffer-tauri/dist/native-bootstrap.js"
+);
