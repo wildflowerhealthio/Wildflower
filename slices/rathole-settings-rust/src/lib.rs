@@ -1,7 +1,7 @@
 //! `rathole-settings-rust` — what the relay's `GET /rathole` returns, the
 //! tunnel name a device adds to it, and what its signed `GET /me` returns.
 //!
-//! `wildflower-relay` serves [`PublicRatholeSettings`] at
+//! `wildflowerhealthio-relay-server` serves [`PublicRatholeSettings`] at
 //! `https://<domain>/rathole` without authentication: everything public a
 //! rathole client needs to dial the relay. A device adds only its
 //! [`TunnelName`], which is its rathole service name, and that tunnel's

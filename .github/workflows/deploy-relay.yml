@@ -1,8 +1,9 @@
 name: Deploy Relay
 
 # Builds the relay's admin UI (apps/relay/relay-admin-web), then
-# wildflower-relay, which embeds it, and deploys the binary to its droplet,
-# where it runs under apps/relay/relay-server/wildflower-relay.service. The relay has to own public
+# wildflowerhealthio-relay-server, which embeds it, and deploys the binary to
+# its droplet, where it runs under
+# apps/relay/relay-server/wildflowerhealthio-relay-server.service. The relay has to own public
 # :443 and :80 and see raw TCP (it routes ciphertext by SNI and puts the
 # visitor's address in a PROXY header), so it runs alone on the host rather
 # than behind a platform's proxy.
@@ -88,14 +89,14 @@ jobs:
           cache-shared-key: release-relay
           cache-on-failure: true
 
-      - name: Build wildflower-relay
-        run: cargo build --release --locked -p wildflower-relay
+      - name: Build wildflowerhealthio-relay-server
+        run: cargo build --release --locked -p wildflowerhealthio-relay-server
 
       - name: Upload binary
         uses: actions/upload-artifact@v7
         with:
-          name: wildflower-relay
-          path: target/release/wildflower-relay
+          name: wildflowerhealthio-relay-server
+          path: target/release/wildflowerhealthio-relay-server
           if-no-files-found: error
           retention-days: 7
 
@@ -115,13 +116,13 @@ jobs:
         with:
           sparse-checkout: |
             apps/relay/relay-server/deploy/install.sh
-            apps/relay/relay-server/wildflower-relay.service
+            apps/relay/relay-server/wildflowerhealthio-relay-server.service
           sparse-checkout-cone-mode: false
 
       - name: Download binary
         uses: actions/download-artifact@v8
         with:
-          name: wildflower-relay
+          name: wildflowerhealthio-relay-server
           path: ${{ runner.temp }}/upload
 
       # The environment file, from the environment's secrets and variables.
@@ -193,7 +194,7 @@ jobs:
         id: upload
         run: |
           set -euo pipefail
-          cp apps/relay/relay-server/deploy/install.sh apps/relay/relay-server/wildflower-relay.service "$RUNNER_TEMP/upload/"
+          cp apps/relay/relay-server/deploy/install.sh apps/relay/relay-server/wildflowerhealthio-relay-server.service "$RUNNER_TEMP/upload/"
           dir="$(ssh relay mktemp -d)"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
           scp -q "$RUNNER_TEMP"/upload/* "relay:$dir/"

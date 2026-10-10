@@ -18,23 +18,36 @@
 # environment, which run as the unit's unprivileged dynamic user. The binary
 # lives in /opt/wildflower-relay, off root's PATH, so a root shell never runs
 # it by name.
+#
+# WILDFLOWER_RELAY_RETIRE migrates a host from the relay's earlier unit,
+# wildflower-relay.service: install.sh stops, disables and removes it before
+# the new unit starts, keeps its binary as the rollback, and deletes the
+# binary once the new build is up. It can only stop the earlier relay and
+# remove its files.
 
 Cmnd_Alias WILDFLOWER_RELAY_FILES = \
   /usr/bin/install -d -m 0755 -o root -g root /etc/wildflower-relay, \
   /usr/bin/install -m 0600 -o root -g root /dev/stdin /etc/wildflower-relay/env, \
   /usr/bin/install -d -m 0755 -o root -g root /opt/wildflower-relay, \
-  /usr/bin/install -m 0755 -o root -g root /dev/stdin /opt/wildflower-relay/wildflower-relay.new, \
-  /usr/bin/mv -f /opt/wildflower-relay/wildflower-relay.new /opt/wildflower-relay/wildflower-relay, \
-  /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflower-relay /opt/wildflower-relay/wildflower-relay.prev, \
+  /usr/bin/install -m 0755 -o root -g root /dev/stdin /opt/wildflower-relay/wildflowerhealthio-relay-server.new, \
+  /usr/bin/mv -f /opt/wildflower-relay/wildflowerhealthio-relay-server.new /opt/wildflower-relay/wildflowerhealthio-relay-server, \
+  /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflowerhealthio-relay-server /opt/wildflower-relay/wildflowerhealthio-relay-server.prev, \
   /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env /etc/wildflower-relay/env.prev, \
-  /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflower-relay.prev /opt/wildflower-relay/wildflower-relay, \
+  /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflowerhealthio-relay-server.prev /opt/wildflower-relay/wildflowerhealthio-relay-server, \
   /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env.prev /etc/wildflower-relay/env, \
   /usr/bin/cmp -s /dev/stdin /etc/wildflower-relay/env
 
 Cmnd_Alias WILDFLOWER_RELAY_SERVICE = \
-  /usr/bin/systemctl enable wildflower-relay, \
-  /usr/bin/systemctl reset-failed wildflower-relay, \
-  /usr/bin/systemctl restart wildflower-relay, \
-  /usr/bin/journalctl -u wildflower-relay -n 50 --no-pager
+  /usr/bin/systemctl enable wildflowerhealthio-relay-server, \
+  /usr/bin/systemctl reset-failed wildflowerhealthio-relay-server, \
+  /usr/bin/systemctl restart wildflowerhealthio-relay-server, \
+  /usr/bin/journalctl -u wildflowerhealthio-relay-server -n 50 --no-pager
 
-deploy ALL=(root) NOPASSWD: WILDFLOWER_RELAY_FILES, WILDFLOWER_RELAY_SERVICE
+Cmnd_Alias WILDFLOWER_RELAY_RETIRE = \
+  /usr/bin/systemctl disable --now wildflower-relay, \
+  /usr/bin/rm -f /etc/systemd/system/wildflower-relay.service, \
+  /usr/bin/systemctl daemon-reload, \
+  /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflower-relay /opt/wildflower-relay/wildflowerhealthio-relay-server.prev, \
+  /usr/bin/rm -f /opt/wildflower-relay/wildflower-relay /opt/wildflower-relay/wildflower-relay.prev
+
+deploy ALL=(root) NOPASSWD: WILDFLOWER_RELAY_FILES, WILDFLOWER_RELAY_SERVICE, WILDFLOWER_RELAY_RETIRE

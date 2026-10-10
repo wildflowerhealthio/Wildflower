@@ -1,7 +1,7 @@
 # AGENTS.md — apps/relay
 
 The tunnel relay. The relay itself is the Rust binary in
-[`relay-server`](./relay-server) (`wildflower-relay`), and the page it serves
+[`relay-server`](./relay-server) (`wildflowerhealthio-relay-server`), and the page it serves
 at `https://admin.<domain>/` is [`relay-admin-web`](./relay-admin-web/AGENTS.md). The
 TypeScript packages beside them are the relay's admin API as an `HttpApi`,
 the signer every admin call goes through, the key it signs with, and the

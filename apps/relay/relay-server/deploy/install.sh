@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Installs an uploaded wildflower-relay build on the relay host and restarts
-# it, rolling back if the new build doesn't come up. Runs there as `deploy`,
+# Installs an uploaded wildflowerhealthio-relay-server build on the relay
+# host and restarts it, rolling back if the new build doesn't come up. Runs there as `deploy`,
 # from .github/workflows/deploy-relay.yml:
 #
 #   ssh deploy@<host> bash <upload dir>/install.sh <upload dir>
 #
-# The upload directory holds this script, `wildflower-relay` (the binary),
-# `env` (the environment file) and `wildflower-relay.service` (the unit, only
-# compared with the installed one). It is removed on exit, however the script
+# The upload directory holds this script, `wildflowerhealthio-relay-server`
+# (the binary), `env` (the environment file) and
+# `wildflowerhealthio-relay-server.service` (the unit, only compared with the
+# installed one). It is removed on exit, however the script
 # ends. Every root command below is one line of ./sudoers, character for
 # character.
 # Files are piped into `install` and `cmp` through /dev/stdin, so root never
@@ -20,9 +21,13 @@ set -euo pipefail
 upload="$1"
 trap 'rm -rf "$upload"' EXIT
 
-bin=/opt/wildflower-relay/wildflower-relay
+bin=/opt/wildflower-relay/wildflowerhealthio-relay-server
 env=/etc/wildflower-relay/env
-unit=/etc/systemd/system/wildflower-relay.service
+unit=/etc/systemd/system/wildflowerhealthio-relay-server.service
+# The unit and binary the relay ran as before it took its crate's name. A
+# host that still has them is migrated below.
+old_unit=/etc/systemd/system/wildflower-relay.service
+old_bin=/opt/wildflower-relay/wildflower-relay
 
 # The host and port a listen-address setting in the new environment file
 # names, or its default. An unspecified address is probed on loopback.
@@ -64,7 +69,7 @@ listening() {
 }
 
 healthy() {
-  systemctl is-active --quiet wildflower-relay || return 1
+  systemctl is-active --quiet wildflowerhealthio-relay-server || return 1
   # :80 answers a host it has no tunnel for with a 404.
   local status
   status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
@@ -99,59 +104,77 @@ wait_healthy() {
 # A build that crash-looped leaves the unit at its start limit, which a plain
 # restart would hit too.
 restart() {
-  sudo -n /usr/bin/systemctl reset-failed wildflower-relay || true
-  sudo -n /usr/bin/systemctl restart wildflower-relay
+  sudo -n /usr/bin/systemctl reset-failed wildflowerhealthio-relay-server || true
+  sudo -n /usr/bin/systemctl restart wildflowerhealthio-relay-server
 }
 
 install_new() {
   sudo -n /usr/bin/install -d -m 0755 -o root -g root /etc/wildflower-relay &&
     sudo -n /usr/bin/install -m 0600 -o root -g root /dev/stdin /etc/wildflower-relay/env < "$upload/env" &&
     sudo -n /usr/bin/install -d -m 0755 -o root -g root /opt/wildflower-relay &&
-    sudo -n /usr/bin/install -m 0755 -o root -g root /dev/stdin /opt/wildflower-relay/wildflower-relay.new < "$upload/wildflower-relay" &&
-    sudo -n /usr/bin/mv -f /opt/wildflower-relay/wildflower-relay.new /opt/wildflower-relay/wildflower-relay
+    sudo -n /usr/bin/install -m 0755 -o root -g root /dev/stdin /opt/wildflower-relay/wildflowerhealthio-relay-server.new < "$upload/wildflowerhealthio-relay-server" &&
+    sudo -n /usr/bin/mv -f /opt/wildflower-relay/wildflowerhealthio-relay-server.new /opt/wildflower-relay/wildflowerhealthio-relay-server
 }
 
 # The unit is installed by hand, since a unit can run anything as root. Stop
 # before changing anything if the installed one is not the repository's.
-if ! cmp -s "$upload/wildflower-relay.service" "$unit"; then
-  echo "::error::$unit differs from apps/relay/relay-server/wildflower-relay.service; install it on the host and run 'sudo systemctl daemon-reload', then re-run this deploy"
+if ! cmp -s "$upload/wildflowerhealthio-relay-server.service" "$unit"; then
+  echo "::error::$unit differs from apps/relay/relay-server/wildflowerhealthio-relay-server.service; install it on the host and run 'sudo systemctl daemon-reload', then re-run this deploy"
   exit 1
+fi
+
+# Retire the earlier unit before the new one starts, so two relays never
+# contend for the same ports. Its binary is kept until the new build is up:
+# it is what a failed first deploy rolls back to.
+if [[ -e "$old_unit" ]]; then
+  echo "retiring wildflower-relay.service"
+  sudo -n /usr/bin/systemctl disable --now wildflower-relay
+  sudo -n /usr/bin/rm -f /etc/systemd/system/wildflower-relay.service
+  sudo -n /usr/bin/systemctl daemon-reload
 fi
 
 # A push that changes nothing the relay is built from (another crate's
 # Cargo.lock bump, say) builds the same binary; don't drop every tunnel for it.
-if systemctl is-active --quiet wildflower-relay &&
-  cmp -s "$upload/wildflower-relay" "$bin" &&
+if systemctl is-active --quiet wildflowerhealthio-relay-server &&
+  cmp -s "$upload/wildflowerhealthio-relay-server" "$bin" &&
   sudo -n /usr/bin/cmp -s /dev/stdin /etc/wildflower-relay/env < "$upload/env"; then
   echo "binary and environment file unchanged, not restarting"
   exit 0
 fi
 
-# Keep what is running now so a failed deploy can go back to it. There is
-# nothing to keep on the first deploy.
+# Keep what is running now so a failed deploy can go back to it: the current
+# binary, or on a host being migrated the earlier unit's. There is nothing to
+# keep on the first deploy.
 had_prev=false
 if [[ -e "$bin" ]]; then
   had_prev=true
-  sudo -n /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflower-relay /opt/wildflower-relay/wildflower-relay.prev
-  if [[ -e "$env" ]]; then
-    sudo -n /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env /etc/wildflower-relay/env.prev
-  fi
+  sudo -n /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflowerhealthio-relay-server /opt/wildflower-relay/wildflowerhealthio-relay-server.prev
+elif [[ -e "$old_bin" ]]; then
+  had_prev=true
+  sudo -n /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflower-relay /opt/wildflower-relay/wildflowerhealthio-relay-server.prev
+fi
+if [[ "$had_prev" == true && -e "$env" ]]; then
+  sudo -n /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env /etc/wildflower-relay/env.prev
 fi
 
-if install_new && sudo -n /usr/bin/systemctl enable wildflower-relay && restart && wait_healthy; then
-  echo "wildflower-relay is up"
+if install_new && sudo -n /usr/bin/systemctl enable wildflowerhealthio-relay-server && restart && wait_healthy; then
+  echo "wildflowerhealthio-relay-server is up"
+  if [[ -e "$old_bin" || -e "$old_bin.prev" ]]; then
+    echo "removing the earlier unit's binaries"
+    sudo -n /usr/bin/rm -f /opt/wildflower-relay/wildflower-relay /opt/wildflower-relay/wildflower-relay.prev || true
+  fi
   exit 0
 fi
 
-echo "::error::wildflower-relay did not come up after the deploy"
+echo "::error::wildflowerhealthio-relay-server did not come up after the deploy"
 # From here every step is best effort: a failure must not skip the rest of
 # the rollback.
 set +e
-sudo -n /usr/bin/journalctl -u wildflower-relay -n 50 --no-pager
+sudo -n /usr/bin/journalctl -u wildflowerhealthio-relay-server -n 50 --no-pager
 
 if [[ "$had_prev" == true ]]; then
   echo "rolling back to the previous build"
-  sudo -n /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflower-relay.prev /opt/wildflower-relay/wildflower-relay
+  sudo -n /usr/bin/install -m 0755 -o root -g root /opt/wildflower-relay/wildflowerhealthio-relay-server.prev /opt/wildflower-relay/wildflowerhealthio-relay-server
   if [[ -e "$env.prev" ]]; then
     sudo -n /usr/bin/install -m 0600 -o root -g root /etc/wildflower-relay/env.prev /etc/wildflower-relay/env
   fi

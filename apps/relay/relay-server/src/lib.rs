@@ -1,4 +1,4 @@
-//! `wildflower-relay` — the self-hostable tunnel relay.
+//! `wildflowerhealthio-relay-server` — the self-hostable tunnel relay.
 //!
 //! One process runs these side by side on one shutdown broadcast:
 //!
@@ -13,7 +13,7 @@
 //!
 //! ```text
 //!   browser ──TLS──► front :443 ── reads SNI only ──► visitor queue of
-//!                    (wildflower-relay)                rathole service <tunnel name>
+//!                    (wildflowerhealthio-relay-server) rathole service <tunnel name>
 //!                                                             │ noise tunnel
 //!                                                             ▼
 //!                                       device: rathole CLIENT ──► TLS listener
@@ -174,10 +174,10 @@
 //!
 //! ## Deploying
 //!
-//! `wildflower-relay.service` is a systemd unit for a plain host. It reads
-//! the environment from `/etc/wildflower-relay/env` and keeps its state in
-//! `/var/lib/wildflower-relay`, running as a dynamic user allowed only to
-//! bind ports 443 and 80. The relay stops cleanly on SIGINT or SIGTERM.
+//! `wildflowerhealthio-relay-server.service` is a systemd unit for a plain
+//! host. It reads the environment from `/etc/wildflower-relay/env` and keeps
+//! its state in `/var/lib/wildflower-relay`, running as the dynamic user
+//! `wildflower-relay`, allowed only to bind ports 443 and 80. The relay stops cleanly on SIGINT or SIGTERM.
 //!
 //! `.github/workflows/deploy-relay.yml` deploys it to an Ubuntu 24.04
 //! droplet on every push to `main` that touches this crate, one of its path
@@ -206,6 +206,13 @@
 //! deploy stops before changing anything if the installed unit differs from
 //! this crate's. The binary lives in `/opt/wildflower-relay`, off root's
 //! `PATH`, since `deploy` decides its contents.
+//!
+//! A host still running the relay's earlier unit, `wildflower-relay.service`,
+//! is migrated by the deploy once the operator has installed the current
+//! `deploy/sudoers` and this unit (without starting it): `install.sh` stops,
+//! disables and removes the earlier unit before starting this one, keeps the
+//! earlier binary as the `.prev` to roll back to, and deletes it once the new
+//! build is up. The environment file and state directory are unchanged.
 //! A restart drops open connections; devices reconnect their tunnels.
 
 pub mod config;

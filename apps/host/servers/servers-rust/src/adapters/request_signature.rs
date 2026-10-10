@@ -69,7 +69,7 @@ fn signature_base(method: &str, target_uri: &Url, signature_params: &str) -> Str
 mod tests {
     use super::*;
 
-    /// The worked example in `wildflower-relay`'s crate docs.
+    /// The worked example in `wildflowerhealthio-relay-server`'s crate docs.
     #[test]
     fn the_signature_base_is_the_relay_s_documented_example() {
         let target_uri = Url::parse("https://relay.example.com/me").unwrap();

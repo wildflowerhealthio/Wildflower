@@ -1,4 +1,4 @@
-//! Entry point for the `wildflower-relay` binary. See the crate-level docs in
+//! Entry point for the `wildflowerhealthio-relay-server` binary. See the crate-level docs in
 //! `lib.rs` for what the relay is and where it sits.
 
 use anyhow::Context;
@@ -60,8 +60,8 @@ async fn main() -> anyhow::Result<()> {
         let _ = shutdown_tx.send(true);
     });
 
-    tracing::info!("starting wildflower-relay");
+    tracing::info!("starting wildflowerhealthio-relay-server");
     run_relay(settings, shutdown_rx)
         .await
-        .context("wildflower-relay stopped with an error")
+        .context("wildflowerhealthio-relay-server stopped with an error")
 }

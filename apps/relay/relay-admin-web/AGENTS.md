@@ -1,7 +1,7 @@
 # AGENTS.md — apps/relay/relay-admin-web
 
 The tunnel relay's admin page. The relay
-([`apps/relay/relay-server`](../relay-server), `wildflower-relay`) embeds this package's
+([`apps/relay/relay-server`](../relay-server), `wildflowerhealthio-relay-server`) embeds this package's
 build in its binary and serves it at `https://admin.<domain>/`, the same
 origin as the admin API it calls, so there is no CORS and no sign-in on the
 relay: the page signs each request with the admin key. Everything it shows

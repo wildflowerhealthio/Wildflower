@@ -1,9 +1,10 @@
-# systemd unit for wildflower-relay on a plain host (e.g. a droplet).
+# systemd unit for wildflowerhealthio-relay-server on a plain host (e.g. a
+# droplet).
 #
 # Install:
 #   1. Build and copy the binary:
-#        cargo build --release --locked -p wildflower-relay
-#        sudo install -D -m 0755 target/release/wildflower-relay /opt/wildflower-relay/wildflower-relay
+#        cargo build --release --locked -p wildflowerhealthio-relay-server
+#        sudo install -D -m 0755 target/release/wildflowerhealthio-relay-server /opt/wildflower-relay/wildflowerhealthio-relay-server
 #      It lives off root's PATH because the deploy workflow's `deploy` user
 #      writes it (deploy/sudoers).
 #   2. Write the settings, readable by root only, starting from
@@ -15,11 +16,16 @@
 #      WILDFLOWER_RELAY_ADMIN_KEY, which creates the tunnels. The domain must
 #      resolve to this host: Let's Encrypt validates the relay's certificate
 #      for it on :443. After changing it:
-#        sudo systemctl restart wildflower-relay
+#        sudo systemctl restart wildflowerhealthio-relay-server
 #   3. Install and start the unit:
-#        sudo install -m 0644 apps/relay/relay-server/wildflower-relay.service /etc/systemd/system/
+#        sudo install -m 0644 apps/relay/relay-server/wildflowerhealthio-relay-server.service /etc/systemd/system/
 #        sudo systemctl daemon-reload
-#        sudo systemctl enable --now wildflower-relay
+#        sudo systemctl enable --now wildflowerhealthio-relay-server
+#
+# On a host still running the relay's earlier unit, wildflower-relay.service,
+# install this unit without starting it (step 3's first two commands) and let
+# the next deploy start it: deploy/install.sh stops, disables and removes the
+# earlier unit first, so the two never contend for the ports.
 #
 # The environment file is the relay's only configuration (see
 # relay.example.env). /var/lib/wildflower-relay keeps the relay's state
@@ -34,7 +40,7 @@ After=network-online.target
 
 [Service]
 Type=exec
-ExecStart=/opt/wildflower-relay/wildflower-relay
+ExecStart=/opt/wildflower-relay/wildflowerhealthio-relay-server
 EnvironmentFile=/etc/wildflower-relay/env
 Environment=WILDFLOWER_RELAY_STATE_DIR=/var/lib/wildflower-relay
 Restart=on-failure
@@ -42,6 +48,9 @@ RestartSec=2
 
 # Unprivileged, with only the right to bind 443 and 80.
 DynamicUser=yes
+# Named like the directories rather than the unit, so the user that owns the
+# state directory doesn't depend on the unit's name.
+User=wildflower-relay
 # Writable despite ProtectSystem=strict. With DynamicUser it lives in
 # /var/lib/private/wildflower-relay, linked from /var/lib/wildflower-relay.
 StateDirectory=wildflower-relay

@@ -12,7 +12,7 @@ on:
   # wildflowerhealthio-tauri-unit-runner). Those need GTK/webkit
   # system libs, so the job installs them and stubs the generated web bundles
   # the Tauri crates `include_str!` (and the relay's admin UI, which
-  # wildflower-relay embeds).
+  # wildflowerhealthio-relay-server embeds).
   # (This used to be a separate ci-rust-tauri.yml; the split saved little
   # because most Rust PRs touch a Tauri crate anyway.)
   #
@@ -78,7 +78,7 @@ jobs:
       - name: Stub Sniffer bootstrap
         if: steps.filter.outputs.bootstrap != 'true'
         run: ./scripts/ci/stub-embedded-bundles.sh sniffer
-      # wildflower-relay embeds the admin UI's build. Its tests serve a build
+      # wildflowerhealthio-relay-server embeds the admin UI's build. Its tests serve a build
       # they define themselves, so a placeholder page is all it needs here;
       # the UI is tested by the TypeScript workflow.
       - name: Stub relay admin UI

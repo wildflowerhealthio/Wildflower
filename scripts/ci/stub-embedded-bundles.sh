@@ -11,7 +11,7 @@
 #            stand-in: `native-bootstrap.js` is behind a `cfg(ios|android)`
 #            gate, compiled out on desktop targets.
 #   relay-admin-web
-#            wildflower-relay embeds the admin UI's build
+#            wildflowerhealthio-relay-server embeds the admin UI's build
 #            (apps/relay/relay-admin-web, `vp build`) with `include_dir!`. A bare
 #            index.html stands in; the relay's own tests serve a build they
 #            define themselves.

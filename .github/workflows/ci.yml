@@ -93,7 +93,7 @@ jobs:
               - 'slices/browser-sniffer/browser-sniffer-tauri-js/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
-              # wildflower-relay's signature test verifies the request the
+              # wildflowerhealthio-relay-server's signature test verifies the request the
               # admin UI's TypeScript signer committed here. (The UI itself
               # is stubbed for the Rust job, so its sources don't count.)
               - 'apps/relay/relay-core-js/src/signing/fixtures/*.json'
