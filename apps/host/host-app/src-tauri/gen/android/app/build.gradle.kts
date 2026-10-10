@@ -61,6 +61,12 @@ android {
         }
         getByName("release") {
             signingConfigs.findByName("release")?.let { signingConfig = it }
+            // Packs the Rust library's symbol table into the bundle, which
+            // Play reads to symbolicate native crashes and ANRs. The release
+            // profile carries no debug info, so SYMBOL_TABLE is all there is.
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
