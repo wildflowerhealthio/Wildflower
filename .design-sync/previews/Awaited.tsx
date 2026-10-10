@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Suspense, useMemo } from 'react'
 import { Awaited } from '@wildflowerhealthio/react-tundraish'
 
 type Account = { readonly id: string; readonly name: string; readonly status: string }
@@ -20,21 +20,23 @@ export const Resolved = () => {
   )
   return (
     <div style={{ maxWidth: 420 }}>
-      <Awaited promise={promise}>
-        {(accounts) => (
-          <ul style={{ display: 'grid', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
-            {accounts.map((a) => (
-              <li
-                key={a.id}
-                style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
-              >
-                <span className="text-body-2">{a.name}</span>
-                <span className="text-label-3">{a.status}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Awaited>
+      <Suspense fallback={<p className="text-body-3">Loading accounts…</p>}>
+        <Awaited promise={promise}>
+          {(accounts) => (
+            <ul style={{ display: 'grid', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
+              {accounts.map((a) => (
+                <li
+                  key={a.id}
+                  style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                >
+                  <span className="text-body-2">{a.name}</span>
+                  <span className="text-label-3">{a.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Awaited>
+      </Suspense>
     </div>
   )
 }
