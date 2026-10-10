@@ -53,7 +53,7 @@ nav link, no app description, no OAuth client and no homescreen tile.
 ## Development
 
 `vp run -F watch-lifts-web dev` serves on the port
-`dev-app-ports.json` pins for `watch-lifts-web-dev` (5197). Append
+`dev-app-ports.json` pins for `watch-lifts-dev` (5197). Append
 `?return_to=http://localhost:<port>/` to try the handoff without a phone. For
 `pebble emu-app-config` against it, point `CONFIGURATION_URL` in
 `apps/watch-lifts/watch-lifts-watchapp/pkjs/src/index.ts` at the dev server.

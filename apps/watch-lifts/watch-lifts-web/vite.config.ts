@@ -16,7 +16,7 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   // Run with `vp run -F watch-lifts-web dev`.
-  server: devAppServer('watch-lifts-web-dev'),
+  server: devAppServer('watch-lifts-dev'),
   build: {
     rolldownOptions: {
       input: {

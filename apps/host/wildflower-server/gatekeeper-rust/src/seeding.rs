@@ -107,7 +107,7 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
 
 /// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the seven first-party
 /// apps that register an OAuth client. The file also carries `server-docs-dev`
-/// and `watch-lifts-web-dev`, which are not SMART apps and so have no client
+/// and `watch-lifts-dev`, which are not SMART apps and so have no client
 /// here; serde ignores them.
 #[cfg(debug_assertions)]
 #[derive(serde::Deserialize)]
