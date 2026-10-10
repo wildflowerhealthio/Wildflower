@@ -33,6 +33,27 @@ updates:
       - dependency-name: typescript
         update-types:
           - version-update:semver-major
+      # Effect 4 is a rewrite: `@effect/platform` folds into `effect`, and
+      # `@effect/opentelemetry` jumps from 0.x to 4.x alongside it. Every package
+      # is built on Effect 3, so the move is a migration, not a bump.
+      - dependency-name: effect
+        update-types:
+          - version-update:semver-major
+      - dependency-name: '@effect/*'
+        update-types:
+          - version-update:semver-major
+      # Sentry 11 removed `SentrySampler`, `SentrySpanProcessor` and
+      # `setupEventContextTrace`, which telemetry-core/-node/-web are built on.
+      - dependency-name: '@sentry/*'
+        update-types:
+          - version-update:semver-major
+      # Tauri requires each npm package and its crate to share major.minor. The
+      # 2.12 crates reach `cargo_toml` 1.0, which needs `serde` >= 1.0.228, and
+      # helios (apps/host/wildflower-server/fhir-r4-rust) pins `=1.0.224`. The
+      # npm side stays on the crates' minors until helios moves.
+      - dependency-name: '@tauri-apps/*'
+        update-types:
+          - version-update:semver-minor
     groups:
       js-minor-patch:
         update-types:
