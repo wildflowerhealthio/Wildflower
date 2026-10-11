@@ -19,8 +19,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 //
 // The fake gh logs each call's arguments, and for `secret set` /
 // `variable set` the value it read from stdin, into
-// FAKE_DIR/github/<env>/<name>. A PUT of the environment logs the body it
-// read from stdin into FAKE_DIR/environment.json.
+// FAKE_DIR/github/<env>/<name>.
 const here = dirname(fileURLToPath(import.meta.url))
 const scriptPath = join(here, 'android-signing-sync.sh')
 
@@ -34,11 +33,7 @@ case "$1 $2" in
     cat > "$FAKE_DIR/github/$5/$3"
     ;;
   api*)
-    if [[ "$2 $3" == "-X PUT" ]]; then
-      cat > "$FAKE_DIR/environment.json"
-      exit 0
-    fi
-    # GET of a missing environment fails; PUT and POST create.
+    # GET of a missing environment fails; PUT creates.
     [[ "$2" == -X ]] || [[ -n "\${FAKE_ENVIRONMENTS_EXIST:-}" ]] || exit 1
     ;;
 esac
@@ -193,21 +188,17 @@ describe('android-signing-sync', { timeout: 30_000 }, () => {
     )
   })
 
-  it('creates a missing environment that deploys from main only', () => {
+  // No branch rule: the publish runs on a pull request's merge ref.
+  it('creates a missing environment with no branch rule', () => {
     expect(sync().status).toBe(0)
-    expect(JSON.parse(readFileSync(join(fake, 'environment.json'), 'utf8'))).toEqual({
-      deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
-    })
-    expect(ghLog()).toContain(
-      'api -X POST repos/{owner}/{repo}/environments/android-play/deployment-branch-policies -f name=main -f type=branch --silent'
-    )
+    expect(ghLog()).toContain('api -X PUT repos/{owner}/{repo}/environments/android-play --silent')
+    expect(ghLog()).not.toContain('deployment-branch-policies')
   })
 
   // Its protection rules may have been changed by hand since.
   it('leaves an existing environment as it is', () => {
     expect(sync([], { FAKE_ENVIRONMENTS_EXIST: '1' }).status).toBe(0)
     expect(ghLog()).not.toContain('-X PUT')
-    expect(ghLog()).not.toContain('-X POST')
   })
 
   // Play Console refuses bundles from any other upload key, so the one in

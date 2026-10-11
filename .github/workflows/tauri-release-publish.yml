@@ -25,9 +25,10 @@ name: Tauri Release — Publish
 # The notarization and App Store Connect upload credentials stay at
 # repository level.
 #
-# Android is not built here. Once a run for a merged release PR succeeds,
-# deploy-android-play.yml builds the Android App Bundle for the same tag,
-# attaches it to this release and uploads it to Google Play — see
+# An Android job builds the signed App Bundle, attaches it to the release and,
+# for a non-prerelease, uploads it to Google Play's internal track as a draft,
+# to be rolled out by hand from Play Console. Its upload key and Play service
+# account key live in the `android-play` environment — see
 # docs/Rust/Android Release Signing Explanation.md.
 #
 # Also exposes `workflow_dispatch` for two manual cases:
@@ -39,14 +40,17 @@ name: Tauri Release — Publish
 #   - Rebuild an already-tagged release: set `tag` (e.g. `v0.2.0`). The build
 #     checks out that tag as-is, never re-tags, and re-uploads the bundles to
 #     the tag's existing draft release (tauri-action replaces same-named
-#     assets, and the Pebble job uploads with `--clobber`). `platforms`
-#     narrows the fan-out so only the runners you need are rebuilt — pass a
-#     comma-separated list (e.g. `macos,ios`) to skip the ones that already
-#     succeeded. Tags cut before the Pebble apps were versioned with the
-#     release carry `0.0.0` in their manifests, which the Pebble job rejects,
-#     so leave `pebble` out when rebuilding one. Including `pebble` also
-#     uploads both apps to the Pebble app store again, as another unpublished
-#     release of the same version; delete whichever one you don't want.
+#     assets, and the Pebble and Android jobs upload with `--clobber`).
+#     `platforms` narrows the fan-out so only the runners you need are
+#     rebuilt — pass a comma-separated list (e.g. `macos,ios`) to skip the
+#     ones that already succeeded. Tags cut before the Pebble apps were
+#     versioned with the release carry `0.0.0` in their manifests, which the
+#     Pebble job rejects, so leave `pebble` out when rebuilding one. Including
+#     `pebble` also uploads both apps to the Pebble app store again, as
+#     another unpublished release of the same version; delete whichever one
+#     you don't want. Including `android` replaces the release's bundle and
+#     sends Play the version again, which Play refuses once it has that
+#     version code.
 
 on:
   pull_request:
@@ -62,7 +66,7 @@ on:
         required: false
         type: string
       platforms:
-        description: 'Comma-separated platform keys to build (macos, macos-testflight, windows, linux, ios, pebble), or "all". e.g. "macos,ios" to rebuild only those two.'
+        description: 'Comma-separated platform keys to build (macos, macos-testflight, windows, linux, ios, android, pebble), or "all". e.g. "macos,ios" to rebuild only those two.'
         required: false
         default: all
         type: string
@@ -265,7 +269,7 @@ jobs:
               ] | map(. as $entry | select(($selected | index("all")) or ($selected | index($entry.key))))
             }' > /tmp/matrix.json
           if [[ "$(jq '.include | length' /tmp/matrix.json)" == 0 ]] && \
-             ! echo "$platforms" | tr -d '[:space:]' | tr ',' '\n' | grep -qxE 'ios|macos-testflight|pebble'; then
+             ! echo "$platforms" | tr -d '[:space:]' | tr ',' '\n' | grep -qxE 'ios|macos-testflight|android|pebble'; then
             echo "::error::platforms='$platforms' selected no build."
             exit 1
           fi
@@ -705,6 +709,182 @@ jobs:
           if [[ -f "$KEYCHAIN" ]]; then
             security delete-keychain "$KEYCHAIN"
           fi
+
+  build-android:
+    name: Build Android + Google Play
+    needs: prepare
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      contains(inputs.platforms, 'all') ||
+      contains(inputs.platforms, 'android')
+    runs-on: ubuntu-latest
+    # The upload key and the Play service account key.
+    environment: android-play
+    # The host's base Sentry DSN; see the build job.
+    env:
+      VITE_SENTRY_DSN_HOST_APP: ${{ vars.VITE_SENTRY_DSN_HOST_APP }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+
+      # Android Gradle Plugin 8 needs JDK 17. Before the preflight, which runs
+      # this JDK's keytool.
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify Android upload signing inputs
+        # Fails in seconds, not after the compile, and names the input at
+        # fault; Gradle's own signing failure arrives at the end of the build
+        # and names neither. Same values the keystore.properties step and the
+        # upload receive below.
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: ./scripts/checks/android-play-preflight.sh
+
+      - name: Install Android NDK
+        # The runner image carries the Android SDK, but which NDKs it has
+        # moves with the image. The Tauri CLI builds with NDK_HOME when it is
+        # set and otherwise with the newest NDK under the SDK, so pin the one
+        # the CLI installs itself when it finds none (`NDK_VERSION` in
+        # tauri-cli's mobile/android/mod.rs).
+        #
+        # sdkmanager can exit 0 having installed nothing — a licence prompt
+        # left unanswered on stdin, for one — so it is fed `yes` and the
+        # NDK's source.properties (which the Tauri CLI reads for its version)
+        # is checked afterwards, with sdkmanager's output shown if missing.
+        #
+        # The NDK's LLVM tools go on PATH for the vendored OpenSSL build. The
+        # Tauri CLI points cargo at the NDK's clang and llvm-ar but not at a
+        # ranlib, and the `cc` crate then looks for `llvm-ranlib` on PATH and
+        # falls back to `aarch64-linux-android-ranlib`, which NDKs since r23
+        # no longer ship.
+        env:
+          NDK_VERSION: 29.0.13846066
+        run: |
+          set -euo pipefail
+          ndk_home="$ANDROID_HOME/ndk/$NDK_VERSION"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" \
+            < <(yes) > "$RUNNER_TEMP/sdkmanager.log" 2>&1 || true
+          if [[ ! -f "$ndk_home/source.properties" ]]; then
+            cat "$RUNNER_TEMP/sdkmanager.log"
+            echo "::error::sdkmanager did not install NDK $NDK_VERSION at $ndk_home (its output is above)."
+            exit 1
+          fi
+          llvm_bin="$ndk_home/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          if [[ ! -x "$llvm_bin/llvm-ranlib" ]]; then
+            echo "::error::NDK $NDK_VERSION has no llvm-ranlib at $llvm_bin."
+            exit 1
+          fi
+          echo "NDK_HOME=$ndk_home" >> "$GITHUB_ENV"
+          echo "$llvm_bin" >> "$GITHUB_PATH"
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          # The two ABIs every phone Play serves runs; the x86 ones are for
+          # emulators.
+          target: aarch64-linux-android,armv7-linux-androideabi
+          rustflags: '-D warnings'
+          # Its own key: release profile and Android targets, disjoint from
+          # every other job's — see docs/Rust/CI Build Cache Explanation.md.
+          cache-shared-key: release-android
+          cache-on-failure: true
+
+      # Its managed `pnpm` is also what the Gradle project's Rust build task
+      # calls back into the Tauri CLI with.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          cache: true
+
+      - name: Install workspace dependencies
+        run: vp install
+
+      - name: Build workspace (vp run pack)
+        run: vp run pack
+
+      - name: Write keystore.properties
+        # The file the release signing config in
+        # src-tauri/gen/android/app/build.gradle.kts reads; without it the
+        # bundle is built unsigned. The keystore goes to the runner's temp
+        # directory, outside the checkout.
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          printf 'storeFile=%s\nkeyAlias=%s\npassword=%s\n' \
+            "$RUNNER_TEMP/upload.jks" "$ANDROID_UPLOAD_KEY_ALIAS" "$ANDROID_UPLOAD_KEYSTORE_PASSWORD" \
+            > apps/host/host-app/src-tauri/gen/android/keystore.properties
+
+      - name: Build Android App Bundle
+        working-directory: apps/host/host-app
+        # One bundle for both ABIs, not one per ABI: Play splits it per device.
+        run: vp run tauri android build --aab --target aarch64 armv7
+
+      - name: Locate bundle
+        id: bundle
+        # Gradle names the bundle and R8's mapping file after the build
+        # variant, so find them rather than spelling it. The release asset
+        # adds the version, as every other asset on the release carries one.
+        run: |
+          set -euo pipefail
+          OUTPUTS=apps/host/host-app/src-tauri/gen/android/app/build/outputs
+          shopt -s nullglob
+          bundles=("$OUTPUTS"/bundle/*Release/*.aab)
+          if [[ ${#bundles[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one .aab under $OUTPUTS/bundle, found ${#bundles[@]}. Contents:"
+            ls -laR "$OUTPUTS/bundle" 2>&1 || echo "  (directory does not exist)"
+            exit 1
+          fi
+          asset="$RUNNER_TEMP/wildflower-host-${{ needs.prepare.outputs.version }}.aab"
+          cp "${bundles[0]}" "$asset"
+          echo "path=$asset" >> "$GITHUB_OUTPUT"
+          # Present when R8 minified the release, which build.gradle.kts asks
+          # for; Play uses it to deobfuscate crash reports.
+          mappings=("$OUTPUTS"/mapping/*Release/mapping.txt)
+          echo "mapping=${mappings[0]:-}" >> "$GITHUB_OUTPUT"
+
+      # Before the Play upload, so the bundle is on the release even when that
+      # upload fails — which is where the first bundle, uploaded to Play by
+      # hand, comes from. `--clobber` replaces a same-named asset, so a re-run
+      # or tag rebuild re-uploads cleanly.
+      - name: Upload bundle to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload '${{ needs.prepare.outputs.tag }}' \
+            '${{ steps.bundle.outputs.path }}' \
+            --clobber
+
+      - name: Upload to Google Play, internal track, draft
+        # Prereleases stay out of Play, as they stay out of the Pebble app
+        # store: Tauri drops the suffix from the version code, so every beta
+        # of 1.2.3 would spend 1.2.3's, and Play accepts each code once.
+        #
+        # A draft release on the internal track, for a person to roll out from
+        # Play Console. Draft is also the only status the API accepts while
+        # the app has never been published.
+        if: ${{ !contains(needs.prepare.outputs.version, '-') }}
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: io.wildflowerhealth.hostapp
+          releaseFiles: ${{ steps.bundle.outputs.path }}
+          track: internal
+          status: draft
+          mappingFile: ${{ steps.bundle.outputs.mapping }}
 
   # Both watch apps in one job, so the Pebble SDK is installed once. The job id
   # and the `pebble-<app>` artifact names are what jobs downstream download.

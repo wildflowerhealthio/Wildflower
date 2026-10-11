@@ -140,15 +140,13 @@ fi
 # ------------------------------------------------------------------- GitHub
 
 # Creates the environment only when it is missing: a PUT also rewrites its
-# protection rules, which may have been changed by hand since. A new one may
-# deploy from main only — the branch every deploy runs on.
+# protection rules, which may have been changed by hand since. It has no
+# branch rule: the publish it serves runs on a pull request's merge ref, as
+# the Apple environments' does.
 ensure_environment() {
   gh api "repos/{owner}/{repo}/environments/$environment" --silent 2>/dev/null && return 0
-  printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
-    gh api -X PUT "repos/{owner}/{repo}/environments/$environment" --input - --silent
-  gh api -X POST "repos/{owner}/{repo}/environments/$environment/deployment-branch-policies" \
-    -f name=main -f type=branch --silent
-  echo "  Created environment $environment, deploying from main only."
+  gh api -X PUT "repos/{owner}/{repo}/environments/$environment" --silent
+  echo "  Created environment $environment."
 }
 
 # store secret|variable <name> <file>: values go to gh on stdin, never on its

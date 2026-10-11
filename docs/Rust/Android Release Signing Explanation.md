@@ -77,11 +77,9 @@ environment, `android-play`:
 | Variable | `ANDROID_UPLOAD_KEY_ALIAS`         | the upload key's alias, `upload`                         |
 | Secret   | `PLAY_SERVICE_ACCOUNT_JSON`        | the service account's JSON key, as downloaded, unencoded |
 
-Only a job that declares the environment can read them, and it may deploy
-from `main` only. Every deploy is meant to run from `main`, so the branch rule
-costs nothing there, and it keeps a workflow dispatched from any other branch
-away from the key. The Apple environments cannot have such a rule, because the
-publish they serve runs on a pull request's merge ref — see
+Only a job that declares the environment can read them. It has no branch
+rule, for the same reason the Apple environments have none: the publish it
+serves runs on a pull request's merge ref — see
 [Each channel's credentials live in their own environment](./Apple%20Release%20Signing%20Explanation.md#each-channels-credentials-live-in-their-own-environment).
 
 `scripts/release/android-signing-sync.sh` is the only writer of the
@@ -101,26 +99,15 @@ environment. What it relies on:
   folder, and it leaves the machine only as the `PLAY_SERVICE_ACCOUNT_JSON`
   secret.
 - **The environment is created once.** When `android-play` is missing it is
-  created with its `main`-only branch rule; when it exists it is left as it is,
-  since creating it again would reset any protection rules set by hand since.
+  created; when it exists it is left as it is, since creating it again would
+  reset any protection rules set by hand since.
 
 ## How a release reaches Google Play
 
-`.github/workflows/deploy-android-play.yml` builds and uploads the bundle. It
-runs when Tauri Release — Publish completes successfully for a merged
-`release/v<version>` pull request, so Android ships only once every other
-platform of the release has built, and it can be dispatched by hand with a
-`tag`.
-
-**Which tag.** The `workflow_run` event that starts it says which Publish run
-finished, not which tag that run pushed. Publish tags the version in
-`tauri.conf.json` at the merged commit, so the deploy reads the same file at
-the run's head commit — the release branch's tip, which carries the same
-`tauri.conf.json` whichever way the pull request was merged. A release pull
-request closed without merging completes a Publish run too, one that skipped
-tagging; there is no tag, and the deploy stops there with a notice. A Publish
-that was itself dispatched — a re-trigger or a tag rebuild — does not start a
-deploy; dispatch the deploy for its tag instead.
+The `build-android` job of `.github/workflows/tauri-release-publish.yml`
+builds and uploads the bundle, alongside the desktop, iOS and Pebble builds of
+the same release tag. To build it again for an existing tag, dispatch Tauri
+Release — Publish with that `tag` and `platforms` set to `android`.
 
 **Which version Play sees.** `tauri android build` writes
 `gen/android/app/tauri.properties`, which `build.gradle.kts` reads, from the
@@ -137,9 +124,9 @@ neither is set. The formula has two consequences:
 
 - **A prerelease spends its release's version code.** The suffix is dropped,
   so `0.4.0-beta.1` and `0.4.0` are both `4000`, and Play accepts each version
-  code once per app. A Publish run for a prerelease is therefore skipped, and
-  a dispatch for one refused, as the Pebble app store upload skips them for
-  the same reason.
+  code once per app. For a prerelease the bundle is still built and attached
+  to the GitHub Release, but not uploaded to Play, as the Pebble app store
+  upload skips them for the same reason.
 - **Minor and patch stay below 1000**, or one version's code runs into the
   next's.
 
@@ -158,7 +145,10 @@ Play upload, so it is there even when that upload fails.
 Play splits it per device. The Android SDK comes with the runner image, and
 the NDK is pinned to the version the Tauri CLI would install for itself, since
 the image's NDKs change with it and the CLI otherwise picks the newest it
-finds.
+finds. The NDK's LLVM tools go on `PATH` for the vendored OpenSSL build: the
+Tauri CLI names the NDK's compiler and archiver to cargo but no `ranlib`, and
+without `llvm-ranlib` on `PATH` the `cc` crate falls back to
+`aarch64-linux-android-ranlib`, which current NDKs no longer ship.
 
 ## The preflight
 
@@ -181,7 +171,7 @@ the fingerprint of the upload key it expects on the app's App signing page,
 and the two matching is the only check of the key that can be made without an
 upload.
 
-The deploy runs it as soon as the JDK it needs is set up, before anything
+The Android job runs it as soon as the JDK it needs is set up, before anything
 compiles. The sync script runs the same preflight against what it is about to
 store, and stores nothing when it fails.
 
@@ -189,8 +179,8 @@ store, and stores nothing when it fails.
 
 - [Android Signing Sync How-To](./Android%20Signing%20Sync%20How-To.md) — the one-time Play Console setup, and creating and storing the upload key
 - [Apple Release Signing Explanation](./Apple%20Release%20Signing%20Explanation.md) — the macOS and iOS channels of the same release
-- [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the `release-android` cache key the deploy uses
-- `.github/workflows/deploy-android-play.yml` — the build and upload
+- [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the `release-android` cache key the Android job uses
+- `.github/workflows/tauri-release-publish.yml` — the `build-android` job, the build and upload
 - `apps/host/host-app/src-tauri/gen/android/app/build.gradle.kts` — the `release` signing configuration
 - `scripts/checks/android-play-preflight.sh` — the check, and its tests beside it
 - `scripts/release/android-signing-sync.sh` — creates the upload key and fills the environment
