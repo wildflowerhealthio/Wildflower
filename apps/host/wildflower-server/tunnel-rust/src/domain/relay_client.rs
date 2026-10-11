@@ -1,15 +1,17 @@
 //! The embedded rathole client that dials the relay.
 //!
 //! [`RelayClient`] is a one-attempt seam: `run_once` brings up a single rathole
-//! client and returns when it exits. The [`TunnelDaemon`](crate::domain::TunnelDaemon)
-//! supervisor owns the retry/backoff loop and cancellation, so this layer holds
-//! no run lifecycle of its own. The trait exists so the supervisor can be tested
-//! against a fake instead of a live relay.
+//! client, reports when its control channel connects, and returns when that
+//! channel fails, with why, or when it is cancelled. The
+//! [`TunnelDaemon`](crate::domain::TunnelDaemon) supervisor owns the
+//! retry/backoff loop and cancellation, so this layer holds no run lifecycle of
+//! its own. The trait exists so the supervisor can be tested against a fake
+//! instead of a live relay.
 //!
 //! The client connects to no local port: it hands each visitor's connection,
 //! in process, to the sender it is given, as a [`TunnelStream`].
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_rathole_settings::PublicRatholeSettings;
 
@@ -59,20 +61,36 @@ impl std::fmt::Debug for RelaySettings {
     }
 }
 
+/// Why a dial ended without being cancelled.
+#[derive(Debug)]
+pub enum DialFailure {
+    /// The relay knows the tunnel, but refused its token.
+    TokenRejected,
+    /// The relay has no tunnel of this name: it was never registered there,
+    /// or it was deleted.
+    TunnelUnknown,
+    /// The relay couldn't be reached, or the connection to it was lost: a
+    /// connect, transport or handshake error, or a heartbeat timeout. Also a
+    /// client that couldn't start from the relay settings.
+    Dropped(anyhow::Error),
+}
+
 /// Runs a single rathole client attempt. The supervisor calls this in a loop.
 #[async_trait::async_trait]
 pub trait RelayClient: Send + Sync {
     /// Bring up the tunnel per `relay`, sending each visitor's stream to
-    /// `tunnel_stream_tx`, and run until the client exits. Resolves `Ok` on
-    /// a clean stop — `cancel` fired, or the relay closed the session without
-    /// error — and `Err` on a failure the supervisor should back off and retry
-    /// (relay unreachable, handshake rejected).
+    /// `tunnel_stream_tx`, and run until its control channel fails or `cancel`
+    /// fires. Sends on `connected_tx` once the relay accepts the control
+    /// channel. Resolves `Ok` only once `cancel` has fired, and otherwise with
+    /// the [`DialFailure`] that ended the dial; the client is stopped either
+    /// way.
     async fn run_once(
         &self,
         relay: &RelaySettings,
         tunnel_stream_tx: mpsc::Sender<TunnelStream>,
+        connected_tx: oneshot::Sender<()>,
         cancel: CancellationToken,
-    ) -> anyhow::Result<()>;
+    ) -> Result<(), DialFailure>;
 }
 
 #[cfg(test)]

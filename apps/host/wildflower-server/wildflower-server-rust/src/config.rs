@@ -10,6 +10,7 @@ use wildflowerhealthio_gatekeeper::{LoopbackConsentPrompt, PendingConsentHead};
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
+use wildflowerhealthio_tunnel::TunnelState;
 
 use crate::{CertificateAuthority, CertificateState, ServerHealth};
 
@@ -96,6 +97,11 @@ pub struct ServerObservers {
     /// answer. `None` until its first probe; the monitor stops when the server
     /// stops serving, and publishes nothing after.
     pub server_health_tx: watch::Sender<Option<ServerHealth>>,
+    /// Where the tunnel's connection to the relay stands, published by the
+    /// tunnel daemon as the run starts and on each dial's outcome, for as long
+    /// as the server serves. `None` until the run's tunnel starts; the daemon
+    /// publishes nothing after it stops.
+    pub tunnel_state_tx: watch::Sender<Option<TunnelState>>,
     /// Where the server's certificate stands, published by the run as it
     /// starts, on each of rustls-acme's events, and when the certificate's
     /// renewal falls due or it expires. `None` until the run's certificate

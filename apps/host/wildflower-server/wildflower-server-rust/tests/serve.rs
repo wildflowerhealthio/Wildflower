@@ -2,8 +2,8 @@
 //! databases there, and once it has bound the port, cancelling `serve`'s
 //! shutdown token makes it return `Ok`. The loopback port is then free for a
 //! second server over the same folder and the same host channels, which comes
-//! up and answers `/health` with its three passing checks. While serving, the
-//! host's observers see the server's health through its public origin and each
+//! up and answers `/health`. While serving, the host's observers see the
+//! server's health through its public origin, its tunnel's state and each
 //! forwarded request, and the request log records
 //! each forwarded request and serves it back on `/requests` to a token holding
 //! the request log's read scope — a token naming the server's origin as `iss`
@@ -46,7 +46,7 @@ use wildflowerhealthio_shared_structures::health_check::{
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
-use wildflowerhealthio_tunnel::TunnelStream;
+use wildflowerhealthio_tunnel::{TunnelState, TunnelStream};
 use wildflowerhealthio_wildflower_server::{
     set_up, CertificateAuthority, DeviceCertificateConfig, HostPorts, ServerHealth,
     ServerObservers, WildflowerServerConfig,
@@ -194,9 +194,11 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         active_pending_consent_tx,
     };
     let (server_health_tx, mut server_health_rx) = watch::channel(None);
+    let (tunnel_state_tx, mut tunnel_state_rx) = watch::channel(None);
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        tunnel_state_tx,
         certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
@@ -225,10 +227,27 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
             "{database} is not in the data root"
         );
     }
-    // `/health` is the two checks, all passing on a healthy server.
+    // No relay listens at the tunnel's relay address: the host sees the
+    // tunnel reconnecting, with why.
+    let published = tokio::time::timeout(
+        LIFECYCLE_TIMEOUT,
+        tunnel_state_rx.wait_for(|tunnel_state| {
+            matches!(tunnel_state, Some(TunnelState::Reconnecting { .. }))
+        }),
+    )
+    .await
+    .expect("the tunnel state is published in time")
+    .expect("the test holds the tunnel-state sender")
+    .clone();
+    assert!(
+        matches!(&published, Some(TunnelState::Reconnecting { error }) if !error.is_empty()),
+        "{published:?}"
+    );
+    // `/health` is the two checks: the server passing, and its tunnel, which
+    // is reconnecting, warning; a warning is still `200`.
     let (status, report) = health_report(&loopback_base_url).await;
     assert_eq!(status, reqwest::StatusCode::OK);
-    assert_eq!(report.status, HealthStatus::Pass);
+    assert_eq!(report.status, HealthStatus::Warn);
     let checks: Vec<(&str, Vec<(ComponentType, HealthStatus)>)> = report
         .checks
         .iter()
@@ -247,7 +266,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         vec![
             (
                 "connectivity",
-                vec![(ComponentType::Component, HealthStatus::Pass)]
+                vec![(ComponentType::Component, HealthStatus::Warn)]
             ),
             ("server", vec![(ComponentType::System, HealthStatus::Pass)]),
         ]
@@ -436,6 +455,7 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        tunnel_state_tx: watch::channel(None).0,
         certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
@@ -691,6 +711,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        tunnel_state_tx: watch::channel(None).0,
         certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
@@ -938,6 +959,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
+        tunnel_state_tx: watch::channel(None).0,
         certificate_tx: watch::channel(None).0,
         forwarded_request_tx,
     };

@@ -43,6 +43,14 @@ tokio = { workspace = true, features = [
   "test-util",
   # `duplex` streams stand in for the visitor streams a client hands over.
   "io-util",
+  # Waits for the stand-in relay to listen.
+  "net",
+] }
+# An in-process rathole server stands in for the relay the client dials.
+rathole = { version = "0.5", default-features = false, features = [
+  "client",
+  "server",
+  "noise",
 ] }
 serde_json.workspace = true
 parking_lot = "0.12"
