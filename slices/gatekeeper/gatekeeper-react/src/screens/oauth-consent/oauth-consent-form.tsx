@@ -89,8 +89,10 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
 
   const submitting = consentMutation.isPending
   // A result message (a denial / result error) takes precedence over the raw
-  // mutation error; `ErrorBanner` renders whichever is set (a `403` — unreachable
-  // on the consent surface, but handled uniformly — as the permission surface).
+  // mutation error; `ErrorBanner` renders whichever is set. A `403
+  // InsufficientScope` (approving a resource scope the approver's own token
+  // doesn't cover) renders as the app's permission surface, which offers the
+  // step-up sign-in for the scopes it names and returns here to approve again.
   const error = resultError ?? consentMutation.error
   const hasError = resultError !== null || consentMutation.error !== null
 

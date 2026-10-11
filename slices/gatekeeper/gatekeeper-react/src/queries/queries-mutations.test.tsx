@@ -3,7 +3,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { GatekeeperHttpApiClient } from '@wildflowerhealthio/gatekeeper-core/clients'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { DateTime, Effect, Layer, pipe, TestClock, TestContext } from 'effect'
+import {
+  Cause,
+  DateTime,
+  Effect,
+  Layer,
+  Option,
+  pipe,
+  Runtime,
+  TestClock,
+  TestContext,
+} from 'effect'
 import * as fc from 'fast-check'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -274,6 +284,40 @@ describe('useOAuthConsentMutation invalidation', () => {
   })
 })
 
+describe('useOAuthConsentMutation approve', () => {
+  test('decodes a 403 naming the scopes the approver lacks', async () => {
+    // Arrange — the approver's token covers `.u` but not every ticked scope.
+    const refusal = { error: 'InsufficientScope', missingScopes: ['patient/Condition.rs'] }
+    routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), () =>
+      Response.json(refusal, { status: 403 })
+    )
+    const { result } = renderWithClient(() => useOAuthConsentMutation())
+
+    // Act
+    const approval = result.current.mutateAsync({
+      kind: 'approve',
+      id: 'consent-1',
+      payload: {
+        approvedScopes: ['patient/Observation.rs', 'patient/Condition.rs'],
+        patient: null,
+        acknowledgedRegistration: false,
+      },
+    })
+
+    // Assert — the typed body the step-up surface reads (under the runner's
+    // `FiberFailure`), not an opaque failure.
+    const failure: unknown = await approval.then(
+      () => undefined,
+      (error: unknown) => error
+    )
+    expect(Runtime.isFiberFailure(failure)).toBe(true)
+    const cause = Runtime.isFiberFailure(failure)
+      ? failure[Runtime.FiberFailureCauseId]
+      : Cause.empty
+    expect(Cause.failureOption(cause)).toEqual(Option.some(refusal))
+  })
+})
+
 // Helpers
 
 /** The client the recording stub answers `UpdateClient` with, as JSON. */
@@ -298,12 +342,14 @@ interface RecordedRequest {
 
 /**
  * Makes the next `runAuthed` call run its effect for real over a stub
- * `HttpClient` that answers `200` with {@link respondedClient} and records
- * each request — so a test can read the method, path and body `HttpApiClient`
- * actually built. The effect's `Clock` is a `TestClock` set to `now`.
+ * `HttpClient` that answers with `respond()` (by default `200` with
+ * {@link respondedClient}) and records each request — so a test can read the
+ * method, path and body `HttpApiClient` actually built, or how it decoded the
+ * answer. The effect's `Clock` is a `TestClock` set to `now`.
  */
 const routeRunAuthedThroughRecordingHttpClient = (
-  now: DateTime.Utc
+  now: DateTime.Utc,
+  respond: () => Response = () => Response.json(respondedClient, { status: 200 })
 ): readonly RecordedRequest[] => {
   const requests: RecordedRequest[] = []
   const recordingHttpClient = Layer.succeed(
@@ -317,9 +363,7 @@ const routeRunAuthedThroughRecordingHttpClient = (
             ? JSON.parse(new TextDecoder().decode(request.body.body))
             : undefined,
       })
-      return Effect.succeed(
-        HttpClientResponse.fromWeb(request, Response.json(respondedClient, { status: 200 }))
-      )
+      return Effect.succeed(HttpClientResponse.fromWeb(request, respond()))
     })
   )
   runAuthedStub.mockImplementationOnce((effect) =>
