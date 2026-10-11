@@ -91,8 +91,7 @@ impl RelayClient for RatholeRelayClient {
             res = &mut run => {
                 // rathole's client returned without being shut down: it
                 // couldn't start, e.g. its transport couldn't be built from
-                // the config.
-                tracing::warn!(?res, "rathole client returned on its own (no cancel)");
+                // the config. The daemon logs the failure.
                 let error = match res {
                     Err(error) => error,
                     Ok(()) => anyhow::anyhow!("rathole client returned on its own"),
@@ -116,9 +115,9 @@ impl RelayClient for RatholeRelayClient {
 }
 
 /// Watch the client's control channel: send on `connected_tx` once the relay
-/// accepts it, and resolve with why it failed the first time it does. Each
-/// change is logged as rathole's own `run_client` logs it, less the retry,
-/// which is the daemon's. Pending once the client stops reporting.
+/// accepts it, and resolve with why it failed the first time it does. The
+/// daemon logs each dial's outcome; each change is only a debug event here.
+/// Pending once the client stops reporting.
 async fn until_disconnected(
     mut control_channel_state_rx: mpsc::UnboundedReceiver<ControlChannelState>,
     connected_tx: oneshot::Sender<()>,
@@ -127,13 +126,13 @@ async fn until_disconnected(
     while let Some(control_channel_state) = control_channel_state_rx.recv().await {
         match control_channel_state {
             ControlChannelState::Connected { name } => {
-                tracing::info!(service = %name, "rathole: control channel established");
+                tracing::debug!(service = %name, "rathole: control channel established");
                 if let Some(connected_tx) = connected_tx.take() {
                     let _ = connected_tx.send(());
                 }
             }
             ControlChannelState::Disconnected { name, error, .. } => {
-                tracing::error!(service = %name, "rathole: failed to run the control channel: {error:#}");
+                tracing::debug!(service = %name, "rathole: control channel failed: {error:#}");
                 return dial_failure_of(error);
             }
         }
@@ -182,8 +181,12 @@ async fn hand_over_tunnel_streams(
                     });
                 }
                 Some(_) => {}
-                // Dropping `services` aborts the tasks still running.
-                None => return,
+                None => {
+                    // Abort the services still sending, and wait for them to
+                    // stop, so none sends once this returns.
+                    services.shutdown().await;
+                    return;
+                }
             },
             // Reap the services whose queues have ended.
             Some(_) = services.join_next() => {}
@@ -439,10 +442,15 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
         let (_, config_change_rx) = mpsc::channel(1);
         let relay = tokio::spawn(rathole::run_server(config, shutdown_rx, config_change_rx));
-        // Wait for it to listen, so that the first dial reaches it.
-        while tokio::net::TcpStream::connect(&control_addr).await.is_err() {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+        // Wait for it to listen, so that the first dial reaches it; bounded,
+        // so a relay that couldn't bind fails the test rather than hangs it.
+        tokio::time::timeout(DIAL_TIMEOUT, async {
+            while tokio::net::TcpStream::connect(&control_addr).await.is_err() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the stand-in relay listens within the bound");
         let relay_settings = RelaySettings {
             remote_addr: control_addr,
             token: dialed_token.into(),

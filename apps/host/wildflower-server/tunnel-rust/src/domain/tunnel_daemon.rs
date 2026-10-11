@@ -26,11 +26,13 @@ use crate::domain::{DialFailure, RelayClient, RelaySettings, TunnelState, Tunnel
 struct Backoff {
     initial: Duration,
     max: Duration,
-    /// An attempt that ran at least this long before it dropped is treated as
-    /// a successful session and the next delay snaps back to `initial`.
-    /// Without it a tunnel that flaps at startup (delay climbs to `max`), runs
-    /// cleanly for hours, then drops would wait the full `max` before
-    /// reconnecting instead of `initial`.
+    /// A connection that stayed up at least this long, from when the relay
+    /// accepted the control channel to when it dropped, is treated as a
+    /// successful session and the next delay snaps back to `initial`. Without
+    /// it a tunnel that flaps at startup (delay climbs to `max`), runs cleanly
+    /// for hours, then drops would wait the full `max` before reconnecting
+    /// instead of `initial`. A dial that never connected doesn't reset the
+    /// delay, however long it took to fail.
     stable_threshold: Duration,
 }
 
@@ -118,7 +120,6 @@ async fn supervise(
             return;
         }
         attempt = attempt.saturating_add(1);
-        let attempt_started = tokio::time::Instant::now();
         tracing::info!(
             attempt,
             remote_addr = %relay_settings.remote_addr,
@@ -133,11 +134,15 @@ async fn supervise(
             cancel.child_token(),
         );
         tokio::pin!(dial);
+        // When the relay accepted the control channel, if it did before the
+        // dial ended.
+        let mut connected_at = None;
         let dial_result = tokio::select! {
             dial_result = &mut dial => dial_result,
             Ok(()) = connected_rx => {
+                connected_at = Some(tokio::time::Instant::now());
                 tracing::info!(attempt, "tunnel: connected to relay");
-                tunnel_state_tx.send_replace(Some(TunnelState::Connected));
+                publish(&tunnel_state_tx, &cancel, TunnelState::Connected);
                 dial.await
             }
         };
@@ -154,7 +159,7 @@ async fn supervise(
                     attempt,
                     "tunnel: the relay rejected the tunnel's token; stopped dialing"
                 );
-                tunnel_state_tx.send_replace(Some(TunnelState::TokenRejected));
+                publish(&tunnel_state_tx, &cancel, TunnelState::TokenRejected);
                 return;
             }
             Err(DialFailure::TunnelUnknown) => {
@@ -163,14 +168,20 @@ async fn supervise(
                     service_name = %relay_settings.service_name,
                     "tunnel: the relay has no tunnel of this name; stopped dialing"
                 );
-                tunnel_state_tx.send_replace(Some(TunnelState::TunnelUnknown));
+                publish(&tunnel_state_tx, &cancel, TunnelState::TunnelUnknown);
                 return;
             }
             Err(DialFailure::Dropped(error)) => format!("{error:#}"),
         };
         tracing::warn!(attempt, %error, "tunnel: relay connection dropped; retrying");
-        tunnel_state_tx.send_replace(Some(TunnelState::Reconnecting { error }));
-        if attempt_started.elapsed() >= backoff.stable_threshold {
+        publish(
+            &tunnel_state_tx,
+            &cancel,
+            TunnelState::Reconnecting { error },
+        );
+        if connected_at
+            .is_some_and(|connected_at| connected_at.elapsed() >= backoff.stable_threshold)
+        {
             delay = backoff.initial;
         }
         tokio::select! {
@@ -179,6 +190,23 @@ async fn supervise(
         }
         delay = (delay * 2).min(backoff.max);
     }
+}
+
+/// Publish `tunnel_state` on `tunnel_state_tx`, unless the daemon has been
+/// dropped: a stopped daemon publishes nothing more, even when a dial ends as
+/// it stops.
+fn publish(
+    tunnel_state_tx: &watch::Sender<Option<TunnelState>>,
+    cancel: &CancellationToken,
+    tunnel_state: TunnelState,
+) {
+    tunnel_state_tx.send_if_modified(|published| {
+        if cancel.is_cancelled() {
+            return false;
+        }
+        *published = Some(tunnel_state);
+        true
+    });
 }
 
 /// Equal-jitter backoff: returns a duration in `[base / 2, base]`. Half
@@ -208,8 +236,8 @@ impl TunnelDaemon {
             Backoff {
                 initial: Duration::from_millis(1),
                 max: Duration::from_millis(1),
-                // Far larger than anything a test will let an attempt run, so
-                // the stable-attempt reset doesn't fire by accident.
+                // Far longer than any test keeps a connection up, so
+                // the stable-connection reset doesn't fire by accident.
                 stable_threshold: Duration::from_secs(3600),
             },
         )
@@ -242,10 +270,16 @@ mod tests {
         Unreachable,
         /// Connects, then the connection drops.
         ConnectThenDrop,
+        /// Connects, and the connection drops after this long.
+        ConnectThenDropAfter(Duration),
+        /// Fails after this long, without connecting.
+        UnreachableAfter(Duration),
         /// Connects, and holds until cancelled.
         ConnectAndHold,
         /// Holds until cancelled without connecting.
         HoldUnconnected,
+        /// Holds until cancelled, then connects as the dial ends.
+        ConnectOnCancel,
         /// The relay rejects the token.
         RejectToken,
         /// The relay has no such tunnel.
@@ -297,6 +331,15 @@ mod tests {
                     let _ = connected_tx.send(());
                     Err(DialFailure::Dropped(anyhow::anyhow!("heartbeat timed out")))
                 }
+                Dial::ConnectThenDropAfter(held) => {
+                    let _ = connected_tx.send(());
+                    tokio::time::sleep(held).await;
+                    Err(DialFailure::Dropped(anyhow::anyhow!("heartbeat timed out")))
+                }
+                Dial::UnreachableAfter(held) => {
+                    tokio::time::sleep(held).await;
+                    Err(DialFailure::Dropped(anyhow::anyhow!("connect timed out")))
+                }
                 Dial::ConnectAndHold => {
                     let _ = connected_tx.send(());
                     cancel.cancelled().await;
@@ -304,6 +347,13 @@ mod tests {
                 }
                 Dial::HoldUnconnected => {
                     cancel.cancelled().await;
+                    Ok(())
+                }
+                Dial::ConnectOnCancel => {
+                    cancel.cancelled().await;
+                    let _ = connected_tx.send(());
+                    // Let the supervisor see the signal before the dial ends.
+                    tokio::task::yield_now().await;
                     Ok(())
                 }
                 Dial::RejectToken => Err(DialFailure::TokenRejected),
@@ -504,6 +554,46 @@ mod tests {
         }
     }
 
+    /// A connection that stayed up for the stable threshold resets the delay
+    /// to the initial one; a dial that took as long to fail without
+    /// connecting doesn't.
+    #[tokio::test(start_paused = true)]
+    async fn only_a_stable_connection_resets_the_backoff() {
+        const HELD: Duration = Duration::from_secs(60);
+        let (client, mut dials) = ScriptedRelayClient::new(&[
+            Dial::ConnectThenDrop,
+            Dial::ConnectThenDrop,
+            Dial::ConnectThenDrop,
+            Dial::UnreachableAfter(HELD),
+            Dial::ConnectThenDropAfter(HELD),
+        ]);
+        let (tunnel_state_tx, _tunnel_state_rx) = watch::channel(None);
+        let _daemon = TunnelDaemon::spawn_with_backoff(
+            client,
+            unread_tunnel_stream_tx(),
+            relay(),
+            tunnel_state_tx,
+            Backoff {
+                initial: Duration::from_secs(1),
+                max: Duration::from_secs(4),
+                stable_threshold: HELD,
+            },
+        );
+        let mut last_dial = dials.recv().await.expect("dial 1");
+        // How long each dial was held, and the delay before the next one.
+        for (held, delay) in [(0, 1), (0, 2), (0, 4), (60, 4), (60, 1)]
+            .map(|(held, delay)| (Duration::from_secs(held), Duration::from_secs(delay)))
+        {
+            let dial = dials.recv().await.expect("a re-dial");
+            let waited = dial - last_dial - held;
+            assert!(
+                delay / 2 <= waited && waited <= delay,
+                "waited {waited:?} for a delay of {delay:?} after a dial held {held:?}"
+            );
+            last_dial = dial;
+        }
+    }
+
     /// A rejected token, or a tunnel the relay doesn't know, fails the tunnel
     /// and stops the dialing: a re-dial with the same settings would be
     /// refused again.
@@ -530,6 +620,18 @@ mod tests {
             assert_eq!(dial_count, 2, "dialed until refused, then stopped");
             assert_eq!(tunnel_state_rx.borrow().as_ref(), Some(&refused));
         }
+    }
+
+    /// A dial that connects as the daemon is dropped publishes nothing.
+    #[tokio::test(start_paused = true)]
+    async fn a_dropped_daemon_publishes_nothing_more() {
+        let (client, mut dials) = ScriptedRelayClient::new(&[Dial::ConnectOnCancel]);
+        let (daemon, tunnel_state_rx) = spawn_daemon(client);
+        dials.recv().await.expect("dialed");
+        drop(daemon);
+        // Long past the dial's end.
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        assert_eq!(*tunnel_state_rx.borrow(), Some(TunnelState::Connecting));
     }
 
     #[tokio::test(start_paused = true)]
