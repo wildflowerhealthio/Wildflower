@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/effect-messaging-tauri-js",
   "version": "0.0.0",
   "private": true,
-  "description": "Tauri adapter for effect-messaging: a bridge transport over per-tag Tauri events with structured payloads.",
+  "description": "Tauri adapter for effect-messaging: a page-side bridge transport over one multiplexed Tauri event with structured payloads.",
   "license": "MIT",
   "repository": {
     "type": "git",
