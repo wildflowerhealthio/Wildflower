@@ -48,8 +48,8 @@ SMART-built context). What differs is below.
   renders.
 
 The npm package is `fhir-sync-pebble-web`; the OAuth `client_id` is
-`fhir-sync-pebble` (`fhir-sync-pebble-dev` in a vite dev build), and the
-published path segment is `fhir-sync-pebble`.
+`6847df97d54c31936d54ca1b36b3bb09` (`61e195d6b08bab6bf2cedb1ef3831fa7` in a vite dev
+build), and the published path segment is `fhir-sync-pebble`.
 
 ## Standalone only
 
@@ -142,11 +142,11 @@ pinned to `PhoneSettings.Settings`, so the two can't change apart, and
 `openid fhirUser system/Patient.rs system/Observation.cu`: `system/` rather than
 `patient/` because the page picks the patient after the grant, so there is no
 patient context for a `patient/` scope to reach (the same reasoning the other
-first-party clients document). That string MUST equal the `allowed_scopes` of the `fhir-sync-pebble` client
-(gatekeeper migration `0017_seed_fhir_sync_pebble_client`, widened by `0018`), element for
-element. Nothing spans the TS/Rust boundary to check it; the mirrors are the
+first-party clients document). That string MUST equal the `allowed_scopes` of the production client
+(gatekeeper migration `0017_seed_fhir_sync_pebble_client`, widened by `0018`, re-keyed by
+`0030_rekey_fhir_sync_pebble_clients`), element for element. Nothing spans the TS/Rust boundary to check it; the mirrors are the
 doc comment in `config.ts`, the migration's header, the vector asserted in
-`gatekeeper-rust`'s `db/clients.rs`, and the `fhir-sync-pebble-dev` client in
+`gatekeeper-rust`'s `db/clients.rs`, and the dev client in
 `seeding.rs`'s `seed_dev_app_clients`. Change one, change all four.
 
 ## Development

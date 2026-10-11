@@ -132,6 +132,7 @@ struct DevAppPorts {
 /// tile ids (`medications-dev` and so on). `wildflowerhealthio_apps::dev_seed` points each tile
 /// at its client, and each app's `src/config.ts` (the OHIF viewer's
 /// `config/app-config.js` and launch URL) launches as it under the dev server.
+/// FHIR Sync for Pebble has no tile; its `src/config.ts` alone names its client.
 #[cfg(debug_assertions)]
 const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
 #[cfg(debug_assertions)]
@@ -144,6 +145,8 @@ const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 #[cfg(debug_assertions)]
 const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
+#[cfg(debug_assertions)]
+const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
 
 /// The Health Viewer dev client's scopes: exactly the scope string in
 /// `apps/health-viewer/health-viewer-web/src/config.ts`, which requests the same set for an EHR
@@ -235,10 +238,10 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// onward), whose clients register the published-site redirect URI. A debug
 /// build also gets an `<app>-dev` row (`wildflowerhealthio_apps::dev_seed`) whose launch
 /// URL points at the app's local vite dev server on the port
-/// `dev-app-ports.json` pins, and that row needs its own client — named after
-/// the dev app id for FHIR Sync, a random id for the rest —
-/// whose absolute
-/// `http://localhost:{port}` redirect is what the authorize flow matches. They are separate clients rather than extra
+/// `dev-app-ports.json` pins, and that row needs its own client, under a
+/// random id, whose absolute `http://localhost:{port}` redirect is what the
+/// authorize flow matches (FHIR Sync for Pebble has no row, but its dev server
+/// gets a client the same way). They are separate clients rather than extra
 /// redirect entries on the production ones because adding a plaintext loopback
 /// redirect there would register it on a client that a public website uses.
 ///
@@ -332,10 +335,11 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             "/fhir-viewer",
         ),
         (
-            "fhir-sync-pebble-dev",
+            FHIR_SYNC_PEBBLE_DEV_CLIENT_ID,
             "FHIR Sync for Pebble (Dev)",
-            // Mirrors the production `fhir-sync-pebble` client (migration
-            // `0017_seed_fhir_sync_pebble_client`, widened by `0018`, the `scope` in
+            // Mirrors the production FHIR Sync for Pebble client (migration
+            // `0017_seed_fhir_sync_pebble_client`, widened by `0018`, re-keyed by
+            // `0030`, the `scope` in
             // `apps/fhir-sync-pebble/fhir-sync-pebble-web/src/config.ts`). Standalone-only, so
             // there is no `wildflowerhealthio_apps::dev_seed` row; the loopback root carries
             // the `ConnectMenu`'s redirect.

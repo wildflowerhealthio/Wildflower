@@ -31,12 +31,13 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  *
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/fhir-sync-pebble/` and authorizes as the
- *   `fhir-sync-pebble` client (gatekeeper migration
- *   `0017_seed_fhir_sync_pebble_client`, scopes widened by `0018`), which
- *   registers that absolute URL.
+ *   `6847df97d54c31936d54ca1b36b3bb09` client (gatekeeper migration
+ *   `0017_seed_fhir_sync_pebble_client`, scopes widened by `0018`, re-keyed
+ *   by `0030_rekey_fhir_sync_pebble_clients`), which registers that absolute
+ *   URL.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/fhir-sync-pebble-web dev`, on the port
  *   `dev-app-ports.json` pins) authorizes as the debug-only
- *   `fhir-sync-pebble-dev` client (`gatekeeper-rust`'s `seed_dev_app_clients`),
+ *   `61e195d6b08bab6bf2cedb1ef3831fa7` client (`gatekeeper-rust`'s `seed_dev_app_clients`),
  *   which registers `http://localhost:{port}/`.
  *
  * The scope string MUST equal the client's `allowed_scopes` element for
@@ -47,7 +48,9 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * Change one, change all four.
  */
 const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
-  clientId: import.meta.env.DEV ? 'fhir-sync-pebble-dev' : 'fhir-sync-pebble',
+  clientId: import.meta.env.DEV
+    ? '61e195d6b08bab6bf2cedb1ef3831fa7'
+    : '6847df97d54c31936d54ca1b36b3bb09',
   scope: 'openid fhirUser system/Patient.rs system/Observation.cu',
 }
 

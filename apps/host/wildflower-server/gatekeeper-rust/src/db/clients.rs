@@ -294,7 +294,7 @@ mod tests {
     /// `0019`, the Synthesized Health Viewer by `0022`, and the Synthetic Data
     /// Loader by `0028` (which re-keys Medications, the console, the Importer and
     /// the Health Viewer to random ids, as `0025` / `0026` did Lifting and the
-    /// launcher, and `0029` does the OHIF viewer) — so a
+    /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble) — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -312,7 +312,7 @@ mod tests {
             "03a513940b52f8c2649a5366d1a26d19",
             "165cd26573e5ac72378e6ad2d2198330",
             "941de68e6b59eb9dcc32df8ede89e636",
-            "fhir-sync-pebble",
+            "6847df97d54c31936d54ca1b36b3bb09",
             "bdf9fc5cb5a28c6683b49896b0ef8a75",
             "474e103de61f9141c4b640d59bfa130e",
             "225ba6af034a3acec6be7ff8010df67f",
@@ -552,14 +552,18 @@ mod tests {
                 "system/DocumentReference.rs".to_string(),
             ],
         );
-        // `fhir-sync-pebble` (the Pebble watchapp's settings page) is
-        // standalone-only: it carries its published-site redirect, and its scopes
+        // FHIR Sync for Pebble's client (the Pebble watchapp's settings page,
+        // seeded by `0017` as `fhir-sync-pebble`, re-keyed to a random id by
+        // `0030`) is standalone-only: it carries its published-site redirect, and its scopes
         // are `system/`, with no `launch`: the page picks the patient after the
         // grant.
         // This vector must stay element-for-element equal to the `scope` string
         // in `apps/fhir-sync-pebble/fhir-sync-pebble-web/src/config.ts` — nothing spans the
         // TS/Rust boundary to check it.
-        let pebble = store.client_by_id("fhir-sync-pebble").unwrap().unwrap();
+        let pebble = store
+            .client_by_id("6847df97d54c31936d54ca1b36b3bb09")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             pebble.redirect_uris,
             vec![
