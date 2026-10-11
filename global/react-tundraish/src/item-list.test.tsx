@@ -58,6 +58,22 @@ describe('ItemList', () => {
     })
   }, 15_000)
 
+  it('opens an external href in a new tab', () => {
+    // Arrange
+    const items: ItemListItem[] = [
+      { id: '1', title: 'Privacy policy', href: 'https://example.com/privacy/', external: true },
+    ]
+
+    // Act — an absolute URL renders a plain `<a>`, so no router is needed.
+    render(<ItemList items={items} />)
+
+    // Assert
+    const link = screen.getByRole('link', { name: /Privacy policy/ })
+    expect(link.getAttribute('href')).toBe('https://example.com/privacy/')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noreferrer')
+  })
+
   it('does NOT render a navigable link when href is set but the item is disabled', () => {
     // Arrange
     const items: ItemListItem[] = [

@@ -2435,6 +2435,7 @@ describe('Add server', () => {
 
     // Assert
     expect(within(tunnel).getByText(`Your server will be available at ${address}`)).toBeDefined()
+    expect(within(tunnel).getByText(/public Certificate Transparency logs/)).toBeDefined()
   })
 
   it('should say a rathole relay is tested when the server starts', async () => {

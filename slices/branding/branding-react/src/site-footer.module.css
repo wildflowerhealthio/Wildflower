@@ -27,6 +27,28 @@
   line-height: var(--line-height-5);
 }
 
+/*
+ * The policy links: the same mono side-note voice as the stamp, in one row
+ * that wraps on phones. Underlined so they read as links at that size.
+ */
+.site-footer__policies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-neutral-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+}
+
+.site-footer__policies a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 /* Quiet mono side-note, matching the header dropdown's label treatment. */
 .site-footer__stamp {
   margin: var(--space-7) 0 0;

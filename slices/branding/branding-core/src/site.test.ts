@@ -3,8 +3,12 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  POLICY_IDS,
+  POLICY_LABELS,
+  POLICY_PATHS,
   SECTION_PATHS,
   SITE_ORIGIN,
+  policyUrl,
   sectionRootPath,
   sectionUrl,
   siteRootFor,
@@ -166,5 +170,20 @@ describe('siteRootFor', () => {
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('policyUrl', () => {
+  it('should resolve each policy page to a slash-terminated URL on the canonical site', () => {
+    expect(policyUrl('privacyPolicy')).toBe('https://wildflowerhealth.io/privacy-policy/')
+    expect(policyUrl('terms')).toBe('https://wildflowerhealth.io/terms/')
+    expect(policyUrl('deletion')).toBe('https://wildflowerhealth.io/deletion/')
+  })
+
+  it('should label every policy page', () => {
+    expect(POLICY_IDS.toSorted()).toStrictEqual(Object.keys(POLICY_PATHS).toSorted())
+    for (const id of POLICY_IDS) {
+      expect(POLICY_LABELS[id].length).toBeGreaterThan(0)
+    }
   })
 })

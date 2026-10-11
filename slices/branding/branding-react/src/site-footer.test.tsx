@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { SiteFooter } from './site-footer.tsx'
@@ -26,6 +26,24 @@ describe('SiteFooter', () => {
     )
     const year = new Date().getFullYear()
     expect(screen.getByText(`Wildflower Health Project · Ruth Marks · ${year}`)).toBeDefined()
+  })
+
+  it('should link to the privacy policy, the terms of use and the deletion page on the canonical site', () => {
+    // Arrange / Act
+    render(<SiteFooter />)
+
+    // Assert — the app stores require the apps to link to these pages, and
+    // every app's landing page ends in this footer.
+    const policies = screen.getByRole('list', { name: 'Policies' })
+    expect(
+      within(policies).getByRole('link', { name: 'Privacy policy' }).getAttribute('href')
+    ).toBe('https://wildflowerhealth.io/privacy-policy/')
+    expect(within(policies).getByRole('link', { name: 'Terms of use' }).getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/terms/'
+    )
+    expect(
+      within(policies).getByRole('link', { name: 'Deleting your data' }).getAttribute('href')
+    ).toBe('https://wildflowerhealth.io/deletion/')
   })
 
   it('should expose the #note anchor target the homepage links to', () => {

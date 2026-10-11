@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
+import { POLICY_IDS, POLICY_LABELS, policyUrl } from '@wildflowerhealthio/branding-core'
 import { ItemList, type ItemListItem, PageHeader } from '@wildflowerhealthio/react-tundraish'
 import type { HostCommandError, NotificationPermission } from '@wildflowerhealthio/servers-core-js'
 import {
@@ -58,6 +59,18 @@ const useNotificationsItem = (): ItemListItem => {
   return { ...item, subtitle: NOTIFICATION_PERMISSION_SUBTITLE[permission.data] }
 }
 
+/**
+ * The Legal section's rows: the privacy policy, the terms of use and the
+ * deletion page on the canonical site, each opened in the system browser. The
+ * app stores require the app to link to the first and the last.
+ */
+const LEGAL_ITEMS: readonly ItemListItem[] = POLICY_IDS.map((id) => ({
+  id,
+  title: POLICY_LABELS[id],
+  href: policyUrl(id),
+  external: true,
+}))
+
 /** The About section's version row's value. */
 const versionText = (version: UseQueryResult<string, HostCommandError>): string => {
   if (version.isSuccess) return version.data
@@ -67,7 +80,7 @@ const versionText = (version: UseQueryResult<string, HostCommandError>): string 
 /**
  * The base's Host Settings, `/settings`, for this device's app rather than
  * any one server (whose settings the web app holds):
- * Notifications, the Telemetry row, and About.
+ * Notifications, the Telemetry row, Legal and About.
  *
  * @remarks
  * The Telemetry row reads the answer to the base's own consent dialog, by the
@@ -98,6 +111,7 @@ const SettingsPage = (): JSX.Element => {
           },
         ]}
       />
+      <ItemList title="Legal" items={LEGAL_ITEMS} />
       <ItemList
         title="About"
         maxLines={3}

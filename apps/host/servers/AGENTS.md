@@ -86,7 +86,9 @@ changing how servers run or what the host notifies about them.
   consent gate, then the background session's recovery and its router over
   `routes/`, `/` the server list, `/servers/new` Add server,
   `/servers/$domain` a server's page and `/settings` Host Settings, for the app on this device rather than any one
-  server (Notifications, Telemetry, About). The server list is a card per
+  server (Notifications, Telemetry, Legal — the privacy policy, terms of use and
+  deletion page on the canonical site, opened in the system browser — and
+  About). The server list is a card per
   server, kept current by the `server-status` event: its domain and a status
   dot merged from its run state and health; a run-policy field
   (`RunPolicyPicker`) that says when it runs, outlined in the dot's tone, over

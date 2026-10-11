@@ -17,8 +17,18 @@ export type {
   NavLink,
   SectionNavLink,
 } from './nav.ts'
-export { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl, siteRootFor } from './site.ts'
-export type { SectionId } from './site.ts'
+export {
+  POLICY_IDS,
+  POLICY_LABELS,
+  POLICY_PATHS,
+  SECTION_PATHS,
+  SITE_ORIGIN,
+  policyUrl,
+  sectionRootPath,
+  sectionUrl,
+  siteRootFor,
+} from './site.ts'
+export type { PolicyId, SectionId } from './site.ts'
 export {
   REDIRECT_PARAM,
   basenameOf,
@@ -31,4 +41,8 @@ export {
   TELEMETRY_CONSENT_COPY,
   WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
 } from './telemetry-consent-copy.ts'
-export type { TelemetryConsentCopy } from './telemetry-consent-copy.ts'
+export type {
+  AcceptanceCopy,
+  PolicyLinkCopy,
+  TelemetryConsentCopy,
+} from './telemetry-consent-copy.ts'

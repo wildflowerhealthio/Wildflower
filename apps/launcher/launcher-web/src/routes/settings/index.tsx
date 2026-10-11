@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { appsSettingsItemsFragment } from '@wildflowerhealthio/apps-react'
+import { POLICY_IDS, POLICY_LABELS, policyUrl } from '@wildflowerhealthio/branding-core'
 import { databasesSettingsItemsFragment } from '@wildflowerhealthio/databases-react'
 import { gatekeeperSettingsItemsFragment } from '@wildflowerhealthio/gatekeeper-react'
 import { ItemList, PageHeader } from '@wildflowerhealthio/react-tundraish'
@@ -25,10 +26,24 @@ const sliceSettingsItems: readonly SettingsItem[] = [
 ]
 
 /**
+ * The Legal rows every entry ends on: the privacy policy, the terms of use and
+ * the deletion page on the canonical site, opened in a new tab (the system
+ * browser, inside Wildflower Host's webview). The app stores require the apps
+ * to link to the first and the last.
+ */
+const legalSettingsItems: readonly SettingsItem[] = POLICY_IDS.map((id) => ({
+  id: `legal-${id}`,
+  title: POLICY_LABELS[id],
+  href: policyUrl(id),
+  external: true,
+}))
+
+/**
  * Index of `/settings`. Renders the section's single "Settings" header
  * (this is a top-level tab, so no back link) followed by one row per
  * slice that opts in via `*SettingsItemsFragment`, then the entry's own
- * rows, `entrySettingsItems` (e.g. the Telemetry row and the web logout row).
+ * rows, `entrySettingsItems` (e.g. the Telemetry row and the web logout row),
+ * then the Legal rows.
  *
  * Presentational and prop-driven — the route binding below feeds
  * `entrySettingsItems` from the entry's providers, so this component stays
@@ -42,7 +57,7 @@ function SettingsIndex({
   return (
     <>
       <PageHeader title="Settings" />
-      <ItemList items={[...sliceSettingsItems, ...entrySettingsItems]} />
+      <ItemList items={[...sliceSettingsItems, ...entrySettingsItems, ...legalSettingsItems]} />
     </>
   )
 }
