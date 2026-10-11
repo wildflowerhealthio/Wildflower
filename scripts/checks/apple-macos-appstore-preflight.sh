@@ -28,6 +28,7 @@ set -euo pipefail
 
 # GitHub Actions turns these into clickable annotations; plain text elsewhere.
 fail() { echo "::error::$*" >&2; exit 1; }
+warn() { echo "::warning::$*" >&2; }
 
 # Certificate and profile classification is shared with the iOS preflight.
 # shellcheck source=./apple-signing-lib.sh

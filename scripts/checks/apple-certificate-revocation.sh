@@ -25,7 +25,7 @@ check_not_revoked() {
   fi
   ocsp_url="$(openssl x509 -in "$cert" -noout -ocsp_uri 2>/dev/null || true)"
   issuer_url="$(openssl x509 -in "$cert" -noout -text 2>/dev/null |
-    sed -n 's/^ *CA Issuers - URI://p' | head -n 1)"
+    sed -n 's/^ *CA Issuers - URI://p' | head -n 1 || true)"
   if [[ -z "$ocsp_url" || -z "$issuer_url" ]]; then
     warn "'$identity' names no OCSP responder or issuer, so whether it is revoked is not checked."
     return 0
@@ -40,7 +40,9 @@ check_not_revoked() {
 
   # `-noverify`: the question is the status Apple reports, and the runner's
   # openssl does not carry Apple's roots to verify the response against.
-  response="$(openssl ocsp -issuer "$issuer" -cert "$cert" -url "$ocsp_url" -noverify 2>&1 || true)"
+  # `-timeout`: a responder that never answers must warn, not hang the job.
+  response="$(openssl ocsp -issuer "$issuer" -cert "$cert" -url "$ocsp_url" -noverify \
+    -timeout 20 2>&1 || true)"
   verdict="$(ocsp_verdict "$response")"
   case "$verdict" in
     good) echo "$label: Apple reports '$identity' is not revoked." ;;
