@@ -1,4 +1,5 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
+import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
 import { RequireAuthMiddleware } from './require-auth.ts'
 
@@ -123,6 +124,13 @@ const httpApiGroup = HttpApiGroup.make('oauth-consent', { topLevel: false })
       .addSuccess(OAuthConsentResultSchema)
       .addError(OAuthConsentNotFoundSchema, { status: 404 })
   )
+  // Every endpoint here is scope-gated (`wildflower/AuthorizationRequest.r` to
+  // read, `.u` to decide), and an approval additionally answers the same `403`
+  // when it names a resource scope the approver's own token doesn't cover. So
+  // the shared `403 InsufficientScope` is declared once at the group level: the
+  // generated client decodes it, naming the missing scopes, and the consent
+  // form's error surface can offer the step-up instead of an opaque failure.
+  .addError(InsufficientScopeSchema, { status: 403 })
   .middleware(RequireAuthMiddleware)
   .prefix('/access')
 

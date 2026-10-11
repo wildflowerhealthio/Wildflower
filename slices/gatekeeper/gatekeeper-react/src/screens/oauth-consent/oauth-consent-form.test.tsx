@@ -2,6 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import {
+  ErrorBodyRendererContext,
+  type ErrorBodyRenderer,
+} from '@wildflowerhealthio/react-tundraish'
 import { Grant, GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
 import * as fc from 'fast-check'
 import { type JSX, type ReactNode } from 'react'
@@ -43,12 +47,15 @@ const mutate = vi.fn<(variables: MutateVars, options?: MutateOptions) => void>()
 /** The stubbed `scrollIntoView` (jsdom has none); re-armed each test. */
 let scrollIntoView = vi.fn()
 
+/** The mutation's failure (what a rejected approve leaves on it), or `null`. */
+let mutationError: unknown = null
+
 vi.mock('../../queries/index.ts', () => ({
   useOAuthConsentMutation: (): {
     mutate: typeof mutate
     isPending: boolean
-    error: null
-  } => ({ mutate, isPending: false, error: null }),
+    error: unknown
+  } => ({ mutate, isPending: false, error: mutationError }),
 }))
 
 /**
@@ -81,6 +88,7 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
 }))
 
 beforeEach(() => {
+  mutationError = null
   patientResources = []
   patientsError = null
   // jsdom doesn't implement scrollIntoView; the form calls it to bring the error
@@ -287,6 +295,23 @@ describe('OAuthConsentForm — decision routing', () => {
     // The error banner sits above the form, so it's scrolled into view.
     expect(scrollIntoView).toHaveBeenCalled()
     expect(onDone).not.toHaveBeenCalled()
+  })
+
+  test('an approver-scope 403 renders through the app error surface, offering the step-up', () => {
+    // Arrange — the approve failed: the approver's token lacks a ticked scope.
+    mutationError = { error: 'InsufficientScope', missingScopes: ['patient/Condition.rs'] }
+    const renderer = vi.fn((error: unknown) =>
+      typeof error === 'object' && error !== null && 'missingScopes' in error ? (
+        <button type="button">Request access</button>
+      ) : null
+    )
+
+    // Act
+    renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn(), renderer)
+
+    // Assert — the decoded body reaches the app's renderer, which owns the step-up.
+    expect(renderer).toHaveBeenCalledWith(mutationError)
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy()
   })
 
   test('a denied approval shows the denial notice and stays on the form', async () => {
@@ -749,13 +774,16 @@ const unboundConsent = (scopes: readonly string[]): OAuthConsentResource =>
 
 const renderForm = (
   consent: OAuthConsentResource,
-  onDone: (result: OAuthConsentResult) => void
+  onDone: (result: OAuthConsentResult) => void,
+  errorBodyRenderer: ErrorBodyRenderer | null = null
 ): { readonly user: ReturnType<typeof userEvent.setup> } => {
   const queryClient = new QueryClient()
   // No timer between pointer actions: the property renders and clicks once per run.
   const user = userEvent.setup({ delay: null })
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <ErrorBodyRendererContext.Provider value={errorBodyRenderer}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </ErrorBodyRendererContext.Provider>
   )
   render(<OAuthConsentForm consent={consent} onDone={onDone} />, { wrapper })
   return { user }

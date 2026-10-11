@@ -476,6 +476,13 @@ one by **where it comes from**:
 | `granted_scopes`                | What an approval delegated, recorded on the request, the code, and the refresh family.                       |
 | `host_owner_scopes`             | The host owner's configured authority (`local_granted_scopes` in `tauri-shared-config.json`).                |
 
+An approval with any `approver_missing_scopes` is refused as a whole with
+`403 InsufficientScope`. Nothing is recorded, no code is issued, and the request
+stays `pending`, so an approver whose token does cover it can still answer it.
+The launcher's consent page renders that 403 as its permission surface. The
+surface's step-up runs device-login for the missing scopes and then returns to
+the consent page so the Owner can approve again.
+
 ### Bootstrap URL
 
 Replaces the deleted PIN flow's "operator gets onto a cold deployment"

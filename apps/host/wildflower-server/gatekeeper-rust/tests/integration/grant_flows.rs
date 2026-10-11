@@ -256,6 +256,72 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
     assert_eq!(token["scope"], "patient/Observation.s");
 }
 
+/// The approver must hold every resource scope they approve: a token that may
+/// decide consents (`wildflower/AuthorizationRequest.u`) but lacks one of the
+/// requested resource scopes — a narrower device grant — is refused with a
+/// `403 InsufficientScope` naming the uncovered scope. No code is issued: the
+/// request stays `pending`, so the status poll keeps waiting and an approver
+/// whose token does cover it (here the host Owner) can still answer it.
+#[tokio::test]
+async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_request_stays_pending() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "patient/Condition.rs"],
+    );
+    let request_id = parked_request_id(
+        &get_authorize(
+            &g.router,
+            &authorize_query(
+                "test-app",
+                "patient%2FObservation.rs%20patient%2FCondition.rs",
+            ),
+        )
+        .await,
+    );
+    let narrow_approver = mint_scoped_token(
+        &db,
+        &[
+            "wildflower/AuthorizationRequest.u",
+            "patient/Observation.rs",
+        ],
+    );
+    let approve_body = r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"acknowledgedRegistration":false}"#;
+
+    let res =
+        approve_oauth_consent(&g, &narrow_approver, &request_id, approve_body.to_string()).await;
+
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    let body = body_json(res.into_body()).await;
+    assert_eq!(body["error"], "InsufficientScope");
+    assert_eq!(
+        body["missingScopes"],
+        serde_json::json!(["patient/Condition.rs"])
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let status = body_json(res.into_body()).await;
+    assert_eq!(status["status"], "pending", "no code was issued: {status}");
+    assert!(
+        status.get("redirect").is_none_or(Value::is_null),
+        "{status}"
+    );
+    let res =
+        approve_oauth_consent(&g, &host_owner_token, &request_id, approve_body.to_string()).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res.into_body()).await["status"], "approved");
+}
+
 /// HFS authorizes FHIR reads off the token's `scope` claim, parsing only the
 /// SMART v2 letter grammar — so a v1-worded grant must be minted with its
 /// letter-form alternate alongside it. The app-facing `TokenResponse.scope`
