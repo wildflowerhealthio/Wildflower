@@ -78,6 +78,11 @@ const answer = (
       public_host: `${tunnelName}.${DOMAIN}`,
     })
   }
+  const claimCodesFor = url.pathname.match(/^\/api\/tunnels\/([^/]+)\/claim-codes$/)?.[1]
+  if (request.method === 'POST' && claimCodesFor !== undefined) {
+    if (!relay.tunnels.has(claimCodesFor)) return text(404, 'no tunnel has the name')
+    return json(201, { code: 'ABCD-EFGH', expires_at: 1_700_000_900 })
+  }
   if (request.method === 'DELETE' && name !== undefined) {
     return relay.tunnels.delete(name)
       ? new Response(null, { status: 204 })
@@ -282,6 +287,48 @@ describe('RelayAdminScreen', () => {
     })
     expect(relay.requests).toContain('DELETE /api/tunnels/bob')
     expect([...relay.tunnels.keys()]).toEqual(['alice'])
+  })
+
+  it('issues a claim code for a tunnel and shows it once, with its expiry', async () => {
+    // Arrange
+    const relay = relayWith(['alice', 'bob'])
+    const queryClient = renderScreen(await runtimeFor(relay, true))
+    const user = userEvent.setup()
+
+    // Act
+    await user.click(await screen.findByRole('button', { name: 'Issue claim code for bob' }))
+
+    // Assert
+    expect((await screen.findByLabelText('Claim code')).textContent).toBe('ABCD-EFGH')
+    expect(screen.getByRole('heading', { name: 'Claim code for bob' })).toBeDefined()
+    expect(screen.getByText(/won’t be shown again/)).toBeDefined()
+    expect(document.querySelector('time[datetime="2023-11-14T22:28:20.000Z"]')).not.toBeNull()
+    expect(relay.requests).toContain('POST /api/tunnels/bob/claim-codes')
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    // Assert
+    expect(screen.queryByLabelText('Claim code')).toBeNull()
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toEqual([])
+    })
+  })
+
+  it('shows the relay’s reason when a claim code’s tunnel is gone', async () => {
+    // Arrange
+    const relay = relayWith(['alice'])
+    renderScreen(await runtimeFor(relay, true))
+    const user = userEvent.setup()
+    const issue = await screen.findByRole('button', { name: 'Issue claim code for alice' })
+    relay.tunnels.delete('alice')
+
+    // Act
+    await user.click(issue)
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toContain('no tunnel has the name')
+    expect(screen.queryByLabelText('Claim code')).toBeNull()
   })
 
   it('drops a key the relay refuses and asks for it again, saying why', async () => {

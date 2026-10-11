@@ -18,6 +18,9 @@ type TunnelInfo = Schema.Schema.Type<typeof Tunnels.TunnelInfoSchema>
 /** A tunnel just created, with its token, which the relay shows only now. */
 type CreatedTunnel = Schema.Schema.Type<typeof Tunnels.CreatedTunnelSchema>
 
+/** A claim code just issued, which the relay shows only now, and its expiry. */
+type IssuedClaimCode = Schema.Schema.Type<typeof Tunnels.IssuedClaimCodeSchema>
+
 /** `CreateTunnel`'s body: an email, and a name unless the relay is to pick one. */
 type CreateTunnelBody = Schema.Schema.Type<typeof Tunnels.CreateTunnelBodySchema>
 
@@ -71,5 +74,29 @@ const useDeleteTunnelMutation = (): UseMutationResult<void, Error, string> => {
   })
 }
 
-export { useCreateTunnelMutation, useDeleteTunnelMutation, useTunnelsQuery }
-export type { CreatedTunnel, CreateTunnelBody, TunnelInfo }
+/**
+ * `IssueClaimCode` for the tunnel of the given name. The result holds the
+ * code, so, as with a created tunnel's token, the mutation cache drops it as
+ * soon as nothing shows it.
+ */
+const useIssueClaimCodeMutation = (): UseMutationResult<IssuedClaimCode, Error, string> => {
+  const { run } = useRelayAdmin()
+  return useMutation({
+    gcTime: 0,
+    // `HttpApiClient` splices path params in raw.
+    mutationFn: (name) =>
+      run(
+        Effect.flatMap(RelayAdminHttpApiClient, (client) =>
+          client.tunnels.IssueClaimCode({ path: { name: encodeURIComponent(name) } })
+        )
+      ),
+  })
+}
+
+export {
+  useCreateTunnelMutation,
+  useDeleteTunnelMutation,
+  useIssueClaimCodeMutation,
+  useTunnelsQuery,
+}
+export type { CreatedTunnel, CreateTunnelBody, IssuedClaimCode, TunnelInfo }

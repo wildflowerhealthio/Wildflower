@@ -8,11 +8,25 @@ import {
 import { DateTime, Option } from 'effect'
 import { useState, type JSX } from 'react'
 
-import { useDeleteTunnelMutation, useTunnelsQuery, type TunnelInfo } from './queries/index.ts'
+import { IssuedClaimCodePanel } from './issued-claim-code-panel.tsx'
+import {
+  useDeleteTunnelMutation,
+  useIssueClaimCodeMutation,
+  useTunnelsQuery,
+  type TunnelInfo,
+} from './queries/index.ts'
 import styles from './tunnel-list.module.css'
 
+/** What a row's buttons do, by tunnel name. */
+interface TunnelRowActions {
+  readonly onIssueClaimCode: (name: string) => void
+  /** A claim code is being issued; no other can be until it is. */
+  readonly issuing: boolean
+  readonly onDelete: (name: string) => void
+}
+
 /** One row: the name, where visitors reach it, whose it is and since when. */
-const tunnelRow = (tunnel: TunnelInfo, onDelete: (name: string) => void): ItemListItem => ({
+const tunnelRow = (tunnel: TunnelInfo, actions: TunnelRowActions): ItemListItem => ({
   id: tunnel.name,
   title: tunnel.name,
   subtitle: (
@@ -27,22 +41,39 @@ const tunnelRow = (tunnel: TunnelInfo, onDelete: (name: string) => void): ItemLi
     </time>
   ),
   actions: (
-    <button
-      type="button"
-      className="button-3 outline accent-red"
-      aria-label={`Delete ${tunnel.name}`}
-      onClick={() => {
-        onDelete(tunnel.name)
-      }}
-    >
-      Delete
-    </button>
+    <span className={styles['tunnel-list__actions']}>
+      <button
+        type="button"
+        className="button-3 outline"
+        aria-label={`Issue claim code for ${tunnel.name}`}
+        disabled={actions.issuing}
+        onClick={() => {
+          actions.onIssueClaimCode(tunnel.name)
+        }}
+      >
+        Issue claim code
+      </button>
+      <button
+        type="button"
+        className="button-3 outline accent-red"
+        aria-label={`Delete ${tunnel.name}`}
+        onClick={() => {
+          actions.onDelete(tunnel.name)
+        }}
+      >
+        Delete
+      </button>
+    </span>
   ),
 })
 
-/** Every tunnel on the relay, each with a confirmed delete. */
+/**
+ * Every tunnel on the relay, each with a claim code to issue, shown once
+ * above the list, and a confirmed delete.
+ */
 const TunnelList = (): JSX.Element => {
   const tunnels = useTunnelsQuery()
+  const issue = useIssueClaimCodeMutation()
   const remove = useDeleteTunnelMutation()
   const [confirming, setConfirming] = useState(Option.none<string>())
   const close = (): void => {
@@ -53,15 +84,38 @@ const TunnelList = (): JSX.Element => {
   return (
     <section className={styles['tunnel-list']}>
       <h2 className="text-heading-4">Tunnels</h2>
+      <ErrorBanner error={issue.error} />
+      {Option.all({
+        issued: Option.fromNullable(issue.data),
+        tunnelName: Option.fromNullable(issue.variables),
+      }).pipe(
+        Option.map(({ issued, tunnelName }) => (
+          <IssuedClaimCodePanel
+            key="issued-claim-code"
+            tunnelName={tunnelName}
+            issued={issued}
+            onDone={() => {
+              issue.reset()
+            }}
+          />
+        )),
+        Option.getOrNull
+      )}
       <ErrorBanner error={remove.error} />
       {tunnels.data.length === 0 ? (
         <p className="text-body-2">No tunnels yet.</p>
       ) : (
         <ItemList
           items={tunnels.data.map((tunnel) =>
-            tunnelRow(tunnel, (name) => {
-              remove.reset()
-              setConfirming(Option.some(name))
+            tunnelRow(tunnel, {
+              onIssueClaimCode: (name) => {
+                issue.mutate(name)
+              },
+              issuing: issue.isPending,
+              onDelete: (name) => {
+                remove.reset()
+                setConfirming(Option.some(name))
+              },
             })
           )}
         />
@@ -82,8 +136,8 @@ const TunnelList = (): JSX.Element => {
         {confirming.pipe(
           Option.map((name) => (
             <span key="question">
-              Delete <strong>{name}</strong>? The relay stops serving it at once, and its token
-              stops working.
+              Delete <strong>{name}</strong>? The relay stops serving it at once, and its token and
+              claim codes stop working.
             </span>
           )),
           Option.getOrNull

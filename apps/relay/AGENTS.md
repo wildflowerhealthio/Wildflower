@@ -12,8 +12,9 @@ admin screen.
 - `relay-core-js` — no React. Four entries:
   - `relay-core-js/http-api-definition`: `RelayAdminApi`, the admin API as the
     relay serves it (`relay-server/src/site/admin.rs`): `CreateTunnel`,
-    `ListTunnels` and `DeleteTunnel`, with the relay's snake_case JSON field
-    names. `created_at` decodes from unix seconds to a `DateTime.Utc`. The
+    `ListTunnels`, `DeleteTunnel` and `IssueClaimCode`, with the relay's
+    snake_case JSON field names. `created_at` and a claim code's
+    `expires_at` decode from unix seconds to a `DateTime.Utc`. The
     relay's refusals are plain text, decoded into tagged errors carrying it as
     `reason` (`TunnelNameConflict` `409`, `TunnelRejected` `422`,
     `TunnelNotFound` `404`, `TunnelNamesExhausted` `503`); its `401` is
@@ -29,6 +30,9 @@ admin screen.
     `CryptoKey`, and `AdminKeyStore`, the port that key lives behind, with an
     in-memory layer for tests (`layerMemory`). No browser API: the core runs
     on Web Crypto alone.
+    The relay's unauthenticated `POST /claim`, which a device calls to redeem
+    a claim code, is not part of `RelayAdminApi`; its wire shapes are
+    `ClaimRequest` and `ClaimedTunnel` in `slices/rathole-settings-rust`.
 - `relay-react` — the admin screen (`RelayAdminScreen`) under a
   `RelayAdminProvider`, the TanStack Query hooks it is built from, and the
   browser's `AdminKeyStore`, one IndexedDB record

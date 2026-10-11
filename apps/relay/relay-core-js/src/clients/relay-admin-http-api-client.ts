@@ -9,7 +9,7 @@ const sliceClient = defineSliceHttpClient({
 
 /**
  * Effect Service providing the resolved `RelayAdminApi` client —
- * `CreateTunnel`, `ListTunnels` and `DeleteTunnel`. The client signs nothing
+ * `CreateTunnel`, `ListTunnels`, `DeleteTunnel` and `IssueClaimCode`. The client signs nothing
  * itself: the `HttpClient` it is built over does (`signingHttpClient` in
  * `relay-core-js/signing`), so every call carries a signature.
  */

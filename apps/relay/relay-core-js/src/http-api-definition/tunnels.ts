@@ -45,6 +45,17 @@ const CreatedTunnelSchema = Schema.Struct({
 })
 
 /**
+ * A claim code just issued for a tunnel — mirrors the Rust
+ * `IssuedClaimCodeBody`. The only response that carries the code, shown as
+ * `ABCD-EFGH`; it redeems once, at the relay's `POST /claim`, until
+ * `expires_at`.
+ */
+const IssuedClaimCodeSchema = Schema.Struct({
+  code: Schema.String,
+  expires_at: UnixSecondsUtc,
+})
+
+/**
  * A refused change, with the relay's short plain-text reason (e.g. `a tunnel
  * already has the name`).
  */
@@ -62,7 +73,7 @@ const plainTextReason = <Self extends { readonly reason: string }, Tag extends s
     (schema) => schema.annotations(HttpApiSchema.annotations({ status }))
   )
 
-/** `404`: no tunnel has the name being deleted. */
+/** `404`: no tunnel has the name being deleted, or issued a claim code. */
 class TunnelNotFound extends Schema.TaggedError<TunnelNotFound>()('TunnelNotFound', {
   reason: Schema.String,
 }) {
@@ -120,6 +131,8 @@ const TunnelNamesExhaustedFromText = plainTextReason(
  *   name is left.
  * - `ListTunnels`: every tunnel, no tokens.
  * - `DeleteTunnel`: `204`; `404` when no tunnel has the name.
+ * - `IssueClaimCode`: `201` with a claim code for the tunnel, shown only
+ *   here, and when it expires; `404` when no tunnel has the name.
  */
 const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
   .add(
@@ -139,12 +152,19 @@ const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
       .addSuccess(HttpApiSchema.NoContent)
       .addError(TunnelNotFoundFromText)
   )
+  .add(
+    HttpApiEndpoint.post('IssueClaimCode', '/api/tunnels/:name/claim-codes')
+      .setPath(Schema.Struct({ name: Schema.String }))
+      .addSuccess(IssuedClaimCodeSchema, { status: 201 })
+      .addError(TunnelNotFoundFromText)
+  )
   .addError(HttpApiError.Unauthorized)
 
 export {
   CreatedTunnelSchema,
   CreateTunnelBodySchema,
   httpApiGroup,
+  IssuedClaimCodeSchema,
   TunnelInfoSchema,
   TunnelNameConflict,
   TunnelNamesExhausted,

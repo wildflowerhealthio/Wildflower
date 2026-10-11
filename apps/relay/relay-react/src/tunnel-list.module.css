@@ -1,6 +1,7 @@
 /*
- * The tunnel list: a heading, any delete failure, then one row per tunnel
- * with its public host and owner's email on the line under its name.
+ * The tunnel list: a heading, any failure, a claim code just issued, then one
+ * row per tunnel with its public host and owner's email on the line under its
+ * name, and its buttons side by side.
  */
 .tunnel-list {
   display: flex;
@@ -12,4 +13,9 @@
   display: flex;
   flex-wrap: wrap;
   column-gap: var(--space-4);
+}
+
+.tunnel-list__actions {
+  display: flex;
+  gap: var(--space-2);
 }

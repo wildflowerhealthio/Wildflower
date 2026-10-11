@@ -2,6 +2,7 @@ export { AdminKeyForm } from './admin-key-form.tsx'
 export { adminKeyStoreIndexedDb } from './admin-key-store-indexed-db.ts'
 export { CreateTunnelForm } from './create-tunnel-form.tsx'
 export { CreatedTunnelToken, type CreatedTunnelTokenProps } from './created-tunnel-token.tsx'
+export { IssuedClaimCodePanel, type IssuedClaimCodePanelProps } from './issued-claim-code-panel.tsx'
 export * from './queries/index.ts'
 export {
   isRefusal,
