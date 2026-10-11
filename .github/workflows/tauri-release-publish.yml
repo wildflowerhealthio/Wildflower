@@ -50,7 +50,8 @@ name: Tauri Release — Publish
 #     another unpublished release of the same version; delete whichever one
 #     you don't want. Including `android` replaces the release's bundle and
 #     sends Play the version again, which Play refuses once it has that
-#     version code.
+#     version code. Tags before v0.3.1 have no Android release signing
+#     config, so leave `android` out when rebuilding one of those too.
 
 on:
   pull_request:
@@ -760,11 +761,13 @@ jobs:
         # NDK's source.properties (which the Tauri CLI reads for its version)
         # is checked afterwards, with sdkmanager's output shown if missing.
         #
-        # The NDK's LLVM tools go on PATH for the vendored OpenSSL build. The
-        # Tauri CLI points cargo at the NDK's clang and llvm-ar but not at a
-        # ranlib, and the `cc` crate then looks for `llvm-ranlib` on PATH and
-        # falls back to `aarch64-linux-android-ranlib`, which NDKs since r23
-        # no longer ship.
+        # The vendored OpenSSL build is pointed at the NDK's llvm-ranlib, per
+        # Android target. The Tauri CLI points cargo at the NDK's clang and
+        # llvm-ar but not at a ranlib, and the `cc` crate then looks for
+        # `llvm-ranlib` on PATH and falls back to
+        # `aarch64-linux-android-ranlib`, which NDKs since r23 no longer ship.
+        # `RANLIB_<target>` is read before that search, and leaves the rest of
+        # the NDK's tools off PATH, where they would shadow the host's.
         env:
           NDK_VERSION: 29.0.13846066
         run: |
@@ -783,7 +786,8 @@ jobs:
             exit 1
           fi
           echo "NDK_HOME=$ndk_home" >> "$GITHUB_ENV"
-          echo "$llvm_bin" >> "$GITHUB_PATH"
+          echo "RANLIB_aarch64_linux_android=$llvm_bin/llvm-ranlib" >> "$GITHUB_ENV"
+          echo "RANLIB_armv7_linux_androideabi=$llvm_bin/llvm-ranlib" >> "$GITHUB_ENV"
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
@@ -796,6 +800,10 @@ jobs:
           # every other job's — see docs/Rust/CI Build Cache Explanation.md.
           cache-shared-key: release-android
           cache-on-failure: true
+          # A run for a merged release PR saves into that PR's merge-ref
+          # scope, which no later run can read; only a dispatch from main
+          # saves where the next release looks.
+          cache-save-if: ${{ github.event_name == 'workflow_dispatch' }}
 
       # Its managed `pnpm` is also what the Gradle project's Rust build task
       # calls back into the Tauri CLI with.

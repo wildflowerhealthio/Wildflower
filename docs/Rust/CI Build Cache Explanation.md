@@ -110,7 +110,9 @@ The release builds are deliberately not warmed. Three release-profile Tauri
 builds per lockfile bump would cost far more than the handful of cold release
 builds it would save. A `workflow_dispatch` publish run from `main` does save
 into main's scope, so back-to-back dispatched rebuilds hit; a run triggered by
-the merged release PR can only read.
+the merged release PR saves into that PR's merge-ref scope, which no later run
+can read. The Android job, whose cache is the largest, saves only from a
+dispatch.
 
 ## The Tauri system packages
 

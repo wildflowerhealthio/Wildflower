@@ -30,7 +30,7 @@ The script needs a JDK's `keytool`, `openssl` and `python3`, on Linux or macOS. 
 
    A dry run generates the upload key if the signing folder has none and runs the preflight over the key and the service account key, but writes nothing to GitHub.
 
-2. Run it for real with the same command, without `--dry-run`. It creates `android-play` if it is missing, and sets its four secrets and variables.
+2. Run it for real with the same command, without `--dry-run`. It creates `android-play` if it is missing, deploying from `main`, `release/v*` and `refs/pull/*/merge` only, and sets its four secrets and variables.
 3. Upload the first bundle by hand. Only the first one: every later bundle can come through the API. Build it signed with the upload key from `apps/host/host-app`, on a machine with the Android SDK and NDK, a JDK 17 and the Rust Android targets:
 
    ```bash

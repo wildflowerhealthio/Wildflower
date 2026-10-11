@@ -77,10 +77,18 @@ environment, `android-play`:
 | Variable | `ANDROID_UPLOAD_KEY_ALIAS`         | the upload key's alias, `upload`                         |
 | Secret   | `PLAY_SERVICE_ACCOUNT_JSON`        | the service account's JSON key, as downloaded, unencoded |
 
-Only a job that declares the environment can read them. It has no branch
-rule, for the same reason the Apple environments have none: the publish it
-serves runs on a pull request's merge ref — see
-[Each channel's credentials live in their own environment](./Apple%20Release%20Signing%20Explanation.md#each-channels-credentials-live-in-their-own-environment).
+Only a job that declares the environment can read them, and only from the
+refs its branch rule lists:
+
+- `refs/pull/*/merge`, the ref a merged release pull request's publish runs
+  on. GitHub matches a `pull_request` run's environment against that ref,
+  not the pull request's branch.
+- `main` and `release/v*`, the refs a publish is dispatched from.
+
+A workflow pushed to or dispatched from any other branch is refused the keys.
+A pull request's own workflow file still runs on its merge ref, so the rule
+narrows who can reach the keys to those who can open a pull request from a
+branch of this repository, rather than closing that path.
 
 `scripts/release/android-signing-sync.sh` is the only writer of the
 environment. What it relies on:
@@ -99,8 +107,8 @@ environment. What it relies on:
   folder, and it leaves the machine only as the `PLAY_SERVICE_ACCOUNT_JSON`
   secret.
 - **The environment is created once.** When `android-play` is missing it is
-  created; when it exists it is left as it is, since creating it again would
-  reset any protection rules set by hand since.
+  created with that branch rule; when it exists it is left as it is, since
+  creating it again would reset any protection rules set by hand since.
 
 ## How a release reaches Google Play
 
@@ -145,10 +153,12 @@ Play upload, so it is there even when that upload fails.
 Play splits it per device. The Android SDK comes with the runner image, and
 the NDK is pinned to the version the Tauri CLI would install for itself, since
 the image's NDKs change with it and the CLI otherwise picks the newest it
-finds. The NDK's LLVM tools go on `PATH` for the vendored OpenSSL build: the
-Tauri CLI names the NDK's compiler and archiver to cargo but no `ranlib`, and
-without `llvm-ranlib` on `PATH` the `cc` crate falls back to
-`aarch64-linux-android-ranlib`, which current NDKs no longer ship.
+finds. The vendored OpenSSL build gets the NDK's `llvm-ranlib` through
+`RANLIB_aarch64_linux_android` and `RANLIB_armv7_linux_androideabi`: the Tauri
+CLI names the NDK's compiler and archiver to cargo but no `ranlib`, and without
+one the `cc` crate falls back to `aarch64-linux-android-ranlib`, which current
+NDKs no longer ship. Setting the per-target variables rather than putting the
+NDK's tools on `PATH` keeps its `clang` and `ld` from shadowing the host's.
 
 ## The preflight
 
