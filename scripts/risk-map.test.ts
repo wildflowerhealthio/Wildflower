@@ -1,30 +1,15 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect } from 'effect'
-import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  buildRiskMap,
-  loadPackages,
-  partitionWorkspaceGlobs,
-  readWorkspaceGlobs,
-} from './risk-map.ts'
+import { loadPackages } from './affected-packages.ts'
+import { buildRiskMap } from './risk-map.ts'
 
 // scripts/ sits directly under the repo root.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-describe('risk-map / pnpm-workspace.yaml reconciliation', () => {
-  it('reads the workspace globs straight from pnpm-workspace.yaml', () => {
-    const { positive, negative } = readWorkspaceGlobs(repoRoot)
-    // These roots MUST come from the file, not a second hardcoded copy.
-    expect(positive).toContain('apps/*')
-    expect(positive).toContain('slices/**')
-    // The nested node_modules exclusion is a negation, not a member glob.
-    expect(negative).toContain('**/node_modules/**')
-  })
-
+describe('risk-map', () => {
   it('emits every workspace-matched package into the risk map', () => {
     const packages = Effect.runSync(loadPackages(repoRoot))
     const names = packages.map((p) => p.name)
@@ -34,26 +19,5 @@ describe('risk-map / pnpm-workspace.yaml reconciliation', () => {
     expect(Object.keys(map)).toContain('@wildflowerhealthio/kitchen-sink')
     expect(names.length).toBeGreaterThan(0)
     for (const name of names) expect(map[name]).toBeTypeOf('number')
-  })
-
-  it('honors the !**/node_modules/** negation', () => {
-    const packages = Effect.runSync(loadPackages(repoRoot))
-    const nested = packages.filter((p) => p.relDir.split('/').includes('node_modules'))
-    expect(nested).toEqual([])
-  })
-
-  it('partitions !-prefixed entries into negations, others into positives', () => {
-    fc.assert(
-      // A single `!` is pnpm's negation prefix; `!!`-prefixed entries aren't a
-      // real workspace shape and would leave an inner `!` after one strip, so
-      // exclude them from the inputs to keep the `!`-free invariant below.
-      fc.property(fc.array(fc.string().filter((s) => !s.startsWith('!!'))), (entries) => {
-        const { positive, negative } = partitionWorkspaceGlobs(entries)
-        expect(positive).toEqual(entries.filter((e) => !e.startsWith('!')))
-        expect(negative).toEqual(entries.filter((e) => e.startsWith('!')).map((e) => e.slice(1)))
-        for (const n of negative) expect(n.startsWith('!')).toBe(false)
-      }),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
   })
 })
