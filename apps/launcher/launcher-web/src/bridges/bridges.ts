@@ -3,7 +3,6 @@ import { Logging } from '@wildflowerhealthio/effect-messaging-core'
 import { GatekeeperBridge } from '@wildflowerhealthio/gatekeeper-core/bridge'
 import { HarRecorderBridge } from '@wildflowerhealthio/har-recorder-core-js'
 import { NavigationBridge } from '@wildflowerhealthio/navigation-core'
-import { BackgroundServerServiceBridge } from '@wildflowerhealthio/wildflower-server-core-js'
 
 /**
  * The tuple of slice bridges wired into the page-side transport.
@@ -17,7 +16,6 @@ const bridges = [
   GatekeeperBridge,
   CollectorBridge,
   HarRecorderBridge,
-  BackgroundServerServiceBridge,
   Logging.LogBridge,
 ] as const
 

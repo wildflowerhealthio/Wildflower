@@ -63,7 +63,6 @@ export const routes = rootRoute('__root.tsx', [
     physical('', sliceRoutesDir('gatekeeper', 'settings')),
     physical('', launcherRoutesDir('databases/databases-react', 'settings')),
     physical('', launcherRoutesDir('apps-react', 'settings')),
-    physical('', launcherRoutesDir('wildflower-server-react', 'settings')),
   ]),
   index('index.tsx'),
   route('/fhir-home', 'fhir-home.tsx'),

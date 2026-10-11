@@ -72,8 +72,6 @@
     "@wildflowerhealthio/smart-app-react": "workspace:*",
     "@wildflowerhealthio/telemetry-react": "workspace:*",
     "@wildflowerhealthio/telemetry-web": "workspace:*",
-    "@wildflowerhealthio/wildflower-server-core-js": "workspace:*",
-    "@wildflowerhealthio/wildflower-server-react": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

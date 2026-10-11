@@ -41,10 +41,8 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   the shared tree as `RenderAppOptions` fields (`effectTelemetryLayer`,
   `platformSettingsItems`, `platformTabs`, `platformBanner`,
   `redirectToDeviceLoginOnUnauthorized`, `serverKind`), or as a provider the
-  entry mounts (the consent gate). `main-tauri` contributes the server status
-  banner `<RootShell>` renders above every route and the Settings row for
-  `/settings/server`; `main-web` passes `platformBanner: null`, since no host
-  runs a server for it.
+  entry mounts (the consent gate). `<RootShell>` renders `platformBanner`
+  above every route; `main-web` passes `null`.
 - **`main-web` takes a SMART launch at its root, with its own sign-in.**
   Like everything `bootApp` does, the launch waits for the consent answer, as
   it does in the SMART apps. `bootApp` reads `?iss=` (and the EHR's `launch`)

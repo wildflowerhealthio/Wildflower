@@ -112,15 +112,6 @@ until its shutdown token is cancelled — see
 It has no `tauri` dependency; the host passes its native adapters in as trait
 objects, and watches the server through host-owned observer channels.
 
-The server-status wire is not a slice either: `BackgroundServerServiceBridge`,
-kept for the web app to read a server's status over a future websocket, lives
-with the launcher —
-[`wildflower-server-core-js`](../apps/launcher/wildflower-server-core-js/AGENTS.md)
-is the wire's schema, pinned by its golden file, and
-[`wildflower-server-react`](../apps/launcher/wildflower-server-react/AGENTS.md)
-the banner and `/settings/server` page that render a status snapshot. Nothing
-sends or answers the wire today, so it has no Rust mirror.
-
 `apps/host/servers` is the install's list of servers — see
 [apps/host/servers/AGENTS.md](../apps/host/servers/AGENTS.md). `servers-rust` holds a
 `ServerRecord` per server, identified by its domain

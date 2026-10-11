@@ -13,7 +13,6 @@ import { PlatformSettingsItemsProvider } from '../session/platform-settings-item
 import { PlatformTabsProvider } from '../session/platform-tabs.tsx'
 import { ServerKindContext, type ServerKind } from '../session/server-kind.ts'
 import type { TabSpec } from '../session/tabs.ts'
-import { BackgroundServerServiceSenderForwarder } from './background-server-service-sender-forwarder.tsx'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { HarRecorderSenderForwarder } from './har-recorder-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
@@ -69,11 +68,7 @@ const AppRootTree = ({
            */}
           <NavigationBridgeHandler sender={transport.sendMessage} />
           <CollectorSenderForwarder>
-            <HarRecorderSenderForwarder>
-              <BackgroundServerServiceSenderForwarder>
-                {children}
-              </BackgroundServerServiceSenderForwarder>
-            </HarRecorderSenderForwarder>
+            <HarRecorderSenderForwarder>{children}</HarRecorderSenderForwarder>
           </CollectorSenderForwarder>
         </Fragment>
       ),
