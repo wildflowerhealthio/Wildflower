@@ -2438,6 +2438,22 @@ describe('Add server', () => {
     expect(within(tunnel).getByText(/public Certificate Transparency logs/)).toBeDefined()
   })
 
+  it('should link the relay step to what a relay can see', async () => {
+    // Arrange
+    renderAddServer()
+
+    // Act
+    const relay = await stepTitled('Relay')
+
+    // Assert
+    expect(
+      within(relay).getByRole('link', { name: "What a relay can and can't see" })
+    ).toHaveProperty(
+      'href',
+      'https://github.com/wildflowerhealthio/Wildflower/blob/main/docs/Relay/Explanation.md'
+    )
+  })
+
   it('should say a rathole relay is tested when the server starts', async () => {
     // Arrange
     const user = userEvent.setup()

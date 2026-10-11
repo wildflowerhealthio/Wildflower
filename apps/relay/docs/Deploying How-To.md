@@ -32,21 +32,12 @@ relay.example.com. CAA 0 issue "letsencrypt.org; validationmethods=tls-alpn-01"
 Open 443 (TLS, routed by server name), 80 (redirects to `https://`) and the
 control port devices' rathole clients dial, 2333 by default.
 
-## 3. Build
-
-The binary embeds the admin page, so build that first:
-
-```sh
-vp install
-vp run -F @wildflowerhealthio/relay-admin-web build
-cargo build --release --locked -p wildflowerhealthio-relay-server
-```
-
-## 4. Install
+## 3. Build and install
 
 Follow the steps in the header of
 [`wildflowerhealthio-relay-server.service`](../relay-server/wildflowerhealthio-relay-server.service):
-install the binary in `/opt/wildflower-relay`, the environment file in
+build the admin page and the binary, install the binary in
+`/opt/wildflower-relay`, the environment file in
 `/etc/wildflower-relay/env`, and the unit. The unit runs the relay as an
 unprivileged dynamic user allowed only to bind 443 and 80, with its state in
 `/var/lib/wildflower-relay`.
@@ -69,7 +60,7 @@ variable. Set:
 On its first start the relay orders the certificate for its own hostnames,
 and `https://relay.example.com/health` answers once it is issued.
 
-## 5. Create tunnels
+## 4. Create tunnels
 
 1. Open `https://admin.relay.example.com/` and sign in by pasting the admin
    key. A `401` means the key is wrong or your clock is more than a minute off
