@@ -7,7 +7,10 @@
 //! [`TunnelName`], which is its rathole service name, and that tunnel's
 //! token. Its public host is `<tunnel name>.<domain>`. Both ends check a
 //! tunnel name with the same [`TunnelName::parse`]. A request signed with
-//! the token gets the tunnel's [`TunnelHost`] from `GET /me`.
+//! the token gets the tunnel's [`TunnelHost`] from `GET /me`. A device given a
+//! claim code instead sends it to `POST /claim` as a [`ClaimRequest`] and gets
+//! back a [`ClaimedTunnel`]: the tunnel's name and token with the public
+//! settings.
 //!
 //! Both ends also check a dial address with the same [`parse_public_addr`].
 //! A device decodes the relay's domain, which ends each of its servers'
@@ -27,6 +30,8 @@ pub mod proxy_header;
 mod public_addr;
 mod relay_domain;
 mod tunnel_name;
+
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +65,44 @@ pub struct TunnelHost {
     pub tunnel_name: TunnelName,
     /// `<tunnel name>.<domain>`.
     pub public_host: String,
+}
+
+/// The body of the relay's `POST /claim`: a claim code as the operator gave
+/// it, e.g. `ABCD-EFGH` (the relay ignores case and the dash). `Debug` never
+/// prints the code.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClaimRequest {
+    pub code: String,
+}
+
+impl fmt::Debug for ClaimRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClaimRequest").finish_non_exhaustive()
+    }
+}
+
+/// What the relay's `POST /claim` returns for a code that redeems:
+/// everything a device needs to connect its tunnel, as one flat object, the
+/// fields of [`PublicRatholeSettings`] beside `tunnel_name` and `token`.
+/// `Debug` never prints the token.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClaimedTunnel {
+    /// Decoded as a [`TunnelName`], so a claim naming anything else fails to
+    /// deserialize.
+    pub tunnel_name: TunnelName,
+    /// The tunnel's rathole token and signing key.
+    pub token: String,
+    #[serde(flatten)]
+    pub rathole_settings: PublicRatholeSettings,
+}
+
+impl fmt::Debug for ClaimedTunnel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClaimedTunnel")
+            .field("tunnel_name", &self.tunnel_name)
+            .field("rathole_settings", &self.rathole_settings)
+            .finish_non_exhaustive()
+    }
 }
 
 /// A rathole transport (`[client.transport] type`).
@@ -117,6 +160,32 @@ mod tests {
             let json = format!(r#"{{"tunnel_name":"{name}","public_host":"x"}}"#);
             assert!(serde_json::from_str::<TunnelHost>(&json).is_err(), "{json}");
         }
+    }
+
+    #[test]
+    fn a_claimed_tunnel_is_one_flat_object_that_round_trips() {
+        let claimed = ClaimedTunnel {
+            tunnel_name: TunnelName::parse("ruth").unwrap(),
+            token: "a-token".to_owned(),
+            rathole_settings: example(),
+        };
+        let json = serde_json::to_value(&claimed).unwrap();
+        let mut expected: serde_json::Value = serde_json::from_str(EXAMPLE_JSON).unwrap();
+        expected["tunnel_name"] = "ruth".into();
+        expected["token"] = "a-token".into();
+        assert_eq!(json, expected);
+        assert_eq!(
+            serde_json::from_value::<ClaimedTunnel>(json).unwrap(),
+            claimed
+        );
+        let debug = format!(
+            "{claimed:?} {:?}",
+            ClaimRequest {
+                code: "ABCD-EFGH".to_owned()
+            }
+        );
+        assert!(!debug.contains("a-token"), "{debug}");
+        assert!(!debug.contains("ABCD"), "{debug}");
     }
 
     #[test]

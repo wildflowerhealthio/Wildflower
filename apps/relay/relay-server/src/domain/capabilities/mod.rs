@@ -7,10 +7,11 @@
 //! surface stays unit-testable against the in-memory `FakeTunnelStore`.
 //!
 //! The relay authorises by request signature, not by scope: every
-//! capability is gated by the admin signature (`keyid="admin"`, see
-//! [`crate::site::signature`]), checked by the
+//! capability but [`ClaimCodesRedeemer`] is gated by the admin signature
+//! (`keyid="admin"`, see [`crate::site::signature`]), checked by the
 //! [`Admin`](crate::live_bindings::Admin) extractor before the capability is
-//! built. So the structs are generic over the store port and hold their
+//! built. The redeemer serves the unauthenticated `POST /claim`, where the
+//! claim code is the credential. So the structs are generic over the store port and hold their
 //! dependencies **lifted from the state**, never the
 //! [`TunnelRegistry`](crate::live_bindings::state::TunnelRegistry) itself.
 //! The bindings that name the `SqliteTunnelStore` adapter, build a
@@ -20,16 +21,21 @@
 //! side effects.
 //!
 //! One capability per file — [`TunnelsReader`], [`TunnelsCreator`],
-//! [`TunnelsDeleter`] — each with its store logic and its own tests. A
-//! change decides against the store, writes it and returns the tunnel it
-//! created or deleted, with an `undo` for when serving fails.
+//! [`TunnelsDeleter`], [`ClaimCodesIssuer`], [`ClaimCodesRedeemer`] — each
+//! with its store logic and its own tests. A tunnel change decides against
+//! the store, writes it and returns the tunnel it created or deleted, with
+//! an `undo` for when serving fails. Claim codes change only the store.
 //!
 //! [`TunnelStore`]: crate::domain::TunnelStore
 
+mod claim_codes_issuer;
+mod claim_codes_redeemer;
 mod tunnels_creator;
 mod tunnels_deleter;
 mod tunnels_reader;
 
+pub(crate) use claim_codes_issuer::ClaimCodesIssuer;
+pub(crate) use claim_codes_redeemer::ClaimCodesRedeemer;
 pub(crate) use tunnels_creator::TunnelsCreator;
 pub(crate) use tunnels_deleter::TunnelsDeleter;
 pub(crate) use tunnels_reader::TunnelsReader;

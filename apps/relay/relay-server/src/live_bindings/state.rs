@@ -13,8 +13,13 @@
 //! changed. A created tunnel's device can connect and sign requests at
 //! once. A deleted one stops routing and signing at once, and its tunnel
 //! drops as rathole takes the change.
+//!
+//! Claim codes live in the same store and change nothing that is served.
+//! Issuing one runs through `TunnelRegistry::while_unchanged`, between
+//! tunnel changes, so the tunnel it is for cannot be deleted under it.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use rathole::{ConfigChange, ServerServiceChange};
@@ -58,6 +63,8 @@ pub struct TunnelRegistry {
     /// The store the capabilities are lifted from.
     pub(crate) store: SqliteTunnelStore,
     pub(crate) front: FrontSettings,
+    /// How long an issued claim code redeems for.
+    pub(crate) claim_code_ttl: Duration,
     /// Where each change goes to rathole.
     rathole: mpsc::Sender<ConfigChange>,
     /// Shared by `router` and `verifier`.
@@ -106,6 +113,7 @@ impl TunnelRegistry {
         let registry = Self {
             store,
             front: settings.front.clone(),
+            claim_code_ttl: settings.claim_code_ttl,
             rathole,
             tunnels: served,
             router: Arc::new(router),
@@ -184,6 +192,28 @@ impl TunnelRegistry {
         })
         .await
         .map_err(|e| TunnelError::infrastructure("a tunnel change task panicked", e))?
+    }
+
+    /// Run `op` on a blocking thread while no tunnel change runs, so a
+    /// tunnel it finds stored stays stored until it returns. Like a change,
+    /// it runs on its own task, so a caller that stops waiting cannot cut it
+    /// short.
+    ///
+    /// # Errors
+    ///
+    /// Whatever `op` fails with, or [`TunnelError::Infrastructure`] if it
+    /// panics.
+    pub(crate) async fn while_unchanged<T: Send + 'static>(
+        self: &Arc<Self>,
+        op: impl FnOnce() -> Result<T, TunnelError> + Send + 'static,
+    ) -> Result<T, TunnelError> {
+        let registry = Arc::clone(self);
+        tokio::spawn(async move {
+            let _changing = registry.changing.lock().await;
+            on_blocking(op).await
+        })
+        .await
+        .map_err(|e| TunnelError::infrastructure("a tunnel store task panicked", e))?
     }
 
     /// Send rathole the service `change` adds or deletes for `tunnel`, then

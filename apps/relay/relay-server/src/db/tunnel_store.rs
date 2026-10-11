@@ -3,7 +3,8 @@
 //! database file, `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`, as an r2d2 pool
 //! of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`), applies
 //! the embedded relay migrations once on construction, and implements the
-//! port by delegating to the query bodies in `tunnels`. Mirrors
+//! port by delegating to the query bodies in `tunnels`, and the
+//! [`ClaimCodeStore`] port by delegating to those in `claim_codes`. Mirrors
 //! `collector-rust`'s `SqliteRemotesStore`.
 //!
 //! Tokens are stored in plain text, since rathole and the HMAC check both
@@ -16,8 +17,10 @@ use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
-use crate::db::tunnels;
-use crate::domain::{StoredTunnel, TunnelError, TunnelStore};
+use crate::db::{claim_codes, tunnels};
+use crate::domain::{
+    ClaimCodeHash, ClaimCodeStore, StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
+};
 
 /// The relay's migration namespace. Applied versions are bookkept
 /// per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], the same
@@ -127,6 +130,26 @@ impl TunnelStore for SqliteTunnelStore {
     }
 }
 
+/// The claim-code port over the same database: thin delegations to the
+/// query bodies in `claim_codes`.
+impl ClaimCodeStore for SqliteTunnelStore {
+    fn insert_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
+        claim_codes::insert_claim_code(&mut self.connection()?, stored)
+    }
+
+    fn take_claim_code(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+    ) -> Result<Option<Tunnel>, TunnelError> {
+        claim_codes::take_claim_code(&mut self.connection()?, code_hash, now)
+    }
+
+    fn delete_expired_claim_codes(&self, now: i64) -> Result<usize, TunnelError> {
+        claim_codes::delete_expired_claim_codes(&mut self.connection()?, now)
+    }
+}
+
 /// Create `path` if it is missing, readable by the owner only. SQLite gives
 /// its journal the same mode.
 fn create_private(path: &Path) -> std::io::Result<()> {
@@ -141,6 +164,118 @@ fn create_private(path: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use crate::domain::test_fake::stored_tunnel;
+
+    /// A code hashed `byte` repeated, for `tunnel_name`, expiring at
+    /// `expires_at`.
+    fn claim_code(byte: u8, tunnel_name: &str, expires_at: i64) -> StoredClaimCode {
+        StoredClaimCode {
+            code_hash: ClaimCodeHash([byte; 32]),
+            tunnel_name: tunnel_name.to_owned(),
+            expires_at,
+        }
+    }
+
+    #[test]
+    fn a_claim_code_is_taken_once_while_unexpired_for_its_tunnel() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let code = claim_code(1, "alice", 1_900);
+        assert!(store.insert_claim_code(&code).unwrap());
+        assert!(
+            !store.insert_claim_code(&claim_code(1, "alice", 5)).unwrap(),
+            "hashes are unique"
+        );
+
+        assert_eq!(store.take_claim_code(&code.code_hash, 1_900).unwrap(), None);
+        assert_eq!(
+            store.take_claim_code(&code.code_hash, 1_899).unwrap(),
+            Some(stored_tunnel("alice").tunnel)
+        );
+        assert_eq!(store.take_claim_code(&code.code_hash, 1_000).unwrap(), None);
+        let unknown = ClaimCodeHash([2; 32]);
+        assert_eq!(store.take_claim_code(&unknown, 1_000).unwrap(), None);
+    }
+
+    #[test]
+    fn a_claim_code_needs_a_stored_tunnel() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        let refused = store.insert_claim_code(&claim_code(1, "nobody", 1_900));
+        assert!(matches!(
+            refused.unwrap_err(),
+            TunnelError::Infrastructure { .. }
+        ));
+    }
+
+    #[test]
+    fn deleting_a_tunnel_deletes_its_claim_codes() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        store.insert_tunnel(&stored_tunnel("bob")).unwrap();
+        store
+            .insert_claim_code(&claim_code(1, "alice", 1_900))
+            .unwrap();
+        store
+            .insert_claim_code(&claim_code(2, "bob", 1_900))
+            .unwrap();
+        store.delete_tunnel("alice").unwrap();
+        // Put back under the same name, the tunnel has no codes.
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        assert_eq!(
+            store
+                .take_claim_code(&ClaimCodeHash([1; 32]), 1_000)
+                .unwrap(),
+            None
+        );
+        assert!(store
+            .take_claim_code(&ClaimCodeHash([2; 32]), 1_000)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn expired_claim_codes_are_deleted() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        for (byte, expires_at) in [(1, 1_000), (2, 1_500), (3, 2_000)] {
+            store
+                .insert_claim_code(&claim_code(byte, "alice", expires_at))
+                .unwrap();
+        }
+        assert_eq!(store.delete_expired_claim_codes(1_500).unwrap(), 2);
+        assert_eq!(store.delete_expired_claim_codes(1_500).unwrap(), 0);
+        assert!(store
+            .take_claim_code(&ClaimCodeHash([3; 32]), 1_500)
+            .unwrap()
+            .is_some());
+    }
+
+    /// Many threads, each on its own connection to the same file, redeem
+    /// the same code at once: exactly one gets the tunnel.
+    #[test]
+    fn of_concurrent_takes_exactly_one_gets_the_tunnel() {
+        let dir = tempfile::tempdir().unwrap();
+        let store =
+            SqliteTunnelStore::open(&dir.path().join(SqliteTunnelStore::FILE_NAME)).unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let code = claim_code(1, "alice", 1_900);
+        store.insert_claim_code(&code).unwrap();
+        let barrier = std::sync::Barrier::new(8);
+        let taken: Vec<Option<Tunnel>> = std::thread::scope(|scope| {
+            let takers: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        store.take_claim_code(&code.code_hash, 1_000).unwrap()
+                    })
+                })
+                .collect();
+            takers
+                .into_iter()
+                .map(|taker| taker.join().unwrap())
+                .collect()
+        });
+        assert_eq!(taken.iter().filter(|tunnel| tunnel.is_some()).count(), 1);
+    }
 
     #[test]
     fn inserts_lists_by_name_and_deletes() {

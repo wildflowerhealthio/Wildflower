@@ -6,7 +6,8 @@ publish.workspace = true
 
 # The wire shape of the relay's `GET /rathole`: everything public a rathole
 # client needs to dial the relay, the tunnel name a device adds to it, and the
-# `TunnelHost` its signed `GET /me` returns, with the checks both ends apply to
+# `TunnelHost` its signed `GET /me` returns, `POST /claim`'s `ClaimRequest` and
+# `ClaimedTunnel`, with the checks both ends apply to
 # a dial address (`parse_public_addr`) and a relay domain (`RelayDomain`). Its
 # own thin crate so both ends share one declaration without pulling each other
 # in: `wildflowerhealthio-relay-server` serves both, renders its rathole server TOML with the

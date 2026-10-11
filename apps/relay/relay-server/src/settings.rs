@@ -9,7 +9,8 @@
 //! certificate. [`RelaySettings::public_rathole_settings`] is
 //! what the site serves at `GET /rathole`. The admin key signs requests as
 //! `keyid="admin"` (see [`crate::site::signature`]) and enables the admin
-//! API. The state directory holds that certificate and its ACME account,
+//! API, and the claim-code lifetime is how long a code it issues redeems
+//! for. The state directory holds that certificate and its ACME account,
 //! which the relay can rebuild, and the tunnels created through the admin
 //! API (see [`crate::db`]), which it cannot.
 //!
@@ -27,6 +28,7 @@
 //! | `WILDFLOWER_RELAY_ACME_STAGING` | `false` |
 //! | `WILDFLOWER_RELAY_ACME_CONTACT` | none (a `mailto:` address) |
 //! | `WILDFLOWER_RELAY_ADMIN_KEY` | none (the admin API is not served, so no tunnel can be created) |
+//! | `WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS` | `900` (at most `86400`) |
 
 use std::fmt::{self, Debug, Display};
 use std::net::SocketAddr;
@@ -80,6 +82,8 @@ pub struct RelaySettings {
     /// The key for requests signed with `keyid="admin"`. `None` means no
     /// request can sign as admin, and the admin API is not served.
     pub admin_key: Option<Secret>,
+    /// How long a claim code redeems for once issued.
+    pub claim_code_ttl: Duration,
 }
 
 impl RelaySettings {
@@ -87,6 +91,12 @@ impl RelaySettings {
     pub const ADMIN_KEY_VAR: &'static str = "WILDFLOWER_RELAY_ADMIN_KEY";
     /// The shortest admin key accepted, in bytes.
     pub const ADMIN_KEY_MIN_LEN: usize = 32;
+    pub const CLAIM_CODE_TTL_VAR: &'static str = "WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS";
+    /// How long a claim code redeems for, unless configured.
+    pub const DEFAULT_CLAIM_CODE_TTL: Duration = Duration::from_secs(15 * 60);
+    /// The longest claim-code lifetime accepted: a code is only safe to keep
+    /// short while it is short-lived.
+    pub const MAX_CLAIM_CODE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
     /// Read the settings from the process environment.
     ///
@@ -102,8 +112,9 @@ impl RelaySettings {
     /// # Errors
     ///
     /// Returns an error naming the variable if a required one is unset or
-    /// empty, one that is set does not parse, or the admin key is shorter
-    /// than [`Self::ADMIN_KEY_MIN_LEN`].
+    /// empty, one that is set does not parse, the admin key is shorter
+    /// than [`Self::ADMIN_KEY_MIN_LEN`], or the claim-code lifetime is zero or
+    /// longer than [`Self::MAX_CLAIM_CODE_TTL`].
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
         let admin_key = optional(&lookup, Self::ADMIN_KEY_VAR).map(Secret);
         if let Some(admin_key) = &admin_key {
@@ -114,6 +125,18 @@ impl RelaySettings {
                 Self::ADMIN_KEY_MIN_LEN
             );
         }
+        let claim_code_ttl = parsed(
+            &lookup,
+            Self::CLAIM_CODE_TTL_VAR,
+            Self::DEFAULT_CLAIM_CODE_TTL.as_secs(),
+        )
+        .map(Duration::from_secs)?;
+        anyhow::ensure!(
+            !claim_code_ttl.is_zero() && claim_code_ttl <= Self::MAX_CLAIM_CODE_TTL,
+            "{} must be between 1 and {} seconds",
+            Self::CLAIM_CODE_TTL_VAR,
+            Self::MAX_CLAIM_CODE_TTL.as_secs()
+        );
         let front = FrontSettings::from_lookup(&lookup)?;
         Ok(Self {
             control: ControlSettings::from_lookup(&lookup)?,
@@ -121,6 +144,7 @@ impl RelaySettings {
             acme: AcmeSettings::from_lookup(&lookup)?,
             state_dir: parsed(&lookup, Self::STATE_DIR_VAR, PathBuf::from("relay-state"))?,
             admin_key,
+            claim_code_ttl,
         })
     }
 
@@ -411,6 +435,7 @@ mod tests {
                 },
                 state_dir: PathBuf::from("relay-state"),
                 admin_key: None,
+                claim_code_ttl: Duration::from_secs(900),
             }
         );
         assert_eq!(
@@ -429,6 +454,7 @@ mod tests {
             (RelaySettings::STATE_DIR_VAR, "/var/lib/wildflower-relay"),
             (AcmeSettings::STAGING_VAR, "true"),
             (AcmeSettings::CONTACT_VAR, " mailto:ops@example.com "),
+            (RelaySettings::CLAIM_CODE_TTL_VAR, "300"),
         ]);
         let settings = RelaySettings::from_lookup(env(&pairs)).unwrap();
         assert_eq!(
@@ -441,6 +467,7 @@ mod tests {
             settings.state_dir,
             PathBuf::from("/var/lib/wildflower-relay")
         );
+        assert_eq!(settings.claim_code_ttl, Duration::from_secs(300));
         assert_eq!(
             settings.acme,
             AcmeSettings {
@@ -477,6 +504,9 @@ mod tests {
             (AcmeSettings::STAGING_VAR, "yes"),
             (AcmeSettings::CONTACT_VAR, "ops@example.com"),
             (AcmeSettings::CONTACT_VAR, "mailto:"),
+            (RelaySettings::CLAIM_CODE_TTL_VAR, "soon"),
+            (RelaySettings::CLAIM_CODE_TTL_VAR, "0"),
+            (RelaySettings::CLAIM_CODE_TTL_VAR, "86401"),
         ] {
             let mut pairs = REQUIRED.to_vec();
             pairs.push(bad);

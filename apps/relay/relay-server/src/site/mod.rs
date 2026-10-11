@@ -12,18 +12,24 @@
 //! - `routes`: the axum router.
 //! - `admin`: the admin API on `admin.<domain>`.
 //! - `admin_ui`: the admin UI's static files on `admin.<domain>`.
+//! - `claim`: `POST /claim`, redeeming a claim code, and `claim_limiter`, its
+//!   rate limits.
 //! - `acme`: ordering and renewing the certificate.
 //! - `signature`: verifying signed requests (RFC 9421).
 
 pub mod acme;
 mod admin;
 mod admin_ui;
+mod claim;
+mod claim_limiter;
 mod routes;
 pub mod signature;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::extract::ConnectInfo;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
 use rustls::server::ResolvesServerCert;
@@ -31,6 +37,7 @@ use rustls::ServerConfig;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::broadcast;
 use tokio_rustls::TlsAcceptor;
+use tower::ServiceExt;
 use wildflowerhealthio_rathole_settings::PublicRatholeSettings;
 
 use self::signature::Verifier;
@@ -86,10 +93,13 @@ impl Site {
     /// Complete the TLS handshake on `stream` within `handshake_timeout`, then
     /// serve HTTP on it until the client is done or the relay shuts down. A
     /// TLS-ALPN-01 validation handshake is closed as soon as it completes.
-    /// Failures are logged and close the connection.
+    /// Failures are logged and close the connection. Each request carries
+    /// `client`, the address the connection came from, as axum's
+    /// [`ConnectInfo`].
     pub async fn serve<S>(
         &self,
         stream: S,
+        client: SocketAddr,
         handshake_timeout: Duration,
         mut shutdown_rx: broadcast::Receiver<bool>,
     ) where
@@ -112,14 +122,17 @@ impl Site {
             return;
         }
 
+        let router = self.router.clone().map_request(
+            move |mut request: axum::http::Request<hyper::body::Incoming>| {
+                request.extensions_mut().insert(ConnectInfo(client));
+                request
+            },
+        );
         // The timer enables hyper's header read timeout (30 s by default),
         // which also closes a keep-alive connection left idle that long.
         let connection = hyper::server::conn::http1::Builder::new()
             .timer(TokioTimer::new())
-            .serve_connection(
-                TokioIo::new(tls),
-                TowerToHyperService::new(self.router.clone()),
-            );
+            .serve_connection(TokioIo::new(tls), TowerToHyperService::new(router));
         tokio::select! {
             result = connection => {
                 if let Err(e) = result {
@@ -169,7 +182,8 @@ mod tests {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (_shutdown_tx, shutdown_rx) = broadcast::channel(1);
         let served = tokio::spawn(async move {
-            site.serve(server_io, Duration::from_secs(5), shutdown_rx)
+            let client = SocketAddr::from(([203, 0, 113, 7], 50_000));
+            site.serve(server_io, client, Duration::from_secs(5), shutdown_rx)
                 .await;
         });
 

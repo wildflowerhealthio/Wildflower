@@ -5,7 +5,12 @@
 //!   `201 {"name", "token", "public_host"}`. The token is shown only here.
 //! - `GET /api/tunnels`: `200 [{"name", "email", "public_host",
 //!   "created_at"}]`. No tokens.
-//! - `DELETE /api/tunnels/{name}`: `204` once the tunnel is gone.
+//! - `DELETE /api/tunnels/{name}`: `204` once the tunnel is gone, with its
+//!   claim codes.
+//! - `POST /api/tunnels/{name}/claim-codes` (no body): `201 {"code",
+//!   "expires_at"}`, a claim code for the tunnel, shown only here, as
+//!   `ABCD-EFGH`, and the Unix epoch second it stops redeeming at (see
+//!   `super::claim`).
 //!
 //! On any other `Host` these paths are `404`, before the signature is
 //! looked at, so `@target-uri` always names the admin hostname. A request
@@ -14,8 +19,9 @@
 //! builds it only for the admin signer, before the body is read. Refused
 //! changes answer with a short plain-text reason: `422` for a name that is
 //! not a lowercase DNS label or an unusable email, `409` for a name that is
-//! reserved or taken, `404` for deleting a tunnel that does not exist, and
-//! `503` when no name is left.
+//! reserved or taken, `404` for deleting, or issuing a claim code for, a
+//! tunnel that does not exist, and `503` when no name, or no unused claim
+//! code, is left.
 
 use std::sync::Arc;
 
@@ -24,14 +30,16 @@ use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::Json;
 use serde::{Deserialize, Serialize, Serializer};
 
 use super::signature::{authority, require_signature, Verifier};
-use crate::domain::{StoredTunnel, TunnelError};
+use crate::domain::{IssuedClaimCode, StoredTunnel, TunnelError};
 use crate::live_bindings::state::TunnelRegistry;
-use crate::live_bindings::{Admin, LiveTunnelsCreator, LiveTunnelsDeleter, LiveTunnelsReader};
+use crate::live_bindings::{
+    Admin, LiveClaimCodesIssuer, LiveTunnelsCreator, LiveTunnelsDeleter, LiveTunnelsReader,
+};
 use crate::settings::Secret;
 
 /// The routes above, changing tunnels through capabilities built from
@@ -41,6 +49,7 @@ pub(super) fn router(registry: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> 
     axum::Router::new()
         .route("/api/tunnels", get(list).post(create))
         .route("/api/tunnels/{name}", delete(remove))
+        .route("/api/tunnels/{name}/claim-codes", post(issue_claim_code))
         .route_layer(middleware::from_fn_with_state(verifier, require_signature))
         // The outer layer: the host is checked before the signature.
         .route_layer(middleware::from_fn_with_state(
@@ -113,6 +122,26 @@ impl CreatedTunnel {
     }
 }
 
+/// A claim code just issued, as `POST /api/tunnels/{name}/claim-codes`
+/// answers. The only place the code is ever shown.
+#[derive(Debug, Serialize)]
+struct IssuedClaimCodeBody {
+    /// `ABCD-EFGH`.
+    code: String,
+    /// Unix epoch seconds: the code redeems while the relay's clock reads
+    /// earlier.
+    expires_at: i64,
+}
+
+impl From<IssuedClaimCode> for IssuedClaimCodeBody {
+    fn from(issued: IssuedClaimCode) -> Self {
+        Self {
+            code: issued.code.to_string(),
+            expires_at: issued.expires_at,
+        }
+    }
+}
+
 fn expose<S: Serializer>(secret: &Secret, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(secret.expose())
 }
@@ -160,6 +189,18 @@ async fn remove(Admin(deleter): Admin<LiveTunnelsDeleter>, Path(name): Path<Stri
     }
 }
 
+async fn issue_claim_code(
+    Admin(issuer): Admin<LiveClaimCodesIssuer>,
+    Path(name): Path<String>,
+) -> Response {
+    match issuer.issue(name).await {
+        Ok(issued) => {
+            (StatusCode::CREATED, Json(IssuedClaimCodeBody::from(issued))).into_response()
+        }
+        Err(error) => error.into_response(),
+    }
+}
+
 impl IntoResponse for TunnelError {
     fn into_response(self) -> Response {
         let (status, reason) = match self {
@@ -175,6 +216,10 @@ impl IntoResponse for TunnelError {
             Self::Taken => (StatusCode::CONFLICT, "a tunnel already has the name"),
             Self::NotFound => (StatusCode::NOT_FOUND, "no tunnel has the name"),
             Self::Exhausted(reason) => (StatusCode::SERVICE_UNAVAILABLE, reason),
+            Self::ClaimCodeRejected => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "the claim code is unknown, used or expired",
+            ),
             Self::Infrastructure { context, source } => {
                 tracing::error!("tunnel change failed: {context}: {source}");
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -192,8 +237,8 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::domain::TunnelStore;
-    use crate::live_bindings::LiveTunnelsCreator;
+    use crate::domain::{ClaimCode, TunnelStore};
+    use crate::live_bindings::{LiveClaimCodesRedeemer, LiveTunnelsCreator};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
     use crate::test_support::{admin, registry, Fixture};
@@ -396,6 +441,78 @@ mod tests {
             tunnels.store.list_tunnels().unwrap().len(),
             1,
             "alice is still there"
+        );
+    }
+
+    /// An admin-signed issue answers a grouped code and its expiry; the code
+    /// redeems at `POST /claim` for that tunnel's token, not another's.
+    #[tokio::test]
+    async fn an_issued_claim_code_redeems_for_its_tunnel() {
+        let (router, tunnels, _, _fixture) = router_with_alice().await;
+        let creator: LiveTunnelsCreator = admin(&tunnels);
+        let bob = creator
+            .create("bob@example.com".to_owned(), Some("bob".to_owned()))
+            .await
+            .unwrap();
+        let before = unix_now().unwrap();
+        let (status, body) = send(
+            &router,
+            admin_request(
+                "POST",
+                &format!("{ADMIN}/api/tunnels/bob/claim-codes"),
+                &serde_json::Value::Null,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        let issued = json(&body);
+        let code = issued["code"].as_str().unwrap();
+        assert!(ClaimCode::parse(code).is_some(), "{code}");
+        assert_eq!(code.find('-'), Some(4), "{code}");
+        let expires_at = issued["expires_at"].as_i64().unwrap();
+        let ttl = i64::try_from(tunnels.claim_code_ttl.as_secs()).unwrap();
+        assert!((before + ttl..=unix_now().unwrap() + ttl).contains(&expires_at));
+        assert_eq!(issued.as_object().unwrap().len(), 2, "{issued}");
+
+        let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
+        let redeemed = redeemer.redeem(code.to_owned()).await.unwrap();
+        assert_eq!(redeemed, bob.tunnel);
+    }
+
+    #[tokio::test]
+    async fn issuing_a_claim_code_needs_the_admin_signature_and_a_known_tunnel() {
+        let (router, tunnels, alice, _fixture) = router_with_alice().await;
+        let uri = format!("{ADMIN}/api/tunnels/alice/claim-codes");
+        let now = unix_now().unwrap();
+        let unsigned = Request::builder()
+            .method("POST")
+            .uri("/api/tunnels/alice/claim-codes")
+            .header(header::HOST, "admin.relay.example.com")
+            .body(Body::empty())
+            .unwrap();
+        for request in [
+            unsigned,
+            signed_request("POST", &uri, b"", "admin", "not-the-admin-key", now, "a"),
+            signed_request("POST", &uri, b"", "alice", &alice, now, "b"),
+        ] {
+            let (status, body) = send(&router, request).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED);
+            assert!(body.is_empty(), "a 401 carries no detail");
+        }
+        let unknown = admin_request(
+            "POST",
+            &format!("{ADMIN}/api/tunnels/nobody/claim-codes"),
+            &serde_json::Value::Null,
+        );
+        let (status, body) = send(&router, unknown).await;
+        assert_eq!(
+            (status, body),
+            (StatusCode::NOT_FOUND, b"no tunnel has the name".to_vec())
+        );
+        assert_eq!(
+            tunnels.store.list_tunnels().unwrap().len(),
+            1,
+            "nothing changed"
         );
     }
 

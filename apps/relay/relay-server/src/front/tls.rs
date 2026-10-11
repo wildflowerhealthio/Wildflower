@@ -43,7 +43,8 @@ impl Front {
         let route = match self.router.resolve(&server_name) {
             Some(Destination::Tunnel(route)) => route,
             Some(Destination::Local(_)) => {
-                self.serve_site(client, hello_bytes, shutdown_rx).await;
+                self.serve_site(client, visitor, hello_bytes, shutdown_rx)
+                    .await;
                 return;
             }
             None => {
@@ -61,11 +62,13 @@ impl Front {
         self.pipe(client, backend, &route, shutdown_rx).await;
     }
 
-    /// Hand the connection to the relay's own site. The site's TLS reads the
-    /// hello bytes already taken off the socket first, then the socket.
+    /// Hand the connection from `visitor` to the relay's own site. The site's
+    /// TLS reads the hello bytes already taken off the socket first, then the
+    /// socket.
     async fn serve_site(
         &self,
         client: TcpStream,
+        visitor: SocketAddr,
         hello_bytes: Vec<u8>,
         shutdown_rx: broadcast::Receiver<bool>,
     ) {
@@ -76,7 +79,7 @@ impl Front {
             client_write,
         );
         self.site
-            .serve(rewound, self.limits.hello_timeout, shutdown_rx)
+            .serve(rewound, visitor, self.limits.hello_timeout, shutdown_rx)
             .await;
     }
 

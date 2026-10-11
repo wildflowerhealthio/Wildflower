@@ -52,7 +52,8 @@ Whoever runs the relay sees routing metadata:
 - **Each tunnel's name, token and owner's email.** The relay keeps them in its
   SQLite database, the token in plain text because rathole and request
   signing both need it. The email is whatever the operator recorded when
-  creating the tunnel.
+  creating the tunnel. A claim code issued for a tunnel is kept only as its
+  SHA-256, until it is redeemed or the next code is issued after it expires.
 
 Holding the token, the operator can impersonate the device's tunnel to
 rathole. Without a certificate for the device's domain, visitors' TLS still

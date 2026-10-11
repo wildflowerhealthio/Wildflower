@@ -1,7 +1,7 @@
-//! [`TunnelError`] — why a tunnel change was refused or failed. The
+//! [`TunnelError`] — why a tunnel change or a claim was refused or failed. The
 //! [`capabilities`](crate::domain::capabilities) and the store speak it; the admin API
-//! (`crate::site::admin`) renders each variant to a status and a short
-//! plain-text reason, or a logged empty `500` for
+//! (`crate::site::admin`, whose rendering `POST /claim` shares) renders each
+//! variant to a status and a short plain-text reason, or a logged empty `500` for
 //! [`Infrastructure`](TunnelError::Infrastructure). Nothing here knows about
 //! HTTP, and the store produces `Infrastructure` without leaking its diesel
 //! or `r2d2` error types up to the routes.
@@ -24,6 +24,10 @@ pub enum TunnelError {
     NotFound,
     /// No free name is left.
     Exhausted(&'static str),
+    /// A claim code did not redeem: it is malformed, unknown, already
+    /// redeemed or expired. One variant for all four, so `POST /claim`
+    /// answers them alike and says nothing about which codes exist.
+    ClaimCodeRejected,
     /// Storing, reaching rathole or the clock failed — opaque to clients: the admin
     /// API logs `context` + `source` and answers an empty `500`. The cause is
     /// captured as text so this type stays free of the store's diesel /
@@ -57,6 +61,9 @@ impl std::fmt::Display for TunnelError {
             TunnelError::Taken => f.write_str("a tunnel already has the name"),
             TunnelError::NotFound => f.write_str("no tunnel has the name"),
             TunnelError::Exhausted(reason) => f.write_str(reason),
+            TunnelError::ClaimCodeRejected => {
+                f.write_str("the claim code is unknown, used or expired")
+            }
             TunnelError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }
     }

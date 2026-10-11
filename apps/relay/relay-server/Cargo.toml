@@ -92,6 +92,9 @@ wildflowerhealthio-shared-structures = { path = "../../../slices/shared-structur
 # TCP keepalive on piped sockets (tokio has no setter); already in the tree
 # through tokio.
 socket2 = "0.6"
+# Adds each site request's client address (`ServiceExt::map_request`), which
+# `POST /claim`'s rate limits key on. Already in the tree through axum.
+tower = { workspace = true, features = ["util"] }
 # Renders the rathole server TOML in memory, for rathole's own parser.
 toml = "0.9"
 tokio = { workspace = true, features = [
