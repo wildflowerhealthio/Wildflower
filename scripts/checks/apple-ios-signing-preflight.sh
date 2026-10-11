@@ -28,6 +28,8 @@ warn() { echo "::warning::$*" >&2; }
 # preflight, which has to tell the same kinds apart.
 # shellcheck source=./apple-signing-lib.sh
 source "${BASH_SOURCE[0]%/*}/apple-signing-lib.sh"
+# shellcheck source=./apple-certificate-revocation.sh
+source "${BASH_SOURCE[0]%/*}/apple-certificate-revocation.sh"
 
 # Sourcing defines the helpers above and stops, so
 # scripts/checks/apple-ios-signing-preflight.test.ts can exercise them on a
@@ -99,6 +101,7 @@ if [[ -z "$signing_identity" ]]; then
   fail "IOS_CERTIFICATE holds no 'Apple Distribution' certificate, which is the only kind App Store submission accepts. It holds:${found:+$'\n'}${found:-  (nothing usable — no private key, or an expired or untrusted certificate)}. Create an Apple Distribution certificate at developer.apple.com and export it as a .p12 including its private key."
 fi
 echo "Distribution identity: $signing_identity"
+check_not_revoked IOS_CERTIFICATE "$signing_identity" "$keychain" "$workdir"
 
 # ------------------------------------------------------- provisioning profile
 

@@ -100,6 +100,21 @@ expiry, and that the profile actually lists the certificate it is paired with �
 a pair that is individually valid but unrelated is the failure mode that reads
 as "no signing certificate" with nothing explaining why.
 
+## A revoked certificate passes every local check
+
+Revocation is recorded only at Apple. `security find-identity -v` does not
+consult it, so a revoked certificate still imports, resolves and signs. App
+Store Connect is the first thing to refuse it: the iOS export fails with
+"Signing certificate is invalid", and the macOS upload with "Certificate
+Revoked". Both arrive after the whole build.
+
+The iOS and macOS App Store preflights ask first, through
+`check_not_revoked` in `scripts/checks/apple-certificate-revocation.sh`. The
+certificate names its OCSP responder and its issuer, so the question needs no
+credentials. An answer of revoked fails the job. No answer only warns, for the
+same reason the app record check only warns: a check that cannot run must not
+become a new way for a release to fail.
+
 ## macOS TestFlight is a separate channel from the notarized build
 
 TestFlight for macOS means Mac App Store distribution, which differs from the
@@ -212,6 +227,10 @@ covers running it; what it relies on:
   existing certificates rather than choosing one to revoke. Profiles are found
   by an exact name, `Wildflower <bundle id> <profile type>`, and only a profile
   with that name is ever replaced.
+- **Revoked certificates are skipped.** App Store Connect can still list a
+  revoked certificate, marked `activated: false`. Its public key matches the
+  key in the signing folder like any other, so without the skip it would be
+  reused.
 - **Legacy `.p12` encryption.** OpenSSL 3 encrypts a `.p12` with AES and
   PBKDF2 by default, which `security import` cannot read; the export passes
   `-legacy` whenever the local openssl knows it.
@@ -265,5 +284,6 @@ profile — advice to regenerate a profile that is correct.
 - `scripts/checks/apple-ios-signing-preflight.sh` — the iOS check
 - `scripts/checks/apple-macos-appstore-preflight.sh` — the macOS TestFlight check
 - `scripts/checks/apple-app-record-preflight.sh` — the App Store Connect app record check, run by both TestFlight jobs
+- `scripts/checks/apple-certificate-revocation.sh` — the revocation check the iOS and macOS App Store preflights run
 - `scripts/checks/apple-signing-lib.sh` — certificate, profile and entitlement helpers shared by all of them
 - `scripts/release/apple-signing-sync.sh` — creates, renews and stores every credential in the table above

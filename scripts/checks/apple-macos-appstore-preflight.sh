@@ -28,10 +28,13 @@ set -euo pipefail
 
 # GitHub Actions turns these into clickable annotations; plain text elsewhere.
 fail() { echo "::error::$*" >&2; exit 1; }
+warn() { echo "::warning::$*" >&2; }
 
 # Certificate and profile classification is shared with the iOS preflight.
 # shellcheck source=./apple-signing-lib.sh
 source "${BASH_SOURCE[0]%/*}/apple-signing-lib.sh"
+# shellcheck source=./apple-certificate-revocation.sh
+source "${BASH_SOURCE[0]%/*}/apple-certificate-revocation.sh"
 
 # Sourcing defines the helpers above and stops, so
 # scripts/checks/apple-macos-appstore-preflight.test.ts can exercise them on a
@@ -121,6 +124,8 @@ if ! installer_identity="$(import_and_resolve installer "$installer_certificate"
   fail "MACOS_INSTALLER_CERTIFICATE holds no 'Mac Installer Distribution' certificate (listed above). Create one at developer.apple.com as 'Mac Installer Distribution'; a 'Developer ID Installer' certificate is for direct distribution and is rejected by App Store Connect."
 fi
 echo "Installer signing identity: $installer_identity"
+check_not_revoked MACOS_APPSTORE_CERTIFICATE "$app_identity" "$keychain" "$workdir"
+check_not_revoked MACOS_INSTALLER_CERTIFICATE "$installer_identity" "$keychain" "$workdir"
 
 # ------------------------------------------------------- provisioning profile
 

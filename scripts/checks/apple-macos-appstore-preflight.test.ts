@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vite-plus/test'
@@ -34,6 +34,23 @@ describe('apple-macos-appstore-preflight', () => {
       encoding: 'utf8',
     }).trim()
     expect(out).toBe('sourced-cleanly')
+  })
+
+  // check_not_revoked warns through the sourcing script's `warn`; without one,
+  // the no-answer path would die under `set -e` instead of only warning.
+  // Off macOS `security` is missing, which is exactly that path.
+  it('only warns when it cannot ask whether a certificate is revoked', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        `source "$0"; check_not_revoked LABEL "Apple Distribution: X" /nonexistent "$(mktemp -d)"; echo survived`,
+        scriptPath,
+      ],
+      { encoding: 'utf8' }
+    )
+    expect(result.stdout.trim()).toBe('survived')
+    expect(result.stderr).toContain('::warning::')
   })
 
   // An installer certificate carries no codesigning policy, so

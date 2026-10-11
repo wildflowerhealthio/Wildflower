@@ -14,7 +14,7 @@
 //! renamed over `servers.json`, and the directory fsynced. A crash before the
 //! rename leaves the previous file whole.
 
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -186,7 +186,7 @@ fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 #[cfg(unix)]
 fn sync_directory(directory: &Path) -> io::Result<()> {
-    File::open(directory)?.sync_all()
+    fs::File::open(directory)?.sync_all()
 }
 
 /// Windows can't open a directory as a file to fsync it; the rename is as

@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vite-plus/test'
@@ -22,6 +22,22 @@ describe('apple-ios-signing-preflight', () => {
       'distribution'
     )
     expect(callHelper('profile_kind', 'false', 'false', 'false')).toBe('app-store')
+  })
+
+  // The revocation check only warns when it cannot get an answer. Off macOS
+  // `security` is missing, which is that path.
+  it('only warns when it cannot ask whether a certificate is revoked', () => {
+    const result = spawnSync(
+      'bash',
+      [
+        '-c',
+        `source "$0"; check_not_revoked LABEL "Apple Distribution: X" /nonexistent "$(mktemp -d)"; echo survived`,
+        scriptPath,
+      ],
+      { encoding: 'utf8' }
+    )
+    expect(result.stdout.trim()).toBe('survived')
+    expect(result.stderr).toContain('::warning::')
   })
 
   // A Developer ID certificate is right for the notarized macOS bundle and

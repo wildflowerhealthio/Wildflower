@@ -352,7 +352,7 @@ describe('public_key_digest', () => {
 })
 
 describe('asc_json', () => {
-  const certificate = (id: string, type: string, expires: string): object => ({
+  const certificate = (id: string, type: string, expires: string, activated?: boolean): object => ({
     type: 'certificates',
     id,
     attributes: {
@@ -360,6 +360,7 @@ describe('asc_json', () => {
       name: `${type} ${id}`,
       expirationDate: expires,
       certificateContent: `content-${id}`,
+      ...(activated === undefined ? {} : { activated }),
     },
   })
 
@@ -393,6 +394,19 @@ describe('asc_json', () => {
         'content-short',
       ],
     ])
+  })
+
+  it('leaves revoked certificates out', () => {
+    const response = writeJson('certificates.json', {
+      data: [
+        certificate('revoked', 'DISTRIBUTION', '2028-01-01T00:00:00Z', false),
+        certificate('active', 'DISTRIBUTION', '2027-01-01T00:00:00Z', true),
+      ],
+    })
+    const ids = callHelper('asc_json', 'certificates', response, 'DISTRIBUTION')
+      .split('\n')
+      .map((line) => line.split('\t')[0])
+    expect(ids).toEqual(['active'])
   })
 
   describe('app-id', () => {
