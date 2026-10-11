@@ -16,12 +16,12 @@ CI runs the same pass split over parallel runners, one **shard** per top-level a
 
 Each shard selects its projects by name (`vp test run --project <package name> ...`), not by path: a path filter is a substring match, so `vp test run global` would also run `apps/x/src/global-settings.test.ts`. To reproduce one shard locally, pass the same `--project` flags; `node scripts/ci/test-shards.ts` prints the shards your branch selects.
 
-A pull request runs only the shards its changes can affect. The plan reuses the reverse workspace dependency graph `test:changed` scales by ([`scripts/affected-packages.ts`](../../scripts/affected-packages.ts)): an area runs when it holds a package the pull request changes, or one that depends on a changed package through any chain of `dependencies`, `peerDependencies` or `devDependencies`. It errs toward running more:
+A pull request runs only the shards its changes can affect. The plan reuses the reverse workspace dependency graph `test:changed` scales by ([`scripts/affected-packages.ts`](../../scripts/affected-packages.ts)): an area runs when it holds a package the pull request changes, or one that depends on a changed package through any chain of `dependencies`, `peerDependencies`, `devDependencies` or relative-path imports of a file in another package's folder (such as `apps/host/host-app/tauri-shared-config.json`). A file moved between packages counts as a change to both. It errs toward running more:
 
 - **Every shard runs** when a root config file changed (`vite.config.ts`, `vite.config.base.ts`, `pnpm-workspace.yaml`, the root `package.json`, `pnpm-lock.yaml`), or when any changed file sits outside every package — the CI workflows and actions, the plan's own scripts, docs, Rust crates — since what those reach isn't in the package graph.
 - **`scripts` always runs**: it holds no package, but its tests check the whole repo (the package graph, the `numRunsFor` convention in every test file).
 
-The graph sees only declared workspace dependencies. A test that reads another package's files by path, rather than importing it, is not re-run when only that other package changes.
+The graph sees only manifest dependencies and literal relative `import`/`require` specifiers. A test that builds a path to another package's file at runtime (`join(repoRoot, ...)`, `readFileSync`) is not re-run when only that other package changes; import the file instead, or keep it outside every package.
 
 ## When to Use Each Approach
 

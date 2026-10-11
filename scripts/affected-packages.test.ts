@@ -8,8 +8,10 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   findAffectedPackages,
   loadPackages,
+  loadPathImports,
   partitionWorkspaceGlobs,
   readWorkspaceGlobs,
+  relativeImportsIn,
 } from './affected-packages.ts'
 import type { Pkg } from './affected-packages.ts'
 
@@ -102,6 +104,13 @@ describe('affected-packages / findAffectedPackages', () => {
     expect([...result.affected]).toEqual(['lone'])
   })
 
+  it('reaches a package importing a file out of a changed one by relative path', () => {
+    // x-web reads a JSON file out of lone's folder; no manifest records it.
+    const pathImports = new Map([['x-web', new Set(['lone'])]])
+    const result = findAffectedPackages(['global/lone/shared.json'], packages, pathImports)
+    expect([...result.affected].toSorted()).toEqual(['lone', 'x-test', 'x-web'])
+  })
+
   it('affects a set closed under depending, containing every changed package', () => {
     const files = packages.map((p) => `${p.relDir}/src/file.ts`)
     fc.assert(
@@ -114,6 +123,38 @@ describe('affected-packages / findAffectedPackages', () => {
         }
       }),
       { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('affected-packages / path imports', () => {
+  it('reads relative specifiers from imports, re-exports and requires, query stripped', () => {
+    const source = [
+      "import { a } from '../a.ts'",
+      "export * from './b.ts'",
+      "import launcherRs from '../../c.rs?raw'",
+      "import './d.css'",
+      "const e = await import('../e.ts')",
+      "const f = require('./f.cjs')",
+      "import { g } from 'effect'",
+    ].join('\n')
+    expect(relativeImportsIn(source)).toEqual([
+      '../a.ts',
+      './b.ts',
+      '../../c.rs',
+      './d.css',
+      '../e.ts',
+      './f.cjs',
+    ])
+  })
+
+  it("finds the workspace's imports of tauri-shared-config.json out of host-app", () => {
+    const packages = Effect.runSync(loadPackages(repoRoot))
+    const pathImports = Effect.runSync(loadPathImports(repoRoot, packages))
+    // launcher-web can't declare host-app (nothing outside apps/host may), yet
+    // its tests read the shared config straight out of host-app's folder.
+    expect(pathImports.get('@wildflowerhealthio/launcher-web')).toContain(
+      '@wildflowerhealthio/host-app'
     )
   })
 })

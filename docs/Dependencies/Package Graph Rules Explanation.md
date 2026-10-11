@@ -54,8 +54,8 @@ sees.
 
 The TS graph comes from `scripts/affected-packages.ts`'s workspace reader,
 which `vp run test:changed` and CI's test shard plan use too, so they never
-disagree about which packages exist. An edge counts only when it names a workspace package (a
-`workspace:` spec, or a Cargo path dependency).
+disagree about which packages exist. An edge counts only when it names a
+workspace package (a `workspace:` spec, or a Cargo path dependency).
 
 ## The exceptions, and why
 
