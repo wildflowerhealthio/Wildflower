@@ -13,10 +13,10 @@ permissions:
 
 # Three jobs, all starting together except `test`, which waits only on the
 # small `shards` plan: `check` (format, lint, typecheck, knip, TSDoc), `shards`
-# (which Vitest projects each test runner gets), and `test`, one runner per
-# shard. The test pass is CPU-bound, so spreading it over many runners is what
-# shortens the run; each pays its own install + `vp run pack` for that. Draft
-# PRs are skipped.
+# (which Vitest projects each test runner gets, for only the areas the PR can
+# affect), and `test`, one runner per shard. The test pass is CPU-bound, so
+# spreading it over many runners is what shortens the run; each pays its own
+# install + `vp run pack` for that. Draft PRs are skipped.
 jobs:
   check:
     name: Lint + Typecheck
@@ -66,20 +66,26 @@ jobs:
 
   # Plans the test matrix: one shard per top-level area, derived from the
   # Vitest projects the root vite.config.ts defines, so a new `apps/<folder>`
-  # gets its own runner with no edit here. Also computes the property-test risk
-  # map once for every shard. How shards are chosen: scripts/ci/test-shards.ts.
+  # gets its own runner with no edit here. Only areas holding a package the PR
+  # changes or reaches through the workspace dependency graph get a shard; a
+  # root config or lockfile change, or any change outside every package (this
+  # workflow, the shard script, docs, Rust) runs them all. Also computes the
+  # property-test risk map once for every shard. Rules:
+  # scripts/ci/test-shards.ts.
   shards:
     name: Plan test shards
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      shard-count: ${{ steps.plan.outputs.shard-count }}
       risk-map: ${{ steps.risk-map.outputs.risk-map }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          # Need history + origin/main for the risk map to compute the merge-base.
+          # Need history + origin/main for the plan and the risk map to compute
+          # the merge-base.
           fetch-depth: 0
 
       # Restores the pnpm store without saving it: `check` saves this run's,
@@ -100,7 +106,11 @@ jobs:
         id: plan
         run: |
           matrix=$(node scripts/ci/test-shards.ts)
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          shard_count=$(jq '.include | length' <<< "$matrix")
+          {
+            echo "matrix=$matrix"
+            echo "shard-count=$shard_count"
+          } >> "$GITHUB_OUTPUT"
 
       # `{ <package>: <multiplier> }`: full fast-check runs for packages the PR
       # can affect, a fifth for the rest. See docs/Testing/Property Testing
@@ -114,7 +124,9 @@ jobs:
   test:
     name: Test (${{ matrix.name }})
     needs: shards
-    if: github.event.pull_request.draft != true
+    # GitHub fails a job whose matrix is empty, so a plan with no shards skips
+    # the job instead; a skipped job counts as passing for `Required`.
+    if: github.event.pull_request.draft != true && needs.shards.outputs.shard-count != '0'
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports, so one failing area doesn't hide another's.

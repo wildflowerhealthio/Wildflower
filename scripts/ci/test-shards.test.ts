@@ -6,7 +6,9 @@ import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { areaOf, loadVitestProjects, planShards } from './test-shards.ts'
+import { findAffectedPackages } from '../affected-packages.ts'
+import type { Pkg } from '../affected-packages.ts'
+import { allAreas, areaOf, loadVitestProjects, planShards, selectionFor } from './test-shards.ts'
 import type { VitestProject } from './test-shards.ts'
 
 // scripts/ci/ sits two levels under the repo root.
@@ -22,6 +24,8 @@ const projectUnder = (top: fc.Arbitrary<string>): fc.Arbitrary<VitestProject> =>
       name: `${head}-${rest.join('-')}-${name}`,
       root: [head, ...rest].join('/'),
     }))
+
+const everyArea = allAreas('every area, under test')
 
 const claimedTop = fc.constantFrom('apps', 'global', 'scripts', 'slices')
 
@@ -77,7 +81,7 @@ describe('test-shards / planShards', () => {
       fc.property(
         fc.uniqueArray(projectUnder(claimedTop), { selector: (p) => p.name, maxLength: 30 }),
         (projects) => {
-          const shards = Either.getOrThrow(planShards(projects))
+          const shards = Either.getOrThrow(planShards(projects, everyArea))
           expect(projectsPerArea(shards).toSorted()).toEqual(projects.map((p) => p.name).toSorted())
         }
       ),
@@ -86,10 +90,14 @@ describe('test-shards / planShards', () => {
   })
 
   it('fails on, rather than drops, a project no area claims', () => {
-    const result = planShards([
-      { name: 'kept', root: 'apps/relay/relay-core-js' },
-      { name: 'stray', root: 'tools/stray' },
-    ])
+    const result = planShards(
+      [
+        { name: 'kept', root: 'apps/relay/relay-core-js' },
+        { name: 'stray', root: 'tools/stray' },
+      ],
+      // Even a branch that selects no area must not hide the stray project.
+      { _tag: 'AffectedAreas', packageDirs: [] }
+    )
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) expect(result.left.roots).toEqual(['tools/stray'])
   })
@@ -99,7 +107,7 @@ describe('test-shards / planShards', () => {
       { name: 'b', root: 'slices/fhir/fhir-r4' },
       { name: 'a', root: 'slices/dicom/dicom' },
     ]
-    expect(Either.getOrThrow(planShards(projects))).toEqual([
+    expect(Either.getOrThrow(planShards(projects, everyArea))).toEqual([
       { name: 'slices 1/2', projects: ['a', 'b'], vitestShard: '1/2' },
       { name: 'slices 2/2', projects: ['a', 'b'], vitestShard: '2/2' },
     ])
@@ -109,7 +117,7 @@ describe('test-shards / planShards', () => {
 describe('test-shards / the workspace', () => {
   it('partitions every real Vitest project into the shards', async () => {
     const projects = await Effect.runPromise(loadVitestProjects(repoRoot))
-    const shards = Either.getOrThrow(planShards(projects))
+    const shards = Either.getOrThrow(planShards(projects, everyArea))
     const names = projects.map((p) => p.name)
     // Every project in exactly one area, none dropped, none invented.
     expect(projectsPerArea(shards).toSorted()).toEqual(names.toSorted())
@@ -131,4 +139,83 @@ describe('test-shards / the workspace', () => {
     )
     expect(unowned).toEqual([])
   }, 60_000)
+})
+
+describe('test-shards / selectionFor', () => {
+  const pkg = (name: string, relDir: string, deps: readonly string[] = []): Pkg => ({
+    name,
+    relDir,
+    deps: new Set(deps),
+    devDeps: new Set(),
+  })
+
+  // A slice package two apps build on, and an app nothing depends on.
+  const packages = [
+    pkg('fhir-r4', 'slices/fhir/fhir-r4'),
+    pkg('lifting-web', 'apps/lifting/lifting-web', ['fhir-r4']),
+    pkg('launcher-web', 'apps/launcher/launcher-web', ['fhir-r4']),
+    pkg('relay-react', 'apps/relay/relay-react'),
+    pkg('kitchen-sink', 'global/kitchen-sink'),
+  ]
+  const projects = [
+    ...packages.map((p) => ({ name: p.name, root: p.relDir })),
+    { name: 'scripts', root: 'scripts' },
+  ]
+
+  const shardsFor = (changedFiles: readonly string[]): readonly string[] =>
+    Either.getOrThrow(
+      planShards(projects, selectionFor(findAffectedPackages(changedFiles, packages), packages))
+    ).map((shard) => shard.name)
+
+  const everyShard = [
+    'apps/launcher',
+    'apps/lifting',
+    'apps/relay',
+    'global',
+    'scripts',
+    'slices 1/2',
+    'slices 2/2',
+  ]
+
+  it("runs a changed package's area, its dependers' areas, and scripts", () => {
+    expect(shardsFor(['slices/fhir/fhir-r4/src/index.ts'])).toEqual([
+      'apps/launcher',
+      'apps/lifting',
+      'scripts',
+      'slices 1/2',
+      'slices 2/2',
+    ])
+  })
+
+  it('runs only the changed app and scripts when nothing depends on it', () => {
+    expect(shardsFor(['apps/relay/relay-react/src/screen.tsx'])).toEqual(['apps/relay', 'scripts'])
+  })
+
+  it('runs every shard for a root config or lockfile change', () => {
+    for (const file of [
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
+      'vite.config.base.ts',
+      'package.json',
+    ]) {
+      expect(shardsFor([file, 'apps/relay/relay-react/src/screen.tsx'])).toEqual(everyShard)
+    }
+  })
+
+  it('runs every shard for a change outside every package', () => {
+    for (const file of [
+      '.github/workflows/ci-typescript.yml',
+      '.github/actions/vp-pack-cache/action.yml',
+      'scripts/ci/test-shards.ts',
+      'scripts/affected-packages.ts',
+      'docs/Testing/Testing Reference.md',
+      'slices/fhir/fhir-rust/src/lib.rs',
+    ]) {
+      expect(shardsFor([file, 'apps/relay/relay-react/src/screen.tsx'])).toEqual(everyShard)
+    }
+  })
+
+  it('runs only the always-run areas when the changes reach no package with tests', () => {
+    expect(shardsFor([])).toEqual(['scripts'])
+  })
 })

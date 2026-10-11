@@ -7,7 +7,7 @@ import { join, normalize } from 'node:path'
 import { Effect, Match, Schema } from 'effect'
 import { parse as parseToml } from 'smol-toml'
 
-import { loadPackages } from './risk-map.ts'
+import { loadPackages } from './affected-packages.ts'
 
 /** Which manifest a {@link WorkspacePackage} was read from. */
 type Ecosystem = 'npm' | 'cargo'
@@ -137,7 +137,7 @@ const loadCrates = (repoRoot: string): readonly WorkspacePackage[] => {
 
 /**
  * The workspace's TS packages (from `pnpm-workspace.yaml`, through
- * `risk-map.ts`'s reader) and Rust crates (from the root `Cargo.toml`).
+ * `affected-packages.ts`'s reader) and Rust crates (from the root `Cargo.toml`).
  */
 const loadWorkspacePackages = (repoRoot: string): Effect.Effect<readonly WorkspacePackage[]> =>
   Effect.gen(function* () {

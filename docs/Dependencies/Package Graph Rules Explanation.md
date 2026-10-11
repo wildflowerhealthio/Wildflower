@@ -52,9 +52,9 @@ file-path reference that crosses into another package's folder, such as an
 `include_str!` of another package's build output, is not an edge either check
 sees.
 
-The TS graph comes from `scripts/risk-map.ts`'s workspace reader, which
-`vp run test:changed` uses too, so the two never disagree about which
-packages exist. An edge counts only when it names a workspace package (a
+The TS graph comes from `scripts/affected-packages.ts`'s workspace reader,
+which `vp run test:changed` and CI's test shard plan use too, so they never
+disagree about which packages exist. An edge counts only when it names a workspace package (a
 `workspace:` spec, or a Cargo path dependency).
 
 ## The exceptions, and why
