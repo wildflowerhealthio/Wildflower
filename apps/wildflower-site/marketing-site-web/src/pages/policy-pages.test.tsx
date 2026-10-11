@@ -1,6 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import { ConsumerHealthData } from './consumer-health-data.tsx'
 import { Deletion } from './deletion.tsx'
 import { PrivacyPolicy } from './privacy-policy.tsx'
 import { Terms } from './terms.tsx'
@@ -28,18 +29,48 @@ describe('PrivacyPolicy', () => {
     // Arrange / Act
     render(<PrivacyPolicy />)
 
-    // Assert — Washington's My Health My Data Act wants a consumer health data
-    // policy; the GDPR wants the controller, bases, transfers and rights; a
-    // health app wants to say it is not medical advice.
+    // Assert — the GDPR wants the controller, bases, transfers and rights; a
+    // health app wants to say it is not medical advice. The consumer health
+    // data policy is its own page, linked from here.
     expect(
-      screen.getByRole('heading', { name: 'Washington residents: consumer health data' })
-    ).toBeDefined()
+      screen.getByRole('link', { name: 'consumer health data privacy policy' }).getAttribute('href')
+    ).toBe('../consumer-health-data/')
     expect(
       screen.getByRole('heading', { name: 'If you are in the EU, the UK or Switzerland' })
     ).toBeDefined()
     expect(screen.getByRole('heading', { name: 'Not medical advice' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'If something goes wrong' })).toBeDefined()
     expect(screen.getAllByText(/90 days/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('ConsumerHealthData', () => {
+  it('should title the page and carry what the state health data laws ask a policy to say', () => {
+    // Arrange / Act
+    render(<ConsumerHealthData />)
+
+    // Assert — Washington's My Health My Data Act and Nevada's consumer health
+    // data law each want a separate policy: what is collected and why, its
+    // sources, who it is shared with, the rights, cross-site tracking and how
+    // changes are announced.
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Consumer health data privacy policy'
+    )
+    for (const title of [
+      'Why this page exists',
+      'What I may collect, and why',
+      'Where it comes from',
+      'Who it is shared with',
+      'Tracking across other sites',
+      'Your rights',
+      'Changes',
+    ]) {
+      expect(screen.getByRole('heading', { name: title })).toBeDefined()
+    }
+    const main = within(screen.getByRole('main'))
+    expect(main.getByRole('link', { name: 'Privacy policy' }).getAttribute('href')).toBe(
+      '../privacy-policy/'
+    )
   })
 })
 

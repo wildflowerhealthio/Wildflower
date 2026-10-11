@@ -55,7 +55,7 @@ interface TelemetryConsentCopy {
   readonly destination: string
   /** The crash-reports switch: errors, which may carry loaded data. */
   readonly crashReports: TelemetryConsentSwitchCopy
-  /** The performance switch: anonymized timings and route names. */
+  /** The performance switch: timings and route names, with ids and queries removed. */
   readonly performance: TelemetryConsentSwitchCopy
   /** What either switch also turns on: Sentry's session counts. */
   readonly sessions: string
@@ -100,7 +100,8 @@ const ACCEPTANCE: AcceptanceCopy = {
  * and store records; they don't advise.
  */
 const NOT_MEDICAL_ADVICE =
-  'Nothing in Wildflower is medical advice, and it is not for use in an emergency. ' +
+  'Wildflower does not provide medical advice. The information it shows is for ' +
+  'informational purposes only, and it is not for use in an emergency. ' +
   'Talk to a clinician about your health.'
 
 /** Where both dialogs send a visitor who wants to audit the code themselves. */
@@ -149,7 +150,7 @@ const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
   performance: {
     label: 'Performance data',
     description:
-      'Sends anonymized timings: how long pages and requests take, with the names of ' +
+      'Sends timings: how long pages and requests take, with the names of ' +
       'the pages and of the resource types requested. Record ids and query strings ' +
       'are removed first, and no record contents are sent.',
   },

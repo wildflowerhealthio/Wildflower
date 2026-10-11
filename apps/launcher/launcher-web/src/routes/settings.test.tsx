@@ -126,6 +126,7 @@ describe('SettingsScreen', () => {
     await screen.findByRole('navigation', { name: 'Primary' })
     for (const [name, href] of [
       ['Privacy policy', 'https://wildflowerhealth.io/privacy-policy/'],
+      ['Consumer health data', 'https://wildflowerhealth.io/consumer-health-data/'],
       ['Terms of use', 'https://wildflowerhealth.io/terms/'],
       ['Deleting your data', 'https://wildflowerhealth.io/deletion/'],
     ] as const) {

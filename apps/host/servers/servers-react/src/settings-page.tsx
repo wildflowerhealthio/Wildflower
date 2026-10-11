@@ -60,9 +60,10 @@ const useNotificationsItem = (): ItemListItem => {
 }
 
 /**
- * The Legal section's rows: the privacy policy, the terms of use and the
- * deletion page on the canonical site, each opened in the system browser. The
- * app stores require the app to link to the first and the last.
+ * The Legal section's rows: the privacy policy, the consumer health data
+ * policy, the terms of use and the deletion page on the canonical site, each
+ * opened in the system browser. The app stores require the app to link to the
+ * first and the last.
  */
 const LEGAL_ITEMS: readonly ItemListItem[] = POLICY_IDS.map((id) => ({
   id,

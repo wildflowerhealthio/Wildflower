@@ -14,9 +14,10 @@ const EMAIL = 'ruthmarks151@gmail.com'
  * `/privacy-policy/` — what the website, the apps, and the relay collect, where
  * it goes, and who else sees it. Structured to be scanned: a summary, then one
  * card per kind of data with the same four facts, grouped by the app it belongs
- * to, then the services involved, then the sections particular laws ask for
- * (Washington's consumer health data law, the GDPR). Every claim here has to
- * stay true of the code (the telemetry consent copy in `branding-core`, the
+ * to, then the services involved, then the section the GDPR asks for. The
+ * consumer health data policy US state laws ask for is its own page,
+ * `/consumer-health-data/`, and has to agree with this one. Every claim here
+ * has to stay true of the code (the telemetry consent copy in `branding-core`, the
  * relay's `tunnels` table) and of the Sentry organisation's settings, so change
  * this page with them.
  */
@@ -31,10 +32,10 @@ function PrivacyPolicy(): JSX.Element {
           </li>
           <li>Nothing is reported unless you turn crash reports or performance data on.</li>
           <li>There are no accounts, no ads, no analytics on the website, and nothing is sold.</li>
-          <li>The relay stores an email address only for tunnels registered with it.</li>
           <li>
-            This is early-stage software, unaudited and provided as is. It is not medical advice.
-            Use your own judgement about which records you connect.
+            This is early-stage software, unaudited and provided as is. It does not provide medical
+            advice, and the information it shows is for informational purposes only. Use your own
+            judgement about which records you connect.
           </li>
         </ul>
       </PolicySection>
@@ -51,8 +52,10 @@ function PrivacyPolicy(): JSX.Element {
           <li>the Wildflower relay</li>
         </ul>
         <p>
-          Using them is also subject to the <a href="../terms/">{POLICY_LABELS.terms}</a>. Questions
-          go to <a href={`mailto:${EMAIL}`}>{EMAIL}</a>.
+          Using them is also subject to the <a href="../terms/">{POLICY_LABELS.terms}</a>. What
+          health data I may collect, and your rights over it, is also set out on its own in the{' '}
+          <a href="../consumer-health-data/">consumer health data privacy policy</a>. Questions go
+          to <a href={`mailto:${EMAIL}`}>{EMAIL}</a>.
         </p>
       </PolicySection>
 
@@ -158,7 +161,7 @@ function PrivacyPolicy(): JSX.Element {
           <PolicyDataCard
             title="Your tunnel's address"
             where="In the public Certificate Transparency logs, which every certificate authority writes to."
-            when="When a certificate is issued for your tunnel's address, by Let's Encrypt, from your device."
+            when="When a certificate is issued for your tunnel's address, by Let's Encrypt, from your device. Only the address is sent: no email address or other detail about you."
             keptFor="Permanently. Nobody can remove an entry from those logs."
             delete="It can't be. Choose a tunnel name you are happy to have public."
           />
@@ -168,7 +171,7 @@ function PrivacyPolicy(): JSX.Element {
           <PolicyDataCard
             title="Your emails"
             where="My email account, which Google hosts."
-            when="When you email me."
+            when="When you email me. Please don't put health information in them."
             keptFor="Until you ask me to delete them."
             delete="Email me and ask."
           />
@@ -184,9 +187,9 @@ function PrivacyPolicy(): JSX.Element {
             addresses.
           </li>
           <li>
-            <strong>Performance data</strong> is anonymized timings: how long pages and requests
-            take, and the names of the pages and resource types requested. Record ids and query
-            strings are removed first, and no record contents are sent.
+            <strong>Performance data</strong> is timings: how long pages and requests take, and the
+            names of the pages and resource types requested. Record ids and query strings are
+            removed first, and no record contents are sent.
           </li>
           <li>
             <strong>Session counts</strong> record that the app was opened, whether it ran into an
@@ -257,7 +260,7 @@ function PrivacyPolicy(): JSX.Element {
           <li>
             <strong>Let&rsquo;s Encrypt</strong> issues the certificate for your tunnel&rsquo;s
             address, from your device, and records that address in the public Certificate
-            Transparency logs.
+            Transparency logs. Your device sends it no email address or other contact detail.
           </li>
           <li>
             <strong>Google</strong> hosts the email account you reach me at.
@@ -273,39 +276,6 @@ function PrivacyPolicy(): JSX.Element {
         </p>
       </PolicySection>
 
-      <PolicySection title="Washington residents: consumer health data">
-        <p>
-          This section is the consumer health data privacy policy Washington&rsquo;s My Health My
-          Data Act asks for. It also serves residents of Nevada and Connecticut, whose health data
-          laws give similar rights, by the same process.
-        </p>
-        <ul>
-          <li>
-            <strong>What I collect, and why.</strong> The only consumer health data I may collect is
-            the contents of crash reports, which can include health records the app had loaded, used
-            only to find and fix the error. I collect it only if you turn Crash reports on, which is
-            your consent, and you can turn it off at any time.
-          </li>
-          <li>
-            <strong>Where it comes from.</strong> The app on your own device, at the moment of an
-            error.
-          </li>
-          <li>
-            <strong>Who it is shared with.</strong> Sentry, which stores the reports for me under
-            its data processing agreement and for no purpose of its own. I have no affiliates, and I
-            don&rsquo;t sell consumer health data.
-          </li>
-          <li>
-            <strong>Your rights.</strong> To know whether I hold consumer health data about you and
-            to see it, to know who I have shared it with, to withdraw your consent, and to have it
-            deleted. Email me. I answer within 45 days, or tell you within those 45 days if I need
-            another 45. If I refuse, you can appeal by replying, and I answer the appeal within 45
-            days. If that doesn&rsquo;t settle it, you can complain to the Washington Attorney
-            General.
-          </li>
-        </ul>
-      </PolicySection>
-
       <PolicySection title="If you are in the EU, the UK or Switzerland">
         <ul>
           <li>
@@ -313,11 +283,12 @@ function PrivacyPolicy(): JSX.Element {
             <a href={`mailto:${EMAIL}`}>{EMAIL}</a>.
           </li>
           <li>
-            <strong>Legal bases.</strong> Crash reports, performance data and session counts are
-            sent only with your consent, which you give with the switches and can withdraw at any
-            time with the same switches. The relay stores a tunnel&rsquo;s details because they are
-            needed to provide the tunnel. I keep emails on the basis of my legitimate interest in
-            answering them.
+            <strong>Legal bases.</strong> A crash report can carry health data, so crash reports are
+            sent only with your explicit consent, which you give by turning the Crash reports switch
+            on. Performance data and session counts are sent only with your consent, which you give
+            with the switches. You can withdraw either at any time with the same switches. The relay
+            stores a tunnel&rsquo;s details because they are needed to provide the tunnel. I keep
+            emails on the basis of my legitimate interest in answering them.
           </li>
           <li>
             <strong>Transfers.</strong> Sentry and the relay server are in the United States. Sentry
@@ -343,9 +314,10 @@ function PrivacyPolicy(): JSX.Element {
       <PolicySection title="Not medical advice">
         <p>
           The apps show, store and move health records. They don&rsquo;t diagnose, treat or
-          recommend, and nothing in them is medical advice. Talk to a clinician about your health,
-          and in an emergency call your local emergency number. Don&rsquo;t rely on these apps to be
-          available or correct.
+          recommend, and they do not provide medical advice. The information they show is provided
+          for informational purposes only. Talk to a clinician about your health, and in an
+          emergency call your local emergency number. Don&rsquo;t rely on these apps to be available
+          or correct.
         </p>
       </PolicySection>
 
