@@ -141,14 +141,19 @@ fi
 
 # Creates the environment only when it is missing: a PUT also rewrites its
 # protection rules, which may have been changed by hand since. A new one may
-# deploy from main only — the branch every deploy runs on.
+# deploy only from the refs a publish runs on: a merged release PR's merge
+# ref, which GitHub matches a pull_request run against, and the branches a
+# publish is dispatched from.
 ensure_environment() {
   gh api "repos/{owner}/{repo}/environments/$environment" --silent 2>/dev/null && return 0
   printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
     gh api -X PUT "repos/{owner}/{repo}/environments/$environment" --input - --silent
-  gh api -X POST "repos/{owner}/{repo}/environments/$environment/deployment-branch-policies" \
-    -f name=main -f type=branch --silent
-  echo "  Created environment $environment, deploying from main only."
+  local ref
+  for ref in main 'release/v*' 'refs/pull/*/merge'; do
+    gh api -X POST "repos/{owner}/{repo}/environments/$environment/deployment-branch-policies" \
+      -f name="$ref" -f type=branch --silent
+  done
+  echo "  Created environment $environment, deploying from main, release/v* and pull request merge refs only."
 }
 
 # store secret|variable <name> <file>: values go to gh on stdin, never on its

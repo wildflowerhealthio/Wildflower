@@ -30,7 +30,7 @@ The script needs a JDK's `keytool`, `openssl` and `python3`, on Linux or macOS. 
 
    A dry run generates the upload key if the signing folder has none and runs the preflight over the key and the service account key, but writes nothing to GitHub.
 
-2. Run it for real with the same command, without `--dry-run`. It creates `android-play` with a `main`-only branch rule if it is missing, and sets its four secrets and variables.
+2. Run it for real with the same command, without `--dry-run`. It creates `android-play` if it is missing, deploying from `main`, `release/v*` and `refs/pull/*/merge` only, and sets its four secrets and variables.
 3. Upload the first bundle by hand. Only the first one: every later bundle can come through the API. Build it signed with the upload key from `apps/host/host-app`, on a machine with the Android SDK and NDK, a JDK 17 and the Rust Android targets:
 
    ```bash
@@ -50,7 +50,7 @@ The script needs a JDK's `keytool`, `openssl` and `python3`, on Linux or macOS. 
 
 ## Variations
 
-**First bundle from CI.** Instead of building the first bundle locally, run **Deploy Android to Google Play** for a release tag from the Actions tab (or `gh workflow run deploy-android-play.yml -f tag=v<version>`). It attaches the signed bundle, `wildflower-host-<version>.aab`, to the tag's GitHub Release before it tries Play, and that first Play upload fails because the app has no bundle yet. Download the bundle from the release and continue from step 4. Play then has that version code, so the next deploy needs the next release.
+**First bundle from CI.** Instead of building the first bundle locally, run **Tauri Release — Publish** for a release tag from the Actions tab with `platforms` set to `android` (or `gh workflow run tauri-release-publish.yml -f tag=v<version> -f platforms=android`). It attaches the signed bundle, `wildflower-host-<version>.aab`, to the tag's GitHub Release before it tries Play, and that first Play upload fails because the app has no bundle yet. Download the bundle from the release and continue from step 4. Play then has that version code, so the next deploy needs the next release.
 
 **A service account key kept elsewhere.** Pass `--service-account <key.json>`.
 
@@ -65,4 +65,4 @@ The script needs a JDK's `keytool`, `openssl` and `python3`, on Linux or macOS. 
 - [Android Release Signing Explanation](./Android%20Release%20Signing%20Explanation.md) — the upload and app signing keys, `keystore.properties`, and the environment
 - [Apple Signing Sync How-To](./Apple%20Signing%20Sync%20How-To.md) — the same job for the macOS and iOS channels
 - [`scripts/checks/android-play-preflight.sh`](../../scripts/checks/android-play-preflight.sh) — the check the script runs before storing anything
-- [`.github/workflows/deploy-android-play.yml`](../../.github/workflows/deploy-android-play.yml) — the deploy that reads the environment
+- [`.github/workflows/tauri-release-publish.yml`](../../.github/workflows/tauri-release-publish.yml) — the release whose `build-android` job reads the environment

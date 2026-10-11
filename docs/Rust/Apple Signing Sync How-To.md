@@ -2,7 +2,7 @@
 
 Create or renew every certificate and provisioning profile the Tauri release signs with, and store each channel's in its GitHub Actions environment, by running [`scripts/release/apple-signing-sync.sh`](../../scripts/release/apple-signing-sync.sh) on a Mac. Run it once to set the release up, and again whenever a certificate or profile is within 30 days of expiring — re-running when nothing needs renewing changes nothing at Apple and rewrites the same credentials to GitHub.
 
-For which channel needs which certificate, what the script relies on, and why each environment has no branch rule, see the [Apple Release Signing Explanation](./Apple%20Release%20Signing%20Explanation.md).
+For which channel needs which certificate, what the script relies on, and which refs each environment may deploy from, see the [Apple Release Signing Explanation](./Apple%20Release%20Signing%20Explanation.md).
 
 ## One-time setup
 

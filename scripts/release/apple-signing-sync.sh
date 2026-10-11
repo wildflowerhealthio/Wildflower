@@ -403,12 +403,20 @@ ensure_profile() {
 # ------------------------------------------------------------- GitHub
 
 # Creates the environment only when it is missing: a PUT also rewrites its
-# protection rules, which may have been set by hand since.
+# protection rules, which may have been set by hand since. A new one may
+# deploy only from the refs a publish runs on: a merged release PR's merge
+# ref, which GitHub matches a pull_request run against, and the branches a
+# publish is dispatched from.
 ensure_environment() {
-  local environment="$1"
+  local environment="$1" ref
   gh api "repos/{owner}/{repo}/environments/$environment" --silent 2>/dev/null && return 0
-  gh api -X PUT "repos/{owner}/{repo}/environments/$environment" --silent
-  echo "  Created environment $environment."
+  printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' |
+    gh api -X PUT "repos/{owner}/{repo}/environments/$environment" --input - --silent
+  for ref in main 'release/v*' 'refs/pull/*/merge'; do
+    gh api -X POST "repos/{owner}/{repo}/environments/$environment/deployment-branch-policies" \
+      -f name="$ref" -f type=branch --silent
+  done
+  echo "  Created environment $environment, deploying from main, release/v* and pull request merge refs only."
 }
 
 # store <environment> secret|variable <name> <file>: values go to gh on stdin,

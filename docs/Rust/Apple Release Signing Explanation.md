@@ -248,11 +248,20 @@ channel that fails it is not written. The notarization half of
 `apple-signing-preflight.sh` checks the repository-level credentials, which
 the script cannot read; it runs only when they are exported in the shell.
 
-None of the environments has a deployment branch rule. Such a rule is matched
-against `GITHUB_REF`, which for the `pull_request: closed` event that triggers
-a publish is `refs/pull/<number>/merge`, not `main` — so a `main`-only rule
-blocks every merge-triggered release, and admitting `refs/pull/*/merge` admits
-every pull request in the repository.
+Each environment may deploy only from the refs a publish runs on:
+
+- `refs/pull/*/merge`, the ref a merged release pull request's publish runs
+  on. GitHub matches a `pull_request` run's environment against that ref,
+  not the pull request's branch, so a `main`-only rule would block every
+  merge-triggered release.
+- `main` and `release/v*`, the refs a publish is dispatched from.
+
+A workflow pushed to or dispatched from any other branch is refused the
+certificates. A pull request's own workflow file still runs on its merge ref,
+so the rule narrows who can reach them to those who can open a pull request
+from a branch of this repository, rather than closing that path. The script
+sets the rule when it creates an environment and leaves an existing one's
+rules as they are.
 
 ## Reading entitlements out of a profile
 
@@ -277,7 +286,7 @@ profile — advice to regenerate a profile that is correct.
 ## See Also
 
 - [Apple Signing Sync How-To](./Apple%20Signing%20Sync%20How-To.md) — creating or renewing the certificates and profiles, and storing them in their environments
-- [Android Release Signing Explanation](./Android%20Release%20Signing%20Explanation.md) — the Google Play channel, deployed after the same release
+- [Android Release Signing Explanation](./Android%20Release%20Signing%20Explanation.md) — the Google Play channel, built in the same release run
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the cache keys these release jobs share
 - [Data Directory Explanation](../../apps/host/host-app/Data%20Directory%20Explanation.md) — where each platform puts the host's databases, including what the sandbox does to it on macOS and why iOS uses `Documents`
 - `scripts/checks/apple-signing-preflight.sh` — the macOS check

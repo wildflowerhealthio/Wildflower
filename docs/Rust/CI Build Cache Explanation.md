@@ -40,7 +40,7 @@ by hand:
 | `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)        | Release profile, rustflags add `-C link-arg=advapi32.lib`               |
 | `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)          | Release profile, `ubuntu-22.04` — a different image from CI's           |
 | `release-ios`         | `tauri-release-publish.yml` → `build-ios`              | Release profile, `aarch64-apple-ios`                                    |
-| `release-android`     | `deploy-android-play.yml` → `deploy`                   | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`      |
+| `release-android`     | `tauri-release-publish.yml` → `build-android`          | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`      |
 | `release-relay`       | `deploy-relay.yml` → `build`                           | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04` |
 | `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                | No compile at all; `cache-targets: false`, registry and git only        |
 
@@ -110,9 +110,9 @@ The release builds are deliberately not warmed. Three release-profile Tauri
 builds per lockfile bump would cost far more than the handful of cold release
 builds it would save. A `workflow_dispatch` publish run from `main` does save
 into main's scope, so back-to-back dispatched rebuilds hit; a run triggered by
-the merged release PR can only read. The Android deploy always runs on `main` —
-a `workflow_run` does, and its environment refuses any other branch — so each
-release's `release-android` build saves for the next.
+the merged release PR saves into that PR's merge-ref scope, which no later run
+can read. The Android job, whose cache is the largest, saves only from a
+dispatch.
 
 ## The Tauri system packages
 

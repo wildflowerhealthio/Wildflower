@@ -102,7 +102,11 @@ case "$1 $2" in
     cat > "$FAKE_DIR/github/$5/$3"
     ;;
   api*)
-    # GET of a missing environment fails; PUT creates it.
+    if [[ "$2 $3" == "-X PUT" ]]; then
+      cat > "$FAKE_DIR/environment-\${4##*/}.json"
+      exit 0
+    fi
+    # GET of a missing environment fails; PUT and POST create it.
     [[ "$2" == -X ]] || [[ -n "\${FAKE_ENVIRONMENTS_EXIST:-}" ]] || exit 1
     ;;
 esac
@@ -428,9 +432,20 @@ describe('apple-signing-sync', { timeout: 30_000 }, () => {
       certificates: { data: [{ type: 'certificates', id: 'new-DISTRIBUTION' }] },
     })
 
-    expect(readFileSync(join(fake, 'gh.log'), 'utf8')).toContain(
-      'api -X PUT repos/{owner}/{repo}/environments/apple-ios --silent'
-    )
+    // Each new environment deploys from the refs a publish runs on only.
+    for (const environment of ['apple-ios', 'apple-macos-appstore', 'apple-macos-direct']) {
+      expect(
+        JSON.parse(readFileSync(join(fake, `environment-${environment}.json`), 'utf8'))
+      ).toEqual({
+        deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+      })
+      const policies = `api -X POST repos/{owner}/{repo}/environments/${environment}/deployment-branch-policies`
+      for (const ref of ['main', 'release/v*', 'refs/pull/*/merge']) {
+        expect(readFileSync(join(fake, 'gh.log'), 'utf8')).toContain(
+          `${policies} -f name=${ref} -f type=branch --silent`
+        )
+      }
+    }
   })
 
   // The values must reach the preflights and GitHub through the environment

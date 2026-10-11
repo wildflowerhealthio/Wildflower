@@ -193,14 +193,18 @@ describe('android-signing-sync', { timeout: 30_000 }, () => {
     )
   })
 
-  it('creates a missing environment that deploys from main only', () => {
+  // The refs a publish runs on: a merged release PR's merge ref and the
+  // branches it is dispatched from.
+  it('creates a missing environment that deploys from the publish refs only', () => {
     expect(sync().status).toBe(0)
     expect(JSON.parse(readFileSync(join(fake, 'environment.json'), 'utf8'))).toEqual({
       deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
     })
-    expect(ghLog()).toContain(
-      'api -X POST repos/{owner}/{repo}/environments/android-play/deployment-branch-policies -f name=main -f type=branch --silent'
-    )
+    const policies =
+      'api -X POST repos/{owner}/{repo}/environments/android-play/deployment-branch-policies'
+    for (const ref of ['main', 'release/v*', 'refs/pull/*/merge']) {
+      expect(ghLog()).toContain(`${policies} -f name=${ref} -f type=branch --silent`)
+    }
   })
 
   // Its protection rules may have been changed by hand since.
