@@ -109,6 +109,37 @@ pub(super) fn insert_tunnel(
         .map_err(|e| TunnelError::infrastructure("storing the tunnel failed", e))
 }
 
+/// Set the token of the tunnel named `tunnel.name` to `tunnel.token`, in one
+/// immediate transaction, returning the row as it was; `None`, changing
+/// nothing, if there is none. Backs
+/// [`SqliteTunnelStore::replace_token`](crate::db::SqliteTunnelStore).
+///
+/// # Errors
+///
+/// [`TunnelError::Infrastructure`] on a read or update failure.
+pub(super) fn replace_token(
+    conn: &mut PooledDieselConnection,
+    tunnel: &Tunnel,
+) -> Result<Option<StoredTunnel>, TunnelError> {
+    conn.immediate_transaction(|conn| {
+        let Some(previous) = tunnels::table
+            .find(&tunnel.name)
+            .select(TunnelRow::as_select())
+            .first(conn)
+            .optional()?
+        else {
+            return Ok(None);
+        };
+        diesel::update(tunnels::table.find(&tunnel.name))
+            .set(tunnels::token.eq(tunnel.token.expose()))
+            .execute(conn)?;
+        Ok(Some(StoredTunnel::from(previous)))
+    })
+    .map_err(|e: diesel::result::Error| {
+        TunnelError::infrastructure("replacing the stored tunnel's token failed", e)
+    })
+}
+
 /// Remove the tunnel named `name`, returning it; `None` if there was none.
 /// Backs [`SqliteTunnelStore::delete_tunnel`](crate::db::SqliteTunnelStore).
 ///

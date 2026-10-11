@@ -128,6 +128,10 @@ impl TunnelStore for SqliteTunnelStore {
     fn delete_tunnel(&self, name: &str) -> Result<Option<StoredTunnel>, TunnelError> {
         tunnels::delete_tunnel(&mut self.connection()?, name)
     }
+
+    fn replace_token(&self, tunnel: &Tunnel) -> Result<Option<StoredTunnel>, TunnelError> {
+        tunnels::replace_token(&mut self.connection()?, tunnel)
+    }
 }
 
 /// The claim-code port over the same database: thin delegations to the
@@ -164,6 +168,7 @@ fn create_private(path: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use crate::domain::test_fake::stored_tunnel;
+    use crate::settings::Secret;
 
     /// A code hashed `byte` repeated, for `tunnel_name`, expiring at
     /// `expires_at`.
@@ -327,6 +332,53 @@ mod tests {
         assert_eq!(store.delete_tunnel("alice").unwrap(), None);
         assert!(!store.contains_tunnel("alice").unwrap());
         assert_eq!(store.list_tunnels().unwrap(), [stored_tunnel("bob")]);
+    }
+
+    #[test]
+    fn replacing_a_token_returns_the_tunnel_as_it_was() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let reissued = Tunnel {
+            name: "alice".to_owned(),
+            token: Secret::new("alice-new-token".to_owned()),
+        };
+        assert_eq!(
+            store.replace_token(&reissued).unwrap(),
+            Some(stored_tunnel("alice"))
+        );
+        let mut expected = stored_tunnel("alice");
+        expected.tunnel = reissued.clone();
+        assert_eq!(store.list_tunnels().unwrap(), [expected]);
+
+        let unknown = Tunnel {
+            name: "nobody".to_owned(),
+            token: Secret::new("x".to_owned()),
+        };
+        assert_eq!(store.replace_token(&unknown).unwrap(), None);
+        assert_eq!(
+            store.list_tunnels().unwrap().len(),
+            1,
+            "a miss stores nothing"
+        );
+    }
+
+    /// A claim code reads its tunnel's token when it is redeemed, so a code
+    /// issued before the token was replaced redeems for the new one.
+    #[test]
+    fn a_claim_code_redeems_for_the_token_stored_when_it_is_taken() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let code = claim_code(1, "alice", 1_900);
+        store.replace_claim_code(&code).unwrap();
+        let reissued = Tunnel {
+            name: "alice".to_owned(),
+            token: Secret::new("alice-new-token".to_owned()),
+        };
+        store.replace_token(&reissued).unwrap();
+        assert_eq!(
+            store.take_claim_code(&code.code_hash, 1_000).unwrap(),
+            Some(reissued)
+        );
     }
 
     /// Running the migrations twice is a no-op the second time (the

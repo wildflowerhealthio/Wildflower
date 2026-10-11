@@ -128,9 +128,17 @@
 //!   "ABCD-EFGH", "expires_at": <Unix epoch seconds>}`, or is `404` when no
 //!   tunnel has the name. The code is shown only in this answer, and
 //!   replaces the tunnel's earlier code.
+//! - `POST /api/tunnels/{name}/token`, without a body, replaces the tunnel's
+//!   token with a new random one and answers `200 {"name", "token",
+//!   "public_host"}`, or is `404` when no tunnel has the name. The new token
+//!   is shown only in this answer.
 //!
 //! A created tunnel's device can connect and sign at once. A deleted one can
-//! no longer sign or be routed to, and rathole drops its tunnel.
+//! no longer sign or be routed to, and rathole drops its tunnel. A reissued
+//! token signs and connects at once; the old one stops at once, and rathole
+//! drops the control channel it authenticated, so the device using it
+//! disconnects until it is given the new one. A claim code issued before a
+//! reissue redeems for the new token.
 //! A `POST` has a body, so its signature covers `content-digest`;
 //! `content-type` may be covered too but need not be.
 //!
@@ -144,7 +152,8 @@
 //! signing key made from it, signs each API call with it as above, and
 //! forgets it on Sign out. The page lists the tunnels, creates one (showing
 //! its token once, to hand to the tunnel's owner), issues a claim code for
-//! one (showing it once, with its expiry) and deletes one. A `401`
+//! one (showing it once, with its expiry), reissues one's token (after a
+//! confirmation, showing the new one once) and deletes one. A `401`
 //! there means the key is wrong or the operator's clock is more than a
 //! minute off the relay's. The relay keeps no session: without the key the
 //! page can do nothing.
@@ -182,8 +191,9 @@
 //! `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`. On every start the relay
 //! builds rathole's config for them in memory (see [`config`]); no rathole
 //! file is written or read. Each change through the admin API reaches the
-//! running rathole server as one service added or deleted, and the same
-//! change inserts or removes the tunnel in the [`ServedTunnels`] the front
+//! running rathole server as one service added, deleted or (for a reissued
+//! token) added again, and the same change inserts, removes or replaces the
+//! tunnel in the [`ServedTunnels`] the front
 //! routes by and the site verifies signatures against (see
 //! [`TunnelRegistry`]).
 //!
@@ -193,8 +203,9 @@
 //!    [`TunnelStore`] persistence *port*, the claim-code types and their
 //!    [`ClaimCodeStore`](domain::ClaimCodeStore) port, the failure vocabulary
 //!    ([`TunnelError`](domain::TunnelError)), and the capabilities
-//!    (`domain::capabilities`) that decide a read, create or delete, issue
-//!    or redeem a claim code, and drive the store through the ports.
+//!    (`domain::capabilities`) that decide a read, create, delete or token
+//!    reissue, issue or redeem a claim code, and drive the store through the
+//!    ports.
 //!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing both ports with
 //!    Diesel over a `wildflowerhealthio_persistence::DieselPool` onto `tunnels.db`, and its
 //!    migrations (`migrations/`).

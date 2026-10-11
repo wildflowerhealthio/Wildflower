@@ -2,8 +2,8 @@ import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
 import { Option } from 'effect'
 import { useState, type SubmitEvent, type JSX } from 'react'
 
-import { CreatedTunnelToken } from './created-tunnel-token.tsx'
 import { useCreateTunnelMutation } from './queries/index.ts'
+import { TunnelTokenPanel } from './tunnel-token-panel.tsx'
 import styles from './create-tunnel-form.module.css'
 
 /**
@@ -29,9 +29,10 @@ const CreateTunnelForm = (): JSX.Element => {
   }
   return Option.fromNullable(create.data).pipe(
     Option.map((created) => (
-      <CreatedTunnelToken
+      <TunnelTokenPanel
         key="created"
-        created={created}
+        title={`Created ${created.name}`}
+        tunnel={created}
         onDone={() => {
           create.reset()
         }}

@@ -116,7 +116,9 @@ mod tests {
 
     use super::*;
     use crate::domain::{ClaimCode, ClaimCodeStore, StoredClaimCode};
-    use crate::live_bindings::{LiveClaimCodesIssuer, LiveTunnelsCreator};
+    use crate::live_bindings::{
+        LiveClaimCodesIssuer, LiveTunnelTokensReissuer, LiveTunnelsCreator,
+    };
     use crate::site::signature::unix_now;
     use crate::test_support::{admin, registry, Fixture};
 
@@ -227,6 +229,24 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK);
+    }
+
+    /// A code issued before the tunnel's token was reissued redeems for the
+    /// new token.
+    #[tokio::test]
+    async fn a_code_redeems_for_the_token_reissued_after_it() {
+        let (router, registry, alice_token, _fixture) = router_with_alice().await;
+        let issuer: LiveClaimCodesIssuer = admin(&registry);
+        let code = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let reissuer: LiveTunnelTokensReissuer = admin(&registry);
+        let reissued = reissuer.reissue("alice".to_owned()).await.unwrap();
+
+        let (status, body) =
+            send(&router, claim_request(ALICE, &code_body(&code.to_string()))).await;
+        assert_eq!(status, StatusCode::OK);
+        let claimed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(claimed["token"], reissued.tunnel.token.expose());
+        assert_ne!(claimed["token"], alice_token);
     }
 
     /// Malformed, unknown, used and expired codes get the same status and

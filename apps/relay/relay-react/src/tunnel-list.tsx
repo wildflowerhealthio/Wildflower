@@ -12,9 +12,11 @@ import { IssuedClaimCodePanel } from './issued-claim-code-panel.tsx'
 import {
   useDeleteTunnelMutation,
   useIssueClaimCodeMutation,
+  useReissueTokenMutation,
   useTunnelsQuery,
   type TunnelInfo,
 } from './queries/index.ts'
+import { TunnelTokenPanel } from './tunnel-token-panel.tsx'
 import styles from './tunnel-list.module.css'
 
 /** What a row's buttons do, by tunnel name. */
@@ -22,6 +24,7 @@ interface TunnelRowActions {
   readonly onIssueClaimCode: (name: string) => void
   /** A claim code is being issued; no other can be until it is. */
   readonly issuing: boolean
+  readonly onReissueToken: (name: string) => void
   readonly onDelete: (name: string) => void
 }
 
@@ -55,6 +58,16 @@ const tunnelRow = (tunnel: TunnelInfo, actions: TunnelRowActions): ItemListItem 
       </button>
       <button
         type="button"
+        className="button-3 outline"
+        aria-label={`Reissue token for ${tunnel.name}`}
+        onClick={() => {
+          actions.onReissueToken(tunnel.name)
+        }}
+      >
+        Reissue token
+      </button>
+      <button
+        type="button"
         className="button-3 outline accent-red"
         aria-label={`Delete ${tunnel.name}`}
         onClick={() => {
@@ -68,13 +81,18 @@ const tunnelRow = (tunnel: TunnelInfo, actions: TunnelRowActions): ItemListItem 
 })
 
 /**
- * Every tunnel on the relay, each with a claim code to issue, shown once
- * above the list, and a confirmed delete.
+ * Every tunnel on the relay, each with a claim code to issue and a confirmed
+ * token reissue, either shown once above the list, and a confirmed delete.
  */
 const TunnelList = (): JSX.Element => {
   const tunnels = useTunnelsQuery()
   const issue = useIssueClaimCodeMutation()
+  const reissue = useReissueTokenMutation()
   const remove = useDeleteTunnelMutation()
+  const [confirmingReissue, setConfirmingReissue] = useState(Option.none<string>())
+  const closeReissue = (): void => {
+    setConfirmingReissue(Option.none())
+  }
   const [confirming, setConfirming] = useState(Option.none<string>())
   const close = (): void => {
     setConfirming(Option.none())
@@ -101,6 +119,20 @@ const TunnelList = (): JSX.Element => {
         )),
         Option.getOrNull
       )}
+      {Option.fromNullable(reissue.data).pipe(
+        Option.map((reissued) => (
+          <TunnelTokenPanel
+            key="reissued-token"
+            title={`New token for ${reissued.name}`}
+            tunnel={reissued}
+            onDone={() => {
+              reissue.reset()
+            }}
+          />
+        )),
+        Option.getOrNull
+      )}
+      <ErrorBanner error={reissue.error} />
       <ErrorBanner error={remove.error} />
       {tunnels.data.length === 0 ? (
         <p className="text-body-2">No tunnels yet.</p>
@@ -112,6 +144,10 @@ const TunnelList = (): JSX.Element => {
                 issue.mutate(name)
               },
               issuing: issue.isPending,
+              onReissueToken: (name) => {
+                reissue.reset()
+                setConfirmingReissue(Option.some(name))
+              },
               onDelete: (name) => {
                 remove.reset()
                 setConfirming(Option.some(name))
@@ -120,6 +156,29 @@ const TunnelList = (): JSX.Element => {
           )}
         />
       )}
+      <ConfirmDialog
+        open={Option.isSome(confirmingReissue)}
+        title="Reissue token?"
+        confirmLabel="Reissue token"
+        destructive
+        pending={reissue.isPending}
+        onConfirm={() => {
+          Option.map(confirmingReissue, (name) => {
+            reissue.mutate(name, { onSettled: closeReissue })
+          })
+        }}
+        onCancel={closeReissue}
+      >
+        {confirmingReissue.pipe(
+          Option.map((name) => (
+            <span key="question">
+              Reissue the token for <strong>{name}</strong>? The current token stops working at
+              once, and the device using it disconnects until it’s given the new one.
+            </span>
+          )),
+          Option.getOrNull
+        )}
+      </ConfirmDialog>
       <ConfirmDialog
         open={Option.isSome(confirming)}
         title="Delete tunnel?"

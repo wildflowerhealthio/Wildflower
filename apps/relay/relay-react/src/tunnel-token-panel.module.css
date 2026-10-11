@@ -1,8 +1,9 @@
 /*
- * A created tunnel's token, shown once: the token in a monospace block that
- * wraps rather than scrolls, the warning, and Copy / Done.
+ * A tunnel's token, just created or reissued, shown once: the token in a
+ * monospace block that wraps rather than scrolls, the warning, and
+ * Copy / Done.
  */
-.created-tunnel-token {
+.tunnel-token-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -12,7 +13,7 @@
   background: var(--card-color-background);
 }
 
-.created-tunnel-token__token {
+.tunnel-token-panel__token {
   display: block;
   padding: var(--space-3);
   border-radius: var(--radius-3);
@@ -21,12 +22,12 @@
   overflow-wrap: anywhere;
 }
 
-.created-tunnel-token__warning {
+.tunnel-token-panel__warning {
   margin: 0;
   font-weight: 600;
 }
 
-.created-tunnel-token__actions {
+.tunnel-token-panel__actions {
   display: flex;
   gap: var(--space-3);
 }

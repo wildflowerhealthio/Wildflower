@@ -4,9 +4,10 @@ export {
   useCreateTunnelMutation,
   useDeleteTunnelMutation,
   useIssueClaimCodeMutation,
+  useReissueTokenMutation,
   useTunnelsQuery,
-  type CreatedTunnel,
   type CreateTunnelBody,
   type IssuedClaimCode,
   type TunnelInfo,
+  type TunnelWithToken,
 } from './tunnels.ts'

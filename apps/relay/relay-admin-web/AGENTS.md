@@ -27,7 +27,8 @@ key made from it in IndexedDB until Sign out. The page then lists the tunnels
 (name, public host, owner's email, creation date), creates one for an email
 under a given or relay-picked name and shows its token once, issues a claim
 code for one and shows it once with its expiry (cancelling any earlier code
-for that tunnel), and deletes one after a
+for that tunnel), reissues one's token after a confirmation and shows the new
+one once, and deletes one after a
 confirmation. If the relay answers `401`, the key is wrong or the
 device's clock is more than a minute off the relay's; the page drops the key
 and asks for it again.

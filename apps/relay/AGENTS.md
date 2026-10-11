@@ -12,8 +12,8 @@ admin screen.
 - `relay-core-js` — no React. Four entries:
   - `relay-core-js/http-api-definition`: `RelayAdminApi`, the admin API as the
     relay serves it (`relay-server/src/site/admin.rs`): `CreateTunnel`,
-    `ListTunnels`, `DeleteTunnel` and `IssueClaimCode`, with the relay's
-    snake_case JSON field names. `created_at` and a claim code's
+    `ListTunnels`, `DeleteTunnel`, `IssueClaimCode` and `ReissueToken`, with
+    the relay's snake_case JSON field names. `created_at` and a claim code's
     `expires_at` decode from unix seconds to a `DateTime.Utc`. The
     relay's refusals are plain text, decoded into tagged errors carrying it as
     `reason` (`TunnelNameConflict` `409`, `TunnelRejected` `422`,

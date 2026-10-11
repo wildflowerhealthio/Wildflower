@@ -2,8 +2,9 @@
 //! [`capabilities`](crate::domain::capabilities) unit tests drive, plus the
 //! [`stored_tunnel`] builder they (and the `db` and registry tests) seed
 //! with. Modelling the real primitive semantics — `insert_tunnel` reports a
-//! name already stored as `false` (the primary key), `delete_tunnel` returns
-//! the removed tunnel or `None` on a miss, `list_tunnels` is by name — it
+//! name already stored as `false` (the primary key), `delete_tunnel` and
+//! `replace_token` return the tunnel as it was or `None` on a miss,
+//! `list_tunnels` is by name — it
 //! keeps tunnels with no diesel and no database. It is the
 //! [`ClaimCodeStore`] fake too, keeping at most one code per tunnel as the
 //! database's primary key does, and deleting a tunnel's code with it as its
@@ -48,6 +49,16 @@ impl TunnelStore for FakeTunnelStore {
             .borrow_mut()
             .retain(|_, stored| stored.tunnel_name != name);
         Ok(deleted)
+    }
+
+    fn replace_token(&self, tunnel: &Tunnel) -> Result<Option<StoredTunnel>, TunnelError> {
+        let mut tunnels = self.tunnels.borrow_mut();
+        let Some(stored) = tunnels.get_mut(&tunnel.name) else {
+            return Ok(None);
+        };
+        let previous = stored.clone();
+        stored.tunnel.token = tunnel.token.clone();
+        Ok(Some(previous))
     }
 }
 

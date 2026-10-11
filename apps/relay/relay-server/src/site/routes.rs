@@ -86,7 +86,7 @@ mod tests {
 
     use super::*;
     use crate::domain::Tunnel;
-    use crate::live_bindings::{LiveTunnelsCreator, LiveTunnelsDeleter};
+    use crate::live_bindings::{LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter};
     use crate::served::ServedTunnels;
     use crate::settings::{RelaySettings, Secret};
     use crate::site::signature::tests::signed_request;
@@ -278,6 +278,34 @@ mod tests {
         deleter.delete("bob".to_owned()).await.unwrap();
         let response = router.oneshot(me(token, "2")).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// A reissued token signs `GET /me` at once, and the token it replaced
+    /// stops verifying at once.
+    #[tokio::test]
+    async fn a_reissued_token_signs_at_once_and_the_old_one_stops() {
+        let (tunnels, _fixture) = registry(Some("an-admin-key-of-thirty-two-bytes")).await;
+        let router = router(
+            rathole_settings(),
+            tunnels.verifier(),
+            Some(Arc::clone(&tunnels)),
+        );
+        let creator: LiveTunnelsCreator = admin(&tunnels);
+        let created = creator
+            .create("bob@example.com".to_owned(), Some("bob".to_owned()))
+            .await
+            .unwrap();
+        let old_token = created.tunnel.token.expose();
+        let response = router.clone().oneshot(me(old_token, "1")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let reissuer: LiveTunnelTokensReissuer = admin(&tunnels);
+        let reissued = reissuer.reissue("bob".to_owned()).await.unwrap();
+        let response = router.clone().oneshot(me(old_token, "2")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let new_token = reissued.tunnel.token.expose();
+        let response = router.oneshot(me(new_token, "3")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     /// With the admin API on, `admin.<domain>` also serves the admin UI at

@@ -21,21 +21,24 @@
 //! side effects.
 //!
 //! One capability per file — [`TunnelsReader`], [`TunnelsCreator`],
-//! [`TunnelsDeleter`], [`ClaimCodesIssuer`], [`ClaimCodesRedeemer`] — each
-//! with its store logic and its own tests. A tunnel change decides against
-//! the store, writes it and returns the tunnel it created or deleted, with
-//! an `undo` for when serving fails. Claim codes change only the store.
+//! [`TunnelsDeleter`], [`TunnelTokensReissuer`], [`ClaimCodesIssuer`],
+//! [`ClaimCodesRedeemer`] — each with its store logic and its own tests. A
+//! tunnel change decides against the store, writes it and returns the
+//! tunnel it created, deleted or reissued a token for, with an `undo` for
+//! when serving fails. Claim codes change only the store.
 //!
 //! [`TunnelStore`]: crate::domain::TunnelStore
 
 mod claim_codes_issuer;
 mod claim_codes_redeemer;
+mod tunnel_tokens_reissuer;
 mod tunnels_creator;
 mod tunnels_deleter;
 mod tunnels_reader;
 
 pub(crate) use claim_codes_issuer::ClaimCodesIssuer;
 pub(crate) use claim_codes_redeemer::ClaimCodesRedeemer;
+pub(crate) use tunnel_tokens_reissuer::TunnelTokensReissuer;
 pub(crate) use tunnels_creator::TunnelsCreator;
 pub(crate) use tunnels_deleter::TunnelsDeleter;
 pub(crate) use tunnels_reader::TunnelsReader;

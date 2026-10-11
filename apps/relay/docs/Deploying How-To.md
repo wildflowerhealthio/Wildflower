@@ -82,6 +82,12 @@ can be read out instead of copied. Issue another if it expires: a tunnel has
 one outstanding code, so issuing a new one cancels the earlier one. Guessing
 is rate limited, per client address and across all clients.
 
+If a token leaks, or the owner loses it, **Reissue token** on the tunnel's
+row replaces it after a confirmation and shows the new one once. The old
+token stops working at once, and the device using it disconnects until the
+owner enters the new one. A claim code issued before the reissue redeems for
+the new token.
+
 ## Let's Encrypt's rate limit
 
 Every device's certificate is for a name under your registered domain

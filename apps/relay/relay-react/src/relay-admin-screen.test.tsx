@@ -83,6 +83,15 @@ const answer = (
     if (!relay.tunnels.has(claimCodesFor)) return text(404, 'no tunnel has the name')
     return json(201, { code: 'ABCD-EFGH', expires_at: 1_700_000_900 })
   }
+  const tokenFor = url.pathname.match(/^\/api\/tunnels\/([^/]+)\/token$/)?.[1]
+  if (request.method === 'POST' && tokenFor !== undefined) {
+    if (!relay.tunnels.has(tokenFor)) return text(404, 'no tunnel has the name')
+    return json(200, {
+      name: tokenFor,
+      token: `new-token-for-${tokenFor}`,
+      public_host: `${tokenFor}.${DOMAIN}`,
+    })
+  }
   if (request.method === 'DELETE' && name !== undefined) {
     return relay.tunnels.delete(name)
       ? new Response(null, { status: 204 })
@@ -287,6 +296,61 @@ describe('RelayAdminScreen', () => {
     })
     expect(relay.requests).toContain('DELETE /api/tunnels/bob')
     expect([...relay.tunnels.keys()]).toEqual(['alice'])
+  })
+
+  it('reissues a token only once confirmed, and shows the new one once', async () => {
+    // Arrange
+    const relay = relayWith(['alice', 'bob'])
+    const queryClient = renderScreen(await runtimeFor(relay, true))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Reissue token for bob' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText(/disconnects until it’s given the new one/)).toBeDefined()
+
+    // Act
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    // Assert
+    expect(relay.requests).not.toContain('POST /api/tunnels/bob/token')
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Reissue token for bob' }))
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Reissue token' })
+    )
+
+    // Assert
+    expect((await screen.findByLabelText('Token')).textContent).toBe('new-token-for-bob')
+    expect(screen.getByRole('heading', { name: 'New token for bob' })).toBeDefined()
+    expect(screen.getByText(/won’t be shown again/)).toBeDefined()
+    expect(relay.requests).toContain('POST /api/tunnels/bob/token')
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    // Assert
+    expect(screen.queryByLabelText('Token')).toBeNull()
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toEqual([])
+    })
+  })
+
+  it('shows the relay’s reason when a reissued token’s tunnel is gone', async () => {
+    // Arrange
+    const relay = relayWith(['alice'])
+    renderScreen(await runtimeFor(relay, true))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Reissue token for alice' }))
+    relay.tunnels.delete('alice')
+
+    // Act
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Reissue token' })
+    )
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toContain('no tunnel has the name')
+    expect(screen.queryByLabelText('Token')).toBeNull()
   })
 
   it('issues a claim code for a tunnel and shows it once, with its expiry', async () => {

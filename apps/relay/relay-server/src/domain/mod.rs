@@ -4,10 +4,10 @@
 //! created through the admin API, as the [`TunnelStore`] persistence *port*
 //! keeps it (the `SQLite` adapter lives in [`crate::db`]). The stored tunnels
 //! are the ones the relay serves. [`TunnelError`] is the failure vocabulary
-//! the admin API renders. The `capabilities` decide a read, create or delete
-//! and drive the store through the port, so they run against an in-memory
-//! fake in tests. [`names`] draws the default name of a tunnel created
-//! without one.
+//! the admin API renders. The `capabilities` decide a read, create, delete
+//! or token reissue ([`ReissuedTunnel`]) and drive the store through the
+//! port, so they run against an in-memory fake in tests. [`names`] draws the
+//! default name of a tunnel created without one.
 //!
 //! A [`ClaimCode`] is a short, single-use code that redeems once for a
 //! tunnel's name and token. The [`ClaimCodeStore`] port keeps each as a
@@ -19,6 +19,7 @@ mod claim_code;
 mod claim_code_store;
 mod issued_claim_code;
 pub mod names;
+mod reissued_tunnel;
 mod stored_claim_code;
 mod stored_tunnel;
 mod tunnel;
@@ -34,6 +35,7 @@ pub(crate) mod test_fake;
 pub use claim_code::{ClaimCode, ClaimCodeHash};
 pub use claim_code_store::ClaimCodeStore;
 pub use issued_claim_code::IssuedClaimCode;
+pub use reissued_tunnel::ReissuedTunnel;
 pub use stored_claim_code::StoredClaimCode;
 pub use stored_tunnel::StoredTunnel;
 pub use tunnel::Tunnel;

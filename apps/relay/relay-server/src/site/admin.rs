@@ -12,6 +12,11 @@
 //!   `ABCD-EFGH`, and the Unix epoch second it stops redeeming at (see
 //!   `super::claim`). It replaces the tunnel's earlier code, which stops
 //!   redeeming.
+//! - `POST /api/tunnels/{name}/token` (no body): `200 {"name", "token",
+//!   "public_host"}`, a new token for the tunnel, shown only here. The old
+//!   token stops signing and connecting at once, and a device connected
+//!   with it drops. The tunnel's claim code, if any, redeems for the new
+//!   token.
 //!
 //! On any other `Host` these paths are `404`, before the signature is
 //! looked at, so `@target-uri` always names the admin hostname. A request
@@ -20,8 +25,8 @@
 //! builds it only for the admin signer, before the body is read. Refused
 //! changes answer with a short plain-text reason: `422` for a name that is
 //! not a lowercase DNS label or an unusable email, `409` for a name that is
-//! reserved or taken, `404` for deleting, or issuing a claim code for, a
-//! tunnel that does not exist, and `503` when no name, or no unused claim
+//! reserved or taken, `404` for deleting, issuing a claim code for or
+//! reissuing the token of a tunnel that does not exist, and `503` when no name, or no unused claim
 //! code, is left.
 
 use std::sync::Arc;
@@ -39,7 +44,8 @@ use super::signature::{authority, require_signature, Verifier};
 use crate::domain::{IssuedClaimCode, StoredTunnel, TunnelError};
 use crate::live_bindings::state::TunnelRegistry;
 use crate::live_bindings::{
-    Admin, LiveClaimCodesIssuer, LiveTunnelsCreator, LiveTunnelsDeleter, LiveTunnelsReader,
+    Admin, LiveClaimCodesIssuer, LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter,
+    LiveTunnelsReader,
 };
 use crate::settings::Secret;
 
@@ -51,6 +57,7 @@ pub(super) fn router(registry: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> 
         .route("/api/tunnels", get(list).post(create))
         .route("/api/tunnels/{name}", delete(remove))
         .route("/api/tunnels/{name}/claim-codes", post(issue_claim_code))
+        .route("/api/tunnels/{name}/token", post(reissue_token))
         .route_layer(middleware::from_fn_with_state(verifier, require_signature))
         // The outer layer: the host is checked before the signature.
         .route_layer(middleware::from_fn_with_state(
@@ -102,10 +109,11 @@ impl TunnelInfo {
     }
 }
 
-/// A tunnel just created, as `POST /api/tunnels` answers. The only place its
-/// token is ever shown.
+/// A tunnel with its token, as `POST /api/tunnels` (just created) and
+/// `POST /api/tunnels/{name}/token` (just reissued) answer. The only places
+/// a token is ever shown.
 #[derive(Debug, Serialize)]
-struct CreatedTunnel {
+struct TunnelWithToken {
     name: String,
     #[serde(serialize_with = "expose")]
     token: Secret,
@@ -113,7 +121,7 @@ struct CreatedTunnel {
     public_host: String,
 }
 
-impl CreatedTunnel {
+impl TunnelWithToken {
     fn new(stored: StoredTunnel, public_host: String) -> Self {
         Self {
             name: stored.tunnel.name,
@@ -160,7 +168,7 @@ async fn create(
     match creator.create(body.email, body.name).await {
         Ok(stored) => {
             let public_host = creator.public_host(&stored.tunnel.name);
-            let created = CreatedTunnel::new(stored, public_host);
+            let created = TunnelWithToken::new(stored, public_host);
             (StatusCode::CREATED, Json(created)).into_response()
         }
         Err(error) => error.into_response(),
@@ -197,6 +205,19 @@ async fn issue_claim_code(
     match issuer.issue(name).await {
         Ok(issued) => {
             (StatusCode::CREATED, Json(IssuedClaimCodeBody::from(issued))).into_response()
+        }
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn reissue_token(
+    Admin(reissuer): Admin<LiveTunnelTokensReissuer>,
+    Path(name): Path<String>,
+) -> Response {
+    match reissuer.reissue(name).await {
+        Ok(stored) => {
+            let public_host = reissuer.public_host(&stored.tunnel.name);
+            Json(TunnelWithToken::new(stored, public_host)).into_response()
         }
         Err(error) => error.into_response(),
     }
@@ -514,6 +535,84 @@ mod tests {
             tunnels.store.list_tunnels().unwrap().len(),
             1,
             "nothing changed"
+        );
+    }
+
+    /// An admin-signed reissue answers the tunnel with a new token, which is
+    /// what is stored, and an outstanding claim code redeems for it.
+    #[tokio::test]
+    async fn a_reissued_token_is_shown_once_and_claim_codes_redeem_for_it() {
+        let (router, tunnels, alice, _fixture) = router_with_alice().await;
+        let issuer: LiveClaimCodesIssuer = admin(&tunnels);
+        let code = issuer.issue("alice".to_owned()).await.unwrap().code;
+
+        let (status, body) = send(
+            &router,
+            admin_request(
+                "POST",
+                &format!("{ADMIN}/api/tunnels/alice/token"),
+                &serde_json::Value::Null,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let reissued = json(&body);
+        let token = reissued["token"].as_str().unwrap();
+        assert_eq!(token.len(), 43);
+        assert_ne!(token, alice);
+        assert_eq!(
+            reissued,
+            serde_json::json!({
+                "name": "alice",
+                "token": token,
+                "public_host": "alice.relay.example.com",
+            })
+        );
+        let stored = tunnels.store.list_tunnels().unwrap();
+        assert_eq!(stored[0].tunnel.token.expose(), token);
+
+        let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
+        let redeemed = redeemer.redeem(code.to_string()).await.unwrap();
+        assert_eq!(redeemed.token.expose(), token);
+    }
+
+    #[tokio::test]
+    async fn reissuing_a_token_needs_the_admin_signature_and_a_known_tunnel() {
+        let (router, tunnels, alice, _fixture) = router_with_alice().await;
+        let uri = format!("{ADMIN}/api/tunnels/alice/token");
+        let now = unix_now().unwrap();
+        let unsigned = Request::builder()
+            .method("POST")
+            .uri("/api/tunnels/alice/token")
+            .header(header::HOST, "admin.relay.example.com")
+            .body(Body::empty())
+            .unwrap();
+        for request in [
+            unsigned,
+            signed_request("POST", &uri, b"", "admin", "not-the-admin-key", now, "a"),
+            signed_request("POST", &uri, b"", "alice", &alice, now, "b"),
+        ] {
+            let (status, body) = send(&router, request).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED);
+            assert!(body.is_empty(), "a 401 carries no detail");
+        }
+        let unknown = admin_request(
+            "POST",
+            &format!("{ADMIN}/api/tunnels/nobody/token"),
+            &serde_json::Value::Null,
+        );
+        let (status, body) = send(&router, unknown).await;
+        assert_eq!(
+            (status, body),
+            (StatusCode::NOT_FOUND, b"no tunnel has the name".to_vec())
+        );
+        assert_eq!(
+            tunnels.store.list_tunnels().unwrap()[0]
+                .tunnel
+                .token
+                .expose(),
+            alice,
+            "alice's token is unchanged"
         );
     }
 

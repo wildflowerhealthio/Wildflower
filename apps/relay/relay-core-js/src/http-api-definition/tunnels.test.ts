@@ -179,6 +179,42 @@ describe('RelayAdminApi over the relay wire', () => {
     })
   })
 
+  it('reissues a token with an empty POST and reads the tunnel from the 200', async () => {
+    // Arrange
+    const relay = fakeRelay(() =>
+      json(200, { name: 'bob', token: 'new-token', public_host: 'bob.relay.example.com' })
+    )
+
+    // Act
+    const reissued = await call(relay, (client) =>
+      client.tunnels.ReissueToken({ path: { name: 'bob' } })
+    )
+
+    // Assert
+    expect(relay.requests[0]?.method).toBe('POST')
+    expect(relay.requests[0]?.url).toBe('https://admin.relay.example.com/api/tunnels/bob/token')
+    expect(relay.bodies[0]).toBe('')
+    expect(reissued).toEqual(
+      Either.right({ name: 'bob', token: 'new-token', public_host: 'bob.relay.example.com' })
+    )
+  })
+
+  it('fails a reissue for an unknown tunnel with the reason', async () => {
+    // Arrange
+    const relay = fakeRelay(() => text(404, 'no tunnel has the name'))
+
+    // Act
+    const result = await call(relay, (client) =>
+      client.tunnels.ReissueToken({ path: { name: 'nobody' } })
+    )
+
+    // Assert
+    expect(Either.isLeft(result) && result.left).toMatchObject({
+      _tag: 'TunnelNotFound',
+      reason: 'no tunnel has the name',
+    })
+  })
+
   it('fails any call answered with the bare 401 as Unauthorized', async () => {
     // Arrange
     const relay = fakeRelay(() => new Response(null, { status: 401 }))
@@ -191,6 +227,7 @@ describe('RelayAdminApi over the relay wire', () => {
       ),
       await call(relay, (client) => client.tunnels.DeleteTunnel({ path: { name: 'bob' } })),
       await call(relay, (client) => client.tunnels.IssueClaimCode({ path: { name: 'bob' } })),
+      await call(relay, (client) => client.tunnels.ReissueToken({ path: { name: 'bob' } })),
     ]
 
     // Assert
