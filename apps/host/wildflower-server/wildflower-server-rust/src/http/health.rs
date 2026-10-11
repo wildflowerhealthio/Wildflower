@@ -4,9 +4,11 @@
 //! - **`server`** — everything else the server serves rides
 //!   `wildflower.sqlite`'s diesel pool: a pooled connection answering
 //!   `SELECT 1`.
-//! - **`connectivity`** — the tunnel's own [`HealthStatus`]: reported
-//!   as the tunnel publishes it. Nothing sets it to `warn` or `fail` yet, and
-//!   through the relay a down tunnel means no answer at all.
+//! - **`connectivity`** — the tunnel's connection to the relay, from the
+//!   [`TunnelState`] its daemon publishes: `pass` while connected, `warn`
+//!   while it is still connecting or reconnecting, and `fail` once the relay
+//!   has refused its token or has no tunnel of its name. Through the relay, a
+//!   down tunnel means no answer at all.
 //!
 //! Each is cheap, in-process and touches no network. A check that errors or
 //! outlasts [`CHECK_TIMEOUT`] fails; the reason goes to the log, never into
@@ -23,6 +25,7 @@ use wildflowerhealthio_persistence::DieselPool;
 use wildflowerhealthio_shared_structures::health_check::{
     ComponentType, HealthCheck, HealthCheckService, HealthReport, HealthStatus,
 };
+use wildflowerhealthio_tunnel::TunnelState;
 
 /// How long one check may take before it fails.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(1);
@@ -37,16 +40,16 @@ const CONNECTIVITY_CHECK: &str = "connectivity";
 /// checks.
 pub(crate) struct ServerHealthChecks {
     pub(crate) wildflower_db: DieselPool,
-    /// The tunnel daemon's [`HealthStatus`]
-    /// ([`TunnelDaemon::connectivity`](wildflowerhealthio_tunnel::TunnelDaemon::connectivity)).
-    pub(crate) tunnel_connectivity: watch::Receiver<HealthStatus>,
+    /// The [`TunnelState`] the tunnel daemon publishes on the host's
+    /// `ServerObservers::tunnel_state_tx`.
+    pub(crate) tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
 }
 
 #[async_trait::async_trait]
 impl HealthCheckService for ServerHealthChecks {
     async fn check(&self) -> HealthReport {
         let server = check_server(self.wildflower_db.clone(), CHECK_TIMEOUT).await;
-        let connectivity = check_connectivity(*self.tunnel_connectivity.borrow());
+        let connectivity = check_connectivity(self.tunnel_state_rx.borrow().as_ref());
         HealthReport::from_checks(BTreeMap::from([
             (SERVER_CHECK.to_owned(), vec![server]),
             (CONNECTIVITY_CHECK.to_owned(), vec![connectivity]),
@@ -54,11 +57,13 @@ impl HealthCheckService for ServerHealthChecks {
     }
 }
 
-/// The `connectivity` check: the tunnel's own [`HealthStatus`], as published.
-fn check_connectivity(tunnel_health: HealthStatus) -> HealthCheck {
+/// The `connectivity` check: the [`TunnelState::connectivity`] of the
+/// tunnel's state as published, and `warn` before the tunnel has published
+/// one, as when it is connecting.
+fn check_connectivity(tunnel_state: Option<&TunnelState>) -> HealthCheck {
     HealthCheck {
         component_type: ComponentType::Component,
-        status: tunnel_health,
+        status: tunnel_state.map_or(HealthStatus::Warn, TunnelState::connectivity),
         time: Utc::now(),
     }
 }
@@ -113,11 +118,24 @@ mod tests {
 
     #[test]
     fn connectivity_reports_the_tunnels_health() {
-        for status in [HealthStatus::Pass, HealthStatus::Warn, HealthStatus::Fail] {
-            let check = check_connectivity(status);
+        for (tunnel_state, status) in [
+            (None, HealthStatus::Warn),
+            (Some(TunnelState::Connecting), HealthStatus::Warn),
+            (Some(TunnelState::Connected), HealthStatus::Pass),
+            (
+                Some(TunnelState::Reconnecting {
+                    error: "connection refused".into(),
+                }),
+                HealthStatus::Warn,
+            ),
+            (Some(TunnelState::TokenRejected), HealthStatus::Fail),
+            (Some(TunnelState::TunnelUnknown), HealthStatus::Fail),
+        ] {
+            let check = check_connectivity(tunnel_state.as_ref());
             assert_eq!(
                 (check.component_type, check.status),
-                (ComponentType::Component, status)
+                (ComponentType::Component, status),
+                "{tunnel_state:?}"
             );
         }
     }

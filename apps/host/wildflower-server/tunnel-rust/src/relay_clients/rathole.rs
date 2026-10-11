@@ -1,10 +1,13 @@
 //! The embedded rathole client that dials the relay.
 //!
 //! [`RelayClient`] is a one-attempt seam: `run_once` brings up a single rathole
-//! client and returns when it exits. The [`TunnelDaemon`](crate::domain::TunnelDaemon)
-//! supervisor owns the retry/backoff loop and cancellation, so this layer holds
-//! no run lifecycle of its own. The trait exists so the supervisor can be tested
-//! against a fake instead of a live relay.
+//! client and returns when its control channel first fails, or when it is
+//! cancelled. rathole would retry a failed control channel itself; `run_once`
+//! shuts the client down instead, so the
+//! [`TunnelDaemon`](crate::domain::TunnelDaemon) supervisor owns the
+//! retry/backoff loop and cancellation, and this layer holds no run lifecycle
+//! of its own. The trait exists so the supervisor can be tested against a fake
+//! instead of a live relay.
 //!
 //! rathole's own `Config` re-serializes the token as a masked `***`, so we
 //! render the client config from our own typed structs with [`toml`] (escaping
@@ -14,11 +17,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::domain::{RelayClient, RelaySettings, TunnelStream};
+use crate::domain::{DialFailure, RelayClient, RelaySettings, TunnelStream};
 use anyhow::Context;
-use rathole::ClientServiceEvent;
+use rathole::{ClientServiceEvent, ControlChannelError, ControlChannelState};
 use serde::Serialize;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
@@ -41,11 +44,15 @@ impl RelayClient for RatholeRelayClient {
         &self,
         relay: &RelaySettings,
         tunnel_stream_tx: mpsc::Sender<TunnelStream>,
+        connected_tx: oneshot::Sender<()>,
         cancel: CancellationToken,
-    ) -> anyhow::Result<()> {
-        let config: rathole::Config = render_client_toml(relay)?
-            .parse()
-            .context("rendered tunnel client config is invalid")?;
+    ) -> Result<(), DialFailure> {
+        let config: rathole::Config = render_client_toml(relay)
+            .and_then(|toml| {
+                toml.parse()
+                    .context("rendered tunnel client config is invalid")
+            })
+            .map_err(DialFailure::Dropped)?;
 
         // rathole's client stops, tearing down its control channel, when
         // `shutdown_tx` sends or drops. A drop logs `Unable to listen for
@@ -59,11 +66,13 @@ impl RelayClient for RatholeRelayClient {
         // sender is dropped.
         let (_, config_change_rx) = mpsc::channel(1);
         let (service_event_tx, service_event_rx) = mpsc::unbounded_channel();
+        let (control_channel_state_tx, control_channel_state_rx) = mpsc::unbounded_channel();
         let client = rathole::run_client_with_visitor_queue(
             config,
             shutdown_rx,
             config_change_rx,
             service_event_tx,
+            control_channel_state_tx,
         );
         // The service events end once the client has returned and stopped its
         // service.
@@ -76,21 +85,69 @@ impl RelayClient for RatholeRelayClient {
         };
         tokio::pin!(run);
 
-        // Cancellation asks rathole to shut down, then waits for it to drain.
-        tokio::select! {
+        // The first failure of the control channel, or a cancel, asks rathole
+        // to shut down, then waits for it to drain.
+        let dial_result = tokio::select! {
             res = &mut run => {
-                // rathole's client returned without us cancelling — the relay
-                // dropped us, or rathole tore itself down. This is the
-                // unexpected path when the tunnel should be staying up.
-                tracing::warn!(?res, "rathole client returned on its own (no cancel)");
-                res
+                // rathole's client returned without being shut down: it
+                // couldn't start, e.g. its transport couldn't be built from
+                // the config. The daemon logs the failure.
+                let error = match res {
+                    Err(error) => error,
+                    Ok(()) => anyhow::anyhow!("rathole client returned on its own"),
+                };
+                return Err(DialFailure::Dropped(error));
+            }
+            dial_failure = until_disconnected(control_channel_state_rx, connected_tx) => {
+                Err(dial_failure)
             }
             () = cancel.cancelled() => {
                 tracing::info!("rathole: cancellation requested, sending graceful shutdown");
-                let _ = shutdown_tx.send(true);
-                (&mut run).await
+                Ok(())
+            }
+        };
+        let _ = shutdown_tx.send(true);
+        if let Err(error) = (&mut run).await {
+            tracing::warn!(error = %format!("{error:#}"), "rathole client failed while shutting down");
+        }
+        dial_result
+    }
+}
+
+/// Watch the client's control channel: send on `connected_tx` once the relay
+/// accepts it, and resolve with why it failed the first time it does. The
+/// daemon logs each dial's outcome; each change is only a debug event here.
+/// Pending once the client stops reporting.
+async fn until_disconnected(
+    mut control_channel_state_rx: mpsc::UnboundedReceiver<ControlChannelState>,
+    connected_tx: oneshot::Sender<()>,
+) -> DialFailure {
+    let mut connected_tx = Some(connected_tx);
+    while let Some(control_channel_state) = control_channel_state_rx.recv().await {
+        match control_channel_state {
+            ControlChannelState::Connected { name } => {
+                tracing::debug!(service = %name, "rathole: control channel established");
+                if let Some(connected_tx) = connected_tx.take() {
+                    let _ = connected_tx.send(());
+                }
+            }
+            ControlChannelState::Disconnected { name, error, .. } => {
+                tracing::debug!(service = %name, "rathole: control channel failed: {error:#}");
+                return dial_failure_of(error);
             }
         }
+    }
+    // The client has stopped its control channel: it returned, which `run`
+    // reports.
+    std::future::pending().await
+}
+
+/// The [`DialFailure`] a control channel's `error` ends the dial with.
+fn dial_failure_of(error: ControlChannelError) -> DialFailure {
+    match error {
+        ControlChannelError::AuthFailed => DialFailure::TokenRejected,
+        ControlChannelError::ServiceNotExist => DialFailure::TunnelUnknown,
+        ControlChannelError::Failed(error) => DialFailure::Dropped(error),
     }
 }
 
@@ -124,8 +181,12 @@ async fn hand_over_tunnel_streams(
                     });
                 }
                 Some(_) => {}
-                // Dropping `services` aborts the tasks still running.
-                None => return,
+                None => {
+                    // Abort the services still sending, and wait for them to
+                    // stop, so none sends once this returns.
+                    services.shutdown().await;
+                    return;
+                }
             },
             // Reap the services whose queues have ended.
             Some(_) = services.join_next() => {}
@@ -206,6 +267,8 @@ struct ServiceSection<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     /// The rendered client config must parse as a valid rathole *client* config
@@ -292,6 +355,234 @@ mod tests {
         assert!(client
             .services
             .contains_key("svc\"]\n[client.services.evil"));
+    }
+
+    #[test]
+    fn each_control_channel_error_is_its_dial_failure() {
+        assert!(matches!(
+            dial_failure_of(ControlChannelError::AuthFailed),
+            DialFailure::TokenRejected
+        ));
+        assert!(matches!(
+            dial_failure_of(ControlChannelError::ServiceNotExist),
+            DialFailure::TunnelUnknown
+        ));
+        assert!(matches!(
+            dial_failure_of(ControlChannelError::Failed(anyhow::anyhow!("heartbeat timed out"))),
+            DialFailure::Dropped(error) if error.to_string() == "heartbeat timed out"
+        ));
+    }
+
+    /// The control channel connecting is signalled, and its first failure
+    /// ends the watch, with why.
+    #[tokio::test]
+    async fn the_watch_signals_connected_and_ends_on_the_first_failure() {
+        let (control_channel_state_tx, control_channel_state_rx) = mpsc::unbounded_channel();
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let watch = tokio::spawn(until_disconnected(control_channel_state_rx, connected_tx));
+
+        control_channel_state_tx
+            .send(ControlChannelState::Connected {
+                name: "dev1".into(),
+            })
+            .expect("the watch takes states");
+        connected_rx.await.expect("connected is signalled");
+        control_channel_state_tx
+            .send(ControlChannelState::Disconnected {
+                name: "dev1".into(),
+                error: ControlChannelError::AuthFailed,
+                retry_in: Duration::from_secs(1),
+            })
+            .expect("the watch takes states");
+        let dial_failure = watch.await.expect("the watch doesn't panic");
+        assert!(
+            matches!(dial_failure, DialFailure::TokenRejected),
+            "{dial_failure:?}"
+        );
+    }
+
+    /// The noise key pair the stand-in relay serves with, from
+    /// `rathole --genkey` (rathole 0.5.0).
+    const RELAY_PRIVATE_KEY: &str = "HY1kqeX1WAAysgpriYop7NW/Yw7KAO//EdEBs8qxv7I=";
+    const RELAY_PUBLIC_KEY: &str = "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=";
+
+    /// How long a dial against the stand-in relay may take to end.
+    const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// An address on loopback nothing listens on.
+    fn free_addr() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        listener.local_addr().expect("local addr").to_string()
+    }
+
+    /// A rathole server on loopback holding the one tunnel `service_name`
+    /// with `token`, standing in for the relay, until the returned sender
+    /// sends or drops; and the settings a device dials it with, for the
+    /// tunnel `dialed_service_name` and `dialed_token`.
+    async fn stand_in_relay(
+        service_name: &str,
+        token: &str,
+        dialed_service_name: &str,
+        dialed_token: &str,
+    ) -> (
+        broadcast::Sender<bool>,
+        tokio::task::JoinHandle<anyhow::Result<()>>,
+        RelaySettings,
+    ) {
+        let control_addr = free_addr();
+        let config: rathole::Config = format!(
+            "[server]\nbind_addr = \"{control_addr}\"\n\
+             [server.transport]\ntype = \"noise\"\n\
+             [server.transport.noise]\nlocal_private_key = \"{RELAY_PRIVATE_KEY}\"\n\
+             [server.services.{service_name}]\nbind_addr = \"{visitor_addr}\"\ntoken = \"{token}\"\n",
+            visitor_addr = free_addr(),
+        )
+        .parse()
+        .expect("server config");
+        let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+        let (_, config_change_rx) = mpsc::channel(1);
+        let relay = tokio::spawn(rathole::run_server(config, shutdown_rx, config_change_rx));
+        // Wait for it to listen, so that the first dial reaches it; bounded,
+        // so a relay that couldn't bind fails the test rather than hangs it.
+        tokio::time::timeout(DIAL_TIMEOUT, async {
+            while tokio::net::TcpStream::connect(&control_addr).await.is_err() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the stand-in relay listens within the bound");
+        let relay_settings = RelaySettings {
+            remote_addr: control_addr,
+            token: dialed_token.into(),
+            public_key: RELAY_PUBLIC_KEY.into(),
+            service_name: dialed_service_name.into(),
+        };
+        (shutdown_tx, relay, relay_settings)
+    }
+
+    /// One dial of `relay_settings`, cancelled by `cancel`, and whether it
+    /// signalled connected.
+    async fn dial(
+        relay_settings: &RelaySettings,
+        cancel: CancellationToken,
+    ) -> (Result<(), DialFailure>, bool) {
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let dial_result = tokio::time::timeout(
+            DIAL_TIMEOUT,
+            RatholeRelayClient::new().run_once(
+                relay_settings,
+                mpsc::channel(1).0,
+                connected_tx,
+                cancel,
+            ),
+        )
+        .await
+        .expect("the dial ends within the bound");
+        (dial_result, connected_rx.await.is_ok())
+    }
+
+    #[tokio::test]
+    async fn a_wrong_token_is_rejected() {
+        let (_relay_shutdown_tx, _relay, relay_settings) =
+            stand_in_relay("dev1", "token", "dev1", "wrong-token").await;
+        let (dial_result, connected) = dial(&relay_settings, CancellationToken::new()).await;
+        assert!(
+            matches!(dial_result, Err(DialFailure::TokenRejected)),
+            "{dial_result:?}"
+        );
+        assert!(!connected, "a rejected dial never connected");
+    }
+
+    #[tokio::test]
+    async fn an_unknown_tunnel_is_unknown() {
+        let (_relay_shutdown_tx, _relay, relay_settings) =
+            stand_in_relay("other", "token", "dev1", "token").await;
+        let (dial_result, connected) = dial(&relay_settings, CancellationToken::new()).await;
+        assert!(
+            matches!(dial_result, Err(DialFailure::TunnelUnknown)),
+            "{dial_result:?}"
+        );
+        assert!(!connected, "a refused dial never connected");
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_relay_drops_the_dial() {
+        let relay_settings = RelaySettings {
+            remote_addr: free_addr(),
+            token: "token".into(),
+            public_key: RELAY_PUBLIC_KEY.into(),
+            service_name: "dev1".into(),
+        };
+        let (dial_result, connected) = dial(&relay_settings, CancellationToken::new()).await;
+        assert!(
+            matches!(dial_result, Err(DialFailure::Dropped(_))),
+            "{dial_result:?}"
+        );
+        assert!(!connected);
+    }
+
+    /// The relay accepting the tunnel is signalled, and the relay going away
+    /// ends the dial, rather than rathole retrying it.
+    #[tokio::test]
+    async fn a_connected_dial_ends_when_the_relay_goes_away() {
+        let (relay_shutdown_tx, relay, relay_settings) =
+            stand_in_relay("dev1", "token", "dev1", "token").await;
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let dial = tokio::spawn(async move {
+            RatholeRelayClient::new()
+                .run_once(
+                    &relay_settings,
+                    mpsc::channel(1).0,
+                    connected_tx,
+                    CancellationToken::new(),
+                )
+                .await
+        });
+        tokio::time::timeout(DIAL_TIMEOUT, connected_rx)
+            .await
+            .expect("connected within the bound")
+            .expect("connected is signalled");
+
+        relay_shutdown_tx.send(true).expect("the relay is running");
+        relay
+            .await
+            .expect("the relay doesn't panic")
+            .expect("the relay shuts down");
+        let dial_result = tokio::time::timeout(DIAL_TIMEOUT, dial)
+            .await
+            .expect("the dial ends within the bound")
+            .expect("the dial doesn't panic");
+        assert!(
+            matches!(dial_result, Err(DialFailure::Dropped(_))),
+            "{dial_result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_dial_resolves_ok() {
+        let (_relay_shutdown_tx, _relay, relay_settings) =
+            stand_in_relay("dev1", "token", "dev1", "token").await;
+        let cancel = CancellationToken::new();
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let dial = tokio::spawn({
+            let cancel = cancel.clone();
+            async move {
+                RatholeRelayClient::new()
+                    .run_once(&relay_settings, mpsc::channel(1).0, connected_tx, cancel)
+                    .await
+            }
+        });
+        tokio::time::timeout(DIAL_TIMEOUT, connected_rx)
+            .await
+            .expect("connected within the bound")
+            .expect("connected is signalled");
+
+        cancel.cancel();
+        let dial_result = tokio::time::timeout(DIAL_TIMEOUT, dial)
+            .await
+            .expect("the dial ends within the bound")
+            .expect("the dial doesn't panic");
+        assert!(dial_result.is_ok(), "{dial_result:?}");
     }
 
     /// Each TCP service's visitor streams go to the sender, in order, and the

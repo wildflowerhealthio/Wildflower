@@ -154,6 +154,8 @@ async fn start_device(
         shutdown_rx,
         update_rx,
         event_tx,
+        // The device takes no notice of its control channel's state.
+        mpsc::unbounded_channel().0,
     ));
     // The client reports its one service as soon as it starts it.
     let Some(ClientServiceEvent::TcpStarted {

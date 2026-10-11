@@ -1,12 +1,12 @@
 //! The real server as a unit: a `ServerUnit` run through `UnitRunner`, with no
 //! platform bound (units run without a background session). It comes up
-//! `Running` and answers `/health` on its loopback port, reports its health
-//! as the run's detail, and leaves another server's head on the host's
+//! `Running` and answers `/health` on its loopback port, reports no health
+//! while its tunnel isn't connected, and leaves another server's head on the host's
 //! pending-consent channel alone while nothing of its own waits. Once its
 //! policy turns it off, it stops with the detail cleared. Turned back on, the
 //! next run binds the same port, so the previous run's runtime is gone, and
-//! serves again. Its detail holds the run's launch minter, and an unreachable
-//! server isn't launchable. A consent its gatekeeper parks is the run's
+//! serves again. Its detail holds the run's launch minter, and a server whose
+//! health is unknown isn't launchable. A consent its gatekeeper parks is the run's
 //! detail, and is read and decided through the `ServerConsentDecider` the
 //! run's detail holds until the run ends.
 
@@ -207,13 +207,13 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         health_status(loopback_base_url).await,
         reqwest::StatusCode::OK
     );
-    // No relay serves the domain, so the monitor finds it unreachable,
-    // and the run reports that as its detail.
-    wait_for(unit_runner, "reporting its health", |status| {
+    // No relay serves the domain, so the tunnel never connects and the
+    // monitor never probes: the run's detail holds no health.
+    wait_for(unit_runner, "holding its launch minter", |status| {
         status
             .detail
             .as_ref()
-            .is_some_and(|detail| detail.health.is_some())
+            .is_some_and(|detail| detail.launch_minter.is_some())
     })
     .await;
     assert_eq!(
@@ -222,7 +222,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         "a run with nothing waiting leaves another server's head alone"
     );
     // The run's detail holds its launch minter, which mints through the
-    // run's gatekeeper; an unreachable server isn't launchable.
+    // run's gatekeeper; a server whose health is unknown isn't launchable.
     let launch_minter = unit_runner.statuses()[&UnitId::from(DOMAIN)]
         .detail
         .as_ref()
@@ -231,8 +231,8 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     let launch = tokio::task::block_in_place(|| launch_minter.mint()).expect("a launch");
     assert!(!launch.is_empty());
     let unit_status = unit_runner.statuses()[&UnitId::from(DOMAIN)].clone();
-    // Unreachable is refused before the certificate is looked at, so a run
-    // that hasn't reported one yet is given any.
+    // Unknown health is refused before the certificate is looked at, so a
+    // run that hasn't reported one yet is given any.
     let status = ServerStatus {
         domain: DOMAIN.to_owned(),
         certificate: ServerStatus::run_certificate(&unit_status)
@@ -247,7 +247,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     };
     assert!(matches!(
         ServerLaunchMinter::of_launchable_server(&status),
-        Err(LaunchError::Unreachable { .. })
+        Err(LaunchError::NotYetProbed { .. })
     ));
 
     unit_runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Off);

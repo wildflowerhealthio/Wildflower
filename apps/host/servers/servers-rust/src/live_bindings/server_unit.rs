@@ -70,6 +70,7 @@ impl Unit for ServerUnit {
             },
             ServerObservers {
                 server_health_tx,
+                tunnel_state_tx: watch::channel(None).0,
                 certificate_tx,
                 forwarded_request_tx: self.forwarded_request_tx,
             },

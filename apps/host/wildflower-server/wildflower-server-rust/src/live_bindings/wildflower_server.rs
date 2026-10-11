@@ -345,13 +345,17 @@ pub async fn set_up(
 
     // The tunnel dials the relay from the server's record for as long as the
     // server runs, handing each visitor's stream, in process, to the tunnel
-    // listener; it has no HTTP surface.
+    // listener, and publishes where its connection stands on the host's
+    // channel, which `/health` reads too; it has no HTTP surface.
     let (tunnel_stream_tx, tunnel_stream_rx) = mpsc::channel::<TunnelStream>(TUNNEL_STREAM_BACKLOG);
     let tunnel_config = wildflowerhealthio_tunnel::TunnelConfig {
         tunnel_stream_tx,
         relay_settings,
     };
-    let tunnel_daemon = wildflowerhealthio_tunnel::setup_tunnel(&tunnel_config);
+    let tunnel_state_rx = observers.tunnel_state_tx.subscribe();
+    let reachability_tunnel_state_rx = observers.tunnel_state_tx.subscribe();
+    let tunnel_daemon =
+        wildflowerhealthio_tunnel::setup_tunnel(&tunnel_config, observers.tunnel_state_tx);
     // The tunnel listener's certificate for the server's domain: a cached one
     // when it is still valid, otherwise ordered now, over TLS-ALPN-01
     // handshakes that arrive through the tunnel; renewed while the server
@@ -366,15 +370,17 @@ pub async fn set_up(
     let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&domain, device_certificate.resolver());
     #[cfg(feature = "test-support")]
     let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;
-    // Whether a remote app can reach the server: the monitor GETs the server's
-    // own `/health` (mounted below) through the public origin, so the request
-    // goes out to the relay and back down the tunnel, and publishes the answer
-    // on the host's channel, which outlives this server.
+    // Whether a remote app can reach the server: once the tunnel is
+    // connected, the monitor GETs the server's own `/health` (mounted below)
+    // through the public origin, so the request goes out to the relay and back
+    // down the tunnel, and publishes the answer on the host's channel, which
+    // outlives this server.
     let reachability_monitor = ReachabilityMonitor::spawn(
         Arc::new(ReqwestHealthProbe::new()),
         public_origin
             .join("health")
             .context("the server's public origin has no /health")?,
+        reachability_tunnel_state_rx,
         observers.server_health_tx,
     );
 
@@ -426,10 +432,10 @@ pub async fn set_up(
     let gated_apps = apps.router.layer(gatekeeper_auth_layer.clone());
 
     // The server's `/health`: the shared database pool and the tunnel's
-    // health, checked in-process on each request.
+    // state, checked in-process on each request.
     let health_checks = ServerHealthChecks {
         wildflower_db: diesel_pool,
-        tunnel_connectivity: tunnel_daemon.connectivity(),
+        tunnel_state_rx,
     };
 
     // The data-management surface (`/databases`): export + delete the server's

@@ -6154,7 +6154,7 @@ dependencies = [
 [[package]]
 name = "rathole"
 version = "0.5.0"
-source = "git+https://github.com/wildflowerhealthio/rathole?rev=2c678fb0cdd8cae0276d53b3a860f925b2590bc0#2c678fb0cdd8cae0276d53b3a860f925b2590bc0"
+source = "git+https://github.com/wildflowerhealthio/rathole?rev=50b5409a53cd7d0ae67baf7a66cd462118f3d8ea#50b5409a53cd7d0ae67baf7a66cd462118f3d8ea"
 dependencies = [
  "anyhow",
  "async-http-proxy",

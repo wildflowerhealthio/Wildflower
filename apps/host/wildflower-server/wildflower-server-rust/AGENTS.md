@@ -108,10 +108,11 @@ only it composes. Rust-only, no `-core`.
     (`wildflowerhealthio_shared_structures::health_check`): `application/health+json`,
     uncached, `200` for `pass`/`warn` and `503` for `fail`, with exactly two
     checks, a functional breakdown: `server` (a `wildflower.sqlite` pool
-    connection answering `SELECT 1`) and `connectivity` (the tunnel daemon's
-    published `HealthStatus`; nothing sets it to `warn` or `fail` yet). The
-    overall status is the worst check's. Each check is in-process and bounded
-    at 1 s. The route is public and unauthenticated, so the report
+    connection answering `SELECT 1`) and `connectivity` (from the tunnel
+    daemon's published `TunnelState`: `pass` while connected, `warn` while
+    connecting or reconnecting, `fail` once the relay has refused its token or
+    has no tunnel of its name). The overall status is the worst check's. Each
+    check is in-process and bounded at 1 s. The route is public and unauthenticated, so the report
     carries only statuses: no output, observed values, errors or versions.
   - **Reachability** is the server's own: the reachability monitor GETs
     `https://<domain>/health`, out to the relay and back down the
@@ -170,9 +171,10 @@ only it composes. Rust-only, no `-core`.
 - **The host watches the server through `ServerObservers`.** Host-owned
   senders: the server's `ServerHealth` through its public origin, published by
   the reachability monitor until it first answers, on a channel the host makes
-  for each run; the server's `CertificateState`, published by the device
-  certificate for as long as the server runs, on a channel the host makes for
-  each run; and each forwarded request (every request through the tunnel,
+  for each run; the tunnel's `TunnelState`, published by the tunnel daemon for
+  as long as the server runs, on a channel the host makes for each run; the
+  server's `CertificateState`, published by the device certificate for as
+  long as the server runs, on a channel the host makes for each run; and each forwarded request (every request through the tunnel,
   and each one a front run on this machine relayed), on a channel the host
   shares across runs, reported by the forwarded-request layer as a
   `ForwardedRequest` record: the

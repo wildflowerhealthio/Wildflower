@@ -24,11 +24,12 @@
 //! the channels the host watches the server through arrive in
 //! [`ServerObservers`], among them the [`ServerHealth`] the reachability
 //! monitor reads from the server's own `/health` through its public origin,
-//! and the [`CertificateState`] the run publishes as its certificate is
-//! deployed, ordered and renewed. What a server's certificate cache says, the
-//! state of any server without a run's state, is read by
-//! [`cached_certificate_state`], and the certificates its runs deployed by
-//! [`read_certificate_history`].
+//! the [`TunnelState`](wildflowerhealthio_tunnel::TunnelState) the tunnel
+//! publishes as it dials the relay, and the [`CertificateState`] the run
+//! publishes as its certificate is deployed, ordered and renewed. What a
+//! server's certificate cache says, the state of any server without a run's
+//! state, is read by [`cached_certificate_state`], and the certificates its
+//! runs deployed by [`read_certificate_history`].
 //!
 //! Layered like the other Rust slices:
 //!
