@@ -1,10 +1,12 @@
 //! `claim_codes` queries — the `SQLite` adapter bodies behind
 //! `SqliteTunnelStore`'s [`ClaimCodeStore`](crate::domain::ClaimCodeStore)
 //! impl. Writes bind a [`NewClaimCodeRow`] borrowed from a
-//! [`StoredClaimCode`]; a redeemed code's tunnel is read from `tunnels` in
-//! the same transaction that deletes the code.
+//! [`StoredClaimCode`], replacing the tunnel's earlier code; a redeemed
+//! code's tunnel is read from `tunnels` in the same transaction that deletes
+//! the code.
 
 use diesel::prelude::*;
+use diesel::upsert::excluded;
 use wildflowerhealthio_persistence::PooledDieselConnection;
 
 use crate::db::schema::{claim_codes, tunnels};
@@ -31,25 +33,42 @@ impl<'a> From<&'a StoredClaimCode> for NewClaimCodeRow<'a> {
     }
 }
 
-/// Add `stored`; `false`, storing nothing, if its hash is already stored
-/// (the primary key). Backs
-/// [`SqliteTunnelStore::insert_claim_code`](crate::db::SqliteTunnelStore).
+/// Make `stored` its tunnel's code, in one immediate transaction: `false`,
+/// storing nothing, if another row already has its hash (`UNIQUE`);
+/// otherwise an upsert on the tunnel's name (the primary key), so a tunnel's
+/// earlier code is overwritten. Backs
+/// [`SqliteTunnelStore::replace_claim_code`](crate::db::SqliteTunnelStore).
 ///
 /// # Errors
 ///
-/// [`TunnelError::Infrastructure`] on an insert failure, including a tunnel
-/// name not in `tunnels` (the foreign key).
-pub(super) fn insert_claim_code(
+/// [`TunnelError::Infrastructure`] on a read or write failure, including a
+/// tunnel name not in `tunnels` (the foreign key).
+pub(super) fn replace_claim_code(
     conn: &mut PooledDieselConnection,
     stored: &StoredClaimCode,
 ) -> Result<bool, TunnelError> {
-    diesel::insert_into(claim_codes::table)
-        .values(NewClaimCodeRow::from(stored))
-        .on_conflict(claim_codes::code_hash)
-        .do_nothing()
-        .execute(conn)
-        .map(|inserted| inserted > 0)
-        .map_err(|e| TunnelError::infrastructure("storing the claim code failed", e))
+    conn.immediate_transaction(|conn| {
+        let hash_taken = diesel::select(diesel::dsl::exists(
+            claim_codes::table.filter(claim_codes::code_hash.eq(&stored.code_hash.0[..])),
+        ))
+        .get_result::<bool>(conn)?;
+        if hash_taken {
+            return Ok(false);
+        }
+        diesel::insert_into(claim_codes::table)
+            .values(NewClaimCodeRow::from(stored))
+            .on_conflict(claim_codes::tunnel_name)
+            .do_update()
+            .set((
+                claim_codes::code_hash.eq(excluded(claim_codes::code_hash)),
+                claim_codes::expires_at.eq(excluded(claim_codes::expires_at)),
+            ))
+            .execute(conn)?;
+        Ok(true)
+    })
+    .map_err(|e: diesel::result::Error| {
+        TunnelError::infrastructure("storing the claim code failed", e)
+    })
 }
 
 /// Delete the code hashed `code_hash` if it expires after `now`, and read

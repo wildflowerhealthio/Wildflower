@@ -133,8 +133,8 @@ impl TunnelStore for SqliteTunnelStore {
 /// The claim-code port over the same database: thin delegations to the
 /// query bodies in `claim_codes`.
 impl ClaimCodeStore for SqliteTunnelStore {
-    fn insert_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
-        claim_codes::insert_claim_code(&mut self.connection()?, stored)
+    fn replace_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
+        claim_codes::replace_claim_code(&mut self.connection()?, stored)
     }
 
     fn take_claim_code(
@@ -180,9 +180,10 @@ mod tests {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         let code = claim_code(1, "alice", 1_900);
-        assert!(store.insert_claim_code(&code).unwrap());
+        assert!(store.replace_claim_code(&code).unwrap());
+        store.insert_tunnel(&stored_tunnel("bob")).unwrap();
         assert!(
-            !store.insert_claim_code(&claim_code(1, "alice", 5)).unwrap(),
+            !store.replace_claim_code(&claim_code(1, "bob", 5)).unwrap(),
             "hashes are unique"
         );
 
@@ -197,9 +198,28 @@ mod tests {
     }
 
     #[test]
+    fn a_new_claim_code_replaces_the_tunnels_earlier_one() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let earlier = claim_code(1, "alice", 1_900);
+        let later = claim_code(2, "alice", 2_000);
+        assert!(store.replace_claim_code(&earlier).unwrap());
+        assert!(store.replace_claim_code(&later).unwrap());
+
+        assert_eq!(
+            store.take_claim_code(&earlier.code_hash, 1_000).unwrap(),
+            None
+        );
+        assert_eq!(
+            store.take_claim_code(&later.code_hash, 1_999).unwrap(),
+            Some(stored_tunnel("alice").tunnel)
+        );
+    }
+
+    #[test]
     fn a_claim_code_needs_a_stored_tunnel() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
-        let refused = store.insert_claim_code(&claim_code(1, "nobody", 1_900));
+        let refused = store.replace_claim_code(&claim_code(1, "nobody", 1_900));
         assert!(matches!(
             refused.unwrap_err(),
             TunnelError::Infrastructure { .. }
@@ -212,10 +232,10 @@ mod tests {
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         store.insert_tunnel(&stored_tunnel("bob")).unwrap();
         store
-            .insert_claim_code(&claim_code(1, "alice", 1_900))
+            .replace_claim_code(&claim_code(1, "alice", 1_900))
             .unwrap();
         store
-            .insert_claim_code(&claim_code(2, "bob", 1_900))
+            .replace_claim_code(&claim_code(2, "bob", 1_900))
             .unwrap();
         store.delete_tunnel("alice").unwrap();
         // Put back under the same name, the tunnel has no codes.
@@ -235,10 +255,12 @@ mod tests {
     #[test]
     fn expired_claim_codes_are_deleted() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
-        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        for (byte, expires_at) in [(1, 1_000), (2, 1_500), (3, 2_000)] {
+        for (byte, name, expires_at) in
+            [(1, "alice", 1_000), (2, "bob", 1_500), (3, "carol", 2_000)]
+        {
+            store.insert_tunnel(&stored_tunnel(name)).unwrap();
             store
-                .insert_claim_code(&claim_code(byte, "alice", expires_at))
+                .replace_claim_code(&claim_code(byte, name, expires_at))
                 .unwrap();
         }
         assert_eq!(store.delete_expired_claim_codes(1_500).unwrap(), 2);
@@ -258,7 +280,7 @@ mod tests {
             SqliteTunnelStore::open(&dir.path().join(SqliteTunnelStore::FILE_NAME)).unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         let code = claim_code(1, "alice", 1_900);
-        store.insert_claim_code(&code).unwrap();
+        store.replace_claim_code(&code).unwrap();
         let barrier = std::sync::Barrier::new(8);
         let taken: Vec<Option<Tunnel>> = std::thread::scope(|scope| {
             let takers: Vec<_> = (0..8)

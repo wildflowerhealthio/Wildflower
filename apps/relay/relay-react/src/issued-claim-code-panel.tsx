@@ -15,7 +15,8 @@ interface IssuedClaimCodePanelProps {
 /**
  * A claim code just issued for a tunnel: the one time the relay shows it.
  * The tunnel's owner types it into their device, which redeems it once,
- * before it expires, for the tunnel's name and token. Copy puts the code on
+ * before it expires, for the tunnel's name and token. It cancels the
+ * tunnel's earlier code. Copy puts the code on
  * the clipboard; Done drops it from the page.
  */
 const IssuedClaimCodePanel = ({
@@ -48,7 +49,7 @@ const IssuedClaimCodePanel = ({
         <time dateTime={DateTime.formatIso(issued.expires_at)}>
           {DateTime.formatLocal(issued.expires_at, { timeStyle: 'short' })}
         </time>
-        .
+        . Any code issued for this tunnel before it no longer works.
       </p>
       <p className={styles['issued-claim-code-panel__warning']}>
         This code won’t be shown again. Give it to the tunnel’s owner now.

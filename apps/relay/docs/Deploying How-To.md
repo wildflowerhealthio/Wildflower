@@ -78,8 +78,9 @@ A tunnel's row also has **Issue claim code**, which shows a code of eight
 characters, e.g. `ABCD-EFGH`, that stands in for the token. It redeems once,
 within 15 minutes (`WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS`), at
 `POST https://relay.example.com/claim` for the tunnel's name and token, so it
-can be read out instead of copied. Issue another if it expires. Guessing is
-rate limited, per client address and across all clients.
+can be read out instead of copied. Issue another if it expires: a tunnel has
+one outstanding code, so issuing a new one cancels the earlier one. Guessing
+is rate limited, per client address and across all clients.
 
 ## Let's Encrypt's rate limit
 

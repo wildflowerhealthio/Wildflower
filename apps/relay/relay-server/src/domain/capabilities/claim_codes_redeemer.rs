@@ -59,7 +59,7 @@ mod tests {
             tunnel_name: "alice".to_owned(),
             expires_at: 1_900,
         };
-        assert!(store.insert_claim_code(&stored).unwrap());
+        assert!(store.replace_claim_code(&stored).unwrap());
         let issued = IssuedClaimCode {
             code,
             expires_at: 1_900,

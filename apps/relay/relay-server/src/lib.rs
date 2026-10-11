@@ -126,7 +126,8 @@
 //! - `POST /api/tunnels/{name}/claim-codes`, without a body, issues a claim
 //!   code for the tunnel (see "Claim codes" below) and answers `201 {"code":
 //!   "ABCD-EFGH", "expires_at": <Unix epoch seconds>}`, or is `404` when no
-//!   tunnel has the name. The code is shown only in this answer.
+//!   tunnel has the name. The code is shown only in this answer, and
+//!   replaces the tunnel's earlier code.
 //!
 //! A created tunnel's device can connect and sign at once. A deleted one can
 //! no longer sign or be routed to, and rathole drops its tunnel.
@@ -155,8 +156,9 @@
 //! `1`, `I`, `L` or `O`), drawn from the OS's randomness and shown as
 //! `ABCD-EFGH`. It redeems once, until it expires,
 //! `WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS` (15 minutes by default) after it
-//! was issued. The relay stores only its SHA-256, with the tunnel and expiry,
-//! and deleting the tunnel deletes its codes.
+//! was issued. A tunnel has at most one outstanding code: issuing a new one
+//! cancels the earlier one. The relay stores only its SHA-256, with the
+//! tunnel and expiry, and deleting the tunnel deletes its code.
 //!
 //! The device sends it, unsigned, to `POST https://<domain>/claim` as
 //! `{"code": "ABCD-EFGH"}`, in either case and with or without the dash.
@@ -176,7 +178,7 @@
 //! The environment is the only source of settings: every setting is a
 //! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
 //! for a commented list). Tunnels come only from the admin API, which keeps
-//! them, each with its own token, and their claim codes in SQLite at
+//! them, each with its own token and outstanding claim code, in SQLite at
 //! `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`. On every start the relay
 //! builds rathole's config for them in memory (see [`config`]); no rathole
 //! file is written or read. Each change through the admin API reaches the

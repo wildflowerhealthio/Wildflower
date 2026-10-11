@@ -3,8 +3,9 @@
 //!
 //! It refuses an unknown tunnel before the clock is read, then drops the
 //! codes that have expired, draws a code and stores its hash for the tunnel
-//! with an expiry the relay's settings give. The code itself is returned
-//! once and never stored.
+//! with an expiry the relay's settings give. A tunnel has one outstanding
+//! code, so the new code replaces any earlier one, which stops redeeming.
+//! The code itself is returned once and never stored.
 
 use std::time::Duration;
 
@@ -15,8 +16,8 @@ use crate::domain::{
 };
 
 /// How many codes [`ClaimCodesIssuer::issue`] draws before giving up, should
-/// each already be stored. With at most a few codes live among 31⁸, a second
-/// draw is already vanishingly rare.
+/// each already be stored. With at most one code live per tunnel among 31⁸,
+/// a second draw is already vanishingly rare.
 const MAX_DRAWS: usize = 8;
 
 /// Issuing — `POST /api/tunnels/{name}/claim-codes`. Holds the store and how
@@ -36,7 +37,8 @@ impl<S: TunnelStore + ClaimCodeStore> ClaimCodesIssuer<S> {
 
     /// Issue a claim code for the tunnel named `tunnel_name`, drawn from
     /// `rng`, that redeems until `claim_code_ttl` after the time `now` reads
-    /// (Unix epoch seconds). Codes expired by then are deleted first.
+    /// (Unix epoch seconds), replacing the tunnel's earlier code. Codes
+    /// expired by then are deleted first.
     ///
     /// The caller keeps the tunnel from being deleted between the check
     /// that it exists and the store write.
@@ -68,7 +70,7 @@ impl<S: TunnelStore + ClaimCodeStore> ClaimCodesIssuer<S> {
                 tunnel_name: tunnel_name.to_owned(),
                 expires_at,
             };
-            if self.store.insert_claim_code(&stored)? {
+            if self.store.replace_claim_code(&stored)? {
                 return Ok(IssuedClaimCode { code, expires_at });
             }
         }
@@ -82,15 +84,17 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
+    use crate::domain::capabilities::ClaimCodesRedeemer;
     use crate::domain::test_fake::{stored_tunnel, FakeTunnelStore};
     use crate::domain::ClaimCodeHash;
 
     const TTL: Duration = Duration::from_secs(900);
 
-    /// An issuer over a store holding `alice`.
+    /// An issuer over a store holding `alice` and `bob`.
     fn issuer() -> ClaimCodesIssuer<FakeTunnelStore> {
         let store = FakeTunnelStore::default();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        store.insert_tunnel(&stored_tunnel("bob")).unwrap();
         ClaimCodesIssuer::new(store, TTL)
     }
 
@@ -130,9 +134,9 @@ mod tests {
     fn issuing_drops_the_codes_that_have_expired() {
         let issuer = issuer();
         let mut rng = StdRng::seed_from_u64(0);
-        let first = issuer.issue("alice", &mut rng, || Ok(1_000)).unwrap();
-        let second = issuer
-            .issue("alice", &mut rng, || Ok(first.expires_at))
+        let expired = issuer.issue("alice", &mut rng, || Ok(1_000)).unwrap();
+        let live = issuer
+            .issue("bob", &mut rng, || Ok(expired.expires_at))
             .unwrap();
         assert_eq!(
             issuer
@@ -141,21 +145,46 @@ mod tests {
                 .iter()
                 .map(|stored| stored.code_hash)
                 .collect::<Vec<ClaimCodeHash>>(),
-            [second.code.hash()]
+            [live.code.hash()]
         );
     }
 
-    /// A drawn code already stored is drawn again.
+    /// Issuing again replaces the tunnel's code: the earlier one is refused
+    /// like any unknown code, and the new one redeems.
+    #[test]
+    fn a_new_code_replaces_the_tunnels_earlier_one() {
+        let issuer = issuer();
+        let mut rng = StdRng::seed_from_u64(0);
+        let earlier = issuer.issue("alice", &mut rng, || Ok(1_000)).unwrap();
+        let later = issuer.issue("alice", &mut rng, || Ok(1_000)).unwrap();
+        assert_eq!(issuer.store.claim_codes().len(), 1);
+
+        let redeemer = ClaimCodesRedeemer::new(issuer.store);
+        assert_eq!(
+            redeemer
+                .redeem(&earlier.code.to_string(), || Ok(1_000))
+                .unwrap_err(),
+            TunnelError::ClaimCodeRejected
+        );
+        assert_eq!(
+            redeemer
+                .redeem(&later.code.to_string(), || Ok(1_000))
+                .unwrap(),
+            stored_tunnel("alice").tunnel
+        );
+    }
+
+    /// A drawn code already stored, for any tunnel, is drawn again.
     #[test]
     fn a_code_already_stored_is_drawn_again() {
         let issuer = issuer();
-        let first = issuer
+        let alices = issuer
             .issue("alice", &mut StdRng::seed_from_u64(0), || Ok(1_000))
             .unwrap();
-        let again = issuer
-            .issue("alice", &mut StdRng::seed_from_u64(0), || Ok(1_000))
+        let bobs = issuer
+            .issue("bob", &mut StdRng::seed_from_u64(0), || Ok(1_000))
             .unwrap();
-        assert_ne!(again.code, first.code);
+        assert_ne!(bobs.code, alices.code);
         assert_eq!(issuer.store.claim_codes().len(), 2);
     }
 }

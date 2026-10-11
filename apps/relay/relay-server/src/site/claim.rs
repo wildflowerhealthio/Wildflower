@@ -4,7 +4,8 @@
 //! `200 {"tunnel_name", "token", ...}`: the tunnel the code was issued for
 //! (see `super::admin`), its token, and the fields of `GET /rathole`, as one
 //! [`ClaimedTunnel`], under `Cache-Control: no-store`. The code is burned:
-//! it redeems once.
+//! it redeems once. Only a tunnel's latest code redeems: issuing another
+//! cancels it.
 //!
 //! The request is not signed: the code is the credential. So that a short
 //! code is safe, every failure is one answer, `422` with the plain text
@@ -201,6 +202,29 @@ mod tests {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "burned");
     }
 
+    /// Issuing a second code for a tunnel cancels the first: it answers like
+    /// any unknown code, and the second redeems.
+    #[tokio::test]
+    async fn a_new_code_cancels_the_tunnels_earlier_one() {
+        let (router, registry, _, _fixture) = router_with_alice().await;
+        let issuer: LiveClaimCodesIssuer = admin(&registry);
+        let earlier = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let later = issuer.issue("alice".to_owned()).await.unwrap().code;
+
+        let (status, _) = send(
+            &router,
+            claim_request(ALICE, &code_body(&earlier.to_string())),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let (status, _) = send(
+            &router,
+            claim_request(ALICE, &code_body(&later.to_string())),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
     /// Malformed, unknown, used and expired codes get the same status and
     /// body. Each is tried from its own address, so no limit is reached.
     #[tokio::test]
@@ -214,7 +238,7 @@ mod tests {
         let now = unix_now().unwrap();
         assert!(registry
             .store
-            .insert_claim_code(&StoredClaimCode {
+            .replace_claim_code(&StoredClaimCode {
                 code_hash: expired.hash(),
                 tunnel_name: "alice".to_owned(),
                 expires_at: now,

@@ -6,11 +6,12 @@
 //! - `GET /api/tunnels`: `200 [{"name", "email", "public_host",
 //!   "created_at"}]`. No tokens.
 //! - `DELETE /api/tunnels/{name}`: `204` once the tunnel is gone, with its
-//!   claim codes.
+//!   claim code.
 //! - `POST /api/tunnels/{name}/claim-codes` (no body): `201 {"code",
 //!   "expires_at"}`, a claim code for the tunnel, shown only here, as
 //!   `ABCD-EFGH`, and the Unix epoch second it stops redeeming at (see
-//!   `super::claim`).
+//!   `super::claim`). It replaces the tunnel's earlier code, which stops
+//!   redeeming.
 //!
 //! On any other `Host` these paths are `404`, before the signature is
 //! looked at, so `@target-uri` always names the admin hostname. A request

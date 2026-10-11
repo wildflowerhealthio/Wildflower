@@ -302,6 +302,7 @@ describe('RelayAdminScreen', () => {
     expect((await screen.findByLabelText('Claim code')).textContent).toBe('ABCD-EFGH')
     expect(screen.getByRole('heading', { name: 'Claim code for bob' })).toBeDefined()
     expect(screen.getByText(/won’t be shown again/)).toBeDefined()
+    expect(screen.getByText(/issued for this tunnel before it no longer works/)).toBeDefined()
     expect(document.querySelector('time[datetime="2023-11-14T22:28:20.000Z"]')).not.toBeNull()
     expect(relay.requests).toContain('POST /api/tunnels/bob/claim-codes')
 

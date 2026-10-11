@@ -5,9 +5,10 @@
 //!   admin API, addressed by its `name`. A row is loaded into a
 //!   [`super::tunnels::TunnelRow`] and folded into the domain
 //!   [`crate::domain::StoredTunnel`].
-//! - `claim_codes` (`0002_claim_codes`): one row per unredeemed claim code,
-//!   addressed by the code's SHA-256, for the tunnel it names. Deleting the
-//!   tunnel deletes its rows (`ON DELETE CASCADE`).
+//! - `claim_codes` (`0002_claim_codes`): a tunnel's outstanding claim code,
+//!   at most one per tunnel, addressed by the tunnel's `tunnel_name`; the
+//!   code's SHA-256 is unique across rows. Deleting the tunnel deletes its
+//!   row (`ON DELETE CASCADE`).
 //!
 //! `created_at` and `expires_at` are `BigInt` (i64, Unix epoch seconds),
 //! stored as SQLite `INTEGER`.
@@ -22,9 +23,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    claim_codes (code_hash) {
-        code_hash -> Binary,
+    claim_codes (tunnel_name) {
         tunnel_name -> Text,
+        code_hash -> Binary,
         expires_at -> BigInt,
     }
 }

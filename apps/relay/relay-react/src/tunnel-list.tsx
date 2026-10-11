@@ -137,7 +137,7 @@ const TunnelList = (): JSX.Element => {
           Option.map((name) => (
             <span key="question">
               Delete <strong>{name}</strong>? The relay stops serving it at once, and its token and
-              claim codes stop working.
+              claim code stop working.
             </span>
           )),
           Option.getOrNull

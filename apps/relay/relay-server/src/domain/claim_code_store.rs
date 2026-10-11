@@ -7,8 +7,8 @@
 //!
 //! The `SQLite` adapter, `SqliteTunnelStore` in [`crate::db`], keeps the codes
 //! in the same database as the tunnels; tests substitute the in-memory
-//! `FakeTunnelStore` in `crate::domain::test_fake`. In both, deleting a
-//! tunnel deletes its codes.
+//! `FakeTunnelStore` in `crate::domain::test_fake`. In both, a tunnel has at
+//! most one code, and deleting the tunnel deletes it.
 //!
 //! [`TunnelStore`]: crate::domain::TunnelStore
 
@@ -16,15 +16,16 @@ use crate::domain::{ClaimCodeHash, StoredClaimCode, Tunnel, TunnelError};
 
 /// The persistence port for claim codes.
 pub trait ClaimCodeStore {
-    /// Add `stored`. Returns `true` when it was added, `false`, storing
-    /// nothing, when a code with the same hash is already stored. The
-    /// tunnel it names must be stored.
+    /// Make `stored` its tunnel's one outstanding code, replacing any code
+    /// the tunnel already has, which then stops redeeming. Returns `true`
+    /// when it was stored, `false`, storing nothing, when another stored
+    /// code has the same hash. The tunnel it names must be stored.
     ///
     /// # Errors
     ///
-    /// [`TunnelError::Infrastructure`] on a checkout / insert failure,
+    /// [`TunnelError::Infrastructure`] on a checkout / write failure,
     /// including a tunnel name that is not stored.
-    fn insert_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError>;
+    fn replace_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError>;
 
     /// Remove the code hashed `code_hash` if it is unexpired at `now` (Unix
     /// epoch seconds), returning the tunnel it redeems for; `None`, removing

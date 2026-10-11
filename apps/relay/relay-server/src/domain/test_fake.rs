@@ -5,8 +5,9 @@
 //! name already stored as `false` (the primary key), `delete_tunnel` returns
 //! the removed tunnel or `None` on a miss, `list_tunnels` is by name — it
 //! keeps tunnels with no diesel and no database. It is the
-//! [`ClaimCodeStore`] fake too, deleting a tunnel's codes with it as the
-//! database's `ON DELETE CASCADE` does. The `SQLite` adapter's own coverage
+//! [`ClaimCodeStore`] fake too, keeping at most one code per tunnel as the
+//! database's primary key does, and deleting a tunnel's code with it as its
+//! `ON DELETE CASCADE` does. The `SQLite` adapter's own coverage
 //! lives in `crate::db`.
 
 use std::cell::RefCell;
@@ -51,7 +52,7 @@ impl TunnelStore for FakeTunnelStore {
 }
 
 impl ClaimCodeStore for FakeTunnelStore {
-    fn insert_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
+    fn replace_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
         if !self.tunnels.borrow().contains_key(&stored.tunnel_name) {
             return Err(TunnelError::infrastructure(
                 "storing the claim code failed",
@@ -62,6 +63,7 @@ impl ClaimCodeStore for FakeTunnelStore {
         if claim_codes.contains_key(&stored.code_hash) {
             return Ok(false);
         }
+        claim_codes.retain(|_, outstanding| outstanding.tunnel_name != stored.tunnel_name);
         claim_codes.insert(stored.code_hash, stored.clone());
         Ok(true)
     }

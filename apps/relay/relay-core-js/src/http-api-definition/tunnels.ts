@@ -48,7 +48,7 @@ const CreatedTunnelSchema = Schema.Struct({
  * A claim code just issued for a tunnel — mirrors the Rust
  * `IssuedClaimCodeBody`. The only response that carries the code, shown as
  * `ABCD-EFGH`; it redeems once, at the relay's `POST /claim`, until
- * `expires_at`.
+ * `expires_at` or until the tunnel's next code replaces it.
  */
 const IssuedClaimCodeSchema = Schema.Struct({
   code: Schema.String,
@@ -132,7 +132,8 @@ const TunnelNamesExhaustedFromText = plainTextReason(
  * - `ListTunnels`: every tunnel, no tokens.
  * - `DeleteTunnel`: `204`; `404` when no tunnel has the name.
  * - `IssueClaimCode`: `201` with a claim code for the tunnel, shown only
- *   here, and when it expires; `404` when no tunnel has the name.
+ *   here, and when it expires, replacing the tunnel's earlier code; `404`
+ *   when no tunnel has the name.
  */
 const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
   .add(
