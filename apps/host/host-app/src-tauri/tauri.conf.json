@@ -39,7 +39,7 @@
   },
   "plugins": {
     "background-service": {
-      "androidForegroundServiceTypes": ["specialUse"],
+      "androidForegroundServiceTypes": ["shortService"],
       "iosRequiresNetworkConnectivity": true
     }
   }

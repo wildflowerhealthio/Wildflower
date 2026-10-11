@@ -184,7 +184,7 @@ const fakeHealth = (answer: () => Response): FakeHealth => {
 
 const BACKGROUND_SERVICE_START_CONFIG = {
   serviceLabel: 'Wildflower server is running',
-  foregroundServiceType: 'specialUse',
+  foregroundServiceType: 'shortService',
 } as const
 
 /**

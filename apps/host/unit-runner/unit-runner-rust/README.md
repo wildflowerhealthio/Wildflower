@@ -34,6 +34,7 @@ The design and its vocabulary are in the
 | `StopReason`, `PlatformStopReason`     | Why a run stopped, and why the platform ended the background session.                                 |
 | `UnitRunner<D>`                        | Holds the units and runs them, free of any platform. A host binds it; an app uses its host's binding. |
 | `BackgroundSessionPlatform`            | The port a host implements to request the background session's start and end.                         |
+| `BackgroundSessionLength`              | How long the host's background session can outlast the app: `AsLongAsNeeded`, or `GracePeriod`.       |
 | `WallClock`, `SystemClock`             | The wall clock policies are judged on, and the system's.                                              |
 | `SessionId`                            | One background session, as the host reports its start and end.                                        |
 | `WHILE_OPEN_GRACE`, etc.               | The fixed timings.                                                                                    |
@@ -71,9 +72,15 @@ test, or another host, calls `UnitRunner` directly:
 
 ```rust,ignore
 use std::sync::Arc;
-use wildflowerhealthio_unit_runner::{RunPolicy, SystemClock, UnitId, UnitRunner};
+use wildflowerhealthio_unit_runner::{
+    BackgroundSessionLength, RunPolicy, SystemClock, UnitId, UnitRunner,
+};
 
-let runner = UnitRunner::<String>::new(tokio::runtime::Handle::current(), Arc::new(SystemClock));
+let runner = UnitRunner::<String>::new(
+    tokio::runtime::Handle::current(),
+    Arc::new(SystemClock),
+    BackgroundSessionLength::AsLongAsNeeded,
+);
 runner.set_unit(UnitId::from("sync"), RunPolicy::Always, || Ok(Sync));
 runner.set_app_present(true);
 ```

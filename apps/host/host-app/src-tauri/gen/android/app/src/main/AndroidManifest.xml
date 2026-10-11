@@ -5,11 +5,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- tauri-plugin-background-service's manifest asks for what its calling,
-         ringing and other foreground-service types need. The Wildflower server
-         runs as a specialUse foreground service and needs none of it, so the
-         merge drops each one. What the server does need comes from the plugin
-         and stays: FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE,
-         POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, ACCESS_NETWORK_STATE. -->
+         ringing, other foreground-service types and boot recovery need. The
+         Wildflower server runs as a shortService foreground service, which
+         needs no type permission and can't start at boot, so the merge drops
+         each one. What the server does need comes from the plugin and stays:
+         FOREGROUND_SERVICE, POST_NOTIFICATIONS, ACCESS_NETWORK_STATE. -->
     <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" tools:node="remove" />
@@ -18,6 +18,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -53,17 +55,24 @@
 
         <!-- The plugin's foreground service, narrowed to the one type the
              server starts as (background_service_foreground_type in
-             tauri-shared-config.json), with the reason Play asks of a
-             specialUse service in place of the plugin's generic one. -->
+             tauri-shared-config.json). A shortService takes no subtype, so the
+             plugin's specialUse one goes. -->
         <service
             android:name="app.tauri.backgroundservice.LifecycleService"
-            android:foregroundServiceType="specialUse"
+            android:foregroundServiceType="shortService"
             tools:replace="android:foregroundServiceType">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Serves the owner's own health records to their own apps over their personal tunnel"
-                tools:replace="android:value" />
+                tools:node="remove" />
         </service>
+
+        <!-- The plugin's boot receiver restarts its service after a reboot. A
+             shortService can't start from the background, and the server runs
+             only while the app is open and for a short grace after, so the
+             receiver goes with RECEIVE_BOOT_COMPLETED above. -->
+        <receiver
+            android:name="app.tauri.backgroundservice.BootReceiver"
+            tools:node="remove" />
 
         <!-- The plugin's self-managed Telecom service carries calls, and binds
              only with MANAGE_OWN_CALLS, which is dropped above. The plugin

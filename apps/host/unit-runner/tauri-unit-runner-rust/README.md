@@ -40,6 +40,7 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 | `UnitStatus<D>`, `RunState`, `RunStop`       | What `TauriUnitRunner` reports for a unit.                                                                               |
 | `StopReason`, `PlatformStopReason`           | Why a run stopped, and why the platform ended the background session.                                                    |
 | `BackgroundServiceStartConfig`               | The plugin's start config (Android notification label and service type), re-exported.                                    |
+| `BackgroundSessionLength`                    | How long the plugin's service can outlast the app: `GracePeriod` for an Android `shortService`, else `AsLongAsNeeded`.   |
 | `WHILE_OPEN_GRACE`, etc.                     | The fixed timings.                                                                                                       |
 | `unit-runner-rust`'s other exports           | `UnitRunner`, `BackgroundSessionPlatform`, `WallClock` and the rest, re-exported.                                        |
 
@@ -47,7 +48,8 @@ Tauri side in this crate's [Design Explanation](./docs/Design%20Explanation.md).
 
 ```rust,ignore
 use wildflowerhealthio_tauri_unit_runner::{
-    BackgroundServiceStartConfig, RunContext, RunPolicy, TauriUnitRunner, Unit, UnitId,
+    BackgroundServiceStartConfig, BackgroundSessionLength, RunContext, RunPolicy, TauriUnitRunner,
+    Unit, UnitId,
 };
 
 struct Sync;
@@ -63,10 +65,13 @@ impl Unit for Sync {
     }
 }
 
-let runner = TauriUnitRunner::<String>::new(BackgroundServiceStartConfig {
-    service_label: "Syncing in the background".to_owned(),
-    foreground_service_type: "dataSync".to_owned(),
-});
+let runner = TauriUnitRunner::<String>::new(
+    BackgroundServiceStartConfig {
+        service_label: "Syncing in the background".to_owned(),
+        foreground_service_type: "dataSync".to_owned(),
+    },
+    BackgroundSessionLength::AsLongAsNeeded,
+);
 tauri::Builder::default()
     .plugin(tauri_plugin_notification::init())
     .plugin(runner.background_service_plugin())

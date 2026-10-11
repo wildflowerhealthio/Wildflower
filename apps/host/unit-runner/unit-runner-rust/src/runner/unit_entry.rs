@@ -50,17 +50,19 @@ impl<D> UnitEntry<D> {
     }
 
     /// Whether the unit should run at the wall-clock instant `now`, given
-    /// whether the app is present or within its grace period and whether the
-    /// platform's end of the background session discourages runs. A unit being
-    /// removed never should, and no unit should while runs are discouraged.
+    /// whether the app is present or within its grace period and whether runs
+    /// are discouraged: by the platform's end of the background session, or
+    /// by the end of a grace period the background session can't outlast. A
+    /// unit being removed never should, and no unit should while runs are
+    /// discouraged.
     pub(crate) fn should_run(
         &self,
         now: DateTime<Utc>,
         app_present_or_in_grace: bool,
-        runs_discouraged_by_platform: bool,
+        runs_discouraged: bool,
     ) -> bool {
         !self.awaiting_removal
-            && !runs_discouraged_by_platform
+            && !runs_discouraged
             && self.policy.wants_running(now, app_present_or_in_grace)
     }
 

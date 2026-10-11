@@ -388,8 +388,8 @@ mod tests {
     };
     use wildflowerhealthio_shared_structures::OnDeviceWebviewHandle;
     use wildflowerhealthio_tauri_unit_runner::{
-        BackgroundServiceStartConfig, RunContext, RunState, RunStop, StopReason, TauriUnitRunner,
-        Unit, UnitId, UnitStatus,
+        BackgroundServiceStartConfig, BackgroundSessionLength, RunContext, RunState, RunStop,
+        StopReason, TauriUnitRunner, Unit, UnitId, UnitStatus,
     };
     use wildflowerhealthio_wildflower_server::{CertificateState, CertificateStatus, HostPorts};
 
@@ -529,10 +529,13 @@ mod tests {
     }
 
     fn runner() -> TauriUnitRunner<ServerDetail> {
-        TauriUnitRunner::new(BackgroundServiceStartConfig {
-            service_label: "Wildflower server is running".to_owned(),
-            foreground_service_type: "specialUse".to_owned(),
-        })
+        TauriUnitRunner::new(
+            BackgroundServiceStartConfig {
+                service_label: "Wildflower server is running".to_owned(),
+                foreground_service_type: "shortService".to_owned(),
+            },
+            BackgroundSessionLength::AsLongAsNeeded,
+        )
     }
 
     fn servers() -> (tempfile::TempDir, ServersState) {

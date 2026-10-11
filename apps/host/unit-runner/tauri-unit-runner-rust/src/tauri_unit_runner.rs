@@ -7,7 +7,8 @@ use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig
 use tokio::sync::{broadcast, watch};
 
 use wildflowerhealthio_unit_runner::{
-    RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner, UnitStatuses,
+    BackgroundSessionLength, RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner,
+    UnitStatuses,
 };
 
 use crate::tauri_bindings::TauriBindings;
@@ -19,10 +20,13 @@ use crate::tauri_bindings::TauriBindings;
 /// Build it before the Tauri builder, and register both of its plugins:
 ///
 /// ```rust,ignore
-/// let runner = TauriUnitRunner::<MyDetail>::new(BackgroundServiceStartConfig {
-///     service_label: "Syncing in the background".to_owned(),
-///     foreground_service_type: "dataSync".to_owned(),
-/// });
+/// let runner = TauriUnitRunner::<MyDetail>::new(
+///     BackgroundServiceStartConfig {
+///         service_label: "Syncing in the background".to_owned(),
+///         foreground_service_type: "dataSync".to_owned(),
+///     },
+///     BackgroundSessionLength::AsLongAsNeeded,
+/// );
 /// tauri::Builder::default()
 ///     .plugin(tauri_plugin_notification::init())
 ///     .plugin(runner.background_service_plugin())
@@ -57,14 +61,20 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     /// service with `start_config`: on Android, its label is the text of the
     /// persistent foreground-service notification that covers every unit, and
     /// its type must be one the plugin config's `androidForegroundServiceTypes`
-    /// allows.
+    /// allows. `background_session_length` is how long that service can keep
+    /// the app alive after it becomes absent: `GracePeriod` for an Android
+    /// `shortService`, `AsLongAsNeeded` for any other.
     ///
     /// Runs and timers run on Tauri's async runtime, so this works before the
     /// Tauri builder exists.
     #[must_use]
-    pub fn new(start_config: BackgroundServiceStartConfig) -> Self {
+    pub fn new(
+        start_config: BackgroundServiceStartConfig,
+        background_session_length: BackgroundSessionLength,
+    ) -> Self {
         let runtime = tauri::async_runtime::handle().inner().clone();
-        let unit_runner = UnitRunner::new(runtime, Arc::new(SystemClock));
+        let unit_runner =
+            UnitRunner::new(runtime, Arc::new(SystemClock), background_session_length);
         Self::from_unit_runner(unit_runner, start_config)
     }
 

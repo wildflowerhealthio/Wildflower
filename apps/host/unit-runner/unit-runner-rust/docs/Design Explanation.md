@@ -59,6 +59,7 @@ crate needs `tauri-unit-runner-rust`.
 | Runner                      | `UnitRunner`: holds the units, starts and stops their runs per their policies, and asks for the background session.                                  |
 | Host                        | What binds `UnitRunner` to a platform: `tauri-unit-runner-rust`'s `TauriUnitRunner` in an app, a fake in tests.                                      |
 | Background session platform | The port a host implements to start and end the background session: `BackgroundSessionPlatform`.                                                     |
+| Background session length   | How long the platform's background session can keep the app alive after it becomes absent: `AsLongAsNeeded` or `GracePeriod`. The host chooses it.   |
 
 ## The contract
 
@@ -80,7 +81,11 @@ impl<D> RunContext<D> {
 }
 
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
-    pub fn new(runtime: Handle, clock: Arc<dyn WallClock>) -> Arc<Self>;
+    pub fn new(
+        runtime: Handle,
+        clock: Arc<dyn WallClock>,
+        background_session_length: BackgroundSessionLength,
+    ) -> Arc<Self>;
 
     // What the app calls, through its host's runner.
     pub fn set_unit<U: Unit<Detail = D>>(
@@ -241,6 +246,13 @@ The grace period is measured on the wall clock. The app starts out absent with
 no grace period, so a `WhileOpen` unit starts once the host first reports the
 app present.
 
+On a platform whose background session lasts only the grace period (see
+Background session length), no unit should run once the grace period has
+ended. While the app is absent, `Always` and `Until` then want a unit running
+only for the grace period, as `WhileOpen` does; while it is present, every
+policy means what the table says. A unit stopped as the grace period ends
+stops with `PolicyInactive`.
+
 `start_and_stop_runs_per_policy` starts every unit that should run and isn't
 running, and stops every unit that is running but shouldn't be. There is no cap
 on how many units run at once. Units start without waiting for the background
@@ -307,8 +319,9 @@ the app sets a policy, or a session starts again. That way `UnitRunner` doesn't
 fight the OS or the user. A late end of a session that is no longer the current
 one is stale, and changes nothing.
 
-- **Starting and ending it.** `UnitRunner` starts a session when a unit should
-  run, and ends it when none should, one `BackgroundSessionPlatform` call at a
+- **Starting and ending it.** `UnitRunner` starts a session when one is wanted
+  (a unit should run; see Background session length), and ends it when none
+  is, one `BackgroundSessionPlatform` call at a
   time. It decides under its lock and never awaits there, so it only publishes
   its session demand; one task follows the latest demand and makes the call it
   plans, skipping demands replaced in the meantime. A call resolves once the
@@ -331,6 +344,24 @@ one is stale, and changes nothing.
   foreground: the app becoming present, like the app setting a policy, lets
   `UnitRunner`
   start a session again.
+
+## Background session length
+
+`UnitRunner` is built with the host's `BackgroundSessionLength`: how long the
+platform's background session can keep the app alive after it becomes absent.
+
+| Length           | A session is wanted                              | While the app is absent, a unit should run        | Host                                                                                |
+| ---------------- | ------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `AsLongAsNeeded` | while some unit should run                       | as its policy says                                | a desktop, and iOS, which ends the session itself when its background time runs out |
+| `GracePeriod`    | while the app is absent and some unit should run | only within the grace period, whatever its policy | Android with a `shortService`, which Android times out after 3 minutes              |
+
+A `GracePeriod` session isn't started while the app is present: Android
+would time it out with the app still on screen. So it is wanted only once the
+app becomes absent, and its 2 minutes start as the grace period does. When the
+grace period ends, every unit stops with `PolicyInactive` and `UnitRunner`
+ends the session as no longer needed, so the session ends before the platform's
+limit. When the app becomes present again, the session is no longer wanted, and
+the units run without one.
 
 ## What the app does
 

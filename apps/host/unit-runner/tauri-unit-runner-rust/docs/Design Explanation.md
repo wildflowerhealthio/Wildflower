@@ -15,7 +15,10 @@ app needs only `tauri-unit-runner-rust`, while its domain crates depend on
 
 ```rust
 impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
-    pub fn new(start_config: BackgroundServiceStartConfig) -> Self;
+    pub fn new(
+        start_config: BackgroundServiceStartConfig,
+        background_session_length: BackgroundSessionLength,
+    ) -> Self;
     pub fn background_service_plugin<R: Runtime>(&self) -> TauriPlugin<R, PluginConfig>;
     pub fn lifecycle_plugin<R: Runtime>(&self) -> TauriPlugin<R>;
 
@@ -34,6 +37,9 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
 
 `TauriUnitRunner` is a `UnitRunner` on Tauri's async runtime and the system
 wall clock, with the Tauri side's own state. Its unit calls are `UnitRunner`'s.
+The app passes the background session length its plugin config allows:
+`GracePeriod` when the Android service is a `shortService`, `AsLongAsNeeded`
+otherwise.
 
 The app builds `TauriUnitRunner` before the Tauri builder and registers its two
 plugins: `background_service_plugin()` (the background session) and
@@ -97,7 +103,10 @@ plugin shuts it down. Units don't run inside the service's task.
   asks too, and on Android a second ask while the first is on screen reads as a
   refusal.
 - **Android.** The plugin's persistent foreground-service notification, with the
-  start config's label, covers every unit.
+  start config's label, covers every unit. With a `shortService` and
+  `GracePeriod`, the session starts as the app moves to the background
+  (`Suspended`) and ends as no longer needed when the grace period does,
+  before Android's 3-minute limit.
 
 ## What the app does
 
