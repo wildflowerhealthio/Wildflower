@@ -13,6 +13,11 @@ if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.3.2 — 2026-10-11
+
+- release: fix the v0.3.1 Windows, macOS TestFlight, iOS and Android builds (#1079) (8b0b7f80)
+- ci(release): escape \< in changelog commit subjects (#1078) (3d68bdf1)
+
 ## v0.3.1 — 2026-10-10
 
 - release: deploy the Android bundle to Google Play after a publish (#1074) (12df3bc4)
