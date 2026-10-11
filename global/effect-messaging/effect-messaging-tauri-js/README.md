@@ -9,15 +9,19 @@ string envelope and no postMessage machinery.
 ## Main exports
 
 - `makeTauriTransport({ bridges, initial?, api? })` — builds the
-  `{ sendMessage, coordinator }` seam a React app consumes. Attaches a
-  single `BRIDGE_EVENT` listener, demuxes inbound (`HostToWeb`) tags
-  through a pre-built dispatch table, validates payloads against the
-  bridge schemas (`Schema.typeSchema`), then emits a `__Ready`-tagged
-  payload on the bridge channel so the host can push its boot state
-  (the host re-receives `__Ready` on every page load). The
-  `coordinator` implements `effect-messaging-react`'s
-  `HandlerCoordinator`, so slice `makeUseSliceRegister` hooks work
-  unchanged.
+  `{ sendMessage, coordinator }` seam a React app consumes. Builds an
+  `effect-messaging-core` `PageDispatcher` over `bridges` / `initial`
+  (tag check, `_tag` demux, schema validation, FIFO inbox, coordinator —
+  see the core README's "Page dispatcher"), attaches a single
+  `BRIDGE_EVENT` listener that offers every payload to it, then emits a
+  `__Ready`-tagged payload on the bridge channel so the host can push
+  its boot state (the host re-receives `__Ready` on every page load).
+  `sendMessage` emits on the same channel. The `coordinator` is the
+  dispatcher's `HandlerCoordinator`, so slice `makeUseSliceRegister`
+  hooks work unchanged.
+- `InitialHandlers` / `TauriEventApi` / `TauriTransport` — the seed
+  record type (the dispatcher's), the injectable `emit`/`listen` seam
+  for tests, and the transport's return shape.
 - `BRIDGE_EVENT` / `READY_TAG` — the multiplexed channel name and
   reserved readiness tag, shared with Rust hosts. Pinned by
   `event-names.test.ts`; a Rust host should pin the same literals.
@@ -43,8 +47,8 @@ uses, which the sniffer's chunked page-content stream relies on.
 
 ## Tag uniqueness across processes — manual discipline
 
-`makeTauriTransport` runs `assertUniqueTags` over the bridges it is
-handed, which catches collisions _within_ a single transport instance.
+`makeTauriTransport` (through `PageDispatcher.make`) runs
+`assertUniqueTags` over the bridges it is handed, which catches collisions _within_ a single transport instance.
 The `BRIDGE_EVENT` channel is shared with every other listener in the
 app (the main TS transport, the raw sniffer webview's bootstrap, every
 Rust `app.listen(BRIDGE_EVENT, …)` host crate). A new tag that

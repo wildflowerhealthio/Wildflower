@@ -4,8 +4,9 @@ Platform-agnostic core of the cross-process bridge transport. Provides
 the `Bridge.make` factory for declaring typed bridges, the
 `BridgeTransport.makeHostTransport` Effect for wiring multiple bridges
 through a single dispatch fiber, the `TransportAdapter` Tag a platform
-adapter supplies, and the `HandlerCoordinator` contract the page-side
-transports (`effect-messaging-tauri-js`) implement.
+adapter supplies, and `PageDispatcher.make`, the page-side dispatcher
+(and `HandlerCoordinator` implementation) that page transports
+(`effect-messaging-tauri-js`) wrap.
 
 ## Concepts
 
@@ -103,10 +104,41 @@ The optional `onPageReady` callback runs on every `__Ready`, so a
 reloaded page re-receives the host's boot-state push. Scope close shuts
 both queues down and interrupts both fibers.
 
+## Page dispatcher
+
+`PageDispatcher.make({ bridges, initial? })` returns `{ offer, coordinator }`:
+everything a page-side transport does except moving bytes. A transport
+feeds each inbound payload — a structured value, not a wire string — to
+`offer(payload)` and hands `coordinator` to the app; the dispatcher never
+sees the channel itself.
+
+- **Tag check.** `make` first runs `assertUniqueTags`: a page channel
+  carries both directions, so every tag must be unique across bridges
+  _and_ directions, and none may claim the reserved `__Ready` tag.
+  Throws synchronously, before the transport attaches anything.
+- **Demux.** `offer` reads the payload's `_tag` and looks it up in a
+  dispatch table built once from every bridge's `HostToWeb` record.
+  Payloads without a string `_tag`, or with a tag no bridge declares
+  inbound, are dropped silently (a `WebToHost` echo of the page's own
+  send, a sibling bridge's traffic).
+- **Validate and route.** Each payload is decoded against its schema's
+  struct side (`Schema.typeSchema`) and routed to the bridge's record
+  active _at dispatch time_. An undecodable payload, a bridge with no
+  registered record, and a handler defect are each logged and dropped;
+  the next payload dispatches normally.
+- **One FIFO inbox.** `offer` enqueues synchronously onto one unbounded
+  queue drained by a single fiber, so payloads apply in `offer` order
+  across every tag even while a handler suspends.
+- **Coordinator.** `initial` seeds boot-stable records keyed by bridge
+  name (`InitialHandlers<Bridges>`, typed per bridge). `register` is
+  last-writer-wins and `unregister` is set-if-equal, per bridge name.
+
+The dispatcher lives for the page's lifetime; nothing tears it down.
+
 ## Subpaths
 
 - `effect-messaging-core` — main barrel: `Bridge`, `BridgeTransport`,
-  `Message`, `MessageHandler`, `HandlerHelpers`, `Logging`,
+  `Message`, `MessageHandler`, `PageDispatcher`, `HandlerHelpers`, `Logging`,
   `TransportAdapter`, the `BridgeHandlerRecord` / `HandlerCoordinator`
   types, and the `bare-sender` re-exports.
 - `effect-messaging-core/test` — `TestPlatformAdapterLayer`, the

@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/effect-messaging-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Effect-typed cross-process message-passing primitives: defineBridge, transport core, dispatch fiber, process-scoped runtime slot.",
+  "description": "Effect-typed cross-process message-passing primitives: Bridge.make, the host transport, the page dispatcher, the handler coordinator contract.",
   "license": "MIT",
   "repository": {
     "type": "git",

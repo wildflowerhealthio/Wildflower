@@ -9,10 +9,10 @@ import type * as MessageHandler from './message-handler.ts'
  * contravariance.
  *
  * @remarks
- * The platform-agnostic storage shape a transport's coordinator keeps one
- * of per bridge name. The Tauri transport erases its typed `HandlersFor`
- * records to this for name-keyed storage, then re-narrows at the dispatch
- * site.
+ * The platform-agnostic storage shape the page dispatcher's coordinator
+ * keeps one of per bridge name. `PageDispatcher.make` erases its typed
+ * `HandlersFor` records to this for name-keyed storage, then re-narrows
+ * at the dispatch site.
  */
 type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Effect<void>>>
 
@@ -35,8 +35,9 @@ type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Ef
  * reality.
  *
  * This contract is platform-agnostic — its only error channel is core's
- * {@link BridgeTransport.DuplicateTagError}. Transports (Tauri's
- * `makeTauriTransport`) implement it; the React-flavored hooks
+ * {@link BridgeTransport.DuplicateTagError}. `PageDispatcher.make`
+ * implements it and page transports (Tauri's `makeTauriTransport`) hand
+ * it out; the React-flavored hooks
  * (`makeUseSliceRegister`, the context) live in the React adapter.
  */
 interface HandlerCoordinator {

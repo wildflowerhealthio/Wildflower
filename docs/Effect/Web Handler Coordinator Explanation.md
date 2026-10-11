@@ -4,7 +4,7 @@ The page-side bridge transport is built **once at boot**, outside React: the Tau
 
 ## The mechanism
 
-The transport exposes a `HandlerCoordinator` (the contract lives in `effect-messaging-core`) that holds one inbound handler record per bridge **name**. `makeTauriTransport` implements it over a name-keyed map that its dispatch reads **at dispatch time**, so a `register` or `unregister` takes effect on the next inbound message without re-listening.
+The transport exposes a `HandlerCoordinator` (the contract lives in `effect-messaging-core`) that holds one inbound handler record per bridge **name**. `effect-messaging-core`'s `PageDispatcher.make` implements it over a name-keyed map that its dispatch reads **at dispatch time**, and `makeTauriTransport` hands that coordinator out, so a `register` or `unregister` takes effect on the next inbound message without re-listening.
 
 A React context (`HandlerCoordinatorContext`, provided in `AppRootTree`) surfaces the coordinator. Each slice binds a typed accessor for its own bridge with `makeUseSliceRegister(bridge)` and `Effect.runFork`s its `register` / `unregister` Effects from its own lifecycle:
 
@@ -33,5 +33,6 @@ The page-side transport is intentionally never torn down: its `BRIDGE_EVENT` lis
 
 - [Effect Patterns Reference](./Patterns%20Reference.md)
 - [Bridge Explanation](../Messaging/Bridge%20Explanation.md)
-- `global/effect-messaging/effect-messaging-tauri-js/src/tauri-transport.ts` — `makeTauriTransport` and its coordinator
+- `global/effect-messaging/effect-messaging-core/src/page-dispatcher.ts` — `PageDispatcher.make` and its coordinator
+- `global/effect-messaging/effect-messaging-tauri-js/src/tauri-transport.ts` — `makeTauriTransport`, the Tauri glue around it
 - `global/effect-messaging/effect-messaging-react/src/handler-coordinator.ts` — `HandlerCoordinatorContext`, `useHandlerCoordinator`, `makeUseSliceRegister`
