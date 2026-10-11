@@ -188,12 +188,23 @@ jobs:
         # set and otherwise with the newest NDK under the SDK, so pin the one
         # the CLI installs itself when it finds none (`NDK_VERSION` in
         # tauri-cli's mobile/android/mod.rs).
+        #
+        # sdkmanager can exit 0 having installed nothing — a licence prompt
+        # left unanswered on stdin, for one — so it is fed `yes` and the
+        # directory is checked afterwards, with its output shown if missing.
         env:
           NDK_VERSION: 29.0.13846066
         run: |
           set -euo pipefail
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
-          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          ndk_home="$ANDROID_HOME/ndk/$NDK_VERSION"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" \
+            < <(yes) > "$RUNNER_TEMP/sdkmanager.log" 2>&1 || true
+          if [[ ! -d "$ndk_home" ]]; then
+            cat "$RUNNER_TEMP/sdkmanager.log"
+            echo "::error::sdkmanager did not install NDK $NDK_VERSION at $ndk_home (its output is above)."
+            exit 1
+          fi
+          echo "NDK_HOME=$ndk_home" >> "$GITHUB_ENV"
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2

@@ -110,3 +110,21 @@ app_record_verdict() {
   done <<< "$found"
   echo absent
 }
+
+# Reads the certificate's status out of `openssl ocsp` output: the line
+# "<cert file>: good", "…: revoked" or "…: unknown". Anything else — no
+# response, a responder error — is `unknown`, and is not a reason to fail: see
+# "A revoked certificate passes every local check" in docs/Rust/Apple Release
+# Signing Explanation.md.
+#
+# Echoes good | revoked | unknown.
+ocsp_verdict() {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      *": good") echo good; return ;;
+      *": revoked") echo revoked; return ;;
+    esac
+  done <<< "$1"
+  echo unknown
+}

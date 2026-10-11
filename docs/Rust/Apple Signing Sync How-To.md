@@ -50,6 +50,8 @@ Then press Enter, or re-run the script if it was not run from a terminal. Later 
 
 **At the certificate cap.** When Apple refuses a new certificate, the script lists the team's existing certificates of that kind with their ids and expiry dates. It never revokes one: revoke the one you no longer need in the portal, then re-run.
 
+**After a certificate is revoked.** The preflights ask Apple whether each certificate is revoked, and the release fails before the build when one is. The script skips a revoked certificate and makes a new one. Delete that kind's key from the signing folder first (`distribution.key.pem`, `mac-installer.key.pem` or `developer-id.key.pem`), so the replacement does not reuse a key Apple may consider compromised. Then re-run for every channel that uses it: Apple Distribution signs both `ios` and `macos-appstore`.
+
 **App ID without macOS.** A Mac App Store profile needs the App ID to cover macOS. If the script reports the App ID as registered for `IOS` only, add macOS to it under Certificates, Identifiers & Profiles → Identifiers and re-run.
 
 ## After the first release on the environments

@@ -212,7 +212,8 @@ public_key_digest() {
 #   certificates <response> <types>     id, type, expiry epoch, expiry date,
 #                                       name and base64 DER per certificate of the
 #                                       comma-separated types, longest-lived
-#                                       first, tab-separated
+#                                       first, tab-separated;
+#                                       revoked ones (`activated: false`) left out
 #   app-id <response> <identifier> <platforms>
 #                                       `found <id>`, `missing`, or
 #                                       `wrong-platform <platforms>`
@@ -264,6 +265,10 @@ if command == 'certificates':
     for cert in load(args[0]).get('data', []):
         attributes = cert['attributes']
         if attributes.get('certificateType') not in wanted:
+            continue
+        # A revoked certificate can still be listed; signing with it passes
+        # every local check and fails only at upload.
+        if attributes.get('activated') is False:
             continue
         expires, date = epoch(attributes['expirationDate'])
         rows.append((expires, cert['id'], attributes['certificateType'], date,

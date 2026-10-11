@@ -209,3 +209,19 @@ describe('plist_keypath round-trip', () => {
     )
   })
 })
+
+describe('ocsp_verdict', () => {
+  it.each([
+    ['/tmp/x/IOS_CERTIFICATE.leaf.pem: good\n\tThis Update: Oct 10 21:00:00 2026 GMT', 'good'],
+    [
+      'Response verify OK\n/tmp/x/leaf.pem: revoked\n\tThis Update: Oct 10 2026\n\tRevocation Time: Oct 10 2026',
+      'revoked',
+    ],
+    ['/tmp/x/leaf.pem: unknown\n\tThis Update: Oct 10 2026', 'unknown'],
+    // No answer at all reads as unknown, which the preflight only warns on.
+    ['Error querying OCSP responder\n40A7:error:connect:Connection refused', 'unknown'],
+    ['', 'unknown'],
+  ])('reads %j as %s', (response, expected) => {
+    expect(callHelper('ocsp_verdict', response)).toBe(expected)
+  })
+})
