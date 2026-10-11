@@ -1,3 +1,4 @@
+import { globSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -116,5 +117,18 @@ describe('test-shards / the workspace', () => {
     expect(shards.map((s) => s.name)).toEqual(
       expect.arrayContaining(['global', 'scripts', 'slices 1/2', 'slices 2/2', 'apps/relay'])
     )
+  }, 60_000)
+
+  it('puts every test file in the repo under some Vitest project', async () => {
+    const projects = await Effect.runPromise(loadVitestProjects(repoRoot))
+    const testFiles = globSync('**/*.{test,spec}.{ts,tsx,js,jsx,mts,mjs,cts,cjs}', {
+      cwd: repoRoot,
+      exclude: (path) => /(^|\/)(node_modules|dist|target)$/.test(path),
+    })
+    // A package missing from the root `test.projects` list never runs.
+    const unowned = testFiles.filter(
+      (file) => !projects.some((project) => file.startsWith(`${project.root}/`))
+    )
+    expect(unowned).toEqual([])
   }, 60_000)
 })
