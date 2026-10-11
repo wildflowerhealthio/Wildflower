@@ -103,8 +103,9 @@ changing how servers run or what the host notifies about them.
   Edit, which opens the server's page, kept current by the `server-status`
   event too: its domain with Copy, its status badge, when its run started, the
   run-policy field and Launch, over three tabs in component state. Status holds the
-  host's last check of its connection, with its tunnel's connection to the
-  relay while a run reports it (a failure once the relay refused the
+  host's last check of its connection (said to be from before, once the
+  tunnel has dropped or been refused since), with its tunnel's connection to
+  the relay while a run reports it (a failure once the relay refused the
   tunnel), or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
   itself, with Refresh; its launcher, with Reset to the default launcher; and

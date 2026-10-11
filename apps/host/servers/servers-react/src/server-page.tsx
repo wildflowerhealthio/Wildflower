@@ -146,7 +146,7 @@ const StatusHero = ({
   readonly server: ListedServer.Type
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
-  const status = statusSummary(server)
+  const status = statusSummary(server.status)
   const [copyOutcome, setCopyOutcome] = useState<CopyOutcome>('idle')
   const copyDomain = async (): Promise<void> => {
     try {
@@ -197,6 +197,11 @@ const StatusHero = ({
  * What the Connection row says: the host's own check of the server's
  * `/health` through its public origin while a run is in progress, or how
  * its latest run stopped.
+ *
+ * @remarks
+ * The host checks the health only until it first answers, so once the
+ * tunnel's connection to the relay has dropped or been refused, a
+ * `reachable` health is from before then, and says so.
  */
 const connectionText = (status: ServerStatus.Type): string => {
   if (status.runState === 'stopped') {
@@ -205,12 +210,17 @@ const connectionText = (status: ServerStatus.Type): string => {
       Option.getOrElse(() => "It hasn't run yet.")
     )
   }
+  const relayConnectionChanged = Option.exists(
+    ServerStatus.tunnelOf(status),
+    (tunnel) => tunnel.kind !== 'connecting' && tunnel.kind !== 'connected'
+  )
   return ServerStatus.healthOf(status).pipe(
-    Option.map((health) =>
-      health.kind === 'reachable'
-        ? `Reachable: its /health answers ${health.status}.`
-        : `Not reachable yet: ${health.error}`
-    ),
+    Option.map((health) => {
+      if (health.kind === 'unreachable') return `Not reachable yet: ${health.error}`
+      return relayConnectionChanged
+        ? `Reachable before its relay connection changed: its /health answered ${health.status}.`
+        : `Reachable: its /health answers ${health.status}.`
+    }),
     Option.getOrElse(() =>
       status.runState === 'starting' ? 'Starting.' : 'Checking it can be reached.'
     )

@@ -28,7 +28,7 @@ const ServerCard = ({
   readonly server: ListedServer.Type
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
-  const status = statusSummary(server)
+  const status = statusSummary(server.status)
   return (
     <li className={styles['server-card']} data-tone={status.tone} aria-label={server.domain}>
       <div className={styles['server-card__title']}>

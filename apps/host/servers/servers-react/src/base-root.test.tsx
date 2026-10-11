@@ -423,7 +423,7 @@ describe('the server list', () => {
     ['runningUnreachable', 'Running, not reachable yet', 'warning'],
     ['runningReconnecting', 'Running, reconnecting to the relay', 'warning'],
     ['runningTokenRejected', "The relay rejected this server's tunnel token", 'danger'],
-    ['runningTunnelUnknown', 'The relay has no tunnel named ruth', 'danger'],
+    ['runningTunnelUnknown', 'The relay has no tunnel for this server', 'danger'],
     ['neverRun', 'Stopped', 'neutral'],
     ['stoppedWithAnError', 'Stopped', 'danger'],
   ] as const)(
@@ -454,7 +454,7 @@ describe('the server list', () => {
     ],
     [
       'runningTunnelUnknown',
-      'The relay has no tunnel named ruth. It may have been deleted. Check the tunnel name, or ask whoever runs the relay.',
+      'The relay has no tunnel for this server. The tunnel ruth may have been deleted. Check the tunnel name, or ask whoever runs the relay.',
     ],
     ['neverRun', null],
     ['stoppedWithAnError', null],
@@ -469,7 +469,7 @@ describe('the server list', () => {
     const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
     const notes = within(ruth)
       .queryAllByText(
-        /^(Running|Starting|Stopped|The relay rejected this|The relay has no tunnel named)/,
+        /^(Running|Starting|Stopped|The relay rejected this|The relay has no tunnel for)/,
         { selector: 'p' }
       )
       .map((paragraph) => paragraph.textContent)
@@ -1678,6 +1678,35 @@ describe('the server page', () => {
       const row = within(sectionTitled('Connection')).getByText('Relay connection').closest('li')
       expect(row?.textContent).toContain(text)
       expect(/tone-danger/.test(row?.className ?? '')).toBe(failure)
+    }
+  )
+
+  it.each([
+    ['runningAndReachable', 'Reachable: its /health answers pass.'],
+    [
+      'runningReconnecting',
+      'Reachable before its relay connection changed: its /health answered pass.',
+    ],
+    [
+      'runningTokenRejected',
+      'Reachable before its relay connection changed: its /health answered pass.',
+    ],
+    [
+      'runningTunnelUnknown',
+      'Reachable before its relay connection changed: its /health answered pass.',
+    ],
+  ] as const)(
+    'should show the connection of a %s status as "%s", the health predating a dropped or refused tunnel',
+    async (statusName, text) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+      })
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Connection' })).toBeDefined()
+      expect(within(sectionTitled('Connection')).getByText(text)).toBeDefined()
     }
   )
 

@@ -103,7 +103,10 @@ pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchE
                 domain: domain.clone(),
             })
         }
-        _ => {}
+        Some(
+            TunnelState::Connecting | TunnelState::Connected | TunnelState::Reconnecting { .. },
+        )
+        | None => {}
     }
     match detail.health.as_ref().ok_or_else(not_yet_probed)? {
         ServerHealth::Unreachable { error } => {

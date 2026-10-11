@@ -39,22 +39,19 @@ const runningStatus = (health: ServerStatus.Health): StatusSummary =>
     : { tone: 'warning', label: 'Running, not reachable yet' }
 
 /**
- * The status of a running server whose tunnel is named `tunnelName`, by its
- * tunnel's state, when that says more than its health: the relay refused the
- * tunnel, or the tunnel is dialing it again. None while the tunnel is
- * connecting or connected, which its health says.
+ * The status of a running server by its tunnel's state, when that says more
+ * than its health: the relay refused the tunnel, or the tunnel is dialing it
+ * again. None while the tunnel is connecting or connected, which its health
+ * says.
  */
-const tunnelStatus = (
-  tunnel: ServerStatus.TunnelState,
-  tunnelName: string
-): Option.Option<StatusSummary> =>
+const tunnelStatus = (tunnel: ServerStatus.TunnelState): Option.Option<StatusSummary> =>
   Match.value(tunnel).pipe(
     Match.withReturnType<Option.Option<StatusSummary>>(),
     Match.when({ kind: 'tokenRejected' }, () =>
       Option.some({ tone: 'danger', label: "The relay rejected this server's tunnel token" })
     ),
     Match.when({ kind: 'tunnelUnknown' }, () =>
-      Option.some({ tone: 'danger', label: `The relay has no tunnel named ${tunnelName}` })
+      Option.some({ tone: 'danger', label: 'The relay has no tunnel for this server' })
     ),
     Match.when({ kind: 'reconnecting' }, () =>
       Option.some({ tone: 'warning', label: 'Running, reconnecting to the relay' })
@@ -68,21 +65,21 @@ const runningTunnelOf = (status: ServerStatus.Type): Option.Option<ServerStatus.
   status.runState === 'running' ? ServerStatus.tunnelOf(status) : Option.none()
 
 /**
- * The status of `server`, merged from its run state, its tunnel's state and
- * its health: a running server is a success only once it answers `/health`,
- * one whose relay refused its tunnel is in danger, and so is a stopped server
- * whose latest run failed.
+ * The status, merged from the run state, the tunnel's state and the health:
+ * a running server is a success only once it answers `/health`, one whose
+ * relay refused its tunnel is in danger, and so is a stopped server whose
+ * latest run failed.
  *
  * @remarks
  * A refused or reconnecting tunnel takes priority over the health: the host
  * checks the health only until it first answers, so a reachable health may
  * predate it.
  */
-const statusSummary = ({ status, tunnelName }: ListedServer.Type): StatusSummary => {
+const statusSummary = (status: ServerStatus.Type): StatusSummary => {
   if (status.runState === 'starting') return { tone: 'info', label: 'Starting' }
   if (status.runState === 'running') {
     return runningTunnelOf(status).pipe(
-      Option.flatMap((tunnel) => tunnelStatus(tunnel, tunnelName)),
+      Option.flatMap(tunnelStatus),
       Option.orElse(() => ServerStatus.healthOf(status).pipe(Option.map(runningStatus))),
       Option.getOrElse((): StatusSummary => ({
         tone: 'info',
@@ -96,11 +93,17 @@ const statusSummary = ({ status, tunnelName }: ListedServer.Type): StatusSummary
   return { tone: failed ? 'danger' : 'neutral', label: 'Stopped' }
 }
 
-/** What to do about a relay's refusal of a server's tunnel, by the refusal. */
-const TUNNEL_REFUSAL_NOTE: Readonly<Record<'tokenRejected' | 'tunnelUnknown', string>> = {
-  tokenRejected: "Enter a new token on the Relay tab of the server's page.",
-  tunnelUnknown: 'It may have been deleted. Check the tunnel name, or ask whoever runs the relay.',
-}
+/**
+ * What a relay's refusal of a server's tunnel, named `tunnelName`, says
+ * beyond its status, and what to do about it, by the refusal.
+ */
+const tunnelRefusalNote = (
+  refusal: 'tokenRejected' | 'tunnelUnknown',
+  tunnelName: string
+): string =>
+  refusal === 'tokenRejected'
+    ? "Enter a new token on the Relay tab of the server's page."
+    : `The tunnel ${tunnelName} may have been deleted. Check the tunnel name, or ask whoever runs the relay.`
 
 /**
  * What `server`'s status says beyond the run state: what to do about a
@@ -111,11 +114,11 @@ const TUNNEL_REFUSAL_NOTE: Readonly<Record<'tokenRejected' | 'tunnelUnknown', st
 const statusNote = (server: ListedServer.Type): Option.Option<string> => {
   const { status } = server
   if (status.runState === 'stopped') return Option.none()
-  const { label } = statusSummary(server)
+  const { label } = statusSummary(status)
   const tunnel = Option.getOrNull(runningTunnelOf(status))
   if (tunnel?.kind === 'reconnecting') return Option.some(`${label}: ${tunnel.error}`)
   if (tunnel?.kind === 'tokenRejected' || tunnel?.kind === 'tunnelUnknown') {
-    return Option.some(`${label}. ${TUNNEL_REFUSAL_NOTE[tunnel.kind]}`)
+    return Option.some(`${label}. ${tunnelRefusalNote(tunnel.kind, server.tunnelName)}`)
   }
   const health = Option.getOrNull(ServerStatus.healthOf(status))
   if (health?.kind === 'reachable' && health.status === 'pass') return Option.none()

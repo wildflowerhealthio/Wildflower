@@ -84,10 +84,12 @@ impl Unit for ServerUnit {
                     server.consent_decider_for_host().clone(),
                 ),
                 launch_minter: ServerLaunchMinter::new(server.launch_context_minter()),
-                server_health_rx,
-                tunnel_state_rx,
-                certificate_rx,
-                pending_consent_rx,
+                channels: DetailChannels::new(
+                    server_health_rx,
+                    tunnel_state_rx,
+                    certificate_rx,
+                    pending_consent_rx,
+                ),
                 host_pending_consent_tx,
             },
             ctx.clone(),
@@ -103,6 +105,18 @@ struct DetailSources {
     consent_decider: ServerConsentDecider,
     /// The run's launch minter, the same in every detail the run sets.
     launch_minter: ServerLaunchMinter,
+    /// The channels the rest of the detail is read from.
+    channels: DetailChannels,
+    /// The host's channel each head is forwarded to.
+    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
+}
+
+/// The channels a run's detail is read from, each watched until its own
+/// sender drops, its last value staying in the detail: the reachability
+/// monitor drops its sender once it stops, and the tunnel daemon its own once
+/// the relay refuses the tunnel; the certificate's and the head's live as long
+/// as the server.
+struct DetailChannels {
     /// The run's reachability monitor's health.
     server_health_rx: watch::Receiver<Option<ServerHealth>>,
     /// The run's tunnel daemon's state.
@@ -111,8 +125,50 @@ struct DetailSources {
     certificate_rx: watch::Receiver<Option<CertificateState>>,
     /// The head of the run's gatekeeper's pending-consent queue.
     pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
-    /// The host's channel each head is forwarded to.
-    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
+    health_open: bool,
+    tunnel_open: bool,
+    certificate_open: bool,
+}
+
+impl DetailChannels {
+    fn new(
+        server_health_rx: watch::Receiver<Option<ServerHealth>>,
+        tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
+        certificate_rx: watch::Receiver<Option<CertificateState>>,
+        pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    ) -> Self {
+        Self {
+            server_health_rx,
+            tunnel_state_rx,
+            certificate_rx,
+            pending_consent_rx,
+            health_open: true,
+            tunnel_open: true,
+            certificate_open: true,
+        }
+    }
+
+    /// Wait for the health, the tunnel state, the certificate state or the
+    /// head to change, or for the sender of one of the first three to drop,
+    /// after which that one is no longer watched. `false` once the head's
+    /// sender drops, which ends the run's report.
+    async fn changed(&mut self) -> bool {
+        tokio::select! {
+            changed = self.server_health_rx.changed(), if self.health_open => {
+                self.health_open = changed.is_ok();
+            }
+            changed = self.tunnel_state_rx.changed(), if self.tunnel_open => {
+                self.tunnel_open = changed.is_ok();
+            }
+            changed = self.certificate_rx.changed(), if self.certificate_open => {
+                self.certificate_open = changed.is_ok();
+            }
+            changed = self.pending_consent_rx.changed() => {
+                return changed.is_ok();
+            }
+        }
+        true
+    }
 }
 
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
@@ -121,21 +177,15 @@ struct DetailSources {
 /// minter into the detail, now and each time the health, the tunnel state, the
 /// certificate state or the head changes. It also forwards each change of its
 /// head to the host's shared `active_pending_consent_tx`, which the legacy
-/// bridge reads until #965 deletes it. The task dies with the run's runtime, and `UnitRunner` clears
-/// the detail when the run ends.
+/// bridge reads until #965 deletes it. The task dies with the run's runtime,
+/// and `UnitRunner` clears the detail when the run ends.
 async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
-    // The monitor drops its sender once it stops, and the tunnel daemon its
-    // own once the relay refuses the tunnel; the certificate's and the head's
-    // live as long as the server. Each is watched until its own sender drops,
-    // and its last value stays in the detail.
-    let mut health_open = true;
-    let mut tunnel_open = true;
-    let mut certificate_open = true;
     // The head this run last forwarded. Only a change to the run's own head
     // is forwarded, so a wake for health never overwrites another run's head.
     let mut forwarded_head: Option<PendingConsentHead> = None;
     loop {
-        let pending_consent = sources.pending_consent_rx.borrow_and_update().clone();
+        let channels = &mut sources.channels;
+        let pending_consent = channels.pending_consent_rx.borrow_and_update().clone();
         if pending_consent != forwarded_head {
             sources
                 .host_pending_consent_tx
@@ -143,28 +193,87 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
             forwarded_head.clone_from(&pending_consent);
         }
         ctx.set_detail(ServerDetail {
-            health: sources.server_health_rx.borrow_and_update().clone(),
-            tunnel: sources.tunnel_state_rx.borrow_and_update().clone(),
-            certificate: sources.certificate_rx.borrow_and_update().clone(),
+            health: channels.server_health_rx.borrow_and_update().clone(),
+            tunnel: channels.tunnel_state_rx.borrow_and_update().clone(),
+            certificate: channels.certificate_rx.borrow_and_update().clone(),
             pending_consent,
             consent_decider: Some(sources.consent_decider.clone()),
             launch_minter: Some(sources.launch_minter.clone()),
         });
-        tokio::select! {
-            changed = sources.server_health_rx.changed(), if health_open => {
-                health_open = changed.is_ok();
-            }
-            changed = sources.tunnel_state_rx.changed(), if tunnel_open => {
-                tunnel_open = changed.is_ok();
-            }
-            changed = sources.certificate_rx.changed(), if certificate_open => {
-                certificate_open = changed.is_ok();
-            }
-            changed = sources.pending_consent_rx.changed() => {
-                if changed.is_err() {
-                    return;
-                }
-            }
+        if !channels.changed().await {
+            return;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::time::timeout;
+    use wildflowerhealthio_shared_structures::health_check::HealthReport;
+
+    use super::*;
+
+    /// Long enough for a wake that is due to come; a wake that hasn't by
+    /// then isn't coming.
+    const WAKE: Duration = Duration::from_millis(100);
+
+    #[tokio::test]
+    async fn the_tunnel_state_is_watched_after_the_health_closes_and_until_the_head_closes() {
+        // Arrange
+        let (server_health_tx, server_health_rx) = watch::channel(None);
+        let (tunnel_state_tx, tunnel_state_rx) = watch::channel(None);
+        let (certificate_tx, certificate_rx) = watch::channel(None);
+        let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
+        let mut channels = DetailChannels::new(
+            server_health_rx,
+            tunnel_state_rx,
+            certificate_rx,
+            pending_consent_rx,
+        );
+
+        // Act: the monitor answers once and stops.
+        server_health_tx.send_replace(Some(ServerHealth::Reachable(HealthReport::pass())));
+        drop(server_health_tx);
+
+        // Assert: the answer wakes the report, and the close once more.
+        assert!(timeout(WAKE, channels.changed()).await.unwrap());
+        assert!(channels.server_health_rx.borrow_and_update().is_some());
+        assert!(timeout(WAKE, channels.changed()).await.unwrap());
+        assert!(
+            timeout(WAKE, channels.changed()).await.is_err(),
+            "a closed health wakes the report no more"
+        );
+
+        // Act: the tunnel drops, then the relay refuses it, and the daemon stops.
+        tunnel_state_tx.send_replace(Some(TunnelState::Reconnecting {
+            error: "the relay closed the connection".to_owned(),
+        }));
+
+        // Assert: each tunnel state still reaches the detail.
+        assert!(timeout(WAKE, channels.changed()).await.unwrap());
+        assert!(matches!(
+            *channels.tunnel_state_rx.borrow_and_update(),
+            Some(TunnelState::Reconnecting { .. })
+        ));
+        tunnel_state_tx.send_replace(Some(TunnelState::TokenRejected));
+        drop(tunnel_state_tx);
+        assert!(timeout(WAKE, channels.changed()).await.unwrap());
+        assert_eq!(
+            *channels.tunnel_state_rx.borrow_and_update(),
+            Some(TunnelState::TokenRejected)
+        );
+        assert!(timeout(WAKE, channels.changed()).await.unwrap());
+        assert!(
+            timeout(WAKE, channels.changed()).await.is_err(),
+            "with the health and the tunnel closed, the report waits"
+        );
+
+        // Act / Assert: the certificate still wakes it, and the head's close ends it.
+        certificate_tx.send_replace(None);
+        assert!(timeout(WAKE, channels.changed()).await.unwrap());
+        drop(pending_consent_tx);
+        assert!(!timeout(WAKE, channels.changed()).await.unwrap());
     }
 }
