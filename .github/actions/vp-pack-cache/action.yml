@@ -1,27 +1,55 @@
 name: Cache vp pack outputs
 description: >-
-  Restores, and at job end saves, the `vp run pack` outputs under the one key
-  ci-typescript.yml reads and ts-cache-warm.yml writes. The paths live only here
-  because actions/cache shares entries only between identical path lists; see
-  docs/TypeScript/CI Build Cache Explanation.md.
+  Restores the `vp run pack` outputs under the one key ci-typescript.yml reads
+  and ts-cache-warm.yml writes, and at job end saves them unless `save` is
+  false. The paths live only here because actions/cache shares entries only
+  between identical path lists; see docs/TypeScript/CI Build Cache
+  Explanation.md.
+
+inputs:
+  save:
+    description: >-
+      Whether to save the entry at job end. The key is write-once per commit,
+      so of the jobs that pack the same commit only one saves; the rest restore
+      only, instead of racing for the key and each logging a failed save.
+    default: 'true'
 
 runs:
   using: composite
   steps:
-    - uses: actions/cache@v6
+    # The path list, written once for both steps below: a restore matches only
+    # entries saved with exactly the same paths.
+    - id: paths
+      shell: bash
+      run: |
+        cat >> "$GITHUB_OUTPUT" <<'EOF'
+        paths<<PATHS
+        node_modules/.vite/task-cache
+        apps/*/dist
+        apps/health-viewer/*/dist
+        apps/host/*/dist
+        apps/host/servers/*/dist
+        apps/medications/*/dist
+        apps/relay/*/dist
+        apps/synthetic-data/*/dist
+        apps/wildflower-site/*/dist
+        global/**/dist
+        slices/**/dist
+        PATHS
+        EOF
+
+    - if: inputs.save == 'true'
+      uses: actions/cache@v6
       with:
-        path: |
-          node_modules/.vite/task-cache
-          apps/*/dist
-          apps/health-viewer/*/dist
-          apps/host/*/dist
-          apps/host/servers/*/dist
-          apps/medications/*/dist
-          apps/relay/*/dist
-          apps/synthetic-data/*/dist
-          apps/wildflower-site/*/dist
-          global/**/dist
-          slices/**/dist
+        path: ${{ steps.paths.outputs.paths }}
+        key: vp-pack-${{ runner.os }}-${{ github.sha }}
+        restore-keys: |
+          vp-pack-${{ runner.os }}-
+
+    - if: inputs.save != 'true'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.paths.outputs.paths }}
         key: vp-pack-${{ runner.os }}-${{ github.sha }}
         restore-keys: |
           vp-pack-${{ runner.os }}-
