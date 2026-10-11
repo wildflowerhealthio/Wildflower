@@ -92,10 +92,13 @@ function siteRootFor(section: Exclude<SectionId, 'marketing'>, sectionBaseUrl: s
  * `apps/wildflower-site/marketing-site-web` (`vite.config.ts`) and the
  * `requiredFiles` of `apps/wildflower-site/wildflower-site-web/src/assembly.ts`.
  * Google Play and the App Store link to the privacy policy and the deletion
- * page for Wildflower Host, so their paths are a published contract.
+ * page for Wildflower Host, and Washington's My Health My Data Act wants the
+ * consumer health data policy linked from the homepage, so their paths are a
+ * published contract.
  */
 const POLICY_PATHS = {
   privacyPolicy: 'privacy-policy',
+  consumerHealthData: 'consumer-health-data',
   terms: 'terms',
   deletion: 'deletion',
 } as const
@@ -104,11 +107,12 @@ const POLICY_PATHS = {
 type PolicyId = keyof typeof POLICY_PATHS
 
 /** Every policy page, in the order the footer and the settings menus list them. */
-const POLICY_IDS: readonly PolicyId[] = ['privacyPolicy', 'terms', 'deletion']
+const POLICY_IDS: readonly PolicyId[] = ['privacyPolicy', 'consumerHealthData', 'terms', 'deletion']
 
 /** What each policy page is called where it is linked: the footer, the settings menus, the consent dialog. */
 const POLICY_LABELS: Readonly<Record<PolicyId, string>> = {
   privacyPolicy: 'Privacy policy',
+  consumerHealthData: 'Consumer health data',
   terms: 'Terms of use',
   deletion: 'Deleting your data',
 }

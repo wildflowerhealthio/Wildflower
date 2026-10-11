@@ -5,9 +5,8 @@ import layout from './layout.module.css'
 import styles from './policy-page.module.css'
 
 /**
- * The shell of the site's policy pages (`/privacy-policy/`, `/terms/`,
- * `/deletion/`): the
- * shared header and footer around one prose column with the page title and
+ * The shell of the site's policy pages (`/privacy-policy/`,
+ * `/consumer-health-data/`, `/terms/`, `/deletion/`): the shared header and footer around one prose column with the page title and
  * the date the text last changed.
  *
  * The pages live one directory below the homepage, so the header takes the

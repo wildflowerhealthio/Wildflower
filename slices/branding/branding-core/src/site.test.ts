@@ -176,6 +176,9 @@ describe('siteRootFor', () => {
 describe('policyUrl', () => {
   it('should resolve each policy page to a slash-terminated URL on the canonical site', () => {
     expect(policyUrl('privacyPolicy')).toBe('https://wildflowerhealth.io/privacy-policy/')
+    expect(policyUrl('consumerHealthData')).toBe(
+      'https://wildflowerhealth.io/consumer-health-data/'
+    )
     expect(policyUrl('terms')).toBe('https://wildflowerhealth.io/terms/')
     expect(policyUrl('deletion')).toBe('https://wildflowerhealth.io/deletion/')
   })

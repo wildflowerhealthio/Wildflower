@@ -26,9 +26,9 @@ const sliceSettingsItems: readonly SettingsItem[] = [
 ]
 
 /**
- * The Legal rows every entry ends on: the privacy policy, the terms of use and
- * the deletion page on the canonical site, opened in a new tab (the system
- * browser, inside Wildflower Host's webview). The app stores require the apps
+ * The Legal rows every entry ends on: the privacy policy, the consumer health
+ * data policy, the terms of use and the deletion page on the canonical site,
+ * opened in a new tab (the system browser, inside Wildflower Host's webview). The app stores require the apps
  * to link to the first and the last.
  */
 const legalSettingsItems: readonly SettingsItem[] = POLICY_IDS.map((id) => ({

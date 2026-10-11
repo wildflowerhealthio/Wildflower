@@ -43,11 +43,12 @@ function Terms(): JSX.Element {
 
       <PolicySection title="Not medical advice">
         <p>
-          Nothing in Wildflower is medical advice, diagnosis or treatment, and the apps are not a
-          medical device. They may show records late, incompletely or wrongly, and they may be
-          unavailable. Don&rsquo;t make decisions about your health on what they show without
-          checking with a clinician, and never rely on them in an emergency. In an emergency, call
-          your local emergency number.
+          Wildflower does not provide medical advice, diagnosis or treatment, and the apps are not a
+          medical device. The information they show is provided for informational purposes only.
+          They may show records late, incompletely or wrongly, and they may be unavailable.
+          Don&rsquo;t make decisions about your health on what they show without checking with a
+          clinician, and never rely on them in an emergency. In an emergency, call your local
+          emergency number.
         </p>
       </PolicySection>
 

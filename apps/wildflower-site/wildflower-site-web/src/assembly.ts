@@ -37,11 +37,12 @@ const siteSections: readonly SiteSection[] = [
     destPath: SECTION_PATHS.marketing,
     // `CNAME` (copied from the marketing site's `public/`) has to land at the
     // artifact root or GitHub Pages drops the custom-domain setting on deploy.
-    // The policy pages are app-store requirements, so their entries are too.
+    // The policy pages are app-store and legal requirements, so their entries are too.
     requiredFiles: [
       'index.html',
       'CNAME',
       'privacy-policy/index.html',
+      'consumer-health-data/index.html',
       'terms/index.html',
       'deletion/index.html',
     ],

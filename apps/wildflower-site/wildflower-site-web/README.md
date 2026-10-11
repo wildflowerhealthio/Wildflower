@@ -4,22 +4,23 @@ Assembles everything published at <https://wildflowerhealth.io> into a single
 static artifact. It owns no UI of its own: each section is built by the package
 that owns it, and this package places those outputs at their public URLs.
 
-| URL                 | Source package                                                        |
-| ------------------- | --------------------------------------------------------------------- |
-| `/`                 | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
-| `/privacy-policy`   | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
-| `/terms`            | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
-| `/deletion`         | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
-| `/medications`      | `medications-web` (`apps/medications/medications-web`)                |
-| `/importer`         | `importer-web` (`apps/importer-web`)                                  |
-| `/server-docs`      | `server-docs-web` (`apps/server-docs-web`)                            |
-| `/ohif-viewer`      | `ohif-viewer-web` (`apps/ohif-viewer-web`)                            |
-| `/fhir-sync-pebble` | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble/fhir-sync-pebble-web`) |
-| `/health-viewer`    | `health-viewer-web` (`apps/health-viewer/health-viewer-web`)          |
-| `/synthetic-data`   | `synthetic-data-web` (`apps/synthetic-data/synthetic-data-web`)       |
-| `/lifting`          | `lifting-web` (`apps/lifting/lifting-web`)                            |
-| `/watch-lifts`      | `watch-lifts-web` (`apps/watch-lifts/watch-lifts-web`)                |
-| `/launcher`         | `launcher-web` (`apps/launcher/launcher-web`, `dist-web`)             |
+| URL                     | Source package                                                        |
+| ----------------------- | --------------------------------------------------------------------- |
+| `/`                     | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
+| `/privacy-policy`       | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
+| `/consumer-health-data` | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
+| `/terms`                | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
+| `/deletion`             | `marketing-site-web` (`apps/wildflower-site/marketing-site-web`)      |
+| `/medications`          | `medications-web` (`apps/medications/medications-web`)                |
+| `/importer`             | `importer-web` (`apps/importer-web`)                                  |
+| `/server-docs`          | `server-docs-web` (`apps/server-docs-web`)                            |
+| `/ohif-viewer`          | `ohif-viewer-web` (`apps/ohif-viewer-web`)                            |
+| `/fhir-sync-pebble`     | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble/fhir-sync-pebble-web`) |
+| `/health-viewer`        | `health-viewer-web` (`apps/health-viewer/health-viewer-web`)          |
+| `/synthetic-data`       | `synthetic-data-web` (`apps/synthetic-data/synthetic-data-web`)       |
+| `/lifting`              | `lifting-web` (`apps/lifting/lifting-web`)                            |
+| `/watch-lifts`          | `watch-lifts-web` (`apps/watch-lifts/watch-lifts-web`)                |
+| `/launcher`             | `launcher-web` (`apps/launcher/launcher-web`, `dist-web`)             |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 

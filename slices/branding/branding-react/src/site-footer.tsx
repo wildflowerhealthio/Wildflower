@@ -9,8 +9,9 @@ const year = new Date().getFullYear()
  * The footer, shared by the marketing homepage and each app's standalone
  * landing page: the "not a company" paragraph, the plain contact line, and a
  * mono stamp. No link columns, no social icons — the page ends the way it
- * speaks, except for one quiet row of the policy pages (privacy, terms,
- * deletion): the app stores require the apps to link to them, and every app's
+ * speaks, except for one quiet row of the policy pages (privacy, consumer
+ * health data, terms, deletion): the app stores and Washington's health data
+ * law require the apps and the homepage to link to them, and every app's
  * landing page ends in this footer. `id="note"` is the anchor target the
  * marketing homepage's "About" references resolve to.
  */

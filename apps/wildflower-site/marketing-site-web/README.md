@@ -32,9 +32,10 @@ vp build    # production build to dist/
   `built`, `possible-today`, `asks`, `dev-tools`) plus the page's own chrome
   (`site-header`, `site-footer`) and shared pieces (`app-row`, `launcher`,
   `layout.module.css`). Each `.tsx` pairs with a `*.module.css`.
-- `privacy-policy/index.html`, `terms/index.html`, `deletion/index.html` — the
-  three policy pages, built as extra Vite entries (`vite.config.ts`) so they
-  are served at `/privacy-policy/`, `/terms/` and `/deletion/` (the paths in
+- `privacy-policy/index.html`, `consumer-health-data/index.html`,
+  `terms/index.html`, `deletion/index.html` — the four policy pages, built as
+  extra Vite entries (`vite.config.ts`) so they are served at
+  `/privacy-policy/`, `/consumer-health-data/`, `/terms/` and `/deletion/` (the paths in
   `branding-core`'s `POLICY_PATHS`, which the footer, the settings menus and
   the consent dialog link to). Their entry modules (`src/*-main.tsx`) render
   `src/pages/*` inside `components/policy-page.tsx`, which wraps the shared

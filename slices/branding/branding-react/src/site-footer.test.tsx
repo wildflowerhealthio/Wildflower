@@ -28,16 +28,21 @@ describe('SiteFooter', () => {
     expect(screen.getByText(`Wildflower Health Project · Ruth Marks · ${year}`)).toBeDefined()
   })
 
-  it('should link to the privacy policy, the terms of use and the deletion page on the canonical site', () => {
+  it('should link to the privacy policy, the consumer health data policy, the terms of use and the deletion page on the canonical site', () => {
     // Arrange / Act
     render(<SiteFooter />)
 
-    // Assert — the app stores require the apps to link to these pages, and
-    // every app's landing page ends in this footer.
+    // Assert — the app stores require the apps to link to these pages,
+    // Washington's My Health My Data Act wants the consumer health data
+    // policy linked from the homepage, and every app's landing page ends in
+    // this footer.
     const policies = screen.getByRole('list', { name: 'Policies' })
     expect(
       within(policies).getByRole('link', { name: 'Privacy policy' }).getAttribute('href')
     ).toBe('https://wildflowerhealth.io/privacy-policy/')
+    expect(
+      within(policies).getByRole('link', { name: 'Consumer health data' }).getAttribute('href')
+    ).toBe('https://wildflowerhealth.io/consumer-health-data/')
     expect(within(policies).getByRole('link', { name: 'Terms of use' }).getAttribute('href')).toBe(
       'https://wildflowerhealth.io/terms/'
     )
