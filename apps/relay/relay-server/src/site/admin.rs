@@ -362,8 +362,10 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let listed = json(&body);
         let listed = listed.as_array().unwrap();
-        assert_eq!(listed.len(), 3);
-        assert_eq!(listed[0]["name"], "alice");
+        let names: Vec<&str> = listed.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert_eq!(names.len(), 3);
+        assert!(names.is_sorted(), "{names:?}");
+        assert!(names.contains(&"alice"), "{names:?}");
         let bob = listed.iter().find(|t| t["name"] == "bob").unwrap();
         let created_at = bob["created_at"].as_i64().unwrap();
         assert_eq!(
