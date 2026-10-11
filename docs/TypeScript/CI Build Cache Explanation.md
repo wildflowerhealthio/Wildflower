@@ -11,13 +11,15 @@ The TypeScript jobs carry two independent caches:
 
 - **The pnpm store** — `voidzero-dev/setup-vp` with `cache: true`. Every
   workflow that installs dependencies sets it, so any of them running on `main`
-  saves the store into main's scope.
+  saves the store into main's scope. In `ci-typescript.yml` only the `check`
+  job saves it; the others set `cache-save: false` (see
+  [One saver per run](#one-saver-per-run)).
 - **The `vp run pack` outputs** — `.github/actions/vp-pack-cache`, a composite
   action wrapping `actions/cache`. It holds `node_modules/.vite/task-cache` (vp's
   task fingerprints and replayed output) together with every workspace `dist/`.
-  Typecheck and the test pass resolve cross-package imports against `dist/`, so
-  a task-cache hit is only useful alongside the `dist/` it claims to have built;
-  caching them as one entry keeps the two in step.
+  Typecheck resolves cross-package imports against `dist/`, so a task-cache hit
+  is only useful alongside the `dist/` it claims to have built; caching them as
+  one entry keeps the two in step.
 
 The pack cache key is:
 
@@ -30,6 +32,21 @@ SHA gives every run its own entry, and the prefix restore picks the newest entry
 the current ref can see. Build inputs are deliberately left out of the key: vp's
 task cache fingerprints them itself and rebuilds only the packages whose inputs
 moved, so restoring an older entry is still a partial hit rather than a miss.
+
+## One saver per run
+
+`ci-typescript.yml` packs the same commit in many jobs at once: `check` and
+every test shard each restore the newest entry and run `vp run pack`. They all
+compute the same `vp-pack-<os>-<sha>` key, and a key can be written only once,
+so if each tried to save, one would win and the rest would each log a failed
+save. Only `check` saves. The test shards call the composite action with
+`save: 'false'`, which swaps `actions/cache` for `actions/cache/restore`: the
+same paths and keys, no post-job save. The pnpm store follows the same rule
+through `setup-vp`'s `cache-save` input.
+
+A shard starts alongside `check`, not after it, so it never restores `check`'s
+entry from the same run. It restores main's (or the pull request's previous
+push's) and packs only what this push changed.
 
 ## Why the default branch has to warm the cache
 
@@ -55,7 +72,9 @@ replay.
 method), and a restore only matches entries of the same version. Two workflows
 that spell the paths even slightly differently never see each other's entries,
 whatever their keys say. The composite action holds the paths and key in one
-place, so the warm job and CI cannot drift apart. `ci.yml`'s `typescript` filter
+place, so the warm job and CI cannot drift apart. Inside the action the path
+list is written once and read by both its saving and its restore-only step, for
+the same reason. `ci.yml`'s `typescript` filter
 lists the action so a change to it runs CI.
 
 ## Eviction

@@ -11,31 +11,31 @@ permissions:
   checks: write
   pull-requests: write
 
+# Three jobs, all starting together except `test`, which waits only on the
+# small `shards` plan: `check` (format, lint, typecheck, knip, TSDoc), `shards`
+# (which Vitest projects each test runner gets), and `test`, one runner per
+# shard. The test pass is CPU-bound, so spreading it over many runners is what
+# shortens the run; each pays its own install + `vp run pack` for that. Draft
+# PRs are skipped.
 jobs:
-  # One job for lint + typecheck + test + TSDoc: it installs deps and builds the
-  # internal projects ONCE, then every check reuses that same checkout, pnpm
-  # store, and dist/ cache — instead of the previous two jobs (vp-check and
-  # vp-test) each paying for its own install + `vp run pack`. Draft PRs are
-  # skipped.
-  typescript:
-    name: Lint + Test
+  check:
+    name: Lint + Typecheck
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          # Need history + origin/main for `test:changed` to compute the merge-base.
-          fetch-depth: 0
 
+      # The one job that saves the pnpm store; `shards` and `test` restore only.
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1.21.1
         with:
           cache: true
 
       # Restores the newest `vp run pack` outputs this ref can see — main's,
-      # written by ts-cache-warm.yml, until this PR saves its own. Key, paths
-      # and why: docs/TypeScript/CI Build Cache Explanation.md.
+      # written by ts-cache-warm.yml, until this PR saves its own. This job is
+      # the one that saves this commit's entry; the test runners restore only.
+      # Key, paths and why: docs/TypeScript/CI Build Cache Explanation.md.
       - name: Cache vp pack outputs
         uses: ./.github/actions/vp-pack-cache
 
@@ -54,16 +54,111 @@ jobs:
       - name: Check imports are declared (knip)
         run: vp run lint:deps
 
-      - name: Run tests (reduced for unchanged on PR)
-        run: vp run test:changed
-
       # TSDoc lint is informational only (continue-on-error), so it runs last
-      # and never fails the job — it used to be a whole separate workflow
-      # (lint-tsdoc.yml) that paid for its own checkout + `vp install` on every
-      # PR. Folding it in here drops that duplicate setup entirely.
+      # and never fails the job. It shares this job's install rather than
+      # paying for its own checkout + `vp install`.
       - name: Enable ESLint problem matcher
         run: echo "::add-matcher::.github/eslint-problem-matcher.json"
 
       - name: Run ESLint with eslint-plugin-tsdoc (informational)
         run: vp run lint:comments
         continue-on-error: true
+
+  # Plans the test matrix: one shard per top-level area, derived from the
+  # Vitest projects the root vite.config.ts defines, so a new `apps/<folder>`
+  # gets its own runner with no edit here. Also computes the property-test risk
+  # map once for every shard. How shards are chosen: scripts/ci/test-shards.ts.
+  shards:
+    name: Plan test shards
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      risk-map: ${{ steps.risk-map.outputs.risk-map }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # Need history + origin/main for the risk map to compute the merge-base.
+          fetch-depth: 0
+
+      # Restores the pnpm store without saving it: `check` saves this run's,
+      # so the parallel jobs don't race for the same key.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          cache: true
+          cache-save: false
+
+      # The plan only loads the Vitest configs, so it needs no `vp run pack`.
+      - name: Install dependencies
+        run: vp install
+
+      # Assigned first, then written: a failure inside `echo "...$(...)"` would
+      # not fail the step.
+      - name: Plan test shards
+        id: plan
+        run: |
+          matrix=$(node scripts/ci/test-shards.ts)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+      # `{ <package>: <multiplier> }`: full fast-check runs for packages the PR
+      # can affect, a fifth for the rest. See docs/Testing/Property Testing
+      # Reference.md.
+      - name: Compute property-test risk map
+        id: risk-map
+        run: |
+          risk_map=$(node scripts/risk-map.ts)
+          echo "risk-map=$risk_map" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test (${{ matrix.name }})
+    needs: shards
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one failing area doesn't hide another's.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.shards.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Restores the pnpm store without saving it: `check` saves this run's,
+      # so the parallel jobs don't race for the same key.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          cache: true
+          cache-save: false
+
+      # Restore only: `check` saves this commit's entry, and the key is
+      # write-once.
+      - name: Cache vp pack outputs
+        uses: ./.github/actions/vp-pack-cache
+        with:
+          save: 'false'
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Build internal projects
+        run: vp run pack
+
+      # `--project` matches a Vitest project's name exactly, unlike a path
+      # filter, which is a substring match on file paths. A split area adds
+      # `--shard`, which divides the selected projects' test files.
+      - name: Run tests
+        env:
+          FC_RISK_MAP: ${{ needs.shards.outputs.risk-map }}
+          PROJECTS: ${{ toJSON(matrix.projects) }}
+          VITEST_SHARD: ${{ matrix.vitestShard }}
+        run: |
+          args=()
+          while IFS= read -r project; do
+            args+=(--project "$project")
+          done < <(jq -r '.[]' <<< "$PROJECTS")
+          if [[ -n $VITEST_SHARD ]]; then
+            args+=(--shard "$VITEST_SHARD")
+          fi
+          vp test run "${args[@]}"

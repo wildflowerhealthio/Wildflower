@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { execSync } from 'node:child_process'
-import { globSync, readFileSync, realpathSync } from 'node:fs'
+import { globSync, readFileSync } from 'node:fs'
 import { dirname, join, matchesGlob } from 'node:path'
-import { fileURLToPath } from 'node:url'
 // Emits a JSON map of `{ <pkgName>: <multiplier> }` for the kitchen-sink
 // `numRunsFor` helper to consume via the FC_RISK_MAP env var. Packages
 // reachable in the reverse workspace dep graph from a changed file get the
@@ -10,6 +9,8 @@ import { fileURLToPath } from 'node:url'
 // lockfile changes promote every package to HIGH.
 import { Console, Effect, Either, Option, pipe, Schema } from 'effect'
 import { parse as parseYaml } from 'yaml'
+
+import { isEntrypoint } from './entrypoint.ts'
 
 const HIGH = 1.0
 const LOW = 0.2
@@ -244,22 +245,7 @@ const main = Effect.gen(function* () {
   yield* Console.log(JSON.stringify(encodeRiskMap(map)))
 })
 
-/**
- * True when this module is the process entrypoint (`node scripts/risk-map.ts`),
- * false when imported — e.g. by the unit test, which must not run `main`'s git
- * queries or emit to stdout on import.
- */
-const runAsScript = (): boolean => {
-  const entry = process.argv[1]
-  if (entry === undefined) return false
-  try {
-    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))
-  } catch {
-    return false
-  }
-}
-
-if (runAsScript()) Effect.runSync(Effect.orDie(main))
+if (isEntrypoint(import.meta.url)) Effect.runSync(Effect.orDie(main))
 
 export type { WorkspaceGlobs }
 export { buildRiskMap, loadPackages, partitionWorkspaceGlobs, readWorkspaceGlobs }
