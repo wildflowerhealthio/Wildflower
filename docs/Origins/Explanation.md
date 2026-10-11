@@ -30,6 +30,8 @@ from the one router every slice's routes are composed into:
   headers. Its tunnel front, outside every layer but CORS, holds each request
   to the server's domain, the same host the SNI named (see
   [The tunnel front writes `Forwarded`](#the-tunnel-front-writes-forwarded)).
+  What the relay on that path can and can't see is the
+  [Relay Explanation](../Relay/Explanation.md).
 
 ## Two origins: loopback and served
 
@@ -228,6 +230,8 @@ restate the grammar.
   apps-side auth posture.
 - [Gatekeeper Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)
   — `iss` / `aud` / Owner / Client / SMART terms.
+- [Relay Explanation](../Relay/Explanation.md) — the relay between a visitor
+  and the tunnel listener, and what its operator is trusted with.
 
 [`origin_string`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
 [`GatekeeperConfig::server_origin`]: ../../apps/host/wildflower-server/gatekeeper-rust/src/config.rs

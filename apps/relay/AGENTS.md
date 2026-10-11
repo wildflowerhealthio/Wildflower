@@ -68,5 +68,9 @@ admin screen.
 - [Architecture / slice layering](../../slices/AGENTS.md)
 - [relay-admin-web AGENTS.md](./relay-admin-web/AGENTS.md) — the page
 - `relay-server/src/lib.rs` — the relay, its signed requests and admin API
+- [Deploying How-To](./docs/Deploying%20How-To.md) — running the relay for
+  many devices
+- [Relay Explanation](../../docs/Relay/Explanation.md) — what the relay's
+  operator can and can't see
 - [Testing Reference](../../docs/Testing/Testing%20Reference.md) — the
   cross-language fixture pattern

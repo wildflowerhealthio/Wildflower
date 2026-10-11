@@ -64,6 +64,10 @@ const RELAY_CHOICES = [
 /** The domain the Wildflower official relay serves its tunnels under. */
 const WILDFLOWER_RELAY_DOMAIN = 'relay.wildflowerhealth.io'
 
+/** The doc on what a relay can and can't see of the traffic it passes. */
+const RELAY_TRUST_MODEL_URL =
+  'https://github.com/wildflowerhealthio/Wildflower/blob/main/docs/Relay/Explanation.md'
+
 /**
  * The relay `entries` describe, each setting trimmed, or nothing while one
  * it needs is empty: a pin needs both its settings or neither, and a rathole
@@ -255,7 +259,10 @@ const RelayStep = ({
       <p className={`text-body-3 ${styles['add-server-page__note']}`}>
         Everything sent through the relay is encrypted end to end, between the app and your server,
         so the relay can't read your records. It can see which server is being reached, from where
-        and when. For maximum security, you can host your own relay.
+        and when. For maximum security, you can host your own relay.{' '}
+        <a href={RELAY_TRUST_MODEL_URL} target="_blank" rel="noreferrer">
+          What a relay can and can't see
+        </a>
       </p>
       <RadioGroup
         name="relay"

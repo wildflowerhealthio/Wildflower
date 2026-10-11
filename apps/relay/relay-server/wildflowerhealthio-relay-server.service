@@ -2,7 +2,10 @@
 # droplet).
 #
 # Install:
-#   1. Build and copy the binary:
+#   1. Build the admin page, which the binary embeds, then build and copy
+#      the binary:
+#        vp install
+#        vp run -F @wildflowerhealthio/relay-admin-web build
 #        cargo build --release --locked -p wildflowerhealthio-relay-server
 #        sudo install -D -m 0755 target/release/wildflowerhealthio-relay-server /opt/wildflower-relay/wildflowerhealthio-relay-server
 #      It lives off root's PATH because the deploy workflow's `deploy` user
