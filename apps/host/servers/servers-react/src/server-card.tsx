@@ -28,7 +28,7 @@ const ServerCard = ({
   readonly server: ListedServer.Type
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
-  const status = statusSummary(server.status)
+  const status = statusSummary(server)
   return (
     <li className={styles['server-card']} data-tone={status.tone} aria-label={server.domain}>
       <div className={styles['server-card__title']}>
@@ -43,7 +43,7 @@ const ServerCard = ({
         />
       </div>
       <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
-      {statusNote(server.status).pipe(
+      {statusNote(server).pipe(
         Option.map((note) => (
           <p key="status-note" className={`text-body-3 ${styles['server-card__note']}`}>
             {note}

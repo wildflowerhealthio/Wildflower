@@ -146,7 +146,7 @@ const StatusHero = ({
   readonly server: ListedServer.Type
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
-  const status = statusSummary(server.status)
+  const status = statusSummary(server)
   const [copyOutcome, setCopyOutcome] = useState<CopyOutcome>('idle')
   const copyDomain = async (): Promise<void> => {
     try {
@@ -216,6 +216,39 @@ const connectionText = (status: ServerStatus.Type): string => {
     )
   )
 }
+
+/**
+ * The Relay connection row, while a run in progress has reported its
+ * tunnel's state: where the tunnel's connection to the relay stands, a
+ * failure once the relay has refused the tunnel named `tunnelName`.
+ */
+const relayConnectionItems = ({ status, tunnelName }: ListedServer.Type): readonly ItemListItem[] =>
+  ServerStatus.tunnelOf(status).pipe(
+    Option.map((tunnel): ItemListItem => {
+      const item = { id: 'relay-connection', title: 'Relay connection' } as const
+      return Match.value(tunnel).pipe(
+        Match.withReturnType<ItemListItem>(),
+        Match.when({ kind: 'connecting' }, () => ({ ...item, subtitle: 'Connecting.' })),
+        Match.when({ kind: 'connected' }, () => ({ ...item, subtitle: 'Connected.' })),
+        Match.when({ kind: 'reconnecting' }, ({ error }) => ({
+          ...item,
+          subtitle: `Reconnecting: ${error}`,
+        })),
+        Match.when({ kind: 'tokenRejected' }, () => ({
+          ...item,
+          subtitle: 'The relay rejected the tunnel token. Enter a new one on the Relay tab.',
+          tone: 'danger',
+        })),
+        Match.when({ kind: 'tunnelUnknown' }, () => ({
+          ...item,
+          subtitle: `The relay has no tunnel named ${tunnelName}. It may have been deleted.`,
+          tone: 'danger',
+        })),
+        Match.exhaustive
+      )
+    }),
+    Option.toArray
+  )
 
 /** The rows for how a stopped server's latest run stopped: the platform's reason, and when. */
 const lastStopItems = (status: ServerStatus.Type): readonly ItemListItem[] =>
@@ -389,9 +422,10 @@ const CredentialsForm = ({
 }
 
 /**
- * The server's connection: as the host last checked it, or how the latest
- * run stopped; and, while the server runs, its `/health` report as the
- * webview reads it.
+ * The server's connection: as the host last checked it, with its tunnel's
+ * connection to the relay while a run reports it, or how the latest run
+ * stopped; and, while the server runs, its `/health` report as the webview
+ * reads it.
  */
 const Connection = ({
   server,
@@ -406,6 +440,7 @@ const Connection = ({
       maxLines={3}
       items={[
         { id: 'connection', title: 'Connection', subtitle: connectionText(server.status) },
+        ...relayConnectionItems(server),
         ...lastStopItems(server.status),
       ]}
     />

@@ -18,6 +18,8 @@ const UNREACHABLE_GRACE = Duration.seconds(5)
 const REFUSAL_REASON: Readonly<
   Record<Exclude<LaunchError.StatusRefusalKind, 'serverNotRunning'>, string>
 > = {
+  tokenRejected: "The relay rejected the server's tunnel token.",
+  tunnelUnknown: "The relay has no tunnel by the server's tunnel name.",
   notYetProbed: "The server hasn't been reached through its relay yet.",
   unreachable: "The server can't be reached through its relay.",
   noValidCertificate: 'The server has no valid certificate yet.',
@@ -96,7 +98,8 @@ const stopDuringWait = (
  * Why waiting for the server whose status is `status`, since `confirmedAt`,
  * can't help: its run stopped with an error during the wait (a server
  * retrying after one shows that stop while it waits to start again), its
- * certificate order is failing, its certificate is from a CA browsers don't
+ * relay refused its tunnel, which then stops dialing, its certificate order
+ * is failing, its certificate is from a CA browsers don't
  * trust, or it is still unreachable through its relay with a valid
  * certificate once `unreachableGraceHasPassed`; none while waiting still can.
  */
@@ -109,6 +112,13 @@ const failureOf = (
   if (Option.isSome(stopError)) {
     return Option.some(`The server stopped with an error: ${stopError.value}`)
   }
+  const tunnelRefusal = LaunchError.statusRefusalOf(status).pipe(
+    Option.filter(
+      (refusal): refusal is 'tokenRejected' | 'tunnelUnknown' =>
+        refusal === 'tokenRejected' || refusal === 'tunnelUnknown'
+    )
+  )
+  if (Option.isSome(tunnelRefusal)) return Option.some(REFUSAL_REASON[tunnelRefusal.value])
   if (status.certificate.status === 'orderFailing') {
     return Option.some("Ordering the server's certificate is failing.")
   }

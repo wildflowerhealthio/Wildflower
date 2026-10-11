@@ -21,14 +21,16 @@
 //!   "runningSince": "<RFC 3339>",
 //!   "health": {"kind": "reachable", "status": "pass" | "warn" | "fail"}
 //!           | {"kind": "unreachable", "error": "…"},
+//!   "tunnel": {"kind": "connecting" | "connected" | "tokenRejected" | "tunnelUnknown"}
+//!           | {"kind": "reconnecting", "error": "…"},
 //!   "certificate": <the run's certificate state, or else the cache's>
 //! }
 //! ```
 //!
 //! `lastStop` is there only while the run state is `stopped`, and only once
 //! the server has run; `platformReason` only for `sessionEndedByPlatform`;
-//! `runningSince` only while `running`; `health` only while a run has
-//! reported it. `certificate` is always there, written as
+//! `runningSince` only while `running`; `health` and `tunnel` each only while
+//! a run has reported it. `certificate` is always there, written as
 //! [`certificate_state_wire`](crate::domain::certificate_state_wire) says:
 //! the state the run reported, while it has reported one, or else what the
 //! server's certificate cache says.
@@ -38,6 +40,7 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Serializer};
 use wildflowerhealthio_shared_structures::health_check::HealthStatus;
+use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{
     PlatformStopReason, RunState, RunStop, StopReason, UnitId, UnitStatus, UnitStatuses,
 };
@@ -92,6 +95,8 @@ pub(crate) struct ServerStatusWire<'a> {
     running_since: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     health: Option<ServerHealthWire<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tunnel: Option<TunnelStateWire<'a>>,
     certificate: CertificateStateWire<'a>,
 }
 
@@ -120,6 +125,9 @@ impl<'a> ServerStatusWire<'a> {
             health: detail
                 .and_then(|detail| detail.health.as_ref())
                 .map(ServerHealthWire::of),
+            tunnel: detail
+                .and_then(|detail| detail.tunnel.as_ref())
+                .map(TunnelStateWire::of),
             certificate: CertificateStateWire::of(certificate),
         }
     }
@@ -235,6 +243,31 @@ impl<'a> ServerHealthWire<'a> {
     }
 }
 
+/// [`TunnelState`]'s wire shape: where the tunnel's connection to its relay
+/// stands, with the error a dial failed or the connection dropped with while
+/// it reconnects.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum TunnelStateWire<'a> {
+    Connecting,
+    Connected,
+    Reconnecting { error: &'a str },
+    TokenRejected,
+    TunnelUnknown,
+}
+
+impl<'a> TunnelStateWire<'a> {
+    fn of(tunnel: &'a TunnelState) -> Self {
+        match tunnel {
+            TunnelState::Connecting => Self::Connecting,
+            TunnelState::Connected => Self::Connected,
+            TunnelState::Reconnecting { error } => Self::Reconnecting { error },
+            TunnelState::TokenRejected => Self::TokenRejected,
+            TunnelState::TunnelUnknown => Self::TunnelUnknown,
+        }
+    }
+}
+
 /// Picks the servers whose status changed out of `UnitRunner`'s
 /// statuses, whose unit ids are the servers' domains, so the host sends the
 /// base one status per change, with the server's certificate state.
@@ -310,6 +343,7 @@ pub(crate) mod tests {
             running_since: Some(at(0)),
             detail: Some(ServerDetail {
                 health: Some(ServerHealth::Reachable(HealthReport::pass())),
+                tunnel: Some(TunnelState::Connected),
                 certificate: Some(CertificateState {
                     status: CertificateStatus::NoRenewalNeeded,
                     issuer: CertificateAuthority::LetsEncrypt,
@@ -347,6 +381,14 @@ pub(crate) mod tests {
                 .expect("the run's certificate state")
                 .clone(),
             unit_status,
+        };
+        // A run that reached its server once, whose tunnel then stood at
+        // `tunnel`: the monitor stops after its first answer, so its health
+        // stays reachable.
+        let with_tunnel = |tunnel| {
+            let mut later = running_and_reachable();
+            later.detail.as_mut().unwrap().tunnel = Some(tunnel);
+            later
         };
         // Any other carries what the cache says.
         let with_cached = |unit_status, certificate| ServerStatus {
@@ -400,6 +442,7 @@ pub(crate) mod tests {
                     running_since: None,
                     detail: Some(ServerDetail {
                         health: None,
+                        tunnel: Some(TunnelState::Connecting),
                         certificate: Some(CertificateState {
                             status: CertificateStatus::OrderFailing,
                             issuer: CertificateAuthority::LetsEncrypt,
@@ -424,6 +467,7 @@ pub(crate) mod tests {
                         health: Some(ServerHealth::Unreachable {
                             error: "the relay answered 502".to_owned(),
                         }),
+                        tunnel: Some(TunnelState::Connecting),
                         certificate: Some(CertificateState {
                             status: CertificateStatus::OrderFailing,
                             issuer: CertificateAuthority::LetsEncrypt,
@@ -445,6 +489,7 @@ pub(crate) mod tests {
                     running_since: Some(at(0)),
                     detail: Some(ServerDetail {
                         health: None,
+                        tunnel: None,
                         certificate: Some(CertificateState {
                             status: CertificateStatus::RenewalDue,
                             issuer: CertificateAuthority::LetsEncryptStaging,
@@ -466,6 +511,7 @@ pub(crate) mod tests {
                     running_since: Some(at(0)),
                     detail: Some(ServerDetail {
                         health: None,
+                        tunnel: Some(TunnelState::Connecting),
                         certificate: Some(CertificateState {
                             status: CertificateStatus::Ordering,
                             issuer: CertificateAuthority::LetsEncrypt,
@@ -479,6 +525,20 @@ pub(crate) mod tests {
                         launch_minter: None,
                     }),
                 }),
+            ),
+            (
+                "runningReconnecting",
+                status(with_tunnel(TunnelState::Reconnecting {
+                    error: "the relay closed the connection".to_owned(),
+                })),
+            ),
+            (
+                "runningTokenRejected",
+                status(with_tunnel(TunnelState::TokenRejected)),
+            ),
+            (
+                "runningTunnelUnknown",
+                status(with_tunnel(TunnelState::TunnelUnknown)),
             ),
             (
                 "neverRun",

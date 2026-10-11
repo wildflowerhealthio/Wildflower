@@ -44,6 +44,18 @@ describe('LaunchError.statusRefusalOf', () => {
       expect(refused).toEqual(Option.fromNullable(refusal))
     }
   )
+  it.each(['tokenRejected', 'tunnelUnknown'] as const)(
+    'should refuse a running server whose relay refused its tunnel as %s before its health is reported',
+    (kind) => {
+      // Act
+      const refused = LaunchError.statusRefusalOf(
+        decodeStatus({ ...golden.serverStatuses.runningRenewalFailed, tunnel: { kind } })
+      )
+
+      // Assert
+      expect(refused).toEqual(Option.some(kind))
+    }
+  )
 })
 
 describe('CertificateAuthority.isBrowserTrusted', () => {

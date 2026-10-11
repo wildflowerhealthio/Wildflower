@@ -1,8 +1,9 @@
 //! The real server as a unit: a `ServerUnit` run through `UnitRunner`, with no
 //! platform bound (units run without a background session). It comes up
-//! `Running` and answers `/health` on its loopback port, reports no health
-//! while its tunnel isn't connected, and leaves another server's head on the host's
-//! pending-consent channel alone while nothing of its own waits. Once its
+//! `Running` and answers `/health` on its loopback port, reports its tunnel's
+//! state as the run's detail but no health while its tunnel isn't connected,
+//! and leaves another server's head on the host's pending-consent channel
+//! alone while nothing of its own waits. Once its
 //! policy turns it off, it stops with the detail cleared. Turned back on, the
 //! next run binds the same port, so the previous run's runtime is gone, and
 //! serves again. Its detail holds the run's launch minter, and a server whose
@@ -23,6 +24,7 @@ use wildflowerhealthio_servers::{
 };
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
+use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{
     BackgroundSessionLength, RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus,
 };
@@ -219,13 +221,30 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
             .is_some_and(|detail| detail.launch_minter.is_some())
     })
     .await;
+    // Nothing listens at the relay's address, so the tunnel's first dial
+    // fails and it backs off to dial again, which the detail reports.
+    let reconnecting = wait_for(unit_runner, "reporting its tunnel reconnecting", |status| {
+        status
+            .detail
+            .as_ref()
+            .is_some_and(|detail| matches!(detail.tunnel, Some(TunnelState::Reconnecting { .. })))
+    })
+    .await;
+    assert!(
+        reconnecting
+            .detail
+            .as_ref()
+            .is_some_and(|detail| detail.health.is_none()),
+        "a tunnel that isn't connected is never probed"
+    );
     assert_eq!(
         *server.host_pending_consent_rx.borrow(),
         Some(other_servers_head),
         "a run with nothing waiting leaves another server's head alone"
     );
     // The run's detail holds its launch minter, which mints through the
-    // run's gatekeeper; a server whose health is unknown isn't launchable.
+    // run's gatekeeper; a server whose health is unknown isn't launchable,
+    // and a tunnel that is dialing again doesn't change why.
     let launch_minter = unit_runner.statuses()[&UnitId::from(DOMAIN)]
         .detail
         .as_ref()
@@ -266,7 +285,10 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
     };
     assert_eq!(stop.reason, StopReason::PolicyInactive);
     assert_eq!(stop.error, None);
-    assert_eq!(stopped.detail, None, "no health outlives the run");
+    assert_eq!(
+        stopped.detail, None,
+        "no health or tunnel state outlives the run"
+    );
 
     unit_runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Always);
     wait_for(unit_runner, "running again", |status| {

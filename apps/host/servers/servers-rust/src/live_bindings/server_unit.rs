@@ -3,6 +3,7 @@
 use tokio::sync::{mpsc, watch};
 use wildflowerhealthio_gatekeeper::PendingConsentHead;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
+use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};
 use wildflowerhealthio_wildflower_server::{
     CertificateState, HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig,
@@ -49,16 +50,17 @@ impl Unit for ServerUnit {
     type Detail = ServerDetail;
 
     /// Set the server up, announce it running, and serve it until
-    /// `UnitRunner` stops the run. Its health, its certificate's state, the
-    /// head of its pending-consent queue, and the [`ServerConsentDecider`] and
-    /// [`ServerLaunchMinter`] over its gatekeeper go out as the run's
-    /// [`ServerDetail`].
+    /// `UnitRunner` stops the run. Its health, its tunnel's state, its
+    /// certificate's state, the head of its pending-consent queue, and the
+    /// [`ServerConsentDecider`] and [`ServerLaunchMinter`] over its gatekeeper
+    /// go out as the run's [`ServerDetail`].
     ///
     /// The run's gatekeeper publishes its queue's head on a channel of the
     /// run's own, so each server's head is its own; each head is forwarded to
     /// the host's `active_pending_consent_tx` too, which every run shares.
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
         let (server_health_tx, server_health_rx) = watch::channel(None);
+        let (tunnel_state_tx, tunnel_state_rx) = watch::channel(None);
         let (certificate_tx, certificate_rx) = watch::channel(None);
         let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
         let host_pending_consent_tx = self.host_ports.active_pending_consent_tx.clone();
@@ -70,7 +72,7 @@ impl Unit for ServerUnit {
             },
             ServerObservers {
                 server_health_tx,
-                tunnel_state_tx: watch::channel(None).0,
+                tunnel_state_tx,
                 certificate_tx,
                 forwarded_request_tx: self.forwarded_request_tx,
             },
@@ -83,6 +85,7 @@ impl Unit for ServerUnit {
                 ),
                 launch_minter: ServerLaunchMinter::new(server.launch_context_minter()),
                 server_health_rx,
+                tunnel_state_rx,
                 certificate_rx,
                 pending_consent_rx,
                 host_pending_consent_tx,
@@ -102,6 +105,8 @@ struct DetailSources {
     launch_minter: ServerLaunchMinter,
     /// The run's reachability monitor's health.
     server_health_rx: watch::Receiver<Option<ServerHealth>>,
+    /// The run's tunnel daemon's state.
+    tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
     /// The run's certificate's state.
     certificate_rx: watch::Receiver<Option<CertificateState>>,
     /// The head of the run's gatekeeper's pending-consent queue.
@@ -111,17 +116,20 @@ struct DetailSources {
 }
 
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
-/// run's health, its certificate's state, the head of its gatekeeper's
-/// pending-consent queue, its consent decider and its launch minter into the
-/// detail, now and each time the health, the certificate state or the head changes. It also
-/// forwards each change of its head to the host's shared
-/// `active_pending_consent_tx`, which the legacy bridge reads until #965
-/// deletes it. The task dies with the run's runtime, and `UnitRunner` clears
+/// run's health, its tunnel's state, its certificate's state, the head of its
+/// gatekeeper's pending-consent queue, its consent decider and its launch
+/// minter into the detail, now and each time the health, the tunnel state, the
+/// certificate state or the head changes. It also forwards each change of its
+/// head to the host's shared `active_pending_consent_tx`, which the legacy
+/// bridge reads until #965 deletes it. The task dies with the run's runtime, and `UnitRunner` clears
 /// the detail when the run ends.
 async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
-    // The monitor drops its sender once it stops; the certificate's and the
-    // head's live as long as the server.
+    // The monitor drops its sender once it stops, and the tunnel daemon its
+    // own once the relay refuses the tunnel; the certificate's and the head's
+    // live as long as the server. Each is watched until its own sender drops,
+    // and its last value stays in the detail.
     let mut health_open = true;
+    let mut tunnel_open = true;
     let mut certificate_open = true;
     // The head this run last forwarded. Only a change to the run's own head
     // is forwarded, so a wake for health never overwrites another run's head.
@@ -136,6 +144,7 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
         }
         ctx.set_detail(ServerDetail {
             health: sources.server_health_rx.borrow_and_update().clone(),
+            tunnel: sources.tunnel_state_rx.borrow_and_update().clone(),
             certificate: sources.certificate_rx.borrow_and_update().clone(),
             pending_consent,
             consent_decider: Some(sources.consent_decider.clone()),
@@ -144,6 +153,9 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
         tokio::select! {
             changed = sources.server_health_rx.changed(), if health_open => {
                 health_open = changed.is_ok();
+            }
+            changed = sources.tunnel_state_rx.changed(), if tunnel_open => {
+                tunnel_open = changed.is_ok();
             }
             changed = sources.certificate_rx.changed(), if certificate_open => {
                 certificate_open = changed.is_ok();

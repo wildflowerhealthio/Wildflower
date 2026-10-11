@@ -2,6 +2,7 @@
 //! run state.
 
 use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
 use crate::live_bindings::server_consent_decider::ServerConsentDecider;
@@ -17,6 +18,10 @@ pub struct ServerDetail {
     /// (the relay and the tunnel), as the server's reachability monitor
     /// publishes it; `None` until its first probe.
     pub health: Option<ServerHealth>,
+    /// Where the server's tunnel's connection to its relay stands, as its
+    /// tunnel daemon publishes it for as long as the run lasts; `None` until
+    /// the daemon starts.
+    pub tunnel: Option<TunnelState>,
     /// Where the server's certificate stands, as the run publishes it while
     /// it deploys, orders and renews it; `None` until the run's certificate
     /// starts.

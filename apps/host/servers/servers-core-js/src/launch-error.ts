@@ -6,15 +6,18 @@ import type * as ServerStatus from './server-status.ts'
 
 /**
  * The refusals `server_launch` answers from the server's status alone, before
- * it mints anything: the server's run isn't up (`serverNotRunning`), its
- * `/health` hasn't been asked through its relay yet (`notYetProbed`) or didn't
- * answer (`unreachable`), it holds no valid certificate
+ * it mints anything: the server's run isn't up (`serverNotRunning`), its relay
+ * refused its tunnel's token (`tokenRejected`) or has no tunnel of its name
+ * (`tunnelUnknown`), its `/health` hasn't been asked through its relay yet
+ * (`notYetProbed`) or didn't answer (`unreachable`), it holds no valid certificate
  * (`noValidCertificate`), or its valid certificate is from a CA browsers don't
  * trust, such as Let's Encrypt's staging CA (`untrustedCertificate`).
  * {@link statusRefusalOf} decides the same from a status.
  */
 const StatusRefusalKindSchema = Schema.Literal(
   'serverNotRunning',
+  'tokenRejected',
+  'tunnelUnknown',
   'notYetProbed',
   'unreachable',
   'noValidCertificate',
@@ -48,18 +51,24 @@ const certificateRefusalOf = (
 
 /**
  * Why the server whose status is `status` can't be launched now, as
- * `server_launch` refuses it; none once it can: its run is up, its `/health`
- * answered through its relay, and its certificate is valid and from a CA
+ * `server_launch` refuses it; none once it can: its run is up, its relay
+ * hasn't refused its tunnel, its `/health` answered through its relay, and its certificate is valid and from a CA
  * browsers trust ({@link certificateRefusalOf}).
  *
  * @remarks
- * The host decides from the same status, its certificate included: the
- * run's, once the run has reported one, or else what the cache says. The
+ * A refused tunnel is refused before the health, which the host stops
+ * checking after its first answer, so a reachable health may predate the
+ * refusal. The host decides from the same status, its certificate included:
+ * the run's, once the run has reported one, or else what the cache says. The
  * golden file's `launchRefusals` and `launchRefusalsByCertificateStatus` hold
  * both sides to the same answers.
  */
 const statusRefusalOf = (status: ServerStatus.Type): Option.Option<StatusRefusalKind> => {
   if (status.runState !== 'running') return Option.some('serverNotRunning')
+  const tunnel = Option.getOrNull(status.tunnel)
+  if (tunnel?.kind === 'tokenRejected' || tunnel?.kind === 'tunnelUnknown') {
+    return Option.some(tunnel.kind)
+  }
   if (Option.isNone(status.health)) return Option.some('notYetProbed')
   if (status.health.value.kind === 'unreachable') return Option.some('unreachable')
   return certificateRefusalOf(status.certificate)

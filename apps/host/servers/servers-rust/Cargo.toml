@@ -69,8 +69,8 @@ wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-struc
 wildflowerhealthio-gatekeeper = { path = "../../wildflower-server/gatekeeper-rust" }
 # `public_origin_url`, a server's `https://<domain>` origin, the one its run
 # serves and its gatekeeper issues tokens for, which a launch names as `iss`;
-# and, in `tests/server_unit.rs`, the relay settings a real server's config
-# names.
+# the `TunnelState` a run's detail carries; and, in `tests/server_unit.rs`,
+# the relay settings a real server's config names.
 wildflowerhealthio-tunnel = { path = "../../wildflower-server/tunnel-rust" }
 
 [lints]

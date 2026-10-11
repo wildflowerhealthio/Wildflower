@@ -1266,6 +1266,7 @@ mod tests {
             running_since: Some(chrono::Utc::now()),
             detail: Some(ServerDetail {
                 health: None,
+                tunnel: None,
                 certificate: Some(CertificateState {
                     status: CertificateStatus::Ordering,
                     ..run_certificate

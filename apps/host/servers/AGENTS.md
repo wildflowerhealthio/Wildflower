@@ -14,7 +14,8 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher and certificate source,
   and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
-  `ServerDetail`, what its runs report (health and certificate state), its
+  `ServerDetail`, what its runs report (health, tunnel state and certificate
+  state), its
   `ServerConsentDecider` included, through which the base reads and decides a
   running server's consents, and its `ServerLaunchMinter`, through which it
   mints a running server's launches; launching (`ensure_launchable`,
@@ -90,16 +91,21 @@ changing how servers run or what the host notifies about them.
   policy, terms of use and deletion page on the canonical site, opened in the system browser — and
   About). The server list is a card per
   server, kept current by the `server-status` event: its domain and a status
-  dot merged from its run state and health; a run-policy field
+  dot merged from its run state, its tunnel's state and its health, a
+  refused or reconnecting tunnel taking priority over a `reachable` health
+  that predates it; a run-policy field
   (`RunPolicyPicker`) that says when it runs, outlined in the dot's tone, over
   a native picker that changes it at once, putting the previous policy back
   if the host refuses (the refusal shows under the field); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
-  running server isn't reachable; why its latest run stopped; Launch (`LaunchButton`); and
+  running server isn't reachable, why its tunnel is reconnecting, or what to
+  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; Launch (`LaunchButton`); and
   Edit, which opens the server's page, kept current by the `server-status`
   event too: its domain with Copy, its status badge, when its run started, the
   run-policy field and Launch, over three tabs in component state. Status holds the
-  host's last check of its connection or how its latest run stopped, and
+  host's last check of its connection, with its tunnel's connection to the
+  relay while a run reports it (a failure once the relay refused the
+  tunnel), or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
   itself, with Refresh; its launcher, with Reset to the default launcher; and
   its removal, said in full, behind a confirm that asks for the domain to be
@@ -129,9 +135,10 @@ changing how servers run or what the host notifies about them.
   disabled, saying why: while the webview is offline (`navigator.onLine`),
   that launching needs a connection (the host commands themselves need none,
   so the base's query client runs them offline too:
-  `networkMode: 'always'`); for a running server the host would refuse (not
-  yet reached, unreachable, no valid certificate, a certificate browsers
-  don't trust);
+  `networkMode: 'always'`); for a running server the host would refuse (its
+  relay rejected its tunnel token or has no tunnel of its name, not yet
+  reached, unreachable, no valid certificate, a certificate browsers don't
+  trust);
   and for a server that isn't running while its run policy still wants it
   running. For a server that isn't running whose policy is `off` or an
   ended `until`, it asks "Start server and launch?"; confirming sets
@@ -142,7 +149,7 @@ changing how servers run or what the host notifies about them.
   stops too), until the server's status is launchable, and launches it
   once. The wait gives up, showing why, with Launch back, once waiting
   can't help: the server's run stopped with an error during the wait, its
-  certificate order is failing, its certificate is one browsers don't
+  relay refused its tunnel, its certificate order is failing, its certificate is one browsers don't
   trust, or it has been unreachable while its certificate is valid for 5
   seconds without a break (any other status starts that again: its probe
   runs every 400 ms, and a server with a valid cached certificate can
@@ -331,8 +338,9 @@ changing how servers run or what the host notifies about them.
   pending consent's head included), camelCase, each optional member left out
   when absent:
   `{domain, runState, lastStop?: {reason, platformReason?, error?,
-  stoppedAt}, runningSince?, health?, certificate}`, `certificate` always
-  there. A removed server gets no event; the
+  stoppedAt}, runningSince?, health?, tunnel?, certificate}`, `tunnel`
+  `{kind}` of `connecting`, `connected`, `tokenRejected` or `tunnelUnknown`,
+  or `{kind: "reconnecting", error}`, and `certificate` always there. A removed server gets no event; the
   base drops a server once `servers_list` no longer lists it, and reads the
   list again after `server_remove` and for a status of a server it doesn't
   list. `servers-wire-golden.json` pins the list and the event, and the
@@ -340,11 +348,11 @@ changing how servers run or what the host notifies about them.
   `servers-rust`'s tests and `servers-core-js`'s decoder tests: change both
   sides with it.
 - **Status comes from `UnitRunner`.** Whether a server is running, why it
-  last stopped and its health are `UnitRunner`'s `UnitStatus<ServerDetail>`,
+  last stopped, its health and its tunnel's state are `UnitRunner`'s `UnitStatus<ServerDetail>`,
   from `statuses()` / `subscribe()`, and each run's stop is
   `subscribe_stops()`'s; nothing in these packages tracks runs itself.
-  A run's health and certificate state go out through `ctx.set_detail`, and
-  `UnitRunner` clears them.
+  A run's health, tunnel state and certificate state go out through
+  `ctx.set_detail`, and `UnitRunner` clears them.
 - **Consents are decided in-process.** A run puts a `ServerConsentDecider`
   over its gatekeeper's `HostConsentDecider` in every `ServerDetail` it sets,
   and `UnitRunner` clears the detail when the run ends, so the consent
@@ -358,7 +366,9 @@ changing how servers run or what the host notifies about them.
 - **Launching opens the launcher with a launch for any client.**
   `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
   once unless `ensure_launchable` passes for the server's status, the one
-  the base receives (its run is up, its `health` `reachable`, its
+  the base receives (its run is up, its `tunnel` neither `tokenRejected` nor
+  `tunnelUnknown`, checked before the health, which may predate it, its
+  `health` `reachable`, its
   `certificate`, the run's or else the cache's, `noRenewalNeeded` or
   `renewalDue` and from a CA browsers trust,
   `CertificateAuthority::is_browser_trusted`), mints a launch through the `ServerLaunchMinter` in the
@@ -370,8 +380,8 @@ changing how servers run or what the host notifies about them.
   own, `launcher-<domain>` with its dots as `_`, titled with the domain; a
   user dismissal disposes it, so it stops counting as an open window for
   `WhileOpen`. It never changes the run policy. Errors are
-  `{kind, message}`: `serverNotRunning`, `notYetProbed`, `unreachable`,
-  `noValidCertificate`, `untrustedCertificate` (a valid certificate from
+  `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
+  `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from
   Let's Encrypt's staging CA), `gatekeeper`, `openingLauncher`, or the registry's
   `notRegistered` or `registry`. The golden file pins the refusals the base
   shows and which CAs browsers trust.

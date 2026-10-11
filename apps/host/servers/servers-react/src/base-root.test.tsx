@@ -421,6 +421,9 @@ describe('the server list', () => {
     ['runningAndReachable', 'Running', 'success'],
     ['startingUnchecked', 'Starting', 'info'],
     ['runningUnreachable', 'Running, not reachable yet', 'warning'],
+    ['runningReconnecting', 'Running, reconnecting to the relay', 'warning'],
+    ['runningTokenRejected', "The relay rejected this server's tunnel token", 'danger'],
+    ['runningTunnelUnknown', 'The relay has no tunnel named ruth', 'danger'],
     ['neverRun', 'Stopped', 'neutral'],
     ['stoppedWithAnError', 'Stopped', 'danger'],
   ] as const)(
@@ -444,6 +447,15 @@ describe('the server list', () => {
     ['startingUnchecked', 'Starting'],
     ['runningUnreachable', 'Running, not reachable yet: the relay answered 502'],
     ['runningRenewalFailed', 'Running, checking it can be reached'],
+    ['runningReconnecting', 'Running, reconnecting to the relay: the relay closed the connection'],
+    [
+      'runningTokenRejected',
+      "The relay rejected this server's tunnel token. Enter a new token on the Relay tab of the server's page.",
+    ],
+    [
+      'runningTunnelUnknown',
+      'The relay has no tunnel named ruth. It may have been deleted. Check the tunnel name, or ask whoever runs the relay.',
+    ],
     ['neverRun', null],
     ['stoppedWithAnError', null],
   ] as const)('should note a %s status under the picker as %j', async (statusName, note) => {
@@ -456,7 +468,10 @@ describe('the server list', () => {
     // Assert
     const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
     const notes = within(ruth)
-      .queryAllByText(/^(Running|Starting|Stopped)/, { selector: 'p' })
+      .queryAllByText(
+        /^(Running|Starting|Stopped|The relay rejected this|The relay has no tunnel named)/,
+        { selector: 'p' }
+      )
       .map((paragraph) => paragraph.textContent)
     expect(notes).toEqual(note === null ? [] : [note])
   })
@@ -886,6 +901,8 @@ describe('Launch', () => {
   it.each([
     ['runningRenewalFailed', "The server hasn't been reached through its relay yet."],
     ['runningUnreachable', "The server can't be reached through its relay."],
+    ['runningTokenRejected', "The relay rejected the server's tunnel token."],
+    ['runningTunnelUnknown', "The relay has no tunnel by the server's tunnel name."],
   ] as const)(
     'should be disabled for a running server that is %s, saying why',
     async (statusName, reason) => {
@@ -1243,6 +1260,16 @@ describe('Launch', () => {
       "its certificate is one browsers don't trust",
       labStatus('runningAndReachableOnStaging'),
       "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
+    ],
+    [
+      "the relay rejects its tunnel's token",
+      labStatus('runningTokenRejected'),
+      "The relay rejected the server's tunnel token.",
+    ],
+    [
+      'the relay has no tunnel of its name',
+      labStatus('runningTunnelUnknown'),
+      "The relay has no tunnel by the server's tunnel name.",
     ],
   ] as const)('should stop waiting, saying why, once %s', async (_cause, status, failure) => {
     // Arrange
@@ -1608,6 +1635,7 @@ describe('the server page', () => {
     ['startingUnchecked', 'Starting', false],
     ['runningAndReachable', 'Running', true],
     ['runningUnreachable', 'Running, not reachable yet', true],
+    ['runningTokenRejected', "The relay rejected this server's tunnel token", true],
     ['stoppedWithAnError', 'Stopped', false],
   ] as const)(
     'should show a %s status in the hero as "%s", with its start only while running',
@@ -1623,6 +1651,48 @@ describe('the server page', () => {
       expect(status.textContent).toMatch(new RegExp(`${label}$`))
       expect(within(await hero()).queryByText(/^Since /) !== null).toBe(running)
       expect(within(await hero()).getByRole('combobox', { name: /runs$/ })).toBeDefined()
+    }
+  )
+
+  it.each([
+    ['runningAndReachable', 'Connected.', false],
+    ['runningUnreachable', 'Connecting.', false],
+    ['runningReconnecting', 'Reconnecting: the relay closed the connection', false],
+    [
+      'runningTokenRejected',
+      'The relay rejected the tunnel token. Enter a new one on the Relay tab.',
+      true,
+    ],
+    ['runningTunnelUnknown', 'The relay has no tunnel named ruth. It may have been deleted.', true],
+  ] as const)(
+    'should show the relay connection of a %s status as "%s", as a failure only when it is one',
+    async (statusName, text, failure) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+      })
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Connection' })).toBeDefined()
+      const row = within(sectionTitled('Connection')).getByText('Relay connection').closest('li')
+      expect(row?.textContent).toContain(text)
+      expect(/tone-danger/.test(row?.className ?? '')).toBe(failure)
+    }
+  )
+
+  it.each(['runningRenewalFailed', 'stoppedWithAnError'] as const)(
+    'should show no relay connection for a %s status, which reports no tunnel',
+    async (statusName) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+      })
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Connection' })).toBeDefined()
+      expect(within(sectionTitled('Connection')).queryByText('Relay connection')).toBeNull()
     }
   )
 
