@@ -15,7 +15,7 @@ use wildflowerhealthio_rathole_settings::is_dns_label;
 use crate::domain::{names, StoredTunnel, Tunnel, TunnelError, TunnelStore};
 use crate::settings::{FrontSettings, Secret};
 
-/// How many random bytes make a created tunnel's token.
+/// How many random bytes make a tunnel's token.
 pub(crate) const TOKEN_BYTES: usize = 32;
 
 /// The longest email accepted, in bytes.
@@ -67,12 +67,10 @@ impl<S: TunnelStore> TunnelsCreator<S> {
             })?
             .ok_or(TunnelError::Exhausted("no unused tunnel name was drawn"))?,
         };
-        let mut token = [0; TOKEN_BYTES];
-        rng.fill_bytes(&mut token);
         let stored = StoredTunnel {
             tunnel: Tunnel {
                 name,
-                token: Secret::new(BASE64_URL.encode(token)),
+                token: generate_token(rng),
             },
             email,
             created_at: now()?,
@@ -97,6 +95,14 @@ impl<S: TunnelStore> TunnelsCreator<S> {
     pub(crate) fn public_host(&self, name: &str) -> String {
         self.front.public_host(name)
     }
+}
+
+/// A tunnel token: [`TOKEN_BYTES`] bytes from `rng`, base64url without
+/// padding. Every token, created or reissued, is drawn here.
+pub(crate) fn generate_token<R: Rng + ?Sized>(rng: &mut R) -> Secret {
+    let mut token = [0; TOKEN_BYTES];
+    rng.fill_bytes(&mut token);
+    Secret::new(BASE64_URL.encode(token))
 }
 
 /// `email` trimmed, if it is at most [`MAX_EMAIL_LEN`] bytes of `local@domain`
@@ -203,6 +209,10 @@ mod tests {
 
         fn delete_tunnel(&self, name: &str) -> Result<Option<StoredTunnel>, TunnelError> {
             self.0.delete_tunnel(name)
+        }
+
+        fn replace_token(&self, tunnel: &Tunnel) -> Result<Option<StoredTunnel>, TunnelError> {
+            self.0.replace_token(tunnel)
         }
     }
 

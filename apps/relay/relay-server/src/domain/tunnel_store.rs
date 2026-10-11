@@ -10,7 +10,7 @@
 //! The `SQLite` adapter lives in [`crate::db`] as `SqliteTunnelStore`; tests
 //! substitute the in-memory `FakeTunnelStore` in `crate::domain::test_fake`.
 
-use crate::domain::{StoredTunnel, TunnelError};
+use crate::domain::{StoredTunnel, Tunnel, TunnelError};
 
 /// The persistence port for tunnels created through the admin API: the
 /// primitive CRUD the domain needs over [`StoredTunnel`]s, raising the opaque
@@ -47,4 +47,13 @@ pub trait TunnelStore {
     ///
     /// [`TunnelError::Infrastructure`] on a checkout / delete failure.
     fn delete_tunnel(&self, name: &str) -> Result<Option<StoredTunnel>, TunnelError>;
+
+    /// Give the stored tunnel named `tunnel.name` the token `tunnel.token`.
+    /// Returns what was stored before, or `None`, storing nothing, on a
+    /// miss.
+    ///
+    /// # Errors
+    ///
+    /// [`TunnelError::Infrastructure`] on a checkout / read / update failure.
+    fn replace_token(&self, tunnel: &Tunnel) -> Result<Option<StoredTunnel>, TunnelError>;
 }

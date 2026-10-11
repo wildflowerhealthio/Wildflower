@@ -42,6 +42,9 @@ hmac = "0.13"
 # already in the tree through axum.
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
+# The rate limits on `POST /claim` (`rate_limit::RateLimiter`, keyed by
+# `ClientKey`).
+wildflowerhealthio-kitchen-sink = { path = "../../../global/kitchen-sink-rust" }
 # The tunnel store's diesel connection pool and namespaced migration runner,
 # as the slices use them. The relay names the pool type but not rusqlite.
 wildflowerhealthio-persistence = { path = "../../../slices/persistence-rust" }
@@ -92,6 +95,9 @@ wildflowerhealthio-shared-structures = { path = "../../../slices/shared-structur
 # TCP keepalive on piped sockets (tokio has no setter); already in the tree
 # through tokio.
 socket2 = "0.6"
+# Adds each site request's client address (`ServiceExt::map_request`), which
+# `POST /claim`'s rate limits key on. Already in the tree through axum.
+tower = { workspace = true, features = ["util"] }
 # Renders the rathole server TOML in memory, for rathole's own parser.
 toml = "0.9"
 tokio = { workspace = true, features = [

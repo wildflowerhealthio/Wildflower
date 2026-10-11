@@ -8,6 +8,10 @@
 //! those side effects stay here, out of `domain/`. Store calls block on
 //! SQLite, so the bindings run them on blocking threads.
 //!
+//! [`LiveClaimCodesRedeemer`] is the one binding not built through `Admin<…>`:
+//! it serves the unauthenticated `POST /claim`, which builds it once from the
+//! registry.
+//!
 //! The admin handlers name the `Live…` bindings in `Admin<…>`, the
 //! extractor that builds one only for a request signed with the admin key
 //! — the relay's stand-in for scope-capabilities-rust's `Scoped<…>`, which
@@ -15,12 +19,18 @@
 //! gates on the signer and answers a bare `401`.
 
 mod admin;
+mod claim_codes_issuer;
+mod claim_codes_redeemer;
 pub mod state;
+mod tunnel_tokens_reissuer;
 mod tunnels_creator;
 mod tunnels_deleter;
 mod tunnels_reader;
 
 pub(crate) use admin::{Admin, AdminCapability};
+pub(crate) use claim_codes_issuer::LiveClaimCodesIssuer;
+pub(crate) use claim_codes_redeemer::LiveClaimCodesRedeemer;
+pub(crate) use tunnel_tokens_reissuer::LiveTunnelTokensReissuer;
 pub(crate) use tunnels_creator::LiveTunnelsCreator;
 pub(crate) use tunnels_deleter::LiveTunnelsDeleter;
 pub(crate) use tunnels_reader::LiveTunnelsReader;

@@ -12,9 +12,16 @@
 //! the capability's undo puts the store back, so on an error nothing has
 //! changed. A created tunnel's device can connect and sign requests at
 //! once. A deleted one stops routing and signing at once, and its tunnel
+//! drops as rathole takes the change. A reissued token signs at once, the
+//! old one stops signing at once, and a device connected with the old one
 //! drops as rathole takes the change.
+//!
+//! Claim codes live in the same store and change nothing that is served.
+//! Issuing one runs through `TunnelRegistry::while_unchanged`, between
+//! tunnel changes, so the tunnel it is for cannot be deleted under it.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use rathole::{ConfigChange, ServerServiceChange};
@@ -23,7 +30,7 @@ use tokio::sync::{mpsc, Mutex};
 use super::on_blocking;
 use crate::config;
 use crate::db::SqliteTunnelStore;
-use crate::domain::{StoredTunnel, Tunnel, TunnelError, TunnelStore};
+use crate::domain::{ReissuedTunnel, StoredTunnel, Tunnel, TunnelError, TunnelStore};
 use crate::route::Router;
 use crate::served::ServedTunnels;
 use crate::settings::{FrontSettings, RelaySettings};
@@ -51,6 +58,27 @@ pub(crate) enum Change {
     Created,
     /// The tunnel was deleted, and is no longer served.
     Deleted,
+    /// The tunnel's token was replaced, and only the new one is served from
+    /// now on.
+    TokenReissued,
+}
+
+/// What a change's store write returns: the tunnel it serves, as it is now
+/// stored (or, deleted, as it was).
+pub(crate) trait ChangedTunnel: Send + 'static {
+    fn tunnel(&self) -> &Tunnel;
+}
+
+impl ChangedTunnel for StoredTunnel {
+    fn tunnel(&self) -> &Tunnel {
+        &self.tunnel
+    }
+}
+
+impl ChangedTunnel for ReissuedTunnel {
+    fn tunnel(&self) -> &Tunnel {
+        &self.stored.tunnel
+    }
 }
 
 /// The tunnel store and what serves the stored tunnels, changed together.
@@ -58,6 +86,8 @@ pub struct TunnelRegistry {
     /// The store the capabilities are lifted from.
     pub(crate) store: SqliteTunnelStore,
     pub(crate) front: FrontSettings,
+    /// How long an issued claim code redeems for.
+    pub(crate) claim_code_ttl: Duration,
     /// Where each change goes to rathole.
     rathole: mpsc::Sender<ConfigChange>,
     /// Shared by `router` and `verifier`.
@@ -106,6 +136,7 @@ impl TunnelRegistry {
         let registry = Self {
             store,
             front: settings.front.clone(),
+            claim_code_ttl: settings.claim_code_ttl,
             rathole,
             tunnels: served,
             router: Arc::new(router),
@@ -137,16 +168,17 @@ impl TunnelRegistry {
         self.front.admin_hostname()
     }
 
-    /// Create or delete a tunnel (as `change` says) in the store and in
-    /// what serves it. The create and delete bindings both go through here;
-    /// they differ only in the store write, so they pass it in:
+    /// Create or delete a tunnel, or reissue its token (as `change` says),
+    /// in the store and in what serves it. The create, delete and reissue
+    /// bindings all go through here; they differ only in the store write, so
+    /// they pass it in:
     ///
-    /// 1. `write_store` creates or deletes the tunnel in the store and
-    ///    returns it, or refuses (a taken name, an unknown tunnel). It runs
-    ///    on a blocking thread, as SQLite blocks.
-    /// 2. The registry serves the change: rathole adds or deletes the
-    ///    tunnel's service, then the tunnel is inserted into or removed
-    ///    from the [`ServedTunnels`].
+    /// 1. `write_store` creates, deletes or rewrites the tunnel in the store
+    ///    and returns it, or refuses (a taken name, an unknown tunnel). It
+    ///    runs on a blocking thread, as SQLite blocks.
+    /// 2. The registry serves the change: rathole adds, deletes or replaces
+    ///    the tunnel's service, then the tunnel is inserted into, removed
+    ///    from or replaced in the [`ServedTunnels`].
     /// 3. If rathole has stopped taking changes, `undo_write` puts the store
     ///    back, so the store never holds a tunnel that is not served or
     ///    lacks one that is. Should that fail too, `undo_failed` is logged
@@ -162,19 +194,19 @@ impl TunnelRegistry {
     /// Whatever `write_store` refuses or fails with, or
     /// [`TunnelError::Infrastructure`] if serving fails. On an error nothing
     /// has changed.
-    pub(crate) async fn change(
+    pub(crate) async fn change<W: ChangedTunnel>(
         self: &Arc<Self>,
         change: Change,
-        write_store: impl FnOnce() -> Result<StoredTunnel, TunnelError> + Send + 'static,
-        undo_write: impl FnOnce(&StoredTunnel) -> Result<(), TunnelError> + Send + 'static,
+        write_store: impl FnOnce() -> Result<W, TunnelError> + Send + 'static,
+        undo_write: impl FnOnce(&W) -> Result<(), TunnelError> + Send + 'static,
         undo_failed: &'static str,
-    ) -> Result<StoredTunnel, TunnelError> {
+    ) -> Result<W, TunnelError> {
         let registry = Arc::clone(self);
         tokio::spawn(async move {
             let _changing = registry.changing.lock().await;
             let changed = on_blocking(write_store).await?;
-            if let Err(error) = registry.serve(change, &changed.tunnel).await {
-                let name = changed.tunnel.name.clone();
+            if let Err(error) = registry.serve(change, changed.tunnel()).await {
+                let name = changed.tunnel().name.clone();
                 if let Err(undo_error) = on_blocking(move || undo_write(&changed)).await {
                     tracing::error!(tunnel = %name, "{undo_failed}: {undo_error}");
                 }
@@ -186,11 +218,40 @@ impl TunnelRegistry {
         .map_err(|e| TunnelError::infrastructure("a tunnel change task panicked", e))?
     }
 
-    /// Send rathole the service `change` adds or deletes for `tunnel`, then
-    /// insert or remove it in the [`ServedTunnels`].
+    /// Run `op` on a blocking thread while no tunnel change runs, so a
+    /// tunnel it finds stored stays stored until it returns. Like a change,
+    /// it runs on its own task, so a caller that stops waiting cannot cut it
+    /// short.
+    ///
+    /// # Errors
+    ///
+    /// Whatever `op` fails with, or [`TunnelError::Infrastructure`] if it
+    /// panics.
+    pub(crate) async fn while_unchanged<T: Send + 'static>(
+        self: &Arc<Self>,
+        op: impl FnOnce() -> Result<T, TunnelError> + Send + 'static,
+    ) -> Result<T, TunnelError> {
+        let registry = Arc::clone(self);
+        tokio::spawn(async move {
+            let _changing = registry.changing.lock().await;
+            on_blocking(op).await
+        })
+        .await
+        .map_err(|e| TunnelError::infrastructure("a tunnel store task panicked", e))?
+    }
+
+    /// Send rathole the service `change` adds, deletes or replaces for
+    /// `tunnel`, then insert, remove or replace it in the [`ServedTunnels`].
+    ///
+    /// A reissued token is sent as the service added again: rathole replaces
+    /// the service's token and drops its control channel, so a device
+    /// connected with the old token is cut off at once, and can connect
+    /// again only with the new one.
     async fn serve(&self, change: Change, tunnel: &Tunnel) -> Result<(), TunnelError> {
         let service_change = match change {
-            Change::Created => ServerServiceChange::Add(config::service(tunnel)),
+            Change::Created | Change::TokenReissued => {
+                ServerServiceChange::Add(config::service(tunnel))
+            }
             Change::Deleted => ServerServiceChange::Delete(tunnel.name.clone()),
         };
         self.rathole
@@ -203,6 +264,12 @@ impl TunnelRegistry {
                 self.tunnels.remove(&tunnel.name);
                 // After the removal, so no request still being verified with
                 // the old token can record a nonce for it.
+                self.verifier.forget(&tunnel.name);
+            }
+            Change::TokenReissued => {
+                self.tunnels.insert(tunnel);
+                // The nonces were recorded under the old token, which no
+                // longer verifies.
                 self.verifier.forget(&tunnel.name);
             }
         }
@@ -219,7 +286,7 @@ mod tests {
 
     use super::*;
     use crate::domain::test_fake::stored_tunnel;
-    use crate::live_bindings::{LiveTunnelsCreator, LiveTunnelsDeleter};
+    use crate::live_bindings::{LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter};
     use crate::route::Destination;
     use crate::test_support::{admin, device, open_registry, registry, settings, until_connected};
     use crate::tunnels::{TunnelDown, Tunnels};
@@ -325,6 +392,65 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), dropped)
             .await
             .expect("the deleted tunnel should drop");
+        let _ = shutdown_tx.send(true);
+    }
+
+    /// With the real rathole server and rathole clients as devices: a
+    /// reissued token drops the device connected with the old one, which
+    /// keeps retrying and is refused, and a device with the new one
+    /// connects.
+    #[tokio::test]
+    async fn a_reissued_token_drops_the_old_device_and_takes_the_new_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut settings = settings(dir.path(), None);
+        let control_port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        settings.control.control_addr = ([127, 0, 0, 1], control_port).into();
+        let (registry, rathole) = open_registry(&settings).await;
+        let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+        let tunnels = Tunnels::default();
+        tokio::spawn(tunnels.clone().serve(
+            rathole.initial_config,
+            rathole.changes,
+            shutdown_rx.resubscribe(),
+        ));
+        let creator: LiveTunnelsCreator = admin(&registry);
+        let created = creator
+            .create("bob@example.com".to_owned(), Some("bob".to_owned()))
+            .await
+            .unwrap();
+        let old_token = created.tunnel.token.expose();
+        let mut old_device = device(&settings, "bob", old_token, shutdown_rx.resubscribe()).await;
+        until_connected(&tunnels, "bob", &mut old_device).await;
+
+        let reissuer: LiveTunnelTokensReissuer = admin(&registry);
+        let reissued = reissuer.reissue("bob".to_owned()).await.unwrap();
+        let dropped = async {
+            while tunnels
+                .connect("bob", tokio::io::duplex(64).1)
+                .await
+                .is_ok()
+            {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), dropped)
+            .await
+            .expect("the old token's device should drop");
+        // The old device retries every second; each time it is refused.
+        tokio::time::sleep(Duration::from_millis(2_500)).await;
+        assert_eq!(
+            tunnels.connect("bob", tokio::io::duplex(64).1).await,
+            Err(TunnelDown),
+            "the old token no longer connects"
+        );
+
+        let new_token = reissued.tunnel.token.expose();
+        let mut new_device = device(&settings, "bob", new_token, shutdown_rx).await;
+        until_connected(&tunnels, "bob", &mut new_device).await;
         let _ = shutdown_tx.send(true);
     }
 }

@@ -9241,6 +9241,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "wildflowerhealthio-kitchen-sink"
+version = "0.0.0"
+
+[[package]]
 name = "wildflowerhealthio-ohif-server"
 version = "0.0.0"
 dependencies = [
@@ -9320,6 +9324,7 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "wildflowerhealthio-kitchen-sink",
  "wildflowerhealthio-persistence",
  "wildflowerhealthio-rathole-settings",
  "wildflowerhealthio-shared-structures",

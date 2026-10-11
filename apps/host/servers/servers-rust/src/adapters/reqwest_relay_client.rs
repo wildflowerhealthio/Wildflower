@@ -229,11 +229,11 @@ mod tests {
             let addr = listener.local_addr().unwrap();
             let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
             tokio::spawn(async move {
-                while let Ok((stream, _)) = listener.accept().await {
+                while let Ok((stream, client)) = listener.accept().await {
                     let site = Arc::clone(&site);
                     let shutdown_rx = shutdown_rx.resubscribe();
                     tokio::spawn(async move {
-                        site.serve(stream, Duration::from_secs(5), shutdown_rx)
+                        site.serve(stream, client, Duration::from_secs(5), shutdown_rx)
                             .await;
                     });
                 }

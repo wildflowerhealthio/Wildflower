@@ -15,6 +15,7 @@ members = [
   "apps/host/wildflower-server/request-log-rust",
   "apps/host/wildflower-server/wildflower-server-rust",
   "apps/relay/relay-server",
+  "global/kitchen-sink-rust",
   "apps/host/wildflower-server/apps-rust",
   "apps/host/browser-sniffer-tauri",
   "slices/ohif-server-rust",

@@ -14,7 +14,7 @@ const UnixSecondsUtc = Schema.transform(Schema.Int, Schema.DateTimeUtcFromSelf, 
 /**
  * A tunnel as `GET /api/tunnels` lists it — mirrors the Rust `TunnelInfo` in
  * `apps/relay/relay-server/src/site/admin.rs`. No token: the relay shows a
- * token only once, when the tunnel is created.
+ * token only once, when the tunnel is created or its token reissued.
  */
 const TunnelInfoSchema = Schema.Struct({
   name: Schema.String,
@@ -34,14 +34,26 @@ const CreateTunnelBodySchema = Schema.Struct({
 })
 
 /**
- * A tunnel just created — mirrors the Rust `CreatedTunnel`. The only response
- * that carries the token; nothing can read it back later.
+ * A tunnel with its token, just created or reissued — mirrors the Rust
+ * `TunnelWithToken`. The only responses that carry a token; nothing can read
+ * it back later.
  */
-const CreatedTunnelSchema = Schema.Struct({
+const TunnelWithTokenSchema = Schema.Struct({
   name: Schema.String,
   token: Schema.String,
   /** `<tunnel name>.<domain>`. */
   public_host: Schema.String,
+})
+
+/**
+ * A claim code just issued for a tunnel — mirrors the Rust
+ * `IssuedClaimCodeBody`. The only response that carries the code, shown as
+ * `ABCD-EFGH`; it redeems once, at the relay's `POST /claim`, until
+ * `expires_at` or until the tunnel's next code replaces it.
+ */
+const IssuedClaimCodeSchema = Schema.Struct({
+  code: Schema.String,
+  expires_at: UnixSecondsUtc,
 })
 
 /**
@@ -62,7 +74,10 @@ const plainTextReason = <Self extends { readonly reason: string }, Tag extends s
     (schema) => schema.annotations(HttpApiSchema.annotations({ status }))
   )
 
-/** `404`: no tunnel has the name being deleted. */
+/**
+ * `404`: no tunnel has the name being deleted, issued a claim code or
+ * reissued a token.
+ */
 class TunnelNotFound extends Schema.TaggedError<TunnelNotFound>()('TunnelNotFound', {
   reason: Schema.String,
 }) {
@@ -120,12 +135,18 @@ const TunnelNamesExhaustedFromText = plainTextReason(
  *   name is left.
  * - `ListTunnels`: every tunnel, no tokens.
  * - `DeleteTunnel`: `204`; `404` when no tunnel has the name.
+ * - `IssueClaimCode`: `201` with a claim code for the tunnel, shown only
+ *   here, and when it expires, replacing the tunnel's earlier code; `404`
+ *   when no tunnel has the name.
+ * - `ReissueToken`: `200` with a new token for the tunnel, shown only here.
+ *   The old token stops working at once, and the device connected with it
+ *   drops until it is given the new one. `404` when no tunnel has the name.
  */
 const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
   .add(
     HttpApiEndpoint.post('CreateTunnel', '/api/tunnels')
       .setPayload(CreateTunnelBodySchema)
-      .addSuccess(CreatedTunnelSchema, { status: 201 })
+      .addSuccess(TunnelWithTokenSchema, { status: 201 })
       .addError(TunnelNameConflictFromText)
       .addError(TunnelRejectedFromText)
       .addError(TunnelNamesExhaustedFromText)
@@ -139,16 +160,29 @@ const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
       .addSuccess(HttpApiSchema.NoContent)
       .addError(TunnelNotFoundFromText)
   )
+  .add(
+    HttpApiEndpoint.post('IssueClaimCode', '/api/tunnels/:name/claim-codes')
+      .setPath(Schema.Struct({ name: Schema.String }))
+      .addSuccess(IssuedClaimCodeSchema, { status: 201 })
+      .addError(TunnelNotFoundFromText)
+  )
+  .add(
+    HttpApiEndpoint.post('ReissueToken', '/api/tunnels/:name/token')
+      .setPath(Schema.Struct({ name: Schema.String }))
+      .addSuccess(TunnelWithTokenSchema)
+      .addError(TunnelNotFoundFromText)
+  )
   .addError(HttpApiError.Unauthorized)
 
 export {
-  CreatedTunnelSchema,
   CreateTunnelBodySchema,
   httpApiGroup,
+  IssuedClaimCodeSchema,
   TunnelInfoSchema,
   TunnelNameConflict,
   TunnelNamesExhausted,
   TunnelNotFound,
   TunnelRejected,
+  TunnelWithTokenSchema,
   UnixSecondsUtc,
 }

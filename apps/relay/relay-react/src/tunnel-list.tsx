@@ -8,11 +8,28 @@ import {
 import { DateTime, Option } from 'effect'
 import { useState, type JSX } from 'react'
 
-import { useDeleteTunnelMutation, useTunnelsQuery, type TunnelInfo } from './queries/index.ts'
+import { IssuedClaimCodePanel } from './issued-claim-code-panel.tsx'
+import {
+  useDeleteTunnelMutation,
+  useIssueClaimCodeMutation,
+  useReissueTokenMutation,
+  useTunnelsQuery,
+  type TunnelInfo,
+} from './queries/index.ts'
+import { TunnelTokenPanel } from './tunnel-token-panel.tsx'
 import styles from './tunnel-list.module.css'
 
+/** What a row's buttons do, by tunnel name. */
+interface TunnelRowActions {
+  readonly onIssueClaimCode: (name: string) => void
+  /** A claim code is being issued; no other can be until it is. */
+  readonly issuing: boolean
+  readonly onReissueToken: (name: string) => void
+  readonly onDelete: (name: string) => void
+}
+
 /** One row: the name, where visitors reach it, whose it is and since when. */
-const tunnelRow = (tunnel: TunnelInfo, onDelete: (name: string) => void): ItemListItem => ({
+const tunnelRow = (tunnel: TunnelInfo, actions: TunnelRowActions): ItemListItem => ({
   id: tunnel.name,
   title: tunnel.name,
   subtitle: (
@@ -27,23 +44,55 @@ const tunnelRow = (tunnel: TunnelInfo, onDelete: (name: string) => void): ItemLi
     </time>
   ),
   actions: (
-    <button
-      type="button"
-      className="button-3 outline accent-red"
-      aria-label={`Delete ${tunnel.name}`}
-      onClick={() => {
-        onDelete(tunnel.name)
-      }}
-    >
-      Delete
-    </button>
+    <span className={styles['tunnel-list__actions']}>
+      <button
+        type="button"
+        className="button-3 outline"
+        aria-label={`Issue claim code for ${tunnel.name}`}
+        disabled={actions.issuing}
+        onClick={() => {
+          actions.onIssueClaimCode(tunnel.name)
+        }}
+      >
+        Issue claim code
+      </button>
+      <button
+        type="button"
+        className="button-3 outline"
+        aria-label={`Reissue token for ${tunnel.name}`}
+        onClick={() => {
+          actions.onReissueToken(tunnel.name)
+        }}
+      >
+        Reissue token
+      </button>
+      <button
+        type="button"
+        className="button-3 outline accent-red"
+        aria-label={`Delete ${tunnel.name}`}
+        onClick={() => {
+          actions.onDelete(tunnel.name)
+        }}
+      >
+        Delete
+      </button>
+    </span>
   ),
 })
 
-/** Every tunnel on the relay, each with a confirmed delete. */
+/**
+ * Every tunnel on the relay, each with a claim code to issue and a confirmed
+ * token reissue, either shown once above the list, and a confirmed delete.
+ */
 const TunnelList = (): JSX.Element => {
   const tunnels = useTunnelsQuery()
+  const issue = useIssueClaimCodeMutation()
+  const reissue = useReissueTokenMutation()
   const remove = useDeleteTunnelMutation()
+  const [confirmingReissue, setConfirmingReissue] = useState(Option.none<string>())
+  const closeReissue = (): void => {
+    setConfirmingReissue(Option.none())
+  }
   const [confirming, setConfirming] = useState(Option.none<string>())
   const close = (): void => {
     setConfirming(Option.none())
@@ -53,19 +102,83 @@ const TunnelList = (): JSX.Element => {
   return (
     <section className={styles['tunnel-list']}>
       <h2 className="text-heading-4">Tunnels</h2>
+      <ErrorBanner error={issue.error} />
+      {Option.all({
+        issued: Option.fromNullable(issue.data),
+        tunnelName: Option.fromNullable(issue.variables),
+      }).pipe(
+        Option.map(({ issued, tunnelName }) => (
+          <IssuedClaimCodePanel
+            key="issued-claim-code"
+            tunnelName={tunnelName}
+            issued={issued}
+            onDone={() => {
+              issue.reset()
+            }}
+          />
+        )),
+        Option.getOrNull
+      )}
+      {Option.fromNullable(reissue.data).pipe(
+        Option.map((reissued) => (
+          <TunnelTokenPanel
+            key="reissued-token"
+            title={`New token for ${reissued.name}`}
+            tunnel={reissued}
+            onDone={() => {
+              reissue.reset()
+            }}
+          />
+        )),
+        Option.getOrNull
+      )}
+      <ErrorBanner error={reissue.error} />
       <ErrorBanner error={remove.error} />
       {tunnels.data.length === 0 ? (
         <p className="text-body-2">No tunnels yet.</p>
       ) : (
         <ItemList
           items={tunnels.data.map((tunnel) =>
-            tunnelRow(tunnel, (name) => {
-              remove.reset()
-              setConfirming(Option.some(name))
+            tunnelRow(tunnel, {
+              onIssueClaimCode: (name) => {
+                issue.mutate(name)
+              },
+              issuing: issue.isPending,
+              onReissueToken: (name) => {
+                reissue.reset()
+                setConfirmingReissue(Option.some(name))
+              },
+              onDelete: (name) => {
+                remove.reset()
+                setConfirming(Option.some(name))
+              },
             })
           )}
         />
       )}
+      <ConfirmDialog
+        open={Option.isSome(confirmingReissue)}
+        title="Reissue token?"
+        confirmLabel="Reissue token"
+        destructive
+        pending={reissue.isPending}
+        onConfirm={() => {
+          Option.map(confirmingReissue, (name) => {
+            reissue.mutate(name, { onSettled: closeReissue })
+          })
+        }}
+        onCancel={closeReissue}
+      >
+        {confirmingReissue.pipe(
+          Option.map((name) => (
+            <span key="question">
+              Reissue the token for <strong>{name}</strong>? The current token stops working at
+              once, and the device using it disconnects until it’s given the new one.
+            </span>
+          )),
+          Option.getOrNull
+        )}
+      </ConfirmDialog>
       <ConfirmDialog
         open={Option.isSome(confirming)}
         title="Delete tunnel?"
@@ -82,8 +195,8 @@ const TunnelList = (): JSX.Element => {
         {confirming.pipe(
           Option.map((name) => (
             <span key="question">
-              Delete <strong>{name}</strong>? The relay stops serving it at once, and its token
-              stops working.
+              Delete <strong>{name}</strong>? The relay stops serving it at once, and its token and
+              claim code stop working.
             </span>
           )),
           Option.getOrNull

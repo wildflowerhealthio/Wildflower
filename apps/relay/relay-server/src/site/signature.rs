@@ -111,7 +111,8 @@ impl Verifier {
     }
 
     /// Forget the nonces of the tunnel named `name`, once it has been
-    /// removed from the served tunnels. The other signers keep theirs.
+    /// removed from the served tunnels or its token replaced there. The
+    /// other signers keep theirs.
     pub fn forget(&self, name: &str) {
         self.nonces
             .lock()

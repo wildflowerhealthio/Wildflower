@@ -13,7 +13,7 @@ use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost};
 use wildflowerhealthio_shared_structures::health_check::{health_router, AlwaysHealthy};
 
 use super::signature::{require_signature, SignedBy, Verifier};
-use super::{admin, admin_ui};
+use super::{admin, admin_ui, claim};
 use crate::live_bindings::state::TunnelRegistry;
 
 /// `GET /rathole` changes only when the relay restarts with a new
@@ -26,7 +26,10 @@ const RATHOLE_CACHE_CONTROL: &str = "public, max-age=60";
 ///   with a tunnel's token (see [`super::signature`]); `401` otherwise.
 /// - With `admin`, the admin API on `admin.<domain>` (see [`super::admin`]),
 ///   and the admin UI that calls it, at `/` there (see [`super::admin_ui`]).
-///   The UI's catch-all path loses to every route above.
+///   The UI's catch-all path loses to every route above. Also `POST /claim`,
+///   which redeems a claim code the admin API issued for a tunnel's name,
+///   token and `rathole_settings`, without authentication (see
+///   [`super::claim`]).
 pub(super) fn router(
     rathole_settings: PublicRatholeSettings,
     verifier: Arc<Verifier>,
@@ -39,12 +42,13 @@ pub(super) fn router(
             require_signature,
         ))
         .route("/rathole", get(rathole))
-        .with_state(Arc::new(rathole_settings))
+        .with_state(Arc::new(rathole_settings.clone()))
         .merge(health_router(Arc::new(AlwaysHealthy)));
     match admin {
         Some(tunnels) => {
             let admin_hostname: Arc<str> = tunnels.admin_hostname().into();
             router
+                .merge(claim::router(&tunnels, rathole_settings))
                 .merge(admin::router(tunnels, verifier))
                 .merge(admin_ui::router(admin_hostname))
         }
@@ -82,7 +86,7 @@ mod tests {
 
     use super::*;
     use crate::domain::Tunnel;
-    use crate::live_bindings::{LiveTunnelsCreator, LiveTunnelsDeleter};
+    use crate::live_bindings::{LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter};
     use crate::served::ServedTunnels;
     use crate::settings::{RelaySettings, Secret};
     use crate::site::signature::tests::signed_request;
@@ -276,6 +280,34 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
+    /// A reissued token signs `GET /me` at once, and the token it replaced
+    /// stops verifying at once.
+    #[tokio::test]
+    async fn a_reissued_token_signs_at_once_and_the_old_one_stops() {
+        let (tunnels, _fixture) = registry(Some("an-admin-key-of-thirty-two-bytes")).await;
+        let router = router(
+            rathole_settings(),
+            tunnels.verifier(),
+            Some(Arc::clone(&tunnels)),
+        );
+        let creator: LiveTunnelsCreator = admin(&tunnels);
+        let created = creator
+            .create("bob@example.com".to_owned(), Some("bob".to_owned()))
+            .await
+            .unwrap();
+        let old_token = created.tunnel.token.expose();
+        let response = router.clone().oneshot(me(old_token, "1")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let reissuer: LiveTunnelTokensReissuer = admin(&tunnels);
+        let reissued = reissuer.reissue("bob".to_owned()).await.unwrap();
+        let response = router.clone().oneshot(me(old_token, "2")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let new_token = reissued.tunnel.token.expose();
+        let response = router.oneshot(me(new_token, "3")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
     /// With the admin API on, `admin.<domain>` also serves the admin UI at
     /// `/`, and every route the site had still answers as before: the UI's
     /// catch-all takes no path another route has.
@@ -302,6 +334,12 @@ mod tests {
             (admin, "/me", StatusCode::UNAUTHORIZED),
             (admin, "/health", StatusCode::OK),
             (admin, "/rathole", StatusCode::OK),
+            (admin, "/claim", StatusCode::METHOD_NOT_ALLOWED),
+            (
+                "relay.example.com",
+                "/claim",
+                StatusCode::METHOD_NOT_ALLOWED,
+            ),
             ("relay.example.com", "/", StatusCode::NOT_FOUND),
             ("relay.example.com", "/api/tunnels", StatusCode::NOT_FOUND),
             ("relay.example.com", "/rathole", StatusCode::OK),
@@ -318,7 +356,7 @@ mod tests {
     }
 
     /// Without an admin key nothing can sign as admin, and the admin API is
-    /// not mounted at all.
+    /// not mounted at all, nor `POST /claim`, since no code can be issued.
     #[tokio::test]
     async fn without_an_admin_key_the_admin_api_is_absent() {
         let router = signing_router();
@@ -331,7 +369,13 @@ mod tests {
             unix_now().unwrap(),
             "absent",
         );
-        let response = router.oneshot(request).await.unwrap();
+        let response = router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let claim = Request::post("/claim")
+            .header(header::HOST, "relay.example.com")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(claim).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }
