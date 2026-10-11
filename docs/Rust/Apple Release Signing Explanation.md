@@ -248,11 +248,20 @@ channel that fails it is not written. The notarization half of
 `apple-signing-preflight.sh` checks the repository-level credentials, which
 the script cannot read; it runs only when they are exported in the shell.
 
-None of the environments has a deployment branch rule. Such a rule is matched
-against `GITHUB_REF`, which for the `pull_request: closed` event that triggers
-a publish is `refs/pull/<number>/merge`, not `main` — so a `main`-only rule
-blocks every merge-triggered release, and admitting `refs/pull/*/merge` admits
-every pull request in the repository.
+Each environment may deploy only from the refs a publish runs on:
+
+- `refs/pull/*/merge`, the ref a merged release pull request's publish runs
+  on. GitHub matches a `pull_request` run's environment against that ref,
+  not the pull request's branch, so a `main`-only rule would block every
+  merge-triggered release.
+- `main` and `release/v*`, the refs a publish is dispatched from.
+
+A workflow pushed to or dispatched from any other branch is refused the
+certificates. A pull request's own workflow file still runs on its merge ref,
+so the rule narrows who can reach them to those who can open a pull request
+from a branch of this repository, rather than closing that path. The script
+sets the rule when it creates an environment and leaves an existing one's
+rules as they are.
 
 ## Reading entitlements out of a profile
 
