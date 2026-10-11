@@ -19,8 +19,9 @@ every server orders its certificates with. What belongs to one server sits in
 that server's folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir`
 in `servers-rust`), so servers never share a database, and removing a server
 deletes its certificates but not the account. `acme-account/` and each
-`certificates/` are readable by the host's user only (mode 0700), since
-they hold private keys.
+`certificates/` are readable by the host's user only (mode 0700) on macOS,
+Linux, iOS and Android, since they hold private keys. On Windows they keep
+the permissions they inherit from the data root.
 
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
 root and hands it to the slices that keep install-wide files, among them

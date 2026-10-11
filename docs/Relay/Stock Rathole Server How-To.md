@@ -8,7 +8,7 @@ devices under one domain, deploy wildflower-relay instead (see the
 relay can and can't see, see the [Relay Explanation](./Explanation.md).
 
 The device runs a rathole fork whose wire protocol is upstream's, so the
-official v0.5.0 release and upstream `master` both work.
+official v0.5.0 release and upstream `main` both work.
 
 ## 1. Get rathole and a key pair
 
@@ -24,8 +24,8 @@ config; the public key goes in Wildflower.
 
 ## 2. Configure the server
 
-Pick a tunnel name, one lowercase DNS label (`a-z`, `0-9` and `-`), and a
-random token, e.g. `openssl rand -base64 32`. The tunnel name is public (see
+Pick a tunnel name, one lowercase DNS label (`a-z`, `0-9` and `-`, not
+starting or ending with `-`) other than `admin`, and a random token, e.g. `openssl rand -base64 32`. The tunnel name is public (see
 [What Let's Encrypt and the CT logs learn](./Explanation.md#what-lets-encrypt-and-the-ct-logs-learn)),
 so make it meaningless.
 
@@ -51,8 +51,8 @@ bind_addr = "0.0.0.0:443"
 - Binding 443 needs root or `CAP_NET_BIND_SERVICE`.
 - Stock rathole has no routing by server name, so a host's port 443 serves one
   device.
-- The default heartbeats are fine. Don't raise the server's
-  `heartbeat_interval` above 40 seconds, the device's heartbeat timeout.
+- The default heartbeats are fine. Keep the server's `heartbeat_interval`
+  below 40 seconds, the device's heartbeat timeout.
 
 Run it with `rathole server.toml`.
 

@@ -11,7 +11,7 @@ and never decrypts them.
 ```text
 browser / app ──TLS──► relay :443 ── reads the ClientHello's SNI only
                           │
-                          │ rathole control channel (noise)
+                          │ rathole data channel (noise)
                           ▼
             device: tunnel listener ── PROXY v2 header (optional)
                                     ── TLS, device-held certificate
@@ -22,8 +22,10 @@ browser / app ──TLS──► relay :443 ── reads the ClientHello's SNI o
    it to the relay.
 2. The relay reads the server name (SNI) from the TLS ClientHello, and nothing
    else. It maps the name to the device's tunnel and hands the connection,
-   hello included, to rathole, which carries it to the device over the
-   device's noise-encrypted control channel. A relay that knows the visitor's
+   hello included, to rathole. Over the device's control channel, rathole
+   asks the device for a data channel, a fresh noise-encrypted connection the
+   device dials out to the relay, and carries the visitor's bytes over it.
+   A relay that knows the visitor's
    address puts it in a PROXY protocol v2 header ahead of the hello.
 3. On the device, the tunnel listener reads the PROXY header if there is one,
    terminates TLS with the certificate the device holds for its domain, and
@@ -115,8 +117,9 @@ access on it.
 
 ## Leaving
 
-Since the device holds the certificate, any relay that forwards TCP will do.
-For one device, a stock rathole server is enough; for many devices under one
+Since the device holds the certificate, any rathole server will do: the
+device dials out to it as a rathole client, so it needs no Wildflower code,
+only rathole's protocol. For one device, a stock rathole server is enough; for many devices under one
 domain, run wildflower-relay yourself:
 
 - [Stock Rathole Server How-To](./Stock%20Rathole%20Server%20How-To.md)

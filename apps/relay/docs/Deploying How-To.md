@@ -85,9 +85,10 @@ On the device, the owner chooses **Add new server**, then
 
 ## Let's Encrypt's rate limit
 
-Every device's certificate is for a name under your domain, so all of them
-share Let's Encrypt's limit of 50 new certificates per registered domain per 7
-days. Renewals are exempt. A relay adding devices faster than that needs Let's
+Every device's certificate is for a name under your registered domain
+(`example.com` for a relay at `relay.example.com`), so all of them share Let's
+Encrypt's limit of 50 new certificates per registered domain per 7 days, with
+the relay's own certificate and any other name under that domain. Renewals are exempt. A relay adding devices faster than that needs Let's
 Encrypt's rate-limit adjustment.
 
 ## The official relay's deploy
