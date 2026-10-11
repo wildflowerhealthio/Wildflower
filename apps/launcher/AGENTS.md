@@ -41,15 +41,6 @@ the host runs, in
 - [`navigation-react`](./navigation-react) — the bridge handler that reports
   route changes to the host. Its wire, `navigation-core`, stays in
   `slices/navigation-core`, because `fhir-r4` reads it too.
-- [`wildflower-server-core-js`](./wildflower-server-core-js/AGENTS.md) — the
-  pure layer of the server-status wire: `BackgroundServerServiceBridge`, the
-  host's `ServerServiceStatus` snapshot of the Wildflower server it runs and the
-  page's `RestartServer` request, pinned by `test/bridge-wire-golden.json`.
-- [`wildflower-server-react`](./wildflower-server-react/AGENTS.md) — the page
-  side of that wire: the status store and the boot-stable handler that fills it,
-  `ServerStatusBanner`, the `/settings/server` page and the `RestartServer`
-  sender. `launcher-web` builds the store and, on `main-tauri` only, mounts the
-  banner and links the page from Settings.
 
 ## Rules
 
