@@ -7,15 +7,20 @@ The host keeps everything it owns under one directory, the data root:
   servers.json            the install's servers
   saved_data/             saved HAR recordings, shared by every server
   fhir-search-params/     Android only: the materialized FHIR SearchParameter bundle
+  acme-account/           the install's ACME account keys, one per CA
   servers/<domain>/       one folder per server, named by its domain
     wildflower.sqlite
     health-data.sqlite
+    certificates/         the server's certificates, their keys and history
 ```
 
-What belongs to the install sits in the data root, and the install's ACME
-account joins it with #893. What belongs to one server sits in that server's
-folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir` in
-`servers-rust`), so servers never share a database.
+What belongs to the install sits in the data root, including the ACME account
+every server orders its certificates with. What belongs to one server sits in
+that server's folder, `<data root>/servers/<domain>/` (`ServerRecord::server_dir`
+in `servers-rust`), so servers never share a database, and removing a server
+deletes its certificates but not the account. `acme-account/` and each
+`certificates/` are readable by the host's user only (mode 0700), since
+they hold private keys.
 
 `setup()` in [`src-tauri/src/lib.rs`](./src-tauri/src/lib.rs) resolves the data
 root and hands it to the slices that keep install-wide files, among them
