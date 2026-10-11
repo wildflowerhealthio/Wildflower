@@ -38,7 +38,7 @@ const CryptoRandomLayerLive = <TByteArray extends ArrayLike<number>>(
 
 /**
  * Live `CryptoRandom` backed by a standard Web Crypto-shaped object —
- * `globalThis.crypto`, `node:crypto.webcrypto`, or an RN polyfill.
+ * `globalThis.crypto` or `node:crypto.webcrypto`.
  *
  * Takes the exact shape of `globalThis.crypto` so the helper is
  * assignable from the standard `Crypto` type without widening generic

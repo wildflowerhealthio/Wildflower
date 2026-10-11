@@ -25,8 +25,7 @@ const tabsFor = (serverKind: ServerKind, platformTabs: readonly TabSpec[]): read
   })
 
 /**
- * Primary navigation bar — the web counterpart of the Expo app's former
- * native tab bar. Renders the tabs for the tree's {@link ServerKind} (see
+ * Primary navigation bar. Renders the tabs for the tree's {@link ServerKind} (see
  * {@link tabsFor}), including any entry-contributed platform tabs (see
  * {@link usePlatformTabs}); TanStack marks the link for the current route
  * (exact or descendant) as active, so the accent styling and the built-in

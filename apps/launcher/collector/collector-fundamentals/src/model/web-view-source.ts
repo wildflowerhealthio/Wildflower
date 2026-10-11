@@ -1,13 +1,10 @@
 import { Schema } from 'effect'
 
 /**
- * What a host `<WebView>` should load. Tagged discriminated union — the
- * `_tag` makes the variant explicit, so a single source value can flow
- * through the `Open` bridge wire schema (which encodes `_tag` for
- * serialization) and the host's native WebView prop (which ignores the
- * extra property at runtime; consumers strip it via destructuring before
- * forwarding to `react-native-webview` if their typings reject unknown
- * fields).
+ * What the host's sniffer webview should load. Tagged discriminated union —
+ * the `_tag` makes the variant explicit, so a single source value flows
+ * through the `Open` bridge wire schema, which encodes `_tag` for
+ * serialization.
  *
  * A plan's navigation `Open` steps carry an {@link Any}; each chooses whether
  * to point at an external URL ({@link Uri}) or to ship an inline page

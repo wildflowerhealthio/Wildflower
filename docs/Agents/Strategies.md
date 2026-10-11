@@ -165,7 +165,7 @@ The test: "could a totally unrelated project reuse this?" Generic Effect/Logger 
 
 ### Bridge side discriminator is `'Host' | 'Web'`, never `'Native'`
 
-For a cross-process WebView bridge, "Native" is overloaded (React Native vs JS vs platform layer). Use `Host` for the side hosting the embedded WebView, `Web` for the embedded page; reserve "Native" for `react-native` library context. The rename cascades: `bridge.Host`, `hostToWeb`/`webToHost` config keys, `HostBackRequested`/`HostRequestedWebNavigation` tags, `Navigation.Host.HandlerTag`.
+For a cross-process WebView bridge, "Native" is ambiguous (the host process vs the platform webview layer). Use `Host` for the side hosting the embedded WebView, `Web` for the embedded page; reserve "Native" for the platform layer (e.g. `tauri-plugin-native-webview`). The rename cascades: `bridge.Host`, `hostToWeb`/`webToHost` config keys, `HostBackRequested`/`HostRequestedWebNavigation` tags, `Navigation.Host.HandlerTag`.
 
 ### Pre-mount a `<NavigateBinder>` for module-load Effect handlers
 

@@ -62,7 +62,7 @@ jobs:
         uses: ./.github/actions/setup-tauri-linux-deps
 
       # Regenerate the sniffer bootstrap bundle via pnpm when its source
-      # changed; otherwise stub it, same as the SPA bundle above.
+      # changed; otherwise stub it, as the relay admin UI is stubbed below.
       - name: Setup Node
         if: steps.filter.outputs.bootstrap == 'true'
         uses: actions/setup-node@v7
