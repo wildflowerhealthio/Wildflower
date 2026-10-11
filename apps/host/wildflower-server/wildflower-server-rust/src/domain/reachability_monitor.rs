@@ -303,8 +303,7 @@ mod tests {
             .collect();
         assert_eq!(
             gaps,
-            [800, 1600, 3200, 6400, 12800, 25600, 30000, 30000]
-                .map(Duration::from_millis),
+            [800, 1600, 3200, 6400, 12800, 25600, 30000, 30000].map(Duration::from_millis),
         );
     }
 
