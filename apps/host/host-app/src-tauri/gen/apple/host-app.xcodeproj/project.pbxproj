@@ -17,12 +17,14 @@
 		BA7948654D153925F4B1460A /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C178627EF86CC35941AE1D91 /* libapp.a */; };
 		CDE95FEDB54FE861C165D4D3 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A7886025F46CD24E0A887A3 /* MetalKit.framework */; };
 		D644FE1EB518B5EBC41EE1BB /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 036F6113582DF66D46F01404 /* LaunchScreen.storyboard */; };
+		5C4B3A2918070F6E5D4C3B2A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */; };
 		F6E4FB12426B2C1BDBF0A537 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A11F1F801116E6492B08EAE4 /* WebKit.framework */; };
 		F6F069C8CDD81A79F06550AB /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 2E0F5797DFE2D269A10E593B /* assets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		036F6113582DF66D46F01404 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		22933AC1B70CC5564AFE5884 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		2E0F5797DFE2D269A10E593B /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		3177D1BE441185CF382DC51B /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
@@ -126,6 +128,7 @@
 				2E0F5797DFE2D269A10E593B /* assets */,
 				61F6061E2225C8955C2CE40E /* Assets.xcassets */,
 				036F6113582DF66D46F01404 /* LaunchScreen.storyboard */,
+				A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */,
 				4D9D4A1072E62EF35B65EECC /* Externals */,
 				F33D9F8A52599F63E241681B /* Sources */,
 				A85E32B91264FDC11E4FBD64 /* src */,
@@ -230,6 +233,7 @@
 			files = (
 				0D2820B6281980855E52C611 /* Assets.xcassets in Resources */,
 				D644FE1EB518B5EBC41EE1BB /* LaunchScreen.storyboard in Resources */,
+				5C4B3A2918070F6E5D4C3B2A /* PrivacyInfo.xcprivacy in Resources */,
 				F6F069C8CDD81A79F06550AB /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
