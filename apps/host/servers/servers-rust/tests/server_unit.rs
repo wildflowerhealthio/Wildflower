@@ -24,7 +24,7 @@ use wildflowerhealthio_servers::{
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use wildflowerhealthio_unit_runner::{
-    RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus,
+    BackgroundSessionLength, RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus,
 };
 use wildflowerhealthio_wildflower_server::{
     CertificateAuthority, CertificateState, DeviceCertificateConfig, HostPorts,
@@ -164,8 +164,11 @@ fn server_on_a_runner() -> ServerOnARunner {
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned(), loopback_base_url.clone());
 
-    let unit_runner =
-        UnitRunner::<ServerDetail>::new(tokio::runtime::Handle::current(), Arc::new(SystemClock));
+    let unit_runner = UnitRunner::<ServerDetail>::new(
+        tokio::runtime::Handle::current(),
+        Arc::new(SystemClock),
+        BackgroundSessionLength::AsLongAsNeeded,
+    );
     unit_runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
         Ok(ServerUnit::new(
             config.clone(),
