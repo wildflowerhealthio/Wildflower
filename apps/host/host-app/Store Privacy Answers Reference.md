@@ -12,7 +12,7 @@ Wildflower Host's webview runs the Sentry browser SDK. It is off until the perso
 | Performance data | Page and request timings, page and resource-type names, ids and queries removed | No                    |
 | Either switch    | Session counts: opened, errored, operating system                               | No                    |
 
-`PERSONAL_DATA_OFF` (`telemetry-web/src/consented.ts`) sends no user fields, cookies, headers, bodies or query parameters. The Sentry organisation is set not to store IP addresses. Sentry deletes events after 90 days.
+`PERSONAL_DATA_OFF` (`telemetry-web/src/consented.ts`) sends no user fields, cookies, headers, bodies or query parameters. The Sentry organisation is set not to store IP addresses. Sentry deletes events after 30 days, the retention of the organisation's Developer plan.
 
 Nothing else leaves the device for the developer:
 

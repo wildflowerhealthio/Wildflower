@@ -13,7 +13,7 @@ const EMAIL = 'ruthmarks151@gmail.com'
  */
 function Terms(): JSX.Element {
   return (
-    <PolicyPage title="Terms of use" updated="2026-10-10">
+    <PolicyPage title="Terms of use" updated="2026-10-11">
       <PolicySection title="Who this covers">
         <p>
           These terms are between you and me, Ruth Marks, who runs the Wildflower Health Project as
@@ -98,9 +98,13 @@ function Terms(): JSX.Element {
       <PolicySection title="The code">
         <p>
           The code is published in the{' '}
-          <a href="https://github.com/wildflowerhealthio/Wildflower">project&rsquo;s repository</a>.
-          Any licence the repository carries governs the code itself. These terms govern the
-          website, the published apps and the relay.
+          <a href="https://github.com/wildflowerhealthio/Wildflower">project&rsquo;s repository</a>{' '}
+          under the{' '}
+          <a href="https://github.com/wildflowerhealthio/Wildflower/blob/main/LICENSE">
+            MIT licence
+          </a>
+          , which governs the code itself. These terms govern the website, the published apps and
+          the relay.
         </p>
       </PolicySection>
 
@@ -128,6 +132,15 @@ function Terms(): JSX.Element {
           Some places don&rsquo;t allow some of these exclusions or limitations, so they may not all
           apply to you. Nothing here limits rights the law gives you that can&rsquo;t be limited by
           agreement.
+        </p>
+      </PolicySection>
+
+      <PolicySection title="Governing law">
+        <p>
+          These terms are governed by the laws of the Province of Ontario, Canada, and the federal
+          laws of Canada that apply there. If you live somewhere else, this doesn&rsquo;t take away
+          any consumer protection the law where you live gives you and doesn&rsquo;t allow you to
+          give up.
         </p>
       </PolicySection>
 

@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/fhir-stu3-as-r4",
   "version": "0.0.1",
   "description": "Just-enough FHIR STU3 wire schemas that decode straight to fhir-r4 resource types via Effect schema transforms",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "Ruth Marks",
   "type": "module",
   "exports": {

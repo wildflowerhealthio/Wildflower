@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The LifeLabs PDF binding of the importer slice: the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports, the FHIR R4 synthesis, and the format's FileImporter. It carries no layer suffix because it is not a pure -core: its decode binds positioned-text-web's pdfjs extraction seam to read a picked PDF's bytes. The /synthesis subpath stays free of that seam. No fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

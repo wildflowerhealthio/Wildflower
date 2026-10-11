@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Browser-side DICOM rendering: cornerstone viewport, tag display, and archive preview components. Depends on @cornerstonejs for image decoding and display; the pure tag parser lives in the sibling `dicom` package.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

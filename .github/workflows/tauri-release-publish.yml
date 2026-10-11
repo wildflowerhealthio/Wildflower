@@ -542,6 +542,20 @@ jobs:
             exit 1
           fi
 
+          # The privacy manifest reaches the bundle only through a hand-edited
+          # pbxproj entry, and the encryption answer only through the Info.plist
+          # overlay. Check both in the built IPA before TestFlight sees it.
+          if ! unzip -Z1 "${ipas[0]}" | grep -qE '^Payload/[^/]+\.app/PrivacyInfo\.xcprivacy$'; then
+            echo "::error::PrivacyInfo.xcprivacy is not in the app bundle of ${ipas[0]}"
+            exit 1
+          fi
+          info_plist="$RUNNER_TEMP/ipa-Info.plist"
+          unzip -p "${ipas[0]}" 'Payload/*.app/Info.plist' > "$info_plist"
+          if [[ "$(plutil -extract ITSAppUsesNonExemptEncryption raw "$info_plist")" != "false" ]]; then
+            echo "::error::Info.plist in ${ipas[0]} must set ITSAppUsesNonExemptEncryption to NO"
+            exit 1
+          fi
+
           echo "Uploading ${ipas[0]}"
           xcrun altool --upload-app --type ios \
             --file "${ipas[0]}" \

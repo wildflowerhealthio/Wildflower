@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The base app the Tauri host's webview mounts: `BaseRoot`, its own telemetry consent gate around the base's screens (the server list and Host Settings) and the consent sheet for the consents waiting on its servers, which reach the host only through `servers-core-js`'s Tauri commands.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

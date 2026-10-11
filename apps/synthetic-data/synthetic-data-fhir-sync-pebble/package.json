@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The FHIR Sync for Pebble synthetic data generator: a Physiology — resting heart rate, walks, nights and charging, day by day relative to the as-of date — as the heart-rate, steps and movement minute history and the Sleep, RestfulSleep and Walk activity Observations the phone app writes, built by fhir-sync-pebble-core's own HealthActivity, MinuteHistory and WatchSync. Pure — no DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

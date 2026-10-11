@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The Shoppers Drug Mart synthetic data generator: a family account's synthetic-data-fundamentals Stories as the HAR a mypharmacy.shoppersdrugmart.ca session exports — the customers, prescription-status and prescription-history XHRs, spelled from shoppers-drugmart-source's URLs and typed by its payload schemas. Pure — no DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

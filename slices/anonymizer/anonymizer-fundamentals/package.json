@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Format-agnostic upstream of the anonymizer: the PickedFile value a picker produces, the AnonymizerFormatDescriptor contract every format binding implements (accept/detect/decode), the structural DecodeFailure a decode reports, and the pure identification helpers the shell routes with. Names no file format. No DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

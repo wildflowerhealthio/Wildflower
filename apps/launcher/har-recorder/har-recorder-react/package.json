@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The HAR Recorder's browser surface: the `/har-recorder` page and the `useHarRecorder` state machine behind it. Intakes the sniffer's response events over `CollectorBridge` (register/sender hooks from `collector-react`), accumulates them with `har-recorder-core-js`'s `Recording`, and carries the encoded archive to the host over `HarRecorderBridge`. No fs — the host writes the file.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

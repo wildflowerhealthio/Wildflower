@@ -18,7 +18,7 @@ const EMAIL = 'ruthmarks151@gmail.com'
  */
 function ConsumerHealthData(): JSX.Element {
   return (
-    <PolicyPage title="Consumer health data privacy policy" updated="2026-10-10">
+    <PolicyPage title="Consumer health data privacy policy" updated="2026-10-11">
       <PolicySection title="Why this page exists">
         <p>
           Some US state laws, including Washington&rsquo;s My Health My Data Act and Nevada&rsquo;s
@@ -72,7 +72,7 @@ function ConsumerHealthData(): JSX.Element {
           <li>
             <strong>Sentry</strong>, a third-party error-reporting service in the United States,
             stores crash reports for me under its data processing agreement, for no purpose of its
-            own, and deletes each one 90 days after it arrives.
+            own, and deletes each one 30 days after it arrives.
           </li>
           <li>
             <strong>Google</strong> hosts the email account you reach me at.

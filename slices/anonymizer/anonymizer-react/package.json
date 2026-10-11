@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The anonymizer shell: the AnonymizerScreen a host app mounts — one local file picker, best-effort identification of the picked file against the closed format registry (PDF and HAR), and the routed format panel. Client-side end to end: identify, decode, review, blob download. An optional serverSource render-slot lets a host offer server-held archives without this package speaking to any server. Issues no writes.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

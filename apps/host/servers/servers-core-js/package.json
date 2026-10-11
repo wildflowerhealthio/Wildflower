@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The base's pure core: the Tauri commands it calls, as Effects over a `TauriInvoke` port, with Effect Schema decoders for their answers; and a server's `/health` report, read over `@effect/platform`'s `HttpClient`. No DOM, no React, no `@tauri-apps/api`.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

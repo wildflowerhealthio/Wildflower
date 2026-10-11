@@ -122,7 +122,7 @@ const SOURCE_CODE: LinkedSentenceCopy = {
  * answered the old wording are asked again.
  */
 const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
-  version: 2,
+  version: 3,
   title: 'Before you start',
   warning: [
     'The Wildflower Health Project is an early-stage open source project, ' +
@@ -178,7 +178,7 @@ const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
  * storage, under this copy's `version`, apart from any web app's.
  */
 const WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
-  version: 2,
+  version: 3,
   title: TELEMETRY_CONSENT_COPY.title,
   warning: [
     'Wildflower Host is an early-stage open source project, ' +

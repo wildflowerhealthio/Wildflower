@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The DICOM binding of the importer slice (core layer): byte-level .dcm detection, the source-file coding that stores a DICOM file as a FHIR DocumentReference filed under the patient its header names, header tag parsing, and the FHIR R4 synthesis behind the format's FileImporter. No DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

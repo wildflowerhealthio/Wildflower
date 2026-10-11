@@ -35,7 +35,10 @@ function SiteFooter(): JSX.Element {
           ))}
         </ul>
         <p className={styles['site-footer__stamp']}>
-          Wildflower Health Project &middot; Ruth Marks &middot; {year}
+          Wildflower Health Project &middot; Ruth Marks &middot; {year} &middot;{' '}
+          <a href="https://github.com/wildflowerhealthio/Wildflower/blob/main/LICENSE">
+            MIT licence
+          </a>
         </p>
       </div>
     </footer>
