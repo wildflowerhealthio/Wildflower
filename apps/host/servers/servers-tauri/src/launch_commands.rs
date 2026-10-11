@@ -237,8 +237,8 @@ mod tests {
     type DetailChange = fn(&mut ServerDetail);
 
     /// The servers' statuses with the server's run up over `gatekeeper`,
-    /// connected to and reachable through its relay, with a valid certificate from Let's
-    /// Encrypt, changed by `change`.
+    /// connected to and reachable through its relay, with a valid certificate
+    /// from Let's Encrypt, changed by `change`.
     fn running_with(
         gatekeeper: &TestGatekeeper,
         change: impl FnOnce(&mut ServerDetail),

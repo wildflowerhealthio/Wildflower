@@ -1656,7 +1656,8 @@ describe('the server page', () => {
 
   it.each([
     ['runningAndReachable', 'Connected.', false],
-    ['runningUnreachable', 'Connecting.', false],
+    ['runningCacheFailed', 'Connecting.', false],
+    ['runningUnreachable', 'Connected.', false],
     ['runningReconnecting', 'Reconnecting: the relay closed the connection', false],
     [
       'runningTokenRejected',
@@ -1683,6 +1684,8 @@ describe('the server page', () => {
 
   it.each([
     ['runningAndReachable', 'Reachable: its /health answers pass.'],
+    ['runningRenewalFailed', 'Checking it can be reached.'],
+    ['runningCacheFailed', 'Not checked until the relay connection is up.'],
     [
       'runningReconnecting',
       'Reachable before its relay connection changed: its /health answered pass.',
@@ -1696,7 +1699,7 @@ describe('the server page', () => {
       'Reachable before its relay connection changed: its /health answered pass.',
     ],
   ] as const)(
-    'should show the connection of a %s status as "%s", the health predating a dropped or refused tunnel',
+    'should show the connection of a %s status as "%s", by its tunnel when that is not connected',
     async (statusName, text) => {
       // Act
       renderServerPage({

@@ -9,9 +9,10 @@ import type * as ServerStatus from './server-status.ts'
  * it mints anything: the server's run isn't up (`serverNotRunning`), its relay
  * refused its tunnel's token (`tokenRejected`) or has no tunnel of its name
  * (`tunnelUnknown`), its `/health` hasn't been asked through its relay yet
- * (`notYetProbed`) or didn't answer (`unreachable`), it holds no valid certificate
- * (`noValidCertificate`), or its valid certificate is from a CA browsers don't
- * trust, such as Let's Encrypt's staging CA (`untrustedCertificate`).
+ * (`notYetProbed`) or didn't answer (`unreachable`), it holds no valid
+ * certificate (`noValidCertificate`), or its valid certificate is from a CA
+ * browsers don't trust, such as Let's Encrypt's staging CA
+ * (`untrustedCertificate`).
  * {@link statusRefusalOf} decides the same from a status.
  */
 const StatusRefusalKindSchema = Schema.Literal(
@@ -52,8 +53,9 @@ const certificateRefusalOf = (
 /**
  * Why the server whose status is `status` can't be launched now, as
  * `server_launch` refuses it; none once it can: its run is up, its relay
- * hasn't refused its tunnel, its `/health` answered through its relay, and its certificate is valid and from a CA
- * browsers trust ({@link certificateRefusalOf}).
+ * hasn't refused its tunnel, its `/health` answered through its relay, and
+ * its certificate is valid and from a CA browsers trust
+ * ({@link certificateRefusalOf}).
  *
  * @remarks
  * A refused tunnel is refused before the health, which the host stops

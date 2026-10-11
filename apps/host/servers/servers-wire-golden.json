@@ -149,7 +149,7 @@
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
       "health": { "kind": "unreachable", "error": "the relay answered 502" },
-      "tunnel": { "kind": "connecting" },
+      "tunnel": { "kind": "connected" },
       "certificate": {
         "status": "orderFailing",
         "issuer": "letsEncrypt",

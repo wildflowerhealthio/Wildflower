@@ -199,9 +199,11 @@ const StatusHero = ({
  * its latest run stopped.
  *
  * @remarks
- * The host checks the health only until it first answers, so once the
- * tunnel's connection to the relay has dropped or been refused, a
- * `reachable` health is from before then, and says so.
+ * The host checks the health only while the tunnel is connected to the
+ * relay, so a run whose tunnel hasn't connected has no health yet, and says
+ * why. It stops checking once the health first answers, so once the tunnel's
+ * connection has dropped or been refused, a `reachable` health is from
+ * before then, and says so.
  */
 const connectionText = (status: ServerStatus.Type): string => {
   if (status.runState === 'stopped') {
@@ -210,9 +212,10 @@ const connectionText = (status: ServerStatus.Type): string => {
       Option.getOrElse(() => "It hasn't run yet.")
     )
   }
+  const tunnel = ServerStatus.tunnelOf(status)
   const relayConnectionChanged = Option.exists(
-    ServerStatus.tunnelOf(status),
-    (tunnel) => tunnel.kind !== 'connecting' && tunnel.kind !== 'connected'
+    tunnel,
+    ({ kind }) => kind !== 'connecting' && kind !== 'connected'
   )
   return ServerStatus.healthOf(status).pipe(
     Option.map((health) => {
@@ -221,9 +224,12 @@ const connectionText = (status: ServerStatus.Type): string => {
         ? `Reachable before its relay connection changed: its /health answered ${health.status}.`
         : `Reachable: its /health answers ${health.status}.`
     }),
-    Option.getOrElse(() =>
-      status.runState === 'starting' ? 'Starting.' : 'Checking it can be reached.'
-    )
+    Option.getOrElse(() => {
+      if (status.runState === 'starting') return 'Starting.'
+      return Option.exists(tunnel, ({ kind }) => kind !== 'connected')
+        ? 'Not checked until the relay connection is up.'
+        : 'Checking it can be reached.'
+    })
   )
 }
 

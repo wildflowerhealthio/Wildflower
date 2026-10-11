@@ -467,7 +467,7 @@ pub(crate) mod tests {
                         health: Some(ServerHealth::Unreachable {
                             error: "the relay answered 502".to_owned(),
                         }),
-                        tunnel: Some(TunnelState::Connecting),
+                        tunnel: Some(TunnelState::Connected),
                         certificate: Some(CertificateState {
                             status: CertificateStatus::OrderFailing,
                             issuer: CertificateAuthority::LetsEncrypt,
