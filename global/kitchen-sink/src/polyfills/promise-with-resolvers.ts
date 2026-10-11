@@ -2,7 +2,8 @@
  * Side-effect polyfill for `Promise.withResolvers` (ES2024). Import
  * this module once near the entry point (or transitively via a
  * library that depends on it) on platforms whose runtime ships a
- * pre-2024 JS engine — notably Hermes on older React Native.
+ * pre-2024 JS engine — notably WebKit before Safari 17.4, which older
+ * iOS and macOS webviews run.
  *
  * The ambient `declare global` augments `PromiseConstructor` so
  * downstream TypeScript code can call `Promise.withResolvers()`

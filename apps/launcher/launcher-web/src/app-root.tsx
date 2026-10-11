@@ -27,7 +27,7 @@ import type { ReactTransport } from './bridges/transport-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 import type { ServerKind } from './session/server-kind.ts'
 // The design-system stylesheet stack, fonts included — imported here so every
-// entry (web and the Tauri shell via `launcher-web/app-root`) picks it up.
+// entry (`main-web`, and `main-tauri` when mounted) picks it up.
 // An entry that already imported part of it gets no second copy: the bundler
 // dedupes each stylesheet by module id.
 import '@wildflowerhealthio/react-tundraish/styles'

@@ -5,17 +5,10 @@
   "type": "module",
   "exports": {
     "./app-root": {
-      "source": "./src/app-root.tsx",
-      "types": "./dist/app-root.d.ts",
-      "default": "./dist/app-root.js"
+      "source": "./src/app-root.tsx"
     },
     "./web-entry": {
-      "source": "./src/web-entry.ts",
-      "types": "./dist/web-entry.d.ts",
-      "default": "./dist/web-entry.js"
-    },
-    "./web-assets": {
-      "source": "./src/web-assets.ts"
+      "source": "./src/web-entry.ts"
     },
     "./bridges": {
       "source": "./src/bridges/bridges.ts"

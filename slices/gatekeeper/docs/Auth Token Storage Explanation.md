@@ -17,29 +17,35 @@ cache invalidator.
 
 ## `makeBearerAuthStateStore` — the hosted web entry (`main-web`)
 
-`main-web` runs cross-origin to the server named by `?server=`. It signs in
-through SMART (or the device flow) and holds the bearer **in memory only** —
-never `localStorage`, `sessionStorage` or a cookie — so it dies with the tab.
-The store publishes `AuthedUntil(exp)` for the held bearer, and the entry's
+`main-web` is the build the site publishes at `/launcher/`. It runs
+cross-origin to the server named by `?server=`. It signs in through SMART (or
+the device flow) and holds the bearer **in memory only** — never
+`localStorage`, `sessionStorage` or a cookie — so it dies with the tab. The
+store publishes `AuthedUntil(exp)` for the held bearer, and the entry's
 `attachBearer` stamps `Authorization: Bearer` on its API requests. Logout
 forgets the bearer, then asks the server to revoke it (`POST /access/logout`).
 
 ## `makeEmbeddedAuthStateStore` — the Tauri entry (`main-tauri`)
 
-Seeded `Unauthed`, no `localStorage` read, no persistence subscriber, no
-cross-tab listener. The page holds **no credential**: the host keeps its
-minted owner token host-side and presents it on the page's direct-loopback
-API requests (loopback-provenance owner trust). The host's `AuthTokenIssued`
-bridge handler is the sole writer — it publishes `HostAuthed` (authed, no
-page-known expiry) and carries no secret.
+`main-tauri` is the launcher's wiring for a Tauri webview the host
+authenticates. No app mounts it: the Tauri host (`apps/host/host-app`) mounts
+the servers base (`apps/host/servers/servers-react`) in its webview instead.
 
-The embedded store must **never** surface a `localStorage` value because the
-embedded WebView's data store outlives the host's JS context: a reload and,
-depending on OS policy, even a force-kill leave the previous session's state in
-storage. The host mints a fresh token and re-notifies on every boot, so a
-cached value can only ever be stale and racing the host's fresh push. A stale
-value surfacing as the store's initial signal would resolve the auth-ready gate
-early and pin TanStack Query loaders on cached 401s.
+The store is seeded `Unauthed`, with no `localStorage` read, no persistence
+subscriber and no cross-tab listener. The page holds **no credential**: the
+host keeps its minted owner token host-side and presents it on the page's
+direct-loopback API requests (loopback-provenance owner trust). The host's
+`AuthTokenIssued` bridge handler is the sole writer — it publishes
+`HostAuthed` (authed, no page-known expiry) and carries no secret.
+
+The embedded store must **never** surface a `localStorage` value because a
+Tauri webview's storage outlives the page's JS context: a reload, and
+depending on the platform webview even a force-kill, leaves the previous
+session's state in storage. The host mints a fresh token and re-notifies on
+every boot, so a cached value can only ever be stale and racing the host's
+fresh push. A stale value surfacing as the store's initial signal would
+resolve the auth-ready gate early and pin TanStack Query loaders on cached
+401s.
 
 ## Why authed loaders gate on `beforeLoad`, not a component or a loader
 
