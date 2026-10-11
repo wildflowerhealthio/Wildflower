@@ -353,6 +353,7 @@ pub async fn set_up(
         relay_settings,
     };
     let tunnel_state_rx = observers.tunnel_state_tx.subscribe();
+    let reachability_tunnel_state_rx = observers.tunnel_state_tx.subscribe();
     let tunnel_daemon =
         wildflowerhealthio_tunnel::setup_tunnel(&tunnel_config, observers.tunnel_state_tx);
     // The tunnel listener's certificate for the server's domain: a cached one
@@ -369,15 +370,17 @@ pub async fn set_up(
     let tunnel_tls_acceptor = TunnelTlsAcceptor::new(&domain, device_certificate.resolver());
     #[cfg(feature = "test-support")]
     let tunnel_stream_tx = tunnel_config.tunnel_stream_tx;
-    // Whether a remote app can reach the server: the monitor GETs the server's
-    // own `/health` (mounted below) through the public origin, so the request
-    // goes out to the relay and back down the tunnel, and publishes the answer
-    // on the host's channel, which outlives this server.
+    // Whether a remote app can reach the server: once the tunnel is
+    // connected, the monitor GETs the server's own `/health` (mounted below)
+    // through the public origin, so the request goes out to the relay and back
+    // down the tunnel, and publishes the answer on the host's channel, which
+    // outlives this server.
     let reachability_monitor = ReachabilityMonitor::spawn(
         Arc::new(ReqwestHealthProbe::new()),
         public_origin
             .join("health")
             .context("the server's public origin has no /health")?,
+        reachability_tunnel_state_rx,
         observers.server_health_tx,
     );
 

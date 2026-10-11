@@ -48,8 +48,8 @@ use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
 use wildflowerhealthio_tunnel::{TunnelState, TunnelStream};
 use wildflowerhealthio_wildflower_server::{
-    set_up, CertificateAuthority, DeviceCertificateConfig, HostPorts, ServerHealth,
-    ServerObservers, WildflowerServerConfig,
+    set_up, CertificateAuthority, DeviceCertificateConfig, HostPorts, ServerObservers,
+    WildflowerServerConfig,
 };
 
 /// The `Forwarded` header a front run on this machine stamps on a request it
@@ -193,7 +193,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         host_owner_token_tx,
         active_pending_consent_tx,
     };
-    let (server_health_tx, mut server_health_rx) = watch::channel(None);
+    let (server_health_tx, server_health_rx) = watch::channel(None);
     let (tunnel_state_tx, mut tunnel_state_rx) = watch::channel(None);
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
@@ -302,20 +302,11 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         forwarded_request_rx.try_recv().is_err(),
         "only the forwarded request is reported"
     );
-    // The host sees the server's health through its public origin, which no
-    // relay serves here: unreachable, with why.
-    let published = tokio::time::timeout(
-        LIFECYCLE_TIMEOUT,
-        server_health_rx.wait_for(Option::is_some),
-    )
-    .await
-    .expect("the server health is published in time")
-    .expect("the test holds the server-health sender")
-    .clone();
-    assert!(
-        matches!(&published, Some(ServerHealth::Unreachable { error }) if !error.is_empty()),
-        "{published:?}"
-    );
+    // The host sees the server's health through its public origin only once
+    // the tunnel is connected, which it never is here: well past the first
+    // probe's delay, no verdict is published.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(*server_health_rx.borrow(), None);
 
     first_shutdown.cancel();
     tokio::time::timeout(LIFECYCLE_TIMEOUT, first)

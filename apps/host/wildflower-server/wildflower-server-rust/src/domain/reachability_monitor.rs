@@ -9,13 +9,18 @@
 //! again. It also stops when the [`ReachabilityMonitor`] is dropped, which
 //! [`WildflowerServer`](crate::WildflowerServer) does when it stops serving.
 //!
+//! A probe goes out only while the tunnel daemon reports
+//! [`TunnelState::Connected`]: until the tunnel is up, a probe can only fail,
+//! and the tunnel's own state already says why.
+//!
 //! ```text
-//!   spawn ─ nothing published ─► probe after 400 ms
+//!   spawn ─ nothing published ─► after 400 ms, probe once Connected
 //!
 //!   probe answered          ──► Reachable(report)        stop
 //!   probe failed / no answer
-//!     within 3 s            ──► Unreachable { error }    next probe after twice
-//!                                                        the last wait, up to 30 s
+//!     within 3 s            ──► Unreachable { error }    after twice the last wait,
+//!                                                        up to 30 s, probe once
+//!                                                        Connected
 //! ```
 //!
 //! An unreachable verdict is published only when its reason changes.
@@ -27,6 +32,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 use wildflowerhealthio_shared_structures::health_check::HealthReport;
+use wildflowerhealthio_tunnel::TunnelState;
 
 use crate::domain::server_health::ServerHealth;
 
@@ -62,16 +68,25 @@ pub(crate) struct ReachabilityMonitor {
 }
 
 impl ReachabilityMonitor {
-    /// Start probing `health_url` with `probe`, publishing each answer on
-    /// `server_health_tx`. Spawns onto the ambient tokio runtime, and
-    /// probes until `/health` answers or the monitor is dropped.
+    /// Start probing `health_url` with `probe` while `tunnel_state_rx` reads
+    /// [`TunnelState::Connected`], publishing each answer on
+    /// `server_health_tx`. Spawns onto the ambient tokio runtime, and probes
+    /// until `/health` answers, the tunnel daemon is gone, or the monitor is
+    /// dropped.
     pub(crate) fn spawn(
         probe: Arc<dyn HealthProbe>,
         health_url: Url,
+        tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
         server_health_tx: watch::Sender<Option<ServerHealth>>,
     ) -> Self {
         let cancel = CancellationToken::new();
-        tokio::spawn(monitor(probe, health_url, server_health_tx, cancel.clone()));
+        tokio::spawn(monitor(
+            probe,
+            health_url,
+            tunnel_state_rx,
+            server_health_tx,
+            cancel.clone(),
+        ));
         Self { cancel }
     }
 }
@@ -82,13 +97,15 @@ impl Drop for ReachabilityMonitor {
     }
 }
 
-/// Probe `health_url` until it answers or the monitor is cancelled, first
-/// after [`FIRST_PROBE_DELAY`], then after twice the last wait, up to
-/// [`MAX_PROBE_DELAY`]. Sleeping after each probe, rather than ticking at a
+/// Probe `health_url` until it answers or the monitor is cancelled. Each
+/// probe waits [`FIRST_PROBE_DELAY`] the first time and twice the last wait
+/// after that, up to [`MAX_PROBE_DELAY`], then for the tunnel to be
+/// connected. Sleeping after each probe, rather than ticking at a
 /// fixed period, means a slow probe never bursts catch-up probes.
 async fn monitor(
     probe: Arc<dyn HealthProbe>,
     health_url: Url,
+    mut tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
     server_health_tx: watch::Sender<Option<ServerHealth>>,
     cancel: CancellationToken,
 ) {
@@ -97,6 +114,14 @@ async fn monitor(
         tokio::select! {
             () = tokio::time::sleep(delay) => {}
             () = cancel.cancelled() => return,
+        }
+        let connected = tokio::select! {
+            connected = tunnel_state_rx.wait_for(|state| state == &Some(TunnelState::Connected)) => connected.is_ok(),
+            () = cancel.cancelled() => return,
+        };
+        // The daemon dropped its sender: no tunnel will ever connect.
+        if !connected {
+            return;
         }
         let server_health = tokio::select! {
             server_health = probe_once(probe.as_ref(), &health_url) => server_health,
@@ -217,12 +242,79 @@ mod tests {
         }
     }
 
+    /// Spawn the monitor over a tunnel that is already connected. The
+    /// sender can go: the monitor reads the last state it published.
     fn spawn(
         probe: Arc<ScriptedProbe>,
     ) -> (ReachabilityMonitor, watch::Receiver<Option<ServerHealth>>) {
+        let (_tunnel_state_tx, tunnel_state_rx) = watch::channel(Some(TunnelState::Connected));
+        spawn_over(probe, tunnel_state_rx)
+    }
+
+    fn spawn_over(
+        probe: Arc<ScriptedProbe>,
+        tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
+    ) -> (ReachabilityMonitor, watch::Receiver<Option<ServerHealth>>) {
         let (server_health_tx, server_health_rx) = watch::channel(None);
-        let monitor = ReachabilityMonitor::spawn(probe, health_url(), server_health_tx);
+        let monitor =
+            ReachabilityMonitor::spawn(probe, health_url(), tunnel_state_rx, server_health_tx);
         (monitor, server_health_rx)
+    }
+
+    /// No probe goes out until the tunnel connects; the first follows as soon
+    /// as it does.
+    #[tokio::test(start_paused = true)]
+    async fn waits_for_the_tunnel_to_connect_before_probing() {
+        let probe = ScriptedProbe::new([Answer::Report(HealthReport::pass())]);
+        let (tunnel_state_tx, tunnel_state_rx) = watch::channel(Some(TunnelState::Connecting));
+        let (_monitor, mut server_health_rx) = spawn_over(Arc::clone(&probe), tunnel_state_rx);
+
+        tunnel_state_tx.send_replace(Some(TunnelState::Reconnecting {
+            error: "dns error".to_owned(),
+        }));
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        assert!(probe.probe_times().is_empty(), "no probe before Connected");
+
+        let connected_at = Instant::now();
+        tunnel_state_tx.send_replace(Some(TunnelState::Connected));
+        server_health_rx
+            .wait_for(Option::is_some)
+            .await
+            .expect("published");
+        assert_eq!(probe.probe_times(), [connected_at]);
+    }
+
+    /// A probe that fails while the tunnel drops waits for it to reconnect
+    /// before probing again.
+    #[tokio::test(start_paused = true)]
+    async fn a_dropped_tunnel_pauses_probing() {
+        let probe = ScriptedProbe::new([Answer::Refused]);
+        let (tunnel_state_tx, tunnel_state_rx) = watch::channel(Some(TunnelState::Connected));
+        let (_monitor, mut server_health_rx) = spawn_over(Arc::clone(&probe), tunnel_state_rx);
+        server_health_rx
+            .wait_for(Option::is_some)
+            .await
+            .expect("published");
+
+        tunnel_state_tx.send_replace(Some(TunnelState::Reconnecting {
+            error: "connection reset".to_owned(),
+        }));
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        assert_eq!(probe.probe_times().len(), 1, "no probe while reconnecting");
+    }
+
+    /// A tunnel the relay refused never connects, so it is never probed; and
+    /// once the daemon is gone, neither is anything else.
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_tunnel_is_never_probed() {
+        let probe = ScriptedProbe::new([Answer::Report(HealthReport::pass())]);
+        let (tunnel_state_tx, tunnel_state_rx) = watch::channel(Some(TunnelState::TokenRejected));
+        let (_monitor, server_health_rx) = spawn_over(Arc::clone(&probe), tunnel_state_rx);
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        drop(tunnel_state_tx);
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        assert!(probe.probe_times().is_empty());
+        assert_eq!(*server_health_rx.borrow(), None);
     }
 
     #[tokio::test(start_paused = true)]
