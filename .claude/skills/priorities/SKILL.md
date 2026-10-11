@@ -111,6 +111,7 @@ Also consider open `🎟️ Accepted` issues outside every epic, such as standal
 1. **Priority.** STAT, then ASAP, then Urgent, then Routine. A STAT or ASAP item leads the report even if it's hard; say so in its reason.
 2. **Unblocks the most.** Count the epic rows that list the item as a dependency. Integration points and wave-1 roots come first.
 3. **Easy.** Look for these signals:
+   - Risk **Snack** (the org `Risk` field, set by `/risk-sizing`)
    - a short `## Scope` checklist
    - a few `## Key files`, all within one slice
    - a named precedent to mirror ("mirror X", "Builds on #M (done)")
@@ -118,7 +119,7 @@ Also consider open `🎟️ Accepted` issues outside every epic, such as standal
    - the `📠 needs machine` label
    - no to-confirm items
 
-   These count against easy: new packages, Rust and TS both, migrations, or a user-facing flow that needs a manual E2E check.
+   These count against easy: Risk **Rabbit-hole**, new packages, Rust and TS both, migrations, or a user-facing flow that needs a manual E2E check.
 4. **Epic momentum.** Prefer the epic whose PR stack is closest to landing.
 
 Keep the list short: about 5 picks, each with a one-line reason.
