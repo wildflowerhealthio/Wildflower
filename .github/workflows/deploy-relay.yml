@@ -46,6 +46,7 @@ on:
       - 'slices/shared-structures/shared-structures-rust/**'
       - 'slices/rathole-settings-rust/**'
       - 'slices/persistence-rust/**'
+      - 'global/kitchen-sink-rust/**'
       - 'Cargo.lock'
       - '.github/workflows/deploy-relay.yml'
   # Redeploy by hand, e.g. after a secret or variable changes.

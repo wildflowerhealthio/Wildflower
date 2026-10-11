@@ -26,6 +26,7 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::Json;
+use wildflowerhealthio_kitchen_sink::rate_limit::ClientKey;
 use wildflowerhealthio_rathole_settings::{
     ClaimRequest, ClaimedTunnel, PublicRatholeSettings, TunnelName,
 };
@@ -73,7 +74,10 @@ async fn claim(
     ConnectInfo(client): ConnectInfo<SocketAddr>,
     body: Result<Json<ClaimRequest>, JsonRejection>,
 ) -> Response {
-    if !state.limiter.admit(client.ip(), Instant::now()) {
+    if !state
+        .limiter
+        .admit(ClientKey::from(client.ip()), Instant::now())
+    {
         tracing::debug!(%client, "claim refused: rate limited");
         return (StatusCode::TOO_MANY_REQUESTS, RATE_LIMITED).into_response();
     }

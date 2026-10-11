@@ -42,6 +42,9 @@ hmac = "0.13"
 # already in the tree through axum.
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
+# The rate limits on `POST /claim` (`rate_limit::RateLimiter`, keyed by
+# `ClientKey`).
+wildflowerhealthio-kitchen-sink = { path = "../../../global/kitchen-sink-rust" }
 # The tunnel store's diesel connection pool and namespaced migration runner,
 # as the slices use them. The relay names the pool type but not rusqlite.
 wildflowerhealthio-persistence = { path = "../../../slices/persistence-rust" }
