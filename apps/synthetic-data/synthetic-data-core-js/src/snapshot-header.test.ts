@@ -127,7 +127,7 @@ describe('Snapshot.Header.make', () => {
         expect(header.schemaVersion).toBe(1)
         expect(header.asOf).toEqual(asOf)
         expect(header.generator).toEqual({
-          name: 'synthetic-data-core-js',
+          name: 'synthetic-data-core',
           wildflowerCommit: commit,
         })
         expect(header.people.map((listing) => listing.key)).toEqual(
@@ -217,7 +217,7 @@ describe('Snapshot.Header.FileSchema', () => {
     expect(example()).toEqual({
       schemaVersion: 1,
       asOf: '2026-09-28T00:00:00.000Z',
-      generator: { name: 'synthetic-data-core-js', wildflowerCommit: 'abc123' },
+      generator: { name: 'synthetic-data-core', wildflowerCommit: 'abc123' },
       people: [
         {
           key: 'person-1',
@@ -248,7 +248,7 @@ describe('Snapshot.Header.FileSchema', () => {
     ['another generator', { ...example(), generator: { name: 'other', wildflowerCommit: 'abc' } }],
     [
       'an empty commit',
-      { ...example(), generator: { name: 'synthetic-data-core-js', wildflowerCommit: '' } },
+      { ...example(), generator: { name: 'synthetic-data-core', wildflowerCommit: '' } },
     ],
     ['an as-of that is not an instant', { ...example(), asOf: 'yesterday' }],
     ['totals that miscount', { ...example(), totals: { people: 1, resources: 3, staticFiles: 1 } }],

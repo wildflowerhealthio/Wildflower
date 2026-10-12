@@ -147,7 +147,7 @@ const GOLDEN_INDEX = `{
   "schemaVersion": 1,
   "asOf": "2026-09-28T00:00:00.000Z",
   "generator": {
-    "name": "synthetic-data-core-js",
+    "name": "synthetic-data-core",
     "wildflowerCommit": "0123456789abcdef0123456789abcdef01234567"
   },
   "people": [

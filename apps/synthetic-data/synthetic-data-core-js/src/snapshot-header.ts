@@ -23,8 +23,12 @@ const PATH = 'index.json'
 /** The header format's version; a change to {@link Schema}'s shape is a new one. */
 const SCHEMA_VERSION = 1
 
-/** What made the snapshot. */
-const GENERATOR_NAME = 'synthetic-data-core-js'
+/**
+ * What made the snapshot. A value of the header format, not the package's
+ * name: it stays fixed when the package is renamed, or published snapshots
+ * stop reading.
+ */
+const GENERATOR_NAME = 'synthetic-data-core'
 
 /** A member of the snapshot: a person whose records are in it, as it introduces them. */
 const MemberSchema = Schema.Struct({
