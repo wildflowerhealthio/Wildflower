@@ -7,7 +7,7 @@
 //! public origin; its model and privacy posture are canonical in
 //! `docs/Apps/Explanation.md`.
 //!
-//! Layered like `collector-rust`:
+//! Layered like `request-log-rust`:
 //!
 //!  - [`domain`] — [`domain::AppRegistration`] (the diesel-mapped
 //!    `app_registrations` row AND the `GET /apps` wire item),
@@ -51,8 +51,8 @@ mod id_utils;
 // The shared runtime state lives at the crate root (not under `http`) so the
 // scope-gated `domain/` capabilities can be built from it (via the per-capability
 // `FixedScopeCapability` bindings that live beside the state) without `domain/`
-// depending on `crate::http`. Mirrors collector's / gatekeeper's `crate::live_bindings`
-// layout.
+// depending on `crate::http`. Mirrors gatekeeper's / request-log's
+// `crate::live_bindings` layout.
 pub(crate) mod live_bindings;
 
 use std::sync::Arc;
@@ -94,7 +94,7 @@ pub struct Apps {
 }
 
 /// Build the apps router over the host-owned diesel connection `pool`, mirroring
-/// `collector-rust`'s `setup_collector`. The host builds the app-wide diesel pool
+/// `request-log-rust`'s `setup_request_log`. The host builds the app-wide diesel pool
 /// (via `wildflowerhealthio_persistence::open_pool`) on the same shared database file its
 /// rusqlite connection serves the other slices from, and passes a clone in — along
 /// with the `webview_handle` the on-device launch side-effect runs through.

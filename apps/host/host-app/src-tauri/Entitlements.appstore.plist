@@ -17,7 +17,7 @@
   <true/>
 
   <!-- Outbound: the rathole tunnel client, the tunnel /health probe, and the
-       collectors' upstream fetches. -->
+       Recorder's sniffer webview. -->
   <key>com.apple.security.network.client</key>
   <true/>
 

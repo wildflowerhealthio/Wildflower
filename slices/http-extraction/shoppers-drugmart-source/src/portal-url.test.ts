@@ -34,7 +34,7 @@ const portalIdArbitrary = fc.oneof(
 const RUNS = numRunsFor({ base: 100 })
 
 describe('portal URLs', () => {
-  it('builds the URLs the collector documents for a uuid', () => {
+  it('builds the portal API URLs for a uuid', () => {
     const id = 'a7353645-83bf-4371-8b87-486b3d5b9802'
     expect(SHOPPERS_API_BASE_URL).toBe('https://mypharmacy.shoppersdrugmart.ca/api/v1')
     expect(customerUrlOf(id)).toBe(`${SHOPPERS_API_BASE_URL}/customers/pcid/${id}`)

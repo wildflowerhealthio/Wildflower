@@ -11,8 +11,8 @@ import { shoppersCaseArbitrary } from './test-helpers.ts'
 
 /**
  * Covers the generator's determinism and dating over generated family
- * accounts, and that its output is an archive `http-archive` reads, in the
- * collector's page order. What the importer makes of it is
+ * accounts, and that its output is an archive `http-archive` reads, in a
+ * portal session's page order. What the importer makes of it is
  * `shoppers-har.round-trip.test.ts`'s.
  */
 
@@ -127,7 +127,7 @@ describe('ShoppersHar.render', () => {
     )
   })
 
-  test("property: decodes as a HAR of the collector's session, every request distinct, every body stored", () => {
+  test('property: decodes as a HAR of a portal session, every request distinct, every body stored', () => {
     fc.assert(
       fc.property(asOfArbitrary, accountArbitrary, (asOf, account) => {
         const log = decodeLog(renderSync(asOf, account))

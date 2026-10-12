@@ -3,8 +3,7 @@
 The **resource-agnostic, format-agnostic upstream** of the importer slice: the
 contract every file-format binding implements, the pure per-resource
 staged-import model (what a decoded-but-unwritten import consists of), and the
-structural failure record the sinks report against. It is to the
-importer slice what `collector-fundamentals` is to the collector slice — the
+structural failure record the sinks report against. It is the
 layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer`)
 sits on top of.
 
@@ -156,8 +155,7 @@ web-trace direction. A HAR binding passes web-trace's coding constants in as
 data. Names no source file _format_ (each binding supplies its `decodeFileSet` and
 its coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
 `har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
-an `importer-core`, a `*-importer-react`, `apps/launcher/collector`, or
-`slices/http-extraction`.
+an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
 
 ## Guardrails
 

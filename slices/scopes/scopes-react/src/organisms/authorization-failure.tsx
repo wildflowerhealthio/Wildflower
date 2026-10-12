@@ -30,7 +30,7 @@ interface AuthorizationFailureProps {
 
 /**
  * A plain-language phrase for a missing scope — the verb(s) it grants and the
- * record type they act on, e.g. `wildflower/Accounts.r` → "read Accounts",
+ * record type they act on, e.g. `wildflower/Apps.r` → "read Apps",
  * `wildflower/Grant.cd` → "create and delete Grants". Reuses the domain's own
  * fluency (the scope form's plain statements read the same `permission.label()`
  * words and `resource.pluralLabel()` names), so this surface never shows a raw
@@ -46,7 +46,7 @@ const fluentScope = (raw: string): string | null => {
   // `permission.label()` is the same sentence-joined verb list the scope form's
   // statements render ("Read", "Create and Delete"); lower-cased to sit mid-line
   // after "permission to". `pluralLabel()` matches the form's running-sentence
-  // resource wording ("Accounts", "Grants").
+  // resource wording ("Apps", "Grants").
   return `${parsed.permission.label().toLowerCase()} ${parsed.resource.pluralLabel()}`
 }
 
@@ -82,7 +82,7 @@ const AuthorizationFailure = ({
             Your session doesn’t have permission to:
             {scopes.map((scope, i) => {
               const phrase = fluentScope(scope)
-              // A resource scope reads as plain language ("read Accounts"); the
+              // A resource scope reads as plain language ("read Apps"); the
               // canonical scope stays available on hover for anyone who needs it.
               // A non-resource scope (a bare flag / umbrella / unparseable token)
               // has no fluent form, so the raw string is the fallback.

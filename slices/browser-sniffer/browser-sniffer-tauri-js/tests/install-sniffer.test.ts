@@ -1504,9 +1504,9 @@ describe('PageLoaded', () => {
     // the page's own `load` has fired (`document.readyState === 'complete'`),
     // so no `load` event is coming. It must still arm the settle watch off the
     // current readyState and emit PageLoaded once the page is quiet — otherwise
-    // a navigate-straight-to-target page (the collector's leading `Open`, which
-    // builds the webview directly on the URL) never settles and the run hangs
-    // on its pattern-less `AwaitPageSettled` hold. jsdom's readyState is already
+    // a navigate-straight-to-target page (the first `Open`, which builds the
+    // webview directly on the URL) never settles and a consumer waiting for
+    // `PageLoaded` hangs. jsdom's readyState is already
     // `'complete'`, so this is "install, never dispatch load, and settle anyway".
     document.body.innerHTML = '<main>already loaded</main>'
     installSnifferForTest(SETTLE)
@@ -1658,8 +1658,8 @@ describe('PageRequested', () => {
 
   test('should still fire for a still-loading page whose load never comes (schema-valid, no PageLoaded)', async () => {
     // A page injected into while still parsing (`readyState === 'loading'`)
-    // whose `load` never fires — a hung SPA, or the 2FA-pause case behind an
-    // `AwaitPageRequested`. PageRequested fires at DOMContentLoaded, but with no
+    // whose `load` never fires — a hung SPA, or a 2FA page left waiting on the
+    // user. PageRequested fires at DOMContentLoaded, but with no
     // `load` and no install-time arm (the document is NOT already `'complete'`)
     // the settle watch never starts, so no PageLoaded. Contrast the
     // already-`'complete'` document, which arms at install — see the

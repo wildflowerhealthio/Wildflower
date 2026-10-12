@@ -17,7 +17,7 @@ import type * as HttpArchive from './http-archive.ts'
 
 /**
  * Turns a set of decoded exchanges into a HAR 1.2 archive — the format the
- * export boundary hands to a collector author.
+ * export boundary hands to the author of an `http-extraction` source.
  *
  * @remarks
  * HAR was chosen because it is widely consumable and agents read it fluently.
@@ -41,7 +41,7 @@ const METHOD_COMMENT =
 
 /** Why a request carries no headers or body. */
 const REQUEST_COMMENT =
-  'No request headers or request body were captured. A POST payload — the single most useful artifact for designing a collector against a search API — is not present in this trace.'
+  'No request headers or request body were captured. A POST payload — the single most useful artifact for designing an extraction source against a search API — is not present in this trace.'
 
 /** Why a `content` entry has a size but no text. */
 const SKIPPED_BODY_COMMENT =

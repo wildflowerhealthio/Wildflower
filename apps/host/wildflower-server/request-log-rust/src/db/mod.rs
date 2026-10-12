@@ -5,7 +5,7 @@
 //! plus the `logged_requests` query bodies (`logged_requests`). The diesel
 //! `table!` schema lives in `schema`. Built on Diesel over
 //! `wildflowerhealthio_persistence::DieselPool` onto the shared database file, mirroring
-//! `collector-rust`'s `SqliteRemotesStore`.
+//! `apps-rust`'s `SqliteAppsStore`.
 
 pub(crate) mod logged_requests;
 mod request_log_store;

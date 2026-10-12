@@ -15,8 +15,8 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * @remarks
  * The bundle counterpart of {@link persistResources}, which fans one PUT out
  * per resource. Where `persistResources` owns retries + concurrency + a
- * per-resource span (the collector's live sync path), this owns the batch as
- * one wire round trip (the importer's confirmed one-shot). Both report
+ * per-resource span, this owns the batch as one wire round trip (the
+ * importer's confirmed one-shot). Both report
  * `{@link ResourceWriteFailure}[]` on a `never` error channel — one bad entry
  * cannot fail the whole caller's run.
  *

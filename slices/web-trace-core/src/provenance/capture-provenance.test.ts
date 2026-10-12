@@ -172,7 +172,7 @@ describe('captureProvenance', () => {
     expect(exchange.requestId).toBe('req-7')
   })
 
-  // The 3A viewer finds traces by category and nothing else, so a collector
+  // The 3A viewer finds traces by category and nothing else, so a provenance
   // trace has to answer that predicate or it is invisible in the app.
   it('should be found by the same category predicate the viewer searches on', async () => {
     const capture = await Effect.runPromise(

@@ -81,7 +81,7 @@ imported from there directly, since re-exporting them here gave the package two
 routes to the same symbol and it used both. There is no format-specific review UI slot: the
 `PreviewPanel` renders every format the same way, from its decoded sections.
 The importer has no HTTP wire union to derive, so there is no separate
-`importer-registry` package the collector slice needs.
+`importer-registry` package.
 
 ## Module layout
 

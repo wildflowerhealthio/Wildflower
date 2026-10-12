@@ -100,8 +100,8 @@ describe('DatabasesView', () => {
     expect(screen.getByText('Empty')).toBeTruthy()
   })
 
-  // The row actions live behind a `…` menu (like collector). Open it, then act
-  // on the `menuitem`s.
+  // The row actions live behind a `…` menu. Open it, then act on the
+  // `menuitem`s.
   const openRowMenu = async (label: string): Promise<void> => {
     const trigger = await screen.findByRole('button', { name: `Actions for ${label}` })
     trigger.click()

@@ -5,7 +5,7 @@
 //! the embedded relay migrations once on construction, and implements the
 //! port by delegating to the query bodies in `tunnels`, and the
 //! [`ClaimCodeStore`] port by delegating to those in `claim_codes`. Mirrors
-//! `collector-rust`'s `SqliteRemotesStore`.
+//! `apps-rust`'s `SqliteAppsStore`.
 //!
 //! Tokens are stored in plain text, since rathole and the HMAC check both
 //! need them, so the file is created readable by the owner only. Every call

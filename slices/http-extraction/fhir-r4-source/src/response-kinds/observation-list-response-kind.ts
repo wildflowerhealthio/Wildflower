@@ -13,8 +13,7 @@ const isObservation = Schema.is(Observation.Schema)
 /**
  * `…://host/Observation?…`. The `mustHaveQuery` boundary keeps the
  * list pattern disjoint from `ObservationResponseKind` (`/Observation/<id>`),
- * so order in the `ScrapingPlan` response kinds is no longer
- * load-bearing.
+ * so order in the source's response kinds is not load-bearing.
  */
 const observationListUrl = UrlMatch.make({
   verb: ['GET'],

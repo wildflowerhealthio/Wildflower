@@ -66,9 +66,6 @@ vi.mock('@wildflowerhealthio/react-kitchen-sink', () => ({
   // value immediately without scheduling.
   usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
 }))
-vi.mock('@wildflowerhealthio/collector-react', () => ({
-  CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
-}))
 // fhir-r4-react migrated off its client provider; the app composes its
 // `sliceRuntimeLayer` (see `router-context.ts`), so mock that shape.
 vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
@@ -76,9 +73,6 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
 }))
 vi.mock('@wildflowerhealthio/apps-react', () => ({
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
-}))
-vi.mock('./collector-sender-forwarder.tsx', () => ({
-  CollectorSenderForwarder: Passthrough,
 }))
 vi.mock('@wildflowerhealthio/telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,

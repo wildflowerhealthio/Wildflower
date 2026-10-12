@@ -3,14 +3,15 @@
 Why the pseudonymizer is shaped the way it is, and — more importantly — what it
 does not protect. This is the privacy boundary of the Web Trace feature: capture
 is lossless, so this module is the only thing
-standing between a recorded browsing session and a collector author's inbox.
+standing between a recorded browsing session and the inbox of whoever writes
+the `http-extraction` source for that portal (a _source author_).
 
 For the module layout and its traps, see
 [har-anonymizer-core AGENTS.md](../har-anonymizer-core/AGENTS.md).
 
 ## Shape-preserving, not a skeleton
 
-A collector author reading a trace is trying to answer "what does this API
+A source author reading a trace is trying to answer "what does this API
 return, and how do I parse it". A structural skeleton — every value replaced by
 `"<string>"` — answers none of that. So redaction replaces each value with
 another value of the same _shape_: an ISO date stays an ISO date at the same
@@ -31,7 +32,7 @@ shape went unrecognized.
 The salt is minted once per export and never reused. Within one export the
 mapping is stable, so if response A's `pid` equals response B's `patientId` they
 are still equal after redaction — and that correspondence is exactly what tells a
-collector author the two endpoints share a key. Across exports the mapping is
+source author the two endpoints share a key. Across exports the mapping is
 independent, so two exports of the same session cannot be linked back together.
 
 The mapping is not only a keyed hash. Each export keeps a value→pseudonym table,
@@ -119,7 +120,7 @@ UI, so the safe behaviour is what happens when nobody touches a control.
 FHIR spends URIs on two jobs that look alike and are not. `Coding.system`,
 `Identifier.system`, and `Extension.url` hold URIs that name a _schema_ —
 `http://schema.carebook.com/v1/fhir/coding/medication-din-code` is the label
-that tells a collector author what the code beside it is. `Bundle.link.url`
+that tells a source author what the code beside it is. `Bundle.link.url`
 holds a URI that addresses a _record_, patient id in the query string included.
 Pseudonymizing the first destroys the only thing that made the payload legible;
 exporting the second is a leak.
@@ -228,7 +229,7 @@ Pseudonymized, because it identifies: every JSON leaf value, header values,
 cookie values, query values, the body digest, and URL path segments that look
 like identifiers. A path segment "looks like an identifier" when it carries a
 digit or matches a recognized identifier shape — so `patients` and `v2` survive
-as the route structure a collector author needs, while `10432` and
+as the route structure a source author needs, while `10432` and
 `8a3f…` do not.
 
 ## Limits — read these before trusting a redacted export
@@ -242,7 +243,7 @@ as the route structure a collector author needs, while `10432` and
   body lets a recipient confirm a guessed body, so the exported hash is an
   opaque same-shaped value, not a checksum. Do not treat it as one.
 - **Response timings and status survive, and so does a skipped body's size.**
-  They are facts about the response that a collector author needs, and they
+  They are facts about the response that a source author needs, and they
   identify nothing on their own — but they are a side channel in the strict sense.
 - **The host survives, and so do the TLD of an email and the `iss`/`aud` of a
   JWT.** These describe the _system_, which is the point of the export. They do

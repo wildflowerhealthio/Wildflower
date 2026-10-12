@@ -42,7 +42,7 @@ interface AnonymizeSettings {
  *
  * @remarks
  * Off by default so the safest archive is the one produced by clicking Download
- * without reading anything. The carve-out is genuinely useful — a collector
+ * without reading anything. The carve-out is genuinely useful — a source
  * author cannot branch on `status` if it is noise — but it is the setting that
  * lets original values leave the device, so it is opted into against a preview
  * that lists exactly what it exposes, rather than opted out of after the fact.

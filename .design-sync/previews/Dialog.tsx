@@ -3,7 +3,7 @@ import { Dialog } from '@wildflowerhealthio/react-tundraish'
 
 /**
  * A confirm dialog, open on mount — the canonical destructive-action prompt
- * (collector "Delete Account"). `Dialog` renders a native `<dialog>` via
+ * ("Delete Account"). `Dialog` renders a native `<dialog>` via
  * `showModal()`, so the preview holds `open` true to show the modal surface a
  * static cell would otherwise miss. Dismissable: the × button shows, backdrop
  * clicks and ESC close it.

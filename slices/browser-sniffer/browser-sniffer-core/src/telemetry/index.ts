@@ -4,8 +4,8 @@
  * though the spans fire from the platform adapter
  * (`browser-sniffer-tauri` plus its TS bootstrap), not this pure
  * core — so the naming philosophy stays coherent in a single place,
- * the same way `collector-fundamentals/telemetry` centralises the
- * collector's.
+ * the same way `fhir-r4/telemetry` centralises the FHIR R4 HTTP
+ * API's.
  *
  * The adapter opens a small tree of manually-managed spans (see
  * `Effect.makeSpan`) whose lifetimes outlive any single handler call, so
@@ -13,7 +13,7 @@
  * `withSpan`-style auto-closed spans used elsewhere:
  *
  *  - {@link Sniffing.Session} — root span for the whole component lifetime
- *    (mount → unmount); carries the link back to the collector's
+ *    (mount → unmount); carries the link back to the consumer's
  *    originating trace and parents every span below.
  *  - {@link Sniffing.InitialLoad} — child of the session span, from mount
  *    until the first `PageLoaded` (the host shell's first document fetch window).
@@ -82,8 +82,8 @@ const Sniffing = {
   /**
    * The whole component lifetime: mount → unmount. The root span that
    * parents every other sniffing span, and the only span carrying the link
-   * back to the collector's originating sync trace — so the sniffer's
-   * activity reads as one trace, related to the collector once. (Sentry
+   * back to the consumer's originating trace — so the sniffer's
+   * activity reads as one trace, related to the consumer once. (Sentry
    * promotes a span with a *remote* parent to its own trace, so the link
    * has to ride this in-process root, not each page span.)
    */

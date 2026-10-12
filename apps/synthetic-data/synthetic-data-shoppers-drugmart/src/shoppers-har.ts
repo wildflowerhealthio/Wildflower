@@ -23,7 +23,7 @@ import { shoppersPrescriptionsOf } from './shoppers-prescription.ts'
  * customers XHRs.
  *
  * @remarks
- * The page sequence is `shoppers-drugmart-collector`'s (login → health
+ * The page sequence is the one a signed-in session walks (login → health
  * dashboard → prescription dashboard → prescription history); the XHR URLs are
  * `shoppers-drugmart-source`'s, so its response kinds recognize them. The
  * dashboard fires the customers XHR too in a live session; the archive records

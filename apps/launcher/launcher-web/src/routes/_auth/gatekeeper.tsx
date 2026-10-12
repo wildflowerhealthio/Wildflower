@@ -5,7 +5,7 @@ import type { JSX } from 'react'
 /**
  * Owner-facing gatekeeper layout. Wraps the slice's authed gatekeeper
  * screens (device consent, OAuth consent) in the shared
- * `pageLayoutStyles['page']` shell — mirrors `collector.tsx` — so each
+ * `pageLayoutStyles['page']` shell — mirrors `home.tsx` — so each
  * leaf renders content only.
  *
  * Lives in the app's routes dir (not the slice) because mounting it

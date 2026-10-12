@@ -10,9 +10,9 @@ the generic [`PageHeader`](../../global/react-tundraish/src/page-header.tsx) in
   page shell. A page never stacks two headings — `PageHeader` owns the page's
   single `<h1>`, so a child screen must not render its own `<h1>` on top of a
   layout that already renders one.
-- **Only a top-level page omits the back link.** The apps home (`/home`), a plain SMART
-  server's home (`/fhir-home`) and `/collector`, reached only by its URL,
-  render a `PageHeader` with **no** `backHref`, because there is nowhere to go
+- **Only a top-level page omits the back link.** The apps home (`/home`) and a
+  plain SMART server's home (`/fhir-home`) render a `PageHeader` with **no**
+  `backHref`, because there is nowhere to go
   back to. **Every other screen sets `backHref`**, `/settings` included: it
   leads back to `/home`, whose header links to it with a gear
   (`react-tundraish`'s `SettingsLink`) in `actions`.

@@ -49,8 +49,7 @@ const DROPPED_TIMINGS_COMMENT =
  *
  * @remarks
  * The field names are a captured response's, so an imported entry and a live
- * capture line up structurally and a replay runner needs no import of the
- * collector slice — the boundary is a shape, not a dependency, as
+ * capture line up structurally — the boundary is a shape, not a dependency, as
  * `CapturedResponse` in `src/provenance/capture-provenance.ts` is in the other
  * direction.
  */

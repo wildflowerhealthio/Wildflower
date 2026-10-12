@@ -10,7 +10,7 @@ The HAR importer is the one format whose contents _are_ HTTP traffic, so it alon
 reaches into the `http-extraction` slice to recognize which registered response
 kinds claim each archived response and to extract with them.
 
-The slice mirrors the collector slice's shape: a resource-agnostic
+The slice is layered as a resource-agnostic
 **fundamentals** package under a **format binding** (core + React), under a
 pure **core** (the registry and the batch machinery) and a **shell**. See the [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
 before adding a format.
@@ -121,8 +121,7 @@ assembly belongs to none of them:
 
 `har-importer-core` is the one place those three meet: HAR text in, a per-URL
 recognition against the FHIR pool, and an opt-in write out. `importer-fundamentals`
-sits above `http-extraction` and below every binding, exactly as
-`collector-fundamentals` does.
+sits above `http-extraction` and below every binding.
 
 ## Guardrails
 
@@ -175,7 +174,7 @@ sits above `http-extraction` and below every binding, exactly as
   `Match` branch per format — the one exhaustive match left is the preview
   panel's settings form. The review display is not a registry
   slot: every format is reviewed through the shell's one generalized
-  sectioned view. Unlike the collector slice there is no separate registry
+  sectioned view. There is no separate registry
   package — the importer has no HTTP wire union to derive.
 - **The slice imports only the accepted seams.** `har-importer-core` depends on
   `web-trace-core` for the HAR codec and the source-file coding constants only —
@@ -183,8 +182,7 @@ sits above `http-extraction` and below every binding, exactly as
   `importer-fundamentals` — plus `http-extraction-fundamentals`
   (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),
   `importer-fundamentals` (the contract), and `fhir-r4` (resources). It
-  re-derives none of them. Nothing here imports from `apps/launcher/collector`,
-  in code or in concept.
+  re-derives none of them.
 - **A future file format gets its own binding, not a widened HAR one.** A CSV
   or another imaging import decodes a _document_: its decode belongs in a pure dialect package
   (the way rexall's carebook dialect and `web-trace-core`'s codec work), wrapped

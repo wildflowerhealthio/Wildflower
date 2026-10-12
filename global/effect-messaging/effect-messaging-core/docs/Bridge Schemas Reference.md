@@ -1,6 +1,6 @@
 # Bridge Schemas Reference
 
-How to declare wire schemas for an `effect-messaging` `Bridge` without falling into the transforms-get-stripped trap. Companion to the source-level comments in `bridge-transport.ts` and the per-bridge files (`browser-sniffer-core/messages.ts`, `collector-registry/bridge.ts`).
+How to declare wire schemas for an `effect-messaging` `Bridge` without falling into the transforms-get-stripped trap. Companion to the source-level comments in `bridge-transport.ts` and the per-bridge files (`browser-sniffer-core/messages.ts`, `recorder-core-js/bridge.ts`).
 
 ## The constraint
 
@@ -104,17 +104,16 @@ const ResponseDataMessageBody = Schema.TaggedStruct('ResponseData', {
 const ResponseDataMessage = Schema.parseJson(ResponseDataMessageBody)
 ```
 
-Consumer (collector handler):
+Consumer (the Recorder's `Recording.onResponseData`, abridged):
 
 ```ts
-ResponseData: (event) =>
-  Effect.gen(function* () {
-    const decoded = Encoding.decodeBase64(event.data)
-    if (Either.isLeft(decoded)) {
-      /* emit Left(...) and drop */ return
-    }
-    response.appendChunk(decoded.right)
-  })
+onResponseData(message: ResponseData): void {
+  const decoded = Encoding.decodeBase64(message.data)
+  if (Either.isLeft(decoded)) {
+    /* mark the response undecodable and drop */ return
+  }
+  record.chunks.push(decoded.right)
+}
 ```
 
 The bridge stays in lockstep with `JSON.parse`; the consumer policy (how to handle bad base64) is local.

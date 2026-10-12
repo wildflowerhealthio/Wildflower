@@ -45,10 +45,10 @@ type BrowserSnifferBridge = Bridge.Bridge<
  * `DOMContentLoaded`, before (and even without) settlement, carrying
  * only the URL.
  *
- * Consumers (e.g. `collector-react`) re-export this bridge's
- * `webToHost` schemas as their own `Host→Web` messages to forward
- * sniffer traffic across nested bridges — see
- * `apps/launcher/collector/collector-registry/src/bridge.ts` for the pattern.
+ * Consumers (e.g. the Recorder) reuse this bridge's `webToHost`
+ * schemas as their own `Host→Web` messages to forward sniffer traffic
+ * across nested bridges — see
+ * `apps/host/recorder/recorder-core-js/src/bridge.ts` for the pattern.
  *
  * @remarks
  * Cross-process `console.<level>(...)` mirroring is handled by the

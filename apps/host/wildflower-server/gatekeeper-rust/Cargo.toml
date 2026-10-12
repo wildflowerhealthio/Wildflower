@@ -12,7 +12,7 @@ serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 # Persistence is Diesel over the app-wide r2d2 connection pool
-# (`wildflowerhealthio_persistence::DieselPool`), mirroring wildflowerhealthio-collector: the host builds
+# (`wildflowerhealthio_persistence::DieselPool`), like the other diesel-backed slices: the host builds
 # one pool on the shared database file and hands it to every diesel-backed
 # slice. The `chrono` feature maps the `DateTime<Utc>` columns natively
 # (`TimestamptzSqlite` text, `%F %T%.f%:z`), so no timestamp wrapper types.

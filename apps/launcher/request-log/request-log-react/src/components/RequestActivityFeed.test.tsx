@@ -24,10 +24,10 @@ const dt = (offsetMs: number): DateTime.DateTime => DateTime.unsafeMake(NOW_MS -
 
 const ENTRIES: readonly ActivityEntry[] = [
   {
-    name: 'Collector',
+    name: 'Health Viewer',
     location: '192.0.2.1',
     lastConnectionAt: dt(0),
-    access: { auth: 'authorized', clientId: 'collector' },
+    access: { auth: 'authorized', clientId: 'health-viewer' },
   },
   {
     name: 'Open',
@@ -92,7 +92,7 @@ describe('RequestActivityFeed', () => {
   test('renders one row per entry with name, location, access and relative time', async () => {
     renderFeed()
 
-    expect(await findFeedText('Collector')).toBeTruthy()
+    expect(await findFeedText('Health Viewer')).toBeTruthy()
     expect(await findFeedText('192.0.2.1 · Signed in')).toBeTruthy()
     expect(await findFeedText('198.51.100.24 · No sign-in needed')).toBeTruthy()
     // Relative time on the right of each row.

@@ -54,11 +54,10 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
                 init_script: Some(bootstrap.to_owned()),
                 native_webview_event_channel: channel,
                 // `initial_title` unset → page URL shows via the plugin's
-                // URL-fallback; `initial_message` empty until a future step counts
-                // resources. See this fn's doc for why the subtitle goes through
+                // URL-fallback; `initial_message` empty. See this fn's doc for why the subtitle goes through
                 // `open_url` rather than a post-open `patch_window_text`.
                 initial_title: None,
-                initial_subtitle: Some("Collecting Automatically".to_owned()),
+                initial_subtitle: Some("Recording".to_owned()),
                 initial_message: None,
                 // The sniffer targets arbitrary third-party EMR origins — never
                 // seed any Wildflower credential into that jar.
@@ -98,33 +97,4 @@ fn sniffer_download_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
             None
         }
     }
-}
-
-/// Write `name` to the sniffer chrome's **subtitle** — the live replacement for
-/// the static `"Collecting Automatically"` seed set at open time — so the user
-/// can see which scripted step is running. Driven by the collector SPA's
-/// `SetSnifferStatus` bridge message as each step begins.
-///
-/// `title` / `message` are left `None` (unchanged): the title keeps the plugin's
-/// URL fallback and the bottom `message` slot stays reserved for a future
-/// resource counter. `patch_window_text` is a no-op (`set: false`, never an
-/// error) if no native webview is up or its chrome isn't built yet, so this may
-/// be called speculatively without a race dance.
-pub(crate) fn set_status(app: &AppHandle, name: String) -> anyhow::Result<()> {
-    use tauri_plugin_native_webview::{NativeWebviewExt, PatchWindowTextRequest};
-
-    app.native_webview()
-        .patch_window_text(
-            crate::SNIFFER_WEBVIEW_ID,
-            PatchWindowTextRequest {
-                title: None,
-                subtitle: Some(name),
-                message: None,
-            },
-        )
-        .map_err(|error| {
-            anyhow::anyhow!("tauri-plugin-native-webview patch_window_text failed: {error}")
-        })?;
-
-    Ok(())
 }

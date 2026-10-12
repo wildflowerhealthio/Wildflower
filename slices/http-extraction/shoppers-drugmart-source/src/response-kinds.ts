@@ -9,10 +9,9 @@ import { PrescriptionResponseKind } from './response-kinds/prescription-response
 /**
  * The three Shoppers Drug Mart response kinds — Customer, Prescription,
  * PrescriptionHistory — each adopted so its resources key under the root its own
- * `tryRecognize` mints. A module-level constant (stable by identity) both the
- * live plan and the archive importer consume by reference; the three
- * recognizers are disjoint by construction (different path segments), so order
- * is not load-bearing.
+ * `tryRecognize` mints. A module-level constant (stable by identity) the
+ * archive importer consumes by reference; the three recognizers are disjoint
+ * by construction (different path segments), so order is not load-bearing.
  */
 const unadopted: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
   CustomerResponseKind,

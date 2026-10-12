@@ -34,9 +34,6 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
   has no tunnel of its name, and publishes the tunnel's `TunnelState`. The
   settings it shares with the relay, `rathole-settings-rust`, stay in
   `slices/rathole-settings-rust`.
-- **`collector-rust`** — the collector remotes store (diesel) behind the
-  `/collector` surface. Its TypeScript half is
-  [`apps/launcher/collector`](../../launcher/collector/AGENTS.md).
 - **`databases-rust`** — export, delete and list the host's SQLite databases
   (`/databases`), scope-gated per database. Its TypeScript half is
   `apps/launcher/databases`.
@@ -56,7 +53,7 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
   in this folder.
 - **The TypeScript half reads across folders.** Each OpenAPI snapshot is
   committed beside its crate (`<crate>/openapi/`) and read by relative path:
-  `collector-registry`'s, `databases-core-js`'s, `request-log-core-js`'s and
+  `databases-core-js`'s, `request-log-core-js`'s and
   `apps-core-js`'s drift tests in `apps/launcher/`, `gatekeeper-core`'s drift
   test and schema codegen in `slices/gatekeeper`, and `apps/server-docs-web`.
   The FHIR R4 snapshot is the exception: HFS emits no spec, so `fhir-r4`

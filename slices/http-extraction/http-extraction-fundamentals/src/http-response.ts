@@ -19,8 +19,7 @@ type Headers = readonly (readonly [string, string])[]
  * @remarks
  * An interface rather than a class so each acquisition path supplies its own
  * implementation: an archive-driven import builds one with {@link make} from
- * bytes it already holds, while `collector-fundamentals`' live
- * `CollectorHttpResponse` implements it over chunks a sniffer streams in. Everything
+ * bytes it already holds. Everything
  * an entity may know about a response is here — callers never pre-extract a
  * slice of it, so an entity can read `text()`, `headers`, and `url` on demand.
  *

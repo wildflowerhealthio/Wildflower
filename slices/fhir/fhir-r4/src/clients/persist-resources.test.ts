@@ -34,8 +34,7 @@ import {
 import { UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
 
 /**
- * Covers the shared batch write — the sink every `*-client-collector` uses as
- * its descriptor's `persistResources`. Two concerns:
+ * Covers the shared per-resource batch write. Two concerns:
  *
  * - **Routing**: each resource type reaches *its* client group's `Update`
  *   endpoint (a `PUT /<Type>/<id>`, base-relative — the client no longer bakes

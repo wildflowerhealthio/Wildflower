@@ -3,10 +3,8 @@
 The **Shoppers Drug Mart source**: the single definition of how the Shoppers
 "mypharmacy" portal's bespoke JSON decodes into FHIR R4 resources, exported as
 one `SourceDescriptor` value — `shoppersDrugMartSource`, whose pre-adopted
-`responseKinds` an archive import extracts with. The live
-`shoppers-drugmart-collector` scraping plan (browser-driven, in
-`apps/launcher/collector`) consumes the same response-kind tuple by reference, so the
-two consumers can never disagree on a decode. Unlike `fhir-r4-source` (which
+`responseKinds` an archive import (`har-importer-core`) extracts with. Unlike
+`fhir-r4-source` (which
 decodes native FHIR JSON) and `rexall-be-well-source` (which decodes a carebook
 STU3 dialect), this source **synthesizes** R4 resources directly from
 non-FHIR portal JSON.
@@ -66,9 +64,7 @@ Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
 `RecognizedUrlData`), `fhir-r4` (resources + `identity`'s
 `adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
-particular it must **never** import anything from `apps/launcher/collector`
-(`shoppers-drugmart-collector` depends on this package; the live
-config/plan/form are its concern) or `slices/importer` (whose
+particular it must **never** import anything from `slices/importer` (whose
 `har-importer-core` consumes this package's
 `shoppersDrugMartSource.responseKinds`).
 
@@ -120,8 +116,7 @@ and `rexall-be-well-source` alike:
   status copy has none. It tells the copies apart by the history copy's
   account-`pcid` subject identifier, so the result is the same in either
   arrival order. Only a consumer that holds both copies applies it (the HAR
-  import); the live collector writes each response as it arrives, and its
-  later copy wins.
+  import).
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
   `customers/pcid/<uuid>`, `prescriptions/<uuid>/prescription-status`,
@@ -140,8 +135,7 @@ and `rexall-be-well-source` alike:
   belongs to.
 - [http-extraction-fundamentals AGENTS.md](../http-extraction-fundamentals/AGENTS.md)
   — the vocabulary this package is written against.
-- [shoppers-drugmart-collector AGENTS.md](../../../apps/launcher/collector/shoppers-drugmart-collector/AGENTS.md)
-  — the live collector built from these entities (config, plan, provenance,
-  form).
-- [Source Identity Explanation](../../../apps/launcher/collector/docs/Source%20Identity%20Explanation.md)
+- [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
+  — the archive importer that runs these kinds.
+- [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

@@ -9,7 +9,6 @@ import { Fragment, useMemo, type JSX, type PropsWithChildren, type ReactNode } f
 import { renderScopeError } from '../scope-error-renderer.tsx'
 import { PlatformBannerContext } from '../session/platform-banner-context.ts'
 import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
-import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
 
 interface AppRootTreeProps {
@@ -26,7 +25,7 @@ interface AppRootTreeProps {
 /**
  * Owns the `transport` state seeded by `transportPromise`. Until the
  * promise resolves, `TransportContext` holds the `stubTransport`
- * (no-op sender) so the sender-forwarders below render without
+ * (no-op sender) so the consumers below render without
  * crashing. The `_auth` gate's `awaitAuthReady` waits the bridge
  * handshake before any consumer that needs a *real* sender renders, so
  * the brief stub window has no live subscribers other than the
@@ -48,13 +47,8 @@ const AppRootTree = ({
     () =>
       ({ children }: PropsWithChildren<object>): JSX.Element => (
         <Fragment>
-          {/*
-           * NavigationBridgeHandler only needs `transport.sendMessage`
-           * (not the slice sender), so it sits beside the forwarder
-           * rather than buried inside it.
-           */}
           <NavigationBridgeHandler sender={transport.sendMessage} />
-          <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
+          {children}
         </Fragment>
       ),
     [transport.sendMessage]

@@ -11,7 +11,7 @@
 //! [`crate::db`], transport in [`crate::http`], the router state (which builds
 //! the capabilities) in [`crate::live_bindings`].
 
-// The persistence port. Mirrors collector's `remotes_store`.
+// The persistence port. Mirrors apps' `apps_store`.
 pub mod gatekeeper_store;
 
 // The authority proofs every privileged write demands — the typed answer to "on
@@ -44,7 +44,7 @@ pub mod client_redirect;
 // request compares against the `clients` row it names right now. Derived on every
 // read, never stored, so `/authorize` and the consent surfaces agree.
 pub(crate) mod client_registration;
-// The domain's failure vocabulary (collector's `RemoteError` is the model):
+// The domain's failure vocabulary (shaped like apps' `AppsError`):
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod gatekeeper_error;
 pub mod grant;

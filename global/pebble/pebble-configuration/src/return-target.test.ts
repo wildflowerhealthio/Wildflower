@@ -66,12 +66,12 @@ describe('decode', () => {
 
   it('should name the refused return_to in its error', () => {
     // Act
-    const target = ReturnTarget.decode('https://collector.example/#')
+    const target = ReturnTarget.decode('https://elsewhere.example/#')
 
     // Assert
     expect(target).toStrictEqual(
       Either.left(
-        new ReturnTarget.ForeignReturnTargetError({ returnTo: 'https://collector.example/#' })
+        new ReturnTarget.ForeignReturnTargetError({ returnTo: 'https://elsewhere.example/#' })
       )
     )
   })

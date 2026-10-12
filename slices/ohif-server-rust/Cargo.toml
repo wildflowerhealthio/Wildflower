@@ -7,7 +7,7 @@ publish.workspace = true
 # The OHIF server slice: a scope-gated endpoint that serves DICOM file bytes
 # decoded from FHIR DocumentReference attachments. HFS holds the clinical data;
 # this crate wraps one read path for the OHIF viewer's HTTP fetch. Layered like
-# `wildflowerhealthio-collector` / `wildflowerhealthio-tunnel`: pure `domain`, `hfs` adapter, and `http`.
+# `wildflowerhealthio-apps` / `wildflowerhealthio-tunnel`: pure `domain`, `hfs` adapter, and `http`.
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true

@@ -9100,28 +9100,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wildflowerhealthio-collector"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "diesel",
- "diesel_migrations",
- "http-body-util",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "utoipa",
- "utoipa-axum",
- "wildflowerhealthio-persistence",
- "wildflowerhealthio-scope-capabilities",
- "wildflowerhealthio-scopes",
- "wildflowerhealthio-shared-structures",
-]
-
-[[package]]
 name = "wildflowerhealthio-databases"
 version = "0.0.0"
 dependencies = [
@@ -9554,7 +9532,6 @@ dependencies = [
  "tracing",
  "url",
  "wildflowerhealthio-apps",
- "wildflowerhealthio-collector",
  "wildflowerhealthio-databases",
  "wildflowerhealthio-fhir-r4",
  "wildflowerhealthio-gatekeeper",

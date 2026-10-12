@@ -20,8 +20,8 @@ class UnsupportedFhirResourceTypeError extends Data.TaggedError(
  * Route one parsed {@link FhirResource} to its typed client endpoint — the
  * single `switch (resource.resourceType)` over the FHIR write surface. It
  * lives here, next to the client whose groups it dispatches to, so every
- * FHIR-targeting collector reuses one exhaustive dispatch instead of copying
- * it (the switch a collector's `persist.ts` used to hand-roll).
+ * caller that writes FHIR reuses one exhaustive dispatch instead of copying
+ * it.
  *
  * The write requirement {@link FhirR4ResourcesHttpApiClient} bubbles up as the
  * caller's `R`; app wiring provides the client layer.

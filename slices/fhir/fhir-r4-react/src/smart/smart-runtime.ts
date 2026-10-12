@@ -151,7 +151,7 @@ const buildSmartQueryClient = (options: BuildSmartQueryClientOptions = {}): Quer
  * so the app can hand in the same client it provided at the tree root — the one
  * {@link useSmartHandshake} completed the exchange on — rather than the context
  * carrying a second, disconnected client. The default keeps callers that only
- * read `runAuthed` (importer/collector tests) unchanged.
+ * read `runAuthed` (importer tests) unchanged.
  *
  * `awaitAuthReady` resolves immediately: the shared shape carries it for host
  * apps whose route guards wait on a token that arrives asynchronously, and by

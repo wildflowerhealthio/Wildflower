@@ -35,7 +35,7 @@ describe('SettingsPage', () => {
     render(
       <SettingsPage
         connection={Either.right(connection)}
-        returnTargets={storeRecalling('https://collector.example/#')}
+        returnTargets={storeRecalling('https://elsewhere.example/#')}
         navigate={ignoreNavigation}
       />
     )

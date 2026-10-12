@@ -271,10 +271,9 @@ pub async fn set_up(
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
-    // every diesel-backed slice — the gatekeeper OAuth surface, the collector
-    // `/collector/remotes` surface, the apps surface and the request log's
-    // `/requests` surface all run over it rather than each opening their
-    // own. Its connections are NOT
+    // every diesel-backed slice — the gatekeeper OAuth surface, the apps
+    // surface and the request log's `/requests` surface all run over it rather
+    // than each opening their own. Its connections are NOT
     // synchronized with the `Arc<Mutex<rusqlite::Connection>>` the other slices
     // write through: an accepted single-writer file-lock contention trade-off,
     // ridden out by a shared `busy_timeout`. This is where that trade-off is
@@ -332,16 +331,6 @@ pub async fn set_up(
     let gated_ohif_server =
         wildflowerhealthio_ohif_server::setup_ohif_server(fhir_routers.raw_hfs_router)
             .layer(gatekeeper_auth_layer.clone());
-
-    // The real `/collector/remotes` surface (replacing the former api_stubs
-    // stub — the demo FHIR remote it hardcoded is now seeded by migration).
-    // The collector rides the same shared diesel pool as the gatekeeper (see
-    // `diesel_pool` above). User-created remotes persist there; a remote's config
-    // JSON may carry pharmacy credentials, so the whole surface is Owner-gated
-    // like the rest of the admin API.
-    let gated_collector = wildflowerhealthio_collector::setup_collector(diesel_pool.clone())
-        .context("failed to set up collector")?
-        .layer(gatekeeper_auth_layer.clone());
 
     // The tunnel dials the relay from the server's record for as long as the
     // server runs, handing each visitor's stream, in process, to the tunnel
@@ -484,7 +473,6 @@ pub async fn set_up(
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
         .merge(gated_ohif_server)
-        .merge(gated_collector)
         .merge(gated_request_log)
         // `/health`: the draft-06 health report of the server's checks,
         // which the reachability monitor round-trips through the relay.

@@ -2,7 +2,7 @@
 //! [`set_up`] and served by [`WildflowerServer::serve`] on two listeners.
 //!
 //! [`set_up`] opens the host's databases, sets up each server slice
-//! (gatekeeper, FHIR R4, OHIF, collector, request log, apps, databases), gates
+//! (gatekeeper, FHIR R4, OHIF, request log, apps, databases), gates
 //! them, and wraps the result once per listener: for the **loopback listener**
 //! in the loopback owner trust, the loopback-peer gate, the CORS policy and the
 //! forwarded-request report; for the **tunnel listener** in the CORS policy,

@@ -1,7 +1,7 @@
 /**
  * Constants for the Shoppers Drug Mart "mypharmacy" portal
  * (`mypharmacy.shoppersdrugmart.ca`): the FHIR identifier and coding systems
- * this collector stamps onto the resources it synthesizes from the portal's
+ * this source stamps onto the resources it synthesizes from the portal's
  * bespoke (non-FHIR) `customers` / `prescription-status` / `prescription-history`
  * JSON.
  *

@@ -14,9 +14,9 @@ import { localResourceId } from './local-resource-id.ts'
  * union, and the referential stability of a single module-level application.
  *
  * The entity shapes here are plain objects rather than
- * `collector-fundamentals` / `http-extraction-fundamentals` values — `fhir-r4`
- * sits below both slices and names both structurally, so the suite exercises
- * exactly the surface the combinator claims.
+ * `http-extraction-fundamentals` values — `fhir-r4` sits below that slice and
+ * names its shapes structurally, so the suite exercises exactly the surface the
+ * combinator claims.
  */
 
 const patient = (id: string | null): typeof Patient.Schema.Type =>
@@ -29,8 +29,8 @@ const recognizesPatient = (
   url.endsWith('/Patient') ? Option.some({ specificity: 50 }) : Option.none()
 
 /**
- * An entity that declares it parses only `Patient`, as a collector's own
- * entities do before the kind list is widened.
+ * An entity that declares it parses only `Patient`, as a source package's own
+ * response kinds do before the kind list is widened.
  */
 const narrowEntity = {
   name: 'NarrowPatientResponseKind',
@@ -158,7 +158,7 @@ describe('adoptUnderRecognizedRoot', () => {
   })
 
   // Adoption runs inside `Effect.map` only, so a synchronous parse stays
-  // synchronously runnable — the collector's sync runner depends on it.
+  // synchronously runnable with `Effect.runSync`.
   test('keeps a synchronous parse synchronously runnable', () => {
     expect(Effect.runSync(adoptedRooted.parse({ url: `${ROOT}/Patient` }))[0]?.id).toBe(
       localResourceId(ROOT, 'Patient', 'src-9')

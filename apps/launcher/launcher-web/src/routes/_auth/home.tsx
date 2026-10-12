@@ -5,7 +5,7 @@ import type { JSX } from 'react'
 /**
  * Apps landing layout. Wraps the apps-slice landing screen in the
  * shared `pageLayoutStyles['page']` shell so the leaf renders content
- * only — mirrors `collector.tsx`.
+ * only.
  *
  * Owned at the app level (not in the slice) for symmetry with the two
  * `gatekeeper.tsx` layouts: the router-plugin's `physical()` mounts

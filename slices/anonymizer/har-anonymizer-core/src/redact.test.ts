@@ -169,7 +169,7 @@ describe('the pseudonymizer', () => {
           const input = String(original)
           const output = String(after[index])
           // Equal inputs → equal outputs: the correspondence that tells a
-          // collector author two endpoints share a key.
+          // source author two endpoints share a key.
           expect(forward.get(input) ?? output).toBe(output)
           // Unequal inputs → unequal outputs: no two originals may read as one.
           expect(backward.get(output) ?? input).toBe(input)
@@ -888,7 +888,7 @@ describe('JWTs', () => {
     const decodedHeader = claimsOf(header ?? '')
     const decodedPayload = claimsOf(payload ?? '')
 
-    // The mechanism survives: a collector author learns the algorithm, the
+    // The mechanism survives: a source author learns the algorithm, the
     // issuer, and which claims the endpoint expects.
     expect(decodedHeader).toEqual({ alg: 'HS256', typ: 'JWT' })
     expect(Object.keys(decodedPayload)).toEqual(['sub', 'iss', 'exp'])

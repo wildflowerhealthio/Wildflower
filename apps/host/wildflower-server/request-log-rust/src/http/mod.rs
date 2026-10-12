@@ -29,7 +29,7 @@ use crate::live_bindings::state::RequestLogState;
 struct ApiDoc;
 
 /// The `/requests` surface as an `OpenApiRouter`, so the spec is collected from
-/// the same routes that serve traffic (mirrors `collector-rust`).
+/// the same routes that serve traffic (mirrors `apps-rust`).
 fn documented_router() -> OpenApiRouter<Arc<RequestLogState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi()).merge(routes::openapi_router())
 }

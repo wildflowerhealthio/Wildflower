@@ -10,7 +10,6 @@ members = [
   "apps/host/tauri-plugin-native-webview",
   "apps/host/unit-runner/tauri-unit-runner-rust",
   "apps/host/unit-runner/unit-runner-rust",
-  "apps/host/wildflower-server/collector-rust",
   "apps/host/wildflower-server/databases-rust",
   "apps/host/wildflower-server/request-log-rust",
   "apps/host/wildflower-server/wildflower-server-rust",
@@ -38,7 +37,7 @@ publish = false
 anyhow = "1.0.102"
 axum = { version = "0.8", features = ["json", "query", "matched-path", "ws"] }
 base64 = "0.23"
-# SQLite ORM/query-builder for the collector slice's own connection onto the
+# SQLite ORM/query-builder for the diesel-backed slices' shared pool onto the
 # shared database. Its `sqlite` feature pulls `libsqlite3-sys`; diesel accepts
 # `libsqlite3-sys 0.31`, so Cargo unifies it with rusqlite's
 # already-`bundled` `libsqlite3-sys 0.31` — exactly one bundled SQLite in the
@@ -66,7 +65,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1" }
 # Timestamp stamping (`Utc::now()`); `default-features = false` keeps it lean,
-# consumers add the features they need (e.g. collector's `clock`).
+# consumers add the features they need (e.g. request-log's `clock`).
 chrono = { version = "0.4", default-features = false }
 tower-http = { version = "0.7", features = ["cors"] }
 # `tower`/`http-body-util` back the `-rust` slices' oneshot handler tests.

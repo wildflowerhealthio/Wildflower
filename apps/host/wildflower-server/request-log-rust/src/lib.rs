@@ -7,7 +7,7 @@
 //! each caller class to its row cap ([`domain::request_log`]), and a sweep drops
 //! rows past the 30-day window ([`domain::retention`]) at startup and hourly.
 //!
-//! Layered like `collector-rust`:
+//! Layered like `apps-rust`:
 //!
 //!  - [`domain`] — the log's types, the
 //!    [`RequestLogStore`](domain::RequestLogStore) persistence port, the
@@ -71,7 +71,7 @@ pub struct RequestLog {
 }
 
 /// Build the request log over the host-owned connection `pool`, mirroring
-/// `collector-rust`'s `setup_collector`. Constructing the store applies the
+/// `apps-rust`'s `setup_apps`. Constructing the store applies the
 /// embedded request-log migrations once; the writer and the retention sweep
 /// start on the current runtime.
 ///

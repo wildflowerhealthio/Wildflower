@@ -5,7 +5,7 @@
 //! it, and of the [`ClaimCodeStore`](crate::domain::ClaimCodeStore) port over
 //! the same file) plus the `tunnels` and `claim_codes` query bodies. The diesel `table!` schema lives in
 //! `schema`. Built on Diesel over `wildflowerhealthio_persistence::DieselPool`, mirroring
-//! `collector-rust`'s `SqliteRemotesStore`. The domain type the port speaks
+//! `apps-rust`'s `SqliteAppsStore`. The domain type the port speaks
 //! ([`StoredTunnel`](crate::domain::StoredTunnel),
 //! [`StoredClaimCode`](crate::domain::StoredClaimCode)) live in
 //! [`crate::domain`].

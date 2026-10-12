@@ -304,7 +304,7 @@ const searchsetOf = (...resources: readonly unknown[]): Record<string, unknown> 
 })
 
 /**
- * A HAR the `fhir-r4` collector recognizes: a Patient read and an Observation
+ * A HAR the `fhir-r4` source recognizes: a Patient read and an Observation
  * searchset off one server, built through `web-trace-core`'s own `emitHar` so it
  * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations.
  */

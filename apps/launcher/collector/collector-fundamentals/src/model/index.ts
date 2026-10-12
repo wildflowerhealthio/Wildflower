@@ -1,6 +1,0 @@
-export * as CollectorDescriptor from './collector-descriptor.ts'
-export * as CollectorHttpResponseKind from './collector-http-response-kind.ts'
-export { CollectorHttpResponse } from './collector-http-response.ts'
-export * as ScrapingPlan from './scraping-plan.ts'
-export * as Step from './step.ts'
-export * as WebViewSource from './web-view-source.ts'

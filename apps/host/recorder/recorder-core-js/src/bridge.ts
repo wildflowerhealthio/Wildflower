@@ -50,10 +50,6 @@ const HttpUrl = Schema.String.pipe(
  * Web → Host: open `source.uri` in the sniffer webview, building the webview
  * if it isn't up, navigating it in place if it is.
  *
- * @remarks
- * The `Uri` source shape alone: the sniffer's `Open` also takes an inline
- * `Html` page and request options the recorder never sends.
- *
  * Wire: `{"_tag":"Open","source":{"_tag":"Uri","uri":"https://…"}}`
  */
 const Open = Schema.parseJson(

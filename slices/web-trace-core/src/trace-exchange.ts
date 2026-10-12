@@ -150,8 +150,8 @@ const ProducedResourceReference = Schema.NonEmptyString.pipe(
  * {@link traceResourceId} for what it is rendered as: retried writes are
  * idempotent upserts and two sessions cannot collide.
  *
- * `producedResources` is the provenance link: the resources a collector derived
- * from this exchange, or empty for a recording that decoded nothing. It defaults
+ * `producedResources` is the provenance link: the resources derived from this
+ * exchange, or empty for a recording that decoded nothing. It defaults
  * to empty, so every trace written before it existed still decodes — and so a
  * recorder, which derives nothing by definition, does not have to say so twice.
  *

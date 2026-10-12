@@ -6,9 +6,9 @@ import type { StoredBody } from '../trace-exchange.ts'
  * Ordered `(name, value)` header pairs as received on the wire.
  *
  * @remarks
- * Structurally the sniffer's `HeadersWire` and a collector's
- * `CollectorHttpResponseHeaders`. Restated here as the minimum this module needs, so
- * `web-trace-core` does not have to name a collector type to hash a body.
+ * Structurally the sniffer's `HeadersWire`. Restated here as the minimum this
+ * module needs, so `web-trace-core` does not have to name a sniffer type to
+ * hash a body.
  */
 type CaptureHeaders = readonly (readonly [string, string])[]
 
@@ -54,13 +54,13 @@ const contentTypeOf = (headers: CaptureHeaders): string => {
  * The base64-encoded SHA-256 of `bytes`, matching FHIR's `Attachment.hash`
  * (a `base64Binary`).
  *
- * @param bytes - The raw response body, as a collector's `CollectorHttpResponse.bytes()`
+ * @param bytes - The raw response body, as a captured response's `bytes()`
  *   hands it over (its backing store is pinned to a real `ArrayBuffer`, which is
  *   what `crypto.subtle.digest`'s `BufferSource` parameter requires)
  * @returns The digest, base64-encoded
  *
  * @remarks
- * Web Crypto rather than `node:crypto`: a collector runs in a WebView, and this
+ * Web Crypto rather than `node:crypto`: a capture runs in a WebView, and this
  * package holds the same line (see the pseudonymizer's `hmac.ts`). Its digest is
  * `Promise`-returning, which is why every capture path is `Effect`-shaped.
  */
@@ -94,8 +94,9 @@ const sha256Base64 = (
  * @returns The stored body, base64 of the raw bytes with its size and digest
  *
  * @remarks
- * This is the **verbatim** capture policy, the counterpart to
- * `web-trace-collector`'s allowlisted one. The difference is not an oversight:
+ * This is the **verbatim** capture policy, the counterpart to the Recorder's
+ * (`apps/host/recorder`), which omits presentation assets and caps body size.
+ * The difference is not an oversight:
  * an exploratory recording of a whole browsing session needs a cap or it
  * balloons, while a body that justifies a specific clinical resource *is* the
  * provenance — storing its size and hash with no data would defeat the point. If
@@ -104,8 +105,8 @@ const sha256Base64 = (
  *
  * The base64 is of the raw bytes, never of a UTF-8 decode: a body that is not
  * UTF-8 decodable is stored as it arrived rather than dropped or mangled, so a
- * hash over the stored data means something. Callers must therefore read
- * `CollectorHttpResponse.bytes()`, not `text()`.
+ * hash over the stored data means something. Callers must therefore read a
+ * captured response's `bytes()`, not `text()`.
  */
 const storeBodyVerbatim = (
   bytes: Uint8Array<ArrayBuffer>,

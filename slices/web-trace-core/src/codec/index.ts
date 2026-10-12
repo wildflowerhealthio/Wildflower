@@ -2,8 +2,8 @@
  * The single definition of how a web trace is encoded as FHIR.
  *
  * @remarks
- * Anything that reads or writes trace `DocumentReference`s — the capturing
- * collector, the retrofit of the existing collectors, the viewer — imports this
+ * Anything that reads or writes trace `DocumentReference`s — a provenance
+ * capture, the HAR importer's coding constants, the viewer — imports this
  * module. A second implementation of the encoding is a defect, not an
  * optimization: the two would drift and already-recorded sessions would stop
  * decoding.

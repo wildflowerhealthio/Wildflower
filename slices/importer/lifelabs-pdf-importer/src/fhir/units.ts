@@ -3,7 +3,7 @@
  * `Quantity.code` / `Quantity.system` beside the printed unit spelling.
  *
  * @remarks
- * Copied verbatim (the `UCUM_BY_DISPLAY` half) from the LIVE collector's
+ * Copied verbatim (the `UCUM_BY_DISPLAY` half) from
  * `slices/http-extraction/lifelabs-source/src/units.ts` on a separate branch;
  * the two consumers hold local copies rather than sharing a third package
  * until a third caller lands. The reference's `LOINC_UNITS` half — recovering

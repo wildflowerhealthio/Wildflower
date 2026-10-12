@@ -11,17 +11,16 @@ import {
 } from './router-context.ts'
 
 /**
- * Pins the imperative-runner seam fhir-r4-react exposes for
- * `collector-react`'s `useSyncRunner`: a per-bridge-message, retried PUT
- * is NOT a one-shot query, so it reads the composed `runtimeLayer` from
- * router context (`useFhirR4ResourcesRuntimeLayer`), `Effect.provide`s it
- * onto a `FhirR4ResourcesHttpApiClient` call, and runs it itself —
- * exactly how `useSyncRunner` upserts each parsed resource.
+ * Pins the imperative-runner seam fhir-r4-react exposes: an event-driven,
+ * retried write is NOT a one-shot query, so it reads the composed
+ * `runtimeLayer` from router context (`useFhirR4ResourcesRuntimeLayer`),
+ * `Effect.provide`s it onto a `FhirR4ResourcesHttpApiClient` call, and runs
+ * it itself.
  *
- * The exercised call here is `Patient.SearchByGet` (a GET) rather than
- * the `Update` (PUT) `useSyncRunner` actually fires: the runner wiring
- * under test — read the layer from context, provide it, run it as a
- * Promise, surface failures — is identical for either verb, and the GET
+ * The exercised call here is `Patient.SearchByGet` (a GET) rather than an
+ * `Update` (PUT): the runner wiring under test — read the layer from
+ * context, provide it, run it as a Promise, surface failures — is
+ * identical for either verb, and the GET
  * avoids constructing a full FHIR `Patient` request body that the PUT
  * payload schema requires. The decode of the canned bundle is itself
  * covered by `patients.test.ts`.

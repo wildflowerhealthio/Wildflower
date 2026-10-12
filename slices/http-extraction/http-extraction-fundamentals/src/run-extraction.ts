@@ -6,12 +6,11 @@ import type * as HttpResponseKind from './http-response-kind.ts'
 /**
  * The archive-runner **reference model**: fold a static response set through
  * `Extraction.routeTo` + `parseWith` into a four-way accounting. The
- * interactive review replaced it as the production import path (an untouched
- * review writes what this runner's batches hold, once each source's
- * `mergeResources` has run over them), so it lives with the test
- * helpers as the executable spec the suites pin against: the live/offline
- * parity test routes the tracker's output against it, and a format binding
- * asserts its fixture decodes through it.
+ * production import path is the interactive review (an untouched review
+ * writes what this runner's batches hold, once each source's `mergeResources`
+ * has run over them), so this lives with the test helpers as the executable
+ * spec the suites pin against: a format binding asserts its fixture decodes
+ * through it.
  *
  * @packageDocumentation
  */
@@ -147,8 +146,7 @@ const outcomeOf = <TParsed>(
  *
  * @remarks
  * A deterministic map-then-group over `Extraction.routeTo` + `parseWith`, so
- * this runner and the live tracker route through the one function
- * (`collector-fundamentals`' `extraction-parity.test.ts` pins it) and one bad
+ * this runner routes through the same functions production does and one bad
  * response never takes the run down. The `Effect` is infallible: every failure
  * mode is data, and the effect is only there because `parse` is effectful.
  */

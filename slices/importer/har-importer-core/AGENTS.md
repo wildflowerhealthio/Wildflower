@@ -117,8 +117,8 @@ through), `importer-fundamentals` (the contract), `http-extraction-fundamentals`
 (`Extraction.Input`), `fhir-r4-source` (the pre-adopted pool), `web-trace-core`
 (`sha256Base64` from `capture`, and the trace-side codec constants the source file
 codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
-(resources), and `effect`. Never imports `importer-react`,
-`har-importer-react`, or `apps/launcher/collector`.
+(resources), and `effect`. Never imports `importer-react` or
+`har-importer-react`.
 
 ## Guardrails
 

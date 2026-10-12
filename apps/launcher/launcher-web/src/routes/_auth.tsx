@@ -1,6 +1,5 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { appsListQueryOptions } from '@wildflowerhealthio/apps-react'
-import { remotesQueryOptions } from '@wildflowerhealthio/collector-react'
 import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import { Effect } from 'effect'
 
@@ -21,9 +20,8 @@ import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'
  *
  * The route's `loader` runs once per gate-pass and:
  *
- *   1. Warms the key startup queries (apps list, collector
- *      remotes list) so every main destination renders
- *      without a network spinner — hiding the web-app nature of these
+ *   1. Warms the key startup query (the apps list) so the main
+ *      destination renders without a network spinner — hiding the web-app nature of these
  *      pages in the embedded WebView.
  *   2. Emits the embedded `UIReady` nav-bridge message so the host
  *      hides its native splash / reveals the WebView. This used to
@@ -35,16 +33,13 @@ import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'
  * Both halves are best-effort: a prefetch failure or a `sendMessage`
  * failure must not block the WebView reveal (otherwise a transient HTTP
  * miss or a torn-down transport would leave the host splash up).
- * `Promise.allSettled` covers the prefetches; the `UIReady` send is
+ * `Promise.allSettled` covers the prefetch; the `UIReady` send is
  * wrapped in a `.catch` that reports to Sentry and resolves anyway, so
  * the loader always resolves `void`.
  */
 const authLoader = async ({ context }: { readonly context: RouterContext }): Promise<void> => {
   const transport = await context.transport
-  await Promise.allSettled([
-    context.queryClient.query(appsListQueryOptions(context.runAuthed)),
-    context.queryClient.query(remotesQueryOptions(context.runAuthed)),
-  ])
+  await Promise.allSettled([context.queryClient.query(appsListQueryOptions(context.runAuthed))])
   await Effect.runPromise(transport.sendMessage({ _tag: 'UIReady' })).catch((error: unknown) => {
     Sentry.captureException(error, { tags: { source: 'authLoader.UIReady' } })
   })

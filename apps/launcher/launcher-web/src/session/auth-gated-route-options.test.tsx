@@ -23,7 +23,7 @@ import { ServerKind } from './server-kind.ts'
  * Pins the server-kind half of the auth gate: past `awaitAuthReady`, a route
  * for the other kind of server redirects to that kind's Home before its loader
  * runs. The tree is a real `Router` with the real options spread into stub
- * routes at the paths `homePathFor` names, plus a Wildflower-only `/collector`
+ * routes at the paths `homePathFor` names, plus a Wildflower-only `/settings`
  * whose loader is a spy — the stand-in for `_auth`'s Wildflower-only
  * prefetches.
  */
@@ -43,20 +43,20 @@ const renderGatedAt = (
   serverKind: ServerKind
 ): {
   readonly awaitAuthReady: ReturnType<typeof vi.fn<(returnTo?: string) => Promise<void>>>
-  readonly collectorLoader: ReturnType<typeof vi.fn<() => void>>
+  readonly settingsLoader: ReturnType<typeof vi.fn<() => void>>
 } => {
   const awaitAuthReady = vi.fn((_returnTo?: string) => Promise.resolve())
-  const collectorLoader = vi.fn(() => {})
+  const settingsLoader = vi.fn(() => {})
   const rootRoute = createRootRouteWithContext<RouterContext>()({
     component: () => <Outlet />,
   })
   const page = (text: string) => (): JSX.Element => <div>{text}</div>
-  const collectorRoute = createRoute({
+  const settingsRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/collector',
+    path: '/settings',
     ...wildflowerRouteOptions,
-    loader: collectorLoader,
-    component: page('collector page'),
+    loader: settingsLoader,
+    component: page('settings page'),
   })
   const homeRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -84,33 +84,33 @@ const renderGatedAt = (
     serverKind,
   }
   const router = createRouter({
-    routeTree: rootRoute.addChildren([collectorRoute, homeRoute, fhirHomeRoute]),
+    routeTree: rootRoute.addChildren([settingsRoute, homeRoute, fhirHomeRoute]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
     context,
   })
   render(<RouterProvider router={router} />)
-  return { awaitAuthReady, collectorLoader }
+  return { awaitAuthReady, settingsLoader }
 }
 
 describe('wildflowerRouteOptions', () => {
   test('lets a Wildflower server’s session through to the route and its loader', async () => {
     // Act
-    const { collectorLoader } = renderGatedAt('/collector', ServerKind.Wildflower())
+    const { settingsLoader } = renderGatedAt('/settings', ServerKind.Wildflower())
 
     // Assert
-    await screen.findByText('collector page')
-    expect(collectorLoader).toHaveBeenCalled()
+    await screen.findByText('settings page')
+    expect(settingsLoader).toHaveBeenCalled()
   })
 
   test('sends a plain SMART server’s session to its Home without running the loader', async () => {
     // Act
-    const { awaitAuthReady, collectorLoader } = renderGatedAt('/collector', PLAIN_SMART_SERVER)
+    const { awaitAuthReady, settingsLoader } = renderGatedAt('/settings', PLAIN_SMART_SERVER)
 
     // Assert — the auth gate still ran first, on the address asked for.
     await screen.findByText('plain smart home')
-    expect(screen.queryByText('collector page')).toBeNull()
-    expect(collectorLoader).not.toHaveBeenCalled()
-    expect(awaitAuthReady).toHaveBeenCalledWith('/collector')
+    expect(screen.queryByText('settings page')).toBeNull()
+    expect(settingsLoader).not.toHaveBeenCalled()
+    expect(awaitAuthReady).toHaveBeenCalledWith('/settings')
   })
 })
 

@@ -1,10 +1,10 @@
 # AGENTS.md — slices/web-trace-core
 
 Records a real browsing session against a target portal and turns it into
-something a collector author can hand to an agent when designing a new
-collector — without handing over the patient's data. This package is the pure
-layer: no DOM, no `fs`, no UI, no store — one vocabulary, and the translations
-built on it.
+something the author of a new `http-extraction` source can hand to an agent
+when designing it — without handing over the patient's data. This package is
+the pure layer: no DOM, no `fs`, no UI, no store — one vocabulary, and the
+translations built on it.
 
 The asymmetry is the whole design: **store raw, anonymize only at the export
 boundary.** Capture stays lossless — it is the user's own device and their own
@@ -15,11 +15,12 @@ in M2 of #578; a change there changes what leaves the device, so read the
 [Anonymization Explanation](../../slices/anonymizer/docs/Anonymization%20Explanation.md)
 before touching it.
 
-The capture half lives with the collectors, where the descriptor seam is:
-[`web-trace-collector`](../../apps/launcher/collector/web-trace-collector/AGENTS.md)
-is the `*-client-collector` that records a hand-driven session and writes each
-exchange through this package's codec. It imports the encoding; it never
-re-derives it.
+The capture half is the
+[Recorder](../../apps/host/recorder/AGENTS.md): it records a hand-driven
+session in the sniffer webview and saves it as a HAR file, reading the
+content-type rule (`contentTypeOf`) from this package's `capture` module. The
+[Importer](../importer/AGENTS.md) opens that file, and its HAR binding takes
+the trace coding constants from this package's codec.
 
 ## Layering
 
@@ -30,14 +31,12 @@ adapter.
 It sits directly in `slices/` rather than inside another slice because the FHIR
 encoding of a trace cannot live anywhere it already had a home:
 
-- **not `collector-fundamentals`** — that package is deliberately FHIR-agnostic;
-  nothing in it assumes FHIR-ish config.
 - **not `browser-sniffer`** — that slice is deliberately FHIR-ignorant; no
   package in it knows about FHIR.
 
-It is consumed by both the collectors and the HAR packages (`http-archive`,
-`har-importer-core`, `recorder-core-js`, `har-anonymizer-core`), so it
-has to sit below all of them.
+It is consumed by the HAR packages (`http-archive`, `har-importer-core`,
+`recorder-core-js`, `har-anonymizer-core`), so it has to sit below all of
+them.
 
 ## Module layout
 
@@ -56,15 +55,13 @@ has to sit below all of them.
 - **`src/capture/`** — the capture-side primitives both consumers share:
   the content-type rule, the SHA-256 every body carries, and `storeBodyVerbatim`.
   Policy is _not_ here — see the trap below.
-- **`src/provenance/`** — the receipt for a resource a collector derived from a
+- **`src/provenance/`** — the receipt for a resource derived from a
   response: `captureProvenance` builds the trace and links it both ways;
   `toExchangeFields` is the one statement of the response → exchange field
-  mapping (the recorder's entity spreads it too); `makeFhirProvenanceCapture`
-  is the hook factory a production collector states as its plan's
-  `captureProvenance`. `CapturedResponse` names the readable surface of
-  `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
-  sits below the collector slice and must not import it, so the boundary is a
-  shape, not a dependency.
+  mapping; `makeFhirProvenanceCapture` builds a per-source hook (a session-id
+  prefix in, a `(runId, response, produced)` capture out). `CapturedResponse`
+  names the readable surface of a captured response _structurally_ — fields,
+  not a class — so the boundary is a shape, not a dependency.
 - **`src/pseudonymizer/` — moved to `har-anonymizer-core/src/`** in M2
   of #578. The export-boundary redactor now lives in the anonymizer (`slices/anonymizer`),
   on the same per-file-format argument the archive codec does.
@@ -153,14 +150,14 @@ has to sit below all of them.
   it: everything silently read as milliseconds. `readTimings` therefore works on
   the _decoded_ side, which is why `timings` is omitted from the struct the rest
   of the decode goes through.
-- **There are two body policies, and the split is deliberate.** A recorder
-  (`web-trace-collector`) stores under an allowlist and a `maxBodyBytes` cap,
-  because an exploratory session of a whole portal balloons otherwise. A
-  provenance capture stores **verbatim** — no allowlist, no truncation — because
-  a body that justifies a specific clinical resource _is_ the provenance, and
-  storing its `size` and `hash` with no `data` would defeat the point. What both
-  share (`contentTypeOf`, `sha256Base64`) lives in `src/capture/`; what differs
-  stays with its consumer. Don't unify them.
+- **There are two body policies, and the split is deliberate.** The Recorder
+  (`apps/host/recorder`) omits presentation assets by content type and caps
+  body size, because an exploratory session of a whole portal balloons
+  otherwise. A provenance capture stores **verbatim** — no omissions, no
+  truncation — because a body that justifies a specific clinical resource _is_
+  the provenance, and storing its `size` and `hash` with no `data` would defeat
+  the point. What both share (`contentTypeOf`) lives in `src/capture/`; what
+  differs stays with its consumer. Don't unify them.
 - **`producedResources` is the direction that survives multiple sources.** A
   resource derived from a list response _and_ a detail response is named by
   both of their traces via `context.related`. The resource's own back-pointer,
@@ -314,7 +311,7 @@ has to sit below all of them.
   `CapturedResponse`.** Its field names (`id`, `url`, `status`, `statusText`,
   `headers`, `startedAt`) are the ones a captured response carries, so a replay
   runner can consume an imported exchange and a live capture through one type
-  without this package importing the collector slice. Renaming a field here
+  with no dependency between them. Renaming a field here
   breaks that alignment silently — the compiler has nothing to check it against.
   Its `mimeType` on the way back out is re-derived from its own headers with
   `contentTypeOf`, the same rule the capture side uses.

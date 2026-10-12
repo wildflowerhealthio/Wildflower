@@ -8,7 +8,7 @@
 //! out of the state's [`files`](state::DatabasesState::files) field — so `domain/`
 //! stays free of both `crate::http` and the concrete adapter type. [`state`] holds
 //! the [`DatabasesState`](state::DatabasesState) the bindings build from. Mirrors
-//! `collector-rust`'s `live_bindings/`.
+//! `apps-rust`'s `live_bindings/`.
 //!
 //! The handlers name these `Live…` aliases in `Scoped<…>` (e.g.
 //! `Scoped<LiveDatabasesReader>`), never the bare generic domain capability.

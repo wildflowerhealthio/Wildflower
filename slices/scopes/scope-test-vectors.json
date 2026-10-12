@@ -23,9 +23,9 @@
     { "scope": "wildflower/Token.d", "kind": "wildflower", "rendered": "wildflower/Token.d" },
     { "scope": "wildflower/Apps.r", "kind": "wildflower", "rendered": "wildflower/Apps.r" },
     {
-      "scope": "wildflower/Accounts.cruds",
+      "scope": "wildflower/Client.cruds",
       "kind": "wildflower",
-      "rendered": "wildflower/Accounts.cruds"
+      "rendered": "wildflower/Client.cruds"
     },
     {
       "scope": "wildflower/RequestLog.r",
@@ -99,7 +99,7 @@
     { "allowed": "wildflower/Token.cruds", "requested": "wildflower/Token.d", "covers": true },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/Apps.r", "covers": true },
     { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Apps.r", "covers": true },
-    { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Accounts.r", "covers": false },
+    { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Grant.r", "covers": false },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/RequestLog.r", "covers": true },
     { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/RequestLog.r", "covers": false },
     { "allowed": "wildflower/launch", "requested": "wildflower/launch", "covers": true },

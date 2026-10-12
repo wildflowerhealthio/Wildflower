@@ -46,10 +46,6 @@ pub enum WildflowerResource {
     /// ([`KnownScope::AnyScopedAppLaunch`](crate::KnownScope::AnyScopedAppLaunch))
     /// — not a permission on this resource.
     Apps,
-    /// A collector "account" at a remote origin — the `/collector/remotes`
-    /// surface (a remote's config may carry origin credentials, so reads need
-    /// `.r`). The scope-layer name for what the collector code calls a `Remote`.
-    Accounts,
     /// The request log (`/requests`): each forwarded request the server served,
     /// through the tunnel or relayed by a front. Read it (`.r`).
     RequestLog,
@@ -129,7 +125,6 @@ impl WildflowerResource {
             "Client" => Some(WildflowerResource::Client),
             "Token" => Some(WildflowerResource::Token),
             "Apps" => Some(WildflowerResource::Apps),
-            "Accounts" => Some(WildflowerResource::Accounts),
             "RequestLog" => Some(WildflowerResource::RequestLog),
             _ => None,
         }
@@ -142,7 +137,6 @@ impl WildflowerResource {
             WildflowerResource::Client => "Client",
             WildflowerResource::Token => "Token",
             WildflowerResource::Apps => "Apps",
-            WildflowerResource::Accounts => "Accounts",
             WildflowerResource::RequestLog => "RequestLog",
         }
     }

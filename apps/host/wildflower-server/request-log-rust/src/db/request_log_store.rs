@@ -3,8 +3,8 @@
 //! r2d2 pool of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`) onto
 //! the shared database file, applies the embedded request-log migrations once
 //! on construction, and implements the port by delegating to the query bodies
-//! in [`crate::db::logged_requests`]. Mirrors `collector-rust`'s
-//! `SqliteRemotesStore`.
+//! in [`crate::db::logged_requests`]. Mirrors `apps-rust`'s
+//! `SqliteAppsStore`.
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};

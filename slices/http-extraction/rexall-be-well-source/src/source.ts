@@ -5,8 +5,8 @@ import { rexallBeWellResponseKinds } from './response-kinds.ts'
 
 /**
  * The Rexall Be Well source as one value — the package's primary export.
- * Both the live plan and the archive importer reach the same pre-adopted
- * `responseKinds` tuple through it by reference. See `response-kinds.ts`.
+ * The archive importer reaches the pre-adopted `responseKinds` tuple through
+ * it by reference. See `response-kinds.ts`.
  */
 const rexallBeWellSource: SourceDescriptor.SourceDescriptor<FhirResource> = SourceDescriptor.make({
   name: 'rexall-be-well',

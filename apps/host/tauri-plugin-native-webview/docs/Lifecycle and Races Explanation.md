@@ -116,9 +116,9 @@ dismissal's hide, from the plugin's Rust layer rather than any backend; a host
 § "Dismissal action".
 
 A successful hide emits `NativeWebviewEvent::Hidden`; a teardown emits
-`Disposed`. The host's collector treats neither hide nor dispose as the sniff's
-terminal signal — the SPA owns `SniffingComplete` — so the bridge re-emits
-nothing for these lifecycle events.
+`Disposed`. The sniffer's host glue (`browser-sniffer-tauri`) passes each on to
+the page as its own control message (`UserDismissed`, `SnifferDisposed`), and
+neither is the sniff's terminal signal — the page owns `SniffingComplete`.
 
 ## The dispose→open "switch-demo" race
 
@@ -292,8 +292,8 @@ forever after dismissal:
   reopen/teardown supersede the previously-armed timer, so a stale timer is a
   no-op. On fire it disposes like a host `dispose()`.
 
-Both ultimately route through `dispose`, so the host's collector sees the same
-terminal `Disposed`.
+Both ultimately route through `dispose`, so the sniffer's host glue sees the
+same terminal `Disposed`.
 
 ## Chrome URL-fallback
 

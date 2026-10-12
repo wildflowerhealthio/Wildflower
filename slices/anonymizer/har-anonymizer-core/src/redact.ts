@@ -8,7 +8,7 @@ import { detectShape, fakeBase64Url, generateFake, prngFromBytes } from './shape
 
 /**
  * The privacy boundary of the whole Web Trace epic: turning a raw captured
- * session into one a collector author can be handed.
+ * session into one the author of an `http-extraction` source can be handed.
  *
  * @remarks
  * Redaction runs in two steps, because the enum carve-out is a session-wide
@@ -522,7 +522,7 @@ const pseudonymizeString = (
  * @returns A three-segment token whose header and payload are valid JSON
  *
  * @remarks
- * A collector author needs to learn the auth *mechanism* — that this endpoint
+ * A source author needs to learn the auth *mechanism* — that this endpoint
  * takes a bearer JWT, signed with this algorithm, carrying these claim names —
  * without receiving the token. So `alg`, `typ`, `cty`, `iss` and `aud` survive,
  * every other claim is pseudonymized through the same table as the rest of the

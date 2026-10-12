@@ -6,7 +6,7 @@
  * @remarks
  * Redaction here is shape-preserving pseudonymization, not a structural
  * skeleton: an ISO date stays an ISO date, a UUID stays a UUID, a phone keeps
- * its punctuation. A collector author reading a redacted trace learns the
+ * its punctuation. A source author reading a redacted trace learns the
  * *shape* of every field — which is what they need to write a parser — without
  * receiving any of the data.
  *
@@ -228,7 +228,7 @@ const pad = (value: number, width: number): string => String(value).padStart(wid
  * @remarks
  * The timezone designator is copied verbatim rather than regenerated: `Z` vs
  * `+05:30` is format, and a redacted trace that silently normalized every
- * timestamp to UTC would misinform a collector author about what the API emits.
+ * timestamp to UTC would misinform a source author about what the API emits.
  */
 const fakeIso8601 = (prng: Prng, original: string): string => {
   const parts = ISO_8601.exec(original)
@@ -252,7 +252,7 @@ const fakeIso8601 = (prng: Prng, original: string): string => {
  *
  * @remarks
  * The offset is copied for the same reason an ISO 8601 designator is: `-0400`
- * vs none tells a collector author whether the API emits local or UTC instants,
+ * vs none tells a source author whether the API emits local or UTC instants,
  * and says nothing about a person.
  */
 const fakeDotNetDate = (prng: Prng, original: string): string => {
@@ -273,7 +273,7 @@ const fakeUuid = (prng: Prng, original: string): string => {
  *
  * @remarks
  * The TLD survives because it is format, not identity — `.org` vs `.ca` tells a
- * collector author nothing about a person. Everything to the left of it is
+ * source author nothing about a person. Everything to the left of it is
  * replaced.
  */
 const fakeEmail = (prng: Prng, original: string): string => {

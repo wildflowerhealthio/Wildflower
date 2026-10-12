@@ -29,7 +29,6 @@ const RESOURCE_LABELS: Readonly<
   Client: { label: 'Connected app', plural: 'Connected apps' },
   Token: { label: 'Token', plural: 'Tokens' },
   Apps: { label: 'App', plural: 'Apps' },
-  Accounts: { label: 'Account', plural: 'Accounts' },
   RequestLog: { label: 'Request log', plural: 'Request log' },
 }
 
@@ -98,7 +97,6 @@ namespace WildflowerResourceType {
     | 'Client'
     | 'Token'
     | 'Apps'
-    | 'Accounts'
     | 'RequestLog'
 
   namespace Resource {
@@ -108,7 +106,6 @@ namespace WildflowerResourceType {
       'Client',
       'Token',
       'Apps',
-      'Accounts',
       'RequestLog',
     ]
 

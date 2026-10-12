@@ -21,7 +21,7 @@ interface ScalarSource {
 
 /**
  * The bearer-scheme prefill. Scalar's `authentication` block sits beside the
- * sources rather than inside them, so one signed-in token reaches all six
+ * sources rather than inside them, so one signed-in token reaches all five
  * documents at once.
  */
 interface ConsoleAuthentication {
