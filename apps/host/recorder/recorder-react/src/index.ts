@@ -1,12 +1,15 @@
 /**
  * The Recorder's browser surface: {@link RecorderPage}, the page an app
- * mounts, the `useRecorder` state machine behind it, and the two pieces of
- * bridge wiring the app provides around it: `RecorderSenderProvider` and the
- * `HandlerCoordinatorContext` the page registers through.
+ * mounts; `RecorderProvider`, which runs the `useRecorder` state machine behind
+ * it for as long as the app keeps it mounted; and the two pieces of bridge
+ * wiring the app provides around that: `RecorderSenderProvider` and the
+ * `HandlerCoordinatorContext` the recorder registers through.
  *
  * @packageDocumentation
  */
 export { RecorderPage, type RecorderPageProps } from './recorder-page.tsx'
+export { useProvidedRecorder } from './recorder-context.ts'
+export { RecorderProvider, type RecorderProviderProps } from './recorder-provider.tsx'
 export {
   RecorderSenderProvider,
   type RecorderSenderProviderProps,

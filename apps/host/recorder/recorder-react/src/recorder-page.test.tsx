@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import golden from '../../recorder-wire-golden.json' with { type: 'json' }
 import { RecorderPage } from './recorder-page.tsx'
+import { RecorderProvider } from './recorder-provider.tsx'
 import type { RecorderSender } from './recorder-sender-context.ts'
 import { RecorderSenderProvider } from './recorder-sender-provider.tsx'
 
@@ -330,7 +331,9 @@ const renderPage = (host: FakeHost = {}): PageHarness => {
   render(
     <HandlerCoordinatorContext.Provider value={coordinator}>
       <RecorderSenderProvider send={send}>
-        <RecorderPage invoke={invoke} revealFile={revealFile} />
+        <RecorderProvider>
+          <RecorderPage invoke={invoke} revealFile={revealFile} />
+        </RecorderProvider>
       </RecorderSenderProvider>
     </HandlerCoordinatorContext.Provider>
   )

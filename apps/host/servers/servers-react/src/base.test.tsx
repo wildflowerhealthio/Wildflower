@@ -1,5 +1,4 @@
 import { HttpClient, HttpClientError, HttpClientResponse } from '@effect/platform'
-import { createMemoryHistory } from '@tanstack/react-router'
 import {
   act,
   cleanup,
@@ -24,8 +23,8 @@ import * as fc from 'fast-check'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
-import { BaseRoot, type BaseRootProps } from './base-root.tsx'
 import { formatInstant } from './server-status-text.ts'
+import { BaseUnderTest, type BaseUnderTestProps } from './test-utils/base-under-test.tsx'
 
 // Starting the SDK is the collaborator whose every touch the gate controls, so
 // the module boundary is where it is stubbed; the rest stays real.
@@ -127,7 +126,7 @@ const hostWith = ({
 
 /** Host events a test emits, and the listeners the base has up. */
 interface FakeEvents {
-  readonly listen: BaseRootProps['listen']
+  readonly listen: BaseUnderTestProps['listen']
   /** Deliver `payload` to every listener of `event`. */
   readonly emit: (event: string, payload: unknown) => void
 }
@@ -207,14 +206,14 @@ const renderBase = ({
   readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
 }): RenderResult =>
   render(
-    <BaseRoot
+    <BaseUnderTest
       invoke={invoke}
       listen={events.listen}
       backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
       defaultLauncherUrl={DEFAULT_LAUNCHER_URL}
       telemetry={{ dsn: BASE_DSN, app: 'host-app' }}
       httpClient={httpClient}
-      history={createMemoryHistory({ initialEntries: [path] })}
+      path={path}
       storage={storage}
     />
   )
@@ -263,7 +262,7 @@ const paragraphsOf = (container: HTMLElement): readonly (string | null)[] =>
     .filter((paragraph) => paragraph.closest('dialog') === null)
     .map((paragraph) => paragraph.textContent)
 
-describe('BaseRoot', () => {
+describe('BaseGate', () => {
   it('should show only the consent dialog, and call no host command, until the user answers', async () => {
     // Arrange
     const user = userEvent.setup()
@@ -336,20 +335,6 @@ describe('BaseRoot', () => {
 
     // Assert
     expect(await screen.findByText('No servers yet')).toBeDefined()
-  })
-
-  it("should show no screen at a path outside its routes, the shell's own", async () => {
-    // Act
-    renderBase({
-      invoke: hostWith().invoke,
-      storage: storageAnswered({ crashReports: false, performance: false }),
-      path: '/recorder',
-    })
-    await act(async () => {})
-
-    // Assert
-    expect(screen.queryByRole('heading')).toBeNull()
-    expect(screen.queryByText('Not Found')).toBeNull()
   })
 })
 

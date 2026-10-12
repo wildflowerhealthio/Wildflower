@@ -1,39 +1,14 @@
-import { createRootRouteWithContext, Outlet, useRouteContext } from '@tanstack/react-router'
-import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
-import type { JSX } from 'react'
+import { createRootRouteWithContext } from '@tanstack/react-router'
 
-import { ConsentSheet } from '../consent-sheet.tsx'
+import { BaseLayout } from '../base-layout.tsx'
 import type { RouterContext } from '../router-context.ts'
 
 /**
- * The base's page shell, which every screen renders into, with the consent
- * sheet over whichever screen is showing.
+ * Standalone root anchoring `routeTree.gen.ts`, for the package's own type
+ * checks and tests. Never used inside `apps/host/host-app`, which mounts
+ * `_servers/` under its own root and its own `_servers` layout; its component
+ * is that layout's, `BaseLayout`, so the tests see the base's screens as the
+ * app shows them. The context shape must match so the same route files
+ * type-check under both roots.
  */
-function BaseShell(): JSX.Element {
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
-  const listenToHostEvent = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.listenToHostEvent,
-  })
-  return (
-    <div className={pageLayoutStyles['page']}>
-      <Outlet />
-      <ConsentSheet runHostCommand={runHostCommand} listenToHostEvent={listenToHostEvent} />
-    </div>
-  )
-}
-
-/**
- * A path outside `routes/` belongs to whatever shell the base sits in, such as
- * the host's `/recorder`, which hides the base while it shows, so the base
- * renders nothing for it.
- */
-const OutsideTheBase = (): null => null
-
-export const Route = createRootRouteWithContext<RouterContext>()({
-  component: BaseShell,
-  notFoundComponent: OutsideTheBase,
-})
+export const Route = createRootRouteWithContext<RouterContext>()({ component: BaseLayout })

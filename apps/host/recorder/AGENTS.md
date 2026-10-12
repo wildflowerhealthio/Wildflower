@@ -19,7 +19,8 @@ It composes three existing primitives and adds nothing to their semantics:
 
 The host is its only consumer, in both languages, so every package sits here
 as a group folder of `apps/host`, as `servers/` does. `apps/host/host-app`
-mounts `RecorderPage` as its Recorder tab and attaches `recorder-tauri` in its
+renders `RecorderPage` at its `/recorder` route, under a `RecorderProvider`
+its layout holds around every route, and attaches `recorder-tauri` in its
 `setup()`.
 
 ## Package roles
@@ -28,8 +29,9 @@ mounts `RecorderPage` as its Recorder tab and attaches `recorder-tauri` in its
   `Recording` (sniffer events → `HttpArchive.Log`), `isOmittedFromRecording`,
   `recordingFileName`, `toHar`, `RecorderBridge`, and `readSaveFolder`, the
   `recorder_save_folder` command decoded as a `SaveFolder`. Platform-neutral.
-- **[`recorder-react`](./recorder-react/AGENTS.md)** — `RecorderPage` and its
-  `useRecorder` state machine, over `RecorderBridge` alone; the page shows the
+- **[`recorder-react`](./recorder-react/AGENTS.md)** — `RecorderPage`, and
+  `RecorderProvider` running its `useRecorder` state machine, over
+  `RecorderBridge` alone; the page shows the
   recordings folder and, where the platform can, Show file after a save.
 - **`recorder-rust`** — serde mirror of the save channel (`bridge.rs`), the
   validated, atomic `save_har` (`save.rs`), and where each platform saves
@@ -74,7 +76,7 @@ mounts `RecorderPage` as its Recorder tab and attaches `recorder-tauri` in its
   React package, `effect-messaging-react`.
 - **Nothing here is imported by the packages it builds on.**
   `browser-sniffer`, `file-formats` and the plugin know nothing about the
-  recorder, and `servers-react` doesn't either: the host shell composes both.
+  recorder, and `servers-react` doesn't either: the host app composes both.
 
 ## References
 

@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/servers-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The base app the Tauri host's webview mounts: `BaseRoot`, its own telemetry consent gate around the base's screens (the server list and Host Settings) and the consent sheet for the consents waiting on its servers, which reach the host only through `servers-core-js`'s Tauri commands.",
+  "description": "The base, the Servers half of the Tauri host's webview, as pieces the host app composes into its router: `BaseGate`, its telemetry consent gate around the whole app; its routes (the server list, Add server, a server's page and Host Settings) under `routes/_servers/`; `BaseLayout`, their layout, with the consent sheet for the consents waiting on its servers, which reach the host only through `servers-core-js`'s Tauri commands.",
   "license": "MIT",
   "repository": {
     "type": "git",

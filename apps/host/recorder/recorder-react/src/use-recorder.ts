@@ -96,7 +96,7 @@ const messageOf = (error: unknown): string =>
  * [Design Explanation](../../docs/Design%20Explanation.md) says why.
  *
  * `stop` is idempotent and a dismissed sniffer window runs it too, so the
- * recording — which exists only in this page — is never lost silently. A
+ * recording — which exists only in this hook — is never lost silently. A
  * `HarSaved` / `HarSaveFailed` for a file name other than the pending one is
  * ignored, so a late answer cannot overwrite the current result. `count` is
  * bumped only on `ResponseFinished`, and the {@link Recording} is a ref rather
@@ -242,7 +242,7 @@ const useRecorder = (): Recorder => {
   // `HarSaved` arrives after `stop()` closed the window. Unmounting
   // mid-recording still closes the sniffer webview: only `SniffingComplete`
   // takes it down, so leaving without one orphans the window. The archive is
-  // lost with the page either way.
+  // lost with the hook either way.
   useEffect(() => {
     Effect.runFork(
       register
