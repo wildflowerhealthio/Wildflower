@@ -1,0 +1,14 @@
+"$schema" = "../gen/schemas/desktop-schema.json"
+
+[[permission]]
+identifier = "allow-recorder"
+description = """
+Grants the webview the right to invoke the app-defined
+`recorder_save_folder` command (`recorder-tauri`): reading the folder the
+Recorder saves into, which the Recorder page shows.
+
+SECURITY: granted to the `main` webview only (capabilities/default.json),
+which runs the host shell. It reads one path the host already chose and
+writes nothing.
+"""
+commands.allow = ["recorder_save_folder"]

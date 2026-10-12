@@ -16,7 +16,7 @@ use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelName};
 use wildflowerhealthio_unit_runner::RunPolicy;
 use wildflowerhealthio_wildflower_server::DeviceCertificateConfig;
 
-use crate::domain::CertificateAuthority;
+use crate::domain::{CertificateAuthority, EnrolmentError};
 
 /// The folder in the data root that holds one folder per server, named by its
 /// [`domain`](ServerRecord::domain).
@@ -233,6 +233,20 @@ impl TunnelToken {
         Self(token.into())
     }
 
+    /// The token as the user entered it, without its surrounding whitespace,
+    /// as the relay reads its own copy.
+    ///
+    /// # Errors
+    ///
+    /// [`EnrolmentError::EmptyToken`] when nothing is left.
+    pub fn entered(token: &str) -> Result<Self, EnrolmentError> {
+        let token = token.trim();
+        if token.is_empty() {
+            return Err(EnrolmentError::EmptyToken);
+        }
+        Ok(Self::new(token))
+    }
+
     /// The token itself, for the rathole client config and `servers.json`.
     #[must_use]
     pub fn expose(&self) -> &str {
@@ -257,8 +271,17 @@ pub(crate) mod tests {
     use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
 
     use super::*;
+    use crate::domain::EnteredCredentials;
 
     pub(crate) const TOKEN: &str = "s3cret-tunnel-token";
+
+    /// The tunnel `tunnel_name` and its `token`, as the user enters them.
+    pub(crate) fn token_credentials(tunnel_name: &str, token: &str) -> EnteredCredentials {
+        EnteredCredentials::Token {
+            tunnel_name: tunnel_name.to_owned(),
+            token: token.to_owned(),
+        }
+    }
 
     /// The launcher the fixtures' records have, and the default launcher the
     /// tests give [`add_server`](crate::add_server).

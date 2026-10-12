@@ -409,6 +409,10 @@
       "domain": "relay.example.com"
     }
   },
+  "enteredCredentials": {
+    "claimCode": { "kind": "claimCode", "code": "ABCD-EFGH" },
+    "token": { "kind": "token", "tunnelName": "ruth", "token": "tunnel-token" }
+  },
   "enrolmentErrors": {
     "invalidRelaySetting": {
       "kind": "invalidRelaySetting",
@@ -431,6 +435,19 @@
       "message": "tunnel name \"Ruth\" is not a lowercase DNS label"
     },
     "emptyToken": { "kind": "emptyToken", "message": "the tunnel token is empty" },
+    "emptyClaimCode": { "kind": "emptyClaimCode", "message": "the claim code is empty" },
+    "claimCodesNotOffered": {
+      "kind": "claimCodesNotOffered",
+      "message": "this relay doesn't take claim codes: enter the tunnel name and token you were given instead"
+    },
+    "claimCodeRejected": {
+      "kind": "claimCodeRejected",
+      "message": "that claim code is unknown, used or expired: ask your relay's admin for a new one"
+    },
+    "claimRateLimited": {
+      "kind": "claimRateLimited",
+      "message": "the relay has had too many claim attempts: try again in a few minutes"
+    },
     "signedRequestRejected": {
       "kind": "signedRequestRejected",
       "message": "the relay rejected the request signed as tunnel ruth: check the tunnel name and token, and that this device's clock is set correctly"

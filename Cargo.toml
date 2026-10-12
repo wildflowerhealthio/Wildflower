@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
   "apps/host/host-app/src-tauri",
+  "apps/host/recorder/recorder-rust",
+  "apps/host/recorder/recorder-tauri",
   "apps/host/servers/servers-rust",
   "apps/host/servers/servers-tauri",
   "apps/host/shared-structures-tauri",
@@ -11,8 +13,6 @@ members = [
   "apps/host/unit-runner/unit-runner-rust",
   "apps/host/wildflower-server/collector-rust",
   "apps/host/wildflower-server/databases-rust",
-  "apps/host/wildflower-server/har-recorder-rust",
-  "apps/host/wildflower-server/har-recorder-tauri",
   "apps/host/wildflower-server/request-log-rust",
   "apps/host/wildflower-server/wildflower-server-rust",
   "apps/relay/relay-server",

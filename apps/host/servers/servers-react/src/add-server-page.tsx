@@ -2,11 +2,16 @@ import { useNavigate, useRouteContext } from '@tanstack/react-router'
 import {
   ErrorBanner,
   GateCard,
+  LinkButton,
   PageHeader,
   RadioGroup,
   TextField,
 } from '@wildflowerhealthio/react-tundraish'
-import type { EnteredRelay, RunPolicyChoice } from '@wildflowerhealthio/servers-core-js'
+import {
+  EnteredCredentials,
+  type EnteredRelay,
+  type RunPolicyChoice,
+} from '@wildflowerhealthio/servers-core-js'
 import { Match, Option } from 'effect'
 import { type JSX, type ReactNode, useId, useState } from 'react'
 
@@ -28,8 +33,14 @@ interface RelayEntries {
   readonly ratholeDomain: string
 }
 
-/** The credentials step's fields, as typed, the tunnel name lowercased. */
+/**
+ * The credentials step's fields, as typed, the claim code uppercased and the
+ * tunnel name lowercased, with which of them a Wildflower relay is given.
+ */
 interface CredentialsEntries {
+  /** A Wildflower relay's: a claim code, or the tunnel name and token. */
+  readonly kind: EnteredCredentials.Type['kind']
+  readonly claimCode: string
   readonly tunnelName: string
   readonly token: string
 }
@@ -52,7 +63,12 @@ const NO_RELAY_ENTRIES: RelayEntries = {
   ratholeDomain: '',
 }
 
-const NO_CREDENTIALS_ENTRIES: CredentialsEntries = { tunnelName: '', token: '' }
+const NO_CREDENTIALS_ENTRIES: CredentialsEntries = {
+  kind: 'claimCode',
+  claimCode: '',
+  tunnelName: '',
+  token: '',
+}
 
 /** The relay step's choices, by the kind of relay each enters. */
 const RELAY_CHOICES = [
@@ -308,39 +324,84 @@ const relayDomainOf = (relay: EnteredRelay.Type): Option.Option<string> =>
   )
 
 /**
- * Step 2, the tunnel: its name, with the address it gives the server
- * through `relay` and a note that the address becomes public in the
- * Certificate Transparency logs, and its token, masked. Add server waits for
- * both.
+ * The credentials `entries` give `relay`: for a Wildflower relay, the claim
+ * code or the tunnel name and token, as `entries.kind` picks; for a rathole
+ * relay, which redeems no claim codes, the tunnel name and token. Each as
+ * typed; the host trims them.
  */
-const CredentialsStep = ({
+const enteredCredentialsOf = (
+  relay: EnteredRelay.Type,
+  entries: CredentialsEntries
+): EnteredCredentials.Type =>
+  relay.kind !== 'rathole' && entries.kind === 'claimCode'
+    ? { kind: 'claimCode', code: entries.claimCode }
+    : { kind: 'token', tunnelName: entries.tunnelName, token: entries.token }
+
+/**
+ * Whether `credentials` lack a value the host needs: a claim code that isn't
+ * one, such as one missing a character, or a tunnel name or token left
+ * blank.
+ */
+const isIncomplete = (credentials: EnteredCredentials.Type): boolean =>
+  Match.value(credentials).pipe(
+    Match.when({ kind: 'claimCode' }, ({ code }) => !EnteredCredentials.isClaimCode(code)),
+    Match.when(
+      { kind: 'token' },
+      ({ tunnelName, token }) => tunnelName.trim() === '' || token.trim() === ''
+    ),
+    Match.exhaustive
+  )
+
+/**
+ * A claim code's field, uppercased as typed, saying the format Add server
+ * waits for, over a note that the server's
+ * address becomes public in the Certificate Transparency logs.
+ */
+const ClaimCodeFields = ({
+  entries,
+  onChange,
+}: {
+  readonly entries: CredentialsEntries
+  readonly onChange: (entries: CredentialsEntries) => void
+}): JSX.Element => (
+  <>
+    <TextField
+      label="Claim code"
+      value={entries.claimCode}
+      onChange={(claimCode) => {
+        onChange({ ...entries, claimCode: claimCode.toUpperCase() })
+      }}
+      placeholder="ABCD-EFGH"
+      autoComplete="off"
+      autoCapitalize="characters"
+      description="Eight letters and digits, such as ABCD-EFGH; codes have no 0, 1, I, L or O. It works once: the relay exchanges it for your server's tunnel name and token, which are saved on this device."
+    />
+    <p className={`text-body-3 ${styles['add-server-page__note']}`}>
+      Your server's address becomes public: when your server gets its certificate, the certificate
+      authority records the address in the public Certificate Transparency logs, which nobody can
+      remove it from.
+    </p>
+  </>
+)
+
+/**
+ * The tunnel's name, with the address it gives the server through `relay`
+ * and a note that the address becomes public in the Certificate
+ * Transparency logs, and its token, masked.
+ */
+const TokenFields = ({
   relay,
   entries,
   onChange,
-  onBack,
-  onAdd,
 }: {
   readonly relay: EnteredRelay.Type
   readonly entries: CredentialsEntries
   readonly onChange: (entries: CredentialsEntries) => void
-  readonly onBack: () => void
-  readonly onAdd: () => void
 }): JSX.Element => {
-  const headingId = useId()
   const name = entries.tunnelName.trim() === '' ? '[tunnel name]' : entries.tunnelName.trim()
   const domain = relayDomainOf(relay).pipe(Option.getOrElse(() => "[your relay's domain]"))
   return (
-    <form
-      className={styles['add-server-page__step']}
-      aria-labelledby={headingId}
-      onSubmit={(event) => {
-        event.preventDefault()
-        onAdd()
-      }}
-    >
-      <StepHeading headingId={headingId} title="Tunnel">
-        Enter the tunnel name and token you were given for this relay.
-      </StepHeading>
+    <>
       <TextField
         label="Tunnel name"
         value={entries.tunnelName}
@@ -363,15 +424,66 @@ const CredentialsStep = ({
         }}
         description="This secret token is used to identify your device to the relay. The administrator of your relay should provide this to you. It's saved on this device and never shown again."
       />
+    </>
+  )
+}
+
+/**
+ * Step 2, the tunnel. A Wildflower relay is given a claim code by default,
+ * or, through a link between the fields and the buttons, the tunnel's name
+ * and token, with a link back; a rathole relay only the name and token. Add
+ * server waits for every value they need.
+ */
+const CredentialsStep = ({
+  relay,
+  entries,
+  onChange,
+  onBack,
+  onAdd,
+}: {
+  readonly relay: EnteredRelay.Type
+  readonly entries: CredentialsEntries
+  readonly onChange: (entries: CredentialsEntries) => void
+  readonly onBack: () => void
+  readonly onAdd: () => void
+}): JSX.Element => {
+  const headingId = useId()
+  const credentials = enteredCredentialsOf(relay, entries)
+  return (
+    <form
+      className={styles['add-server-page__step']}
+      aria-labelledby={headingId}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onAdd()
+      }}
+    >
+      <StepHeading headingId={headingId} title="Tunnel">
+        {credentials.kind === 'claimCode'
+          ? "Enter the claim code from your relay's admin."
+          : 'Enter the tunnel name and token you were given for this relay.'}
+      </StepHeading>
+      {credentials.kind === 'claimCode' ? (
+        <ClaimCodeFields entries={entries} onChange={onChange} />
+      ) : (
+        <TokenFields relay={relay} entries={entries} onChange={onChange} />
+      )}
+      {relay.kind === 'rathole' ? null : (
+        <LinkButton
+          onClick={() => {
+            onChange({ ...entries, kind: credentials.kind === 'claimCode' ? 'token' : 'claimCode' })
+          }}
+        >
+          {credentials.kind === 'claimCode'
+            ? 'I have a tunnel name and full length token'
+            : 'I have a claim code'}
+        </LinkButton>
+      )}
       <div className={styles['add-server-page__actions']}>
         <button type="button" className="button-2 outline" onClick={onBack}>
           Back
         </button>
-        <button
-          type="submit"
-          className="button-2 filled"
-          disabled={entries.tunnelName.trim() === '' || entries.token.trim() === ''}
-        >
+        <button type="submit" className="button-2 filled" disabled={isIncomplete(credentials)}>
           Add server
         </button>
       </div>
@@ -498,13 +610,14 @@ const DoneStep = ({
 
 /**
  * Add server, `/servers/new`, a step at a time: the relay, the tunnel's
- * name and token, the host's check and enrolment, and the server added.
+ * claim code or its name and token, the host's check and enrolment, and the
+ * server added.
  *
  * @remarks
  * The steps and their entries live in this component's state, never the
- * URL, so the token doesn't reach it; and once the host has saved the
- * token, it is dropped from that state and from the mutation's (see
- * `useAddServer`). Back from a refusal keeps every entry.
+ * URL, so neither the claim code nor the token reaches it; and once the host
+ * has added the server, both are dropped from that state and from the
+ * mutation's (see `useAddServer`). Back from a refusal keeps every entry.
  */
 const AddServerPage = (): JSX.Element => {
   const runHostCommand = useRouteContext({
@@ -518,11 +631,11 @@ const AddServerPage = (): JSX.Element => {
   const add = (relay: EnteredRelay.Type): void => {
     setStep({ kind: 'checking', relay })
     addServer.mutate(
-      { relay, ...credentialsEntries },
+      { relay, credentials: enteredCredentialsOf(relay, credentialsEntries) },
       {
         onSuccess: (domain) => {
           addServer.reset()
-          setCredentialsEntries((entries) => ({ ...entries, token: '' }))
+          setCredentialsEntries((entries) => ({ ...entries, claimCode: '', token: '' }))
           setStep({ kind: 'done', domain })
         },
       }

@@ -68,7 +68,6 @@ export const routes = rootRoute('__root.tsx', [
   route('/fhir-home', 'fhir-home.tsx'),
   layout('_auth', '_auth.tsx', [
     physical('', launcherRoutesDir('collector/collector-react', '_auth')),
-    physical('', launcherRoutesDir('har-recorder/har-recorder-react', '_auth')),
     route('/home', '_auth/home.tsx', [physical('', launcherRoutesDir('apps-react', '_auth/home'))]),
     route('/gatekeeper', '_auth/gatekeeper.tsx', [
       physical('', sliceRoutesDir('gatekeeper', '_auth/gatekeeper')),

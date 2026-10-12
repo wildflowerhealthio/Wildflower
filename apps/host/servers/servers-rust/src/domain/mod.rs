@@ -43,7 +43,9 @@ pub mod notifications;
 pub use consent_approval::{ApprovalOutcome, ConsentApproval};
 pub use consent_details::{ConsentDetails, Registration};
 pub use consent_error::ConsentError;
-pub use enrolment::{add_server, set_server_credentials, EnteredRelay, RelayIdentity};
+pub use enrolment::{
+    add_server, set_server_credentials, EnteredCredentials, EnteredRelay, RelayIdentity,
+};
 pub use enrolment_error::EnrolmentError;
 pub use launch_error::LaunchError;
 pub use listed_server::ListedServer;

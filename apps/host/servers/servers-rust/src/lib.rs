@@ -18,10 +18,12 @@
 //! The list lives in `<data root>/servers.json`, behind the
 //! [`ServerRegistry`] port, and holds any number of servers.
 //!
-//! A server is added by enrolment ([`add_server`]). For a Wildflower relay,
+//! A server is added by enrolment ([`add_server`]), from a claim code or a
+//! tunnel name and token ([`EnteredCredentials`]). For a Wildflower relay,
 //! official or self-hosted, the relay's `GET /rathole` is fetched and
-//! checked, a signed `GET /me` confirms the relay holds the tunnel name and
-//! token, and only then is the record written. A rathole relay, a rathole
+//! checked, then a claim code is redeemed once with `POST /claim` for the
+//! tunnel name and token, or an entered tunnel name and token are confirmed
+//! with a signed `GET /me`, and only then is the record written. A rathole relay, a rathole
 //! server with no Wildflower relay site, is entered as its settings, which get
 //! the same checks. [`set_server_credentials`] replaces a server's token the
 //! same way, refusing a relay whose identity ([`RelayIdentity`]: its dial
@@ -50,7 +52,8 @@
 //!
 //!  - [`domain`] — [`ServerRecord`], its [`RelayKind`], [`TunnelToken`] and
 //!    [`RunPolicy`], [`RegistryError`], enrolment with its [`EnteredRelay`],
-//!    [`RelayIdentity`] and [`EnrolmentError`], and the changes to a
+//!    [`EnteredCredentials`], [`RelayIdentity`] and [`EnrolmentError`], and
+//!    the changes to a
 //!    registered server with [`RunPolicyChoice`] and [`ServerChangeError`];
 //!    [`ServerDetail`]; launching, with [`ensure_launchable`], [`launch_url`]
 //!    and [`LaunchError`]; [`PendingConsent`] with its [`ConsentKey`] and
@@ -62,7 +65,7 @@
 //!    write a redaction marker, and only `servers.json` holds it in full.
 //!  - `ports` — the [`ServerRegistry`] port (read all or one, insert, modify,
 //!    remove) and the [`RelayClient`] port (`GET /rathole`, signed
-//!    `GET /me`).
+//!    `GET /me`, `POST /claim`).
 //!  - `adapters` — [`JsonServerRegistry`], which replaces `servers.json`
 //!    atomically on every change and refuses a file whose `version` it
 //!    doesn't read, and [`ReqwestRelayClient`], which signs `GET /me` with
@@ -90,10 +93,11 @@ pub use domain::notifications::stop_notifications::{
 pub use domain::{
     add_server, ensure_launchable, launch_url, remove_server, set_run_policy,
     set_server_credentials, update_server, ApprovalOutcome, CertificateAuthority, ConsentApproval,
-    ConsentDetails, ConsentError, ConsentKey, EnrolmentError, EnteredRelay, LaunchError,
-    ListedServer, PendingConsent, PendingConsentChange, PendingConsentTracker, Registration,
-    RegistryError, RelayIdentity, RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail,
-    ServerRecord, ServerStatus, ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
+    ConsentDetails, ConsentError, ConsentKey, EnrolmentError, EnteredCredentials, EnteredRelay,
+    LaunchError, ListedServer, PendingConsent, PendingConsentChange, PendingConsentTracker,
+    Registration, RegistryError, RelayIdentity, RelayKind, RunPolicyChoice, ServerChangeError,
+    ServerDetail, ServerRecord, ServerStatus, ServerStatusTracker, ServerUpdate, TunnelToken,
+    SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_consent_decider::ServerConsentDecider;
 pub use live_bindings::server_launch_minter::ServerLaunchMinter;

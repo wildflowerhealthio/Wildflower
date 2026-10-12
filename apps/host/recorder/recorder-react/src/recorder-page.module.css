@@ -1,0 +1,22 @@
+/* Spacing for the recorder page; every colour and control style comes from
+ * tundra-css and `react-tundraish`. */
+.recorder-page__buttons {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.recorder-page__status {
+  margin: 0;
+}
+
+/* Where recordings go, under the page's description. */
+.recorder-page__folder {
+  margin: 0;
+}
+
+/* A folder's or file's absolute path: a machine string, so mono and wrapping. */
+.recorder-page__path {
+  font-family: var(--font-family-mono);
+  word-break: break-all;
+}

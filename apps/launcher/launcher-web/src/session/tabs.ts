@@ -7,12 +7,8 @@ import { ServerKind } from './server-kind.ts'
  * Each `path` is a real registered route, so TanStack's `<Link>` derives
  * the active tab itself (exact-or-descendant prefix match) — no separate
  * lookup helper is needed.
- *
- * `har-recorder` is named here but has no shared constant: it is a platform
- * tab the Tauri entry contributes through `platformTabs`, and one union should
- * still describe every tab a bar can render.
  */
-type TabKey = 'home' | 'collector' | 'settings' | 'har-recorder'
+type TabKey = 'home' | 'collector' | 'settings'
 
 /** A single tab's identity, label, and destination route. */
 interface TabSpec {
@@ -23,7 +19,7 @@ interface TabSpec {
   // (an unsafe-assignment at the `<Link to>` call site) and `RoutePaths`
   // isn't re-exported from `@tanstack/react-router`. With a handful of rarely
   // changing top-level surfaces, the literal union is the safe choice.
-  readonly path: '/home' | '/fhir-home' | '/collector' | '/settings' | '/har-recorder'
+  readonly path: '/home' | '/fhir-home' | '/collector' | '/settings'
 }
 
 const HOME_TAB: TabSpec = { key: 'home', label: 'Home', path: '/home' }

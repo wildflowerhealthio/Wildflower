@@ -15,6 +15,7 @@
     "notification:allow-request-permission",
     "allow-server-enrolment",
     "allow-server-consents",
-    "allow-server-management"
+    "allow-server-management",
+    "allow-recorder"
   ]
 }

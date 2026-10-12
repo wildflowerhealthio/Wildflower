@@ -3,7 +3,7 @@
 The **launcher**: the web app that manages a Wildflower server, published at
 <https://wildflowerhealth.io/launcher/>, and the packages beside it that only
 the launcher uses: the TypeScript halves of the server features it manages
-(collectors, the HAR Recorder, databases, the request log, the app registry),
+(collectors, databases, the request log, the app registry),
 the server-status wire and its screens, and the host navigation reporter. The
 app itself is [`launcher-web`](./launcher-web/AGENTS.md).
 
@@ -32,8 +32,6 @@ the host runs, in
   handler machines (`collector-fundamentals`), the closed registry and remotes
   `HttpApi` (`collector-registry`), one `*-client-collector` per import site,
   `web-trace-source`, and the screens and sync runner (`collector-react`).
-- [`har-recorder/`](./har-recorder/AGENTS.md) — the HAR Recorder:
-  `har-recorder-core-js` and the `/har-recorder` page in `har-recorder-react`.
 - `databases/` — `databases-core-js`, the `/databases` `HttpApi` and client,
   and `databases-react`, the `/settings/databases` screen.
 - `request-log/` — `request-log-core-js`, the `/requests` `HttpApi` and client,
@@ -48,8 +46,7 @@ the host runs, in
   imports the packages here; none of them imports the app. Within a group a
   `-react` package depends on its `-core-js`, never the reverse.
 - **A group is the slice it came from.** Packages that came from one slice sit
-  in a folder named for it (`collector/`, `har-recorder/`, `databases/`,
-  `request-log/`), carrying that slice's AGENTS.md and docs; a lone package sits
+  in a folder named for it (`collector/`, `databases/`, `request-log/`), carrying that slice's AGENTS.md and docs; a lone package sits
   directly here.
 - **A server-wire change edits both folders.** The OpenAPI snapshot each
   `-core-js` (and `collector-registry`) drift test reads is committed beside

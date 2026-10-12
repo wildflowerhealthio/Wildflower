@@ -45,13 +45,13 @@ fi
 non_tauri=(--workspace
   --exclude host-app
   --exclude wildflowerhealthio-browser-sniffer-tauri
-  --exclude wildflowerhealthio-har-recorder-tauri
+  --exclude wildflowerhealthio-recorder-tauri
   --exclude wildflowerhealthio-servers-tauri
   --exclude wildflowerhealthio-shared-structures-tauri
   --exclude tauri-plugin-native-webview
   --exclude tauri-plugin-native-page-browser
   --exclude wildflowerhealthio-tauri-unit-runner)
-tauri=(-p host-app -p wildflowerhealthio-browser-sniffer-tauri -p wildflowerhealthio-har-recorder-tauri -p wildflowerhealthio-servers-tauri -p wildflowerhealthio-shared-structures-tauri -p tauri-plugin-native-webview -p tauri-plugin-native-page-browser -p wildflowerhealthio-tauri-unit-runner)
+tauri=(-p host-app -p wildflowerhealthio-browser-sniffer-tauri -p wildflowerhealthio-recorder-tauri -p wildflowerhealthio-servers-tauri -p wildflowerhealthio-shared-structures-tauri -p tauri-plugin-native-webview -p tauri-plugin-native-page-browser -p wildflowerhealthio-tauri-unit-runner)
 tauri_names=" host-app wildflowerhealthio-browser-sniffer-tauri wildflowerhealthio-har-recorder-tauri wildflowerhealthio-servers-tauri wildflowerhealthio-shared-structures-tauri tauri-plugin-native-webview tauri-plugin-native-page-browser wildflowerhealthio-tauri-unit-runner "
 
 # Exact-match a crate name against the Tauri set. Iterating + string equality

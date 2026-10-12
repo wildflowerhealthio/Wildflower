@@ -31,8 +31,9 @@
 //!   certificate's state, as [`ListedServer`](wildflowerhealthio_servers::ListedServer)s,
 //!   or with the error `servers.json` couldn't be read with.
 //! - [`server_add`], invoked as
-//!   `invoke('server_add', { relay, tunnelName, token })`, enrols a tunnel at
-//!   a relay and registers the server with the app's default launcher (see
+//!   `invoke('server_add', { relay, credentials })`, enrols a tunnel at a
+//!   relay, from a claim code or its name and token, and registers the server
+//!   with the app's default launcher (see
 //!   [`wildflowerhealthio_servers::add_server`]), answering with the server's domain.
 //! - [`server_set_credentials`], invoked as
 //!   `invoke('server_set_credentials', { domain, token })`, replaces a

@@ -258,8 +258,8 @@ describe('emitHarFromLog', () => {
   })
 
   test('creatorName names a different producer on log.creator', () => {
-    const archive = emitHarFromLog(logOf(), { creatorName: 'Wildflower HAR Recorder' })
-    expect(archive.log.creator.name).toBe('Wildflower HAR Recorder')
+    const archive = emitHarFromLog(logOf(), { creatorName: 'Wildflower Recorder' })
+    expect(archive.log.creator.name).toBe('Wildflower Recorder')
     // The override replaces the name only; the version keeps its own default.
     expect(archive.log.creator.version).toBe('0')
   })
@@ -276,7 +276,7 @@ describe('emitHarFromLog', () => {
 
   test('an archive emitted with both overrides still validates against the HAR 1.2 schema', () => {
     const archive = emitHarFromLog(logOf(), {
-      creatorName: 'Wildflower HAR Recorder',
+      creatorName: 'Wildflower Recorder',
       requestComment: 'The request side was never observed.',
     })
     expect(validateHar(encode(archive))).toBe(true)

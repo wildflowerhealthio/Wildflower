@@ -5,7 +5,7 @@ The host keeps everything it owns under one directory, the data root:
 ```text
 <data root>/
   servers.json            the install's servers
-  saved_data/             saved HAR recordings, shared by every server
+  saved_data/             desktop only: files a page in the sniffer webview downloads
   fhir-search-params/     Android only: the materialized FHIR SearchParameter bundle
   acme-account/           the install's ACME account keys, one per CA
   servers/<domain>/       one folder per server, named by its domain
@@ -37,6 +37,11 @@ whole folder and then its record. A `servers.json` that can't be read is
 logged, and no server runs; the base's `servers_list` answers with the error,
 which the base shows. Every slice that needs a path joins onto the data root or
 the server's folder rather than resolving its own.
+
+Recordings are the exception: the Recorder resolves its own folder, one the
+user can browse to, which is outside the data root on the desktop and Android
+and inside it on iOS, where the data root is `Documents` itself (see
+[Recordings](#recordings)).
 
 ## `servers.json`
 
@@ -210,6 +215,51 @@ Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist):
   client, the reachability monitor's `/health` probe and the collectors'
   upstream fetches open their own sockets and speak their own TLS. Whatever those are allowed to
   reach is a question for that code, not for this plist.
+
+## Recordings
+
+The Recorder saves each recording, a `.har` file, into a folder named
+`Wildflower Recordings` that the user can browse to and the Importer's file
+picker can reach. `recorder-rust`'s `Platform::recordings_locations` picks it,
+and `recorder-tauri`'s `attach_recorder` resolves it once, through Tauri's
+path API, when the app starts:
+
+| Platform          | Folder                                                                                                         | How it is reached                                          |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Desktop           | `<Documents>/Wildflower Recordings` (`document_dir()`), else `<Downloads>/…`                                   | Finder, Explorer or the file manager; Show file reveals it |
+| Android           | `/storage/emulated/0/Documents/Wildflower Recordings` (`home_dir()` + `Documents`)                             | the Files app and the system file picker, under Documents  |
+| iOS               | `<container>/Documents/Wildflower Recordings` (`document_dir()`, the data root itself)                         | the Files app, "On My iPhone → Wildflower"                 |
+| macOS (App Store) | `~/Downloads/Wildflower Recordings` (`download_dir()`, symlinks resolved), else `<container>/Data/Documents/…` | Finder; Show file reveals it                               |
+
+On the desktop, `attach_recorder` falls back to the user's Downloads folder
+(`download_dir()`) when there is no Documents folder (a Linux desktop without
+an XDG Documents directory, where `document_dir()` fails) or the app can't
+create `Wildflower Recordings` in it.
+
+The Mac App Store build runs in the App Sandbox, where `document_dir()` is the
+container's `~/Library/Containers/<identifier>/Data/Documents`, which Finder
+never shows. That build saves to the user's Downloads instead, which its
+`com.apple.security.files.downloads.read-write` entitlement opens to it.
+`download_dir()` there is the container's `Data/Downloads`, a symlink to
+`~/Downloads`, so `attach_recorder` resolves it and the Recorder page shows
+the real folder. The App Store and Developer ID builds are one binary, so
+`Platform::current` tells them apart at run time, by the
+`APP_SANDBOX_CONTAINER_ID` macOS sets in a sandboxed process. The container's
+Documents is the fallback only for a sandboxed build signed without the
+entitlement.
+
+On Android, Tauri's `document_dir()` is the app's own
+`Android/data/<package>/files/Documents`, which Android 11+ hides from every
+file manager, so the Recorder uses the shared `Documents` folder instead. An
+app can create files of any type there without a storage permission from
+Android 11 on; on an older Android, where it can't, `attach_recorder` falls
+back to the app's own `Documents` folder, which a computer still sees over
+USB. A platform where
+no folder resolves still runs, and the Recorder page says why it can't save.
+
+The Recorder page shows the folder, read through the `recorder_save_folder`
+command, and on the desktop offers Show file after a save, which reveals the
+file in the file manager through `tauri-plugin-opener`.
 
 ## Android is still private
 
