@@ -13,6 +13,31 @@ if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.3.3 — 2026-10-12
+
+- recorder: Downloads fallback on desktop, Downloads on the Mac App Store build (#1114) (#1122) (d566e399)
+- servers: add a server from a relay claim code (#933) (#1117) (7c9ae616)
+- recorder: move into the host with a Servers | Recorder tab bar (#1114) (#1118) (a69ed458)
+- servers: show the tunnel's relay connection state in the base (#1095) (58428912)
+- policy: 30-day Sentry retention, Ontario governing law, MIT licence, iOS encryption answer (#1113) (3b342384)
+- feat(host): run Android servers in a shortService grace window (#1109) (2c806f45)
+- test(relay): don't assume alice lists first in the admin tunnels test (#1112) (2804a745)
+- skills: /risk-sizing sets the org Risk field from blind S/M/L/XL sizing (#1111) (6ba51f05)
+- tunnel: the daemon owns re-dial and publishes the tunnel's state (#1091) (f3fc0f18)
+- relay: single-use claim codes and token reissue (#933) (#1092) (668028a5)
+- gatekeeper: an approver whose token lacks a ticked scope is offered the step-up, and the refusal is pinned (#739) (#1094) (e4acf891)
+- effect-messaging: extract the page dispatcher into effect-messaging-core (#993) (#1093) (2bf8aa0c)
+- launcher-web: drop the unused web-assets export and pack output, retire React Native-era prose (#692) (#1090) (1ab00d47)
+- launcher: delete the background-server-service remnant (#965) (#1089) (69ce2d47)
+- Re-key FHIR Sync for Pebble's clients (#1087) (c8af9909)
+- docs(relay): trust model, self-hosting guides, wizard link (#900) (#1088) (7ffe0d71)
+- release: build Android in Tauri Release — Publish, fix its OpenSSL ranlib (#1083) (d06e50fd)
+- host-app: bundle the iOS privacy manifest, declare collected data, store privacy answers (#1085) (a29a2e6e)
+- ci(typescript): run only the test shards a PR can affect (#1082) (6a67f62d)
+- marketing-site-web: consumer health data policy page, policy copy follow-ups (#1084) (6da1bc83)
+- ci(typescript): run the tests as one parallel job per top-level area (#1081) (e6f9fdd0)
+- marketing-site-web: privacy policy, terms of use and data deletion pages (#1076) (0e107ef7)
+
 ## v0.3.2 — 2026-10-11
 
 - release: fix the v0.3.1 Windows, macOS TestFlight, iOS and Android builds (#1079) (8b0b7f80)
