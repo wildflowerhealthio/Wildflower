@@ -392,11 +392,11 @@ pub fn run() {
             // `native_webview_data_plane_emit` command) and re-broadcasts.
             wildflowerhealthio_browser_sniffer_tauri::attach_browser_sniffer(app.handle());
 
-            // Wire the HarRecorderBridge.webToHost listener that writes a
-            // finished recording into `<data root>/saved_data`, shared by
-            // every server, taking the directory this `setup()` already
-            // resolved rather than its own.
-            wildflowerhealthio_har_recorder_tauri::attach_har_recorder(
+            // Wire the Recorder's `SaveHar` listener that writes a finished
+            // recording into `<data root>/saved_data`, shared by every
+            // server, taking the directory this `setup()` already resolved
+            // rather than its own.
+            wildflowerhealthio_recorder_tauri::attach_recorder(
                 app.handle(),
                 data_root.clone(),
             );

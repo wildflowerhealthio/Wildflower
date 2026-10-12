@@ -15,6 +15,11 @@ stores, and the packages beside it that only the host uses. The app itself is
   the host runs them, and the **base**, the UI the host's webview mounts:
   `servers-core-js`, `servers-react`, `servers-rust`, `servers-tauri`,
   their docs and `servers-wire-golden.json`.
+- [`recorder/`](./recorder/AGENTS.md) — the **Recorder**, which records a
+  page's fetch/XHR responses in the sniffer webview and saves them as a HAR
+  file, behind the host's Recorder tab: `recorder-core-js`,
+  `recorder-react`, `recorder-rust`, `recorder-tauri`, their docs and
+  `recorder-wire-golden.json`.
 - [`unit-runner/`](./unit-runner/unit-runner-rust/AGENTS.md) — the
   platform-neutral `unit-runner-rust`, which runs units under run policies, and
   [`tauri-unit-runner-rust`](./unit-runner/tauri-unit-runner-rust/AGENTS.md),
@@ -26,8 +31,7 @@ stores, and the packages beside it that only the host uses. The app itself is
   collector, request log, apps, databases, tunnel) into one API; beside it the
   crates only the host composes: `gatekeeper-rust`, `token-revocation-rust`,
   `fhir-r4-rust`, `apps-rust`, `tunnel-rust`, `collector-rust`,
-  `databases-rust`, `request-log-rust`, and the HAR Recorder's
-  `har-recorder-rust` and `har-recorder-tauri`.
+  `databases-rust` and `request-log-rust`.
 - [`shared-structures-tauri`](./shared-structures-tauri) — the host's
   Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)

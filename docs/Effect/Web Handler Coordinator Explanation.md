@@ -9,7 +9,7 @@ The transport exposes a `HandlerCoordinator` (the contract lives in `effect-mess
 A React context (`HandlerCoordinatorContext`, provided in `AppRootTree`) surfaces the coordinator. Each slice binds a typed accessor for its own bridge with `makeUseSliceRegister(bridge)` and `Effect.runFork`s its `register` / `unregister` Effects from its own lifecycle:
 
 - **collector** (`useSyncRunner`) registers its per-sync handler in the `Collector` slot when a sync starts and unregisters on unmount.
-- **har-recorder** (`useHarRecorder`) registers its records in the `Collector` and `HarRecorder` slots while a recording runs.
+- **recorder** (`useRecorder`, in the host's Recorder tab) registers its record in the `Recorder` slot for as long as the Recorder page is mounted, so the host's answer to a save still reaches it after the sniffer window has closed.
 
 ## Drop-all default
 

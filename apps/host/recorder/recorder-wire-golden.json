@@ -1,0 +1,60 @@
+{
+  "hostToWeb": {
+    "ResponseStart": {
+      "_tag": "ResponseStart",
+      "id": "r1",
+      "url": "https://portal.example.org/api/Patient/1",
+      "method": "GET",
+      "status": 200,
+      "statusText": "OK",
+      "headers": [
+        ["content-type", "application/fhir+json"],
+        ["set-cookie", "a=1"],
+        ["set-cookie", "b=2"]
+      ]
+    },
+    "ResponseData": {
+      "_tag": "ResponseData",
+      "id": "r1",
+      "data": "eyJyZXNvdXJjZVR5cGUiOiJQYXRpZW50In0="
+    },
+    "ResponseFinished": { "_tag": "ResponseFinished", "id": "r1" },
+    "RequestError": {
+      "_tag": "RequestError",
+      "id": "r2",
+      "url": "https://portal.example.org/api/Observation",
+      "message": "Failed to fetch"
+    },
+    "Cancelled": { "_tag": "Cancelled", "id": "r3" },
+    "PageLoaded": {
+      "_tag": "PageLoaded",
+      "url": "https://portal.example.org/dashboard",
+      "pageContentId": "page-1"
+    },
+    "PageRequested": { "_tag": "PageRequested", "url": "https://portal.example.org/dashboard" },
+    "UserDismissed": { "_tag": "UserDismissed" },
+    "SnifferDisposed": { "_tag": "SnifferDisposed" },
+    "HarSaved": {
+      "_tag": "HarSaved",
+      "fileName": "2026-09-13T14-02-11Z-portal.example.org.har",
+      "path": "/home/ada/Downloads/Wildflower Recordings/2026-09-13T14-02-11Z-portal.example.org.har"
+    },
+    "HarSaveFailed": {
+      "_tag": "HarSaveFailed",
+      "fileName": "../escape.har",
+      "message": "invalid file name: the name is not one path segment"
+    }
+  },
+  "webToHost": {
+    "Open": {
+      "_tag": "Open",
+      "source": { "_tag": "Uri", "uri": "https://portal.example.org/dashboard" }
+    },
+    "SniffingComplete": { "_tag": "SniffingComplete" },
+    "SaveHar": {
+      "_tag": "SaveHar",
+      "fileName": "2026-09-13T14-02-11Z-portal.example.org.har",
+      "text": "{\"log\":{}}"
+    }
+  }
+}
