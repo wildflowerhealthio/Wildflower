@@ -1,6 +1,7 @@
 //! [`ServerUnits`]: the one place a server's record becomes a unit on the
-//! unit runner, and the way the servers commands change and read the
-//! servers' units.
+//! unit runner, the way the servers commands change and read the servers'
+//! units, and how a launch's in-app browser view counts toward their
+//! `WhileOpen` run policy.
 
 use std::sync::Arc;
 
@@ -102,5 +103,17 @@ impl ServerUnits {
     #[must_use]
     pub fn statuses(&self) -> UnitStatuses<ServerDetail> {
         self.runner.statuses()
+    }
+
+    /// A launch opened in the in-app browser view `view`. While it is open, it
+    /// keeps the app present for the servers' `WhileOpen` run policy where the
+    /// view moves the app to the background.
+    pub fn launch_view_opened(&self, view: &str) {
+        self.runner.browser_view_opened(view);
+    }
+
+    /// The in-app browser view `view`, a launch's, closed.
+    pub fn launch_view_closed(&self, view: &str) {
+        self.runner.browser_view_closed(view);
     }
 }

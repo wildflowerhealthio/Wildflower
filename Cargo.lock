@@ -9433,7 +9433,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin-log",
- "tauri-plugin-native-webview",
+ "tauri-plugin-native-page-browser",
  "tauri-plugin-notification",
  "tempfile",
  "tokio",
