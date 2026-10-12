@@ -6,8 +6,8 @@
 //! ([`ServerLaunchMinter`]); and the launcher opens at
 //! [`launch_url`](wildflowerhealthio_servers::launch_url) in the in-app
 //! browser, [`LaunchBrowser`], which shows one view at a time: on iOS a launch
-//! replaces the view an earlier one opened, and on Android it is refused while
-//! that view shows. While a launch's view is open it counts toward the
+//! replaces the view an earlier one opened, and on Android a launch that
+//! arrives while an earlier one's view is still opening joins that view. While a launch's view is open it counts toward the
 //! `WhileOpen` run policy ([`LaunchPresence`]), until the browser reports it
 //! closed. The outcome is logged by domain.
 //!
@@ -68,16 +68,16 @@ pub(crate) type LaunchViewClosed = Box<dyn Fn() + Send + Sync>;
 /// browser; in the tests, a record of what was opened.
 pub(crate) trait LaunchBrowser: Send + Sync + 'static {
     /// Open `launch_url` in a view of the in-app browser. A view already
-    /// showing is replaced on iOS; on Android the open is refused instead, as
-    /// it is while the app isn't in front. `view_closed` is called once the new
-    /// view is gone: the user closed it, or, on iOS, a later open replaced it.
-    /// It never is on a desktop, whose view is a default-browser tab, nor after
-    /// an error.
+    /// showing is replaced on iOS; on Android, where only a view still opening
+    /// can show while the app is in front, the open joins that view instead of
+    /// opening `launch_url`. `view_closed` is called once the view is gone: the
+    /// user closed it, or, on iOS, a later open replaced it. It never is on a
+    /// desktop, whose view is a default-browser tab, nor after an error.
     ///
     /// # Errors
     ///
     /// [`LaunchError::OpeningLauncher`] when the view couldn't be opened,
-    /// including an Android open refused while a view shows.
+    /// including an Android open refused while the app isn't in front.
     fn open(
         &self,
         launch_url: Url,
@@ -252,8 +252,9 @@ mod tests {
     enum WhileAViewShows {
         /// iOS: report the showing view closed, then show the new one.
         Replace,
-        /// Android: refuse the open.
-        Refuse,
+        /// Android: join the showing view, which is still opening, so its
+        /// close reports for both opens.
+        Join,
     }
 
     /// An in-app browser that shows one view at a time, as a phone's does.
@@ -264,11 +265,12 @@ mod tests {
     }
 
     /// Each launch URL a [`OneViewBrowser`] opened, and how its showing view
-    /// reports its close.
+    /// reports its close: once for each open that opened or joined it, none
+    /// while no view shows.
     #[derive(Default)]
     struct BrowserViews {
         opened: Vec<Url>,
-        showing: Option<LaunchViewClosed>,
+        showing: Vec<LaunchViewClosed>,
     }
 
     impl OneViewBrowser {
@@ -288,8 +290,11 @@ mod tests {
 
         /// The user closes the showing view.
         fn close_showing(&self) {
-            let showing = self.views.lock().unwrap().showing.take();
-            showing.expect("a view is showing")();
+            let showing = std::mem::take(&mut self.views.lock().unwrap().showing);
+            assert!(!showing.is_empty(), "a view is showing");
+            for view_closed in showing {
+                view_closed();
+            }
         }
     }
 
@@ -301,17 +306,16 @@ mod tests {
         ) -> Result<(), LaunchError> {
             let replaced = {
                 let mut views = self.views.lock().unwrap();
-                if views.showing.is_some() {
-                    if let WhileAViewShows::Refuse = self.while_a_view_shows {
-                        return Err(LaunchError::OpeningLauncher {
-                            reason: "a page is already open".to_owned(),
-                        });
+                if !views.showing.is_empty() {
+                    if let WhileAViewShows::Join = self.while_a_view_shows {
+                        views.showing.push(view_closed);
+                        return Ok(());
                     }
                 }
                 views.opened.push(launch_url);
-                views.showing.replace(view_closed)
+                std::mem::replace(&mut views.showing, vec![view_closed])
             };
-            if let Some(replaced_view_closed) = replaced {
+            for replaced_view_closed in replaced {
                 replaced_view_closed();
             }
             Ok(())
@@ -501,23 +505,23 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn on_android_a_second_launch_while_the_first_s_view_shows_is_refused() {
+    async fn on_android_a_second_launch_while_the_first_s_view_opens_joins_it() {
         let gatekeeper = test_gatekeeper();
-        let browser = OneViewBrowser::new(WhileAViewShows::Refuse);
+        let browser = OneViewBrowser::new(WhileAViewShows::Join);
         let presence = OpenLaunchViews::default();
         launch_launchable(&gatekeeper, browser.clone(), &presence)
             .await
             .unwrap();
         let first_views = presence.views();
 
-        let refused = launch_launchable(&gatekeeper, browser.clone(), &presence).await;
+        launch_launchable(&gatekeeper, browser.clone(), &presence)
+            .await
+            .unwrap();
 
-        assert_eq!(
-            refused.map_err(|error| error.kind()),
-            Err("openingLauncher")
-        );
-        assert_eq!(browser.opened().len(), 1);
-        assert_eq!(presence.views(), first_views, "the first view stays open");
+        assert_eq!(browser.opened().len(), 1, "no second view opens");
+        let second_views = presence.views();
+        assert_eq!(second_views.len(), 2, "both launches' views are open");
+        assert!(second_views.is_superset(&first_views));
         browser.close_showing();
         assert!(presence.views().is_empty());
     }

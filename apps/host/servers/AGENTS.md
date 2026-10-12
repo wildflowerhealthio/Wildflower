@@ -380,8 +380,8 @@ changing how servers run or what the host notifies about them.
   written. The launch binds no OAuth client, so
   any app can be a launcher. The launcher opens in the in-app browser
   (`tauri-plugin-native-page-browser`), which shows one view at a time: on
-  iOS a launch replaces the view an earlier one opened, and on Android it is
-  refused (`openingLauncher`) while that view shows. Each view is reported to
+  iOS a launch replaces the view an earlier one opened, and on Android a
+  launch that arrives while that view is still opening joins it. Each view is reported to
   `TauriUnitRunner` under an id of its own (`launch-<n>`) until the browser
   reports it closed (on Android, as the app resumes from under it); on
   Android, where the view moves the app to the background, an open view keeps

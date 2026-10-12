@@ -1,9 +1,11 @@
 package io.wildflowerhealth.nativepagebrowser
 
 import android.app.Activity
+import android.app.Application
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Bundle
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
@@ -35,16 +37,23 @@ class OpenArgs {
  * right in the app's colours with a back-arrow close button, and falls back to
  * the default browser (`ACTION_VIEW`) when no Custom Tabs provider is installed.
  *
- * One view shows at a time, and a Custom Tab can't be closed programmatically,
- * so `open` rejects while a view is showing. It also rejects while the host
+ * One view shows at a time, and a Custom Tab can't be closed programmatically.
+ * An `open` arriving while the host is in front can only find a view still
+ * launching (a second tap before the tab covers the host): it joins that view
+ * instead of launching another, and resolves. `open` rejects while the host
  * activity isn't in front: Android blocks activity starts from the background.
  * Every other `open` launches its view and resolves.
  *
  * A view counts as closed when the host activity resumes after pausing under
- * it, and that resume sends `{"event":"closed"}` on its channel: exactly once
- * per resolved `open`. Switching apps from the view (to a password manager or
- * an authenticator, mid-sign-in) leaves the view on top of the host's task, so
- * the host doesn't resume and the view stays open.
+ * it, and that resume sends `{"event":"closed"}` on the channel of each `open`
+ * that launched or joined it: exactly once per resolved `open`. Switching apps
+ * from the view (to a password manager or an authenticator, mid-sign-in) leaves
+ * the view on top of the host's task, so the host doesn't resume and the view
+ * stays open.
+ *
+ * The plugin watches the host activity through the application's activity
+ * lifecycle callbacks, not [Plugin.onPause] / [Plugin.onResume]: Tauri's
+ * generated `TauriActivity` never registers the observer that forwards those.
  */
 @TauriPlugin
 class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity) {
@@ -58,43 +67,58 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         private const val COLOR_NEUTRAL_1_DARK = 0xFFF3E9DB.toInt()
     }
 
-    /** One launched view, with the channel its close reports on. */
-    private class Page(private val closed: Channel) {
+    /** One launched view, with the channel of each `open` its close reports on. */
+    private class Page(closed: Channel) {
+        private val closedChannels = mutableListOf(closed)
+
         /** The host activity paused after this view launched: the view is up over it. */
         var hostLeft = false
 
+        /** A later `open` lands on this view: its close reports on `closed` too. */
+        fun join(closed: Channel) {
+            closedChannels.add(closed)
+        }
+
         fun reportClosed() {
-            // Lowercase tag matches `models.rs` `BrowserEvent`.
-            val payload = JSObject()
-            payload.put("event", "closed")
-            closed.send(payload)
+            for (closed in closedChannels) {
+                // Lowercase tag matches `models.rs` `BrowserEvent`.
+                val payload = JSObject()
+                payload.put("event", "closed")
+                closed.send(payload)
+            }
         }
     }
 
     /** The launched view, or null. UI thread only, like every field below. */
     private var showing: Page? = null
 
-    /** The host activity is resumed. Tracked from [onPause] / [onResume]. */
+    /** The host activity is resumed. Tracked by [HostLifecycle]. */
     private var hostInFront = true
 
+    init {
+        activity.application.registerActivityLifecycleCallbacks(HostLifecycle())
+    }
+
     /**
-     * Present `url`. Resolves once the launch is issued; rejects while a view is
-     * showing, while the host is in the background, or when nothing can open it.
+     * Present `url`. Resolves once the launch is issued, or at once when a view
+     * is still launching, which the `open` joins; rejects while the host is in
+     * the background, or when nothing can open it.
      */
     @Command
     fun open(invoke: Invoke) {
         val args = invoke.parseArgs(OpenArgs::class.java)
         activity.runOnUiThread {
-            if (showing != null) {
-                invoke.reject(
-                    "native-page-browser: could not open ${args.url}: a page is already open"
-                )
-                return@runOnUiThread
-            }
             if (!hostInFront) {
                 invoke.reject(
                     "native-page-browser: could not open ${args.url}: the app is in the background"
                 )
+                return@runOnUiThread
+            }
+            // The host is in front, so a showing view hasn't covered it yet.
+            val launching = showing
+            if (launching != null) {
+                launching.join(args.closed)
+                invoke.resolve()
                 return@runOnUiThread
             }
             // Showing before the launch, so the pause the launch causes marks `hostLeft`.
@@ -160,19 +184,38 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
             .apply { setTint(color) }
             .toBitmap()
 
-    override fun onPause() {
-        super.onPause()
+    private fun hostPaused() {
         hostInFront = false
         showing?.hostLeft = true
     }
 
     /** The host is back in front, so the view that was up over it is gone. */
-    override fun onResume() {
-        super.onResume()
+    private fun hostResumed() {
         hostInFront = true
         val page = showing ?: return
         if (!page.hostLeft) return
         showing = null
         page.reportClosed()
+    }
+
+    /** Hears the host activity pause and resume; ignores every other activity. */
+    private inner class HostLifecycle : Application.ActivityLifecycleCallbacks {
+        override fun onActivityPaused(paused: Activity) {
+            if (paused === activity) hostPaused()
+        }
+
+        override fun onActivityResumed(resumed: Activity) {
+            if (resumed === activity) hostResumed()
+        }
+
+        override fun onActivityCreated(created: Activity, savedInstanceState: Bundle?) {}
+
+        override fun onActivityStarted(started: Activity) {}
+
+        override fun onActivityStopped(stopped: Activity) {}
+
+        override fun onActivitySaveInstanceState(saved: Activity, outState: Bundle) {}
+
+        override fun onActivityDestroyed(destroyed: Activity) {}
     }
 }

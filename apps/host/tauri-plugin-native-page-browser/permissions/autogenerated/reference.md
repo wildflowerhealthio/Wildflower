@@ -56,9 +56,9 @@ as a native page: `SFSafariViewController` (iOS), a Custom Tab (Android), or the
 default browser (desktop). A `Channel<BrowserEvent>` carries exactly one `closed`
 event back per successful `open` once the view is gone (iOS and Android only;
 desktop never sends one). On iOS a newer `open` replaces a showing view and
-reports its close; on Android it is rejected while a view is showing or the app
-is in the background. The caller cannot script or navigate the open page.
-Non-`http(s)` URLs are rejected.
+reports its close; on Android one arriving while a view is still opening joins
+it, and one arriving while the app is in the background is rejected. The caller
+cannot script or navigate the open page. Non-`http(s)` URLs are rejected.
 
 
 </td>

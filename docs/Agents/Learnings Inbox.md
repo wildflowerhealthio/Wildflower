@@ -509,3 +509,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: ruthmarks/move-single-purpose-slices (tightening the `-core` tsconfigs)
 **Learning**: TypeScript has no `lib` for the web globals every runtime shares. With `lib: ["es2024"]` and no `"dom"`, `URL`, `URLSearchParams`, `TextEncoder`/`TextDecoder`, `Response`, `crypto` and `structuredClone` are declared only by `@types/node`, so `types: []` gave the cores ~560 errors for legitimate code. Keep `types: ["node"]` and block Node built-ins with oxlint's `import/no-nodejs-modules` on core sources instead; drop `"dom"` from `lib` to keep DOM out. Separately, `nodeLinker: hoisted` had let 17 imports resolve that no manifest declared (`fhirclient`, `jsdom`, `@testing-library/user-event`, `@types/fhir`'s `fhir/r4.d.ts`); `vp run lint:deps` (knip) now fails on them.
 **Suggested destination**: docs/Dependencies/Package Graph Rules Explanation.md, or slices/AGENTS.md (Rules)
+
+## A Tauri Android plugin's `onPause` / `onResume` never run
+
+**Discovered during**: claude/in-app-browser-launch-1101 (`tauri-plugin-native-page-browser`, "a page is already open" on every launch after the first)
+**Learning**: In Tauri 2.11, `PluginManager` forwards `onPause` / `onResume` / `onStop` to plugins only from `TauriLifecycleObserver`, which the generated `TauriActivity.kt` defines but never registers (only wry's `WryLifecycleObserver` is added). Those overrides on a `Plugin` are dead. Even registered, it would observe `ProcessLifecycleOwner`: the whole process, with a pause delivered about 700 ms late. A plugin that needs the host activity's pause and resume should register `Application.ActivityLifecycleCallbacks` and filter to its `activity`. `onNewIntent`, `onRestart`, `onDestroy` and `onConfigurationChanged` are forwarded from the activity itself and do run.
+**Suggested destination**: a Tauri plugin How-To, or `tauri-plugin-native-page-browser/docs/Explanation.md`

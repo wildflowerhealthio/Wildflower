@@ -32,11 +32,13 @@ Launches open in the system's in-app browser so the app can't script the pages w
 A phone shows one in-app browser view. What an `open` does while a view is showing differs by platform:
 
 - **iOS** replaces the showing view. It dismisses the showing `SFSafariViewController` from its presenter, sends its `Closed` on its own channel from the dismissal's completion, then presents the new one from the top of Tauri's root view controller. An `open` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
-- **Android** rejects the `open` with an error saying a page is already open. A Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front. An `open` that arrives while the host activity isn't in front is rejected too, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
+- **Android** can't replace a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front. It doesn't need to, though: a showing view covers the host, so an `open` from the app can only arrive while the view is still launching (a second tap before the tab slides in). That `open` joins the launching view instead of launching another, so it doesn't open its own URL, resolves at once, and hears its `Closed` when that view closes. An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
 
 ## How Android hears the close
 
-A Custom Tab runs in the browser's process, so the plugin watches the host activity instead. Launching a view pauses the host under it; when the host next resumes, the view is gone, and the plugin reports its `Closed`. The `ACTION_VIEW` fallback to the default browser, when no Custom Tabs provider is installed, closes the same way.
+A Custom Tab runs in the browser's process, so the plugin watches the host activity instead. Launching a view pauses the host under it; when the host next resumes, the view is gone, and the plugin reports its `Closed` to every `open` that launched or joined it. The `ACTION_VIEW` fallback to the default browser, when no Custom Tabs provider is installed, closes the same way.
+
+The plugin hears the host pause and resume through `Application.registerActivityLifecycleCallbacks`, filtered to the host activity, not through `Plugin.onPause` / `onResume`. Tauri's generated `TauriActivity` defines `TauriLifecycleObserver`, which forwards those, but never registers it, so they never run. Even registered, it would observe `ProcessLifecycleOwner`, which reports the whole process and delivers a pause about 700 ms late.
 
 The tab lives in the host's task, so switching apps from it mid-sign-in (to a password manager or an authenticator) and back returns to the tab, not the host: the host doesn't resume, and the view stays open. The host's activity is `singleTop` for the same reason: a `singleTask` one would finish the tab whenever the user taps the launcher icon.
 
@@ -83,7 +85,7 @@ apps/host/tauri-plugin-native-page-browser/
       │
       ├─ iOS/Android: run_mobile_plugin_async("open", { url, closed }).await
       │     → iOS: dismiss the showing view, if any → channel.send({ event:"closed" }) on ITS channel
-      │       Android: reject if a view is showing or the app is in the background
+      │       Android: reject if the app is in the background; join a view still launching
       │     → present SFSafariViewController / launch the Custom Tab
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler
       │
@@ -110,5 +112,6 @@ desktop's `open` refusing a non-`http(s)` URL) are covered by unit tests in
 checked by hand on each device: the view slides in from the right in the app's
 colours; close, an edge swipe and system back each return to the app and report
 `Closed` once; switching apps from an Android view and back reports nothing. A
-second `open` replaces the first and reports `Closed` for it on iOS, and is
-rejected on Android.
+second `open` replaces the first and reports `Closed` for it on iOS. On Android
+a launch after the first view closed opens a new view, and a double-tapped
+launch opens one view whose close reports `Closed` to both.

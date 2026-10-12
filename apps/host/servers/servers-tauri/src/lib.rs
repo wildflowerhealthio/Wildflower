@@ -60,7 +60,7 @@
 //!   answers `serverNotRunning`.
 //! - [`server_launch`], invoked as `invoke('server_launch', { domain })`,
 //!   opens the server's launcher in the in-app browser (on iOS replacing the
-//!   view an earlier launch opened; on Android refused while it shows), at its
+//!   view an earlier launch opened; on Android joining it while it opens), at its
 //!   launcher URL with `iss` and a `launch` its running gatekeeper minted for
 //!   any client (see [`wildflowerhealthio_servers::ServerLaunchMinter`]); a server that
 //!   isn't running, reachable through its relay and holding a valid
