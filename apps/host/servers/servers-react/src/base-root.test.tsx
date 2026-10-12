@@ -2383,6 +2383,9 @@ describe('the server page', () => {
 
 describe('Add server', () => {
   const TOKEN = 'tunnel-token-123'
+  const CLAIM_CODE = 'ABCD-EFGH'
+  const TOKEN_INSTEAD = 'I have a tunnel name and full length token'
+  const CLAIM_CODE_INSTEAD = 'I have a claim code'
 
   /** What `server_add` answers: the domain, or the host's refusal. */
   type AddAnswer = () => Promise<unknown>
@@ -2477,11 +2480,29 @@ describe('Add server', () => {
     await user.click(within(relay).getByRole('button', { name: 'Continue' }))
   }
 
+  /**
+   * On the tunnel step, switch a Wildflower relay from its claim code to the
+   * tunnel name and token; a rathole relay asks for them already.
+   */
+  const enterTokenInstead = async (user: User): Promise<HTMLElement> => {
+    const tunnel = await stepTitled('Tunnel')
+    const tokenInstead = within(tunnel).queryByRole('button', { name: TOKEN_INSTEAD })
+    if (tokenInstead !== null) await user.click(tokenInstead)
+    return tunnel
+  }
+
   /** Enter the tunnel `ruth` and {@link TOKEN} on the tunnel step, then Add server. */
   const enterCredentials = async (user: User): Promise<void> => {
-    const tunnel = await stepTitled('Tunnel')
+    const tunnel = await enterTokenInstead(user)
     await user.type(within(tunnel).getByLabelText('Tunnel name'), 'ruth')
     await user.type(within(tunnel).getByLabelText('Tunnel token'), TOKEN)
+    await user.click(within(tunnel).getByRole('button', { name: 'Add server' }))
+  }
+
+  /** Enter `code` as the claim code on the tunnel step, then Add server. */
+  const enterClaimCode = async (user: User, code: string): Promise<void> => {
+    const tunnel = await stepTitled('Tunnel')
+    await user.type(within(tunnel).getByLabelText('Claim code'), code)
     await user.click(within(tunnel).getByRole('button', { name: 'Add server' }))
   }
 
@@ -2505,16 +2526,14 @@ describe('Add server', () => {
     expect(within(relay).queryByLabelText('Wildflower Relay URL')).toBeNull()
   })
 
-  it('should add a server on the Wildflower relay, show its domain, and drop the token', async () => {
+  it('should add a server on the Wildflower relay from a claim code, show its domain, and drop the code', async () => {
     // Arrange
     const user = userEvent.setup()
     const host = renderAddServer()
 
     // Act
     await enterRelay(user)
-    const tunnel = await stepTitled('Tunnel')
-    expect(within(tunnel).getByLabelText('Tunnel token')).toHaveProperty('type', 'password')
-    await enterCredentials(user)
+    await enterClaimCode(user, CLAIM_CODE.toLowerCase())
 
     // Assert
     const done = await stepTitled('Server added')
@@ -2523,11 +2542,115 @@ describe('Add server', () => {
     expect(invokesOf(host, 'server_add')).toEqual([
       {
         command: 'server_add',
-        args: { relay: { kind: 'wildflowerOfficial' }, tunnelName: 'ruth', token: TOKEN },
+        args: {
+          relay: { kind: 'wildflowerOfficial' },
+          credentials: { kind: 'claimCode', code: CLAIM_CODE },
+        },
+      },
+    ])
+    expect(screen.queryByDisplayValue(CLAIM_CODE)).toBeNull()
+    expect(document.body.textContent).not.toContain(CLAIM_CODE)
+  })
+
+  it('should add a server on the Wildflower relay from a tunnel name and token, and drop the token', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderAddServer()
+
+    // Act
+    await enterRelay(user)
+    const tunnel = await enterTokenInstead(user)
+    expect(within(tunnel).getByLabelText('Tunnel token')).toHaveProperty('type', 'password')
+    await enterCredentials(user)
+
+    // Assert
+    await stepTitled('Server added')
+    expect(invokesOf(host, 'server_add')).toEqual([
+      {
+        command: 'server_add',
+        args: {
+          relay: { kind: 'wildflowerOfficial' },
+          credentials: { kind: 'token', tunnelName: 'ruth', token: TOKEN },
+        },
       },
     ])
     expect(screen.queryByDisplayValue(TOKEN)).toBeNull()
     expect(document.body.textContent).not.toContain(TOKEN)
+  })
+
+  it.each([
+    ['the Wildflower official relay', undefined],
+    ['a self-hosted Wildflower relay', { baseUrl: 'https://relay.example.com' }],
+  ] as const)(
+    'should ask %s for a claim code, with the tunnel name and token a link away',
+    async (_, custom) => {
+      // Arrange
+      const user = userEvent.setup()
+      renderAddServer()
+      await enterRelay(user, custom)
+      const tunnel = await stepTitled('Tunnel')
+      expect(
+        within(tunnel).getByText("Enter the claim code from your relay's admin.")
+      ).toBeDefined()
+      expect(within(tunnel).queryByLabelText('Tunnel token')).toBeNull()
+      const tokenInstead = within(tunnel).getByRole('button', { name: TOKEN_INSTEAD })
+      const back = within(tunnel).getByRole('button', { name: 'Back' })
+      expect(
+        tokenInstead.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+
+      // Act
+      await user.click(tokenInstead)
+
+      // Assert
+      expect(within(tunnel).queryByLabelText('Claim code')).toBeNull()
+      expect(within(tunnel).getByLabelText('Tunnel name')).toBeDefined()
+      expect(within(tunnel).getByLabelText('Tunnel token')).toBeDefined()
+
+      // Act
+      await user.click(within(tunnel).getByRole('button', { name: CLAIM_CODE_INSTEAD }))
+
+      // Assert
+      expect(within(tunnel).getByLabelText('Claim code')).toBeDefined()
+    }
+  )
+
+  it('should ask a rathole relay for the tunnel name and token alone', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+
+    // Act
+    await enterRelay(user, {
+      rathole: true,
+      remoteAddr: 'relay.example.com:2333',
+      publicKey: golden.enteredRelays.rathole.publicKey,
+      domain: 'relay.example.com',
+    })
+
+    // Assert
+    const tunnel = await stepTitled('Tunnel')
+    expect(within(tunnel).getByLabelText('Tunnel name')).toBeDefined()
+    expect(within(tunnel).queryByLabelText('Claim code')).toBeNull()
+    expect(within(tunnel).queryByRole('button', { name: TOKEN_INSTEAD })).toBeNull()
+    expect(within(tunnel).queryByRole('button', { name: CLAIM_CODE_INSTEAD })).toBeNull()
+  })
+
+  it('should not add a server with a blank claim code', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    await enterRelay(user)
+    const tunnel = await stepTitled('Tunnel')
+
+    // Act
+    await user.type(within(tunnel).getByLabelText('Claim code'), '   ')
+
+    // Assert
+    expect(within(tunnel).getByRole('button', { name: 'Add server' })).toHaveProperty(
+      'disabled',
+      true
+    )
   })
 
   it.each([
@@ -2590,7 +2713,11 @@ describe('Add server', () => {
     await stepTitled('Server added')
     const [added] = invokesOf(host, 'server_add')
     expect(added?.args?.['relay']).toEqual(golden.enteredRelays.rathole)
-    expect(added?.args?.['tunnelName']).toBe('ruth')
+    expect(added?.args?.['credentials']).toEqual({
+      kind: 'token',
+      tunnelName: 'ruth',
+      token: TOKEN,
+    })
   })
 
   it.each([
@@ -2610,7 +2737,7 @@ describe('Add server', () => {
     const user = userEvent.setup()
     renderAddServer()
     await enterRelay(user, custom)
-    const tunnel = await stepTitled('Tunnel')
+    const tunnel = await enterTokenInstead(user)
     expect(
       within(tunnel).getByText(/^Your server will be available at \[tunnel name\]\./)
     ).toBeDefined()
@@ -2679,7 +2806,7 @@ describe('Add server', () => {
     const user = userEvent.setup()
     renderAddServer()
     await enterRelay(user)
-    const tunnel = await stepTitled('Tunnel')
+    const tunnel = await enterTokenInstead(user)
     const add = within(tunnel).getByRole('button', { name: 'Add server' })
 
     // Act

@@ -67,20 +67,22 @@ and `https://relay.example.com/health` answers once it is issued.
    the relay's.
 2. Create a tunnel with its owner's email. Leave the name empty: the relay
    picks two random words, since the name ends up in public CT logs.
-3. Copy the token, which is shown once, and give the owner the tunnel name and
-   token.
+3. Choose **Issue claim code** on the tunnel's row, and give the owner the
+   code it shows, eight characters such as `ABCD-EFGH`.
 
 On the device, the owner chooses **Add new server**, then
 **A self-hosted Wildflower relay**, enters `https://relay.example.com` as the
-**Wildflower Relay URL**, and then the tunnel name and token.
+**Wildflower Relay URL**, and then the claim code. The app redeems it, once,
+at `POST https://relay.example.com/claim` for the tunnel's name and token,
+which it saves; the code itself is kept nowhere. A code redeems within 15
+minutes (`WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS`), so it can be read out
+instead of copied. Issue another if it expires: a tunnel has one outstanding
+code, so issuing a new one cancels the earlier one. Guessing is rate limited,
+per client address and across all clients.
 
-A tunnel's row also has **Issue claim code**, which shows a code of eight
-characters, e.g. `ABCD-EFGH`, that stands in for the token. It redeems once,
-within 15 minutes (`WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS`), at
-`POST https://relay.example.com/claim` for the tunnel's name and token, so it
-can be read out instead of copied. Issue another if it expires: a tunnel has
-one outstanding code, so issuing a new one cancels the earlier one. Guessing
-is rate limited, per client address and across all clients.
+The token the tunnel was created with, shown once, works too: under the
+claim code field, **I have a tunnel name and full length token** takes the
+tunnel name and token instead.
 
 If a token leaks, or the owner loses it, **Reissue token** on the tunnel's
 row replaces it after a confirmation and shows the new one once. The old

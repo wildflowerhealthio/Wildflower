@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import { enableBackgroundSessionRecovery } from './background-session-recovery.ts'
 import * as CertificateState from './certificate-state.ts'
+import * as EnteredCredentials from './entered-credentials.ts'
 import * as EnteredRelay from './entered-relay.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as ListedServer from './listed-server.ts'
@@ -237,16 +238,65 @@ describe('EnteredRelay', () => {
   })
 })
 
+describe('EnteredCredentials', () => {
+  it('should take each kind of credentials the host decodes', () => {
+    // Act
+    const credentials = Object.values(golden.enteredCredentials).map((entered) =>
+      Schema.decodeUnknownSync(EnteredCredentials.Schema)(entered)
+    )
+
+    // Assert
+    expect(credentials).toEqual(Object.values(golden.enteredCredentials))
+  })
+
+  it('should refuse a claim code without its code, and a token without its tunnel name', () => {
+    // Arrange
+    const malformed = [
+      { kind: 'claimCode' },
+      { kind: 'token', token: golden.enteredCredentials.token.token },
+      { kind: 'claim', code: golden.enteredCredentials.claimCode.code },
+    ]
+
+    // Act
+    const decoded = malformed.map((entered) =>
+      Schema.decodeUnknownEither(EnteredCredentials.Schema)(entered)
+    )
+
+    // Assert
+    for (const either of decoded) expect(Either.isLeft(either)).toBe(true)
+  })
+})
+
 describe('addServer', () => {
   it.each(Object.entries(golden.enteredRelays))(
     'should send server_add the %s relay as the host reads it, and answer the domain',
     async (_name, entered) => {
       // Arrange
       const relay = Schema.decodeUnknownSync(EnteredRelay.Schema)(entered)
+      const credentials = Schema.decodeUnknownSync(EnteredCredentials.Schema)(
+        golden.enteredCredentials.claimCode
+      )
 
       // Act
-      const { exit, seen } = await runAgainstHostAnswering(
-        addServer({ relay, tunnelName: 'ruth', token: 'tunnel-token' }),
+      const { exit, seen } = await runAgainstHostAnswering(addServer({ relay, credentials }), () =>
+        Promise.resolve('ruth.relay.example.com')
+      )
+
+      // Assert
+      expect(seen).toEqual([{ command: 'server_add', args: { relay: entered, credentials } }])
+      expect(exit).toEqual(Exit.succeed('ruth.relay.example.com'))
+    }
+  )
+
+  it.each(Object.entries(golden.enteredCredentials))(
+    'should send server_add %s credentials as the host reads them',
+    async (_name, entered) => {
+      // Arrange
+      const credentials = Schema.decodeUnknownSync(EnteredCredentials.Schema)(entered)
+
+      // Act
+      const { seen } = await runAgainstHostAnswering(
+        addServer({ relay: { kind: 'wildflowerOfficial' }, credentials }),
         () => Promise.resolve('ruth.relay.example.com')
       )
 
@@ -254,10 +304,9 @@ describe('addServer', () => {
       expect(seen).toEqual([
         {
           command: 'server_add',
-          args: { relay: entered, tunnelName: 'ruth', token: 'tunnel-token' },
+          args: { relay: golden.enteredRelays.wildflowerOfficial, credentials: entered },
         },
       ])
-      expect(exit).toEqual(Exit.succeed('ruth.relay.example.com'))
     }
   )
 
@@ -268,8 +317,7 @@ describe('addServer', () => {
       const { exit } = await runAgainstHostAnswering(
         addServer({
           relay: { kind: 'wildflowerOfficial' },
-          tunnelName: 'ruth',
-          token: 'tunnel-token',
+          credentials: { kind: 'token', tunnelName: 'ruth', token: 'tunnel-token' },
         }),
         () => Promise.reject(error)
       )

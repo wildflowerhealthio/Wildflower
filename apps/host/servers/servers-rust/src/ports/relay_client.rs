@@ -1,7 +1,9 @@
-//! The [`RelayClient`] port: the two requests enrolment makes to a Wildflower
+//! The [`RelayClient`] port: the requests enrolment makes to a Wildflower
 //! relay's own site.
 
-use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost, TunnelName};
+use wildflowerhealthio_rathole_settings::{
+    ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
+};
 
 use crate::domain::{EnrolmentError, TunnelToken};
 
@@ -37,4 +39,20 @@ pub trait RelayClient: Send + Sync {
         tunnel_name: &TunnelName,
         token: &TunnelToken,
     ) -> Result<TunnelHost, EnrolmentError>;
+
+    /// `POST {relay base}/claim` with `{"code": code}`: redeems the claim
+    /// code, once, for the tunnel it was issued for, its token and the
+    /// relay's public settings.
+    ///
+    /// # Errors
+    ///
+    /// [`EnrolmentError::ClaimCodeRejected`] when the relay answers `422`,
+    /// which it does for every code it won't redeem;
+    /// [`EnrolmentError::ClaimRateLimited`] for `429`;
+    /// [`EnrolmentError::ClaimCodesNotOffered`] for `404`, a relay site
+    /// without `POST /claim`;
+    /// [`EnrolmentError::RelayUnreachable`] when no response comes back, and
+    /// [`EnrolmentError::BadRelayResponse`] for any other non-success status
+    /// or a body that isn't a [`ClaimedTunnel`].
+    async fn claim(&self, code: &str) -> Result<ClaimedTunnel, EnrolmentError>;
 }

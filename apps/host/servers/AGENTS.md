@@ -10,7 +10,8 @@ changing how servers run or what the host notifies about them.
 - **`servers-rust`** — `ServerRecord`, one server as the install stores it,
   and the `ServerRegistry` port over the list of them, with its
   `JsonServerRegistry` adapter at `<data root>/servers.json`; and enrolment,
-  which checks a tunnel's credentials with its Wildflower relay through the
+  which checks a tunnel's credentials with its Wildflower relay, first
+  redeeming a claim code for them when one was entered, through the
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher and certificate source,
   and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
@@ -27,7 +28,8 @@ changing how servers run or what the host notifies about them.
   each new stop of a server's run.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
-    `EnteredRelay`, `RelayIdentity`, `EnrolmentError`), server changes
+    `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
+    server changes
     (`set_run_policy` with `RunPolicyChoice`, `update_server` with
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, the
@@ -38,7 +40,8 @@ changing how servers run or what the host notifies about them.
     `launch_url`, `LaunchError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
     `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
-    `RelayClient` port (`GET /rathole`, signed `GET /me`); `adapters/`
+    `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`);
+    `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
     `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`;
@@ -70,8 +73,9 @@ changing how servers run or what the host notifies about them.
   `ServerStatus` (with the `server-status` event's name and decoder),
   `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
   `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
-  `ConsentApproval`, `ApprovalOutcome`, `EnteredRelay`, `server_add`'s
-  relay, each a `Schema` and its `Type` with getters; and `LaunchError`'s
+  `ConsentApproval`, `ApprovalOutcome`, `EnteredRelay` and
+  `EnteredCredentials`, `server_add`'s relay and credentials, each a
+  `Schema` and its `Type` with getters; and `LaunchError`'s
   `statusRefusalOf`, the refusal `server_launch` answers from a status, with
   `certificateRefusalOf`, its certificate's part, held to the host's by the
   golden file. A refused
@@ -125,13 +129,18 @@ changing how servers run or what the host notifies about them.
   the URL, so the token never reaches it: the relay, under what it can and
   can't see (the Wildflower official relay, a self-hosted Wildflower relay
   by URL with an Advanced pin, or a different reverse proxy, a rathole
-  server by its address, key and tunnel domain); the tunnel name, lowercased
-  as typed as is a rathole tunnel domain, with the address it gives the
-  server, and masked token; Checking, while `server_add`
+  server by its address, key and tunnel domain); the tunnel: for a
+  Wildflower relay a claim code, uppercased as typed, by default, or, through
+  the link-styled "I have a tunnel name and full length token" above the
+  buttons, the tunnel name and token, with "I have a claim code" back; for a
+  rathole relay only the tunnel name, lowercased as typed as is a rathole
+  tunnel domain, with the address it gives the server, and masked token;
+  Checking, while `server_add`
   checks and registers, staying there on a refusal with the host's message,
   Back (every entry kept) and Retry; and the server added, its domain, a
   privacy note, and Start now or Start later (`whileOpen` or `off`), which
-  opens its page. The token is dropped from state once the host saves it.
+  opens its page. The claim code and the token are dropped from state once
+  the host has added the server.
   Launch opens the server's launcher through `server_launch`. It is
   disabled, saying why: while the webview is offline (`navigator.onLine`),
   that launching needs a connection (the host commands themselves need none,
@@ -231,9 +240,23 @@ changing how servers run or what the host notifies about them.
   `EnteredRelay::WildflowerOfficial` or `EnteredRelay::SelfHostedWildflower`,
   `add_server` builds a `RelayClient` for the relay's base URL, fetches its
   `GET /rathole`, checks its relay settings, compares them with the user's
-  pin when there is one, then confirms the tunnel name and token with a
+  pin when there is one, redeems a claim code for the tunnel name and token
+  when one was entered, then confirms the tunnel name and token with a
   signed `GET /me`. The record gets that response as `public_settings`, the
   default launcher and the default certificate source.
+- **A claim code is spent once, when the server is added.** An
+  `EnteredCredentials::ClaimCode` is sent to the relay's `POST /claim` only
+  after its `GET /rathole` has passed its checks and matched any pin, so a
+  relay that isn't the one expected never gets it. The relay redeems it,
+  once, for the `ClaimedTunnel` (`rathole-settings-rust`): the tunnel name
+  and token, which the record holds as if they had been entered, and the
+  relay settings, which must be the domain, address and key `GET /rathole`
+  served, or it is `EnrolmentError::BadRelayResponse` for `/claim`. The code
+  is stored nowhere, and `server_set_credentials` takes a token only. A `422`
+  is `EnrolmentError::ClaimCodeRejected` (unknown, used or expired: the relay
+  gives one answer for all), a `429` `ClaimRateLimited`, and a `404`, a relay
+  site run without its admin API, `ClaimCodesNotOffered`, as is a claim code
+  entered for a rathole relay, refused before anything is asked.
 - **A relay's identity is pinned when the server is added.** Its
   `RelayIdentity`, the `remoteAddr` its rathole client dials and its noise
   `publicKey`, is kept in the record's `public_settings`. When
@@ -283,22 +306,28 @@ changing how servers run or what the host notifies about them.
   adapter's tests run against the relay's real site and verifier.
 - **Everything on the wire and on disk is camelCase.** The commands take
   top-level parameters, which Tauri reads from the invoke payload under their
-  camelCase names: `invoke('server_add', { relay, tunnelName, token })`, the
+  camelCase names: `invoke('server_add', { relay, credentials })`, the
   relay one of `{kind: "wildflowerOfficial"}`,
   `{kind: "selfHostedWildflower", baseUrl, pin?}` with `pin`
   `{remoteAddr, publicKey}`, or `{kind: "rathole", remoteAddr, publicKey,
-  domain}`; and `invoke('server_set_credentials', { domain, token })`. An
+  domain}`, and the credentials `{kind: "claimCode", code}` or
+  `{kind: "token", tunnelName, token}`; and
+  `invoke('server_set_credentials', { domain, token })`. An
   `EnrolmentError`'s `kind` is camelCase (`signedRequestRejected`,
   `relayIdentityChanged`, `alreadyRegistered`, ...), and so is every field of
   `servers.json`. Only the relay's own `GET /rathole` and `GET /me` keep its
-  snake_case wire shape.
-- **The commands trim the token.** Its surrounding whitespace is dropped, as
-  the relay drops it from its own copy, and a token left empty is
-  `EnrolmentError::EmptyToken`.
+  snake_case wire shape, and so do `POST /claim`'s request and response.
+- **Entered credentials are trimmed.** A token's surrounding whitespace is
+  dropped (`TunnelToken::entered`), as the relay drops it from its own copy,
+  and a token left empty is `EnrolmentError::EmptyToken`; a claim code is
+  trimmed too, and one left empty is `EnrolmentError::EmptyClaimCode`.
+  `add_server` checks the credentials, the tunnel name included, before any
+  relay is asked.
 - **Commands answer without the token.** `server_add` answers with the
   server's domain and `server_set_credentials` with nothing; a failure the
   command reaches is the `EnrolmentError` as `{"kind", "message"}`, and their
-  logs name the domain, never a parameter. `servers_list` lists a server's
+  logs name the domain, never a parameter. `EnteredCredentials`'s `Debug`
+  prints neither the claim code nor the token. `servers_list` lists a server's
   domain, relay, tunnel name, launcher, certificate authority, run policy,
   status and certificate state, never its token or the relay's dial
   settings.
@@ -309,10 +338,12 @@ changing how servers run or what the host notifies about them.
   `ServerChangeError`. `servers_list` answers an unreadable `servers.json`
   with its `RegistryError`, kind `registry`, which the base shows.
 - **Only a malformed payload gets a plain string.** Every value a user types
-  (tunnel name, token, base URL, rathole settings) is taken as a string and
+  (claim code, tunnel name, token, base URL, rathole settings) is taken as a
+  string and
   checked by the command, so a bad one is an `EnrolmentError`. A payload Tauri
   can't decode into the parameters at all (a missing key, a value of the
-  wrong JSON type, an unknown relay `kind` or field) never reaches the
+  wrong JSON type, an unknown relay or credentials `kind` or field) never
+  reaches the
   command: Tauri rejects it with the string
   ``invalid args `<parameter>` for command `<command>`: <reason>``. The app grants both to the `main` webview
   only, through its `allow-server-enrolment` permission.
@@ -345,7 +376,8 @@ changing how servers run or what the host notifies about them.
   base drops a server once `servers_list` no longer lists it, and reads the
   list again after `server_remove` and for a status of a server it doesn't
   list. `servers-wire-golden.json` pins the list and the event, and the
-  relays `server_add` takes and the `EnrolmentError`s it answers, read by both
+  relays and credentials `server_add` takes and the `EnrolmentError`s it
+  answers, read by both
   `servers-rust`'s tests and `servers-core-js`'s decoder tests: change both
   sides with it.
 - **Status comes from `UnitRunner`.** Whether a server is running, why it
@@ -532,6 +564,7 @@ changing how servers run or what the host notifies about them.
 - [slices/AGENTS.md](../../../slices/AGENTS.md) — slice layering rules these packages follow.
 - `slices/rathole-settings-rust` — `PublicRatholeSettings`, the
   `GET /rathole` response a record keeps as `public_settings`,
-  `TunnelHost`, the `GET /me` response, and `TunnelName`.
-- `apps/relay/relay-server` — the relay whose `GET /rathole` and `GET /me`
-  enrolment calls; its crate docs give the signing rules.
+  `TunnelHost`, the `GET /me` response, `ClaimRequest` and `ClaimedTunnel`,
+  `POST /claim`'s, and `TunnelName`.
+- `apps/relay/relay-server` — the relay whose `GET /rathole`, `GET /me` and
+  `POST /claim` enrolment calls; its crate docs give the signing rules.

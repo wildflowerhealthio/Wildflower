@@ -1,8 +1,9 @@
 //! [`EnrolmentError`]: how adding a server, or re-entering its credentials,
 //! fails.
 //!
-//! No variant holds the tunnel's token, and none of the errors a variant
-//! wraps was given it, so an error can be logged or shown as it is.
+//! No variant holds the tunnel's token or a claim code, and none of the
+//! errors a variant wraps was given either, so an error can be logged or
+//! shown as it is.
 //!
 //! `Serialize` writes `{"kind": "<kind>", "message": "<Display>"}`, the shape
 //! the base's commands answer a failure with; [`EnrolmentError::kind`] lists
@@ -24,6 +25,29 @@ pub enum EnrolmentError {
     /// The entered token is empty once its surrounding whitespace is trimmed.
     #[error("the tunnel token is empty")]
     EmptyToken,
+    /// The entered claim code is empty once its surrounding whitespace is
+    /// trimmed.
+    #[error("the claim code is empty")]
+    EmptyClaimCode,
+    /// A claim code was entered for a relay that doesn't redeem them: a
+    /// [`RelayKind::Rathole`](crate::RelayKind::Rathole) relay, which has no
+    /// Wildflower relay site, or a Wildflower relay whose site answers
+    /// `POST /claim` with `404`, as one run without its admin API does.
+    #[error(
+        "this relay doesn't take claim codes: enter the tunnel name and token you were given \
+         instead"
+    )]
+    ClaimCodesNotOffered,
+    /// The relay answered `POST /claim` with `422`, which it does for every
+    /// code it won't redeem, whatever the reason: one it never issued, one
+    /// already redeemed, one that has expired or been replaced, or one that
+    /// isn't a code at all.
+    #[error("that claim code is unknown, used or expired: ask your relay's admin for a new one")]
+    ClaimCodeRejected,
+    /// The relay answered `POST /claim` with `429`: too many claim attempts,
+    /// from this device or overall, in too short a time.
+    #[error("the relay has had too many claim attempts: try again in a few minutes")]
+    ClaimRateLimited,
     /// A relay setting entered by hand is one a server can't be built on: a
     /// self-hosted relay's `baseUrl`, or a
     /// [`RelayKind::Rathole`](crate::RelayKind::Rathole) relay's
@@ -98,6 +122,10 @@ impl EnrolmentError {
         match self {
             Self::InvalidTunnelName(_) => "invalidTunnelName",
             Self::EmptyToken => "emptyToken",
+            Self::EmptyClaimCode => "emptyClaimCode",
+            Self::ClaimCodesNotOffered => "claimCodesNotOffered",
+            Self::ClaimCodeRejected => "claimCodeRejected",
+            Self::ClaimRateLimited => "claimRateLimited",
             Self::InvalidRelaySetting { .. } => "invalidRelaySetting",
             Self::RelayUnreachable { .. } => "relayUnreachable",
             Self::BadRelayResponse { .. } => "badRelayResponse",
@@ -165,6 +193,10 @@ mod tests {
                 "invalidTunnelName",
             ),
             (EnrolmentError::EmptyToken, "emptyToken"),
+            (EnrolmentError::EmptyClaimCode, "emptyClaimCode"),
+            (EnrolmentError::ClaimCodesNotOffered, "claimCodesNotOffered"),
+            (EnrolmentError::ClaimCodeRejected, "claimCodeRejected"),
+            (EnrolmentError::ClaimRateLimited, "claimRateLimited"),
             (
                 EnrolmentError::InvalidRelaySetting {
                     setting: "remoteAddr",
@@ -285,6 +317,10 @@ mod tests {
                 TunnelName::parse("Ruth").unwrap_err().into(),
             ),
             ("emptyToken", EnrolmentError::EmptyToken),
+            ("emptyClaimCode", EnrolmentError::EmptyClaimCode),
+            ("claimCodesNotOffered", EnrolmentError::ClaimCodesNotOffered),
+            ("claimCodeRejected", EnrolmentError::ClaimCodeRejected),
+            ("claimRateLimited", EnrolmentError::ClaimRateLimited),
             (
                 "signedRequestRejected",
                 EnrolmentError::SignedRequestRejected {
