@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { basenameOf } from '@wildflowerhealthio/branding-core'
 import { AppLandingPage } from '@wildflowerhealthio/branding-react'
 import { withLocalNetworkAccessHint } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -23,17 +23,18 @@ import {
   type SignInStep,
   type UnsentEhrLaunch,
 } from '../sign-in.ts'
-import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
+import { chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
 /**
  * Record `serverUrl` as this page's target without reloading.
  *
- * `?server=` is what `web-entry.ts` reads to point the transport, so it has
- * to be in the URL — but a reload is not needed to get there and would only
- * throw away the page mid-action. It does not survive the sign-in round trip,
- * and does not need to: the registered redirect carries no query, and
- * `main-web`'s boot remembers the redeemed session's server in the tab's
- * `sessionStorage`, leaving `?server=` out of the settled URL.
+ * `?server=` is what the landing reads to choose its server (`web-entry.ts`'s
+ * `chosenServerUrl`), so it has to be in the URL — but a reload is not needed
+ * to get there and would only throw away the page mid-action. It does not
+ * survive the sign-in round trip, and does not need to: the registered
+ * redirect carries no query, and the redeemed session's server is kept with
+ * its bearer, in the tab's `sessionStorage`, leaving `?server=` out of the
+ * settled URL.
  *
  * The current `pathname` is kept, not replaced with `/`: this build is served
  * under a subpath (`/launcher/`, or a PR preview's `/staging/pr-<n>/launcher/`), so a
@@ -46,25 +47,16 @@ const rememberServer = (serverUrl: string): void => {
 }
 
 /**
- * Root index. Behavior varies by entry:
+ * Root index:
  *
- * - **`main-web` + unauthed**: renders the landing page (the launcher's
- *   introduction beside the server picker), which signs in by SMART standalone
- *   launch, or with the EHR launch the page was opened with — see
- *   `../sign-in.ts` for the flow and why this entry uses it rather than the
- *   device-code screen.
- * - **`main-web` + authed**: redirects to `/home`, whose gate sends a plain
- *   SMART server's session on to `/fhir-home`.
- * - **`main-tauri`**: redirects to `/home` unconditionally. The host webview
- *   talks to its own loopback server, so there is no server to pick, and the
- *   `_auth` gate handles the auth check.
+ * - **unauthed**: renders the landing page (the launcher's introduction beside
+ *   the server picker), which signs in by SMART standalone launch, or with the
+ *   EHR launch the page was opened with — see `../sign-in.ts` for the flow and
+ *   why the launcher uses it rather than the device-code screen.
+ * - **authed**: redirects to `/home`, whose gate sends a plain SMART server's
+ *   session on to `/fhir-home`.
  */
 const Route = createFileRoute('/')({
-  beforeLoad: ({ context }: { readonly context: RouterContext }): void => {
-    if (context.entry !== 'main-web') {
-      throw redirect({ to: '/home' })
-    }
-  },
   component: LandingRoute,
 })
 
@@ -188,16 +180,11 @@ function Landing({
 
   if (authed) return <></>
 
-  // The server this page is pointed at — the same resolution `web-entry.ts`
-  // gives the transport, so the token is asked of whichever server the requests
-  // will go to.
-  const serverUrl = apiServerUrl(window.location.search, window.sessionStorage)
+  // The server this page is pointed at: the one `?server=` names, else the one
+  // this tab last signed in to. A sign-in to it makes it the session's server,
+  // which every request then goes to.
+  const chosenServer = chosenServerUrl(window.location.search, window.sessionStorage)
   const pageIsSecure = window.location.protocol === 'https:'
-
-  // Said up front, while the reader is still looking at the address they
-  // entered, rather than later as a discovery failure: an https page cannot
-  // reach a plaintext server unless it is loopback.
-  const blockedReason = insecureTargetReason(serverUrl, { pageIsSecure })
 
   /**
    * `problem`'s reason, followed by the Local Network Access hint when the
@@ -209,13 +196,19 @@ function Landing({
       ? problem.reason
       : withLocalNetworkAccessHint(problem.reason, problem.serverUrl, { pageIsSecure })
 
-  // Keyed on a server the page can actually use, not on a `?server=`'s bare
-  // presence: a junk value falls back to the loopback default, and offering
-  // "Sign in to http://127.0.0.1:8080" to a reader whose address bar says
-  // something else names the wrong server on the one control that hands out a
-  // token.
-  const hasChosenServer =
-    chosenServerUrl(window.location.search, window.sessionStorage) !== undefined
+  // Said up front, while the reader is still looking at the address they
+  // entered, rather than later as a discovery failure: an https page cannot
+  // reach a plaintext server unless it is loopback. Keyed on a server the page
+  // can actually use, not on a `?server=`'s bare presence: a junk value names
+  // no server, and offering to sign in to one the address bar doesn't say would
+  // name the wrong server on the one control that hands out a token.
+  const chosen =
+    chosenServer === undefined
+      ? undefined
+      : {
+          url: chosenServer,
+          blockedReason: insecureTargetReason(chosenServer, { pageIsSecure }),
+        }
 
   /**
    * The menu's `connect`, for a pick and for the chosen server alike: point the
@@ -263,12 +256,12 @@ function Landing({
         // this is the way back in when that couldn't run or failed.
         // Picking a server signs in on its own, so this would be a dead
         // second step otherwise.
-        chosenServer={hasChosenServer ? { url: serverUrl, blockedReason } : undefined}
+        chosenServer={chosen}
         // Read once, when the menu mounts: a pick's `?server=` must not
         // make this page look newly arrived and start a second sign-in.
         autoConnect={shouldSignInOnArrival({
-          hasChosenServer,
-          blockedReason,
+          hasChosenServer: chosen !== undefined,
+          blockedReason: chosen?.blockedReason,
           bootSignInProblem: bootSignInProblem?.reason,
         })}
       />

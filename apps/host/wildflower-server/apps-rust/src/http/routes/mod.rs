@@ -49,8 +49,6 @@ mod tests {
     use axum::Router;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
-    use wildflowerhealthio_shared_structures::test_utils::RecordingStubWebviewHandle;
-    use wildflowerhealthio_shared_structures::OnDeviceWebviewHandle;
 
     // The port trait is in scope so the concrete store's `insert_app` /
     // `find_app` methods resolve in the fixtures.
@@ -58,7 +56,7 @@ mod tests {
     use crate::domain::test_fake::registration;
     use crate::domain::{AppRegistration, AppsStore};
     use crate::http::test_support::{
-        state, state_full, state_with_launch_scopes, state_with_sink, FixedLaunchScopes,
+        state, state_full, state_with_launch_scopes, FixedLaunchScopes,
         RecordingLaunchContextMinter, PUBLIC_ORIGIN,
     };
     use crate::live_bindings::state::AppsState;
@@ -134,14 +132,15 @@ mod tests {
         Request::builder().uri(uri).body(Body::empty()).unwrap()
     }
 
-    /// The launch URL a forwarded launch's `200` body names.
+    /// The launch URL a launch's `200` body names.
     async fn launch_url(res: axum::response::Response) -> String {
         let bytes = res.into_body().collect().await.expect("body").to_bytes();
         let body: serde_json::Value = serde_json::from_slice(&bytes).expect("json body");
         body["url"].as_str().expect("a url field").to_owned()
     }
 
-    /// A loopback launch — `POST /apps/{id}`, no `Forwarded` header.
+    /// A launch from a caller on this machine — `POST /apps/{id}`, no
+    /// `Forwarded` header.
     fn post_launch(uri: &str) -> Request<Body> {
         Request::builder()
             .method("POST")
@@ -211,7 +210,7 @@ mod tests {
     }
 
     /// Seed a non-SMART app whose template names `{origin}` — the fixture the
-    /// provenance and umbrella tests drive.
+    /// caller and umbrella tests drive.
     fn seed_plain(store: &crate::db::SqliteAppsStore, id: &str) {
         seed_app(store, id, "https://app.example/y?iss={origin}", None);
     }
@@ -255,59 +254,38 @@ mod tests {
     }
 
     /// A launch whose caller lacks the `wildflower/launch` umbrella is `403` (the
-    /// `Scoped<AppLauncher>` extractor), and opens no popup. The umbrella is a
-    /// *known* scope, so the owner's `wildflower/*.cruds` alone does NOT cover it.
+    /// `Scoped<AppLauncher>` extractor), from a caller on this machine and through
+    /// the front alike. The umbrella is a *known* scope, so the owner's
+    /// `wildflower/*.cruds` alone does NOT cover it.
     #[tokio::test]
-    async fn loopback_launch_without_umbrella_scope_is_403() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+    async fn launch_without_umbrella_scope_is_403() {
+        let st = state();
         seed_plain(&st.store, "app-y");
-        let res =
-            send_raw_scoped(&st, post_launch("/apps/app-y"), Some("wildflower/*.cruds")).await;
-        assert_eq!(res.status(), StatusCode::FORBIDDEN);
-        assert!(
-            handle.0.lock().expect("handle mutex").is_empty(),
-            "an under-scoped launch opens no popup",
-        );
+        for request in [post_launch("/apps/app-y"), post_forwarded("/apps/app-y")] {
+            let res = send_raw_scoped(&st, request, Some("wildflower/*.cruds")).await;
+            assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        }
     }
 
     /// The umbrella gate runs *before* any lookup or side-effect: an under-scoped
-    /// caller `403`s without revealing existence (an unknown id is `403`, not
-    /// `404`).
+    /// caller `403`s without minting a launch or revealing existence (an unknown
+    /// id is `403`, not `404`).
     #[tokio::test]
     async fn umbrella_gate_precedes_lookup_and_side_effects() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+        let minter = Arc::new(RecordingLaunchContextMinter::default());
+        let st = state_with_minter(Arc::clone(&minter));
+        seed_smart(&st.store, "smart-app");
 
-        let res = send_raw_scoped(&st, post_launch("/apps/growth-chart"), None).await;
+        let res = send_raw_scoped(&st, post_launch("/apps/smart-app"), None).await;
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
         assert!(
-            handle.0.lock().expect("handle mutex").is_empty(),
-            "an under-scoped caller opens no popup",
+            minter.minted_for().is_empty(),
+            "an under-scoped caller mints no launch",
         );
 
         // An unknown id under-scoped → 403, not 404 (no existence leak).
         let res = send_raw_scoped(&st, post_launch("/apps/no-such-thing"), None).await;
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
-    }
-
-    /// A forwarded launch is gated on the umbrella too (the host wraps the launch
-    /// router with the same bearer gate): with the scope it answers the launch URL,
-    /// without it 403s — the front doesn't bypass authorization.
-    #[tokio::test]
-    async fn forwarded_launch_requires_the_umbrella_scope() {
-        let st = state();
-        seed_plain(&st.store, "app-y");
-        let ok = send_raw(&st, post_forwarded("/apps/app-y")).await;
-        assert_eq!(ok.status(), StatusCode::OK);
-
-        let denied = send_raw_scoped(
-            &st,
-            post_forwarded("/apps/app-y"),
-            Some("wildflower/*.cruds"),
-        )
-        .await;
-        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     }
 
     /// Seed a **SMART** app (a `client_id` present) — the fixture the per-app
@@ -317,15 +295,11 @@ mod tests {
     }
 
     /// A SMART app launch additionally requires the caller's grant to cover its
-    /// client's scopes: a covering caller launches (`204`). `patient/Observation.rs`
+    /// client's scopes: a covering caller launches (`200`). `patient/Observation.rs`
     /// (read+search) covers the required `.r` (read).
     #[tokio::test]
     async fn launch_smart_app_covering_client_scopes_succeeds() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_launch_scopes(
-            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
-            FixedLaunchScopes::requiring("patient/Observation.r"),
-        );
+        let st = state_with_launch_scopes(FixedLaunchScopes::requiring("patient/Observation.r"));
         seed_smart(&st.store, "smart-app");
         let res = send_raw_scoped(
             &st,
@@ -333,19 +307,14 @@ mod tests {
             Some("wildflower/launch patient/Observation.rs"),
         )
         .await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     /// An under-scoped SMART launch (umbrella held, client scope not) is
-    /// `403 InsufficientScope` naming the gap — the loopback/SPA arm decodes JSON,
-    /// and no popup opens.
+    /// `403 InsufficientScope` naming the gap, as JSON the launcher decodes.
     #[tokio::test]
-    async fn launch_smart_app_under_scoped_loopback_is_403_json() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_launch_scopes(
-            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
-            FixedLaunchScopes::requiring("patient/Observation.r"),
-        );
+    async fn launch_smart_app_under_scoped_is_403_json() {
+        let st = state_with_launch_scopes(FixedLaunchScopes::requiring("patient/Observation.r"));
         seed_smart(&st.store, "smart-app");
         let (status, body) = send_scoped(
             &st,
@@ -359,7 +328,6 @@ mod tests {
             body["missingScopes"],
             serde_json::json!(["patient/Observation.r"])
         );
-        assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
     /// A non-SMART app ignores the launch-scopes port entirely: even with a port
@@ -367,24 +335,16 @@ mod tests {
     /// short-circuits on `is_smart() == false`).
     #[tokio::test]
     async fn launch_non_smart_app_ignores_the_launch_scopes_port() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_launch_scopes(
-            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
-            FixedLaunchScopes::requiring("patient/Observation.r"),
-        );
+        let st = state_with_launch_scopes(FixedLaunchScopes::requiring("patient/Observation.r"));
         seed_plain(&st.store, "app-y");
         let res = send_raw_scoped(&st, post_launch("/apps/app-y"), Some("wildflower/launch")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert_eq!(res.status(), StatusCode::OK);
     }
 
     /// Apps state whose launch-context port is `minter`, with no per-app launch
     /// scopes.
     fn state_with_minter(minter: Arc<RecordingLaunchContextMinter>) -> Arc<AppsState> {
-        state_full(
-            Arc::new(RecordingStubWebviewHandle::default()),
-            Arc::new(NoAppLaunchScopes),
-            minter,
-        )
+        state_full(Arc::new(NoAppLaunchScopes), minter)
     }
 
     /// A SMART app's `{launch}` is a launch context minted for its OAuth client
@@ -438,7 +398,6 @@ mod tests {
     async fn an_under_scoped_smart_launch_mints_no_launch() {
         let minter = Arc::new(RecordingLaunchContextMinter::default());
         let st = state_full(
-            Arc::new(RecordingStubWebviewHandle::default()),
             FixedLaunchScopes::requiring("patient/Observation.r"),
             Arc::clone(&minter) as Arc<dyn crate::ports::LaunchContextMinter>,
         );
@@ -453,56 +412,44 @@ mod tests {
         assert!(minter.minted_for().is_empty());
     }
 
-    /// A launch whose launch can't be minted fails as a `500` and opens nothing.
+    /// A launch whose launch can't be minted fails as a `500`.
     #[tokio::test]
     async fn a_failed_mint_fails_the_launch() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_full(
-            Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>,
             Arc::new(NoAppLaunchScopes),
             Arc::new(RecordingLaunchContextMinter::failing()),
         );
         seed_smart(&st.store, "smart-app");
         let res = send_raw(&st, post_launch("/apps/smart-app")).await;
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
-    /// No launch sets a cookie — forwarded or loopback.
+    /// No launch sets a cookie, whoever calls.
     #[tokio::test]
     async fn no_launch_sets_a_cookie() {
         let st = state();
         seed_plain(&st.store, "app-y");
-        for (request, status) in [
-            (post_forwarded("/apps/app-y"), StatusCode::OK),
-            (post_launch("/apps/app-y"), StatusCode::NO_CONTENT),
-        ] {
+        for request in [post_forwarded("/apps/app-y"), post_launch("/apps/app-y")] {
             let res = send_raw(&st, request).await;
-            assert_eq!(res.status(), status);
+            assert_eq!(res.status(), StatusCode::OK);
             assert!(res.headers().get("set-cookie").is_none());
         }
     }
 
-    /// Every launch resolves `{origin}` to the server's public origin, from
-    /// loopback and forwarded callers alike, whatever the app's
-    /// `requires_tunnel` flag.
+    /// Every caller, on this machine or through the front, gets `200 { url }`
+    /// with `{origin}` resolved to the server's public origin, whatever the
+    /// app's `requires_tunnel` flag.
     #[tokio::test]
-    async fn launch_resolves_to_the_public_origin_for_every_caller() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
+    async fn launch_answers_the_url_at_the_public_origin_for_every_caller() {
+        let st = state();
         seed_plain(&st.store, "app-y");
         let expected = format!("https://app.example/y?iss={PUBLIC_ORIGIN}");
 
-        let res = send_raw(&st, post_launch("/apps/app-y")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        assert_eq!(
-            handle.0.lock().expect("handle mutex").clone(),
-            vec![expected.clone()],
-        );
-
-        let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
-        assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(launch_url(res).await, expected);
+        for request in [post_launch("/apps/app-y"), post_forwarded("/apps/app-y")] {
+            let res = send_raw(&st, request).await;
+            assert_eq!(res.status(), StatusCode::OK);
+            assert_eq!(launch_url(res).await, expected);
+        }
 
         let res = send_raw(&st, post_forwarded("/apps/growth-chart")).await;
         assert_eq!(res.status(), StatusCode::OK);
@@ -511,21 +458,6 @@ mod tests {
             url.contains(&format!("iss={PUBLIC_ORIGIN}/fhir-r4")),
             "expected the public origin in {url}",
         );
-    }
-
-    /// A forwarded launch answers the URL rather than opening a host popup.
-    #[tokio::test]
-    async fn launch_forwarded_answers_the_url_without_a_popup() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        seed_plain(&st.store, "app-y");
-        let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
-        assert_eq!(res.status(), StatusCode::OK);
-        assert_eq!(
-            launch_url(res).await,
-            format!("https://app.example/y?iss={PUBLIC_ORIGIN}")
-        );
-        assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
     /// A row whose stored url no longer parses fails the typed read → 500.

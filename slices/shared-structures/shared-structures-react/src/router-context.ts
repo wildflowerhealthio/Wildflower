@@ -26,23 +26,18 @@ type RunAuthed = <A, E>(
 ) => Promise<A>
 
 /**
- * Resolve once the bearer token is available, or reject with a tagged
- * reason. Injected per entry (web vs. embedded) and threaded into the
- * router context so the `beforeLoad` auth gate can `await` it without
- * knowing which environment it runs in.
+ * Resolve once the bearer token is available, or reject. Injected at
+ * `buildAppTree` and threaded into the router context so the `beforeLoad`
+ * auth gate can `await` it.
  *
  * The optional `returnTo` is the originally-requested same-origin path
- * (the gate passes `location.href`). The web impl bakes it into the
- * device-login `redirect(...)` so sign-in lands the user back where
- * they were headed; the embedded impl ignores it (the host owns
- * navigation there).
+ * (the gate passes `location.href`). The implementation bakes it into its
+ * sign-in `redirect(...)` so sign-in lands the user back where they were
+ * headed.
  *
- * Rejections are tagged so the gate can branch:
- *   - a TanStack `redirect(...)` (standalone web, no token) bubbles so
- *     the router follows the redirect into the device-login flow.
- *   - a `TokenTimeout` (embedded, host never delivered a token in the
- *     window) bubbles to the layout's `errorComponent`, which renders
- *     a web-side retry screen.
+ * A TanStack `redirect(...)` rejection (no token) bubbles so the router
+ * follows the redirect into sign-in; any other rejection bubbles to the
+ * layout's `errorComponent`, which renders a retry screen.
  */
 type AwaitAuthReady = (returnTo?: string) => Promise<void>
 
@@ -76,12 +71,11 @@ interface RouterContextWith<Extra> {
   readonly runAuthed: RunAuthedWith<Extra>
   readonly runtimeLayer: RuntimeLayerWith<Extra>
   /**
-   * Environment-specific auth-readiness wait, injected at `buildAppTree`
-   * and consulted by the gated layouts' `beforeLoad`. Resolves when a
-   * bearer token is present; rejects with a tagged reason otherwise
-   * (TanStack `redirect(...)` for standalone web, `TokenTimeout` for
-   * embedded). The gate — not the loaders — owns this, so an authed
-   * loader that runs is guaranteed a token (no more first-paint skip).
+   * The auth-readiness wait, injected at `buildAppTree` and consulted by
+   * the gated layouts' `beforeLoad`. Resolves when a bearer token is
+   * present; rejects with a TanStack `redirect(...)` otherwise. The gate —
+   * not the loaders — owns this, so an authed loader that runs is
+   * guaranteed a token (no more first-paint skip).
    */
   readonly awaitAuthReady: AwaitAuthReady
 }

@@ -75,7 +75,8 @@ describe('attachBearer', () => {
       Effect.provide(
         prependApiBaseUrl(
           attachBearer(inner, () => 'tok_abc'),
-          'https://api.test'
+          () => 'https://api.test',
+          ''
         )
       ),
       Effect.runPromise

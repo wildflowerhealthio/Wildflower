@@ -49,14 +49,7 @@ export {
 
 export { NeedsAuthMessage, sanitizeReturnTo } from './components/NeedsAuthMessage.tsx'
 
-export {
-  EMBEDDED_TOKEN_TIMEOUT,
-  makeAwaitEmbeddedAuthReady,
-  makeAwaitLandingAuthReady,
-  TokenTimeout,
-} from './client/auth-ready.ts'
-
-export { makeEmbeddedAuthStateStore } from './client/auth-state-store.ts'
+export { makeAwaitLandingAuthReady } from './client/auth-ready.ts'
 
 export {
   gatekeeperLogoutSettingsItem,
@@ -67,6 +60,7 @@ export {
 export {
   makeBearerAuthStateStore,
   type BearerAuthStateStore,
+  type BearerSession,
 } from './client/bearer-auth-state-store.ts'
 
 export {
@@ -74,13 +68,3 @@ export {
   useTokenResponseHandler,
   type TokenResponseHandler,
 } from './client/token-response-handler.ts'
-
-export {
-  ActivePendingConsentProvider,
-  makeActivePendingConsentStore,
-  useActivePendingConsent,
-  type ActivePendingConsentProviderProps,
-  type ActivePendingConsentStore,
-} from './active-pending-consent/index.ts'
-
-export { PendingConsentModalHost } from './screens/pending-consent/pending-consent-modal-host.tsx'

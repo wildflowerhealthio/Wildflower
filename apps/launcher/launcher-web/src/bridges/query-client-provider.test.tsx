@@ -25,27 +25,16 @@ const { Passthrough } = vi.hoisted(() => ({
   Passthrough: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
 }))
 
-// The gatekeeper-react surface this test pokes is just the
+// The gatekeeper-react surface this test pokes is the
 // `GatekeeperRouterContext.sliceRuntimeLayer` (consumed by
-// `router-context.ts`'s layer composition). The `AuthStateStore` the
-// test renders with is constructed inline in the test body below.
-// `ActivePendingConsentProvider` is mocked as a passthrough so the
-// modal-host wrapping in `buildAppTree` doesn't blow up the tree, and
-// `makeActivePendingConsentStore` returns a no-op store —
-// `PendingConsentModalHost` is stubbed to nothing for the same reason.
+// `router-context.ts`'s layer composition) and the logout row
+// `buildAppTree` builds. The bearer store the test renders with is
+// constructed inline in the test body below.
 vi.mock('@wildflowerhealthio/gatekeeper-react', async (importOriginal) => {
   const actual = await importOriginal<typeof GatekeeperReact>()
   return {
     GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
-    ActivePendingConsentProvider: Passthrough,
-    makeActivePendingConsentStore: () => ({
-      subscribable: {
-        get: Effect.succeed(null),
-        changes: { pipe: () => ({}) },
-      },
-      setActiveHead: () => {},
-    }),
-    PendingConsentModalHost: (): null => null,
+    gatekeeperLogoutSettingsItem: actual.gatekeeperLogoutSettingsItem,
     TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
   }
 })
@@ -61,10 +50,6 @@ vi.mock('@wildflowerhealthio/react-kitchen-sink', () => ({
   cn: (
     ...args: ReadonlyArray<string | undefined | null | false | Record<string, boolean>>
   ): string => args.filter((a): a is string => typeof a === 'string').join(' '),
-  // Hook the prior subagent's test refactor relies on. Mock as a
-  // synchronous passthrough so the consumer subtree sees the resolved
-  // value immediately without scheduling.
-  usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
 }))
 // fhir-r4-react migrated off its client provider; the app composes its
 // `sliceRuntimeLayer` (see `router-context.ts`), so mock that shape.
@@ -109,30 +94,26 @@ describe('in-memory QueryClientProvider', () => {
   test('provides a single shared QueryClient to the whole tree', async () => {
     const { buildAppTree, mountAtRoot } = await import('../app-root.tsx')
 
-    const { stubTransport } = await import('./transport-context.ts')
-    // Minimal in-memory `AuthStateStore` — this test only pins the
-    // `QueryClient` sharing contract, not anything about the bearer.
-    // Construction matches `makeEmbeddedAuthStateStore`'s shape: a
-    // `SubscriptionRef<string | null>` starting at `null` plus a
-    // synchronous setter that writes through it.
+    // Minimal in-memory bearer store — this test only pins the
+    // `QueryClient` sharing contract, not anything about the session: a
+    // `SubscriptionRef<AuthState>` starting `Unauthed` plus a synchronous
+    // setter that writes through it, and no session.
     const tokenRef = Effect.runSync(SubscriptionRef.make<AuthState>(Unauthed()))
     const tokenStore = {
       subscribable: tokenRef,
       setAuthState: (s: AuthState): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
+      serverUrl: (): string | undefined => undefined,
+      bearer: (): string | undefined => undefined,
+      writeSession: (): void => {},
     }
     await act(async () => {
       mountAtRoot(
         buildAppTree({
           history: createMemoryHistory({ initialEntries: ['/'] }),
-          entry: 'main-web',
           tokenStore,
-          awaitAuthReady: () => () => Promise.resolve(),
-          makeTransport: () => Promise.resolve(stubTransport),
+          awaitAuthReady: () => Promise.resolve(),
           effectTelemetryLayer: Layer.empty,
           externalLinkRoot: () => 'https://example.test',
-          platformSettingsItems: [],
-          platformBanner: null,
-          redirectToDeviceLoginOnUnauthorized: false,
           serverKind: ServerKind.Wildflower(),
         })
       )

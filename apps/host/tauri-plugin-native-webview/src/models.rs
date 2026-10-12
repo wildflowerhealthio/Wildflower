@@ -56,9 +56,8 @@ pub struct OpenRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_message: Option<String>,
     /// Cookies written into the native webview's cookie store **before** the
-    /// first navigation to `url`, so they ride the very first request (the apps
-    /// launch path seeds the owner `wf_auth` session cookie this way — see the
-    /// host's `native_webview_handle`). Empty means "seed nothing" and is
+    /// first navigation to `url`, so they ride the very first request. Empty
+    /// means "seed nothing" and is
     /// omitted from the wire so the Swift/Kotlin optionals decode cleanly.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cookies: Vec<CookieSpec>,

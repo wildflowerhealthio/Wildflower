@@ -106,7 +106,7 @@ When auditing a slice's `*-bridge.test.ts`, keep tests that exercise contracts *
 - **Keep** — cross-side alignment through the test adapter (`Bridge.Host.send(...)` then `Schema.decodeSync(Bridge.Web.InboundSchemas.X)(sent[0])`), and slice-specific encoding behaviour (e.g. an aggregator honoring a `hostOptionsShape: { initialPath }` through its wiring) that the parent package can't cover.
 - **Drop** — per-schema round-trips of `Schema.parseJson(Schema.TaggedStruct(...))` (that's a library primitive tested in `effect-messaging-core`), and shape assertions like `Object.keys(Host.OutboundSchemas)` / `HandlerTag.key === '...'` that duplicate parent-package tests.
 
-A real `navigation-bridge.test.ts` sat at 16 tests / 151 lines where only the last two earned their keep. Spend the freed budget on slice-unique behaviour instead.
+A slice bridge test that re-verifies its primitives can run to 16 tests / 151 lines where only two earn their keep. Spend the freed budget on slice-unique behaviour instead.
 
 ## Workspace Resolution During `vp test`
 

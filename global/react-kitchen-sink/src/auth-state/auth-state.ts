@@ -10,9 +10,8 @@ import { Data } from 'effect'
  *  - `AuthedUntil({ exp })` — authed with a known unix-seconds expiry. A
  *    bearer-holding page publishes this from the token response's
  *    `expires_in`; a consumer that wants freshness can compare `exp` to now.
- *  - `HostAuthed` — authed via an external host/provenance with no token expiry
- *    known to the page (an embedded-webview path, where the host holds the
- *    credential and pushes a contentless "authed" notify).
+ *  - `HostAuthed` — authed with no token expiry known to the page: a token
+ *    response that reported no lifetime.
  *
  * Generic auth-readiness infrastructure — no app-specific knowledge — so it
  * lives beside {@link AuthStateStore}.

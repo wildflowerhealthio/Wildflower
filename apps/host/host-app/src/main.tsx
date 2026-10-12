@@ -32,8 +32,8 @@ const backgroundServiceStartConfig = {
 
 // The Recorder's bridge transport, built once for the page's lifetime:
 // one listener on the host's bridge channel for `RecorderBridge` alone, so the
-// host's other bridge traffic (the gatekeeper messages it pushes on every
-// `__Ready`) is dropped without a word. The base doesn't use it.
+// channel's other traffic (the sniffer's data plane) is dropped without a word.
+// The base doesn't use it.
 const recorderTransport = makeTauriTransport({ bridges: [RecorderBridge] as const })
 
 const rootElement = document.getElementById('root')

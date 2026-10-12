@@ -413,8 +413,8 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
 
 /// Mint an Owner-scoped access token for `wildflower-host`, the
 /// first-party client. Called once during [`crate::setup_gatekeeper`] so
-/// the host can hand the resulting token to the `WebView` via the
-/// navigation bridge and let the launcher call `/access/*` endpoints.
+/// the server's loopback owner trust can present it for a direct-loopback
+/// caller.
 ///
 /// `iss` and `aud` are both `server_origin`, like every token this server
 /// mints, so it is accepted over loopback and through the tunnel alike. See

@@ -230,9 +230,9 @@ describe('<AppsHomeBody> live content', () => {
 
 describe('<AppsHomeBody> launch tiles', () => {
   beforeEach(() => {
-    // The host opened the app (a loopback `204`): `LaunchApp` resolves empty.
+    // The launch fails, so no test here moves this page off to the app.
     routeContext.runAuthed.mockReset()
-    routeContext.runAuthed.mockResolvedValue(undefined)
+    routeContext.runAuthed.mockRejectedValue(new Error('launch failed'))
   })
 
   afterEach(() => {
@@ -260,8 +260,8 @@ describe('<AppsHomeBody> launch tiles', () => {
   })
 
   test('a cmd/ctrl click opens a tab inside the click, then launches into it', async () => {
-    // Arrange — the tab the page opens; the host opens this app natively, so
-    // the tab has nothing to show and closes again.
+    // Arrange — the tab the page opens; the launch fails, so the tab has
+    // nothing to show and closes again.
     const tab = { close: vi.fn(), opener: null, location: { replace: vi.fn() } }
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a stand-in for the opened Window
     const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
@@ -280,6 +280,25 @@ describe('<AppsHomeBody> launch tiles', () => {
     await waitFor(() => {
       expect(tab.close).toHaveBeenCalled()
     })
+  })
+
+  test('a cmd/ctrl click sends the new tab to the URL the launch answers with', async () => {
+    // Arrange
+    routeContext.runAuthed.mockResolvedValue({ url: 'https://app.example/launch' })
+    const tab = { close: vi.fn(), opener: {}, location: { replace: vi.fn() } }
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a stand-in for the opened Window
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
+    render(<AppsHomeBody apps={[APP]} />)
+
+    // Act
+    fireEvent.click(screen.getByRole('link', { name: /My App/ }), { ctrlKey: true })
+
+    // Assert — the app loads in the tab, which can't reach back into this page.
+    await waitFor(() => {
+      expect(tab.location.replace).toHaveBeenCalledWith('https://app.example/launch')
+    })
+    expect(tab.opener).toBeNull()
+    expect(tab.close).not.toHaveBeenCalled()
   })
 
   test('a right click is left to the browser', () => {

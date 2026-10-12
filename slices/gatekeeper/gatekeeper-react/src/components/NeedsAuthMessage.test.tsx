@@ -13,6 +13,8 @@ import * as fc from 'fast-check'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
+import { TokenResponseHandlerContext } from '../client/token-response-handler.ts'
+
 /**
  * Pins the `NeedsAuthMessage` stream/fiber consumer: the screen first shows a
  * setup form (device name + scope picker), and only on "Request access" runs the
@@ -87,8 +89,18 @@ const testTokenStore: AuthStateStore = {
   subscribable: tokenRef,
   setAuthState: (signal) => setAuthStateMock(signal),
 }
+// The page's token response handler, recording the bearer it is handed and
+// where it is sent after sign-in.
+const writeBearerMock = vi.fn<(accessToken: string) => void>()
+const navigateAfterAuthMock = vi.fn<(returnTo: string) => void>()
 const withTokenStore = (children: ReactNode): JSX.Element => (
-  <AuthStateProvider store={testTokenStore}>{children}</AuthStateProvider>
+  <AuthStateProvider store={testTokenStore}>
+    <TokenResponseHandlerContext
+      value={{ writeBearer: writeBearerMock, navigateAfterAuth: navigateAfterAuthMock }}
+    >
+      {children}
+    </TokenResponseHandlerContext>
+  </AuthStateProvider>
 )
 
 const { NeedsAuthMessage, sanitizeReturnTo } = await import('./NeedsAuthMessage.tsx')
@@ -98,6 +110,8 @@ const PENDING_FOREVER = Effect.never
 afterEach(() => {
   cleanup()
   setAuthStateMock.mockReset()
+  writeBearerMock.mockReset()
+  navigateAfterAuthMock.mockReset()
   scopesHolder.current = undefined
   clientIdHolder.current = undefined
 })
@@ -127,18 +141,14 @@ const startSignIn = async (): Promise<void> => {
  * entirely through `?requestScopes=` / `?returnTo=`, so this is how those tests
  * put the screen in the state a 403 navigation leaves it in.
  */
-const withLocation = async (
-  search: string,
-  body: (assign: ReturnType<typeof vi.fn<(url: string) => void>>) => Promise<void>
-): Promise<void> => {
-  const assignMock = vi.fn<(url: string) => void>()
+const withLocation = async (search: string, body: () => Promise<void>): Promise<void> => {
   const realLocation = window.location
   Object.defineProperty(window, 'location', {
     configurable: true,
-    value: { search, assign: assignMock },
+    value: { search },
   })
   try {
-    await body(assignMock)
+    await body()
   } finally {
     Object.defineProperty(window, 'location', { configurable: true, value: realLocation })
   }
@@ -301,12 +311,13 @@ describe('<NeedsAuthMessage> device flow', () => {
       TokenExchange: () => Effect.succeed({ access_token: 'issued-token', expires_in: 3600 }),
     })
 
-    await withLocation('', async (assignMock) => {
+    await withLocation('', async () => {
       render(withTokenStore(<NeedsAuthMessage />))
       await startSignIn()
 
-      // With no token response handler (the Tauri entry) the screen publishes
-      // the honest `AuthedUntil` the sign-in just achieved, then reloads.
+      // The bearer is held before the screen publishes the honest
+      // `AuthedUntil` the sign-in just achieved, then the page navigates
+      // without reloading.
       await waitFor(
         () => {
           expect(setAuthStateMock).toHaveBeenCalledTimes(1)
@@ -314,8 +325,12 @@ describe('<NeedsAuthMessage> device flow', () => {
         { timeout: 2000 }
       )
       expect(setAuthStateMock.mock.calls[0]?.[0]?._tag).toBe('AuthedUntil')
+      expect(writeBearerMock).toHaveBeenCalledWith('issued-token')
+      expect(writeBearerMock.mock.invocationCallOrder[0]).toBeLessThan(
+        setAuthStateMock.mock.invocationCallOrder[0] ?? 0
+      )
       // No `?returnTo=` in the stub location, so sign-in lands on the default.
-      expect(assignMock).toHaveBeenCalledWith('/home')
+      expect(navigateAfterAuthMock).toHaveBeenCalledWith('/home')
     })
   })
 })
@@ -456,9 +471,9 @@ describe('<NeedsAuthMessage> step-up pre-fill', () => {
   })
 
   test('returns to where the denial happened once the grant is issued', async () => {
-    // This is the "retry the original action" leg: the full page load re-boots the
-    // app on the original route with a cold query cache, so its loader re-runs the
-    // denied call against the new grant.
+    // This is the "retry the original action" leg: the page lands back on the
+    // original route, and the new auth signal flushes the launcher's query
+    // cache, so its loader re-runs the denied call against the new grant.
     layerHolder.current = makeClientLayer({
       DeviceAuthorization: () => Effect.succeed(DEVICE_AUTH_RESPONSE),
       TokenExchange: () => Effect.succeed({ access_token: 'issued-token', expires_in: 3600 }),
@@ -466,13 +481,13 @@ describe('<NeedsAuthMessage> step-up pre-fill', () => {
 
     await withLocation(
       '?returnTo=%2Fsettings%2Fdatabases&requestScopes=wildflower%2FGrant.d',
-      async (assignMock) => {
+      async () => {
         render(withTokenStore(<NeedsAuthMessage />))
         await startSignIn()
 
         await waitFor(
           () => {
-            expect(assignMock).toHaveBeenCalledWith('/settings/databases')
+            expect(navigateAfterAuthMock).toHaveBeenCalledWith('/settings/databases')
           },
           { timeout: 2000 }
         )

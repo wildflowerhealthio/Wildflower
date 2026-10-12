@@ -3,8 +3,6 @@
  *
  *  - the standalone `/gatekeeper/devices/:userCode` route, which
  *    navigates away on `onDone`, and
- *  - the in-app {@link PendingConsentModalHost} popup (Tauri only),
- *    which closes the modal on `onDone`, and
  *  - the in-settings `/settings/gatekeeper/devices/:userCode` route,
  *    which additionally lets the approver rename the device
  *    (`editableName`).

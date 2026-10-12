@@ -9,7 +9,6 @@ export default defineConfig({
     platform: 'neutral',
     exports: false,
     entry: {
-      bridge: 'src/bridge.ts',
       'clients/index': 'src/clients/index.ts',
       'contexts/index': 'src/contexts/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',

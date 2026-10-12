@@ -20,7 +20,7 @@ import { hasAbsoluteScheme } from './prepend-api-base-url.ts'
  * app's existing `onUnauthorized` handler picks up.
  *
  * Lives beside `prepend-api-base-url.ts` and composes with it in
- * `buildAppQueryRuntime`, which wraps this layer **first** and the
+ * `apiTransportAt`, which wraps this layer **first** and the
  * prepend around it. `HttpClient.mapRequest` chains preprocessing
  * inside-out — the inner client's transform runs first — so this
  * wrapper sees the still-relative path and the prepend rewrites the

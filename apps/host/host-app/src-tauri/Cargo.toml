@@ -29,9 +29,7 @@ tauri = { version = "2", features = [] }
 chrono = { workspace = true, features = ["clock"] }
 tauri-plugin-opener = "2"
 openssl = {version = "0.10.36", features = ["vendored"] } 
-serde.workspace = true
 serde_json.workspace = true
-wildflowerhealthio-apps = { path = "../../wildflower-server/apps-rust" }
 wildflowerhealthio-browser-sniffer-tauri = { path = "../../browser-sniffer-tauri" }
 # Host glue for the Recorder: the `BRIDGE_EVENT` listener that writes a
 # recorded archive into the `Wildflower Recordings` folder, and the
@@ -53,13 +51,8 @@ wildflowerhealthio-tauri-unit-runner = { path = "../../unit-runner/tauri-unit-ru
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
 tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
 wildflowerhealthio-gatekeeper = { path = "../../wildflower-server/gatekeeper-rust" }
-# `ServerRuntimeConfig` and `LauncherBase` for the server config, and the bridge
-# envelope the host's listeners decode.
+# `ServerRuntimeConfig` and `LauncherBase` for the server config.
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
-# Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
-# gates its `RequestSandboxedWebView { url }` on before handing the URL to the
-# native-webview plugin.
-wildflowerhealthio-shared-structures-tauri = { path = "../../shared-structures-tauri" }
 # The `RelaySettings` the host builds from the server's record for its tunnel.
 wildflowerhealthio-tunnel = { path = "../../wildflower-server/tunnel-rust" }
 # The Wildflower server's config and ports, which the host builds.
@@ -67,7 +60,6 @@ wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflo
 anyhow.workspace = true
 # Typed loopback base URL for the server's `ServerRuntimeConfig`.
 url = "2"
-tokio = { workspace = true, features = ["full"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"

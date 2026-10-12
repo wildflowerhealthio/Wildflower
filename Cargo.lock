@@ -3579,9 +3579,7 @@ dependencies = [
  "tauri-plugin-native-webview",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
- "tokio",
  "url",
- "wildflowerhealthio-apps",
  "wildflowerhealthio-browser-sniffer-tauri",
  "wildflowerhealthio-gatekeeper",
  "wildflowerhealthio-rathole-settings",
@@ -3589,7 +3587,6 @@ dependencies = [
  "wildflowerhealthio-servers",
  "wildflowerhealthio-servers-tauri",
  "wildflowerhealthio-shared-structures",
- "wildflowerhealthio-shared-structures-tauri",
  "wildflowerhealthio-tauri-unit-runner",
  "wildflowerhealthio-tunnel",
  "wildflowerhealthio-wildflower-server",
@@ -9432,16 +9429,6 @@ dependencies = [
  "tracing",
  "url",
  "utoipa",
-]
-
-[[package]]
-name = "wildflowerhealthio-shared-structures-tauri"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "tauri",
- "tauri-plugin-log",
- "url",
 ]
 
 [[package]]

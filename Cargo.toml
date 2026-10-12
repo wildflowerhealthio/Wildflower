@@ -6,7 +6,6 @@ members = [
   "apps/host/recorder/recorder-tauri",
   "apps/host/servers/servers-rust",
   "apps/host/servers/servers-tauri",
-  "apps/host/shared-structures-tauri",
   "apps/host/tauri-plugin-native-webview",
   "apps/host/unit-runner/tauri-unit-runner-rust",
   "apps/host/unit-runner/unit-runner-rust",

@@ -28,8 +28,8 @@
 //!
 //! ## Launch
 //!
-//! `POST /apps/{id}` resolves a launch target and dispatches on the *request's*
-//! provenance (loopback vs. forwarded) — see the launch handler module. The launch
+//! `POST /apps/{id}` resolves a launch target and answers `200` with its URL,
+//! whoever calls — see the launch handler module. The launch
 //! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
 //! additionally requires the caller's grant to cover its client scopes). Every
 //! launch resolves `{origin}` to the server's public origin from [`AppsConfig`];
@@ -73,7 +73,6 @@ pub use live_bindings::state::AppsState;
 
 #[cfg(debug_assertions)]
 pub use dev_seed::seed_dev_apps;
-pub use wildflowerhealthio_shared_structures::OnDeviceWebviewHandle;
 
 pub mod ports;
 
@@ -88,20 +87,15 @@ pub struct Apps {
     /// middleware: the host wraps it with its bearer gate, which inserts the scope
     /// claims the `Scoped<…>` capabilities read.
     pub router: Router,
-    /// Shared handler state (the store, the public origin, the on-device
-    /// webview seam, the launch-scope port, and the launch-context port).
+    /// Shared handler state (the store, the public origin, the launch-scope
+    /// port, and the launch-context port).
     pub state: Arc<AppsState>,
 }
 
 /// Build the apps router over the host-owned diesel connection `pool`, mirroring
 /// `request-log-rust`'s `setup_request_log`. The host builds the app-wide diesel pool
 /// (via `wildflowerhealthio_persistence::open_pool`) on the same shared database file its
-/// rusqlite connection serves the other slices from, and passes a clone in — along
-/// with the `webview_handle` the on-device launch side-effect runs through.
-///
-/// `webview_handle` is the host seam for the on-device launch side-effect: a
-/// loopback launch opens the resolved URL through it and `204`s. The Tauri host
-/// passes a native-webview opener; a host with no native popup passes a no-op.
+/// rusqlite connection serves the other slices from, and passes a clone in.
 ///
 /// `launch_scopes` is the host seam resolving a SMART app's required launch scopes
 /// for the per-app launch check (see [`AppLaunchScopes`]). The Tauri host passes a
@@ -118,7 +112,6 @@ pub struct Apps {
 pub fn setup_apps(
     pool: DieselPool,
     config: &AppsConfig,
-    webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
     launch_context_minter: Arc<dyn LaunchContextMinter>,
 ) -> anyhow::Result<Apps> {
@@ -128,7 +121,6 @@ pub fn setup_apps(
     let state = Arc::new(AppsState::new(
         store,
         config.public_origin.clone(),
-        webview_handle,
         launch_scopes,
         launch_context_minter,
     ));

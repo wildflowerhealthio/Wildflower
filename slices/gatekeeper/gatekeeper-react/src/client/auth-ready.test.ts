@@ -7,25 +7,16 @@ import {
   isAuthed,
   Unauthed,
 } from '@wildflowerhealthio/react-kitchen-sink'
-import { Duration, Effect, Either, Fiber, SubscriptionRef, TestClock, TestContext } from 'effect'
+import { Effect, Either, SubscriptionRef } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import {
-  EMBEDDED_TOKEN_TIMEOUT,
-  embeddedAuthReadyEffect,
-  landingAuthReadyEffect,
-  TokenTimeout,
-} from './auth-ready.ts'
+import { landingAuthReadyEffect } from './auth-ready.ts'
 
 /**
- * Pins the injected `awaitAuthReady` cores the entries thread into the
- * router context. The landing gate is a synchronous authed/unauthed
- * decision; embedded waits the host handshake up to `EMBEDDED_TOKEN_TIMEOUT`
- * and is driven here with `TestClock` so the 5s window is exercised without
- * real time.
- *
- * Both gates key purely on the {@link AuthState} tag (`isAuthed`).
+ * Pins the `awaitAuthReady` core the launcher threads into the router
+ * context: a synchronous authed/unauthed decision keyed purely on the
+ * {@link AuthState} tag (`isAuthed`).
  */
 
 const makeRef = (initial: AuthState): Effect.Effect<SubscriptionRef.SubscriptionRef<AuthState>> =>
@@ -102,46 +93,5 @@ describe('landingAuthReadyEffect', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
-  })
-})
-
-describe('embeddedAuthReadyEffect', () => {
-  test('resolves immediately when the signal already landed authed', async () => {
-    const program = Effect.gen(function* () {
-      const ref = yield* makeRef(HostAuthed())
-      return yield* Effect.either(embeddedAuthReadyEffect(ref))
-    }).pipe(Effect.provide(TestContext.TestContext))
-
-    const result = await Effect.runPromise(program)
-    expect(result).toStrictEqual(Either.void)
-  })
-
-  test('resolves once the host flips the signal within the window', async () => {
-    const program = Effect.gen(function* () {
-      const ref = yield* makeRef(Unauthed())
-      const fiber = yield* Effect.fork(Effect.either(embeddedAuthReadyEffect(ref)))
-      // Advance partway, then the host flips the signal (bridge write).
-      yield* TestClock.adjust(Duration.seconds(2))
-      yield* SubscriptionRef.set(ref, HostAuthed())
-      yield* TestClock.adjust(Duration.seconds(1))
-      return yield* Fiber.join(fiber)
-    }).pipe(Effect.provide(TestContext.TestContext))
-
-    const result = await Effect.runPromise(program)
-    expect(result).toStrictEqual(Either.void)
-  })
-
-  test('rejects with TokenTimeout when the window elapses still unauthed', async () => {
-    const program = Effect.gen(function* () {
-      const ref = yield* makeRef(Unauthed())
-      const fiber = yield* Effect.fork(Effect.either(embeddedAuthReadyEffect(ref)))
-      // Push past the full timeout without ever flipping the signal.
-      yield* TestClock.adjust(Duration.sum(EMBEDDED_TOKEN_TIMEOUT, Duration.seconds(1)))
-      return yield* Fiber.join(fiber)
-    }).pipe(Effect.provide(TestContext.TestContext))
-
-    const result = await Effect.runPromise(program)
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(TokenTimeout)
   })
 })

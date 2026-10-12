@@ -40,8 +40,6 @@ stores, and the packages beside it that only the host uses. The app itself is
   crates only the host composes: `gatekeeper-rust`, `token-revocation-rust`,
   `fhir-r4-rust`, `apps-rust`, `tunnel-rust`, `databases-rust` and
   `request-log-rust`.
-- [`shared-structures-tauri`](./shared-structures-tauri) — the host's
-  Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)
   — the native, JS-injectable web view plugin (iOS, Android, desktop).
 - [`browser-sniffer-tauri`](./browser-sniffer-tauri) — the browser

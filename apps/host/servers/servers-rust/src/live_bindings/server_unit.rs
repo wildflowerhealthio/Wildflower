@@ -56,24 +56,20 @@ impl Unit for ServerUnit {
     /// go out as the run's [`ServerDetail`].
     ///
     /// The run's gatekeeper publishes its queue's head on a channel of the
-    /// run's own, so each server's head is its own; each head is forwarded to
-    /// the host's `active_pending_consent_tx` too, which every run shares.
+    /// run's own, so each server's head is its own.
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
         let (server_health_tx, server_health_rx) = watch::channel(None);
         let (tunnel_state_tx, tunnel_state_rx) = watch::channel(None);
         let (certificate_tx, certificate_rx) = watch::channel(None);
         let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
-        let host_pending_consent_tx = self.host_ports.active_pending_consent_tx.clone();
         let server = wildflowerhealthio_wildflower_server::set_up(
             self.config,
-            HostPorts {
-                active_pending_consent_tx: pending_consent_tx,
-                ..self.host_ports
-            },
+            self.host_ports,
             ServerObservers {
                 server_health_tx,
                 tunnel_state_tx,
                 certificate_tx,
+                pending_consent_tx,
                 forwarded_request_tx: self.forwarded_request_tx,
             },
         )
@@ -90,7 +86,6 @@ impl Unit for ServerUnit {
                     certificate_rx,
                     pending_consent_rx,
                 ),
-                host_pending_consent_tx,
             },
             ctx.clone(),
         ));
@@ -107,8 +102,6 @@ struct DetailSources {
     launch_minter: ServerLaunchMinter,
     /// The channels the rest of the detail is read from.
     channels: DetailChannels,
-    /// The host's channel each head is forwarded to.
-    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
 }
 
 /// The channels a run's detail is read from, each watched until its own
@@ -175,28 +168,16 @@ impl DetailChannels {
 /// run's health, its tunnel's state, its certificate's state, the head of its
 /// gatekeeper's pending-consent queue, its consent decider and its launch
 /// minter into the detail, now and each time the health, the tunnel state, the
-/// certificate state or the head changes. It also forwards each change of its
-/// head to the host's shared `active_pending_consent_tx`, which the legacy
-/// bridge reads until #965 deletes it. The task dies with the run's runtime,
-/// and `UnitRunner` clears the detail when the run ends.
+/// certificate state or the head changes. The task dies with the run's
+/// runtime, and `UnitRunner` clears the detail when the run ends.
 async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
-    // The head this run last forwarded. Only a change to the run's own head
-    // is forwarded, so a wake for health never overwrites another run's head.
-    let mut forwarded_head: Option<PendingConsentHead> = None;
     loop {
         let channels = &mut sources.channels;
-        let pending_consent = channels.pending_consent_rx.borrow_and_update().clone();
-        if pending_consent != forwarded_head {
-            sources
-                .host_pending_consent_tx
-                .send_replace(pending_consent.clone());
-            forwarded_head.clone_from(&pending_consent);
-        }
         ctx.set_detail(ServerDetail {
             health: channels.server_health_rx.borrow_and_update().clone(),
             tunnel: channels.tunnel_state_rx.borrow_and_update().clone(),
             certificate: channels.certificate_rx.borrow_and_update().clone(),
-            pending_consent,
+            pending_consent: channels.pending_consent_rx.borrow_and_update().clone(),
             consent_decider: Some(sources.consent_decider.clone()),
             launch_minter: Some(sources.launch_minter.clone()),
         });

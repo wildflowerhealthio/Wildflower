@@ -1,26 +1,15 @@
 import { redirect, type AnyRedirect } from '@tanstack/react-router'
 import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
-import { Data, Duration, Effect, Option, pipe, Stream, type Subscribable } from 'effect'
+import { Effect, pipe, type Subscribable } from 'effect'
 
 import { type AuthState, isAuthed } from '@wildflowerhealthio/react-kitchen-sink'
 
 /**
- * Embedded WebView waited the full {@link EMBEDDED_TOKEN_TIMEOUT} for
- * the host to deliver an `AuthTokenIssued` over the gatekeeper bridge
- * and it never arrived. The gate throws this to a web-side retry
- * screen — there is no host signal on timeout.
- */
-class TokenTimeout extends Data.TaggedError('TokenTimeout')<Record<string, never>> {}
-
-/** How long the embedded entry waits for the host's bearer token. */
-const EMBEDDED_TOKEN_TIMEOUT = Duration.seconds(5)
-
-/**
  * Run a `Promise<void>`-producing thunk and unwrap any
  * `FiberFailure` rejection so the downstream consumer sees the
- * underlying typed failure (`TokenTimeout`, `AnyRedirect`, etc.)
- * directly. Used by the `awaitAuthReady` factories below so callers
- * (e.g. TanStack's `beforeLoad`) don't need to re-implement the unwrap.
+ * underlying typed failure (an `AnyRedirect`) directly. Used by
+ * {@link makeAwaitLandingAuthReady} so callers (e.g. TanStack's
+ * `beforeLoad`) don't need to re-implement the unwrap.
  */
 const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> => {
   try {
@@ -31,82 +20,13 @@ const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> =
 }
 
 /**
- * Tauri auth-readiness logic, parameterized over the token
- * subscribable so it's unit-testable (drive it with `TestClock` to
- * exercise the timeout). Subscribes to `subscribable.changes` (which
- * replays the current value) and takes the first present emission, so
- * a token that already landed resolves without waiting; otherwise it
- * waits up to {@link EMBEDDED_TOKEN_TIMEOUT} before failing with
- * {@link TokenTimeout}. See {@link makeAwaitEmbeddedAuthReady} for the
- * factory that closes over the entry's subscribable and the
- * transport-ready promise.
- */
-const embeddedAuthReadyEffect = (
-  subscribable: Subscribable.Subscribable<AuthState>
-): Effect.Effect<void, TokenTimeout> =>
-  pipe(
-    subscribable.changes,
-    Stream.filter(isAuthed),
-    Stream.runHead,
-    Effect.timeoutFail({
-      duration: EMBEDDED_TOKEN_TIMEOUT,
-      onTimeout: () => new TokenTimeout({}),
-    }),
-    Effect.flatMap(
-      Option.match({
-        // The stream completes only on ref teardown, which doesn't
-        // happen for the page's lifetime; defensive `TokenTimeout`.
-        onNone: () => Effect.fail(new TokenTimeout({})),
-        onSome: () => Effect.void,
-      })
-    )
-  )
-
-/**
- * Tauri (`main-tauri`) auth-readiness factory. The host flips the
- * SPA's auth signal over the gatekeeper bridge once the page-side transport
- * emits its `__Ready` handshake, so on first paint the embedded
- * `AuthStateStore.subscribable` is `Unauthed` AND the transport may not yet be
- * ready to even receive the host's `AuthTokenIssued` message.
- *
- * Closes over the entry-supplied `subscribable` and `transportReady`
- * promise and returns the actual `awaitAuthReady` function the
- * route's `beforeLoad` calls. The returned function awaits
- * `transportReady` first (so the host has received the bridge handshake
- * and can push its token notify), then waits the
- * signal becoming authed for up to {@link EMBEDDED_TOKEN_TIMEOUT};
- * resolves on the first authed value, rejects with
- * {@link TokenTimeout} on timeout. Any `FiberFailure` wrapping is
- * unwrapped so callers see the raw `TokenTimeout` (or a defect-routed
- * equivalent) directly.
- *
- * @param subscribable - The entry's `AuthStateStore.subscribable`.
- * @param transportReady - Promise that resolves once the page-side
- *   transport has signalled the host (`__Ready`). The
- *   factory shape is what lets the route-level gate stay
- *   environment-agnostic — `beforeLoad` only sees the resolved
- *   `() => Promise<void>` and doesn't have to know about the
- *   transport.
- */
-const makeAwaitEmbeddedAuthReady =
-  (
-    subscribable: Subscribable.Subscribable<AuthState>,
-    transportReady: Promise<void>
-  ): (() => Promise<void>) =>
-  () =>
-    withFiberFailureUnwrap(async () => {
-      await transportReady
-      await Effect.runPromise(embeddedAuthReadyEffect(subscribable))
-    })
-
-/**
- * Auth-readiness logic for an entry whose unauthed path is the **landing page**
- * at `/`, used by `main-web` (the cross-origin build), parameterized over the
- * token subscribable so it's unit-testable. Reads via `Subscribable.get` once:
+ * Auth-readiness logic for the launcher, whose unauthed path is the **landing
+ * page** at `/`, parameterized over the token subscribable so it's
+ * unit-testable. Reads via `Subscribable.get` once:
  * present → succeed; absent → fails with a TanStack `redirect` to the app root.
- * No waiting — a standalone browser has no host to deliver a token later. The
- * redirect targets the landing page rather than the device-login route because
- * that entry picks its API server at runtime, so an unauthed reader needs the
+ * No waiting — nothing delivers a token later. The redirect targets the landing
+ * page rather than the device-login route because the launcher picks its API
+ * server at runtime, so an unauthed reader needs the
  * server picker before any sign-in can name a target.
  *
  * `returnTo` is threaded as a `?returnTo=` search param on the redirect so the
@@ -115,7 +35,7 @@ const makeAwaitEmbeddedAuthReady =
  *
  * The search is built as an **updater** over the search the reader was already
  * on, not as a fresh object: a plain object replaces the query wholesale, which
- * would drop `main-web`'s `?server=` — the one parameter the landing page needs
+ * would drop the launcher's `?server=` — the one parameter the landing page needs
  * to offer a way back in. A reader whose in-memory bearer is gone (any reload)
  * would otherwise land on a picker with nothing picked and have to retype their
  * server.
@@ -152,11 +72,4 @@ const makeAwaitLandingAuthReady =
   (returnTo) =>
     withFiberFailureUnwrap(() => Effect.runPromise(landingAuthReadyEffect(subscribable, returnTo)))
 
-export {
-  embeddedAuthReadyEffect,
-  EMBEDDED_TOKEN_TIMEOUT,
-  landingAuthReadyEffect,
-  makeAwaitEmbeddedAuthReady,
-  makeAwaitLandingAuthReady,
-  TokenTimeout,
-}
+export { landingAuthReadyEffect, makeAwaitLandingAuthReady }

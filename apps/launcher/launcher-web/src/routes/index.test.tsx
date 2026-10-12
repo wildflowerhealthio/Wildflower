@@ -25,7 +25,7 @@ import {
   type SignInStep,
   type UnsentEhrLaunch,
 } from '../sign-in.ts'
-import { DEFAULT_SERVER_URL, rememberSignedInServer } from '../web-entry.ts'
+import { DEFAULT_SERVER_URL, SIGNED_IN_SERVER_KEY } from '../web-entry.ts'
 import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 
 /**
@@ -81,8 +81,11 @@ describe('Landing', () => {
 
   test('signs in straight away to the server this tab last signed in to', async () => {
     // Arrange — a reload, or the expiry bounce: the settled URL names no server,
-    // but the tab remembered the one its last sign-in was redeemed against.
-    rememberSignedInServer(window.sessionStorage, 'https://ruth.wildflowerhealth.io')
+    // but the tab kept the one its last sign-in was redeemed against.
+    makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY).writeSession({
+      serverUrl: 'https://ruth.wildflowerhealth.io',
+      bearer: 'tok_web',
+    })
     const signIn = recordingSignIn(pendingStart)
 
     // Act
@@ -252,8 +255,8 @@ describe('Landing', () => {
   test('sends an already-signed-in reader on to the app', async () => {
     // Arrange — authed before the router mounts, which is what `main-web`'s
     // boot does after it redeems a callback.
-    const store = makeBearerAuthStateStore()
-    store.writeBearer('tok_web')
+    const store = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
+    store.writeSession({ serverUrl: 'https://ruth.wildflowerhealth.io', bearer: 'tok_web' })
     store.setAuthState(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + 3600 }))
 
     // Act
@@ -694,7 +697,9 @@ const mountLanding = async (
   })
 
   const tree = (
-    <AuthStateProvider store={options.store ?? makeBearerAuthStateStore()}>
+    <AuthStateProvider
+      store={options.store ?? makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)}
+    >
       <RouterProvider router={router} />
     </AuthStateProvider>
   )

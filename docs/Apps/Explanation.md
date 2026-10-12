@@ -160,12 +160,10 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
   `InsufficientScope` JSON body, which the launcher's typed client decodes into
   the home banner — keeping the missing scopes structured so the banner names them
   (and a future "request permissions" action can read them).
-- Both the loopback and the forwarded launch ride the same bearer gate: every
-  launcher launches through the typed client with its bearer. A loopback launch
-  `204`s after the host opens the app in a native popup. A forwarded launch (the
-  hosted launcher reaching the server through its tunnel) answers `200 { url }`,
-  and the page navigates the tab there — a redirect would be followed invisibly by
-  `fetch` rather than moving the tab. A home tile is a real link to the
+- Every launch rides the same bearer gate: the launcher launches through the
+  typed client with its bearer. The launch answers `200 { url }` to every
+  caller, and the page navigates the tab there — a redirect would be followed
+  invisibly by `fetch` rather than moving the tab. A home tile is a real link to the
   launcher's launch route (`/home/launch/{id}`): a plain click launches in place, and
   a ctrl/cmd/shift or middle click opens the new tab inside the click (so no
   popup blocker stops it) and launches into it on this page's session. A tab

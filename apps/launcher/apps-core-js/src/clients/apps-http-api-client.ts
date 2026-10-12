@@ -16,8 +16,8 @@ const adminHc = defineSliceHttpClient({
  * Effect Service providing the resolved `AppsApi` HttpApi client —
  * `ListApps` + `LaunchApp`. Tokenless: the composing app's `HttpClient`
  * layer carries whatever credential a host that gates the apps surface
- * (e.g. the Tauri host's Rust server) requires. `LaunchApp` resolves to the launch URL for a forwarded caller
- * to navigate to, or to nothing when the host opened the app itself.
+ * (the Wildflower server) requires. `LaunchApp` resolves to the launch URL for
+ * the caller to navigate to.
  */
 class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
   static readonly layer = publicHc.makeLayerFactory(AppsHttpApiClient)()

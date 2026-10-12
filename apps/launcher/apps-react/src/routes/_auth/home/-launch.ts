@@ -7,7 +7,7 @@ import { Effect, Either, Schema } from 'effect'
 import type { RunAuthed } from '../../../router-context.ts'
 import { encodeLaunchError, type LaunchErrorBody } from './-launch-error.ts'
 
-/** A forwarded launch's answer: the URL for this page to navigate to. */
+/** A launch's answer: the URL for this page to navigate to. */
 type LaunchTarget = Schema.Schema.Type<typeof Schemas.LaunchTargetSchema>
 
 /**
@@ -15,10 +15,8 @@ type LaunchTarget = Schema.Schema.Type<typeof Schemas.LaunchTargetSchema>
  *
  * - `runAuthed`: runs the typed `POST /apps/{id}` with the owner bearer attached
  *   — the launch is scope-gated server-side, so it can't be a raw `fetch`.
- * - `navigate`: moves the tab to a launch URL the server answered with. Only a
- *   forwarded caller (the hosted launcher reaching a server through its tunnel)
- *   gets one; for a loopback caller the host opened the app in a native popup and
- *   there is nowhere to go. Injected so a test can observe it.
+ * - `navigate`: moves the tab to the launch URL the server answered with.
+ *   Injected so a test can observe it.
  */
 interface LaunchContext {
   readonly runAuthed: RunAuthed
@@ -26,34 +24,19 @@ interface LaunchContext {
 }
 
 /**
- * How a successful launch ended: the page was sent to the app's URL (a
- * forwarded launch), or the host opened the app itself in a native popup (a
- * loopback launch), leaving nowhere to navigate.
- */
-type LaunchOutcome = 'navigated' | 'openedOnHost'
-
-/**
- * Launch the app `appId` through `AppsHttpApiClient.LaunchApp` and follow the
- * result: navigate to the URL a forwarded launch answers with, or do nothing
- * when the host opened the app itself. A failure is caught and returned as an
+ * Launch the app `appId` through `AppsHttpApiClient.LaunchApp` and navigate to
+ * the URL the launch answers with. A failure is caught and returned as an
  * encoded `?launchError` body (see {@link postLaunch}), not thrown to the
  * caller.
  *
- * Returns the {@link LaunchOutcome}, or that body on failure, for the caller to
- * reflect into the home route's search (so the banner names the missing scopes
- * for a `403`).
+ * Returns `right` once the page is navigating, or that body on failure, for
+ * the caller to reflect into the home route's search (so the banner names the
+ * missing scopes for a `403`).
  */
-const launchApp = async (
-  ctx: LaunchContext,
-  appId: string
-): Promise<Either.Either<LaunchOutcome, string>> => {
-  const launched = await postLaunch(ctx.runAuthed, appId)
-  return Either.map(launched, (target): LaunchOutcome => {
-    if (target === undefined) return 'openedOnHost'
+const launchApp = async (ctx: LaunchContext, appId: string): Promise<Either.Either<void, string>> =>
+  Either.map(await postLaunch(ctx.runAuthed, appId), (target) => {
     ctx.navigate(target.url)
-    return 'navigated'
   })
-}
 
 const isAppNotFound = Schema.is(Schemas.AppNotFoundSchema)
 
@@ -73,22 +56,22 @@ const launchErrorBody = (error: unknown): LaunchErrorBody => {
 }
 
 /**
- * Run the launch: on success the launch target a forwarded launch answers with
- * (`undefined` when the host opened the app), else the encoded launch-error body.
+ * Run the launch: on success the launch target it answers with, else the
+ * encoded launch-error body.
  */
 const postLaunch = async (
   runAuthed: RunAuthed,
   id: string
-): Promise<Either.Either<LaunchTarget | undefined, string>> => {
+): Promise<Either.Either<LaunchTarget, string>> => {
   try {
     const target = await runAuthed(
       Effect.flatMap(AppsHttpApiClient, (c) => c.apps.LaunchApp({ path: { id } }))
     )
-    return Either.right(target ?? undefined)
+    return Either.right(target)
   } catch (error: unknown) {
     return Either.left(encodeLaunchError(launchErrorBody(error)))
   }
 }
 
 export { launchApp }
-export type { LaunchContext, LaunchOutcome }
+export type { LaunchContext }

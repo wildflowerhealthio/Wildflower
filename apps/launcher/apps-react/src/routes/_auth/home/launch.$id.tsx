@@ -7,8 +7,8 @@ import { launchApp, type LaunchContext } from './-launch.ts'
 
 /**
  * Launches app `id` on arrival, then gets out of the way: the tab moves to the
- * app (a forwarded launch), or back to the home screen when the host opened it
- * natively or the launch failed (with the failure in `?launchError`).
+ * app, or back to the home screen when the launch failed (with the failure in
+ * `?launchError`).
  *
  * A home tile links here, so a tab the browser opens by itself (right-click →
  * "Open in new tab") still launches. Such a tab starts with no bearer, so the
@@ -21,7 +21,7 @@ function LaunchScreen({
 }: {
   readonly id: string
   readonly launch: (id: string) => ReturnType<typeof launchApp>
-  readonly goHome: (launchError: string | undefined) => void
+  readonly goHome: (launchError: string) => void
 }): JSX.Element {
   // Launch once: a re-render (or StrictMode's double effect) must not mint a
   // second launch.
@@ -30,12 +30,7 @@ function LaunchScreen({
     if (launched.current) return
     launched.current = true
     void launch(id).then((result) => {
-      Either.match(result, {
-        onLeft: (launchError) => goHome(launchError),
-        onRight: (outcome) => {
-          if (outcome === 'openedOnHost') goHome(undefined)
-        },
-      })
+      if (Either.isLeft(result)) goHome(result.left)
     })
   }, [id, launch, goHome])
   return <p className="text-body-2">Opening the app…</p>
@@ -60,11 +55,7 @@ function LaunchRoute(): JSX.Element {
       id={id}
       launch={(appId) => launchApp(ctx, appId)}
       goHome={(launchError) => {
-        void navigate({
-          to: '/home',
-          search: launchError === undefined ? {} : { launchError },
-          replace: true,
-        })
+        void navigate({ to: '/home', search: { launchError }, replace: true })
       }}
     />
   )

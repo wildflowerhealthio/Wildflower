@@ -197,8 +197,8 @@ Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist):
 - **`NSAppTransportSecurity`** — App Transport Security blocks cleartext HTTP by
   default, and the host serves and loads a lot of it. The exemptions are scoped
   rather than blanket: `NSAllowsLocalNetworking` for the LAN dev server,
-  `NSAllowsArbitraryLoadsInWebContent` because `resolve_http_url` admits plain
-  `http` before handing a URL to the native-webview plugin, and an
+  `NSAllowsArbitraryLoadsInWebContent` because the native-webview plugin's
+  `parse_http_url` admits plain `http` pages, and an
   `NSExceptionDomains` entry for `localhost` (loopback is not covered by
   `NSAllowsLocalNetworking`, and stating it here keeps it even if the merge
   replaces Tauri's own `bundle.macOS.exceptionDomain` default wholesale).

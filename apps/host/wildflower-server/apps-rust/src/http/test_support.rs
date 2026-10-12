@@ -6,13 +6,11 @@ use std::sync::{Arc, Mutex};
 
 use url::Url;
 use wildflowerhealthio_scopes::Scope;
-use wildflowerhealthio_shared_structures::test_utils::RecordingStubWebviewHandle;
 
 use crate::db::SqliteAppsStore;
 use crate::domain::{AppRegistration, AppsError};
 use crate::live_bindings::state::AppsState;
 use crate::ports::{AppLaunchScopes, LaunchContextMinter, NoAppLaunchScopes};
-use crate::OnDeviceWebviewHandle;
 
 /// The server's public origin, which every launch's `{origin}` resolves to.
 pub(crate) const PUBLIC_ORIGIN: &str = "https://dev1.example.com";
@@ -79,11 +77,10 @@ impl LaunchContextMinter for RecordingLaunchContextMinter {
     }
 }
 
-/// Build apps state over a fresh in-memory store with a specific on-device
-/// webview handle, launch-scope seam, and launch-context seam, using the shared
-/// public origin. The most general fixture; the others below pin the knobs.
+/// Build apps state over a fresh in-memory store with a specific launch-scope
+/// seam and launch-context seam, using the shared public origin. The most
+/// general fixture; the others below pin the knobs.
 pub(crate) fn state_full(
-    webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
     launch_context_minter: Arc<dyn LaunchContextMinter>,
 ) -> Arc<AppsState> {
@@ -91,36 +88,21 @@ pub(crate) fn state_full(
     Arc::new(AppsState::new(
         store,
         Url::parse(PUBLIC_ORIGIN).expect("public origin is a hardcoded valid URL"),
-        webview_handle,
         launch_scopes,
         launch_context_minter,
     ))
 }
 
-/// Apps state with a throwaway recording handle — for tests that don't inspect
-/// what the handle received.
+/// Apps state with no per-app launch scopes and a recording launch-context
+/// minter whose mints the test doesn't inspect.
 pub(crate) fn state() -> Arc<AppsState> {
-    state_with_sink(Arc::new(RecordingStubWebviewHandle::default()))
+    state_with_launch_scopes(Arc::new(NoAppLaunchScopes))
 }
 
-/// Apps state with a caller-provided handle — so a loopback launch's resolved
-/// URL can be read back off the handle.
-pub(crate) fn state_with_sink(webview_handle: Arc<dyn OnDeviceWebviewHandle>) -> Arc<AppsState> {
+/// Apps state with a specific [`AppLaunchScopes`] seam — drives the per-app
+/// SMART launch check.
+pub(crate) fn state_with_launch_scopes(launch_scopes: Arc<dyn AppLaunchScopes>) -> Arc<AppsState> {
     state_full(
-        webview_handle,
-        Arc::new(NoAppLaunchScopes),
-        Arc::new(RecordingLaunchContextMinter::default()),
-    )
-}
-
-/// Apps state with a caller-provided handle and a specific [`AppLaunchScopes`]
-/// seam — drives the per-app SMART launch check.
-pub(crate) fn state_with_launch_scopes(
-    webview_handle: Arc<dyn OnDeviceWebviewHandle>,
-    launch_scopes: Arc<dyn AppLaunchScopes>,
-) -> Arc<AppsState> {
-    state_full(
-        webview_handle,
         launch_scopes,
         Arc::new(RecordingLaunchContextMinter::default()),
     )

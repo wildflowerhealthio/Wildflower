@@ -13,23 +13,21 @@ import type { RunAuthed, RuntimeLayer } from './router-context.ts'
 /**
  * The API server's transport for the requests mounted at `mountPath` on it —
  * `''` for the server root (every slice but FHIR), `/fhir-r4` for the FHIR
- * slice. The entry builds it (`app-query-runtime.ts`'s `apiTransportAt`), so
- * it decides the origin and how a request authenticates.
+ * slice. `app-query-runtime.ts`'s `apiTransportAt` builds it over the page's
+ * session, so it decides the server and how a request authenticates.
  */
 type ApiTransport = (mountPath: string) => Layer.Layer<HttpClient.HttpClient>
 
 /**
  * Builds the page-lifetime runtime layer + authed runner. The runtime
- * attaches no credential itself: the entry's transport decides how a
- * request authenticates — the hosted web entry's `readBearer` is stamped on by
- * `attachBearer`, and on Tauri the host stamps its owner bearer onto direct-loopback requests
- * by connection provenance.
+ * attaches no credential itself: the transport decides how a request
+ * authenticates — `attachBearer` stamps the session's bearer on.
  *
  * The `beforeLoad` auth gate (not the loaders) guarantees the auth
  * signal is ready before any authed loader runs, so there's no
  * `isTokenReady` reader here — loaders are plain `ensureQueryData`.
  *
- * @param effectTelemetryLayer - The entry's Effect telemetry layer, merged
+ * @param effectTelemetryLayer - The page's Effect telemetry layer, merged
  *   into the runtime so every authed request runs under the page's tracer
  *   (see `RenderAppOptions.effectTelemetryLayer`)
  */
@@ -47,8 +45,8 @@ const buildRunAuthed = (
       GatekeeperRouterContext.sliceRuntimeLayer,
       // The FHIR slice's typed client emits base-relative paths (`/Patient`) —
       // `FhirResourcesApi` does not bake in the mount prefix — so it gets the
-      // entry's transport mounted at `/fhir-r4`, while every other slice keeps
-      // the root-mounted `baseRuntimeLayer` transport. The entry joins the mount
+      // page's transport mounted at `/fhir-r4`, while every other slice keeps
+      // the root-mounted `baseRuntimeLayer` transport. The transport joins the mount
       // path onto the API origin in one prefix (`{origin}/fhir-r4`); stacking a
       // second prefix wrapper over an origin-prefixing layer does not work,
       // because `HttpClient.mapRequest` runs the wrapped client's rewrite first,

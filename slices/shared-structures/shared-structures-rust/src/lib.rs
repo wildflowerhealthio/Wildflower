@@ -2,12 +2,8 @@ pub mod bridge;
 pub mod launcher;
 pub mod request_caller;
 pub mod server_runtime_config;
-pub mod test_utils;
 
 pub use server_runtime_config::ServerRuntimeConfig;
-
-mod on_device_webview_handle;
-pub use on_device_webview_handle::OnDeviceWebviewHandle;
 
 /// The path every server mounts its FHIR R4 API under: a server's FHIR base is
 /// `https://<domain>/fhir-r4`, the `iss` every app launch names. fhir-r4-rust

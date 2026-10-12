@@ -1,48 +1,47 @@
 # AGENTS.md — apps/launcher/launcher-web
 
-The launcher: the web app that manages a Wildflower server. One source tree,
-two entries, each passing its platform's wiring to `app-root.tsx`'s
-`buildAppTree` (`RenderAppOptions`) from the `bootApp` it hands
-`session/consented-entry-root.tsx`'s `ConsentedEntryRoot`:
-
-- **`main-web`** (`src/main-web.tsx`) — the build published at `/launcher/`,
-  cross-origin to the server `?server=` names. Signs in by SMART redirect and
-  holds its bearer in page memory (`web-entry.ts`, `sign-in.ts`), including
-  when opened with a SMART launch, as the base opens a server's launcher.
-- **`main-tauri`** — the wiring for a webview the host authenticates. No app
-  mounts it: the Tauri host's webview mounts the servers base
-  (`apps/host/servers/servers-react`) instead.
+The launcher: the web app that manages a Wildflower server, published at
+`/launcher/`. Its entry, `main-web` (`src/main-web.tsx`), hands
+`session/consented-entry-root.tsx`'s `ConsentedEntryRoot` a `bootApp` that
+redeems any sign-in and then calls `app-root.tsx`'s `buildAppTree`
+(`RenderAppOptions`). It runs cross-origin to its API server and signs in by
+SMART redirect (`sign-in.ts`), including when opened with a SMART launch, as
+the base opens a server's launcher.
 
 ## Guardrails
 
-- **Neither entry boots before the telemetry consent dialog is answered.**
-  Each mounts `ConsentedEntryRoot` (exported as
-  `launcher-web/consented-entry-root`), a `TelemetryConsentGate` around
-  the app, with its own `entry` and dialog copy: `main-web` the shared
-  `TELEMETRY_CONSENT_COPY`, `main-tauri` `branding-core`'s
-  `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY`. The answer, kept in the page's
-  `localStorage`, starts telemetry (`useConsentedTelemetryStart`, DSN
-  `VITE_SENTRY_DSN_LAUNCHER_WEB`, tags `app: launcher-web` and
-  `entry`) and only then calls `bootApp`, once: on `main-web` the sign-in
-  redemption, then `buildAppTree`; on `main-tauri` `buildAppTree` alone. So
-  before an answer no code is redeemed and no router, `QueryClient`, runtime
-  or transport exists, and a stored yes has Sentry running before the router
-  is built. Tests: `session/consented-entry-root.test.tsx`.
-- **Neither entry starts telemetry from the build's env.** Each runtime's
+- **Nothing boots before the telemetry consent dialog is answered.**
+  `main-web` mounts `ConsentedEntryRoot`, a `TelemetryConsentGate` around
+  the app with the shared `TELEMETRY_CONSENT_COPY`. The answer, kept in the
+  page's `localStorage`, starts telemetry (`useConsentedTelemetryStart`, DSN
+  `VITE_SENTRY_DSN_LAUNCHER_WEB`, tag `app: launcher-web`) and only then calls
+  `bootApp`, once: the sign-in redemption, then `buildAppTree`. So before an
+  answer no code is redeemed and no router, `QueryClient` or runtime exists,
+  and a stored yes has Sentry running before the router is built. Tests:
+  `session/consented-entry-root.test.tsx`.
+- **Telemetry never starts from the build's env.** The runtime's
   `effectTelemetryLayer` is `telemetry-web`'s `consentedTelemetryLayer`. The
-  `Sentry.*` calls in `app-root.tsx`, `routes/_auth.tsx` and
-  `session/token-timeout-retry.tsx` run unconditionally; they do nothing
+  `Sentry.*` calls in `app-root.tsx` run unconditionally; they do nothing
   until an answer starts Sentry. The settings screen's Telemetry row
   (`session/telemetry-settings-items.ts`) reads the answer by the gate's copy
-  and reopens the dialog. `main-tauri`'s module-level `configureRecovery`
-  call and colour-scheme listener are not telemetry, and run before an
-  answer.
-- **The entry decides, not a branch on `entry`.** Platform differences reach
-  the shared tree as `RenderAppOptions` fields (`effectTelemetryLayer`,
-  `platformSettingsItems`, `platformBanner`,
-  `redirectToDeviceLoginOnUnauthorized`, `serverKind`), or as a provider the
-  entry mounts (the consent gate). `<RootShell>` renders `platformBanner`
-  above every route; `main-web` passes `null`.
+  and reopens the dialog. The module-level colour-scheme listener is not
+  telemetry, and runs before an answer.
+- **The session is the server and its bearer, together.** gatekeeper-react's
+  `makeBearerAuthStateStore`, over the tab's `sessionStorage`, holds it: a
+  sign-in writes both with `writeSession` (the redirect flow in `bootApp`, the
+  device flow through `buildAppTree`'s `TokenResponseHandler`). The bearer
+  lives in page memory and goes on `Unauthed`; the server is kept under
+  `web-entry.ts`'s `SIGNED_IN_SERVER_KEY`, so a reload or the expiry bounce
+  back to the landing signs back in to it. Every API request reads both
+  lazily (`bridges/app-query-runtime.ts`'s `apiTransportAt`): it goes to the
+  session's server with its bearer, and fails before any sign-in. `?server=`
+  and a launch's `iss` choose only where the landing signs in
+  (`web-entry.ts`'s `chosenServerUrl`). The settings screen's Logout row
+  (`web-entry.ts`'s `logoutSettingsItem`) revokes the bearer at the session's
+  server and clears the tab's `sessionStorage`. A 401 that outlives the
+  boot-race retry sends the reader to device login. Tests:
+  `gatekeeper-react`'s `bearer-auth-state-store.test.ts`,
+  `bridges/app-query-runtime.test.ts`, `web-entry.test.ts`.
 - **`main-web` takes a SMART launch at its root, with its own sign-in.**
   Like everything `bootApp` does, the launch waits for the consent answer, as
   it does in the SMART apps. `bootApp` reads `?iss=` (and the EHR's `launch`)
@@ -71,8 +70,8 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   configuration at the URL itself, not under `/fhir-r4`). `sign-in.ts`'s
   `serverKindForSession` turns the redeemed session into
   `session/server-kind.ts`'s `ServerKind.PlainSmart`, carrying the FHIR base
-  and the token response's `patient`; `main-tauri` and every other `main-web`
-  load pass `ServerKind.Wildflower()`. For `PlainSmart` the one page is its
+  and the token response's `patient`; every other load passes
+  `ServerKind.Wildflower()`. For `PlainSmart` the one page is its
   Home, at `/fhir-home` (`routes/fhir-home.tsx`), which offers no way to
   Settings, and the `_auth` and `/settings` gates redirect there
   (`session/home-path.ts`'s `homePathFor`) before any loader runs, so nothing
