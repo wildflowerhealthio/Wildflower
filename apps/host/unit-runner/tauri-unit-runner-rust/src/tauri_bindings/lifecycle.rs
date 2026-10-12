@@ -1,5 +1,6 @@
 //! `TauriUnitRunner`'s lifecycle plugin: whether the app is present, and its
-//! returns to the foreground, from its window events; the background session's
+//! returns to the foreground, from its window events and the in-app browser
+//! views the app reports; the background session's
 //! end reasons from the background-service plugin's events; and attaching the
 //! background-service plugin as `UnitRunner`'s background-session platform
 //! once the app is ready.
@@ -91,6 +92,22 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
             } => self.record_window_event(WindowState::returned_to_foreground),
             _ => {}
         }
+    }
+
+    /// The app opened the in-app browser view `view`, a page it presents
+    /// outside its windows. While it is open, it keeps the app present on a
+    /// platform where it moves the app to the background (Android).
+    ///
+    /// Report each view's close with [`Self::browser_view_closed`], under the
+    /// same `view`: a view replacing another (iOS) can open before the
+    /// other's close is reported, so give each open its own.
+    pub fn browser_view_opened(&self, view: &str) {
+        self.record_window_event(|window_state| window_state.browser_view_opened(view));
+    }
+
+    /// The in-app browser view `view` closed.
+    pub fn browser_view_closed(&self, view: &str) {
+        self.record_window_event(|window_state| window_state.browser_view_closed(view));
     }
 
     /// Record a window event with `record_on_window_state`, and pass what it
