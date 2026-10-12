@@ -3,8 +3,10 @@
 The **Recorder**: the host's Recorder tab, which opens a URL in the sniffer
 webview, records every fetch/XHR response the injected `browser-sniffer`
 reports, and writes a HAR 1.2 file into the recordings folder,
-`Wildflower Recordings` (in Documents: the user's on the desktop, the shared
-one on Android, the app's on iOS), when the recording stops. The file is what the Importer
+`Wildflower Recordings` (in Documents: the user's on the desktop, or their
+Downloads where there is no Documents, the shared one on Android, the app's on
+iOS; in the user's Downloads on the Mac App Store build, which is sandboxed),
+when the recording stops. The file is what the Importer
 opens. Designed in
 [#652](https://github.com/wildflowerhealthio/Wildflower/issues/652); read the
 [Design Explanation](./docs/Design%20Explanation.md) before changing anything
@@ -49,7 +51,11 @@ mounts `RecorderPage` as its Recorder tab and attaches `recorder-tauri` in its
   the one place it is chosen; the page only shows it. There is no folder
   picker and nothing persisted. Show file goes through
   `tauri-plugin-opener`'s `revealItemInDir`, offered only where
-  `Platform::reveals_files` says so (the desktop).
+  `Platform::reveals_files` says so (the desktop, sandboxed macOS included).
+- **The Mac App Store build is told apart at run time.** It is the same binary
+  as the Developer ID build, signed into the App Sandbox, so
+  `Platform::current` reads the `APP_SANDBOX_CONTAINER_ID` macOS sets in a
+  sandboxed process rather than a `cfg`.
 - **A folder that can't be resolved doesn't stop the host.** The Recorder
   page says why, and every `SaveHar` is answered with `HarSaveFailed`.
 
