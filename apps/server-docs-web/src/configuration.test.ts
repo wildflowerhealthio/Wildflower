@@ -28,7 +28,6 @@ describe('consoleConfiguration', () => {
       'Gatekeeper',
       'Apps',
       'Databases',
-      'Collector',
       'Request log',
       'FHIR R4',
     ])
@@ -37,7 +36,6 @@ describe('consoleConfiguration', () => {
     )
     expect(configuration.sources.map((source) => source.default)).toEqual([
       true,
-      false,
       false,
       false,
       false,
@@ -67,7 +65,7 @@ describe('consoleConfiguration', () => {
 
   it('prefills the shared bearer field with the signed-in token', () => {
     // One `authentication` block beside the sources, so a single sign-in reaches
-    // all six documents rather than being re-entered per slice.
+    // all five documents rather than being re-entered per slice.
     const signedIn = consoleConfiguration('https://example-tunnel-origin', {
       prefersDarkMode: false,
       accessToken: 'header.payload.signature',
@@ -75,7 +73,7 @@ describe('consoleConfiguration', () => {
     expect(signedIn.authentication.securitySchemes[BEARER_SCHEME_NAME].token).toBe(
       'header.payload.signature'
     )
-    expect(signedIn.sources).toHaveLength(6)
+    expect(signedIn.sources).toHaveLength(5)
   })
 
   it('follows the reader’s colour-scheme preference', () => {

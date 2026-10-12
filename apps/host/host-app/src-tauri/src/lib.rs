@@ -385,10 +385,11 @@ pub fn run() {
             // servers get the publishers.
             let publishers = bridge::attach_bridge(app.handle());
 
-            // Wire the CollectorBridge.webToHost listeners that manage the
-            // sniffer child webview lifecycle (open / navigate / close).
-            // Sniffer-emitted data-plane events (`bridge:ResponseStart`
-            // etc.) reach the React SPA on the global Tauri event bus, but
+            // Wire the `Open` / `SniffingComplete` listeners that manage the
+            // sniffer child webview lifecycle (open / navigate / close) for
+            // the Recorder. Sniffer-emitted data-plane events
+            // (`bridge:ResponseStart` etc.) reach the React SPA on the global
+            // Tauri event bus, but
             // never straight from the untrusted content webview: the host
             // allowlists their inner `_tag` first (the mobile channel's
             // `validate_native_webview_message`, the desktop content webview's

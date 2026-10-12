@@ -23,10 +23,10 @@ type AdoptableParse = (response: {
  *
  * @remarks
  * Restates `HttpResponseKind` structurally rather than importing it — this
- * package sits below the `http-extraction` slice (the `CapturedResponse`
- * precedent); `fhir-r4-source` pins the two shapes against each other. `parse`
- * uses method syntax so its parameter checks bivariantly, letting a kind typed
- * against a concrete response satisfy the `{ url, method }` it reads.
+ * package sits below the `http-extraction` slice; `fhir-r4-source` pins the
+ * two shapes against each other. `parse` uses method syntax so its parameter
+ * checks bivariantly, letting a kind typed against a concrete response satisfy
+ * the `{ url, method }` it reads.
  */
 interface AdoptableEntity {
   readonly name: string
@@ -59,7 +59,7 @@ type ParsedBy<TEntity extends AdoptableEntity> =
  * subtype (return types are covariant), so a constraint cannot reject one; the
  * intersection form keeps `TEntity` inferable off the naked half. The fix for a
  * kind that trips it is widen-first (see
- * `apps/launcher/collector/docs/Source Identity Explanation.md`).
+ * `slices/fhir/fhir-r4/docs/Source Identity Explanation.md`).
  */
 type EntityParsesEveryResource<TEntity extends AdoptableEntity> =
   FhirResource extends ParsedBy<TEntity>
@@ -69,7 +69,7 @@ type EntityParsesEveryResource<TEntity extends AdoptableEntity> =
       }
 
 // No wire schema produced this failure, so a String AST carries the URL as the
-// offending value (the digestFailureAsParseError precedent).
+// offending value.
 const unrecognizedAst = Schema.String.ast
 
 /**
@@ -94,8 +94,8 @@ const notAdoptableError = (name: string, url: string, reason: string): ParseResu
  *   reference
  *
  * @remarks
- * Design, rationale, and the live-keying consequences are in
- * `apps/launcher/collector/docs/Source Identity Explanation.md`. The contract here:
+ * Design and rationale are in
+ * `slices/fhir/fhir-r4/docs/Source Identity Explanation.md`. The contract here:
  * only `parse` is wrapped, and only with `Effect.map` over a successful decode,
  * so the error channel and synchronous runnability are untouched. A `parse` on
  * a URL the kind does not recognize — or recognizes without minting a `source`

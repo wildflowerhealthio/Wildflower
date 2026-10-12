@@ -113,7 +113,7 @@ mod tests {
     async fn read_403_without_the_document_reference_read_scope() {
         let st = state();
         let (status, body) =
-            send_scoped(&st, get("/api/dicom/files/doc-1"), "wildflower/Accounts.r").await;
+            send_scoped(&st, get("/api/dicom/files/doc-1"), "wildflower/Apps.r").await;
         assert_eq!(status, StatusCode::FORBIDDEN);
         let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(json["error"], "InsufficientScope");

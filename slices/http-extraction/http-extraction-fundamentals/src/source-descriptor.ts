@@ -4,9 +4,7 @@ import type * as HttpResponseKind from './http-response-kind.ts'
 
 /**
  * "An HTTP source" as one first-class packaging value: the name, the
- * user-facing strings, and the response kinds a source package contributes —
- * the per-source analogue of the collector slice's `CollectorDescriptor` and
- * the importer slice's `FileImporterDescriptor`.
+ * user-facing strings, and the response kinds a source package contributes.
  *
  * @remarks
  * Packaging, deliberately: recognition and identity live on each kind's own
@@ -22,9 +20,8 @@ import type * as HttpResponseKind from './http-response-kind.ts'
  * - `display`: user-facing strings a review or settings surface shows for the
  *   source as a whole.
  * - `responseKinds`: the source's kinds, pre-adopted where the source supports
- *   archive import, in the order both the live plan and an importer pool route
- *   by. Consumers share this array by reference — that identity is what the
- *   live==archive parity pins rest on.
+ *   archive import, in the order an importer pool routes by. Consumers share
+ *   this array by reference.
  * - `mergeResources`: optional; see {@link ResourceMerge}. Absent, two
  *   resources sharing an identity are both written, and the later one wins.
  */
@@ -48,9 +45,9 @@ interface SourceDescriptor<TParsed> {
  * A source needs one when two of its feeds describe the same thing and each
  * knows fields the other lacks, so neither copy alone is the whole record.
  * Only a consumer that holds every response's resources before it writes
- * them can apply it: an archive import does, while a live collector writes
- * each response as it arrives. Arrival order is passed so a source can keep
- * last-write-wins, returning `later`, for the resources it has no rule for.
+ * them can apply it, as an archive import does. Arrival order is passed so a
+ * source can keep last-write-wins, returning `later`, for the resources it has
+ * no rule for.
  */
 type ResourceMerge<TParsed> = (earlier: TParsed, later: TParsed) => TParsed
 

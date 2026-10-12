@@ -5,7 +5,7 @@ use tauri_plugin_native_webview::NativeWebviewExt;
 /// Dispose the sniffer's native webview — the sniff is done, so free its
 /// resources.
 ///
-/// `SniffingComplete` is the SPA's terminal signal: the collector has finished,
+/// `SniffingComplete` is the page's terminal signal: the recording has finished,
 /// so the native webview (its background runtime) should be torn down rather
 /// than merely hidden. Unified across platforms via `tauri-plugin-native-webview`:
 /// mobile tears down the native sheet/dialog, desktop destroys the multi-webview

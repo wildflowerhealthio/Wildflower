@@ -18,7 +18,6 @@ packages:
   # The launcher: the web app that manages a Wildflower server, and the
   # packages it is built from, grouped by the slice they came from.
   - apps/launcher/*
-  - apps/launcher/collector/*
   - apps/launcher/databases/*
   - apps/launcher/request-log/*
   # Lifting: the app and the core and screens it is built from.

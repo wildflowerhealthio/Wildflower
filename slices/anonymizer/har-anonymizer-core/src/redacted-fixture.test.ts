@@ -144,7 +144,7 @@ describe('a redacted HAR is usable as a fixture', () => {
         const rebuilt = archive.log.entries.map(exchangeFromEntry)
         expect(rebuilt).toHaveLength(session.length)
         // Usable means: the fixture goes back through the codec, which is the
-        // path a collector test would take to seed a store from a shared HAR.
+        // path a test takes to seed a store from a shared HAR.
         const resources = await Effect.runPromise(
           Effect.all(rebuilt.map((exchange) => toDocumentReference(exchange)))
         )

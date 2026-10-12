@@ -51,10 +51,9 @@ const FhirResourceSchema = Schema.Union(
  * {@link FhirR4ResourcesHttpApiClient}. Discriminated by `resourceType`, so a
  * `switch` over it is exhaustive (see {@link upsertResource}).
  *
- * A collector that parses FHIR out of a remote produces values of this type;
- * previously each such collector re-declared its own `AnyResource` union next
- * to a copy of the write `switch`. Owning both here means a new
- * FHIR-targeting collector reuses one dispatch instead of restating it.
+ * A source that parses FHIR out of a remote produces values of this type.
+ * Owning both the union and the write dispatch here means a new FHIR-targeting
+ * source reuses one dispatch instead of restating it.
  *
  * Derived from {@link FhirResourceSchema} so the type and the runtime schema
  * stay in lockstep — a variant added or removed on one side is felt on the

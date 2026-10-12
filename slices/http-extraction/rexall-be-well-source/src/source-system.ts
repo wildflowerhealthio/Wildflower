@@ -1,5 +1,5 @@
 /**
- * The source system every resource this collector imports is keyed under.
+ * The source system every resource this source imports is keyed under.
  *
  * @remarks
  * A Wildflower-minted `sid` URI in the same style as `web-trace`'s systems, not
@@ -11,8 +11,8 @@
  * and the `Identifier.system` written beside every carebook id, so changing it
  * orphans everything already imported from Rexall.
  *
- * Its own leaf module (not `config.ts`) so the response kinds can read it for
- * their `tryRecognize` `source.system` without importing `config.ts`, which
+ * Its own leaf module (not `source.ts`) so the response kinds can read it for
+ * their `tryRecognize` `source.system` without importing `source.ts`, which
  * imports *them* — the split breaks that cycle.
  */
 const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'

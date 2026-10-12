@@ -1,21 +1,16 @@
 use serde::Deserialize;
 use tauri::WebviewUrl;
 
-/// Wire shape of the `WebViewSource` tagged union from
-/// `apps/launcher/collector/collector-fundamentals/src/model/web-view-source.ts`.
-/// The `Uri` variant carries an `http(s)://`-only URL; we validate that
-/// invariant at decode time as defense-in-depth alongside the SPA-side
-/// schema check (which likewise accepts both schemes so a FHIR server
-/// reachable only over http — e.g. a local dev HAPI instance — can still
-/// be sniffed). `Html` is decoded body-less (a `serde::de::IgnoredAny`
-/// drains the field without allocating) — the variant exists so wire-shape
-/// drift surfaces as a decode mismatch on the Rust side, not because the
-/// host can do anything with the payload today.
+/// Wire shape of `Open`'s `source` in `RecorderBridge`
+/// (`apps/host/recorder/recorder-core-js/src/bridge.ts`): a tagged `Uri`
+/// carrying an `http(s)://`-only URL. We validate that invariant at decode
+/// time as defense-in-depth alongside the page-side schema check (which
+/// likewise accepts both schemes so a server reachable only over http — e.g.
+/// a local dev HAPI instance — can still be sniffed).
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(tag = "_tag")]
 pub(crate) enum WebViewSourcePayload {
     Uri(UriSource),
-    Html,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -32,7 +27,6 @@ pub(crate) struct UriSource {
 pub(crate) enum SourceResolveError {
     NonHttpUri(String),
     InvalidUri(String),
-    HtmlNotSupported,
 }
 
 impl std::fmt::Display for SourceResolveError {
@@ -44,11 +38,6 @@ impl std::fmt::Display for SourceResolveError {
                  have rejected this — investigate drift"
             ),
             Self::InvalidUri(uri) => write!(f, "WebViewSource.Uri could not be parsed: {uri}"),
-            Self::HtmlNotSupported => write!(
-                f,
-                "WebViewSource.Html is not yet supported in Tauri; see the open question in the \
-                 implementation plan"
-            ),
         }
     }
 }
@@ -64,7 +53,6 @@ pub(crate) fn resolve_source(
             let parsed = url::Url::parse(&uri).map_err(|_| SourceResolveError::InvalidUri(uri))?;
             Ok(WebviewUrl::External(parsed))
         }
-        WebViewSourcePayload::Html => Err(SourceResolveError::HtmlNotSupported),
     }
 }
 
@@ -101,7 +89,7 @@ mod tests {
     fn resolve_source_accepts_http_uri() {
         // Plain http is accepted so a FHIR server reachable only over http
         // (e.g. a local dev HAPI instance) can still be sniffed — mirrors
-        // the SPA-side `HttpUriString` schema.
+        // the page-side `HttpUrl` schema.
         let source = WebViewSourcePayload::Uri(UriSource {
             uri: "http://localhost:8080/fhir/Patient/1".to_string(),
         });
@@ -112,27 +100,5 @@ mod tests {
             }
             _ => panic!("expected WebviewUrl::External"),
         }
-    }
-
-    #[test]
-    fn resolve_source_reports_html_as_unsupported() {
-        let error = resolve_source(WebViewSourcePayload::Html).expect_err("expected rejection");
-        assert!(matches!(error, SourceResolveError::HtmlNotSupported));
-    }
-
-    #[test]
-    fn web_view_source_decodes_html_without_consuming_body() {
-        // The wire still carries `html` and (optionally) `baseUrl`; we
-        // decode-and-drop them. Both shapes — with and without baseUrl —
-        // must land on `WebViewSourcePayload::Html` without an allocation
-        // for the body.
-        let with_base =
-            r#"{"_tag":"Html","html":"<html></html>","baseUrl":"https://issuer.test/"}"#;
-        let without_base = r#"{"_tag":"Html","html":"<html></html>"}"#;
-        let decoded_with: WebViewSourcePayload = serde_json::from_str(with_base).expect("decode");
-        let decoded_without: WebViewSourcePayload =
-            serde_json::from_str(without_base).expect("decode");
-        assert_eq!(decoded_with, WebViewSourcePayload::Html);
-        assert_eq!(decoded_without, WebViewSourcePayload::Html);
     }
 }

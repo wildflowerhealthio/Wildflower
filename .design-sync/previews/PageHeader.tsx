@@ -3,7 +3,7 @@ import { PageHeader } from '@wildflowerhealthio/react-tundraish'
 /** Top-level surface: just a title, no back affordance (a tab destination). */
 export const TopLevel = () => (
   <div style={{ maxWidth: 480 }}>
-    <PageHeader title="Collector" />
+    <PageHeader title="Recorder" />
   </div>
 )
 

@@ -6,10 +6,9 @@ import { shoppersDrugMartResponseKinds } from './response-kinds.ts'
 
 /**
  * The Shoppers Drug Mart source as one value — what a consumer extracts
- * with. Both the live plan and the archive importer reach the same
- * pre-adopted `responseKinds` tuple through it by reference. See
- * `response-kinds.ts`, and `merge-resources.ts` for how a dispense seen in
- * both prescription feeds becomes one.
+ * with. The archive importer reaches the pre-adopted `responseKinds` tuple
+ * through it by reference. See `response-kinds.ts`, and `merge-resources.ts`
+ * for how a dispense seen in both prescription feeds becomes one.
  */
 const shoppersDrugMartSource: SourceDescriptor.SourceDescriptor<FhirResource> =
   SourceDescriptor.make({

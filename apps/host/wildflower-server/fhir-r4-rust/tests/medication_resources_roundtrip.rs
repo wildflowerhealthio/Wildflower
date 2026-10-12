@@ -107,7 +107,7 @@ async fn medication_request_with_contained_medication_round_trips() {
 
     // A MedicationRequest referencing a `#med` contained Medication (carrying a
     // code and form), plus a dosage instruction — the shape the Rexall
-    // collector produces.
+    // source produces.
     let request = json!({
         "resourceType": "MedicationRequest",
         "id": "mr1",

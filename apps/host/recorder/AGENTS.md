@@ -68,8 +68,7 @@ its layout holds around every route, and attaches `recorder-tauri` in its
   bytes, so there is one HAR emitter and no `fs` grant to the web layer.
 - **One bridge.** `RecorderBridge` carries the sniffer's data plane, the
   sniffer window's lifecycle and the save channel, with the tags and shapes
-  `browser-sniffer-tauri` already routes and emits. Nothing here depends on
-  the collector.
+  `browser-sniffer-tauri` already routes and emits.
 - **Intrinsic dependencies**: `browser-sniffer-core` (the data-plane
   schemas), `http-archive` (the format), `effect-messaging-core` (the bridge),
   `web-trace-core` (`contentTypeOf`, transitional until #578), and, for the

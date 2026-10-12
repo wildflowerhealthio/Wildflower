@@ -27,7 +27,7 @@ anonymizer packages are slices (`slices/importer`, `slices/anonymizer`).
 
 Packages that came from one slice and belong together stay nested in a folder
 for their group, as `apps/host/servers/`, `apps/host/unit-runner/` and
-`apps/launcher/collector/` do (each group also
+`apps/launcher/databases/` do (each group also
 listed in `pnpm-workspace.yaml` and the root `vite.config.ts` test projects);
 a lone package, or one from the product's
 namesake slice, sits directly in the product folder.
@@ -44,7 +44,8 @@ depends on its Rust half.
 - **A slice splits by language** when one product is the only consumer of its
   TypeScript packages and the host the only consumer of its Rust crates. The
   TypeScript packages fold into that product, in a folder named for the slice,
-  with the slice's AGENTS.md and docs (`apps/launcher/collector/`); the crates
+  with the slice's AGENTS.md and docs when it has them
+  (`apps/launcher/databases/`); the crates
   fold into [`apps/host/wildflower-server/`](./host/wildflower-server/AGENTS.md)
   beside the server that composes them. No slice may depend on a folded crate,
   not even as a dev-dependency: a test that drives two slices together moves
@@ -59,8 +60,8 @@ depends on its Rust half.
   moved.
 - Either way, a cross-language contract then reads across folders by relative
   path, such as `apps-core-js`'s OpenAPI drift test reading
-  `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`, or `collector-registry`'s
-  reading `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`.
+  `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`, or `request-log-core-js`'s
+  reading `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`.
 - **Shared packages never fold in.** Anything two products use stays in
   `slices/` or `global/` (`branding`, `telemetry`, `smart-app-react`,
   `gatekeeper-core`, `global/pebble`); a file every app reads sits at the repo

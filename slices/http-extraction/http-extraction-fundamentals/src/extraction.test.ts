@@ -45,8 +45,8 @@ describe('Extraction.routeTo', () => {
   })
 
   it("carries a caller's extra element fields through untouched", () => {
-    // The Pick constraint keeps a concrete element's own fields on the way out —
-    // the same trick the live tracker uses to keep `followUpSteps`.
+    // The Pick constraint keeps a concrete element's own fields on the way out,
+    // so a consumer's extended kind type survives routing.
     const withExtra = { ...Narrow, followUpMarker: 'ride-along' }
     const routed = Extraction.routeTo([withExtra], 'https://x/alpha/1', Option.some('GET'))
     expect(Option.map(routed, (r) => r.kind.followUpMarker)).toEqual(Option.some('ride-along'))

@@ -334,7 +334,7 @@ const prescriptionStatusUrl = new RegExp(
  * per `dispenses` entry (one with no `dispenseId` drops-and-logs). **No
  * `Patient`** — the subject records come from {@link CustomerResponseKind}, so a
  * run where that XHR fails leaves these `subject` references dangling (tolerated;
- * not FK-enforced). No `followUpSteps`.
+ * not FK-enforced).
  */
 const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({

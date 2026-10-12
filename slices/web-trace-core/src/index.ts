@@ -3,9 +3,9 @@
  * session.
  *
  * @remarks
- * `web-trace-core` sits below both a collector and a React app, which is why it
- * lives here rather than in `collector-fundamentals` (deliberately FHIR-agnostic)
- * or `browser-sniffer` (deliberately FHIR-ignorant).
+ * `web-trace-core` sits below the Recorder, the HAR format, the importer, and
+ * the anonymizer, which is why it lives directly in `slices/` rather than in
+ * `browser-sniffer` (deliberately FHIR-ignorant).
  *
  * @packageDocumentation
  */

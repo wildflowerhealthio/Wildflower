@@ -8,8 +8,8 @@ type RuntimeLayer = Layer.Layer<HttpClient.HttpClient, never, never>
  * Optional knobs for a `runAuthed` call. `signal` mirrors
  * `Effect.runPromise`'s own `{ signal }` option: aborting it interrupts
  * the running Effect (its release/finalizers run) and rejects the
- * promise. Long-lived authed Effects (e.g. the collector import) thread
- * a per-run `AbortController` through here for explicit cancellation.
+ * promise. Long-lived authed Effects thread a per-run
+ * `AbortController` through here for explicit cancellation.
  */
 interface RunAuthedOptions {
   readonly signal?: AbortSignal
@@ -50,7 +50,7 @@ type AwaitAuthReady = (returnTo?: string) => Promise<void>
  * Generic runtime-layer shape parameterised over the extra services a
  * particular slice or app adds on top of {@link RuntimeLayer}'s base
  * (`HttpClient`). A slice instantiates this with its own client (e.g.
- * `RuntimeLayerWith<CollectorHttpApiClient>`); the host app instantiates
+ * `RuntimeLayerWith<DatabasesHttpApiClient>`); the host app instantiates
  * with a union of every slice's client.
  */
 type RuntimeLayerWith<Extra> = Layer.Layer<Layer.Layer.Success<RuntimeLayer> | Extra, never, never>

@@ -109,8 +109,8 @@ The same pattern applies to any `HttpApiClient`-produced client across the repo.
 When a server uses a catch-all SPA fallback (`Router::fallback(serve_spa_fallback)` in axum, or any equivalent), a request to an API route the server doesn't implement returns `index.html` with status **200**. `HttpApiClient` matches the success status, tries to `JSON.parse` an HTML document, and fails with `ParseError: … Could not parse JSON` against the endpoint's success schema. The error's schema chain — `((unknown <-> string) <-> (string <-> unknown)) <-> <SuccessSchema>` — is the client's body-text→JSON step; recognize that shape as "the server sent a 200 non-JSON body" (almost always the SPA fallback swallowing an unimplemented route), not schema/codec drift.
 
 - **Diagnose** with `curl -i http://127.0.0.1:8080/<route>` — a `200` plus an HTML body confirms it.
-- **Mind wire prefixes** when stubbing the missing route: a group with `.prefix('/collector')` serves `ListRemotes` at `/collector/remotes`, not `/remotes`.
-- Worked case: the Tauri host's Rust server (`apps/host/wildflower-server/wildflower-server-rust`) served only gatekeeper + FHIR, so `GET /apps`, `/tunnel`, `/collector/remotes` (implemented only in the TS `wildflower-server`) fell through to the fallback and crashed the webview.
+- **Mind wire prefixes** when stubbing the missing route: a group with `.prefix('/.well-known')` serves `JwksJson` at `/.well-known/jwks.json`, not `/jwks.json`.
+- Worked case: the Tauri host's Rust server (`apps/host/wildflower-server/wildflower-server-rust`) served only gatekeeper + FHIR, so `GET /apps` and `/tunnel` (implemented only in the TS `wildflower-server`) fell through to the fallback and crashed the webview.
 
 ### `HttpApiSchema.withEncoding` on a `Schema.Union` payload
 

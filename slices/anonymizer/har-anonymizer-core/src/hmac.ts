@@ -58,7 +58,7 @@ const webCrypto: Effect.Effect<Crypto, WebCryptoUnavailable> = Effect.suspend(()
  * @remarks
  * Mint one per export, never per session. A salt stable *within* an export is
  * what makes response A's `pid` and response B's `patientId` land on the same
- * fake — the correspondence that tells a collector author the two endpoints
+ * fake — the correspondence that tells a source author the two endpoints
  * share a key. A salt that changed across exports is what stops two exports of
  * one session from being linked back together.
  */

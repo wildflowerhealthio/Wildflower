@@ -12,11 +12,9 @@ import { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
  * mints for the response's URL.
  *
  * @remarks
- * The single definition both the live scraping plan
- * (`fhir-r4-client-collector`) and the archive importer (`har-importer-core`)
- * consume, by reference. A module-level constant — the combinator takes no
- * source parameter, so the array is stable by identity, which is what the
- * config deep-equal suites and the live==archive parity rest on.
+ * The single definition the archive importer (`har-importer-core`) consumes,
+ * by reference. A module-level constant — the combinator takes no source
+ * parameter, so the array is stable by identity.
  *
  * The declared element type is the whole `FhirResource` union, which each
  * kind's narrower type satisfies by covariance — so no cast is needed, and

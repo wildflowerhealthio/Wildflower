@@ -64,7 +64,7 @@ pub use live_bindings::HostConsentDecider;
 
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
 // call site without a direct diesel dependency; the canonical home is
-// persistence-rust (collector re-exports it the same way).
+// persistence-rust (apps and request-log re-export it the same way).
 /// The admin scopes the `/access` surface enforces — the registry meant to
 /// couple *enforced* (the scope-gated capability extractors) with *grantable*
 /// (the vocabulary the consent surfaces will offer). Re-exported for the host
@@ -210,7 +210,7 @@ pub struct Gatekeeper {
 
 /// Build the gatekeeper-rust HTTP surface over the host-owned diesel
 /// connection `pool` (the same app-wide `wildflowerhealthio_persistence::open_pool` pool the
-/// collector rides). Runs idempotent bootstrap
+/// other diesel-backed slices ride). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, first-party client seed), mints
 /// the boot-time host owner token for `config.server_origin`, and:
 ///

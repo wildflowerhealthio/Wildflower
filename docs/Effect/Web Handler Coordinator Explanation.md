@@ -1,6 +1,6 @@
 # Web Handler Coordinator Explanation
 
-The page-side bridge transport is built **once at boot**, outside React: the host's entry (`apps/host/host-app/src/main.tsx`) calls `makeTauriTransport` over `RecorderBridge` for its Recorder tab, the launcher's Tauri wiring calls it from its `makeTransport` factory, and the standalone web entry uses `stubTransport`. But each slice's real inbound handlers only exist once its React subtree mounts (a sync starts, a recording begins). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
+The page-side bridge transport is built **once at boot**, outside React: the host's entry (`apps/host/host-app/src/main.tsx`) calls `makeTauriTransport` over `RecorderBridge` for its Recorder tab, the launcher's Tauri wiring calls it from its `makeTransport` factory, and the standalone web entry uses `stubTransport`. But each slice's real inbound handlers only exist once its React subtree mounts (a recording begins). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
 
 ## The mechanism
 
@@ -8,7 +8,6 @@ The transport exposes a `HandlerCoordinator` (the contract lives in `effect-mess
 
 A React context (`HandlerCoordinatorContext`, provided in the launcher's `AppRootTree` and the host shell's Recorder tab) surfaces the coordinator. Each slice binds a typed accessor for its own bridge with `makeUseSliceRegister(bridge)` and `Effect.runFork`s its `register` / `unregister` Effects from its own lifecycle:
 
-- **collector** (`useSyncRunner`) registers its per-sync handler in the `Collector` slot when a sync starts and unregisters on unmount.
 - **recorder** (`useRecorder`, in the host's Recorder tab) registers its record in the `Recorder` slot for as long as the Recorder page is mounted, so the host's answer to a save still reaches it after the sniffer window has closed.
 
 ## Drop-all default

@@ -7,7 +7,7 @@
 //!   `Channel<NativeWebviewEvent>` decodes each plugin event and re-emits onto
 //!   `BRIDGE_EVENT`. `Message` is validated ([`validate_native_webview_message`])
 //!   and its inner payload forwarded; `Hidden` is synthesized into a host-origin
-//!   `UserDismissed` control message on `BRIDGE_EVENT` for the collector SPA, and
+//!   `UserDismissed` control message on `BRIDGE_EVENT` for the Recorder, and
 //!   `Disposed` into a host-origin `SnifferDisposed` one. `Hidden` is the
 //!   user-dismissal signal *in practice* — see `classify_event` for the caveat
 //!   that a programmatic `hide()` would also emit it. `Downloaded` is logged and
@@ -220,8 +220,8 @@ fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
             Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
             Err(reason) => BridgeAction::Drop(reason),
         },
-        // A `Hidden` is surfaced to the SPA as `UserDismissed` so an
-        // `AwaitUserDismiss` step can stop waiting. It is the user-dismissal signal
+        // A `Hidden` is surfaced to the page as `UserDismissed` so the Recorder
+        // can save when the user closes the window. It is the user-dismissal signal
         // *in practice* (desktop titlebar X / iOS Close/swipe / Android back →
         // `prevent_close` + `hide`; see plugin `lifecycle.rs`) — but note the
         // plugin's programmatic `hide()` command also emits `Hidden`, so this is a
@@ -230,9 +230,8 @@ fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
         NativeWebviewEvent::Hidden => BridgeAction::EmitControl(events::USER_DISMISSED),
         // A `Disposed` is surfaced as its own `SnifferDisposed` tag rather than
         // folded into `UserDismissed`: the SPA's own `SniffingComplete` teardown
-        // disposes the webview, so one arrives on every run. Kept distinct, the SPA
-        // can ignore it except while an `AwaitUserDismiss` step is waiting on a
-        // window that no longer exists.
+        // disposes the webview, so one arrives on every run. Kept distinct, a page
+        // can tell a user's dismissal apart from its own teardown.
         NativeWebviewEvent::Disposed => BridgeAction::EmitControl(events::SNIFFER_DISPOSED),
         // Host-side news, not a sniffer event: no capture step waits on the
         // bytes and the SPA's protocol does not describe them. Deliberately
@@ -461,7 +460,7 @@ mod tests {
         );
         let inner = validate_native_webview_message(&json).expect("allowlisted tag forwards");
         // Inner payload returned untouched (not the whole envelope), so the
-        // collector's demux-by-`_tag` sees `_tag`, not `event`.
+        // page-side demux-by-`_tag` sees `_tag`, not `event`.
         assert_eq!(
             inner.get(),
             r#"{"_tag":"ResponseData","id":"r1","data":"AA=="}"#
@@ -489,11 +488,9 @@ mod tests {
         for tag in [
             events::SNIFFING_COMPLETE,
             events::OPEN,
-            events::SET_SNIFFER_STATUS,
-            events::ENSURE_SNIFFER_VISIBLE,
             // The two host-synthesized lifecycle tags: a page that could forge
-            // either would be able to cut an `AwaitUserDismiss` hold short, ending
-            // the run's collection early without the user ever closing the window.
+            // either would be able to end a recording early without the user
+            // ever closing the window.
             events::USER_DISMISSED,
             events::SNIFFER_DISPOSED,
         ] {
@@ -574,8 +571,6 @@ mod tests {
         for tag in [
             events::SNIFFING_COMPLETE,
             events::OPEN,
-            events::SET_SNIFFER_STATUS,
-            events::ENSURE_SNIFFER_VISIBLE,
             events::USER_DISMISSED,
             events::SNIFFER_DISPOSED,
         ] {

@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 use super::web_view_source::WebViewSourcePayload;
 
-/// Wire shape of `CollectorBridge.webToHost.Open`: the source the sniffer
+/// Wire shape of `RecorderBridge`'s web→host `Open`: the source the sniffer
 /// webview should load. Its own struct (rather than a bare
 /// `WebViewSourcePayload`) so future envelope fields — e.g. a
 /// `clearStateFirst` flag — have somewhere to land.

@@ -148,8 +148,8 @@ between extraction and the dialect), `positioned-text-web`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a
 test-only `devDependency`, reached only from the `*-arbitrary.ts` modules,
 and must stay out of the production bundle. Never imports `har-importer-core`,
-`pdf-anonymizer-core`, `http-extraction-fundamentals`, a `*-importer-react`,
-or `apps/launcher/collector`.
+`pdf-anonymizer-core`, `http-extraction-fundamentals`, or a
+`*-importer-react`.
 
 ## Guardrails
 

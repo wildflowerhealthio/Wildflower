@@ -25,8 +25,7 @@ It composes three existing primitives and adds nothing to their semantics:
 
 It is the in-app cousin of epic #578's browser extension (#600): same output
 format, recorded through the native webview and saved on the device rather
-than on the server. It is meant to replace `web-trace-collector`'s
-hand-driven flow over time; it does not touch `slices/web-trace-core`.
+than on the server. It does not touch `slices/web-trace-core`.
 
 ## The flow
 

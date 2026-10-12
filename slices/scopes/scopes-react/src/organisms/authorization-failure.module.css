@@ -1,7 +1,7 @@
 /*
  * The read-only authorization-failure surface (a 403 InsufficientScope). Neutral
  * container chrome — the danger cue comes from the StatusBadge — with the missing
- * scopes listed as plain-language phrases ("read Accounts"); the canonical scope
+ * scopes listed as plain-language phrases ("read Apps"); the canonical scope
  * string rides a hover tooltip, and a non-resource scope falls back to mono code.
  */
 

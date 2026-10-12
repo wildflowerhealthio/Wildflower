@@ -28,8 +28,8 @@ type BridgeHandlerRecord = Readonly<Record<string, (message: never) => Effect.Ef
  *
  * The outward `register` / `unregister` API is wide on purpose: each call's
  * `bridge` argument fixes `B`, so a slice calling
- * `coordinator.register(CollectorBridge, handlers)` gets `handlers` typed
- * precisely against `CollectorBridge['HostToWeb']` without the consumer
+ * `coordinator.register(RecorderBridge, handlers)` gets `handlers` typed
+ * precisely against `RecorderBridge['HostToWeb']` without the consumer
  * needing to pre-declare the app's `Bridges` tuple. Bridges outside the
  * app's wired tuple silently no-op, matching the runtime's name-keyed
  * reality.

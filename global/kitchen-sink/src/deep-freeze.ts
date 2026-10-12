@@ -35,9 +35,8 @@ import type { DeepReadonly } from './types/deep-readonly.ts'
  * time and `vp check` stays green, which is what makes it hard to trace back.
  * Freeze plain data only; if a graph legitimately carries such values, skip
  * them at the freeze boundary rather than narrowing this utility for every
- * caller — see `collector-fundamentals`' `scraping-plan.ts` `freezePlanValue`,
- * which skips `Duration.isDuration` values while still freezing the objects
- * that hold them.
+ * caller — e.g. a caller-side freeze that skips `Duration.isDuration` values
+ * while still freezing the objects that hold them.
  *
  * Typical use: an identity factory:
  * `Foo.make(config) => deepFreeze({ ...config })`

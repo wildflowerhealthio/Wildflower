@@ -15,7 +15,7 @@ axum.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
 # Persistence is Diesel over the app-wide r2d2 connection pool
-# (`wildflowerhealthio_persistence::DieselPool`), mirroring wildflowerhealthio-collector. This crate depends
+# (`wildflowerhealthio_persistence::DieselPool`), like the other diesel-backed slices. This crate depends
 # on `wildflowerhealthio-persistence` ONLY for the pool type — it does not touch `rusqlite`
 # directly. Diesel's `r2d2` feature reuses the one already in the tree.
 diesel = { workspace = true }

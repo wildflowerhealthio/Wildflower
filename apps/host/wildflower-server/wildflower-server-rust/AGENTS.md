@@ -8,7 +8,7 @@ only it composes. Rust-only, no `-core`.
 ## Package roles
 
 - **`wildflower-server-rust`** — `set_up(config, host, observers)` opens the
-  host's databases, sets up every server slice (gatekeeper, FHIR R4, OHIF, collector,
+  host's databases, sets up every server slice (gatekeeper, FHIR R4, OHIF,
   request log, apps, databases), gates them into one inner router, starts the
   tunnel and the reachability monitor, and binds the loopback port;
   `WildflowerServer::serve(shutdown)` serves both listeners until `shutdown` is

@@ -63,7 +63,6 @@ export default defineConfig({
       'apps/host/servers/*/vite.config.ts',
       'apps/importer-web/vite.config.ts',
       'apps/launcher/*/vite.config.ts',
-      'apps/launcher/collector/*/vite.config.ts',
       'apps/launcher/databases/*/vite.config.ts',
       'apps/launcher/request-log/*/vite.config.ts',
       'apps/lifting/*/vite.config.ts',

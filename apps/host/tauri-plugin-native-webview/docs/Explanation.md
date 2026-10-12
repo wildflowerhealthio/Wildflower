@@ -194,8 +194,8 @@ transport parses. JS host code never touches the plugin.
 
 Earlier drafts had Swift/Kotlin call `trigger("message", …)` and the host JS
 subscribe via `addPluginListener('native-webview', 'message', …)`. That works
-but pins the bridging to the JS layer — every transport swap (e.g. a future
-HTTP transport for the collector) would have to re-route the JS half.
+but pins the bridging to the JS layer — every transport swap would have to
+re-route the JS half.
 
 `Channel<NativeWebviewEvent>` from `tauri::ipc` keeps the wire native→Rust. The caller
 (Rust) creates the channel with a Rust closure handler; the channel handle

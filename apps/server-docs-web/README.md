@@ -5,7 +5,7 @@ The static API console published at
 [Scalar](https://scalar.com) reference for the Wildflower server's HTTP API,
 pointed at whichever running server the reader chooses.
 
-It documents six slices, one sidebar group each, from the **committed OpenAPI
+It documents five slices, one sidebar group each, from the **committed OpenAPI
 snapshots**:
 
 | Sidebar group | Snapshot                                                                            |
@@ -13,7 +13,6 @@ snapshots**:
 | Gatekeeper    | `apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json` |
 | Apps          | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                   |
 | Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`         |
-| Collector     | `apps/host/wildflower-server/collector-rust/openapi/collector.openapi.json`         |
 | Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`     |
 | FHIR R4       | `slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json`                                  |
 
@@ -140,13 +139,13 @@ not a return leg" is an `Option`, not a failure. `main.ts` is the only place an
 Effect is run: one handler renders any error's `reason` on the status line.
 
 Scalar's own OAuth2 support is deliberately **not** used. It authorizes
-per-document, so a six-slice console would ask the reader to sign in six times;
+per-document, so a five-slice console would ask the reader to sign in five times;
 it drives the flow through a popup whose location it polls, which would boot a
 second copy of this bundle inside the popup; and it generates `state` with
 `Math.random`. The flow above is a few hundred lines of dependency-free code in
 `gatekeeper-core/smart-client` (`smart-discovery.ts`, `pkce.ts`,
 `authorization-flow.ts`, `sign-in.ts`), all unit-tested there and shared with the
-hosted launcher, and it puts one token into all six documents through Scalar's
+hosted launcher, and it puts one token into all five documents through Scalar's
 `authentication` configuration block. This console supplies the app-specific
 half — client id, scopes and the `sessionStorage` key the pending record is
 namespaced under — from `src/smart-client.ts`, and derives its redirect URI.

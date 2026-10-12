@@ -1,6 +1,5 @@
 import type { HttpClient } from '@effect/platform'
 import { AppsRouterContext } from '@wildflowerhealthio/apps-react'
-import { CollectorRouterContext } from '@wildflowerhealthio/collector-react'
 import { DatabasesRouterContext } from '@wildflowerhealthio/databases-react'
 import { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
 import { FhirResourcesApiPrefix } from '@wildflowerhealthio/fhir-r4/http-api-definition'
@@ -46,7 +45,6 @@ const buildRunAuthed = (
     Layer.mergeAll(
       AppsRouterContext.sliceRuntimeLayer,
       GatekeeperRouterContext.sliceRuntimeLayer,
-      CollectorRouterContext.sliceRuntimeLayer,
       // The FHIR slice's typed client emits base-relative paths (`/Patient`) —
       // `FhirResourcesApi` does not bake in the mount prefix — so it gets the
       // entry's transport mounted at `/fhir-r4`, while every other slice keeps

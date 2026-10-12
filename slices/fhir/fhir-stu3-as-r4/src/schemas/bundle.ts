@@ -10,7 +10,7 @@ import { Bundle } from '@wildflowerhealthio/fhir-r4/data-types'
  *
  * Concrete, dialect-specific bundles (the carebook `MedicationRequest` /
  * `MedicationDispense` / mixed shapes the Rexall tunnel returns) live in the
- * `rexall-be-well-collector` slice, not here.
+ * `rexall-be-well-source` package, not here.
  */
 const searchsetBundle = <ResourceSchema extends Schema.Schema.AnyNoContext>(
   resourceSchema: ResourceSchema

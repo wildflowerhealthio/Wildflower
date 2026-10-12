@@ -36,10 +36,10 @@ stores, and the packages beside it that only the host uses. The app itself is
   server the host runs,
   [`wildflower-server-rust`](./wildflower-server/wildflower-server-rust/AGENTS.md),
   which composes the server features' Rust crates (gatekeeper, FHIR R4, OHIF,
-  collector, request log, apps, databases, tunnel) into one API; beside it the
+  request log, apps, databases, tunnel) into one API; beside it the
   crates only the host composes: `gatekeeper-rust`, `token-revocation-rust`,
-  `fhir-r4-rust`, `apps-rust`, `tunnel-rust`, `collector-rust`,
-  `databases-rust` and `request-log-rust`.
+  `fhir-r4-rust`, `apps-rust`, `tunnel-rust`, `databases-rust` and
+  `request-log-rust`.
 - [`shared-structures-tauri`](./shared-structures-tauri) — the host's
   Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)

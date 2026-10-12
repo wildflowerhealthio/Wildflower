@@ -79,7 +79,7 @@ interface PreparedSource {
    *
    * A `system` that is not absolute throws a `TypeError` here. That reaches the
    * caller as a defect rather than the typed `ParseError` the wrapped `parse`
-   * advertises, deliberately: it means the collector is misconfigured, not that
+   * advertises, deliberately: it means the source is misconfigured, not that
    * a response was bad. {@link SourceIdentity} states the requirement.
    */
   readonly systemUrl: URL
@@ -566,7 +566,7 @@ const adoptProcedure = (
  *
  * The per-type rewrite table, the fields deliberately left alone, and why there
  * is no "already adopted?" guard are all in
- * `apps/launcher/collector/docs/Source Identity Explanation.md`.
+ * `slices/fhir/fhir-r4/docs/Source Identity Explanation.md`.
  *
  * **Every branch below maps a variant to itself, by construction and not by the
  * type system.** TypeScript cannot correlate the discriminant matched here with
@@ -642,9 +642,9 @@ const adoptResource = (source: SourceIdentity) => {
  * round-trip: `identifier[0]` only counts as the source id if re-deriving from
  * it reproduces the resource's own id.
  *
- * This is what a `followUpSteps` generator calls when it needs the source's id
- * to build a source-server URL: under an adopted plan a generator receives
- * adopted resources, so `resource.id` is the local id, not the remote one.
+ * This is what a caller reads when it needs the source's id to build a
+ * source-server URL: an adopted resource's `resource.id` is the local id, not
+ * the remote one.
  */
 const originalIdOf = (source: SourceIdentity, resource: FhirResource): string | null => {
   if (resource.resourceType === 'Binary') {

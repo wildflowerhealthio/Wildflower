@@ -46,7 +46,7 @@ Pure and neutral (`platform: 'neutral'`). Depends on `effect`,
 (`HttpArchive.Entry` / `Log`, `emitHarFromLog`, `ENTRY_ID_PREFIX`),
 `effect-messaging-core` (`Bridge`), and — transitionally, until #578 dissolves it
 — `web-trace-core` (`contentTypeOf`). Never imports a React
-package, `collector-*`, or anything from `slices/importer`.
+package or anything from `slices/importer`.
 
 ## Traps
 

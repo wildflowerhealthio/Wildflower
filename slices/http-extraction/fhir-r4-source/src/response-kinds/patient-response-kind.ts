@@ -20,9 +20,8 @@ const patientUrl = UrlMatch.make({
  * `…/Patient/:id?…`. The response body the handler captures is either
  * the raw JSON (XHR intercept) or the mobile WebView's HTML JSON-viewer
  * wrapper around it; {@link extractJson} normalizes both. On a successful
- * decode it emits the resource as a single-element array; follow-up
- * navigation (Observation list) is declared on the slice's
- * `ScrapingPlan.stepSequence`, not emitted from `parse`.
+ * decode it emits the resource as a single-element array; `parse` never
+ * navigates.
  */
 const PatientResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
   name: 'PatientResponseKind',

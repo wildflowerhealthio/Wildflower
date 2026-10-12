@@ -5,8 +5,8 @@
 //! embedded apps migrations once on construction, and implements the port's
 //! queries: the catalogue read, the by-id read, the insert / content replace /
 //! delete mutators, and the atomic homescreen placement rewrite (the single
-//! writer of `position` / `on_homescreen`). Mirrors `collector-rust`'s
-//! `SqliteRemotesStore`.
+//! writer of `position` / `on_homescreen`). Mirrors `request-log-rust`'s
+//! `SqliteRequestLogStore`.
 //!
 //! This file also owns the [`app_registrations`] `table!` definition and the
 //! [`AppUrlColumn`] mapping for its `url` column — both referenced by the domain

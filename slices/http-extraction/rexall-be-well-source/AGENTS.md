@@ -3,10 +3,7 @@
 The **Rexall Be Well source**: the single definition of how the Rexall Be Well
 portal's carebook STU3 dialect decodes into FHIR R4 resources, exported as one
 `SourceDescriptor` value — `rexallBeWellSource`, whose pre-adopted
-`responseKinds` an archive import extracts with. The live
-`rexall-be-well-collector` scraping plan (browser-driven, in `apps/launcher/collector`)
-consumes the same response-kind tuple by reference, so the two consumers can
-never disagree on a decode.
+`responseKinds` an archive import (`har-importer-core`) extracts with.
 
 It also exports the dialect itself — the carebook catalogue, the wire schemas
 and the tunnel URLs — so a producer of carebook traffic
@@ -49,17 +46,15 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/source.ts` — `rexallBeWellSource`, the package's primary export.
 - `src/fixtures/` — anonymized `web-trace` capture fixtures the bundle,
   promotion, and response-kind suites decode against (`prescriptions-searchset.json`,
-  `profile-me.json`, `detail-bundle.json`, `list-bundle.json`). The
-  collector keeps its own copies of `prescriptions-searchset.json` /
-  `profile-me.json` for its plan-level `config.test.ts`.
+  `profile-me.json`, `detail-bundle.json`, `list-bundle.json`).
 
 ## Layering
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals`, `fhir-r4`, `fhir-stu3-as-r4` (the STU3⇄R4 schemas
 the bundles decode with), `effect`, and `kitchen-sink`. Never imports from
-`apps/launcher/collector` or `slices/importer` — those consume this package, never the
-reverse.
+`slices/importer` or `apps/synthetic-data` — those consume this package, never
+the reverse.
 
 ## Extension Promotion
 
@@ -299,9 +294,7 @@ The capture's bundle held only `MedicationRequest` + `MedicationDispense` — no
 12 entries and all four `_revinclude`s being present. Whether the anonymizer
 stripped them or the server omits them is not determinable from that file, so the
 fixture keeps one of each and `MedicationListResponseKind` keeps its
-drop-and-count path. (The collector's own open questions — the unverified login
-selectors and settle holds, and whether a detail crawl is worth adding — live in
-that package's AGENTS.md.)
+drop-and-count path.
 
 ## Data-quality notes from the capture
 
@@ -329,7 +322,7 @@ Observed, not acted on — worth knowing before trusting a field:
 
 - [slices/http-extraction/AGENTS.md](../AGENTS.md) — the slice this package
   belongs to.
-- [rexall-be-well-collector AGENTS.md](../../../apps/launcher/collector/rexall-be-well-collector/AGENTS.md)
-  — the live collector built from these entities.
-- [Source Identity Explanation](../../../apps/launcher/collector/docs/Source%20Identity%20Explanation.md)
+- [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
+  — the archive importer that runs these kinds.
+- [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

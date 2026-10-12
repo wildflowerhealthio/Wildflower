@@ -802,11 +802,10 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       post({ _tag: 'ResponseFinished', id: pageContentId })
     }
     // Announce the settled page LAST — after its content request has been
-    // tracked, streamed, and finished. The *final* page's `PageLoaded` is what
-    // drains the collector FSM's queue and triggers the completion check
-    // (Drained ∧ every sniffed request settled). Emitting it *before* the
-    // content's `ResponseStart` let that (forked) check run against an empty
-    // incomplete-request map, so the run completed and tore down before the last
+    // tracked, streamed, and finished. A consumer may treat the *final* page's
+    // `PageLoaded` as its cue to check for completion (every sniffed request
+    // settled). Emitted *before* the content's `ResponseStart`, that check would
+    // run against an empty incomplete-request map and tear down before the last
     // page's resources were parsed — dropping them intermittently. Ordering the
     // notification after the content stream keeps the page-content request in
     // the map until it settles, so completion can't outrun it.
@@ -886,8 +885,8 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   // injects at document-start (the bootstrap is the webview's initialization
   // script, so it runs before any page script), but a bfcache restore or a re-injection into a settled page can
   // land post-`load`, and a `load`-only arm would then never start —
-  // `PageLoaded` would never emit and a pattern-less `AwaitPageSettled` hold
-  // would hang until its timeout. Mirrors the `PageRequested` already-parsed
+  // `PageLoaded` would never emit and a consumer waiting for it would hang.
+  // Mirrors the `PageRequested` already-parsed
   // branch just below.
   if (document.readyState === 'complete') {
     startSettleWatch()

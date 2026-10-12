@@ -9,7 +9,7 @@ publish.workspace = true
 # request-log-react activity page reads it through. The server's
 # forwarded-request layer feeds it over a channel; a writer task records the
 # reports in batches, and a sweep drops rows past the retention window. Layered
-# like wildflowerhealthio-collector: pure `domain`, `db`, and `http`.
+# like wildflowerhealthio-apps: pure `domain`, `db`, and `http`.
 #
 # Persistence is Diesel over the host-owned `wildflowerhealthio_persistence::DieselPool` (see
 # docs/Persistence/Shared Diesel Pool Explanation.md); this crate depends on

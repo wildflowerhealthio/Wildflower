@@ -8,9 +8,8 @@ const accountActions: readonly MenuItem[] = [
 
 /**
  * A connected-accounts list — each row carries a `badge`, a two-line
- * `subtitle`, a `meta` column, and a trailing per-row `Menu` of actions
- * (collector index). Rows use `onClick` rather than `href`, so the preview
- * needs no router context.
+ * `subtitle`, a `meta` column, and a trailing per-row `Menu` of actions. Rows
+ * use `onClick` rather than `href`, so the preview needs no router context.
  */
 export const Accounts = () => {
   const items: readonly ItemListItem[] = [

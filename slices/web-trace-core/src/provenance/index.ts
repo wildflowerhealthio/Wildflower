@@ -1,6 +1,5 @@
 /**
- * Provenance: the receipt for a FHIR resource a collector derived from a
- * response, and the two links that make it navigable.
+ * Provenance: the receipt for a FHIR resource derived from a response, and the two links that make it navigable.
  *
  * @remarks
  * The distinction from a recording is the whole point. A recorder claims every

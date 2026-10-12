@@ -1,5 +1,5 @@
-//! [`GatekeeperError`] — the gatekeeper domain's failure vocabulary, modeled on
-//! collector's `RemoteError`: a small set of **semantic**, client-facing
+//! [`GatekeeperError`] — the gatekeeper domain's failure vocabulary, shaped like
+//! apps' `AppsError`: a small set of **semantic**, client-facing
 //! outcomes plus one opaque infrastructure variant. The HTTP layer
 //! ([`crate::http::errors`]) renders each to a status and wire body; nothing
 //! here knows about HTTP, and the store ([`crate::db`]) produces
@@ -74,7 +74,7 @@ pub enum GatekeeperError {
 
 // `Display`/`Error` are hand-written (not `thiserror`-derived) because the
 // `Infrastructure` variant deliberately names its field `source` for symmetry
-// with collector's `RemoteError`, and `thiserror` would treat that `String` as
+// with apps' `AppsError`, and `thiserror` would treat that `String` as
 // the structured error source (which it cannot be).
 impl std::fmt::Display for GatekeeperError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

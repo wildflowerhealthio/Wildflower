@@ -1,13 +1,12 @@
 # AGENTS.md — slices/http-extraction
 
 The abstract fundamentals of **extracting entities from HTTP traffic**, plus
-per-source implementations. Two consumers build on this slice and neither owns
-it: the `collector` slice runs the vocabulary **live** (a sniffer webview
-streams responses through the same entities; it lives with the launcher in
-`apps/launcher/collector`), and the `importer` slice's HAR
-importer runs it **over archives** (each archived response recognized and
-decoded through `Extraction.recognize` / `parseWith`). Nothing here knows about sniffers,
-navigation, persistence, HAR, files, or apps.
+per-source implementations. The `importer` slice's HAR importer runs the
+vocabulary **over archives** (each archived response recognized and decoded
+through `Extraction.recognize` / `parseWith`), and the synthetic-data
+generators spell the HARs it imports from the source packages' wire schemas and
+URLs; neither owns this slice. Nothing here knows about sniffers, navigation,
+persistence, HAR, files, or apps.
 
 ## Packages
 
@@ -26,7 +25,7 @@ navigation, persistence, HAR, files, or apps.
 - **`fhir-r4-source`** — the first per-source package: `fhirR4Source`, a
   `SourceDescriptor` whose `responseKinds` are the FHIR R4 kinds pre-adopted so
   each resource keys under the root of the URL it arrived on — the single
-  definition both a live plan and an archive import consume. See its
+  definition an archive import consumes. See its
   [AGENTS.md](./fhir-r4-source/AGENTS.md).
 - **`rexall-be-well-source`** — the Rexall Be Well source: three response kinds
   (Patient, MedicationRequest, MedicationDispense) that decode Rexall's carebook
@@ -40,20 +39,13 @@ navigation, persistence, HAR, files, or apps.
   producer of portal traffic to spell it from. See its
   [AGENTS.md](./shoppers-drugmart-source/AGENTS.md).
 
-`web-trace-source`, the catch-all recording entity and capture-time body
-policy, is written against this vocabulary too, but lives beside its one
-consumer in
-[`apps/launcher/collector/`](../../apps/launcher/collector/web-trace-source/AGENTS.md).
-
 ## There is deliberately no `http-extraction-core`
 
-Each consumer assembles its **own** closed list from the per-source packages,
-because the two lists have different members and different payloads: the HAR
-importer needs a flat pool of response kinds every response is routed against by
-highest specificity (`har-importer-core`'s `fhirPool`); the collector needs a
-descriptor tuple carrying config schemas, forms, plans, and persist sinks
-(`collector-registry`'s `descriptors`). A shared registry would force one of
-those concerns into the other's home. Add a `-core` only if a genuine shared
+A consumer assembles its **own** closed list from the per-source packages,
+shaped for what it does with it: the HAR importer needs a flat pool of response
+kinds every response is routed against by highest specificity
+(`har-importer-core`'s `fhirPool`). A shared registry would fix one consumer's
+members and payload for every consumer. Add a `-core` only if a genuine shared
 enumeration need appears.
 
 ## Future formats don't come through here
@@ -71,15 +63,7 @@ which is exactly what keeps the dependency graph acyclic.
 - **This slice imports from no other slice.** `http-extraction-fundamentals`
   depends only on `effect` and `kitchen-sink`; a source package adds only the
   resource/dialect packages it decodes with (`fhir-r4-source` → `fhir-r4`).
-  Never `collector-*`, never `importer-*`.
-- **The live-vs-archive parity pin lives in `collector-fundamentals`**
-  (`src/handler/extraction-parity.test.ts`) — the one package that can see
-  both `runExtraction` (the archive-runner reference model in
-  `http-extraction-fundamentals`' test-helpers) and the live tracker. A test
-  here that wants `CollectorHttpResponse` is in the wrong package.
-- **A source's per-source parity test lives with the collector config it
-  needs** (`fhir-r4-client-collector/src/source-parity.test.ts`), because the
-  dependency points from the collector to the source package, never back.
+  Never `importer-*`.
 
 ## References
 
@@ -87,9 +71,8 @@ which is exactly what keeps the dependency graph acyclic.
   — the vocabulary and its namespaces.
 - [fhir-r4-source AGENTS.md](./fhir-r4-source/AGENTS.md) — the worked example
   source package.
-- [web-trace-source AGENTS.md](../../apps/launcher/collector/web-trace-source/AGENTS.md)
-  — the catch-all recording source package.
-- [apps/launcher/collector/AGENTS.md](../../apps/launcher/collector/AGENTS.md) — the live consumer.
 - [slices/importer/AGENTS.md](../importer/AGENTS.md) — the archive-driven
   consumer.
+- [Source Identity Explanation](../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+  — the identity each source package's response kinds key resources under.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

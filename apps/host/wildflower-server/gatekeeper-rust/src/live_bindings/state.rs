@@ -31,7 +31,7 @@ pub struct GatekeeperState {
     /// The **concrete** `SQLite` adapter (not `Arc<dyn GatekeeperStore>` or a
     /// generic): the store port is generic (`&impl GatekeeperStore`), and the
     /// capabilities are generic over it, so the router state and axum wiring stay
-    /// monomorphic — per the collector/tunnel pattern.
+    /// monomorphic — as in the apps and request-log slices.
     pub(crate) store: SqliteGatekeeperStore,
     /// The shared token-revocation store. The auth gate (through the
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier))

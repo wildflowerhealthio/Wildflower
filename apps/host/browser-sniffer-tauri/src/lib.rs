@@ -27,8 +27,8 @@ use wildflowerhealthio_shared_structures::bridge::{BridgeEnvelope, BRIDGE_EVENT}
 /// grant. See [`native_webview_bridge::native_webview_data_plane_emit`].
 pub use native_webview_bridge::native_webview_data_plane_emit;
 
-/// Wire one listener on the multiplexed bridge event and route the
-/// CollectorBridge tags this crate cares about by the envelope's `_tag`.
+/// Wire one listener on the multiplexed bridge event and route the sniffer
+/// control tags this crate cares about by the envelope's `_tag`.
 /// Idempotent at the listener level — call once per app lifecycle from
 /// `setup()`.
 ///
@@ -47,11 +47,9 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
     // the boot log shows who dispatches what. See the effect-messaging-tauri-js
     // README ("Tag uniqueness across processes").
     log::info!(
-        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}]",
+        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}]",
         events::OPEN,
         events::SNIFFING_COMPLETE,
-        events::SET_SNIFFER_STATUS,
-        events::ENSURE_SNIFFER_VISIBLE,
         events::PAGE_ACTION,
         events::CANCEL_SNIFFER_REQUEST,
     );
@@ -68,8 +66,6 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
         match tag.as_str() {
             events::OPEN => handlers::open::handle(&handle, payload),
             events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
-            events::SET_SNIFFER_STATUS => handlers::set_sniffer_status::handle(&handle, payload),
-            events::ENSURE_SNIFFER_VISIBLE => handlers::ensure_sniffer_visible::handle(&handle),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             events::PAGE_ACTION | events::CANCEL_SNIFFER_REQUEST => {
                 native_webview_bridge::forward_to_native_webview(&handle, payload);
@@ -91,8 +87,6 @@ mod tests {
     fn bridge_tags_match_the_ts_convention() {
         assert_eq!(events::OPEN, "Open");
         assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");
-        assert_eq!(events::SET_SNIFFER_STATUS, "SetSnifferStatus");
-        assert_eq!(events::ENSURE_SNIFFER_VISIBLE, "EnsureSnifferVisible");
         assert_eq!(events::PAGE_ACTION, "PageAction");
         assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
         assert_eq!(events::USER_DISMISSED, "UserDismissed");

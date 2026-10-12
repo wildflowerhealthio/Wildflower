@@ -10,7 +10,7 @@
 //!
 //! The `SQLite` adapter lives in [`crate::db`] as `SqliteAppsStore`; tests
 //! substitute the in-memory `FakeAppsStore` in `crate::domain::test_fake`.
-//! Mirrors collector's `RemotesStore` port.
+//! Mirrors request-log's `RequestLogStore` port.
 
 use crate::domain::{AppRegistration, AppsError};
 

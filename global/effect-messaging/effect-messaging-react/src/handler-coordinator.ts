@@ -34,9 +34,9 @@ const useHandlerCoordinator = (): HandlerCoordinator => useContextOrThrow(Handle
  * its own bridge and exports the resulting hook.
  *
  * ```ts
- * const useCollectorRegister = makeUseSliceRegister(CollectorBridge)
+ * const useRecorderRegister = makeUseSliceRegister(RecorderBridge)
  * // …in a component:
- * const { register, unregister } = useCollectorRegister()
+ * const { register, unregister } = useRecorderRegister()
  * Effect.runFork(register(handlers))
  * ```
  */

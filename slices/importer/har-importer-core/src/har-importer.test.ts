@@ -258,7 +258,7 @@ const SHOPPERS_PERSON_ID = 'c0ffee00-0000-4000-8000-000000000001'
 const SHOPPERS_PRESCRIPTION_ID = 'rx-uuid-1'
 const SHOPPERS_STORE_NAME = 'SDM Pharmacy #9000'
 
-/** The Shoppers portal's three XHRs for that account, in the collector's page order. */
+/** The Shoppers portal's three XHRs for that account, in the portal's page order. */
 const shoppersExchanges = (): readonly TraceExchange[] =>
   [
     {

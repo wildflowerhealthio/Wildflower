@@ -12,7 +12,7 @@ Explanation](./Shared%20Diesel%20Pool%20Explanation.md) first. The pool and
 migration primitives live in `persistence-rust`
 (`open_pool` / `open_in_memory_pool` / `DieselPool` in
 `persistence-rust/src/diesel_pool.rs`, `run_diesel_migrations` in
-`persistence-rust/src/namespaced_migrations.rs`); `collector` and
+`persistence-rust/src/namespaced_migrations.rs`); `apps` and
 `gatekeeper` are the worked examples.
 
 ## Which diesel
@@ -44,7 +44,7 @@ shared-structures-rust = { path = "...", features = ["diesel-json-text"] }
 
 ```rust
 // The field stays a plain serde_json::Value; the newtype only rides the wire
-// to/from the TEXT column. (collector-rust/src/domain/remote.rs)
+// to/from the TEXT column.
 #[diesel(serialize_as = JsonText, deserialize_as = JsonText)]
 pub config: serde_json::Value,
 ```
@@ -53,8 +53,9 @@ Two gotchas that bite every `serialize_as` field:
 
 - **`serialize_as` converts via `Into`, which consumes the value**, so diesel
   generates no borrowed `Insertable` impl for the row struct — `.values(&model)`
-  won't compile; pass an owned `.values(model.clone())`
-  (`collector-rust/src/db/remotes.rs`).
+  won't compile; pass an owned value — `.values(model.clone())`, or the owned
+  `AppRegistration` `apps-rust/src/db/apps_store.rs`'s `insert_app` builds for
+  its `AppUrlColumn` field.
 - **The newtype must be `pub`** (E0446): it appears in the public
   `Queryable`/`Insertable` impls the row type's derives generate, so it must be
   at least as visible as the row type.
@@ -155,12 +156,12 @@ version)` in `diesel_slice_migrations`, applying each migration and its
 bookkeeping row in one transaction. Call it with a per-slice constant:
 
 ```rust
-// collector-rust/src/db/remotes_store.rs
+// apps-rust/src/db/apps_store.rs
 wildflowerhealthio_persistence::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
 ```
 
-**A genuinely new table** uses plain `CREATE TABLE` in its `0001` (collector's
-`collector_remotes`). **A table that predates the diesel move** — one the retired
+**A genuinely new table** uses plain `CREATE TABLE` in its `0001` (request
+log's `logged_requests`). **A table that predates the diesel move** — one the retired
 rusqlite `run_migrations` runner already created on shipped databases — must use
 **idempotent DDL** (`CREATE TABLE IF NOT EXISTS` + `INSERT OR IGNORE` for a
 seeded singleton) so `0001` is a no-op on an upgraded database while still
@@ -172,8 +173,8 @@ trees under different namespaces.
 
 ## Add a transaction seam only when compound operations need one
 
-A CRUD-only store (collector) needs **no** transaction seam — each query
-checks out a connection and autocommits. Reach for a seam only when a slice has
+A CRUD-only store needs **no** transaction seam — each query checks out a
+connection and autocommits. Reach for a seam only when a slice has
 multi-statement operations that must be atomic (read-merge-write, delete-both-
 then-expire, a three-state consume) and you don't want that business logic
 trapped inside the SQLite adapter and re-implemented in the in-memory fake.

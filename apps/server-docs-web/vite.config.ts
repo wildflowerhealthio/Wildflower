@@ -4,7 +4,7 @@ import base, { devAppServer } from '../../vite.config.base.ts'
 
 /**
  * The static "Wildflower server docs" console published at
- * `/server-docs`: a Scalar API reference over the six committed
+ * `/server-docs`: a Scalar API reference over the five committed
  * slice OpenAPI snapshots, pointed at whichever running server the reader
  * names via `?server=`.
  *

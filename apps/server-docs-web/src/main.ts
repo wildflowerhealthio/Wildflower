@@ -28,7 +28,7 @@ import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from '.
 
 /**
  * Boots the static Wildflower server-docs console: a Scalar API reference over
- * the six committed slice snapshots, targeted at whichever running server the
+ * the five committed slice snapshots, targeted at whichever running server the
  * `?server=` parameter names (see `server-target.ts`), optionally signed in to
  * that server as the console's SMART client (see `smart-client.ts` and `sign-in.ts`).
  * Opened with a SMART launch (`?iss=`, with the EHR's `launch` when there is

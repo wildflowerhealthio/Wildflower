@@ -16,7 +16,7 @@ import { noTimings, type TraceExchange, traceResourceId } from '../trace-exchang
  * `id`, plus the `meta` slot the back-link is written into.
  *
  * @remarks
- * Structural rather than the `FhirResource` union, so a collector whose entity
+ * Structural rather than the `FhirResource` union, so a caller whose parse
  * produces a narrower type (a `MedicationRequest | MedicationDispense`, say)
  * keeps that type through the link instead of being widened.
  */
@@ -35,14 +35,12 @@ interface ProvenanceCapture<TResource> {
 }
 
 /**
- * The readable surface of a captured response — structurally the part of
- * `collector-fundamentals`' `CollectorHttpResponse` a capture consumes.
+ * The readable surface of a captured response — the fields a capture consumes.
  *
  * @remarks
- * Structural on purpose: `web-trace-core` sits below the collector slice and
- * cannot import it, so this names the fields rather than the class. A real
- * `CollectorHttpResponse` satisfies it as-is — a collector passes the response object
- * straight through instead of copying fields into an intermediate.
+ * Structural on purpose: this names the fields rather than a class, so any
+ * response object exposing them satisfies it as-is and is passed straight
+ * through instead of copying fields into an intermediate.
  *
  * `bytes()` is the body read, **never `text()`**: `text()` is UTF-8 and lossy,
  * and the stored body has to be byte-identical to what arrived for a hash over
@@ -70,10 +68,10 @@ interface CapturedResponse {
  *
  * @remarks
  * This is the **single** statement of the response → exchange field mapping.
- * Every builder of a trace — the provenance capture below, and
- * `web-trace-collector`'s recording entity — spreads this rather than restating
- * the seven fields, so the mapping cannot drift between consumers. What varies
- * per consumer (`timings`, `body`, `producedResources`) stays at the call site.
+ * A builder of a trace — the provenance capture below — spreads this rather
+ * than restating the seven fields, so the mapping cannot drift between
+ * builders. What varies per builder (`timings`, `body`, `producedResources`)
+ * stays at the call site.
  */
 const toExchangeFields = (
   sessionId: string,
@@ -190,7 +188,7 @@ const captureProvenance = <TResource extends ReferencableResource>(
     }
   })
 
-/** What a provenance hook hands the collector runtime for one response. */
+/** What a provenance hook returns for one response. */
 interface ProvenanceHookResult<TResource> {
   /** The parse output, each resource carrying `meta.source` back to the trace. */
   readonly resources: readonly TResource[]
@@ -199,30 +197,28 @@ interface ProvenanceHookResult<TResource> {
 }
 
 /**
- * Build a `ScrapingPlan.captureProvenance` hook for one collector.
+ * Build a provenance hook for one source.
  *
- * @param collectorPrefix - Names the collector in every session id it writes
+ * @param sessionPrefix - Names the source in every session id the hook writes
  *   (`fhir-r4`, `rexall`, …)
- * @returns A hook the collector's plan states as `captureProvenance`
+ * @returns A hook taking a run id, a response, and the resources parsed from
+ *   it, which captures the response's provenance
  *
  * @remarks
- * This is the whole of a production collector's provenance wiring: the
- * framework mints the run id, invokes the hook only for a parse that actually
- * produced resources, and treats `diagnostics` as best-effort writes — so
- * nothing else needs to be wrapped or wired per collector.
+ * The caller mints the run id and invokes the hook only for a parse that
+ * actually produced resources; the hook returns the linked resources, and the
+ * trace as a `diagnostics` entry meant as a best-effort write.
  *
  * The prefix keeps a session legible in the viewer without opening an exchange;
- * the uuid half comes from the framework's run id, which is what makes two runs
- * of the same configured remote distinct — a trace's resource id is derived from
- * `(sessionId, requestId)`, so a stable session id would silently upsert the
- * second run's traces over the first's.
+ * the run id is what makes two runs distinct — a trace's resource id is derived
+ * from `(sessionId, requestId)`, so a stable session id would silently upsert
+ * the second run's traces over the first's.
  *
- * The hook's shape matches `collector-fundamentals`' plan hook structurally;
- * this package cannot import that type (layering), which is why the signature is
- * spelled here.
+ * The signature is spelled out structurally here, so this package names no
+ * caller's hook type.
  */
 const makeFhirProvenanceCapture =
-  (collectorPrefix: string) =>
+  (sessionPrefix: string) =>
   <TResource extends ReferencableResource>(
     runId: string,
     response: CapturedResponse,
@@ -232,7 +228,7 @@ const makeFhirProvenanceCapture =
     BodyDigestUnavailable | ParseResult.ParseError
   > =>
     Effect.map(
-      captureProvenance(`${collectorPrefix}-${runId}`, response, produced),
+      captureProvenance(`${sessionPrefix}-${runId}`, response, produced),
       ({ trace, linked }) => ({ resources: linked, diagnostics: [trace] })
     )
 

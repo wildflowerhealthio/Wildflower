@@ -3,8 +3,8 @@
 The vocabulary of extracting entities from HTTP traffic: everything needed to
 reason about "an HTTP source" — a thing that recognizes traffic and decodes it
 into resources — without any reference to how the traffic was obtained. The
-collector runs this vocabulary live; the HAR importer runs it over archives;
-both build on this package, never the reverse.
+HAR importer runs this vocabulary over archives, and builds on this package,
+never the reverse.
 
 ## Namespaces
 
@@ -35,11 +35,9 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   must be a URL a `SourceIdentity` can key under).
 - **`HttpResponse`** (`src/http-response.ts`) — what a `parse` sees: `id` /
   `url` / `status` / `statusText` / `headers` (`Headers`) / `startedAt` /
-  `bytes()` / `text()`. An interface, not a class: `make` builds one over
-  bytes already in hand (a `Data`, the extraction path), and
-  `collector-fundamentals`' `CollectorHttpResponse` implements it over streamed
-  chunks (the live path) — that `implements` clause is the compile-time pin
-  that both paths hand entities the same surface.
+  `bytes()` / `text()`. An interface, not a class, so an acquisition path can
+  supply its own implementation; `make` builds one over bytes already in hand
+  (a `Data`, the extraction path).
 - **`Extraction`** (`src/extraction.ts`) — recognize and decode archived
   responses. `routeTo(pool, url)` picks the one claiming kind of highest
   specificity (ties → list order); `recognize(pool, responses)` keeps **every**
@@ -47,15 +45,14 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `parseWith(kind, response)` decodes one response, folding every outcome —
   resources, `parseError`, `bodyAbsent` — to data, over `Extraction.Input`s (an
   `HttpResponse.Data` + `bodyAbsent`). Infallible — failures are data, not
-  errors. It never persists. The batch runner that used to live here
-  (`runExtraction`, the four-way `batches` / `unmatched` / `parseFailures` /
-  `bodyAbsent` accounting) was demoted to `test-helpers` when the interactive
-  review replaced it in production — it survives as the executable reference
-  model the parity and fixture suites pin against.
+  errors. It never persists. The batch runner (`runExtraction`, the four-way
+  `batches` / `unmatched` / `parseFailures` / `bodyAbsent` accounting) lives in
+  `test-helpers`, not production — production reviews interactively over
+  `recognize` / `parseWith` — as the executable reference model fixture suites
+  (`har-importer-core`'s `decode-har.test.ts`) pin against.
 - **`SourceDescriptor`** (`src/source-descriptor.ts`) — "a source package" as
   one first-class value: `name`, `display` strings, the `responseKinds` the
-  source contributes, and an optional `mergeResources`, the per-source analogue
-  of `CollectorDescriptor` / `FileImporterDescriptor`. Recognition and identity
+  source contributes, and an optional `mergeResources`. Recognition and identity
   stay on each kind's `tryRecognize`; this must never grow back the deleted
   recognition-carrying `Source`'s role. `make` shallow-clones and deep-freezes.
 - **`SourceDescriptor.ResourceMerge`** — the `mergeResources` hook,
@@ -64,8 +61,7 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   and `id`), for a source whose feeds each know part of one record. It spans
   kinds, which is why it sits on the source and not on a kind. Only a consumer
   that holds a whole extraction before writing applies it: `har-importer-core`
-  does, over the whole preview. The live collector writes each response as it
-  arrives, so its later copy still wins. A source without one keeps every copy.
+  does, over the whole preview. A source without one keeps every copy.
 - **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier
   constants a kind's `tryRecognize` draws its `specificity` from and routing
   ranks by, **highest wins**: `PORTAL` (100, a named patient portal) > `PROTOCOL`
@@ -77,26 +73,19 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
 `http-extraction-fundamentals/test-helpers` is the one sub-entry:
 `makeHttpResponse`, `makeExtractionInput`, the `SimpleResponseKind` /
 `AnotherResponseKind` sample response kinds, the `echoResponseKind` provenance-asserting
-builders shared with `collector-fundamentals`' parity test, and `runExtraction`
+builders the `Extraction` suites route with, and `runExtraction`
 (`src/run-extraction.ts`) — the archive-runner reference model returning the
 four-way `ExtractionResult` accounting.
 
 ## Layering
 
 - **This package imports from no slice.** Its dependencies are exactly
-  `effect` and `kitchen-sink`. In particular it must never import
-  `collector-fundamentals` (which depends on this package), any
-  `*-client-collector`, a `*-source` package, or anything in
-  `slices/importer`.
-- The live-vs-archive parity pin — that `runExtraction` and the collector's
-  `SnifferResponseTracker` route and decode identically — lives in
-  `collector-fundamentals/src/handler/extraction-parity.test.ts`, the one
-  package that can see both halves. A test here that wants `CollectorHttpResponse`
-  is in the wrong package.
-- Collector-only concerns extend rather than live here:
-  `CollectorHttpResponseKind` (collector-fundamentals) adds the optional
-  `followUpSteps` crawl seam on top of `HttpResponseKind`, and `Extraction`
-  knows nothing about it — extraction navigates nothing.
+  `effect` and `kitchen-sink`. In particular it must never import a
+  `*-source` package or anything in `slices/importer`.
+- Consumer-only concerns extend rather than live here: a consumer that needs
+  more on a kind adds it to its own type on top of `HttpResponseKind`, and
+  `Extraction` carries those fields through untouched without knowing about
+  them — extraction navigates nothing.
 
 ## Traps
 
@@ -107,15 +96,14 @@ four-way `ExtractionResult` accounting.
   record an exchange while omitting its content; `parseWith` folds that to its
   own outcome and never calls `parse` — decoding it as an empty payload would
   manufacture a parse failure for a response that was never in evidence.
-- **`bytes()` returns a fresh copy each call** (both `HttpResponse.make`
-  and the live implementation) so a caller cannot mutate the body out from
-  under a later reader.
+- **`bytes()` returns a fresh copy each call** (`HttpResponse.make`, and any
+  other implementation must do the same) so a caller cannot mutate the body out
+  from under a later reader.
 
 ## References
 
 - [slices/http-extraction/AGENTS.md](../AGENTS.md) — the slice this package
   anchors, and why there is no `-core`.
-- [apps/launcher/collector/AGENTS.md](../../../apps/launcher/collector/AGENTS.md) — the live consumer.
 - [slices/importer/AGENTS.md](../../importer/AGENTS.md) — the archive-driven
   consumer.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)

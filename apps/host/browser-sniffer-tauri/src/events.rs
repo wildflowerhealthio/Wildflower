@@ -9,20 +9,8 @@
 pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 
-/// Web→host control tag: set the sniffer chrome's subtitle to the current
-/// step's name. Host-consumed on every platform (routed to
-/// `patch_window_text`), never forwarded into the sniffed page.
-pub const SET_SNIFFER_STATUS: &str = "SetSnifferStatus";
-
-/// Web→host: the SPA asks the host to (re-)present the existing sniffer webview
-/// (a fire-and-advance `EnsureWindowVisible` step). Maps to
-/// `native_webview().show(SNIFFER_WEBVIEW_ID)` — re-presents a hidden-but-alive
-/// webview without navigating; idempotent no-op if none exists. Mirrors
-/// `collector-fundamentals`'s `CollectorBridge` `EnsureSnifferVisible` message.
-pub const ENSURE_SNIFFER_VISIBLE: &str = "EnsureSnifferVisible";
-
 /// Web→host *data-plane* tag literals the sniffer's native-webview page
-/// legitimately posts (the page-observation stream the SPA collector consumes).
+/// legitimately posts (the page-observation stream the Recorder consumes).
 /// These are the ONLY inner `_tag`s `native_webview_bridge` re-emits from an
 /// untrusted native-webview `Message` — control tags are deliberately excluded
 /// so a hostile page can't spoof them (see `native_webview_bridge`). Mirrors
@@ -52,12 +40,12 @@ pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 
 /// Host→web control tag the crate *synthesizes* from a plugin `Hidden` lifecycle
 /// event (the user dismissed / closed the sniffer webview) and emits on
-/// `BRIDGE_EVENT` for the collector SPA. It is host-originated, not a page
+/// `BRIDGE_EVENT` for the Recorder. It is host-originated, not a page
 /// observation, so it is deliberately **excluded** from
 /// [`crate::native_webview_bridge`]'s page→host data-plane allowlist — an
 /// untrusted page must not be able to forge it. Drift-guarded in
 /// [`crate::tests::bridge_tags_match_the_ts_convention`]; mirrors
-/// `collector-fundamentals`'s `CollectorBridge` `UserDismissed` message.
+/// `recorder-core-js`'s `RecorderBridge` `UserDismissed` message.
 pub const USER_DISMISSED: &str = "UserDismissed";
 
 /// Host→web control tag the crate *synthesizes* from a plugin `Disposed`
@@ -68,8 +56,7 @@ pub const USER_DISMISSED: &str = "UserDismissed";
 /// like `UserDismissed`, so it is likewise **excluded** from
 /// [`crate::native_webview_bridge`]'s page→host data-plane allowlist.
 /// Drift-guarded in [`crate::tests::bridge_tags_match_the_ts_convention`];
-/// mirrors `collector-fundamentals`'s `CollectorBridge` `SnifferDisposed`
-/// message.
+/// mirrors `recorder-core-js`'s `RecorderBridge` `SnifferDisposed` message.
 pub const SNIFFER_DISPOSED: &str = "SnifferDisposed";
 
 /// Window label assigned to the main React SPA webview by

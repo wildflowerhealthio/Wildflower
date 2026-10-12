@@ -75,7 +75,7 @@ const utf8 = new TextEncoder()
  * @returns `true` when the segment should be pseudonymized
  *
  * @remarks
- * A route name (`patients`, `v2`, `search`) is structure a collector author
+ * A route name (`patients`, `v2`, `search`) is structure a source author
  * needs; a record key (`8a3f…`, `10432`, `2024-01-05`) is data. The dividing
  * line is "does it carry a digit or a recognised identifier shape" — a word
  * survives, a word with a number in it does not.

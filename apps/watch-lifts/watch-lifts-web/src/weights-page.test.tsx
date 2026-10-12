@@ -88,7 +88,7 @@ describe('WeightsPage', () => {
   it('should refuse to send the weights anywhere but the Pebble app', () => {
     // Act
     renderPage(
-      `${PAGE_URL}?${ReturnTarget.PARAM}=${encodeURIComponent('https://collector.example/#')}`
+      `${PAGE_URL}?${ReturnTarget.PARAM}=${encodeURIComponent('https://elsewhere.example/#')}`
     )
 
     // Assert

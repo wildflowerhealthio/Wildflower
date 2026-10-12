@@ -16,7 +16,7 @@ registry. Everything before those edits lives in a new `*-importer-core` binding
 
 ## What you're building
 
-The importer slice mirrors the collector slice: a resource-agnostic
+The importer slice is layered as a resource-agnostic
 **fundamentals** layer (`importer-fundamentals`), a per-format **binding** (core +
 React), a pure **core** (`importer-core`: the registry and the batch machinery),
 and a **shell** (`importer-react`). A new format adds the binding and the two
@@ -371,7 +371,5 @@ is a no-op here.
 - [dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md) — the worked
   binding that states a `groupBy`, links its source files, and reads each source file's
   id in the decode.
-- [Adding a Collector How-To](../../../apps/launcher/collector/docs/Adding%20a%20Collector%20How-To.md)
-  — the live-transport counterpart, whose descriptor/registry shape this mirrors.
 - [Documentation Reference](../../../docs/Documentation/Reference.md) — the
   four-kinds naming this doc follows.

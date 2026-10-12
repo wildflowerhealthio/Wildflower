@@ -73,7 +73,7 @@ const medicationListUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PHARMACY_LOC
  * heterogeneous carebook STU3 searchset (matched `Location` plus medication and
  * other `_revinclude`s). `parse` decodes it "as is", keeps only the
  * `MedicationRequest` / `MedicationDispense` resources, and drops-and-logs the
- * rest. `followUpSteps` is omitted — v1 is list-only (#339).
+ * rest. List-only — no detail crawl (#339).
  */
 const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
   HttpResponseKind.make({

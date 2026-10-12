@@ -14,11 +14,11 @@ import type { RexallAccount } from './rexall-account.ts'
  * two XHRs that page makes (the profile and the prescriptions searchset).
  *
  * @remarks
- * The page sequence is `rexall-be-well-collector`'s (`letsbewell.ca/sign-in`,
- * then `app.letsbewell.ca/health/prescriptions`); the XHR URLs are
- * `rexall-be-well-source`'s, so its response kinds recognize them. The capture
- * happens on the as-of day at 15:00 UTC; the two pages carry small HTML bodies
- * that no importer claims, as a real export's navigations do.
+ * The page sequence is the one a signed-in session walks
+ * (`letsbewell.ca/sign-in`, then `app.letsbewell.ca/health/prescriptions`);
+ * the XHR URLs are `rexall-be-well-source`'s, so its response kinds recognize
+ * them. The capture happens on the as-of day at 15:00 UTC; the two pages carry
+ * small HTML bodies that no importer claims, as a real export's navigations do.
  */
 
 const SIGN_IN_URL = 'https://letsbewell.ca/sign-in'

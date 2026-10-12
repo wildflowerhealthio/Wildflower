@@ -18,9 +18,9 @@ register their inbound handlers from their own lifecycle.
   it at module scope and export the resulting hook:
 
   ```ts
-  const useCollectorRegister = makeUseSliceRegister(CollectorBridge)
+  const useRecorderRegister = makeUseSliceRegister(RecorderBridge)
   // …in a component:
-  const { register, unregister } = useCollectorRegister()
+  const { register, unregister } = useRecorderRegister()
   Effect.runFork(register(handlers))
   ```
 

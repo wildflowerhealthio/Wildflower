@@ -31,15 +31,12 @@ const sliceRuntimeLayer: Layer.Layer<
 > = buildFhirR4ResourcesClientLayer()
 
 /**
- * The fully-composed `runtimeLayer` from router context, for the FHIR
+ * The fully-composed `runtimeLayer` from router context, for a FHIR
  * call site that isn't a one-shot Promise and so can't go through
- * `runAuthed`/`useSuspenseQuery`:
- *
- *   - `collector-react`'s `useSyncRunner` — PUTs each parsed resource to
- *     `FhirR4ResourcesHttpApiClient` per bridge message, retried per
- *     resource. It is an imperative, event-driven runner (mirrors
- *     gatekeeper's `NeedsAuthMessage` device-flow fiber), NOT a one-shot
- *     query, so it `Effect.provide`s this layer and runs it itself.
+ * `runAuthed`/`useSuspenseQuery` — an imperative, event-driven runner
+ * (like gatekeeper's `NeedsAuthMessage` device-flow fiber) that
+ * `Effect.provide`s this layer onto its `FhirR4ResourcesHttpApiClient`
+ * calls and runs them itself.
  *
  * The annotated `select` re-narrows the result when the slice's router
  * isn't registered (standalone build / a host slice's router), where

@@ -138,7 +138,7 @@ describe('ItemList', () => {
     // Arrange — a read-only feed entry has no destination and no
     // primary action; the row must render without becoming a link or
     // a button.
-    const items: ItemListItem[] = [{ id: '1', title: 'Collector', subtitle: 'now' }]
+    const items: ItemListItem[] = [{ id: '1', title: 'Account A', subtitle: 'now' }]
 
     // Act
     render(<ItemList items={items} />)
@@ -146,14 +146,14 @@ describe('ItemList', () => {
     // Assert
     expect(screen.queryByRole('link')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
-    expect(screen.getByText('Collector')).toBeTruthy()
+    expect(screen.getByText('Account A')).toBeTruthy()
     expect(screen.getByText('now')).toBeTruthy()
   })
 
   it('renders the leading slot before the row text', () => {
     // Arrange
     const items: ItemListItem[] = [
-      { id: '1', title: 'Collector', leading: <span data-testid="dot" /> },
+      { id: '1', title: 'Account A', leading: <span data-testid="dot" /> },
     ]
 
     // Act
@@ -162,7 +162,7 @@ describe('ItemList', () => {
     // Assert — the leading element is present, marked aria-hidden
     // (it's decorative), and appears before the title text in DOM order.
     const dot = screen.getByTestId('dot')
-    const title = screen.getByText('Collector')
+    const title = screen.getByText('Account A')
     expect(dot.parentElement?.getAttribute('aria-hidden')).toBe('true')
     expect(dot.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -171,13 +171,13 @@ describe('ItemList', () => {
     // Arrange — meta carries compact title-row metadata (e.g. a
     // relative timestamp). It must share the title's baseline, not
     // appear on the subtitle line.
-    const items: ItemListItem[] = [{ id: '1', title: 'Collector', meta: 'now' }]
+    const items: ItemListItem[] = [{ id: '1', title: 'Account A', meta: 'now' }]
 
     // Act
     render(<ItemList items={items} />)
 
     // Assert — the meta element shares a parent with the title.
-    const title = screen.getByText('Collector')
+    const title = screen.getByText('Account A')
     const meta = screen.getByText('now')
     expect(meta.parentElement).toBe(title.parentElement)
   })
@@ -265,8 +265,8 @@ describe('ItemList', () => {
     // Arrange — interactive `actions` (e.g. a meatball menu trigger) sit
     // inside the row's wrapping `<button>`. Without click-bubble
     // suppression, hitting the action ALSO fires the row's primary
-    // navigation — exactly the bug that broke collector's "open menu"
-    // (it kept jumping to the edit page instead).
+    // navigation — a row's "open menu" would jump to the edit page
+    // instead.
     const onRowClick = vi.fn()
     const onActionClick = vi.fn()
     const items: ItemListItem[] = [

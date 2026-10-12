@@ -3,7 +3,7 @@
  * R4 HTTP API hot path (search, read, write, `$everything`). Kept in one file
  * so the naming philosophy stays coherent in a single place.
  *
- * Shape mirrors the Collector catalog: `Task.[Subtask].Span.{ Name, Attributes }`,
+ * Shape: `Task.[Subtask].Span.{ Name, Attributes }`,
  * with attribute keys that recur across a task lifted to a task-level
  * `Attributes` namespace (and resource-identity keys lifted to the top-level
  * `Resource` namespace) so they are defined once. Span names are lowercase,
@@ -109,9 +109,8 @@ const Persist = {
    * OTel HTTP client span (a `PUT`) nested under this one, so the attempt count
    * reads straight off the trace.
    *
-   * A caller that batches is expected to own the span *above* this one — the
-   * collector slice's `collector.importing` is the example — so no batch span is
-   * emitted here.
+   * A caller that batches is expected to own the span *above* this one, so no
+   * batch span is emitted here.
    */
   Write: { Span: { Name: 'fhir.persist.write' } },
   /**

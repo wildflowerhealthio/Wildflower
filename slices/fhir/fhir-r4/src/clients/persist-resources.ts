@@ -13,9 +13,7 @@ import { UnsupportedFhirResourceTypeError, upsertResource } from './upsert-resou
  * Every consumer that writes a batch wants the same four things around the
  * write — bounded retries, a per-resource span, bounded concurrency, and
  * failure-as-data — so they live here once rather than being re-derived per
- * caller. This module was three byte-identical copies (one per
- * `*-client-collector`) before it was consolidated; they differed only in a log
- * prefix.
+ * caller.
  *
  * It takes no options. The write is this package's, so the span it emits
  * (`fhir.persist.write`) and the resource attribute it tags
@@ -24,11 +22,10 @@ import { UnsupportedFhirResourceTypeError, upsertResource } from './upsert-resou
  * make the same write report itself as two different operations.
  *
  * The failure record is likewise declared here rather than imported, because
- * `fhir-r4` sits below its consumers and must not name them. It is structurally
- * compatible with the collector slice's `PersistFailure`, and each descriptor's
- * `CollectorDescriptor.make` call is where the two are checked against each
- * other — so a drift between them is a compile error at every call site rather
- * than a silent divergence.
+ * `fhir-r4` sits below its consumers and must not name them. A consumer with
+ * its own failure type checks the two against each other at its call site, so
+ * a drift between them is a compile error there rather than a silent
+ * divergence.
  *
  * @packageDocumentation
  */
@@ -53,7 +50,7 @@ interface ResourceWriteTarget {
  *
  * @remarks
  * Returned **as data** on a `never` error channel, so one bad resource cannot
- * fail a whole batch. Structurally the collector slice's `PersistFailure`.
+ * fail a whole batch.
  */
 interface ResourceWriteFailure {
   readonly failed: ResourceWriteTarget
@@ -64,11 +61,11 @@ interface ResourceWriteFailure {
  * Max concurrent resource PUTs within a single batch.
  *
  * @remarks
- * *Unbounded* concurrency fired hundreds of simultaneous upserts that stalled
- * the collector's inline-awaited drive loop, so its `Sync` span never ended and
- * never flushed. The stall was a property of unboundedness, not of parallelism
- * per se, so this stays a small fixed bound — enough to reclaim throughput over
- * a serial `1`, far below the "hundreds in flight" that triggered the stall.
+ * *Unbounded* concurrency fires hundreds of simultaneous upserts, which stalls
+ * a caller that awaits the batch inline, so its span never ends and never
+ * flushes. The stall is a property of unboundedness, not of parallelism per se,
+ * so this stays a small fixed bound — enough to reclaim throughput over a
+ * serial `1`, far below the "hundreds in flight" that stall.
  */
 const WRITE_CONCURRENCY = 8
 

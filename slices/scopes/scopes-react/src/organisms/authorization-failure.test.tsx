@@ -12,13 +12,11 @@ afterEach(() => {
 
 describe('AuthorizationFailure', () => {
   it('reads each resource scope as a plain-language phrase', () => {
-    // `wildflower/Accounts.r` → "read Accounts" (verb from `permission.label()`,
+    // `wildflower/Apps.r` → "read Apps" (verb from `permission.label()`,
     // record type from `resource.pluralLabel()`); `wildflower/Grant.cd` folds the
     // two verbs the same way the scope form's statements do.
-    render(
-      <AuthorizationFailure missingScopes={['wildflower/Accounts.r', 'wildflower/Grant.cd']} />
-    )
-    expect(screen.getByText('read Accounts')).toBeTruthy()
+    render(<AuthorizationFailure missingScopes={['wildflower/Apps.r', 'wildflower/Grant.cd']} />)
+    expect(screen.getByText('read Apps')).toBeTruthy()
     expect(screen.getByText('create and delete Grants')).toBeTruthy()
   })
 
