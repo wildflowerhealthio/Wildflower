@@ -194,22 +194,17 @@ describe('<AppsHomeBody> live content', () => {
     // The resync key is id + onHomescreen, so a content-only refetch doesn't
     // re-seed `order` — the bug was that tiles rendered off `order` and so
     // stayed stale. Tile content now reads live from `apps`, so a same-instance
-    // rerender with an edited name/subtitle/pill must show through immediately.
+    // rerender with an edited name/subtitle must show through immediately.
     const { rerender } = render(<AppsHomeBody apps={[makeApp()]} />)
     expect(screen.getByText('My App')).toBeDefined()
 
-    rerender(
-      <AppsHomeBody
-        apps={[makeApp({ name: 'Renamed App', subtitle: 'Fresh subtitle', requiresTunnel: true })]}
-      />
-    )
+    rerender(<AppsHomeBody apps={[makeApp({ name: 'Renamed App', subtitle: 'Fresh subtitle' })]} />)
 
-    // Same id + onHomescreen ⇒ the resync effect stays put, yet the live name,
-    // subtitle, and the newly-required Tunnel pill all render.
+    // Same id + onHomescreen ⇒ the resync effect stays put, yet the live name
+    // and subtitle render.
     expect(screen.queryByText('My App')).toBeNull()
     expect(screen.getByText('Renamed App')).toBeDefined()
     expect(screen.getByText('Fresh subtitle')).toBeDefined()
-    expect(screen.getByText('Tunnel')).toBeDefined()
   })
 
   test('a content-only refetch preserves an optimistic reorder (order stays local, content stays live)', () => {

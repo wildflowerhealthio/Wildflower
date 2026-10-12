@@ -1,0 +1,10 @@
+/*
+ * The plain SMART home's own rules, beside the apps home's tiles it borrows
+ * (`apps-react`'s `appTileStyles`).
+ */
+
+/* The FHIR base the session is for: a long URL with nowhere to break, which
+ * would otherwise widen the page past a phone's screen. */
+.fhir-home__server {
+  overflow-wrap: anywhere;
+}

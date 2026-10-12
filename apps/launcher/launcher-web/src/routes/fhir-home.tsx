@@ -13,6 +13,7 @@ import type { JSX } from 'react'
 import type { RouterContext } from '../router-context.ts'
 import { plainSmartRouteOptions } from '../session/auth-gated-route-options.ts'
 import { ServerKind } from '../session/server-kind.ts'
+import styles from './fhir-home.module.css'
 
 /** Props for {@link FhirServerHome}. */
 interface FhirServerHomeProps {
@@ -48,9 +49,10 @@ function FhirServerHome({ server, siteRoot }: FhirServerHomeProps): JSX.Element 
     <div className={pageLayoutStyles['page']}>
       <PageHeader title="Home" />
       <p>
-        You are signed in to <code>{server.fhirBaseUrl}</code>, a SMART on FHIR server rather than a
-        Wildflower server, so Wildflower specific features aren’t available here. You can launch any
-        of Wildflower’s apps against it.
+        You are signed in to{' '}
+        <code className={styles['fhir-home__server']}>{server.fhirBaseUrl}</code>, a SMART on FHIR
+        server rather than a Wildflower server, so Wildflower specific features aren’t available
+        here. You can launch any of Wildflower’s apps against it.
       </p>
       <ul className={appTileStyles['app-tiles']} aria-label="Apps">
         {smartAppLaunchPages(siteRoot).map(({ app, launchPageUrl }) => (

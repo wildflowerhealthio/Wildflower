@@ -184,10 +184,10 @@ const AppsHomeBody = ({
   // and PUTs the whole thing to `/home-screen`, so disabled apps keep their
   // slots. `order` is purely the local UI state a server refetch can't own: the
   // drag *sequence* and the optimistic `onHomescreen` flags (a reorder/hide that
-  // hasn't round-tripped yet). Tile *content* — name / subtitle / pills — is
+  // hasn't round-tripped yet). Tile *content* — name / subtitle — is
   // never read off `order`; it's looked up live from `apps` at render (see
-  // `visible`), so a background refetch that changes only a tile's name/subtitle/
-  // flags shows through even though the resync key below hasn't changed.
+  // `visible`), so a background refetch that changes only a tile's name/subtitle
+  // shows through even though the resync key below hasn't changed.
   // Re-seed whenever the server list changes (order *or* enabled) — the
   // home-screen PUT invalidates the list query — so an enable/disable made in
   // the editor is reflected here too.
@@ -196,7 +196,7 @@ const AppsHomeBody = ({
     setOrder(apps)
     // `apps` is a fresh array each render; key the resync on the stable id +
     // onHomescreen sequence so it runs only when the server list actually
-    // changes, not on every render. Content-only changes (name/subtitle/pills)
+    // changes, not on every render. Content-only changes (name/subtitle)
     // deliberately don't re-seed — they'd clobber an in-flight optimistic
     // reorder/hide — and don't need to: `visible` reads content from `apps`.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
@@ -204,7 +204,7 @@ const AppsHomeBody = ({
 
   // The enabled subset to render, in `order`'s sequence but with each tile's
   // content taken from the live `apps` row so a background refetch's name/
-  // subtitle/pill edits show without waiting on a resync. `order` still owns the
+  // subtitle edits show without waiting on a resync. `order` still owns the
   // optimistic `onHomescreen` flag (a just-hidden tile must drop out before the
   // PUT lands), so filter on the order entry and only the *content* comes from
   // `apps`; fall back to the order entry if an id isn't in `apps` yet (it always

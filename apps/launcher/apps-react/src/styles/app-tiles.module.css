@@ -30,9 +30,13 @@
   cursor: grabbing;
 }
 
-/* Shared content box for both the launch button (view mode) and the plain
- * display wrapper (edit mode) — one padding/layout source. */
+/* Shared content box for both the launch link (view mode) and the plain
+ * display wrapper (edit mode) — one padding/layout source. `border-box` keeps
+ * the padding inside the tile's width: with `width: 100%` and the default
+ * `content-box`, the padding pushed every tile past the page's right edge and
+ * the page scrolled sideways on a phone. */
 .app-tile__body {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -41,10 +45,9 @@
   padding: var(--space-5) var(--space-7);
 }
 
-/* Button/anchor reset layered over `.app-tile__body` for the view-mode launch
- * target (a `<button>` on Tauri, an `<a href>` on web — see `-tiles.tsx`).
- * `text-decoration: none` strips the anchor's default underline; `color: inherit`
- * strips its link color, so both elements paint identically. */
+/* Anchor reset layered over `.app-tile__body` for the view-mode launch link
+ * (`-tiles.tsx`, and the plain SMART home's tiles). `text-decoration: none`
+ * strips the anchor's default underline; `color: inherit` its link color. */
 .app-tile__launch {
   background: transparent;
   border: none;
@@ -128,14 +131,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
+  /* A long unbroken run (a URL) breaks rather than being clipped at the
+   * tile's edge. */
+  overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   display: -webkit-box;
   -webkit-line-clamp: 2;
-}
-
-.app-tile__pills {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
 }
