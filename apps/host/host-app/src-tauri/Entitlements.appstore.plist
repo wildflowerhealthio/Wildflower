@@ -26,6 +26,13 @@
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
 
+  <!-- The Recorder saves recordings into ~/Downloads/Wildflower Recordings
+       (recorder-rust's recordings_folder.rs). Under the sandbox the
+       Documents folder Tauri resolves is the container's own, which Finder
+       never shows; this opens the user's real Downloads folder instead. -->
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+
   <!-- Both are the literal team id rather than a variable: entitlements are
        baked into the signature at build time and cannot read the
        environment. A team id is not a secret — it is readable in any signed

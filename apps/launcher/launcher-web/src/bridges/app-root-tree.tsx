@@ -1,4 +1,3 @@
-// oxlint-disable import/max-dependencies -- the tree root provides every platform contribution and slice sender
 import { type AnyRouter, RouterProvider } from '@tanstack/react-router'
 import { HandlerCoordinatorContext } from '@wildflowerhealthio/effect-messaging-react'
 import { NavigationBridgeHandler } from '@wildflowerhealthio/navigation-react'
@@ -14,7 +13,6 @@ import { PlatformTabsProvider } from '../session/platform-tabs.tsx'
 import { ServerKindContext, type ServerKind } from '../session/server-kind.ts'
 import type { TabSpec } from '../session/tabs.ts'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
-import { HarRecorderSenderForwarder } from './har-recorder-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
 
 interface AppRootTreeProps {
@@ -67,9 +65,7 @@ const AppRootTree = ({
            * rather than buried inside it.
            */}
           <NavigationBridgeHandler sender={transport.sendMessage} />
-          <CollectorSenderForwarder>
-            <HarRecorderSenderForwarder>{children}</HarRecorderSenderForwarder>
-          </CollectorSenderForwarder>
+          <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
         </Fragment>
       ),
     [transport.sendMessage]

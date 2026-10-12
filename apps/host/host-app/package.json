@@ -11,7 +11,8 @@
     "dev:android": "tauri android dev -- --target aarch64-linux-android",
     "dev:ios": "tauri ios dev --host=\"$(ipconfig getifaddr en0)\"",
     "preview": "vp preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vp test"
   },
   "dependencies": {
     "@effect/platform": "catalog:",
@@ -21,8 +22,15 @@
     "@tauri-apps/plugin-fs": "catalog:",
     "@tauri-apps/plugin-opener": "catalog:",
     "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
+    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
+    "@wildflowerhealthio/effect-messaging-react": "workspace:*",
+    "@wildflowerhealthio/effect-messaging-tauri-js": "workspace:*",
+    "@wildflowerhealthio/http-archive": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/recorder-core-js": "workspace:*",
+    "@wildflowerhealthio/recorder-react": "workspace:*",
     "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/scopes-react": "workspace:*",
     "@wildflowerhealthio/servers-core-js": "workspace:*",
@@ -30,6 +38,7 @@
     "@wildflowerhealthio/telemetry-core": "workspace:*",
     "@wildflowerhealthio/telemetry-react": "workspace:*",
     "@wildflowerhealthio/telemetry-web": "workspace:*",
+    "@wildflowerhealthio/web-trace-core": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -37,11 +46,16 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   }
 }

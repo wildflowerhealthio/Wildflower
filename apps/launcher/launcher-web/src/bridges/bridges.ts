@@ -1,7 +1,6 @@
 import { CollectorBridge } from '@wildflowerhealthio/collector-fundamentals/bridge'
 import { Logging } from '@wildflowerhealthio/effect-messaging-core'
 import { GatekeeperBridge } from '@wildflowerhealthio/gatekeeper-core/bridge'
-import { HarRecorderBridge } from '@wildflowerhealthio/har-recorder-core-js'
 import { NavigationBridge } from '@wildflowerhealthio/navigation-core'
 
 /**
@@ -11,13 +10,7 @@ import { NavigationBridge } from '@wildflowerhealthio/navigation-core'
  * type from `typeof bridges`, so the runtime list and the type can't
  * drift. Order is irrelevant to dispatch (the transport routes by `_tag`).
  */
-const bridges = [
-  NavigationBridge,
-  GatekeeperBridge,
-  CollectorBridge,
-  HarRecorderBridge,
-  Logging.LogBridge,
-] as const
+const bridges = [NavigationBridge, GatekeeperBridge, CollectorBridge, Logging.LogBridge] as const
 
 type Bridges = typeof bridges
 

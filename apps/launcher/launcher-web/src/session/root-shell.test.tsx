@@ -116,9 +116,6 @@ vi.mock('@wildflowerhealthio/apps-react', () => ({
 vi.mock('../bridges/collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: makePassthrough('CollectorSenderForwarder'),
 }))
-vi.mock('../bridges/har-recorder-sender-forwarder.tsx', () => ({
-  HarRecorderSenderForwarder: makePassthrough('HarRecorderSenderForwarder'),
-}))
 // `buildAppTree` wraps the tree in `telemetry-web`'s `<ErrorBoundary>` and
 // reports to `Sentry`. Neither is the thing under test, and the real
 // `ErrorBoundary` would mask assertion failures by swallowing them into
@@ -172,11 +169,7 @@ describe('buildAppTree InnerWrap lifecycle', () => {
   // `CollectorSenderForwarder` slice sender that nests inside `InnerWrap`.
   // The `TransportContext.Provider` is also above the router (in `AppRoot`)
   // but is a plain context provider with no React-tree work to pin.
-  const INNER_WRAP_PROVIDERS = [
-    'AuthStateProvider',
-    'CollectorSenderForwarder',
-    'HarRecorderSenderForwarder',
-  ] as const
+  const INNER_WRAP_PROVIDERS = ['AuthStateProvider', 'CollectorSenderForwarder'] as const
 
   // `mountAtRoot` mounts into `document.getElementById('root')` via
   // `createRoot`, so the container must exist before each render and be

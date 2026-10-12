@@ -57,7 +57,11 @@ interface BaseRootProps {
    * `/health`. Defaults to the webview's `fetch`; tests pass a stub.
    */
   readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
-  /** The router's history. Defaults to the webview's own; tests pass a memory one. */
+  /**
+   * The router's history. Defaults to a browser history over the webview's
+   * own; the host app's shell passes the one its links navigate too, and
+   * tests pass a memory one.
+   */
   readonly history?: RouterHistory
   /** Where the consent answer is kept. Defaults to the webview's `localStorage`. */
   readonly storage?: ConsentStorage

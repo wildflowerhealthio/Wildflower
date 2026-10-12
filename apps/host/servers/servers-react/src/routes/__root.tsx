@@ -26,4 +26,14 @@ function BaseShell(): JSX.Element {
   )
 }
 
-export const Route = createRootRouteWithContext<RouterContext>()({ component: BaseShell })
+/**
+ * A path outside `routes/` belongs to whatever shell the base sits in, such as
+ * the host's `/recorder`, which hides the base while it shows, so the base
+ * renders nothing for it.
+ */
+const OutsideTheBase = (): null => null
+
+export const Route = createRootRouteWithContext<RouterContext>()({
+  component: BaseShell,
+  notFoundComponent: OutsideTheBase,
+})

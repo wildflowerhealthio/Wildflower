@@ -8,13 +8,16 @@
 //! path prefix, `https://example.com/relay`, is asked for
 //! `https://example.com/relay/rathole`, not `https://example.com/rathole`.
 //! `GET /me` is signed with the tunnel's token (see [`RequestSignature`]); the
-//! token is never sent.
+//! token is never sent. `POST /claim` sends the claim code as JSON, unsigned:
+//! the code is the credential, and the relay answers with the token.
 
 use std::time::Duration;
 
 use reqwest::StatusCode;
 use url::Url;
-use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost, TunnelName};
+use wildflowerhealthio_rathole_settings::{
+    ClaimRequest, ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
+};
 
 use super::request_signature::RequestSignature;
 use crate::domain::{EnrolmentError, TunnelToken};
@@ -63,6 +66,14 @@ impl ReqwestRelayClient {
         self.relay_base.join(path.trim_start_matches('/'))
     }
 
+    /// [`EnrolmentError::RelayUnreachable`] at this relay, from `source`.
+    fn unreachable(&self, source: Box<dyn std::error::Error + Send + Sync>) -> EnrolmentError {
+        EnrolmentError::RelayUnreachable {
+            relay_base: self.relay_base.clone(),
+            source,
+        }
+    }
+
     /// `GET {relay base}{path}`, signed as the tunnel in `sign_as` when there
     /// is one, or why no response came back.
     async fn get(
@@ -70,11 +81,7 @@ impl ReqwestRelayClient {
         path: &'static str,
         sign_as: Option<(&TunnelName, &TunnelToken)>,
     ) -> Result<reqwest::Response, EnrolmentError> {
-        let unreachable =
-            |source: Box<dyn std::error::Error + Send + Sync>| EnrolmentError::RelayUnreachable {
-                relay_base: self.relay_base.clone(),
-                source,
-            };
+        let unreachable = |source| self.unreachable(source);
         let target_uri = self
             .target_uri(path)
             .map_err(|error| unreachable(error.into()))?;
@@ -96,6 +103,24 @@ impl ReqwestRelayClient {
             .send()
             .await
             .map_err(|error| unreachable(error.into()))
+    }
+
+    /// `POST {relay base}{path}` with `body` as JSON, or why no response
+    /// came back.
+    async fn post_json(
+        &self,
+        path: &'static str,
+        body: &impl serde::Serialize,
+    ) -> Result<reqwest::Response, EnrolmentError> {
+        let target_uri = self
+            .target_uri(path)
+            .map_err(|error| self.unreachable(error.into()))?;
+        self.client
+            .post(target_uri)
+            .json(body)
+            .send()
+            .await
+            .map_err(|error| self.unreachable(error.into()))
     }
 }
 
@@ -120,6 +145,20 @@ impl RelayClient for ReqwestRelayClient {
             });
         }
         decode_success(PATH, response).await
+    }
+
+    async fn claim(&self, code: &str) -> Result<ClaimedTunnel, EnrolmentError> {
+        const PATH: &str = "/claim";
+        let request = ClaimRequest {
+            code: code.to_owned(),
+        };
+        let response = self.post_json(PATH, &request).await?;
+        match response.status() {
+            StatusCode::UNPROCESSABLE_ENTITY => Err(EnrolmentError::ClaimCodeRejected),
+            StatusCode::TOO_MANY_REQUESTS => Err(EnrolmentError::ClaimRateLimited),
+            StatusCode::NOT_FOUND => Err(EnrolmentError::ClaimCodesNotOffered),
+            _ => decode_success(PATH, response).await,
+        }
     }
 }
 
@@ -168,11 +207,17 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::broadcast;
     use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
-    use wildflowerhealthio_relay_server::{Secret, ServedTunnels, Site, Tunnel, Verifier};
+    use wildflowerhealthio_relay_server::domain::{
+        ClaimCode, ClaimCodeStore, StoredClaimCode, StoredTunnel, TunnelStore,
+    };
+    use wildflowerhealthio_relay_server::{
+        RatholeFeed, RelaySettings, Secret, ServedTunnels, Site, SqliteTunnelStore, Tunnel,
+        TunnelRegistry, Verifier,
+    };
 
     use super::*;
-    use crate::domain::fixtures::launcher_url;
-    use crate::domain::{add_server, EnteredRelay, RegistryError};
+    use crate::domain::fixtures::{launcher_url, token_credentials};
+    use crate::domain::{add_server, EnteredCredentials, EnteredRelay, RegistryError};
     use crate::{JsonServerRegistry, ServerRecord, ServerRegistry};
 
     /// A hostname the test resolves to the loopback relay itself.
@@ -193,6 +238,9 @@ mod tests {
         TunnelName::parse("ruth").unwrap()
     }
 
+    /// The claim code [`TestRelay::start`] issues for `ruth`.
+    const CLAIM_CODE: &str = "ABCD-EFGH";
+
     /// The real relay's site, with a self-signed certificate for
     /// [`RELAY_DOMAIN`] in place of the ACME one, on a loopback port, holding
     /// the tunnel `ruth` with [`TOKEN`].
@@ -200,10 +248,72 @@ mod tests {
         addr: SocketAddr,
         cert: CertificateDer<'static>,
         _shutdown_tx: broadcast::Sender<bool>,
+        /// The relay's state directory and rathole feed, while it has its
+        /// admin API.
+        _admin: Option<(tempfile::TempDir, RatholeFeed)>,
     }
 
     impl TestRelay {
+        /// The relay with its admin API, so it serves `POST /claim`, its
+        /// store holding `ruth` and the unexpired claim code [`CLAIM_CODE`]
+        /// for it.
         async fn start() -> Self {
+            let state_dir = tempfile::tempdir().unwrap();
+            let store =
+                SqliteTunnelStore::open(&state_dir.path().join(SqliteTunnelStore::FILE_NAME))
+                    .unwrap();
+            store
+                .insert_tunnel(&StoredTunnel {
+                    tunnel: Tunnel {
+                        name: ruth().into(),
+                        token: Secret::new(TOKEN),
+                    },
+                    email: "ruth@example.com".to_owned(),
+                    created_at: chrono::Utc::now().timestamp(),
+                })
+                .unwrap();
+            store
+                .replace_claim_code(&StoredClaimCode {
+                    code_hash: ClaimCode::parse(CLAIM_CODE).unwrap().hash(),
+                    tunnel_name: ruth().into(),
+                    expires_at: chrono::Utc::now().timestamp() + 600,
+                })
+                .unwrap();
+            drop(store);
+            let state_dir_path = state_dir.path().display().to_string();
+            let settings = RelaySettings::from_lookup(|name| match name {
+                "WILDFLOWER_RELAY_DOMAIN" => Some(RELAY_DOMAIN.to_owned()),
+                "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY" => {
+                    Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned())
+                }
+                "WILDFLOWER_RELAY_STATE_DIR" => Some(state_dir_path.clone()),
+                _ => None,
+            })
+            .unwrap();
+            let (registry, rathole_feed) = TunnelRegistry::open(&settings).await.unwrap();
+            let registry = Arc::new(registry);
+            let verifier = registry.verifier();
+            Self::serving(verifier, Some(registry), Some((state_dir, rathole_feed))).await
+        }
+
+        /// The relay without its admin API, so it has no `POST /claim`,
+        /// serving `ruth`.
+        async fn start_without_admin() -> Self {
+            let verifier = Arc::new(Verifier::new(
+                Arc::new(ServedTunnels::new(&[Tunnel {
+                    name: ruth().into(),
+                    token: Secret::new(TOKEN),
+                }])),
+                None,
+            ));
+            Self::serving(verifier, None, None).await
+        }
+
+        async fn serving(
+            verifier: Arc<Verifier>,
+            registry: Option<Arc<TunnelRegistry>>,
+            admin: Option<(tempfile::TempDir, RatholeFeed)>,
+        ) -> Self {
             let rcgen::CertifiedKey { cert, key_pair } =
                 rcgen::generate_simple_self_signed(vec![RELAY_DOMAIN.to_owned()]).unwrap();
             let cert = cert.der().clone();
@@ -216,14 +326,8 @@ mod tests {
             let site = Arc::new(Site::new(
                 Arc::new(SingleCertAndKey::from(key)),
                 served_settings(),
-                Arc::new(Verifier::new(
-                    Arc::new(ServedTunnels::new(&[Tunnel {
-                        name: ruth().into(),
-                        token: Secret::new(TOKEN),
-                    }])),
-                    None,
-                )),
-                None,
+                verifier,
+                registry,
             ));
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let addr = listener.local_addr().unwrap();
@@ -242,6 +346,7 @@ mod tests {
                 addr,
                 cert,
                 _shutdown_tx: shutdown_tx,
+                _admin: admin,
             }
         }
 
@@ -418,8 +523,7 @@ mod tests {
         let record = add_server(
             Arc::clone(&registry),
             relay.relay(),
-            ruth(),
-            TunnelToken::new(TOKEN),
+            token_credentials("ruth", TOKEN),
             launcher_url(),
             |relay_base| Ok(relay.client_at(relay_base)),
             chrono::Utc::now(),
@@ -439,8 +543,7 @@ mod tests {
             add_server(
                 Arc::clone(&registry),
                 relay.relay(),
-                ruth(),
-                TunnelToken::new(TOKEN),
+                token_credentials("ruth", TOKEN),
                 launcher_url(),
                 |relay_base| Ok(relay.client_at(relay_base)),
                 chrono::Utc::now(),
@@ -450,6 +553,86 @@ mod tests {
                 RegistryError::AlreadyRegistered { .. }
             ))
         ));
+    }
+
+    /// The real relay redeems its code once, for the tunnel's name, token
+    /// and its settings, case and dash ignored; then the same code is
+    /// rejected.
+    #[tokio::test]
+    async fn a_claim_code_redeems_once_at_the_real_relay() {
+        let relay = TestRelay::start().await;
+        let relay_client = relay.relay_client();
+
+        let claimed = relay_client.claim("abcdefgh").await.unwrap();
+
+        assert_eq!(
+            claimed,
+            ClaimedTunnel {
+                tunnel_name: ruth(),
+                token: TOKEN.to_owned(),
+                rathole_settings: served_settings(),
+            }
+        );
+        assert!(matches!(
+            relay_client.claim(CLAIM_CODE).await,
+            Err(EnrolmentError::ClaimCodeRejected)
+        ));
+    }
+
+    /// The relay lets a client try five codes at once; past that it is rate
+    /// limited.
+    #[tokio::test]
+    async fn the_real_relay_s_claim_refusals_are_named() {
+        let relay = TestRelay::start().await;
+        let relay_client = relay.relay_client();
+        for code in ["WXYZ-2345", "not a code", "", "WXYZ-2346", "WXYZ-2347"] {
+            let result = relay_client.claim(code).await;
+            assert!(
+                matches!(result, Err(EnrolmentError::ClaimCodeRejected)),
+                "{code:?}: {result:?}"
+            );
+        }
+        assert!(matches!(
+            relay_client.claim(CLAIM_CODE).await,
+            Err(EnrolmentError::ClaimRateLimited)
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_relay_without_its_admin_api_offers_no_claim_codes() {
+        let relay = TestRelay::start_without_admin().await;
+        assert!(matches!(
+            relay.relay_client().claim(CLAIM_CODE).await,
+            Err(EnrolmentError::ClaimCodesNotOffered)
+        ));
+    }
+
+    /// Enrolment with a claim code against the real relay, end to end: the
+    /// record holds the tunnel name and token the code redeemed for.
+    #[tokio::test]
+    async fn adds_a_server_from_a_claim_code_through_the_real_relay() {
+        let relay = TestRelay::start().await;
+        let data_root = tempfile::tempdir().unwrap();
+        let registry: Arc<dyn ServerRegistry> =
+            Arc::new(JsonServerRegistry::in_data_root(data_root.path()));
+
+        let record = add_server(
+            Arc::clone(&registry),
+            relay.relay(),
+            EnteredCredentials::ClaimCode {
+                code: CLAIM_CODE.to_owned(),
+            },
+            launcher_url(),
+            |relay_base| Ok(relay.client_at(relay_base)),
+            chrono::Utc::now(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(record.domain(), format!("ruth.{RELAY_DOMAIN}"));
+        assert_eq!(record.token, TunnelToken::new(TOKEN));
+        assert_eq!(record.public_settings, served_settings());
+        assert_eq!(registry.read_all().unwrap(), vec![record]);
     }
 
     /// Everything a failed enrolment produces is free of the token: its
@@ -475,8 +658,7 @@ mod tests {
                         base_url: relay_base.to_string(),
                         pin: None,
                     },
-                    ruth(),
-                    TunnelToken::new(token),
+                    token_credentials("ruth", token),
                     launcher_url(),
                     |relay_base| Ok(relay.client_at(relay_base)),
                     chrono::Utc::now(),

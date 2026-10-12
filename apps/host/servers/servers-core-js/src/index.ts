@@ -23,6 +23,7 @@ export {
 } from './background-session-recovery.ts'
 export * as CertificateAuthority from './certificate-authority.ts'
 export * as CertificateState from './certificate-state.ts'
+export * as EnteredCredentials from './entered-credentials.ts'
 export * as EnteredRelay from './entered-relay.ts'
 export * as HealthReport from './health-report.ts'
 export * as LaunchError from './launch-error.ts'

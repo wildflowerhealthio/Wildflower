@@ -13,13 +13,13 @@ packages:
   - apps/health-viewer/*
   # The host: the Tauri host app and the packages it is built from.
   - apps/host/*
+  - apps/host/recorder/*
   - apps/host/servers/*
   # The launcher: the web app that manages a Wildflower server, and the
   # packages it is built from, grouped by the slice they came from.
   - apps/launcher/*
   - apps/launcher/collector/*
   - apps/launcher/databases/*
-  - apps/launcher/har-recorder/*
   - apps/launcher/request-log/*
   # Lifting: the app and the core and screens it is built from.
   - apps/lifting/*

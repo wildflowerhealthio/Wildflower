@@ -39,7 +39,7 @@ anonymizer reaching sideways into the importer.
   constants that annotate what an import did not carry through
   (`DROPPED_REQUEST_ON_IMPORT_COMMENT`, etc.). `emitHarFromLog` serves more
   than one producer, so `creatorName` and `requestComment` are options — the
-  HAR recorder names itself and states that its request side was never
+  Recorder names itself and states that its request side was never
   observed, while the anonymizer takes the defaults (`CREATOR_NAME`,
   `DROPPED_REQUEST_ON_IMPORT_COMMENT`). Also `harToJson` / `harFromJson`
   (the `.har` file text; `{ pretty: true }` indents two spaces as DevTools

@@ -77,9 +77,9 @@ const BACKGROUND_SESSION_LENGTH: BackgroundSessionLength = if cfg!(target_os = "
     BackgroundSessionLength::AsLongAsNeeded
 };
 
-/// Resolves the data root, the directory the host keeps everything in: the
-/// server registry, saved files, and each server's own folder under
-/// `servers/`. `Documents` on iOS, where it is the only part of the app
+/// Resolves the data root, the directory the host keeps everything it owns
+/// in: the server registry, the install's ACME account, and each server's own
+/// folder under `servers/`. `Documents` on iOS, where it is the only part of the app
 /// container the Files app will show, and Tauri's `app_data_dir()` everywhere
 /// else. The iOS bundle has to opt in as well (see the [Data Directory
 /// Explanation] for both halves, the layout, and what each platform resolves
@@ -296,6 +296,9 @@ pub fn run() {
             wildflowerhealthio_servers_tauri::server_consent_get,
             wildflowerhealthio_servers_tauri::server_consent_approve,
             wildflowerhealthio_servers_tauri::server_consent_deny,
+            // The Recorder page's save folder, granted to the `main` webview
+            // only (`allow-recorder`).
+            wildflowerhealthio_recorder_tauri::recorder_save_folder,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -396,14 +399,10 @@ pub fn run() {
             // `native_webview_data_plane_emit` command) and re-broadcasts.
             wildflowerhealthio_browser_sniffer_tauri::attach_browser_sniffer(app.handle());
 
-            // Wire the HarRecorderBridge.webToHost listener that writes a
-            // finished recording into `<data root>/saved_data`, shared by
-            // every server, taking the directory this `setup()` already
-            // resolved rather than its own.
-            wildflowerhealthio_har_recorder_tauri::attach_har_recorder(
-                app.handle(),
-                data_root.clone(),
-            );
+            // Wire the Recorder's `SaveHar` listener, which writes a
+            // finished recording into the platform's `Wildflower Recordings`
+            // folder, resolved there.
+            wildflowerhealthio_recorder_tauri::attach_recorder(app.handle());
 
             // Push every server in `servers.json`, in the same data root, to
             // `TauriUnitRunner`, and manage the registry the commands write,

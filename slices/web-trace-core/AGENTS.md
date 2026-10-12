@@ -36,7 +36,7 @@ encoding of a trace cannot live anywhere it already had a home:
   package in it knows about FHIR.
 
 It is consumed by both the collectors and the HAR packages (`http-archive`,
-`har-importer-core`, `har-recorder-core-js`, `har-anonymizer-core`), so it
+`har-importer-core`, `recorder-core-js`, `har-anonymizer-core`), so it
 has to sit below all of them.
 
 ## Module layout

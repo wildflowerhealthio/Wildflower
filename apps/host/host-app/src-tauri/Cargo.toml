@@ -1,6 +1,6 @@
 [package]
 name = "host-app"
-version = "0.3.2"
+version = "0.3.3"
 description = "A Tauri App"
 authors = ["Ruth Marks"]
 edition.workspace = true
@@ -33,9 +33,10 @@ serde.workspace = true
 serde_json.workspace = true
 wildflowerhealthio-apps = { path = "../../wildflower-server/apps-rust" }
 wildflowerhealthio-browser-sniffer-tauri = { path = "../../browser-sniffer-tauri" }
-# Host glue for the HAR Recorder: the `BRIDGE_EVENT` listener that writes a
-# recorded archive into `<data root>/saved_data`.
-wildflowerhealthio-har-recorder-tauri = { path = "../../wildflower-server/har-recorder-tauri" }
+# Host glue for the Recorder: the `BRIDGE_EVENT` listener that writes a
+# recorded archive into the `Wildflower Recordings` folder, and the
+# `recorder_save_folder` command.
+wildflowerhealthio-recorder-tauri = { path = "../../recorder/recorder-tauri" }
 # The install's servers on the unit runner, the notifications about them, and
 # the base's commands for adding a server and re-entering its token, over the
 # install's `servers.json`. Hosted from `.setup()`; the commands registered in

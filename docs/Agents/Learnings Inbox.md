@@ -221,7 +221,7 @@ the literal and fakes only the data part.
 ## A new Tauri-linked crate must be added to `scripts/checks/rust.sh`'s partition lists
 
 **Discovered during**: claude/nifty-knuth-8ywi8f (HAR Recorder, `har-recorder-tauri-rust`)
-**Learning**: `rust.sh` splits the workspace into a non-Tauri partition (`--workspace --exclude …`) and a Tauri partition by crate _name_. A new crate that depends on `tauri` is not excluded automatically, so the GTK-less `pre-commit` step tries to compile it, dies in `gdk-sys`'s build script, and the commit is refused with a wall of pkg-config output. Add the crate to all three lists (`non_tauri` excludes, `tauri`, `tauri_names`) in the same PR that creates it; CI's `clippy-all` / `test-all` compile it regardless. Put anything with testable logic in a tauri-free sibling crate (`har-recorder-rust` next to `har-recorder-tauri`) so its tests run in the container.
+**Learning**: `rust.sh` splits the workspace into a non-Tauri partition (`--workspace --exclude …`) and a Tauri partition by crate _name_. A new crate that depends on `tauri` is not excluded automatically, so the GTK-less `pre-commit` step tries to compile it, dies in `gdk-sys`'s build script, and the commit is refused with a wall of pkg-config output. Add the crate to all three lists (`non_tauri` excludes, `tauri`, `tauri_names`) in the same PR that creates it; CI's `clippy-all` / `test-all` compile it regardless. Put anything with testable logic in a tauri-free sibling crate (`recorder-rust` next to `recorder-tauri`) so its tests run in the container.
 **Suggested destination**: Rust docs / Strategies (Environment & toolchain)
 
 ## `*.css?raw` imports resolve to an empty string under Vitest
