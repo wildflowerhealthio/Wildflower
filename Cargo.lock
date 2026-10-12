@@ -7877,6 +7877,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-native-page-browser"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "tauri-plugin-opener",
+ "url",
+]
+
+[[package]]
 name = "tauri-plugin-native-webview"
 version = "0.0.0"
 dependencies = [
