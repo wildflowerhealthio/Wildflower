@@ -25,7 +25,13 @@ describe('SiteFooter', () => {
       'mailto:ruthmarks151@gmail.com'
     )
     const year = new Date().getFullYear()
-    expect(screen.getByText(`Wildflower Health Project · Ruth Marks · ${year}`)).toBeDefined()
+    const licence = screen.getByRole('link', { name: 'MIT licence' })
+    expect(licence.getAttribute('href')).toBe(
+      'https://github.com/wildflowerhealthio/Wildflower/blob/main/LICENSE'
+    )
+    expect(licence.closest('p')?.textContent).toBe(
+      `Wildflower Health Project · Ruth Marks · ${year} · MIT licence`
+    )
   })
 
   it('should link to the privacy policy, the consumer health data policy, the terms of use and the deletion page on the canonical site', () => {

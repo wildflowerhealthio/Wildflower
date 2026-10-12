@@ -56,3 +56,29 @@ Data types. For each: **not linked to the user's identity**, **not used for trac
 | Diagnostics      | Other Diagnostic Data |
 
 The iOS privacy manifest, `src-tauri/gen/apple/PrivacyInfo.xcprivacy`, declares the same four types, no tracking and no tracking domains. Keep it in step with this table.
+
+## App Store Connect: Export compliance
+
+`Info.plist` sets `ITSAppUsesNonExemptEncryption` to `NO`, so App Store Connect doesn't ask the encryption questions. Apple's meaning of `NO` is "uses no encryption, or only encryption exempt from export compliance documentation". It doesn't mean the app has no cryptography. The app does have cryptography, and every piece of it is standard:
+
+| Cryptography                                                     | Comes from                       | Used for                               |
+| ---------------------------------------------------------------- | -------------------------------- | -------------------------------------- |
+| TLS (`rustls` + `ring`, vendored OpenSSL, `native-tls`), `rcgen` | HTTP clients, ACME, certificates | HTTPS and the device's TLS certificate |
+| Noise (`snow`: X25519, ChaCha20-Poly1305, BLAKE2)                | rathole's `noise` feature        | Tunnel transport to the relay          |
+| Ed25519, RSA, P-256 signatures; Argon2id hashing                 | gatekeeper                       | Token signing, client-secret hashing   |
+| AES-GCM                                                          | `helios-rest`                    | Library-internal                       |
+
+The answers the questionnaire would otherwise take:
+
+| Question                                                                                        | Answer |
+| ----------------------------------------------------------------------------------------------- | ------ |
+| Does your app implement proprietary or non-standard encryption algorithms?                      | No     |
+| Does your app implement standard encryption algorithms instead of, or in addition to, the OS's? | Yes    |
+| Is your app going to be available on the App Store in France?                                   | No     |
+
+Those answers need no documents. Under the EAR this is mass-market standard cryptography (5D992.c), which needs no self-classification report since BIS's March 2021 rule. The source is also public under MIT, so it is publicly available standard cryptography that needs no notification.
+
+`NO` stops being true if:
+
+- the app ships in France: set `YES`, file the French declaration, add `ITSEncryptionExportComplianceCode`, and update the build-ios check in `tauri-release-publish.yml`.
+- the app adds non-standard or home-made cryptography. Standard primitives or protocols added later, such as SQLCipher at rest or TLS end-to-end through the relay, don't change the answer.
