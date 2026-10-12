@@ -257,6 +257,12 @@ const openDialogOrThrow = (): HTMLDialogElement => {
   return dialog
 }
 
+/** The text of each paragraph in `container` outside a closed or open dialog. */
+const paragraphsOf = (container: HTMLElement): readonly (string | null)[] =>
+  Array.from(container.querySelectorAll('p'))
+    .filter((paragraph) => paragraph.closest('dialog') === null)
+    .map((paragraph) => paragraph.textContent)
+
 describe('BaseRoot', () => {
   it('should show only the consent dialog, and call no host command, until the user answers', async () => {
     // Arrange
@@ -816,6 +822,14 @@ describe('Launch', () => {
     return button
   }
 
+  /** The text of the element that describes `button`, if any. */
+  const descriptionOf = (button: HTMLElement): string | null | undefined =>
+    document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent
+
+  /** Whether `first` comes before `second` in the document. */
+  const isBefore = (first: Node, second: Node): boolean =>
+    (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
   /** `golden.serverStatuses.runningAndReachable`, for the server `domain`. */
   const launchableStatus = (domain: string): Readonly<Record<string, unknown>> => ({
     ...golden.serverStatuses.runningAndReachable,
@@ -899,13 +913,19 @@ describe('Launch', () => {
   })
 
   it.each([
-    ['runningRenewalFailed', "The server hasn't been reached through its relay yet."],
-    ['runningUnreachable', "The server can't be reached through its relay."],
-    ['runningTokenRejected', "The relay rejected the server's tunnel token."],
-    ['runningTunnelUnknown', "The relay has no tunnel by the server's tunnel name."],
+    ['runningRenewalFailed', 'Running, checking it can be reached'],
+    ['runningUnreachable', 'Running, not reachable yet: the relay answered 502'],
+    [
+      'runningTokenRejected',
+      "The relay rejected this server's tunnel token. Enter a new token on the Relay tab of the server's page.",
+    ],
+    [
+      'runningTunnelUnknown',
+      'The relay has no tunnel for this server. The tunnel ruth may have been deleted. Check the tunnel name, or ask whoever runs the relay.',
+    ],
   ] as const)(
-    'should be disabled for a running server that is %s, saying why',
-    async (statusName, reason) => {
+    'should be disabled for a running server that is %s, described by its status note alone',
+    async (statusName, note) => {
       // Arrange
       const events = fakeEvents()
       renderLaunching({ events })
@@ -915,8 +935,11 @@ describe('Launch', () => {
       events.emit('server-status', golden.serverStatuses[statusName])
 
       // Assert
-      expect(await within(serverRow(RUTH)).findByText(reason)).toBeDefined()
-      expect(launchOn(RUTH).disabled).toBe(true)
+      await waitFor(() => {
+        expect(launchOn(RUTH).disabled).toBe(true)
+      })
+      expect(descriptionOf(launchOn(RUTH))).toBe(note)
+      expect(paragraphsOf(serverRow(RUTH))).toEqual([note])
     }
   )
 
@@ -933,10 +956,12 @@ describe('Launch', () => {
     })
 
     // Assert
-    expect(
-      await within(serverRow(RUTH)).findByText('The server has no valid certificate yet.')
-    ).toBeDefined()
+    const reason = await within(serverRow(RUTH)).findByText(
+      'The server has no valid certificate yet.'
+    )
     expect(launchOn(RUTH).disabled).toBe(true)
+    expect(descriptionOf(launchOn(RUTH))).toBe('The server has no valid certificate yet.')
+    expect(isBefore(reason, launchOn(RUTH))).toBe(true)
   })
 
   it("should be disabled for a running server whose certificate browsers don't trust, saying why", async () => {
@@ -958,7 +983,7 @@ describe('Launch', () => {
   })
 
   it.each([
-    ['starting', golden.serverStatuses.startingUnchecked, 'The server is starting.'],
+    ['starting', golden.serverStatuses.startingUnchecked, 'Starting'],
     [
       'stopped',
       golden.serverStatuses.stoppedWithAnError,
@@ -966,7 +991,7 @@ describe('Launch', () => {
     ],
   ] as const)(
     'should be disabled for a %s server whose policy wants it running, without changing the policy',
-    async (_runState, status, reason) => {
+    async (_runState, status, description) => {
       // Arrange
       const { host } = renderLaunching({
         servers: listedWithLab({
@@ -977,8 +1002,9 @@ describe('Launch', () => {
       await screen.findByRole('listitem', { name: LAB })
 
       // Assert
-      expect(within(serverRow(LAB)).getByText(reason)).toBeDefined()
+      expect(within(serverRow(LAB)).getAllByText(description)).toHaveLength(1)
       expect(launchOn(LAB).disabled).toBe(true)
+      expect(descriptionOf(launchOn(LAB))).toBe(description)
       expect(host.seen.map(({ command }) => command)).not.toContain('server_set_run_policy')
     }
   )
@@ -1178,18 +1204,18 @@ describe('Launch', () => {
   })
 
   it.each([
-    ['starting', labStatus('startingUnchecked'), 'The server is starting.'],
+    ['starting', labStatus('startingUnchecked'), 'Starting'],
     [
       'running, not yet reached',
       labStatus('runningRenewalFailed'),
-      "The server hasn't been reached through its relay yet.",
+      'Running, checking it can be reached',
     ],
     [
       'running, unreachable, still getting a certificate',
       labStatus('runningUnreachable', {
         certificate: golden.serverStatuses.runningCacheFailed.certificate,
       }),
-      "The server can't be reached through its relay: the relay answered 502",
+      'Running, not reachable yet: the relay answered 502',
     ],
     [
       'running, reachable, still getting a certificate',
@@ -1211,7 +1237,7 @@ describe('Launch', () => {
       'It stopped to start again.',
     ],
   ] as const)(
-    "should say why a started server that is %s isn't launched yet, under Starting…",
+    "should say once why a started server that is %s isn't launched yet, above Starting…",
     async (_state, status, reason) => {
       // Arrange
       const user = userEvent.setup()
@@ -1231,47 +1257,16 @@ describe('Launch', () => {
       await waitFor(() => {
         expect(starting.getAttribute('aria-describedby')).not.toBeNull()
       })
-      const describedBy = document.getElementById(starting.getAttribute('aria-describedby') ?? '')
-      expect(describedBy?.textContent).toBe(reason)
+      expect(descriptionOf(starting)).toBe(reason)
+      expect(within(serverRow(LAB)).getAllByText(reason)).toHaveLength(1)
+      expect(isBefore(within(serverRow(LAB)).getByText(reason), starting)).toBe(true)
       expect(within(serverRow(LAB)).getByRole('button', { name: 'Cancel' })).toBeDefined()
       expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
       expect(launchesSeen(host)).toEqual([])
     }
   )
 
-  it.each([
-    [
-      'its run stops with an error',
-      labStatus('stoppedWithAnError', {
-        lastStop: {
-          reason: 'endedOnItsOwn',
-          error: 'the address is in use',
-          stoppedAt: '2026-10-06T18:00:00Z',
-        },
-      }),
-      'The server stopped with an error: the address is in use',
-    ],
-    [
-      'its certificate order is failing',
-      labStatus('startingCaUnreachable'),
-      "Ordering the server's certificate is failing.",
-    ],
-    [
-      "its certificate is one browsers don't trust",
-      labStatus('runningAndReachableOnStaging'),
-      "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
-    ],
-    [
-      "the relay rejects its tunnel's token",
-      labStatus('runningTokenRejected'),
-      "The relay rejected the server's tunnel token.",
-    ],
-    [
-      'the relay has no tunnel of its name',
-      labStatus('runningTunnelUnknown'),
-      "The relay has no tunnel by the server's tunnel name.",
-    ],
-  ] as const)('should stop waiting, saying why, once %s', async (_cause, status, failure) => {
+  it('should stop waiting, saying why above Launch, once its certificate order is failing', async () => {
     // Arrange
     const user = userEvent.setup()
     const { host, events } = renderLaunching({
@@ -1283,13 +1278,13 @@ describe('Launch', () => {
     await startAndLaunch(user, LAB)
 
     // Act
-    events.emit('server-status', status)
+    events.emit('server-status', labStatus('startingCaUnreachable'))
 
     // Assert
     const banner = await within(serverRow(LAB)).findByRole('alert')
-    expect(banner.textContent).toContain(failure)
+    expect(banner.textContent).toContain("Ordering the server's certificate is failing.")
     expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
-    expect(within(serverRow(LAB)).getByRole('button', { name: 'Launch' })).toBeDefined()
+    expect(isBefore(banner, launchOn(LAB))).toBe(true)
     events.emit('server-status', launchableStatus(LAB))
     await waitFor(() => {
       expect(launchOn(LAB).disabled).toBe(false)
@@ -1297,18 +1292,79 @@ describe('Launch', () => {
     expect(launchesSeen(host)).toEqual([])
   })
 
+  it.each([
+    [
+      'its run stops with an error',
+      labStatus('stoppedWithAnError', {
+        lastStop: {
+          reason: 'endedOnItsOwn',
+          error: 'the address is in use',
+          stoppedAt: '2026-10-06T18:00:00Z',
+        },
+      }),
+      "The server isn't running yet. It starts again on its own.",
+      'It stopped with an error: the address is in use',
+    ],
+    [
+      "its certificate is one browsers don't trust",
+      labStatus('runningAndReachableOnStaging'),
+      "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
+      "The server's certificate is from Let's Encrypt's staging CA, which browsers don't trust.",
+    ],
+    [
+      "the relay rejects its tunnel's token",
+      labStatus('runningTokenRejected'),
+      "The relay rejected this server's tunnel token. Enter a new token on the Relay tab of the server's page.",
+      "The relay rejected this server's tunnel token. Enter a new token on the Relay tab of the server's page.",
+    ],
+    [
+      'the relay has no tunnel of its name',
+      labStatus('runningTunnelUnknown'),
+      'The relay has no tunnel for this server. The tunnel lab may have been deleted. Check the tunnel name, or ask whoever runs the relay.',
+      'The relay has no tunnel for this server. The tunnel lab may have been deleted. Check the tunnel name, or ask whoever runs the relay.',
+    ],
+  ] as const)(
+    'should stop waiting without a failure of its own once %s, the card saying why once',
+    async (_cause, status, description, cause) => {
+      // Arrange
+      const user = userEvent.setup()
+      const { host, events } = renderLaunching({
+        answers: {
+          server_set_run_policy: () => Promise.resolve({ kind: 'whileOpen' }),
+          server_launch: () => Promise.resolve(null),
+        },
+      })
+      await startAndLaunch(user, LAB)
+
+      // Act
+      events.emit('server-status', status)
+
+      // Assert
+      await waitFor(() => {
+        expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+      })
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+      expect(launchOn(LAB).disabled).toBe(true)
+      expect(descriptionOf(launchOn(LAB))).toBe(description)
+      expect(within(serverRow(LAB)).getAllByText(cause)).toHaveLength(1)
+      events.emit('server-status', launchableStatus(LAB))
+      await waitFor(() => {
+        expect(launchOn(LAB).disabled).toBe(false)
+      })
+      expect(launchesSeen(host)).toEqual([])
+    }
+  )
+
   describe('while a started server is unreachable with a valid certificate', () => {
-    const UNREACHABLE = "The server can't be reached through its relay: the relay answered 502"
+    const UNREACHABLE = 'Running, not reachable yet: the relay answered 502'
 
     const unreachableWithAValidCertificate = labStatus('runningUnreachable', {
       certificate: golden.serverStatuses.runningAndReachable.certificate,
     })
 
-    /** The reason under Starting… on lab's card. */
-    const waitingReason = (): string | null | undefined => {
-      const starting = within(serverRow(LAB)).getByRole('button', { name: 'Starting…' })
-      return document.getElementById(starting.getAttribute('aria-describedby') ?? '')?.textContent
-    }
+    /** What describes Starting… on lab's card. */
+    const waitingReason = (): string | null | undefined =>
+      descriptionOf(within(serverRow(LAB)).getByRole('button', { name: 'Starting…' }))
 
     /** Move the device's clock and timers on by `millis`. */
     const advance = (millis: number): void => {
@@ -1364,7 +1420,7 @@ describe('Launch', () => {
       expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
     })
 
-    it('should stop waiting, saying why, once it has been unreachable for the grace', async () => {
+    it('should stop waiting without a failure of its own once it has been unreachable for the grace', async () => {
       // Arrange
       const { host, events } = await startWaiting()
       await becomeUnreachable(events)
@@ -1373,9 +1429,13 @@ describe('Launch', () => {
       advance(5_000)
 
       // Assert
-      const banner = await within(serverRow(LAB)).findByRole('alert')
-      expect(banner.textContent).toContain(UNREACHABLE)
-      expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+      await waitFor(() => {
+        expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+      })
+      expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
+      expect(launchOn(LAB).disabled).toBe(true)
+      expect(descriptionOf(launchOn(LAB))).toBe(UNREACHABLE)
+      expect(within(serverRow(LAB)).getAllByText(UNREACHABLE)).toHaveLength(1)
       expect(launchesSeen(host)).toEqual([])
     })
 
@@ -1411,9 +1471,10 @@ describe('Launch', () => {
         advance(1_000)
 
         // Assert
-        expect((await within(serverRow(LAB)).findByRole('alert')).textContent).toContain(
-          UNREACHABLE
-        )
+        await waitFor(() => {
+          expect(within(serverRow(LAB)).queryByRole('button', { name: 'Starting…' })).toBeNull()
+        })
+        expect(within(serverRow(LAB)).queryByRole('alert')).toBeNull()
         expect(launchesSeen(host)).toEqual([])
       }
     )
@@ -1651,6 +1712,28 @@ describe('the server page', () => {
       expect(status.textContent).toMatch(new RegExp(`${label}$`))
       expect(within(await hero()).queryByText(/^Since /) !== null).toBe(running)
       expect(within(await hero()).getByRole('combobox', { name: /runs$/ })).toBeDefined()
+    }
+  )
+
+  it.each([
+    ['runningTokenRejected', "The relay rejected this server's tunnel token"],
+    ['runningUnreachable', 'Running, not reachable yet'],
+  ] as const)(
+    'should disable Launch for a %s status, described by the status row alone',
+    async (statusName, label) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+      })
+
+      // Assert
+      const launch = within(await hero()).getByRole('button', { name: 'Launch' })
+      expect(launch.hasAttribute('disabled')).toBe(true)
+      const description = document.getElementById(launch.getAttribute('aria-describedby') ?? '')
+      expect(description?.contains(within(await hero()).getByRole('status'))).toBe(true)
+      expect(within(await hero()).getByRole('status').textContent).toMatch(new RegExp(`${label}$`))
+      expect(paragraphsOf(await hero())).toEqual([])
     }
   )
 

@@ -12,6 +12,7 @@ import { type JSX, useEffect, useId, useState } from 'react'
 
 import { failureText } from './failure-text.ts'
 import {
+  isStatusShownRefusal,
   REFUSAL_REASON,
   unreachableGraceEndOf,
   unreachableSinceOf,
@@ -27,17 +28,22 @@ import styles from './launch-button.module.css'
 /** Why Launch is disabled while the webview is offline. */
 const OFFLINE_REASON = 'Apps open from the web, so launching needs a connection.'
 
-/** Why Launch is disabled for a server that isn't running while its policy wants it running. */
-const notRunningReason = (server: ListedServer.Type): string =>
+/**
+ * Why Launch is disabled for a server that isn't running while its policy
+ * wants it running; none while it is starting, which its status says.
+ */
+const notRunningReason = (server: ListedServer.Type): Option.Option<string> =>
   server.status.runState === 'starting'
-    ? 'The server is starting.'
-    : "The server isn't running yet. It starts again on its own."
+    ? Option.none()
+    : Option.some("The server isn't running yet. It starts again on its own.")
 
 /**
  * While the server `server`'s start-and-launch is waiting, launch it once its
- * status is launchable and the webview is online, or end the wait with the
- * failure once waiting can't help (see `waitOutcomeOf`). The launch's outcome
- * ends it too, unless it was cancelled meanwhile.
+ * status is launchable and the webview is online, or end the wait once
+ * waiting can't help (see `waitOutcomeOf`): with its failure when it has
+ * one, or else with none, leaving the server's status or Launch's reason to
+ * say why. The launch's outcome ends it too, unless it was cancelled
+ * meanwhile.
  *
  * @remarks
  * It keeps the wait's `unreachableSince` current from each status, and looks
@@ -68,7 +74,10 @@ const useDriveStartAndLaunch = (
     }
     const outcome = waitOutcomeOf(status, pending.confirmedAt, unreachableGraceHasPassed)
     if (outcome.kind === 'gaveUp') {
-      pendingLaunches.set(domain, Option.some({ kind: 'failed', failure: outcome.failure }))
+      pendingLaunches.set(
+        domain,
+        Option.map(outcome.failure, (failure) => ({ kind: 'failed', failure }))
+      )
       return
     }
     if (outcome.kind !== 'launchable' || !online) return
@@ -99,39 +108,51 @@ const useDriveStartAndLaunch = (
 
 /**
  * A server's Launch: opens its launcher through `server_launch`, or says why
- * it can't.
+ * it can't when the server's status around it doesn't.
  *
  * @remarks
- * - Offline, it is disabled: the launcher is a web page.
+ * - Offline, it is disabled and says so: the launcher is a web page.
  * - For a server that isn't running and whose run policy is `off` or an
  *   `until` that has ended, it asks "Start server and launch?". Confirming
  *   sets the policy to `whileOpen` (unless it has become active meanwhile),
- *   then it shows "Starting…", with Cancel, over why the server can't be
- *   launched yet, until the server's status (kept current by `server-status`
- *   events) is launchable, and launches it once. The wait gives up, showing
- *   why, once waiting can't help (see `waitOutcomeOf`), and Launch is back.
- *   The wait is in the router context's `pendingLaunches`, so it carries on
- *   when Edit opens the server's page, whose Launch shows it too.
- * - For a server that isn't running while its policy still wants it running
- *   (starting, or waiting to start again), it is disabled and says so:
- *   launching never changes an active policy or extends an `until`.
- * - For a running server the host would refuse (not yet reached, unreachable,
- *   no valid certificate, a certificate browsers don't trust), it is disabled
- *   and says why.
+ *   then it shows "Starting…", with Cancel, under why the server can't be
+ *   launched yet when its status doesn't say, until the server's status
+ *   (kept current by `server-status` events) is launchable, and launches it
+ *   once. The wait gives up once waiting can't help (see `waitOutcomeOf`),
+ *   showing its failure when it has one, and Launch is back. The wait is in
+ *   the router context's `pendingLaunches`, so it carries on when Edit opens
+ *   the server's page, whose Launch shows it too.
+ * - For a server waiting to start again while its policy still wants it
+ *   running, it is disabled and says so; while such a server is starting,
+ *   its status says so: launching never changes an active policy or extends
+ *   an `until`.
+ * - For a running server whose certificate the host would refuse (none
+ *   valid, or one browsers don't trust), it is disabled and says why.
+ * - For a running server the host would refuse for what its status shows
+ *   (its relay refused its tunnel, or it hasn't been or can't be reached),
+ *   it is disabled without a reason of its own, and described by
+ *   `statusDescriptionId`'s element.
  * - Otherwise it launches, and shows the host's refusal when there is one.
  *
- * The host refuses at once whenever a server isn't launchable; waiting for a
+ * Its reason and the host's refusal sit above its buttons, never below. The
+ * host refuses at once whenever a server isn't launchable; waiting for a
  * started server happens here.
  */
 const LaunchButton = ({
   server,
   runHostCommand,
   className,
+  statusDescriptionId,
 }: {
   readonly server: ListedServer.Type
   readonly runHostCommand: RunHostCommand
   /** Sizes the button's block in its parent's layout. */
   readonly className?: string
+  /**
+   * The id of the element showing the server's status, which describes
+   * Launch while it is disabled for what that status shows.
+   */
+  readonly statusDescriptionId?: string
 }): JSX.Element => {
   const reasonId = useId()
   const online = useOnline()
@@ -160,16 +181,24 @@ const LaunchButton = ({
     Option.flatMap((launching) => {
       if (launching.kind !== 'waiting') return Option.none()
       const outcome = waitOutcomeOf(server.status, launching.confirmedAt, unreachableGraceHasPassed)
-      return outcome.kind === 'waiting' ? Option.some(outcome.reason) : Option.none()
+      return outcome.kind === 'waiting' ? outcome.reason : Option.none()
     })
   )
   const reason = ((): Option.Option<string> => {
     if (!online) return Option.some(OFFLINE_REASON)
     if (starting) return waitingReason
-    if (refusal === null) return Option.none()
+    if (refusal === null || isStatusShownRefusal(refusal)) return Option.none()
     if (refusal !== 'serverNotRunning') return Option.some(REFUSAL_REASON[refusal])
-    return policyIsInactive ? Option.none() : Option.some(notRunningReason(server))
+    return policyIsInactive ? Option.none() : notRunningReason(server)
   })()
+  // Launch asks to start a server that isn't running under an inactive policy.
+  const refused = refusal !== null && !(refusal === 'serverNotRunning' && policyIsInactive)
+  const disabled = starting || !online || refused
+  const describedBy = reason.pipe(
+    Option.as(reasonId),
+    Option.orElse(() => (disabled ? Option.fromNullable(statusDescriptionId) : Option.none())),
+    Option.getOrUndefined
+  )
   const onLaunch = (): void => {
     // A new attempt clears the previous one's failure.
     setRunPolicy.reset()
@@ -199,6 +228,19 @@ const LaunchButton = ({
     mutationError === null ? Option.getOrNull(pendingFailure) : failureText(mutationError)
   return (
     <div className={cn(styles['launch-button'], className)}>
+      {reason.pipe(
+        Option.map((text) => (
+          <p
+            key="reason"
+            id={reasonId}
+            className={`text-body-3 ${styles['launch-button__reason']}`}
+          >
+            {text}
+          </p>
+        )),
+        Option.getOrNull
+      )}
+      <ErrorBanner error={error} />
       <div className={styles['launch-button__buttons']}>
         {starting ? (
           <>
@@ -206,7 +248,7 @@ const LaunchButton = ({
               type="button"
               className={`button-2 filled ${styles['launch-button__launch']}`}
               disabled
-              aria-describedby={reason.pipe(Option.as(reasonId), Option.getOrUndefined)}
+              aria-describedby={describedBy}
             >
               Starting…
             </button>
@@ -224,27 +266,14 @@ const LaunchButton = ({
           <button
             type="button"
             className={`button-2 filled ${styles['launch-button__launch']}`}
-            disabled={Option.isSome(reason) || launch.isPending}
-            aria-describedby={reason.pipe(Option.as(reasonId), Option.getOrUndefined)}
+            disabled={disabled || launch.isPending}
+            aria-describedby={describedBy}
             onClick={onLaunch}
           >
             Launch
           </button>
         )}
       </div>
-      {reason.pipe(
-        Option.map((text) => (
-          <p
-            key="reason"
-            id={reasonId}
-            className={`text-body-3 ${styles['launch-button__reason']}`}
-          >
-            {text}
-          </p>
-        )),
-        Option.getOrNull
-      )}
-      <ErrorBanner error={error} />
       <ConfirmDialog
         open={confirmingStart}
         title="Start server and launch?"

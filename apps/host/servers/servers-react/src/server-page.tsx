@@ -134,8 +134,9 @@ type CopyOutcome = 'idle' | 'copied' | 'refused'
  * run-policy field; and Launch.
  *
  * @remarks
- * Launch opens the server's launcher, or says why it can't (see
- * `LaunchButton`). The clipboard needs a focused, secure page and may still
+ * Launch opens the server's launcher, or says why it can't when the status
+ * row doesn't (see `LaunchButton`); disabled for what the status shows, it
+ * is described by the status row. The clipboard needs a focused, secure page and may still
  * refuse; the domain is on screen to copy by hand either way, and the page
  * says so.
  */
@@ -147,6 +148,7 @@ const StatusHero = ({
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
   const status = statusSummary(server.status)
+  const statusId = useId()
   const [copyOutcome, setCopyOutcome] = useState<CopyOutcome>('idle')
   const copyDomain = async (): Promise<void> => {
     try {
@@ -177,7 +179,7 @@ const StatusHero = ({
           The clipboard refused. Select the domain to copy it by hand.
         </p>
       ) : null}
-      <div className={styles['server-page__status-row']}>
+      <div id={statusId} className={styles['server-page__status-row']}>
         <StatusBadge tone={status.tone} pulse={status.tone === 'success'}>
           {status.label}
         </StatusBadge>
@@ -188,7 +190,11 @@ const StatusHero = ({
         ) : null}
       </div>
       <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
-      <LaunchButton server={server} runHostCommand={runHostCommand} />
+      <LaunchButton
+        server={server}
+        runHostCommand={runHostCommand}
+        statusDescriptionId={statusId}
+      />
     </section>
   )
 }
