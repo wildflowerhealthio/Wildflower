@@ -8,11 +8,15 @@ stores, and the packages beside it that only the host uses. The app itself is
 ## Packages
 
 - [`host-app`](./host-app/README.md) — the app: the Vite entry its webview
-  loads, a shell with a bar of two links, **Servers** (the base,
-  `servers-react`'s `BaseRoot`, whose router owns every path but `/recorder`)
-  and **Recorder** (`/recorder`, `recorder-react`'s `RecorderPage`, over an
-  `effect-messaging-tauri-js` transport for `RecorderBridge`), over one browser
-  history with both pages kept mounted, and, in `src-tauri`, the `host-app` crate (`host_app_lib`) that builds
+  loads, which owns the one TanStack router, behind the base's telemetry
+  consent gate (`servers-react`'s `BaseGate`). Its `routes.config.ts` composes
+  its root layout, a bar of two TanStack `<Link>`s over every route, **Servers**
+  (the base's screens, `servers-react`'s `routes/_servers/` mounted under a
+  pathless `_servers` layout, `BaseLayout`) and **Recorder** (`/recorder`,
+  `recorder-react`'s `RecorderPage`, over an `effect-messaging-tauri-js`
+  transport for `RecorderBridge`, whose `RecorderProvider` the layout holds
+  so a recording outlives the route), with a Page not found under the bar for
+  any other path; and, in `src-tauri`, the `host-app` crate (`host_app_lib`) that builds
   the Tauri app, registers the plugins and commands, and hosts the servers. The
   committed `src-tauri/gen/` holds its Xcode and Gradle projects.
 - [`servers/`](./servers/AGENTS.md) — the servers this install knows about, how
@@ -58,6 +62,12 @@ stores, and the packages beside it that only the host uses. The app itself is
   `servers-rust`; `tauri-unit-runner-rust` binds `unit-runner-rust`.
 - **Groups don't import each other.** `servers-react` knows nothing of the
   recorder, nor `recorder-react` of the servers; `host-app` composes both.
+- **One router, the app's.** As `launcher-web` composes the launcher's
+  packages, `host-app` mounts a package's route bucket with `physical()` under
+  a layout of the bucket's name, so both route generators compute the same
+  ids, and only `host-app` declares `Register`. A package keeps a
+  package-local router in `router.ts`, never exported, for its own type checks
+  and tests.
 
 ## References
 

@@ -1,9 +1,10 @@
-import type { HttpClient } from '@effect/platform'
-import type { QueryClient } from '@tanstack/react-query'
+import { FetchHttpClient, type HttpClient } from '@effect/platform'
+import { QueryCache, QueryClient } from '@tanstack/react-query'
 import { TauriInvoke } from '@wildflowerhealthio/servers-core-js'
+import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import { Cause, type Context, Effect, Exit, type Layer } from 'effect'
 
-import type { PendingLaunches } from './pending-launches.ts'
+import { makeEmptyPendingLaunches, type PendingLaunches } from './pending-launches.ts'
 
 /**
  * Runs one of `servers-core-js`'s host commands against the Tauri host,
@@ -29,7 +30,10 @@ type ListenToHostEvent = (
   handler: (event: { readonly payload: unknown }) => void
 ) => Promise<() => void>
 
-/** What every route of the base reads from the router. */
+/**
+ * What every route of the base reads from the router: the context the app's
+ * router gives its routes includes this.
+ */
 interface RouterContext {
   /** The base's one query cache. */
   readonly queryClient: QueryClient
@@ -76,5 +80,65 @@ const runHttpRequestWith =
   (request) =>
     runRejectingWithError(Effect.provide(request, layer))
 
-export { runHostCommandWith, runHttpRequestWith }
-export type { ListenToHostEvent, RouterContext, RunHostCommand, RunHttpRequest }
+/** What {@link make} builds the base's {@link RouterContext} over. */
+interface RouterContextInputs {
+  /** How the base calls the host: `invoke` from `@tauri-apps/api/core`. */
+  readonly invoke: Context.Tag.Service<TauriInvoke>
+  /** How the base hears the host's events: `listen` from `@tauri-apps/api/event`. */
+  readonly listen: ListenToHostEvent
+  /**
+   * The launcher the host gives a new server, from the app's
+   * `tauri-shared-config.json`, which the host reads too. The server page
+   * offers it as Reset to default.
+   */
+  readonly defaultLauncherUrl: string
+  /**
+   * The client the base's own HTTP requests go through, such as a server's
+   * `/health`. Defaults to the webview's `fetch`; tests pass a stub.
+   */
+  readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
+}
+
+/**
+ * The base's {@link RouterContext}, with a query cache of its own: built once,
+ * by the app that composes the base's routes into its router, which provides
+ * the same `queryClient` to its `QueryClientProvider`.
+ *
+ * @remarks
+ * Every failed host read is reported; `captureException` does nothing until a
+ * yes starts Sentry. A host command is a local call: one that failed fails the
+ * same way again, so it shows its error at once; and it needs no network, so
+ * it runs while the device is offline.
+ */
+const make = ({
+  invoke,
+  listen,
+  defaultLauncherUrl,
+  httpClient = FetchHttpClient.layer,
+}: RouterContextInputs): RouterContext => ({
+  queryClient: new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, networkMode: 'always' },
+      mutations: { networkMode: 'always' },
+    },
+    queryCache: new QueryCache({
+      onError: (queryError) => {
+        Sentry.captureException(queryError, { tags: { source: 'query' } })
+      },
+    }),
+  }),
+  runHostCommand: runHostCommandWith(invoke),
+  runHttpRequest: runHttpRequestWith(httpClient),
+  listenToHostEvent: listen,
+  defaultLauncherUrl,
+  pendingLaunches: makeEmptyPendingLaunches(),
+})
+
+export { make, runHostCommandWith, runHttpRequestWith }
+export type {
+  ListenToHostEvent,
+  RouterContext,
+  RouterContextInputs,
+  RunHostCommand,
+  RunHttpRequest,
+}

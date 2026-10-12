@@ -1,6 +1,6 @@
 /*
- * The host's main window: the Servers | Recorder bar of links and the two
- * pages they navigate between. On phone-width viewports the bar pins to the
+ * The host's layout: the Servers | Recorder bar of links over the route
+ * they navigate between. On phone-width viewports the bar pins to the
  * bottom, in thumb reach and clear of the pages' own sticky headers; at
  * >=768px it moves above the pages.
  */
@@ -35,13 +35,11 @@
   color: var(--color-neutral-1);
 }
 
-.host-shell__link[aria-current='page'] {
+.host-shell__link--current {
   color: var(--color-neutral-1);
   font-weight: var(--font-weight-4);
 }
 
-/* No `display` here: the page the location doesn't name is hidden by its
- * `hidden` attribute. */
 .host-shell__page {
   flex: 1 1 auto;
 }

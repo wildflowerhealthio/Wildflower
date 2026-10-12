@@ -86,7 +86,7 @@ const versionText = (version: UseQueryResult<string, HostCommandError>): string 
  * @remarks
  * The Telemetry row reads the answer to the base's own consent dialog, by the
  * dialog's copy, and reopens it; so the page renders only inside the base's
- * `TelemetryConsentGate` (`BaseRoot`).
+ * `TelemetryConsentGate` (`BaseGate`).
  */
 const SettingsPage = (): JSX.Element => {
   const runHostCommand = useRouteContext({

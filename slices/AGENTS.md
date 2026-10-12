@@ -135,8 +135,9 @@ status to the base as the `server-status` event, posts the notifications,
 and holds the base's commands (list, add, re-enter credentials, set the run
 policy, update, remove), which write the registry and then push. See the
 [Server Runs Explanation](../apps/host/servers/docs/Server%20Runs%20Explanation.md). The base itself, the UI the Tauri host's webview mounts in
-place of the launcher, is `servers-react`'s `BaseRoot`: its own telemetry
-consent, then the server list and Host Settings, which reach the host
+place of the launcher, is `servers-react`'s: `BaseGate`, its own telemetry
+consent, then its routes, which `host-app` composes into its router, the
+server list and Host Settings among them, which reach the host
 only through `servers-core-js`'s Tauri commands (plain `invoke`, answers
 decoded by Effect Schema) and the `server-status` event, never the
 effect-messaging bridge.

@@ -1,7 +1,7 @@
 # AGENTS.md — apps/host/recorder/recorder-react
 
-The **Recorder's browser surface**: `RecorderPage` and the `useRecorder` state
-machine behind it. Everything about the format lives one layer down in
+The **Recorder's browser surface**: `RecorderPage`, and `RecorderProvider`
+running the `useRecorder` state machine behind it. Everything about the format lives one layer down in
 [`recorder-core-js`](../recorder-core-js/AGENTS.md); this package is the React
 shell that drives it over `RecorderBridge`.
 
@@ -15,15 +15,21 @@ shell that drives it over `RecorderBridge`.
 - `src/recorder-sender-context.ts` / `-provider.tsx` / `src/use-recorder-sender.ts`
   — the `RecorderBridge` sender (`Open`, `SniffingComplete`, `SaveHar`), which
   the app provides from its transport's `sendMessage`.
+- `src/recorder-provider.tsx` / `src/recorder-context.ts` —
+  **`RecorderProvider`**, which runs one `useRecorder` for as long as it is
+  mounted, and `useProvidedRecorder`, which reads it. An app mounts the
+  provider above its routes so a recording outlives the page.
 - `src/use-save-folder.ts` — **`useSaveFolder(invoke)`**: the recordings
   folder, read once on mount: `Reading` → `Read(folder)` | `Unreadable(message)`.
 - `src/recorder-page.tsx` — **`RecorderPage`**, a plain component with no
   route, taking `invoke` (Tauri's) and `revealFile` (`tauri-plugin-opener`'s
   `revealItemInDir`). It shows the recordings folder, and after a save offers
-  Show file where the folder's `revealsFiles` says the platform can.
-  `apps/host/host-app` mounts it as the Recorder tab, inside a
-  `HandlerCoordinatorContext` and a `RecorderSenderProvider` over its
-  `RecorderBridge` transport.
+  Show file where the folder's `revealsFiles` says the platform can. It
+  drives the provider's recorder, so a page that mounts mid-recording shows
+  the recording and its URL. `apps/host/host-app` renders it at `/recorder`,
+  under a `RecorderProvider`, a `RecorderSenderProvider` and a
+  `HandlerCoordinatorContext` over its `RecorderBridge` transport, which its
+  layout holds around every route.
 
 ## Traps
 
@@ -31,7 +37,7 @@ shell that drives it over `RecorderBridge`.
   coordinator stores one record per bridge and the transport requires it
   complete, so `PageLoaded`, `PageRequested` and `SnifferDisposed` are explicit
   no-ops, not omissions.
-- **The record lives as long as the hook.** It is registered on mount and
+- **The record lives as long as the hook**, which `RecorderProvider` runs. It is registered on mount and
   unregistered on unmount, so it is in place before any `Open` and still there
   when `HarSaved` arrives after the window closed. A sniffer event with no
   recording running is dropped.
@@ -56,7 +62,9 @@ shell that drives it over `RecorderBridge`.
   follows the URL's validity, Stop shows only while recording, the folder and
   the saved path are shown, a folder the host can't give says why, and Show
   file reveals the saved file, says so when it can't, and is absent where the
-  platform can't reveal one.
+  platform can't reveal one. It renders the page under a `RecorderProvider`.
+- `apps/host/host-app`'s `src/host-root.test.tsx` — a recording kept going
+  while the base shows.
 
 ## References
 

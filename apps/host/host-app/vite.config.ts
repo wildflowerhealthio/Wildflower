@@ -1,10 +1,12 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite-plus'
+import { hostRoutesPlugin } from './routes.config.ts'
 
 const host = process.env.TAURI_DEV_HOST
 
 export default defineConfig({
-  plugins: [react()],
+  // The route generator runs before `react()`; see `routes.config.ts`.
+  plugins: [hostRoutesPlugin(), react()],
 
   // Match the rest of the monorepo (`vite.config.base.ts`): resolve
   // workspace imports through each package's `source` export so this app

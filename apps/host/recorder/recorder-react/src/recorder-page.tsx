@@ -9,7 +9,7 @@ import { HttpUrl, type InvokeHostCommand } from '@wildflowerhealthio/recorder-co
 import { Match, Schema } from 'effect'
 import { useId, useState, type JSX } from 'react'
 
-import { useRecorder } from './use-recorder.ts'
+import { useProvidedRecorder } from './recorder-context.ts'
 import { type SaveFolderState, useSaveFolder } from './use-save-folder.ts'
 import styles from './recorder-page.module.css'
 
@@ -68,14 +68,14 @@ function SaveFolderLine({ saveFolder }: { readonly saveFolder: SaveFolderState }
  * manager can reveal one.
  *
  * @remarks
- * Needs a `RecorderSenderProvider` and a `HandlerCoordinatorContext`
- * above it, both over the app's `RecorderBridge` transport. The page is only
- * the state machine's face — {@link useRecorder} owns the recording, the
- * ordering and the bridge.
+ * Needs a `RecorderProvider` above it. The page is only the state machine's
+ * face — the provider's `useRecorder` owns the recording, the ordering and the
+ * bridge, so a recording outlives the page; a page that mounts mid-recording
+ * shows the URL being recorded.
  */
 function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
-  const [url, setUrl] = useState('')
-  const { state, start, stop } = useRecorder()
+  const { state, start, stop } = useProvidedRecorder()
+  const [url, setUrl] = useState(state._tag === 'Recording' ? state.startUrl : '')
   const saveFolder = useSaveFolder(invoke)
   const [revealFailure, setRevealFailure] = useState<string | null>(null)
   const suggestionsId = useId()

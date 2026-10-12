@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "atool": "xcrun altool --upload-app --type ios --file \"src-tauri/gen/apple/build/arm64/Wildflower.ipa\" --apiKey \"$APP_STORE_CONNECT_KEY_ID\" --apiIssuer \"$APP_STORE_CONNECT_ISSUER_ID\"",
-    "build": "tsc && vp build",
+    "build": "vp build && tsc",
     "build:ios:prod": "tauri ios build --export-method app-store-connect && vp run atool",
     "dev": "vp dev",
     "dev:android": "tauri android dev -- --target aarch64-linux-android",
@@ -45,6 +45,8 @@
     "tundra-css": "catalog:"
   },
   "devDependencies": {
+    "@tanstack/router-plugin": "catalog:",
+    "@tanstack/virtual-file-routes": "catalog:",
     "@tauri-apps/cli": "^2",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",

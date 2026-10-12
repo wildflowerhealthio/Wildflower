@@ -16,7 +16,7 @@ import {
   background_service_label as backgroundServiceLabel,
   launcher_base_url as launcherBaseUrl,
 } from '../tauri-shared-config.json'
-import { HostShell } from './host-shell.tsx'
+import { HostRoot } from './host-root.tsx'
 
 addOsColorSchemeListener()
 
@@ -39,16 +39,16 @@ const recorderTransport = makeTauriTransport({ bridges: [RecorderBridge] as cons
 const rootElement = document.getElementById('root')
 if (rootElement === null) throw new Error('index.html has no #root element')
 
-// The Servers | Recorder shell, over the webview's history, which its links and
-// the base's router both navigate. The base shows its own telemetry consent
-// dialog first, then its screens, which reach the host only through Tauri
-// commands and events. The launcher the host gives a new server
+// The base's telemetry consent dialog first, then one router, over the
+// webview's history, with the Servers | Recorder bar over the base's screens,
+// which reach the host only through Tauri commands and events, and the
+// Recorder. The launcher the host gives a new server
 // is the published launcher, `launcher_base_url` from the same
 // `tauri-shared-config.json` in every build, which the server page offers as
 // Reset to default.
 createRoot(rootElement).render(
   <StrictMode>
-    <HostShell
+    <HostRoot
       base={{
         invoke,
         listen,
