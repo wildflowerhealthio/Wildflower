@@ -13,6 +13,14 @@ if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.3.4 — 2026-10-12
+
+- Base: tauri-plugin-native-page-browser — in-app browser as a native page, with a close report to Rust (#1116, #1101) (#1126) (3dd1c106)
+- Delete the collector: the Recorder and the Importer replace it (#1115) (#1129) (be79d2a4)
+- tests: pick server ports below the ephemeral range (#1128) (58ff47e6)
+- host-app: one TanStack router over the host's routes and the base's (#1114) (#1124) (ab8d7abd)
+- launcher: host-app style home — gear header, no tabs/chips, ?edit arranging, safe-area padding (#1127) (2f852a81)
+
 ## v0.3.3 — 2026-10-12
 
 - recorder: Downloads fallback on desktop, Downloads on the Mac App Store build (#1114) (#1122) (d566e399)
