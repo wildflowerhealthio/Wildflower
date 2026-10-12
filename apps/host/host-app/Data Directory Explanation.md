@@ -38,8 +38,10 @@ logged, and no server runs; the base's `servers_list` answers with the error,
 which the base shows. Every slice that needs a path joins onto the data root or
 the server's folder rather than resolving its own.
 
-Recordings are the exception: the Recorder saves them where the user can
-browse to them, outside the data root (see [Recordings](#recordings)).
+Recordings are the exception: the Recorder resolves its own folder, one the
+user can browse to, which is outside the data root on the desktop and Android
+and inside it on iOS, where the data root is `Documents` itself (see
+[Recordings](#recordings)).
 
 ## `servers.json`
 
