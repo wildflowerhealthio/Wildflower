@@ -152,9 +152,9 @@ changing how servers run or what the host notifies about them.
   can't help: the server's run stopped with an error during the wait, its
   relay refused its tunnel, its certificate order is failing, its certificate is one browsers don't
   trust, or it has been unreachable while its certificate is valid for 5
-  seconds without a break (any other status starts that again: its probe
-  runs every 400 ms, and a server with a valid cached certificate can
-  answer 502 before its tunnel is up). The wait is held in the router
+  seconds without a break (any other status starts that again: the host
+  probes only once the tunnel is connected, first after 400 ms and then
+  after twice the last wait, so the grace spans the first few probes). The wait is held in the router
   context's `pendingLaunches`, a store keyed by domain, so it carries on
   when Edit opens the server's page, whose Launch shows the same wait.
   Launching never changes an active policy or extends an `until`.

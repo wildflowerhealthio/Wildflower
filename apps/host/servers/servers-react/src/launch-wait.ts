@@ -5,9 +5,10 @@ import { lastStopText } from './server-status-text.ts'
 
 /**
  * How long a started server may stay unreachable through its relay while
- * its certificate is valid before the wait gives up. Its reachability probe
- * runs every 400 ms, and a server with a valid cached certificate can answer
- * 502 before its tunnel is up, so a few seconds of it are part of starting.
+ * its certificate is valid before the wait gives up. The host probes only
+ * once the tunnel is connected, first after 400 ms and then after twice the
+ * last wait, so a few seconds span the first few probes: a just-connected
+ * tunnel whose first probe fails gets a couple more before the wait gives up.
  */
 const UNREACHABLE_GRACE = Duration.seconds(5)
 
