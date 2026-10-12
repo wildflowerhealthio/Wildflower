@@ -9,17 +9,18 @@
 //! were written.
 //!
 //! Each takes its arguments as top-level parameters, which Tauri reads from
-//! the invoke payload under their camelCase names (`tunnel_name` is
-//! `tunnelName`). A failure the command reaches answers with its error as
+//! the invoke payload under their camelCase names (`launcher_url` is
+//! `launcherUrl`). A failure the command reaches answers with its error as
 //! `{kind, message}`: an [`EnrolmentError`], a [`ServerChangeError`] or, for
 //! `servers_list`, a [`RegistryError`]. A payload Tauri can't decode into the
 //! parameters (a missing key, a value of the wrong JSON type, an unknown
-//! relay or choice `kind`, an unknown field) never reaches the command: Tauri
-//! rejects it with a plain string, ``invalid args `<parameter>` for command
-//! `<command>`: <reason>``. The values a user types (the tunnel name, the
-//! token, a base URL, a rathole relay's settings, a launcher URL) are all
-//! taken as strings and checked here, so a bad one is the command's own
-//! error; only a webview bug gets the plain string.
+//! relay, credentials or choice `kind`, an unknown field) never reaches the
+//! command: Tauri rejects it with a plain string, ``invalid args
+//! `<parameter>` for command `<command>`: <reason>``. The values a user types
+//! (a claim code, the tunnel name, the token, a base URL, a rathole relay's
+//! settings, a launcher URL) are all taken as strings and checked by the
+//! command, so a bad one is the command's own error; only a webview bug gets
+//! the plain string.
 
 use std::sync::Arc;
 
@@ -27,10 +28,10 @@ use chrono::Utc;
 use futures_util::future::join_all;
 use tauri_plugin_log::log;
 use url::Url;
-use wildflowerhealthio_rathole_settings::TunnelName;
 use wildflowerhealthio_servers::{
-    CertificateAuthority, EnrolmentError, EnteredRelay, ListedServer, RegistryError, RelayClient,
-    ReqwestRelayClient, RunPolicy, RunPolicyChoice, ServerChangeError, ServerRegistry, TunnelToken,
+    CertificateAuthority, EnrolmentError, EnteredCredentials, EnteredRelay, ListedServer,
+    RegistryError, RelayClient, ReqwestRelayClient, RunPolicy, RunPolicyChoice, ServerChangeError,
+    ServerRegistry, TunnelToken,
 };
 
 use crate::server_status::certificate_state;
@@ -53,9 +54,12 @@ pub async fn servers_list(
 }
 
 /// Enrol and register a server, then push it to `TauriUnitRunner`; answers with
-/// its domain. Invoked as `invoke('server_add', { relay, tunnelName, token })`,
-/// `relay` being an [`EnteredRelay`]. The token is trimmed. No parameter is
-/// logged, and the token never is.
+/// its domain. Invoked as `invoke('server_add', { relay, credentials })`,
+/// `relay` being an [`EnteredRelay`] and `credentials` an
+/// [`EnteredCredentials`]: a claim code, which a Wildflower relay redeems once
+/// for the tunnel name and token the server is added with, or those two
+/// themselves. The code and the token are trimmed. No parameter is logged,
+/// and the code and the token never are.
 ///
 /// # Errors
 ///
@@ -64,10 +68,9 @@ pub async fn servers_list(
 pub async fn server_add(
     servers: tauri::State<'_, ServersState>,
     relay: EnteredRelay,
-    tunnel_name: String,
-    token: String,
+    credentials: EnteredCredentials,
 ) -> Result<String, EnrolmentError> {
-    add(&servers, relay, tunnel_name, token, ReqwestRelayClient::new).await
+    add(&servers, relay, credentials, ReqwestRelayClient::new).await
 }
 
 /// Replace a registered server's token once its relay accepts it, or at
@@ -145,20 +148,6 @@ pub async fn server_remove(
     remove(&servers, domain).await
 }
 
-/// The token as entered, without its surrounding whitespace, as the relay
-/// reads its own copy.
-///
-/// # Errors
-///
-/// [`EnrolmentError::EmptyToken`] when nothing is left.
-fn entered_token(token: &str) -> Result<TunnelToken, EnrolmentError> {
-    let token = token.trim();
-    if token.is_empty() {
-        return Err(EnrolmentError::EmptyToken);
-    }
-    Ok(TunnelToken::new(token))
-}
-
 /// Run `operation` on the registry on a blocking thread: the registry is a
 /// file, read and replaced synchronously.
 async fn on_registry<T, E>(
@@ -202,25 +191,18 @@ async fn list(servers: &ServersState) -> Result<Vec<ListedServer>, RegistryError
 async fn add<S: RelayClient>(
     servers: &ServersState,
     relay: EnteredRelay,
-    tunnel_name: String,
-    token: String,
+    credentials: EnteredCredentials,
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
 ) -> Result<String, EnrolmentError> {
     let _registry_write = servers.registry_writes.lock().await;
-    let result = async {
-        let tunnel_name = TunnelName::parse(tunnel_name)?;
-        let token = entered_token(&token)?;
-        wildflowerhealthio_servers::add_server(
-            Arc::clone(&servers.registry),
-            relay,
-            tunnel_name,
-            token,
-            servers.default_launcher_url.clone(),
-            relay_client,
-            chrono::Utc::now(),
-        )
-        .await
-    }
+    let result = wildflowerhealthio_servers::add_server(
+        Arc::clone(&servers.registry),
+        relay,
+        credentials,
+        servers.default_launcher_url.clone(),
+        relay_client,
+        chrono::Utc::now(),
+    )
     .await;
     match result {
         Ok(record) => {
@@ -247,7 +229,7 @@ async fn set_credentials<S: RelayClient>(
         wildflowerhealthio_servers::set_server_credentials(
             Arc::clone(&servers.registry),
             &domain,
-            entered_token(&token)?,
+            TunnelToken::entered(&token)?,
             relay_client,
         )
         .await
@@ -382,7 +364,9 @@ mod tests {
     use tokio::sync::{mpsc, watch};
     use tokio_util::sync::CancellationToken;
     use wildflowerhealthio_gatekeeper::NoLoopbackConsentPrompt;
-    use wildflowerhealthio_rathole_settings::{PublicRatholeSettings, TunnelHost};
+    use wildflowerhealthio_rathole_settings::{
+        ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
+    };
     use wildflowerhealthio_servers::{
         JsonServerRegistry, RelayKind, ServerDetail, ServerRecord, SERVERS_FILE_NAME,
     };
@@ -398,14 +382,13 @@ mod tests {
     use super::*;
 
     /// `server_add`'s parameters as the webview sends them, each decoded
-    /// under the camelCase name Tauri reads it from (`tunnel_name` from
-    /// `tunnelName`), so the tests build them from the payload the docs give.
+    /// under the camelCase name Tauri reads it from, so the tests build them
+    /// from the payload the docs give.
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     struct AddArgs {
         relay: EnteredRelay,
-        tunnel_name: String,
-        token: String,
+        credentials: EnteredCredentials,
     }
 
     /// `server_set_credentials`'s parameters, likewise.
@@ -421,14 +404,7 @@ mod tests {
         args: AddArgs,
         relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
     ) -> Result<String, EnrolmentError> {
-        add(
-            servers,
-            args.relay,
-            args.tunnel_name,
-            args.token,
-            relay_client,
-        )
-        .await
+        add(servers, args.relay, args.credentials, relay_client).await
     }
 
     async fn set_credentials_with<S: RelayClient>(
@@ -441,9 +417,10 @@ mod tests {
 
     const TOKEN: &str = "s3cret-tunnel-token";
     const PUBLIC_KEY: &str = "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=";
+    const CLAIM_CODE: &str = "ABCD-EFGH";
 
     /// A relay client for `relay.example.com` that accepts `ruth` with
-    /// [`TOKEN`].
+    /// [`TOKEN`], and redeems [`CLAIM_CODE`] for them.
     struct FakeRelayClient;
 
     fn served_settings() -> PublicRatholeSettings {
@@ -476,6 +453,17 @@ mod tests {
             Ok(TunnelHost {
                 tunnel_name: TunnelName::parse("ruth").unwrap(),
                 public_host: "ruth.relay.example.com".to_owned(),
+            })
+        }
+
+        async fn claim(&self, code: &str) -> Result<ClaimedTunnel, EnrolmentError> {
+            if code != CLAIM_CODE {
+                return Err(EnrolmentError::ClaimCodeRejected);
+            }
+            Ok(ClaimedTunnel {
+                tunnel_name: TunnelName::parse("ruth").unwrap(),
+                token: TOKEN.to_owned(),
+                rathole_settings: served_settings(),
             })
         }
     }
@@ -554,8 +542,17 @@ mod tests {
                     "publicKey": PUBLIC_KEY,
                 },
             },
-            "tunnelName": tunnel_name,
-            "token": token,
+            "credentials": {"kind": "token", "tunnelName": tunnel_name, "token": token},
+        }))
+        .unwrap()
+    }
+
+    /// `server_add`'s arguments for a self-hosted Wildflower relay and a
+    /// claim code, as the webview sends them.
+    fn claim_add_args(code: &str) -> AddArgs {
+        serde_json::from_value(serde_json::json!({
+            "relay": {"kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com"},
+            "credentials": {"kind": "claimCode", "code": code},
         }))
         .unwrap()
     }
@@ -570,8 +567,7 @@ mod tests {
                 "publicKey": PUBLIC_KEY,
                 "domain": "rathole.example.com",
             },
-            "tunnelName": "ruth",
-            "token": token,
+            "credentials": {"kind": "token", "tunnelName": "ruth", "token": token},
         }))
         .unwrap()
     }
@@ -614,22 +610,64 @@ mod tests {
         })
     }
 
-    /// The parameters are top-level: the old `{args: {...}}` wrapper and
-    /// snake_case names don't decode.
+    /// The parameters are top-level and camelCase, the credentials one of
+    /// their two kinds: a `{args: {...}}` wrapper, snake_case names and
+    /// credentials beside the relay don't decode.
     #[test]
     fn the_parameters_are_top_level_and_camel_case() {
         let relay = serde_json::json!({"kind": "wildflowerOfficial"});
-        assert!(serde_json::from_value::<AddArgs>(
-            serde_json::json!({"relay": relay, "tunnelName": "ruth", "token": TOKEN})
-        )
-        .is_ok());
+        for credentials in [
+            serde_json::json!({"kind": "claimCode", "code": CLAIM_CODE}),
+            serde_json::json!({"kind": "token", "tunnelName": "ruth", "token": TOKEN}),
+        ] {
+            assert!(
+                serde_json::from_value::<AddArgs>(
+                    serde_json::json!({"relay": relay, "credentials": credentials})
+                )
+                .is_ok(),
+                "{credentials}"
+            );
+        }
         for json in [
-            serde_json::json!({"args": {"relay": relay, "tunnelName": "ruth", "token": TOKEN}}),
-            serde_json::json!({"relay": relay, "tunnel_name": "ruth", "token": TOKEN}),
+            serde_json::json!({"args": {"relay": relay, "credentials": {"kind": "claimCode", "code": CLAIM_CODE}}}),
+            serde_json::json!({"relay": relay, "tunnelName": "ruth", "token": TOKEN}),
+            serde_json::json!({"relay": relay, "credentials": {"kind": "token", "tunnel_name": "ruth", "token": TOKEN}}),
+            serde_json::json!({"relay": relay, "credentials": {"kind": "claimCode", "claimCode": CLAIM_CODE}}),
         ] {
             assert!(
                 serde_json::from_value::<AddArgs>(json.clone()).is_err(),
                 "{json}"
+            );
+        }
+    }
+
+    /// A claim code is redeemed for the tunnel name and token, and only
+    /// they are stored.
+    #[tokio::test]
+    async fn server_add_redeems_a_claim_code_and_stores_the_token() {
+        let (data_root, servers) = servers();
+        let result = add_with(
+            &servers,
+            claim_add_args(&format!(" {CLAIM_CODE} ")),
+            fake_client,
+        )
+        .await;
+        assert_eq!(answer(&result), r#""ruth.relay.example.com""#);
+        let registered = servers.registry.read_all().unwrap();
+        assert_eq!(registered[0].tunnel_name.as_str(), "ruth");
+        assert_eq!(registered[0].token.expose(), TOKEN);
+        let stored = std::fs::read_to_string(data_root.path().join(SERVERS_FILE_NAME)).unwrap();
+        assert!(!stored.contains(CLAIM_CODE), "{stored}");
+
+        for (args, kind) in [
+            (claim_add_args("  "), "emptyClaimCode"),
+            (claim_add_args("WXYZ-2345"), "claimCodeRejected"),
+        ] {
+            let result = add_with(&servers, args, fake_client).await;
+            assert!(
+                answer(&result).contains(&format!(r#""kind":"{kind}""#)),
+                "{}",
+                answer(&result)
             );
         }
     }
@@ -639,8 +677,7 @@ mod tests {
         let (_data_root, servers) = servers();
         let args: AddArgs = serde_json::from_value(serde_json::json!({
             "relay": {"kind": "selfHostedWildflower", "baseUrl": "http://relay.example.com"},
-            "tunnelName": "ruth",
-            "token": TOKEN,
+            "credentials": {"kind": "token", "tunnelName": "ruth", "token": TOKEN},
         }))
         .unwrap();
         let result = add_with(&servers, args, no_client).await;

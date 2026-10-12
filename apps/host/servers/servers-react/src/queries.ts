@@ -10,6 +10,7 @@ import {
 import {
   addServer,
   type CertificateAuthority,
+  type EnteredCredentials,
   type EnteredRelay,
   type HealthReport,
   type HostCommandError,
@@ -156,9 +157,9 @@ const useServerStatusEvents = (listenToHostEvent: ListenToHostEvent): void => {
  * @remarks
  * Reading the list before settling puts the new server in the cache before
  * its run policy is set or its page opens, so neither starts from a list
- * without it. The mutation holds the token among its variables, so it is
- * dropped from the mutation cache as soon as nothing observes it
- * (`gcTime: 0`); a caller resets it once the server is added.
+ * without it. The mutation holds the claim code or the token among its
+ * variables, so they are dropped from the mutation cache as soon as nothing
+ * observes it (`gcTime: 0`); a caller resets it once the server is added.
  */
 const useAddServer = (
   runHostCommand: RunHostCommand
@@ -167,8 +168,7 @@ const useAddServer = (
   HostCommandError,
   {
     readonly relay: EnteredRelay.Type
-    readonly tunnelName: string
-    readonly token: string
+    readonly credentials: EnteredCredentials.Type
   }
 > => {
   const queryClient = useQueryClient()
