@@ -17,6 +17,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
+use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_rathole_settings::{NoisePattern, PublicRatholeSettings, Transport};
 use wildflowerhealthio_relay_server::{
     Front, Limits, RelaySettings, Router, Secret, ServedTunnels, Site, SqliteTunnelStore,
@@ -112,7 +113,7 @@ struct ConnectedTunnel {
 }
 
 async fn start_tunnel() -> ConnectedTunnel {
-    let control_port = free_port();
+    let control_port = free_loopback_port();
     // Neither address is used: the server and the client both run with a
     // visitor queue.
     let server_config = format!(
@@ -188,15 +189,6 @@ async fn until_connected(
         .await
         .expect("the client should connect")
         .expect("the client hands over the first visitor");
-}
-
-/// A free port on loopback, for a rathole server's control channel.
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
 }
 
 /// Tunnels with no rathole server behind them: every tunnel is down.
@@ -535,7 +527,7 @@ async fn acme_tls_alpn_handshake_for_own_hostname_reaches_the_site() {
 async fn stored_tunnels_route_on_the_front_once_their_device_connects() {
     let state_dir = tempfile::tempdir().unwrap();
     let state_dir_path = state_dir.path().display().to_string();
-    let control_addr = format!("127.0.0.1:{}", free_port());
+    let control_addr = format!("127.0.0.1:{}", free_loopback_port());
     let settings = RelaySettings::from_lookup(|name| match name {
         "WILDFLOWER_RELAY_DOMAIN" => Some(DOMAIN.to_owned()),
         "WILDFLOWER_RELAY_NOISE_PRIVATE_KEY" => {

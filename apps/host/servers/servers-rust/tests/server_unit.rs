@@ -18,6 +18,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use url::Url;
 use wildflowerhealthio_gatekeeper::{NoLoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_servers::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
     RunPolicy, ServerConsentDecider, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
@@ -46,13 +47,6 @@ struct NoOnDeviceWebview;
 
 impl OnDeviceWebviewHandle for NoOnDeviceWebview {
     fn open(&self, _app_id: String, _title: String, _url: String) {}
-}
-
-/// A loopback port nothing is listening on: bind an ephemeral one and release
-/// it, so the server can bind it next.
-fn free_loopback_port() -> u16 {
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("bind an ephemeral port");
-    probe.local_addr().expect("ephemeral port address").port()
 }
 
 fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {

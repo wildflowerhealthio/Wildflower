@@ -9400,6 +9400,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "wildflowerhealthio-gatekeeper",
+ "wildflowerhealthio-kitchen-sink",
  "wildflowerhealthio-rathole-settings",
  "wildflowerhealthio-relay-server",
  "wildflowerhealthio-shared-structures",
@@ -9507,6 +9508,7 @@ dependencies = [
  "toml 0.9.6",
  "tracing",
  "url",
+ "wildflowerhealthio-kitchen-sink",
  "wildflowerhealthio-rathole-settings",
  "wildflowerhealthio-shared-structures",
 ]
@@ -9558,6 +9560,7 @@ dependencies = [
  "wildflowerhealthio-databases",
  "wildflowerhealthio-fhir-r4",
  "wildflowerhealthio-gatekeeper",
+ "wildflowerhealthio-kitchen-sink",
  "wildflowerhealthio-ohif-server",
  "wildflowerhealthio-persistence",
  "wildflowerhealthio-rathole-settings",

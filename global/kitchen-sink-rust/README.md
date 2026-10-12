@@ -7,6 +7,10 @@ or any slice, so each module can be copied into an unrelated project.
 
 ## Modules
 
+- `loopback_port` — `free_loopback_port()`: a port nothing listens on at
+  `127.0.0.1`, for a server under test that binds by address. It is picked
+  below the ephemeral range, so another test process's `bind(0)` or
+  outbound connection can't take it before the server binds it.
 - `rate_limit` — burst-and-refill rate limits by the generic cell rate
   algorithm.
   - `Rate { burst, interval }`: a burst of attempts at once, refilled one
