@@ -21,9 +21,9 @@
 //! A server is added by enrolment ([`add_server`]), from a claim code or a
 //! tunnel name and token ([`EnteredCredentials`]). For a Wildflower relay,
 //! official or self-hosted, the relay's `GET /rathole` is fetched and
-//! checked, a claim code is redeemed once with `POST /claim` for the tunnel
-//! name and token, a signed `GET /me` confirms the relay holds them, and only
-//! then is the record written. A rathole relay, a rathole
+//! checked, then a claim code is redeemed once with `POST /claim` for the
+//! tunnel name and token, or an entered tunnel name and token are confirmed
+//! with a signed `GET /me`, and only then is the record written. A rathole relay, a rathole
 //! server with no Wildflower relay site, is entered as its settings, which get
 //! the same checks. [`set_server_credentials`] replaces a server's token the
 //! same way, refusing a relay whose identity ([`RelayIdentity`]: its dial

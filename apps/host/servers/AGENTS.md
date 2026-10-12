@@ -240,10 +240,11 @@ changing how servers run or what the host notifies about them.
   `EnteredRelay::WildflowerOfficial` or `EnteredRelay::SelfHostedWildflower`,
   `add_server` builds a `RelayClient` for the relay's base URL, fetches its
   `GET /rathole`, checks its relay settings, compares them with the user's
-  pin when there is one, redeems a claim code for the tunnel name and token
-  when one was entered, then confirms the tunnel name and token with a
-  signed `GET /me`. The record gets that response as `public_settings`, the
-  default launcher and the default certificate source.
+  pin when there is one, then redeems a claim code for the tunnel name and
+  token when one was entered, or confirms an entered tunnel name and token
+  with a signed `GET /me`. The record gets the `GET /rathole` response as
+  `public_settings`, the default launcher and the default certificate
+  source.
 - **A claim code is spent once, when the server is added.** An
   `EnteredCredentials::ClaimCode` is sent to the relay's `POST /claim` only
   after its `GET /rathole` has passed its checks and matched any pin, so a
@@ -251,7 +252,11 @@ changing how servers run or what the host notifies about them.
   once, for the `ClaimedTunnel` (`rathole-settings-rust`): the tunnel name
   and token, which the record holds as if they had been entered, and the
   relay settings, which must be the domain, address and key `GET /rathole`
-  served, or it is `EnrolmentError::BadRelayResponse` for `/claim`. The code
+  served, or it is `EnrolmentError::BadRelayResponse` for `/claim`. No
+  signed `GET /me` follows: the code is spent once `POST /claim` answers, so
+  a later failure, such as a skewed clock's rejected signature, would leave
+  the user retrying a spent code (`ClaimCodeRejected`), and the claimed
+  settings are already tied to the relay's `GET /rathole`. The code
   is stored nowhere, and `server_set_credentials` takes a token only. A `422`
   is `EnrolmentError::ClaimCodeRejected` (unknown, used or expired: the relay
   gives one answer for all), a `429` `ClaimRateLimited`, and a `404`, a relay

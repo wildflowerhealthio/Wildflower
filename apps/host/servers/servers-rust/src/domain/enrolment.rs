@@ -9,10 +9,12 @@
 //! with when its token is re-entered. A server added with a claim code
 //! ([`EnteredCredentials::ClaimCode`]) then redeems it with `POST /claim`,
 //! only once the relay's identity is confirmed, for the tunnel name and
-//! token it stands for; the code is spent there and kept nowhere. Then a
+//! token it stands for, with the relay settings, which must be the ones its
+//! `GET /rathole` served; the code is spent there and kept nowhere, and the
+//! registry is written next. Entered with a tunnel name and token instead, a
 //! `GET /me` signed with the token confirms the relay holds that tunnel name
 //! and token, and that it reaches the tunnel at
-//! `<tunnel name>.<relay domain>`. Only then is the registry written. The
+//! `<tunnel name>.<relay domain>`; only then is the registry written. The
 //! response to `GET /rathole` becomes the record's `public_settings`; a pin
 //! is checked and never stored.
 //!
@@ -200,8 +202,8 @@ enum CheckedCredentials {
     },
 }
 
-/// A tunnel a relay has confirmed: its name and token, and the relay's
-/// settings, as the record keeps them.
+/// A tunnel a relay has confirmed or claimed: its name and token, and the
+/// relay's settings, as the record keeps them.
 struct EnrolledTunnel {
     tunnel_name: TunnelName,
     token: TunnelToken,
@@ -219,7 +221,12 @@ struct EnrolledTunnel {
 ///
 /// A claim code is redeemed at a Wildflower relay once its `GET /rathole`
 /// has passed its checks and matched any pin, and the record holds the
-/// tunnel name and token it redeemed for, as if they had been entered.
+/// tunnel name and token it redeemed for, as if they had been entered. No
+/// signed `GET /me` follows: the code is spent once `POST /claim` answers,
+/// so nothing after it may fail and leave the user retrying a spent code,
+/// and the relay that answered, over TLS, is the one whose `GET /rathole`
+/// the claimed settings must match. Entered tunnel names and tokens are
+/// confirmed with a signed `GET /me`.
 ///
 /// `relay_client` builds the [`RelayClient`] for a Wildflower relay from its
 /// base URL; it is called once for an official or self-hosted Wildflower
@@ -458,10 +465,11 @@ async fn expected_public_settings(
 
 /// The tunnel `credentials` stand for at the Wildflower relay
 /// `relay_client` asks, confirmed: its `GET /rathole`, checked and passed to
-/// `expect`; for a claim code, then its `POST /claim`, which must send the
-/// settings `GET /rathole` served, for the tunnel name and token; then a
-/// signed `GET /me` confirms the relay holds that tunnel name and token.
-/// `expect` runs before the code is redeemed or the signed request is sent.
+/// `expect`; then, for a claim code, its `POST /claim`, which must send the
+/// settings `GET /rathole` served, for the tunnel name and token, and nothing
+/// more is asked; for a tunnel name and token, a signed `GET /me`, which
+/// confirms the relay holds them. `expect` runs before the code is redeemed
+/// or the signed request is sent.
 async fn enrolled_tunnel(
     relay_client: &impl RelayClient,
     credentials: CheckedCredentials,
@@ -469,7 +477,6 @@ async fn enrolled_tunnel(
 ) -> Result<EnrolledTunnel, EnrolmentError> {
     let public_settings = expected_public_settings(relay_client, expect).await?;
     let (tunnel_name, token) = match credentials {
-        CheckedCredentials::Token { tunnel_name, token } => (tunnel_name, token),
         CheckedCredentials::ClaimCode(code) => {
             let ClaimedTunnel {
                 tunnel_name,
@@ -479,8 +486,11 @@ async fn enrolled_tunnel(
             check_claimed_settings(&rathole_settings, &public_settings)?;
             (tunnel_name, TunnelToken::new(token))
         }
+        CheckedCredentials::Token { tunnel_name, token } => {
+            confirm_tunnel(relay_client, &tunnel_name, &token, &public_settings.domain).await?;
+            (tunnel_name, token)
+        }
     };
-    confirm_tunnel(relay_client, &tunnel_name, &token, &public_settings.domain).await?;
     Ok(EnrolledTunnel {
         tunnel_name,
         token,
@@ -816,8 +826,8 @@ mod tests {
     }
 
     /// A claim code is redeemed for the tunnel name and token, which are
-    /// confirmed and stored as if they had been entered; the code is
-    /// trimmed and kept nowhere.
+    /// stored as if they had been entered; the code is trimmed and kept
+    /// nowhere.
     #[tokio::test]
     async fn adds_a_server_from_a_claim_code() {
         let (_data_root, registry) = registry();
@@ -845,7 +855,33 @@ mod tests {
             }
         );
         assert_eq!(relay_client.claimed_codes(), vec![CLAIM_CODE.to_owned()]);
-        assert_eq!(relay_client.tunnel_host_fetches.load(Ordering::SeqCst), 1);
+        assert_eq!(registry.read_all().unwrap(), vec![record]);
+    }
+
+    /// A claimed tunnel is added without a signed `GET /me`: one that would
+    /// be refused, as a skewed clock's would, never fails the spent code.
+    #[tokio::test]
+    async fn a_claimed_tunnel_is_added_without_a_signed_me() {
+        let (_data_root, registry) = registry();
+        let relay_client = FakeRelayClient {
+            tunnel_host: Some(TunnelHost {
+                tunnel_name: TunnelName::parse("someone-else").unwrap(),
+                public_host: "elsewhere.example.com".to_owned(),
+            }),
+            ..FakeRelayClient::serving(served_settings())
+        };
+
+        let record = add_claiming(
+            &registry,
+            &relay_client,
+            EnteredRelay::WildflowerOfficial,
+            CLAIM_CODE,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(record.domain(), format!("ruth.{RELAY_DOMAIN}"));
+        assert_eq!(relay_client.tunnel_host_fetches.load(Ordering::SeqCst), 0);
         assert_eq!(registry.read_all().unwrap(), vec![record]);
     }
 

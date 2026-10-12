@@ -28,8 +28,9 @@ const listServers: Effect.Effect<readonly ListedServer.Type[], HostCommandError,
  * @remarks
  * A Wildflower relay must serve the identity `relay` pins, if any; then it
  * redeems a claim code, once, for the tunnel's name and token, which the
- * host stores in its place; and it must accept the tunnel name and token on
- * a signed `GET /me`. A rathole relay is not asked, and takes no claim code.
+ * host stores in its place, or it must accept an entered tunnel name and
+ * token on a signed `GET /me`. A rathole relay is not asked, and takes no
+ * claim code.
  * The host refuses as `invalidRelaySetting`, `relayUnreachable`,
  * `badRelayResponse`, `pinMismatch`, `invalidTunnelName`, `emptyToken`,
  * `emptyClaimCode`, `claimCodesNotOffered`, `claimCodeRejected`,
