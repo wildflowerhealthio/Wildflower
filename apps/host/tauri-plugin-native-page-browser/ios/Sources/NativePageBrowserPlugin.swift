@@ -29,7 +29,8 @@ class NativePageBrowserPlugin: Plugin, SFSafariViewControllerDelegate {
   private var showing: ShowingPage?
 
   /// Present `url`, first dismissing any showing view. Resolves once the
-  /// presentation has started.
+  /// presentation has started; rejects while a view is still animating in or
+  /// out.
   @objc public func open(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(OpenArgs.self)
     guard let url = URL(string: args.url) else {
@@ -38,6 +39,13 @@ class NativePageBrowserPlugin: Plugin, SFSafariViewControllerDelegate {
     }
 
     DispatchQueue.main.async {
+      // UIKit ignores a dismiss or present started mid-transition and never
+      // calls its completion, which would leave this open unresolved and the
+      // showing view's close unreported.
+      if let top = self.topViewController(), top.isBeingPresented || top.isBeingDismissed {
+        invoke.reject("native-page-browser: a view is still opening or closing")
+        return
+      }
       self.dismissShowing {
         guard let presenter = self.topViewController() else {
           invoke.reject("native-page-browser: no view controller to present from")
