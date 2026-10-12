@@ -29,6 +29,6 @@ impl<R: Runtime> NativePageBrowser<R> {
     pub async fn open(&self, request: OpenRequest) -> crate::Result<()> {
         let url = crate::url_scheme::parse_http_url(&request.url)?;
         tauri_plugin_opener::open_url(url.as_str(), None::<&str>)
-            .map_err(|error| crate::Error::Internal(error.to_string()))
+            .map_err(|error| crate::Error::OpenDefaultBrowser(error.to_string()))
     }
 }

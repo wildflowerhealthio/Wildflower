@@ -21,10 +21,10 @@ pub enum Error {
     /// targets.
     #[cfg(mobile)]
     PluginInvoke(String),
-    /// The default browser couldn't be opened. Only constructed on desktop
-    /// targets.
+    /// The OS couldn't open the URL in the default browser. Carries the
+    /// opener's message; only constructed on desktop targets.
     #[cfg(desktop)]
-    Internal(String),
+    OpenDefaultBrowser(String),
 }
 
 impl std::fmt::Display for Error {
@@ -38,7 +38,7 @@ impl std::fmt::Display for Error {
                 write!(f, "native page browser plugin invocation failed: {message}")
             }
             #[cfg(desktop)]
-            Error::Internal(message) => {
+            Error::OpenDefaultBrowser(message) => {
                 write!(
                     f,
                     "native page browser couldn't open the default browser: {message}"
