@@ -32,3 +32,25 @@ impl<R: Runtime> NativePageBrowser<R> {
             .map_err(|error| crate::Error::OpenDefaultBrowser(error.to_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tauri::ipc::Channel;
+
+    use super::*;
+
+    /// A non-`http(s)` URL is refused before the opener is asked, so nothing
+    /// launches.
+    #[test]
+    fn open_rejects_a_non_http_url_without_opening_it() {
+        let browser = NativePageBrowser::<tauri::Wry>(PhantomData);
+        let result = tauri::async_runtime::block_on(browser.open(OpenRequest {
+            url: "javascript:alert(1)".to_owned(),
+            closed: Channel::new(|_| Ok(())),
+        }));
+        assert!(
+            matches!(result, Err(crate::Error::InvalidUrl(_))),
+            "expected InvalidUrl, got {result:?}",
+        );
+    }
+}

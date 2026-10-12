@@ -104,8 +104,9 @@ The native halves cannot be built on Linux, and PR CI compiles neither:
 - **Desktop `cargo check`**: needs the GTK/WebKit system libs
   (`webkit2gtk-4.1`, `gtk+-3.0`) the Linux desktop target links.
 
-The Rust wire shapes and URL validation are covered by unit tests in
-`models.rs` and `url_scheme.rs`. The presentation and the close reports are
+The Rust wire shapes, the error's string form and URL validation (including
+desktop's `open` refusing a non-`http(s)` URL) are covered by unit tests in
+`models.rs`, `error.rs`, `url_scheme.rs` and `desktop.rs`. The presentation and the close reports are
 checked by hand on each device: the view slides in from the right in the app's
 colours; close, an edge swipe and system back each return to the app and report
 `Closed` once; switching apps from an Android view and back reports nothing. A

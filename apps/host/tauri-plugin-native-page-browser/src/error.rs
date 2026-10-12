@@ -61,3 +61,22 @@ impl Serialize for Error {
 
 /// Convenience alias for plugin results.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An error crosses IPC as its message alone, the string a JS
+    /// `invoke(...)` rejects with.
+    #[test]
+    fn serializes_as_its_display_string() {
+        let error = Error::InvalidUrl("\"about:blank\" must be http(s)://".to_owned());
+        assert_eq!(
+            serde_json::to_value(&error).expect("serialize"),
+            serde_json::Value::String(
+                "native page browser can't open this URL: \"about:blank\" must be http(s)://"
+                    .to_owned()
+            ),
+        );
+    }
+}
