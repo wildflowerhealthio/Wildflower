@@ -29,9 +29,13 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.host_app"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <!-- singleTop, not singleTask: tauri-plugin-native-page-browser's
+             Custom Tab runs in this activity's task, and a singleTask root
+             would finish it whenever the launcher icon is tapped mid-sign-in.
+             The app has no deep links that need a single task. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:label="@string/main_activity_title"
             android:name=".MainActivity"
             android:exported="true">
