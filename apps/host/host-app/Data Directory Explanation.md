@@ -224,16 +224,29 @@ picker can reach. `recorder-rust`'s `Platform::recordings_locations` picks it,
 and `recorder-tauri`'s `attach_recorder` resolves it once, through Tauri's
 path API, when the app starts:
 
-| Platform | Folder                                                                                 | How it is reached                                          |
-| -------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Desktop  | `<Documents>/Wildflower Recordings` (`document_dir()`), else `<Downloads>/…`           | Finder, Explorer or the file manager; Show file reveals it |
-| Android  | `/storage/emulated/0/Documents/Wildflower Recordings` (`home_dir()` + `Documents`)     | the Files app and the system file picker, under Documents  |
-| iOS      | `<container>/Documents/Wildflower Recordings` (`document_dir()`, the data root itself) | the Files app, "On My iPhone → Wildflower"                 |
+| Platform          | Folder                                                                                                         | How it is reached                                          |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Desktop           | `<Documents>/Wildflower Recordings` (`document_dir()`), else `<Downloads>/…`                                   | Finder, Explorer or the file manager; Show file reveals it |
+| Android           | `/storage/emulated/0/Documents/Wildflower Recordings` (`home_dir()` + `Documents`)                             | the Files app and the system file picker, under Documents  |
+| iOS               | `<container>/Documents/Wildflower Recordings` (`document_dir()`, the data root itself)                         | the Files app, "On My iPhone → Wildflower"                 |
+| macOS (App Store) | `~/Downloads/Wildflower Recordings` (`download_dir()`, symlinks resolved), else `<container>/Data/Documents/…` | Finder; Show file reveals it                               |
 
 On the desktop, `attach_recorder` falls back to the user's Downloads folder
 (`download_dir()`) when there is no Documents folder (a Linux desktop without
 an XDG Documents directory, where `document_dir()` fails) or the app can't
 create `Wildflower Recordings` in it.
+
+The Mac App Store build runs in the App Sandbox, where `document_dir()` is the
+container's `~/Library/Containers/<identifier>/Data/Documents`, which Finder
+never shows. That build saves to the user's Downloads instead, which its
+`com.apple.security.files.downloads.read-write` entitlement opens to it.
+`download_dir()` there is the container's `Data/Downloads`, a symlink to
+`~/Downloads`, so `attach_recorder` resolves it and the Recorder page shows
+the real folder. The App Store and Developer ID builds are one binary, so
+`Platform::current` tells them apart at run time, by the
+`APP_SANDBOX_CONTAINER_ID` macOS sets in a sandboxed process. The container's
+Documents is the fallback only for a sandboxed build signed without the
+entitlement.
 
 On Android, Tauri's `document_dir()` is the app's own
 `Android/data/<package>/files/Documents`, which Android 11+ hides from every

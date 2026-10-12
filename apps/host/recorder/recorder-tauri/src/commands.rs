@@ -18,6 +18,6 @@ pub fn recorder_save_folder(folder: State<'_, RecordingsFolder>) -> Result<SaveF
         .map_err(Clone::clone)
         .map(|path| SaveFolder {
             path: path.to_string_lossy().into_owned(),
-            reveals_files: Platform::CURRENT.reveals_files(),
+            reveals_files: Platform::current().reveals_files(),
         })
 }

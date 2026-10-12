@@ -32,18 +32,32 @@ fn resolve_location<R: Runtime>(
         RecordingsLocation::UserDocuments
         | RecordingsLocation::AppExternalDocuments
         | RecordingsLocation::AppDocuments => app.path().document_dir(),
-        RecordingsLocation::UserDownloads => app.path().download_dir(),
+        RecordingsLocation::UserDownloads => app.path().download_dir().map(real_path),
         RecordingsLocation::SharedDocuments => app.path().home_dir(),
     }
 }
 
-/// The recordings folder for [`Platform::CURRENT`]: its first location that
+/// `path` with its symlinks resolved, where they resolve.
+///
+/// Under the macOS App Sandbox, `download_dir` is the container's
+/// `Data/Downloads`, a symlink to the user's `~/Downloads`; resolving it lets
+/// the Recorder page show the folder the user finds in Finder. Only macOS
+/// resolves it: on Windows a resolved path gains a `\\?\` prefix.
+fn real_path(path: PathBuf) -> PathBuf {
+    if cfg!(target_os = "macos") {
+        std::fs::canonicalize(&path).unwrap_or(path)
+    } else {
+        path
+    }
+}
+
+/// The recordings folder for [`Platform::current`]: its first location that
 /// resolves and, where another location follows it, that the app can create.
 ///
 /// Only the platform's own locations are resolved, and a last location isn't
 /// created here: `save_har` creates it on the first save.
 fn resolve_recordings_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let locations = Platform::CURRENT.recordings_locations();
+    let locations = Platform::current().recordings_locations();
     let mut reasons = Vec::new();
     for (index, location) in locations.iter().enumerate() {
         let directory = match resolve_location(app, *location) {
@@ -81,7 +95,7 @@ fn resolve_recordings_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Str
 /// the [`RecordingsFolder`] it saves into.
 ///
 /// The recordings folder is resolved here, once, for
-/// [`Platform::CURRENT`]. A platform where none resolves still attaches: each
+/// [`Platform::current`]. A platform where none resolves still attaches: each
 /// `SaveHar` is answered with `HarSaveFailed` saying why.
 ///
 /// Registers synchronously, so a `setup()` call cannot miss a message — the

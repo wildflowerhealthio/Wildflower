@@ -136,6 +136,9 @@ for App Store distribution, and it changes how the host runs:
 - the tunnel client, the server's `/health` reachability probe and the
   collectors need `com.apple.security.network.client`
 - the importer's file picker needs `com.apple.security.files.user-selected.read-write`
+- the Recorder's recordings folder, `~/Downloads/Wildflower Recordings`, needs
+  `com.apple.security.files.downloads.read-write`: the sandboxed build's
+  Documents folder is the container's own, which Finder never shows
 - the data directory moves to `~/Library/Containers/<identifier>/Data/`, so a
   sandboxed build does not see a non-sandboxed one's databases
 

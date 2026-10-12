@@ -5,6 +5,7 @@
 //! resolves, so it is tested here; `recorder-tauri` resolves the directories
 //! through Tauri's path API and creates the folder.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -12,30 +13,60 @@ use serde::{Deserialize, Serialize};
 /// The recordings folder's name, inside the platform's base directory.
 pub const RECORDINGS_DIR_NAME: &str = "Wildflower Recordings";
 
+/// The environment variable macOS sets in every process the App Sandbox
+/// confines, to the id of the app's sandbox container.
+pub const APP_SANDBOX_CONTAINER_ID: &str = "APP_SANDBOX_CONTAINER_ID";
+
 /// The platforms whose recordings folder differs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
-    /// macOS, Windows and Linux.
+    /// macOS outside the App Sandbox (the Developer ID build), Windows and
+    /// Linux.
     Desktop,
+    /// macOS inside the App Sandbox: the Mac App Store build.
+    SandboxedMac,
     Android,
     Ios,
 }
 
 impl Platform {
-    /// The platform this build runs on.
-    pub const CURRENT: Platform = if cfg!(target_os = "ios") {
-        Platform::Ios
-    } else if cfg!(target_os = "android") {
-        Platform::Android
-    } else {
-        Platform::Desktop
-    };
+    /// The platform this process runs on.
+    ///
+    /// The Mac App Store and Developer ID builds are the same binary; only
+    /// the App Store one is signed with the sandbox entitlement, so which of
+    /// the two is running is only known at run time, from the environment
+    /// macOS gives a sandboxed process.
+    pub fn current() -> Platform {
+        if cfg!(target_os = "ios") {
+            Platform::Ios
+        } else if cfg!(target_os = "android") {
+            Platform::Android
+        } else if cfg!(target_os = "macos") {
+            Platform::mac(std::env::var_os(APP_SANDBOX_CONTAINER_ID).as_deref())
+        } else {
+            Platform::Desktop
+        }
+    }
+
+    /// The macOS platform, given the process's `APP_SANDBOX_CONTAINER_ID`.
+    fn mac(sandbox_container_id: Option<&OsStr>) -> Platform {
+        match sandbox_container_id {
+            Some(_) => Platform::SandboxedMac,
+            None => Platform::Desktop,
+        }
+    }
 
     /// Where this platform's recordings folder may go, the first choice first.
     ///
     /// - Desktop: the user's Documents folder, or their Downloads folder where
     ///   there is no Documents folder (a Linux desktop without an XDG
     ///   Documents directory) or the app can't create the folder in it.
+    /// - Sandboxed macOS: the user's Downloads folder, which the App Store
+    ///   build's `com.apple.security.files.downloads.read-write` entitlement
+    ///   opens to it. Its Documents folder is the sandbox container's own,
+    ///   which Finder never shows, so it is only the fallback for a build
+    ///   signed without that entitlement: a recording saved where the user
+    ///   must Show file to find it beats one that isn't saved.
     /// - Android: the shared Documents folder, which the Files app and the
     ///   system file picker show, and which the app can write any file into
     ///   without a storage permission from Android 11 on. On an older Android,
@@ -50,6 +81,10 @@ impl Platform {
                 RecordingsLocation::UserDocuments,
                 RecordingsLocation::UserDownloads,
             ],
+            Platform::SandboxedMac => &[
+                RecordingsLocation::UserDownloads,
+                RecordingsLocation::UserDocuments,
+            ],
             Platform::Android => &[
                 RecordingsLocation::SharedDocuments,
                 RecordingsLocation::AppExternalDocuments,
@@ -61,7 +96,7 @@ impl Platform {
     /// Whether the platform's file manager can show a saved file selected in
     /// its folder. Only the desktop ones can.
     pub fn reveals_files(self) -> bool {
-        matches!(self, Platform::Desktop)
+        matches!(self, Platform::Desktop | Platform::SandboxedMac)
     }
 }
 
@@ -69,8 +104,13 @@ impl Platform {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordingsLocation {
     /// The user's Documents folder: Tauri's `document_dir` on the desktop.
+    /// Under the macOS App Sandbox it is the container's
+    /// `~/Library/Containers/<id>/Data/Documents`.
     UserDocuments,
     /// The user's Downloads folder: Tauri's `download_dir` on the desktop.
+    /// Under the macOS App Sandbox it is the container's
+    /// `~/Library/Containers/<id>/Data/Downloads`, a symlink to the real
+    /// `~/Downloads`.
     UserDownloads,
     /// Android's shared `Documents` folder, in the shared-storage root that
     /// Tauri's `home_dir` resolves to there.
@@ -145,6 +185,30 @@ mod tests {
     }
 
     #[test]
+    fn sandboxed_macos_saves_to_downloads_then_its_container_documents() {
+        assert_eq!(
+            first_choice(Platform::SandboxedMac, "/Users/ada/Downloads"),
+            PathBuf::from("/Users/ada/Downloads/Wildflower Recordings")
+        );
+        assert_eq!(
+            Platform::SandboxedMac.recordings_locations(),
+            [
+                RecordingsLocation::UserDownloads,
+                RecordingsLocation::UserDocuments
+            ]
+        );
+    }
+
+    #[test]
+    fn macos_is_sandboxed_exactly_when_it_has_a_sandbox_container_id() {
+        assert_eq!(
+            Platform::mac(Some(OsStr::new("io.wildflowerhealth.hostapp"))),
+            Platform::SandboxedMac
+        );
+        assert_eq!(Platform::mac(None), Platform::Desktop);
+    }
+
+    #[test]
     fn android_saves_to_the_shared_documents_then_its_own() {
         assert_eq!(
             first_choice(Platform::Android, "/storage/emulated/0"),
@@ -182,6 +246,7 @@ mod tests {
     #[test]
     fn only_the_desktop_reveals_files() {
         assert!(Platform::Desktop.reveals_files());
+        assert!(Platform::SandboxedMac.reveals_files());
         assert!(!Platform::Android.reveals_files());
         assert!(!Platform::Ios.reveals_files());
     }
