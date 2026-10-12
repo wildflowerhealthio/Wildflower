@@ -212,7 +212,6 @@ describe('buildAppTree InnerWrap lifecycle', () => {
           effectTelemetryLayer: Layer.empty,
           externalLinkRoot: () => 'https://example.test',
           platformSettingsItems: [],
-          platformTabs: [],
           platformBanner: null,
           redirectToDeviceLoginOnUnauthorized: false,
           serverKind: ServerKind.Wildflower(),

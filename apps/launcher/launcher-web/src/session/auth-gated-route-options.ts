@@ -2,8 +2,8 @@ import { redirect } from '@tanstack/react-router'
 
 import type { RouterContext } from '../router-context.ts'
 import { AuthGatedErrorComponent } from './auth-gated-error.tsx'
+import { homePathFor } from './home-path.ts'
 import type { ServerKind } from './server-kind.ts'
-import { homeTabFor } from './tabs.ts'
 
 /**
  * Shared `beforeLoad` + `errorComponent` pair for top-level routes that
@@ -13,7 +13,7 @@ import { homeTabFor } from './tabs.ts'
  * future auth-gated sibling can't silently drop the `errorComponent` half.
  *
  * Past the gate, a route for the other kind of server redirects to that
- * kind's Home (`homeTabFor`): the Wildflower routes call endpoints a plain
+ * kind's Home (`homePathFor`): the Wildflower routes call endpoints a plain
  * SMART server doesn't have, and the plain SMART Home says the server is not
  * a Wildflower one. The redirect is in `beforeLoad`, so the route's loader
  * never runs for the other kind.
@@ -35,7 +35,7 @@ const authGatedRouteOptionsFor = (servedKind: ServerKind['_tag']) =>
     }): Promise<void> => {
       await context.awaitAuthReady(location.href)
       if (context.serverKind._tag !== servedKind) {
-        throw redirect({ to: homeTabFor(context.serverKind).path })
+        throw redirect({ to: homePathFor(context.serverKind) })
       }
     },
     errorComponent: AuthGatedErrorComponent,

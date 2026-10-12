@@ -33,7 +33,7 @@ export { exampleSettingsItemsFragment }
 
 Re-export from the slice's `src/index.ts`. Add `shared-structures-react` to the slice's `peer` + `devDependencies` if it isn't already present.
 
-`SettingsItem` is the `href`-required branch of `ItemListItem` (from `react-tundraish`) — items pass straight to `<ItemList>` with no transformation. Optional fields (`subtitle`, `badge`, `disabled`, `actions`) work as in `ItemListItem`.
+`SettingsItem` is the `href`-required branch of `ItemListItem` (from `react-tundraish`) — items pass straight to `<ItemList>` with no transformation. Optional fields (`subtitle`, `badge`, `disabled`, `actions`) work as in `ItemListItem`; `search` gives an in-app `href` its search params (apps-react's Arrange home screen row opens `/home` with `{ edit: true }`), since a `?` written into `href` would be read as part of the path.
 
 ### 3. Wire the slice into `apps/launcher/launcher-web`
 

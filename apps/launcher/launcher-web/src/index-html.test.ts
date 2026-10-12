@@ -22,4 +22,12 @@ describe('index.html', () => {
     expect(base).toContain(`background-color: ${light}`)
     expect(darkBlock).toContain(`background-color: ${dark}`)
   })
+
+  it('should lay the page out under the safe areas, so the shell can pad by their insets', () => {
+    // Act — `env(safe-area-inset-*)` reads zero unless the viewport covers them.
+    const viewport = /<meta\s+name="viewport"\s+content="([^"]*)"/.exec(read('../index.html'))
+
+    // Assert
+    expect(viewport?.[1]).toContain('viewport-fit=cover')
+  })
 })

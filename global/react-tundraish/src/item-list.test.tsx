@@ -58,6 +58,23 @@ describe('ItemList', () => {
     })
   }, 15_000)
 
+  it('carries an in-app link’s search params into its href', async () => {
+    // Arrange
+    const items: ItemListItem[] = [
+      { id: '1', title: 'Arrange', href: '/home', search: { edit: true } },
+    ]
+
+    // Act
+    renderWithRouter(<ItemList items={items} />)
+
+    // Assert — the router writes the params after the path, not into it.
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Arrange/ }).getAttribute('href')).toBe(
+        '/home?edit=true'
+      )
+    })
+  }, 15_000)
+
   it('opens an external href in a new tab', () => {
     // Arrange
     const items: ItemListItem[] = [

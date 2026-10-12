@@ -2,12 +2,25 @@
  * The root of every route: the entry's platform banner (when it has something
  * to say) above the matched route. A flex column rather than a grid: a flex
  * column stretches its children to its own width, where a grid's implicit
- * column grows to fit the widest child and pushes wide routes off-screen. The
- * route's root (the authed tab shell's `height: 100%` + `min-height: 0`)
- * shrinks to the height the banner leaves.
+ * column grows to fit the widest child and pushes wide routes off-screen.
+ *
+ * The document scrolls, not a box inside it: the shell is at least the
+ * viewport tall and grows with the route, so on iOS the page scrolls under
+ * Safari's translucent toolbar as any web page does. `index.html` sets
+ * `viewport-fit=cover`, so the page is laid out edge to edge and
+ * `env(safe-area-inset-*)` reports the insets; the shell pads the
+ * left/right ones (a landscape notch) and the bottom one (the home indicator
+ * and toolbar), so the last row can scroll clear of them. The top inset is
+ * `<PageHeader>`'s: it pads itself by it, and a route without a header has
+ * no inset there under a browser's own top chrome. `border-box` keeps the
+ * padding inside the minimum height, so a short route doesn't scroll by the
+ * inset.
  */
 .root-shell {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }

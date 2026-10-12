@@ -9,7 +9,6 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { APP_DESCRIPTIONS, smartAppLaunchPages } from '@wildflowerhealthio/branding-core'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { ServerKind, ServerKindContext } from '../session/server-kind.ts'
 import { FhirServerHome } from './fhir-home.tsx'
 
 /** The SMART Health IT launcher's "Launch as logged in patient" demo server. */
@@ -23,9 +22,8 @@ const OTHER_FHIR_BASE_URL = 'https://fhir.example.org/r4'
 const PREVIEW_SITE_ROOT = 'https://wildflowerhealthio.github.io/staging/pr-7/'
 
 /**
- * Mount {@link FhirServerHome} at `/fhir-home` inside a minimal router (its tab
- * bar renders links), in a tree built for a plain SMART server — what
- * `main-web` provides once such a sign-in redeems.
+ * Mount {@link FhirServerHome} at `/fhir-home` inside a minimal router (its
+ * header is a router-aware component).
  */
 const renderFhirServerHome = (
   server: { readonly fhirBaseUrl: string; readonly patient: string | undefined } = {
@@ -43,11 +41,7 @@ const renderFhirServerHome = (
     routeTree: rootRoute.addChildren([fhirHomeRoute]),
     history: createMemoryHistory({ initialEntries: ['/fhir-home'] }),
   })
-  render(
-    <ServerKindContext value={ServerKind.PlainSmart(server)}>
-      <RouterProvider router={router} />
-    </ServerKindContext>
-  )
+  render(<RouterProvider router={router} />)
 }
 
 /** The app tiles' links, in the order the page lists them. */
@@ -71,14 +65,15 @@ describe('FhirServerHome', () => {
     expect(screen.getByText(/rather than a Wildflower server/)).toBeDefined()
   })
 
-  test('sits in the tab shell with Home as its only tab', async () => {
+  test('offers no way to Settings, which a plain SMART server has none of', async () => {
     // Act
     renderFhirServerHome()
 
-    // Assert
-    const nav = await screen.findByRole('navigation', { name: 'Primary' })
-    const links = Array.from(nav.querySelectorAll('a'))
-    expect(links.map((link) => link.textContent)).toEqual(['Home'])
+    // Assert — every link on the page is an app tile.
+    await screen.findByRole('heading', { name: 'Home' })
+    const appLinks = await findAppLinks()
+    expect(screen.getAllByRole('link')).toEqual(appLinks)
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull()
   })
 
   test('lists every hosted SMART app, by name and tagline, and nothing else', async () => {

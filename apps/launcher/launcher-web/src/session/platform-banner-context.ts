@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 
 /**
  * The banner this entry renders above every route, threaded from the entry
- * (`RenderAppOptions.platformBanner`) exactly as `platformTabs` is, and read
+ * (`RenderAppOptions.platformBanner`) exactly as `platformSettingsItems` is, and read
  * by `<RootShell>`.
  *
  * @remarks

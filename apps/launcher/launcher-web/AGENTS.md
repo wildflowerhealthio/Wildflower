@@ -39,7 +39,7 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   answer.
 - **The entry decides, not a branch on `entry`.** Platform differences reach
   the shared tree as `RenderAppOptions` fields (`effectTelemetryLayer`,
-  `platformSettingsItems`, `platformTabs`, `platformBanner`,
+  `platformSettingsItems`, `platformBanner`,
   `redirectToDeviceLoginOnUnauthorized`, `serverKind`), or as a provider the
   entry mounts (the consent gate). `<RootShell>` renders `platformBanner`
   above every route; `main-web` passes `null`.
@@ -72,10 +72,11 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   `serverKindForSession` turns the redeemed session into
   `session/server-kind.ts`'s `ServerKind.PlainSmart`, carrying the FHIR base
   and the token response's `patient`; `main-tauri` and every other `main-web`
-  load pass `ServerKind.Wildflower()`. For `PlainSmart`, `<TabBar>` renders
-  only Home, at `/fhir-home` (`routes/fhir-home.tsx`), and the `_auth` and
-  `/settings` gates redirect there before any loader runs, so nothing calls a
-  Wildflower-only endpoint. `/fhir-home` redirects a Wildflower session to
+  load pass `ServerKind.Wildflower()`. For `PlainSmart` the one page is its
+  Home, at `/fhir-home` (`routes/fhir-home.tsx`), which offers no way to
+  Settings, and the `_auth` and `/settings` gates redirect there
+  (`session/home-path.ts`'s `homePathFor`) before any loader runs, so nothing
+  calls a Wildflower-only endpoint. `/fhir-home` redirects a Wildflower session to
   `/home` the same way (`session/auth-gated-route-options.ts`).
 - **That Home launches every hosted SMART app against the server.** Its list
   is `branding-core`'s `smartAppLaunchPages`: every `APP_DESCRIPTIONS` entry

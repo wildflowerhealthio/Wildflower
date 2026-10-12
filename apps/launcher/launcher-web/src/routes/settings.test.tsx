@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
   TELEMETRY_CONSENT_COPY,
   WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
@@ -28,7 +28,7 @@ import {
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
 // (shared `wildflowerRouteOptions`), not inside `SettingsLayout` — so
-// the component renders the tab shell + `<Outlet>` unconditionally. The
+// the component renders the page shell + `<Outlet>` unconditionally. The
 // "Settings" heading no longer lives in the layout (which used to stack
 // it on top of every child's own header); it's the index page's single
 // `<PageHeader>`, so the macro tree below (layout + index) still renders
@@ -58,39 +58,30 @@ const renderSettingsScreen = (platformSettingsItems: readonly SettingsItem[] = [
 }
 
 /**
- * Links contributed by the slice rows only — the `SettingsLayout` now
- * also renders the persistent `<TabBar>` (a `Primary` navigation), whose
- * Home/Collector/Settings links would otherwise pollute the
- * "/settings/<slice>" assertions below, and the index ends on the Legal rows,
- * absolute links to the policy pages on the canonical site.
+ * Links contributed by the slice rows only — not the header's back link, and
+ * not the Legal rows the index ends on, absolute links to the policy pages on
+ * the canonical site, which would otherwise pollute the "/settings/<slice>"
+ * assertions below.
  */
-const sliceRowLinks = (): readonly HTMLAnchorElement[] => {
-  const tabBar = screen.getByRole('navigation', { name: 'Primary' })
-  return screen
+const sliceRowLinks = (): readonly HTMLAnchorElement[] =>
+  screen
     .getAllByRole('link')
     .filter(
       (link): link is HTMLAnchorElement =>
-        !tabBar.contains(link) && !(link.getAttribute('href') ?? '').startsWith('https://')
+        link.closest('li') !== null && !(link.getAttribute('href') ?? '').startsWith('https://')
     )
-}
 
-// The screen now renders the persistent tab bar (a `Primary`
-// navigation); clear each mounted tree so the single-match `getByRole`
-// lookups in `sliceRowLinks` don't see duplicates across tests.
+/** Wait for the index to render, by its single "Settings" heading. */
+const findSettingsHeading = (): Promise<HTMLElement> =>
+  screen.findByRole('heading', { name: 'Settings', level: 1 })
+
+// Clear each mounted tree so the single-match `getByRole` lookups don't see
+// duplicates across tests.
 afterEach(() => {
   cleanup()
 })
 
 describe('SettingsScreen', () => {
-  test('renders the persistent tab bar alongside the page heading', async () => {
-    renderSettingsScreen()
-    await waitFor(() => {
-      const tabBar = screen.getByRole('navigation', { name: 'Primary' })
-      expect(within(tabBar).getByRole('link', { name: 'Home' })).toBeDefined()
-      expect(within(tabBar).getByRole('link', { name: 'Collector' })).toBeDefined()
-    })
-  })
-
   test('renders the page heading', async () => {
     renderSettingsScreen()
     await waitFor(() => {
@@ -110,10 +101,11 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('every slice row links into /settings/<slice>/', async () => {
+  test('every slice row but Arrange home screen links into /settings/<slice>/', async () => {
     renderSettingsScreen()
-    await screen.findByRole('navigation', { name: 'Primary' })
-    const links = sliceRowLinks()
+    await findSettingsHeading()
+    const arrange = screen.getByRole('link', { name: /Arrange home screen/ })
+    const links = sliceRowLinks().filter((link) => link !== arrange)
     expect(links.length).toBeGreaterThanOrEqual(2)
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
@@ -121,9 +113,22 @@ describe('SettingsScreen', () => {
     }
   })
 
+  test('leads back to the apps home, which links here from its gear', async () => {
+    renderSettingsScreen()
+    await findSettingsHeading()
+    expect(screen.getByRole('link', { name: 'Apps' }).getAttribute('href')).toBe('/home')
+  })
+
+  test('links Arrange home screen to the home screen in edit mode', async () => {
+    renderSettingsScreen()
+    await findSettingsHeading()
+    const arrange = screen.getByRole('link', { name: /Arrange home screen/ })
+    expect(arrange.getAttribute('href')).toBe('/home?edit=true')
+  })
+
   test('ends on the Legal rows, each opening a policy page on the canonical site in a new tab', async () => {
     renderSettingsScreen()
-    await screen.findByRole('navigation', { name: 'Primary' })
+    await findSettingsHeading()
     for (const [name, href] of [
       ['Privacy policy', 'https://wildflowerhealth.io/privacy-policy/'],
       ['Consumer health data', 'https://wildflowerhealth.io/consumer-health-data/'],
@@ -171,7 +176,7 @@ describe('SettingsScreen', () => {
     // `main-tauri` passes `platformSettingsItems: []` — the host authenticates
     // the webview by connection provenance, so there is nothing to log out of.
     renderSettingsScreen([])
-    await screen.findByRole('navigation', { name: 'Primary' })
+    await findSettingsHeading()
     expect(screen.queryByRole('button', { name: /Logout/ })).toBeNull()
   })
 })

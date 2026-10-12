@@ -1,0 +1,17 @@
+/*
+ * The gear sits in the header bar at its normal height, in the main text
+ * colour of the colour scheme, resting or hovered, while `ghost`'s hover
+ * background still applies. The selectors name `.button.ghost` to outrank
+ * tundra's own `.button.ghost` and `.button.ghost:hover`, which set the
+ * foreground to the accent.
+ */
+.settings-link:global(.button.ghost),
+.settings-link:global(.button.ghost):hover,
+.settings-link:global(.button.ghost):focus-visible {
+  --button-color-foreground: var(--color-neutral-1);
+}
+
+.settings-link {
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}
