@@ -117,6 +117,25 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
         ))}
       </datalist>
 
+      {Match.value(state).pipe(
+        Match.when({ _tag: 'Recording' }, (s) => (
+          <p className={styles['recorder-page__status']} role="status">
+            {s.count} {s.count === 1 ? 'response' : 'responses'} recorded
+          </p>
+        )),
+        Match.when({ _tag: 'Saving' }, (s) => (
+          <p className={styles['recorder-page__status']} role="status">
+            Saving {s.fileName}…
+          </p>
+        )),
+        Match.when({ _tag: 'Saved' }, (s) => (
+          <p className={styles['recorder-page__status']} role="status">
+            Saved to <span className={styles['recorder-page__path']}>{s.path}</span>
+          </p>
+        )),
+        Match.orElse(() => null)
+      )}
+
       <div className={styles['recorder-page__buttons']}>
         <button
           type="button"
@@ -134,46 +153,23 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
             Stop &amp; Save
           </button>
         ) : null}
+        {state._tag === 'Saved' && revealsFiles ? (
+          <button
+            type="button"
+            className="button-2"
+            onClick={() => {
+              setRevealFailure(null)
+              revealFile(state.path).catch((error: unknown) => {
+                setRevealFailure(
+                  `The file couldn't be shown: ${error instanceof Error ? error.message : String(error)}`
+                )
+              })
+            }}
+          >
+            Show file
+          </button>
+        ) : null}
       </div>
-
-      {Match.value(state).pipe(
-        Match.when({ _tag: 'Recording' }, (s) => (
-          <p className={styles['recorder-page__status']} role="status">
-            {s.count} {s.count === 1 ? 'response' : 'responses'} recorded
-          </p>
-        )),
-        Match.when({ _tag: 'Saving' }, (s) => (
-          <p className={styles['recorder-page__status']} role="status">
-            Saving {s.fileName}…
-          </p>
-        )),
-        Match.when({ _tag: 'Saved' }, (s) => (
-          <>
-            <p className={styles['recorder-page__status']} role="status">
-              Saved to <span className={styles['recorder-page__path']}>{s.path}</span>
-            </p>
-            {revealsFiles ? (
-              <div className={styles['recorder-page__buttons']}>
-                <button
-                  type="button"
-                  className="button-2"
-                  onClick={() => {
-                    setRevealFailure(null)
-                    revealFile(s.path).catch((error: unknown) => {
-                      setRevealFailure(
-                        `The file couldn't be shown: ${error instanceof Error ? error.message : String(error)}`
-                      )
-                    })
-                  }}
-                >
-                  Show file
-                </button>
-              </div>
-            ) : null}
-          </>
-        )),
-        Match.orElse(() => null)
-      )}
     </div>
   )
 }

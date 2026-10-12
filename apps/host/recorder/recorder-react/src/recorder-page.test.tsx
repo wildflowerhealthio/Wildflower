@@ -141,6 +141,22 @@ describe('RecorderPage', () => {
     )
   })
 
+  it('should show the saved path above the buttons, with Show file beside Start', async () => {
+    // Arrange
+    const harness = renderPage()
+
+    // Act
+    await saveOneRecording(harness)
+
+    // Assert
+    const status = screen.getByRole('status')
+    const showFile = screen.getByRole('button', { name: 'Show file' })
+    expect(
+      status.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(showFile.parentElement).toBe(startButton().parentElement)
+  })
+
   it('should show the folder recordings are saved to', async () => {
     // Act
     renderPage()
