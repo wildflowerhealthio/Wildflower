@@ -283,6 +283,7 @@ mod tests {
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::sync::broadcast;
+    use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 
     use super::*;
     use crate::domain::test_fake::stored_tunnel;
@@ -335,11 +336,7 @@ mod tests {
     async fn a_created_tunnel_takes_visitors_once_its_device_connects_until_deleted() {
         let dir = tempfile::tempdir().unwrap();
         let mut settings = settings(dir.path(), None);
-        let control_port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
+        let control_port = free_loopback_port();
         settings.control.control_addr = ([127, 0, 0, 1], control_port).into();
         let (registry, rathole) = open_registry(&settings).await;
         let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
@@ -403,11 +400,7 @@ mod tests {
     async fn a_reissued_token_drops_the_old_device_and_takes_the_new_one() {
         let dir = tempfile::tempdir().unwrap();
         let mut settings = settings(dir.path(), None);
-        let control_port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
+        let control_port = free_loopback_port();
         settings.control.control_addr = ([127, 0, 0, 1], control_port).into();
         let (registry, rathole) = open_registry(&settings).await;
         let (shutdown_tx, shutdown_rx) = broadcast::channel(1);

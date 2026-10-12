@@ -40,6 +40,7 @@ use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs
 use wildflowerhealthio_gatekeeper::{
     GatekeeperStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
 };
+use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_shared_structures::health_check::{
     ComponentType, HealthReport, HealthStatus,
 };
@@ -83,13 +84,6 @@ struct NoOnDeviceWebview;
 
 impl OnDeviceWebviewHandle for NoOnDeviceWebview {
     fn open(&self, _app_id: String, _title: String, _url: String) {}
-}
-
-/// A loopback port nothing is listening on: bind an ephemeral one and release
-/// it, so `serve` can bind it next.
-fn free_loopback_port() -> u16 {
-    let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("bind an ephemeral port");
-    probe.local_addr().expect("ephemeral port address").port()
 }
 
 fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {

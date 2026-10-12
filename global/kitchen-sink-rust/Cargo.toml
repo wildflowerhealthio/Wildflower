@@ -7,7 +7,8 @@ publish.workspace = true
 # Project-agnostic Rust utilities, the native counterpart of
 # `global/kitchen-sink`: no Wildflower types and no slice knowledge, so any
 # module is copy-pastable into an unrelated project. Standard library only.
-# `rate_limit` backs the relay's `POST /claim` limits.
+# `rate_limit` backs the relay's `POST /claim` limits; `loopback_port` gives
+# the Rust tests' servers their ports.
 [dependencies]
 
 [lints]

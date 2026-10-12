@@ -269,6 +269,8 @@ struct ServiceSection<'a> {
 mod tests {
     use std::time::Duration;
 
+    use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
+
     use super::*;
 
     /// The rendered client config must parse as a valid rathole *client* config
@@ -411,8 +413,7 @@ mod tests {
 
     /// An address on loopback nothing listens on.
     fn free_addr() -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-        listener.local_addr().expect("local addr").to_string()
+        format!("127.0.0.1:{}", free_loopback_port())
     }
 
     /// A rathole server on loopback holding the one tunnel `service_name`

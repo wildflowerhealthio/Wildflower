@@ -54,3 +54,5 @@ rathole = { version = "0.5", default-features = false, features = [
 ] }
 serde_json.workspace = true
 parking_lot = "0.12"
+# The loopback port the stand-in relay binds, clear of other tests' sockets.
+wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust" }

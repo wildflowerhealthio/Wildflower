@@ -114,6 +114,9 @@ wildflowerhealthio-wildflower-server = { path = ".", features = ["test-support"]
 wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust", features = [
   "proxy-header",
 ] }
+# The loopback port `tests/serve.rs`'s server binds, clear of other tests'
+# sockets.
+wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust" }
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
 # The self-signed certificates the tests put in the certificate cache.
