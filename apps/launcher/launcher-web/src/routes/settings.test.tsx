@@ -58,15 +58,17 @@ const renderSettingsScreen = (platformSettingsItems: readonly SettingsItem[] = [
 }
 
 /**
- * Links contributed by the slice rows only — the index ends on the Legal rows,
- * absolute links to the policy pages on the canonical site, which would
- * otherwise pollute the "/settings/<slice>" assertions below.
+ * Links contributed by the slice rows only — not the header's back link, and
+ * not the Legal rows the index ends on, absolute links to the policy pages on
+ * the canonical site, which would otherwise pollute the "/settings/<slice>"
+ * assertions below.
  */
 const sliceRowLinks = (): readonly HTMLAnchorElement[] =>
   screen
     .getAllByRole('link')
     .filter(
-      (link): link is HTMLAnchorElement => !(link.getAttribute('href') ?? '').startsWith('https://')
+      (link): link is HTMLAnchorElement =>
+        link.closest('li') !== null && !(link.getAttribute('href') ?? '').startsWith('https://')
     )
 
 /** Wait for the index to render, by its single "Settings" heading. */
@@ -99,15 +101,29 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('every slice row links into /settings/<slice>/', async () => {
+  test('every slice row but Arrange home screen links into /settings/<slice>/', async () => {
     renderSettingsScreen()
     await findSettingsHeading()
-    const links = sliceRowLinks()
+    const arrange = screen.getByRole('link', { name: /Arrange home screen/ })
+    const links = sliceRowLinks().filter((link) => link !== arrange)
     expect(links.length).toBeGreaterThanOrEqual(2)
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
       expect(href.startsWith('/settings/')).toBe(true)
     }
+  })
+
+  test('leads back to the apps home, which links here from its gear', async () => {
+    renderSettingsScreen()
+    await findSettingsHeading()
+    expect(screen.getByRole('link', { name: 'Apps' }).getAttribute('href')).toBe('/home')
+  })
+
+  test('links Arrange home screen to the home screen in edit mode', async () => {
+    renderSettingsScreen()
+    await findSettingsHeading()
+    const arrange = screen.getByRole('link', { name: /Arrange home screen/ })
+    expect(arrange.getAttribute('href')).toBe('/home?edit=true')
   })
 
   test('ends on the Legal rows, each opening a policy page on the canonical site in a new tab', async () => {

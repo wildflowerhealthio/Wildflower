@@ -36,7 +36,9 @@ type ItemListItemBase = {
 /**
  * Three interaction variants:
  * - `href` → navigates (TanStack `<Link>` for in-app paths, `<a>` for
- *   absolute URLs). `external` opens an absolute URL in a new tab, or, in a
+ *   absolute URLs). `search` gives an in-app path its search params, which a
+ *   `<Link>` takes apart from its path (a `?` in `href` would be read as part
+ *   of the path). `external` opens an absolute URL in a new tab, or, in a
  *   Tauri webview, the system browser, so a settings row can link to a web
  *   page without navigating the app away.
  * - `onClick` → button.
@@ -44,7 +46,12 @@ type ItemListItemBase = {
  */
 type ItemListItem = ItemListItemBase &
   (
-    | { readonly href: string; readonly external?: boolean; readonly onClick?: never }
+    | {
+        readonly href: string
+        readonly search?: Readonly<Record<string, unknown>>
+        readonly external?: boolean
+        readonly onClick?: never
+      }
     | { readonly href?: never; readonly onClick: () => void }
     | { readonly href?: never; readonly onClick?: never }
   )
@@ -145,7 +152,7 @@ const ItemListRow = ({
       }
       if (item.href.startsWith('/')) {
         return (
-          <Link className={textClass} to={item.href}>
+          <Link className={textClass} to={item.href} search={item.search}>
             {textChildren}
           </Link>
         )

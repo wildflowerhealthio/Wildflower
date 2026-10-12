@@ -14,7 +14,12 @@ import {
 } from '@dnd-kit/sortable'
 import { createFileRoute, useRouteContext } from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import { AsyncErrorView, ErrorBanner, PageHeader } from '@wildflowerhealthio/react-tundraish'
+import {
+  AsyncErrorView,
+  ErrorBanner,
+  PageHeader,
+  SettingsLink,
+} from '@wildflowerhealthio/react-tundraish'
 import { useEffect, useState, type JSX } from 'react'
 
 import { Either } from 'effect'
@@ -30,19 +35,31 @@ import { launchApp, type LaunchContext, type LaunchOutcome } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
 import { SortableAppTile, type LaunchPlace } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
+import homeStyles from '../../../styles/apps-home.module.css'
 
 export interface HomeSearch {
   /** The base64 launch-error body (see `-launch-error.ts`) — an opaque string the
    * banner decodes; both arms set it, so it's kept verbatim. */
   readonly launchError?: string
+  /**
+   * Present (`?edit=true`) while the home screen is being arranged: tiles drag
+   * to reorder and carry a hide badge instead of launching. Settings' "Arrange
+   * home screen" row links here with it (`settings-fragments.ts`); the header's
+   * Done drops it.
+   */
+  readonly edit?: true
 }
 
 /** Validate `/home`'s search: keep a string `launchError` param (the base64 error
- * body both arms set — see the Rust launch middleware and `-launch.ts`), drop
+ * body both arms set — see the Rust launch middleware and `-launch.ts`) and an
+ * `edit` param of `true` (the router parses `?edit=true` to the boolean), drop
  * anything else. */
 const validateHomeSearch = (search: Record<string, unknown>): HomeSearch => {
-  const raw = search['launchError']
-  return typeof raw === 'string' ? { launchError: raw } : {}
+  const launchError = search['launchError']
+  return {
+    ...(typeof launchError === 'string' ? { launchError } : {}),
+    ...(search['edit'] === true ? { edit: true } : {}),
+  }
 }
 
 /**
@@ -54,25 +71,35 @@ const validateHomeSearch = (search: Record<string, unknown>): HomeSearch => {
  * The home-screen `PUT`s (reorder + hide) auto-invalidate the list query;
  * catalogue management (add / remove / configure / re-enable) lives under
  * `/settings/apps`.
+ *
+ * Both search params live in the URL, not in component state, so each change
+ * to one keeps the other: a launch outcome arriving while the screen is being
+ * arranged leaves `?edit` alone, and Done leaves a launch banner up.
  */
 const AppsHomeScreen = (): JSX.Element => {
   const { data: apps } = useAppsListQuery()
-  const { launchError } = Route.useSearch()
+  const { launchError, edit } = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
     <AppsHomeBody
       apps={apps}
       launchError={launchError}
+      editing={edit === true}
+      onDoneEditing={() => {
+        // Replace rather than push: Back from the home screen then returns to
+        // wherever arranging began (Settings), not into arranging again.
+        void navigate({ search: (previous) => ({ ...previous, edit: undefined }), replace: true })
+      }}
       onLaunchResult={(launchResult) => {
         // Reflect the outcome into the `?launchError` param: a failure shows the
         // banner; a later success clears a stale one.
         Either.match(launchResult, {
           onLeft: (errorBody) => {
-            void navigate({ search: { launchError: errorBody } })
+            void navigate({ search: (previous) => ({ ...previous, launchError: errorBody }) })
           },
           onRight: () => {
             if (launchError !== undefined) {
-              void navigate({ search: {} })
+              void navigate({ search: (previous) => ({ ...previous, launchError: undefined }) })
             }
           },
         })
@@ -85,6 +112,15 @@ interface AppsHomeBodyProps {
   readonly apps: readonly AppRegistration[]
   /** The base64 launch-error body from the `?launchError` search param, if any. */
   readonly launchError?: string
+  /**
+   * Whether the home screen is being arranged (the `?edit` search param). Off
+   * by default: tiles launch on click and can't be dragged. On, tiles drag to
+   * reorder and each carries a "Hide" badge, and the header's Settings gear
+   * gives way to Done.
+   */
+  readonly editing?: boolean
+  /** Called when Done is pressed, so the route can drop the `?edit` param. */
+  readonly onDoneEditing?: () => void
   /**
    * Called with the launch outcome — the encoded `?launchError` body on failure,
    * `right` on success — so the route can reflect it into the search param.
@@ -128,11 +164,13 @@ const launchInNewTab = (
   })
 }
 
-const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps): JSX.Element => {
-  // Home-screen edit mode. Off by default: tiles launch on click and can't be
-  // dragged. Toggling "Edit" arms drag-to-reorder and the per-tile "Hide"
-  // (disable) control; "Done" returns to launch mode.
-  const [editMode, setEditMode] = useState(false)
+const AppsHomeBody = ({
+  apps,
+  launchError,
+  editing = false,
+  onDoneEditing,
+  onLaunchResult,
+}: AppsHomeBodyProps): JSX.Element => {
   const homeScreenMutation = useReplaceHomeScreenMutation()
   // The launch rides `runAuthed` so the owner bearer is attached (the host 401s
   // an anonymous launch) — same runner the list read uses.
@@ -252,21 +290,19 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
       <PageHeader
         title="Apps"
         actions={
-          <button
-            type="button"
-            className={cn('button-1', 'ghost')}
-            style={{
-              fontWeight: 800,
-              fontSize: 'var(--font-size-4)',
-              color: 'var(--button-color-foreground)',
-            }}
-            onClick={() => {
-              setEditMode((open) => !open)
-            }}
-            aria-label={editMode ? 'Done editing' : 'Edit home screen'}
-          >
-            {editMode ? '✓' : '⋯'}
-          </button>
+          editing ? (
+            <button
+              type="button"
+              className={cn('button', 'button-2', 'ghost', homeStyles['apps-home__done'])}
+              onClick={() => {
+                onDoneEditing?.()
+              }}
+            >
+              Done
+            </button>
+          ) : (
+            <SettingsLink href="/settings" label="Settings" />
+          )
         }
       />
       {/* A launch that failed (the browser arm was redirected here with
@@ -288,7 +324,7 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
                 <SortableAppTile
                   key={app.id}
                   app={app}
-                  editing={editMode}
+                  editing={editing}
                   onLaunch={launch}
                   onDisable={disable}
                 />
@@ -309,7 +345,7 @@ const Route = createFileRoute('/_auth/home/')({
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })
 
-// `AppsHomeBody` is exported for unit tests (the body renders independently of
-// the route loader); grouped with `Route` into one declaration for
-// `import/group-exports`.
-export { AppsHomeBody, Route }
+// `AppsHomeBody` and `validateHomeSearch` are exported for unit tests (the body
+// renders independently of the route loader); grouped with `Route` into one
+// declaration for `import/group-exports`.
+export { AppsHomeBody, Route, validateHomeSearch }

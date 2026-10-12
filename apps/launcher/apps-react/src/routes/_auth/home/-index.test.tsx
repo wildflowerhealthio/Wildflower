@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 
 // `AppsHomeBody` reads its home-screen mutation from `queries.ts` and two
 // route-context values; stub both so the tests drive the banner + edit-mode
-// behavior purely off the mutation stub and local state.
+// behavior purely off the mutation stub and the body's props.
 const { homeScreenStub, routeContext } = vi.hoisted(() => ({
   homeScreenStub: {
     mutate: vi.fn(),
@@ -26,8 +26,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     createFileRoute: () => (options: unknown) => options,
     // The body reads `runAuthed` off the root context.
     useRouteContext: ({ select }: { select: (ctx: unknown) => unknown }) => select(routeContext),
-    // A tile's launch link: a plain anchor at the route's path, so the tile
-    // renders without a router.
+    // A tile's launch link, and the header's Settings gear: a plain anchor at
+    // the route's path, so they render without a router.
     Link: ({
       to,
       params,
@@ -35,10 +35,10 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       ...rest
     }: {
       readonly to: string
-      readonly params: { readonly id: string }
+      readonly params?: { readonly id: string }
       readonly children: ReactNode
     }) => (
-      <a href={to.replace('$id', params.id)} {...rest}>
+      <a href={params === undefined ? to : to.replace('$id', params.id)} {...rest}>
         {children}
       </a>
     ),
@@ -53,7 +53,7 @@ vi.mock('../../../queries.ts', () => ({
 
 import type { AppRegistration } from '../../../queries.ts'
 import { encodeLaunchError } from './-launch-error.ts'
-import { AppsHomeBody } from './index.tsx'
+import { AppsHomeBody, validateHomeSearch } from './index.tsx'
 
 const makeApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
   id: 'my-app',
@@ -133,28 +133,38 @@ describe('<AppsHomeBody> edit mode', () => {
     cleanup()
   })
 
-  test('defaults to view mode: an "Edit" toggle and no "Hide" controls', () => {
+  test('defaults to view mode: a Settings gear in the header and no "Hide" controls', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
-    expect(screen.getByRole('button', { name: 'Edit home screen' })).toBeDefined()
+    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/settings')
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
     // The per-tile hide badge is labelled "Hide <app name>".
     expect(screen.queryByRole('button', { name: /^Hide/ })).toBeNull()
   })
 
-  test('tapping "Edit" arms edit mode: the toggle reads "Done" and a "Hide" control appears', () => {
-    render(<AppsHomeBody apps={[APP]} />)
+  test('while editing, Done stands in for the gear and each tile gets a "Hide" control', () => {
+    render(<AppsHomeBody apps={[APP]} editing />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit home screen' }))
-
-    expect(screen.getByRole('button', { name: 'Done editing' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Done' })).toBeDefined()
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull()
     expect(screen.getByRole('button', { name: /^Hide/ })).toBeDefined()
+    // A tile no longer launches, so it is no longer a link.
+    expect(screen.queryByRole('link', { name: /My App/ })).toBeNull()
+  })
+
+  test('tapping "Done" asks the route to end editing', () => {
+    const onDoneEditing = vi.fn()
+    render(<AppsHomeBody apps={[APP]} editing onDoneEditing={onDoneEditing} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(onDoneEditing).toHaveBeenCalledTimes(1)
   })
 
   test('tapping "Hide" PUTs the whole home screen with that app disabled', () => {
     const other = makeApp({ id: 'other-app', name: 'Other App' })
-    render(<AppsHomeBody apps={[APP, other]} />)
+    render(<AppsHomeBody apps={[APP, other]} editing />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit home screen' }))
     // Both on-homescreen tiles get a hide badge ("Hide <name>"); the first is the target.
     const hideButtons = screen.getAllByRole('button', { name: /^Hide/ })
     fireEvent.click(hideButtons[0])
@@ -209,12 +219,13 @@ describe('<AppsHomeBody> live content', () => {
     // tile shows its fresh name (content still comes from `apps`).
     const first = makeApp({ id: 'first-app', name: 'First App' })
     const second = makeApp({ id: 'second-app', name: 'Second App' })
-    const { rerender } = render(<AppsHomeBody apps={[first, second]} />)
+    const { rerender } = render(<AppsHomeBody apps={[first, second]} editing />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit home screen' }))
     fireEvent.click(screen.getByRole('button', { name: 'Hide First App' }))
 
-    rerender(<AppsHomeBody apps={[first, makeApp({ id: 'second-app', name: 'Second Renamed' })]} />)
+    rerender(
+      <AppsHomeBody apps={[first, makeApp({ id: 'second-app', name: 'Second Renamed' })]} editing />
+    )
 
     const list = screen.getByRole('list')
     expect(within(list).queryByText('First App')).toBeNull()
@@ -286,5 +297,23 @@ describe('<AppsHomeBody> launch tiles', () => {
 
     expect(followed).toBe(true)
     expect(routeContext.runAuthed).not.toHaveBeenCalled()
+  })
+})
+
+describe('validateHomeSearch', () => {
+  test('keeps a string launchError and an edit of true together', () => {
+    expect(
+      validateHomeSearch({ launchError: 'eyJlcnJvciI6IkFwcE5vdEZvdW5kIn0', edit: true })
+    ).toEqual({ launchError: 'eyJlcnJvciI6IkFwcE5vdEZvdW5kIn0', edit: true })
+  })
+
+  test('drops an edit that is not true, and anything it does not know', () => {
+    // The router parses `?edit=true` to the boolean; `?edit=yes` stays a string.
+    expect(validateHomeSearch({ edit: 'yes', other: 1 })).toEqual({})
+    expect(validateHomeSearch({ edit: false })).toEqual({})
+  })
+
+  test('drops a launchError that is not a string', () => {
+    expect(validateHomeSearch({ launchError: 42 })).toEqual({})
   })
 })
