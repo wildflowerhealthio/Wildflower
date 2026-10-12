@@ -5,7 +5,7 @@ use std::time::Duration;
 use chrono::TimeDelta;
 
 use super::fakes::{Harness, Probe, Script};
-use crate::domain::app_presence::WHILE_OPEN_GRACE;
+use crate::domain::app_presence::{Presence, WHILE_OPEN_GRACE};
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
 use crate::status::{StopReason, UnitStatus};
@@ -65,10 +65,10 @@ async fn while_open_runs_while_present_and_through_the_grace() {
         "the app isn't present yet"
     );
 
-    harness.unit_runner.set_app_present(true);
+    harness.unit_runner.set_app_presence(Presence::Present);
     harness.wait_until_running("unit").await;
 
-    harness.unit_runner.set_app_present(false);
+    harness.unit_runner.set_app_presence(Presence::Absent);
     harness
         .clock
         .advance(WHILE_OPEN_GRACE - Duration::from_secs(1));
@@ -97,11 +97,11 @@ async fn becoming_present_again_within_the_grace_keeps_the_same_run() {
         Script::RunUntilStopped { detail: None },
         &probe,
     );
-    harness.unit_runner.set_app_present(true);
+    harness.unit_runner.set_app_presence(Presence::Present);
     harness.wait_until_running("unit").await;
-    harness.unit_runner.set_app_present(false);
+    harness.unit_runner.set_app_presence(Presence::Absent);
     harness.clock.advance(Duration::from_secs(30));
-    harness.unit_runner.set_app_present(true);
+    harness.unit_runner.set_app_presence(Presence::Present);
     harness.clock.advance(WHILE_OPEN_GRACE * 2);
     harness.unit_runner.start_and_stop_runs_per_policy();
     assert_eq!(harness.phase("unit"), Some(UnitPhase::Running));

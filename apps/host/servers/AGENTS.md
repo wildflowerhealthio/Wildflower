@@ -58,8 +58,9 @@ changing how servers run or what the host notifies about them.
   `server_update` and `server_remove`, each writing the registry and then
   pushing what it wrote; and the consent commands, `pending_consents_list`,
   `server_consent_get`, `server_consent_approve` and `server_consent_deny`;
-  and `server_launch`, which opens a server's launcher in a native web view
-  behind the `LauncherWindows` port. Only glue; every decision and
+  and `server_launch`, which opens a server's launcher in the in-app browser
+  behind the `LaunchBrowser` port, its view counting toward `WhileOpen`
+  through the `LaunchPresence` port. Only glue; every decision and
   its tests are in `servers-rust`, except the commands' own order of write and
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core-js`** — the host commands the base calls, as Effects over the
@@ -420,10 +421,16 @@ changing how servers run or what the host notifies about them.
   URL with `iss=https://<domain>/fhir-r4` and `launch` in its query, any
   earlier `iss` or `launch` dropped and its other parameters kept as
   written. The launch binds no OAuth client, so
-  any app can be a launcher. The launcher opens in a native web view of its
-  own, `launcher-<domain>` with its dots as `_`, titled with the domain; a
-  user dismissal disposes it, so it stops counting as an open window for
-  `WhileOpen`. It never changes the run policy. Errors are
+  any app can be a launcher. The launcher opens in the in-app browser
+  (`tauri-plugin-native-page-browser`), which shows one view at a time: on
+  iOS a launch replaces the view an earlier one opened, and on Android a
+  launch that arrives while that view is still opening joins it. Each view is reported to
+  `TauriUnitRunner` under an id of its own (`launch-<n>`) until the browser
+  reports it closed (on Android, as the app resumes from under it); on
+  Android, where the view moves the app to the background, an open view keeps
+  the app present for `WhileOpen`, and a background session keeps it alive
+  under the view until the browser reports it keeps the app alive itself
+  (`KeptAlive`, `launch_view_kept_alive`). It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
   `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from
   Let's Encrypt's staging CA), `gatekeeper`, `openingLauncher`, or the registry's

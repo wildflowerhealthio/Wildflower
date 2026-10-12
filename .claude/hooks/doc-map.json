@@ -72,6 +72,14 @@
       ]
     },
     {
+      "id": "native-page-browser-plugin",
+      "tools": "edit",
+      "pattern": "^apps/host/tauri-plugin-native-page-browser/",
+      "docs": [
+        "apps/host/tauri-plugin-native-page-browser/docs/Explanation.md — what the plugin is, the per-platform one-view-at-a-time and close-report rules the backends must keep in step, and how Android hears the close"
+      ]
+    },
+    {
       "id": "effect-slice-core",
       "tools": "edit",
       "pattern": "^slices/[^/]+/[^/]+-core/src/.*\\.ts$|^apps/(?:[^/]+/)+[^/]+-core-js/src/.*\\.ts$",

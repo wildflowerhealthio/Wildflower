@@ -30,7 +30,7 @@ mod runner;
 mod status;
 mod unit;
 
-pub use domain::app_presence::WHILE_OPEN_GRACE;
+pub use domain::app_presence::{Presence, WHILE_OPEN_GRACE};
 pub use domain::background_session_length::BackgroundSessionLength;
 pub use domain::run_policy::RunPolicy;
 pub use domain::session_ledger::SessionId;

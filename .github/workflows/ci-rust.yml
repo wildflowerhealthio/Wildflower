@@ -9,10 +9,10 @@ on:
   # wildflowerhealthio-browser-sniffer-tauri,
   # wildflowerhealthio-recorder-tauri, wildflowerhealthio-servers-tauri,
   # wildflowerhealthio-shared-structures-tauri, tauri-plugin-native-webview,
-  # wildflowerhealthio-tauri-unit-runner). Those need GTK/webkit
-  # system libs, so the job installs them and stubs the generated web bundles
-  # the Tauri crates `include_str!` (and the relay's admin UI, which
-  # wildflowerhealthio-relay-server embeds).
+  # tauri-plugin-native-page-browser, wildflowerhealthio-tauri-unit-runner).
+  # Those need GTK/webkit system libs, so the job installs them and stubs the
+  # generated web bundles the Tauri crates `include_str!` (and the relay's
+  # admin UI, which wildflowerhealthio-relay-server embeds).
   # (This used to be a separate ci-rust-tauri.yml; the split saved little
   # because most Rust PRs touch a Tauri crate anyway.)
   #

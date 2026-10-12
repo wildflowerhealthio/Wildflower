@@ -1,7 +1,10 @@
-//! [`WindowState`]: whether the app is present, from its window events, and
-//! which returns to the foreground call for restarting every running unit.
+//! [`WindowState`]: the app's presence, from its window events and the in-app
+//! browser views it opens, and which returns to the foreground call for
+//! restarting every running unit.
 
 use std::collections::BTreeSet;
+
+use wildflowerhealthio_unit_runner::Presence;
 
 /// The kind of platform the app runs on, as far as being present and the
 /// background go.
@@ -41,20 +44,33 @@ impl PlatformKind {
     pub fn backgrounding_breaks_sockets(self) -> bool {
         matches!(self, Self::Ios)
     }
+
+    /// Whether an in-app browser view moves the app to the background: on
+    /// Android a Custom Tab is an activity of its own over the app's, which it
+    /// pauses, and Android then treats the app as in the background unless
+    /// the view's browser keeps it alive. An iOS `SFSafariViewController` is
+    /// presented in the app's own window, and a desktop's view is a tab of the
+    /// default browser.
+    #[must_use]
+    pub fn browser_views_background_the_app(self) -> bool {
+        matches!(self, Self::Android)
+    }
 }
 
 /// What a window event means for `UnitRunner`. The caller acts on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowStateChange {
-    /// Whether the app is present after the event.
-    pub present_after_event: bool,
+    /// The app's presence after the event.
+    pub presence_after_event: Presence,
     /// Whether every running unit should restart: the app returned to the
     /// foreground on a platform where
     /// [`backgrounding_breaks_sockets`](PlatformKind::backgrounding_breaks_sockets).
     pub unit_restarts_needed: bool,
 }
 
-/// The app's open windows, and whether a phone app is in the background.
+/// The app's open windows, the in-app browser views it opened that move it to
+/// the background and which of those their browser keeps the app alive under,
+/// and whether a phone app is in the background.
 ///
 /// Only a return to the foreground that follows a move to the background
 /// counts as one, so the resume a window reports as it first appears does
@@ -63,6 +79,10 @@ pub struct WindowStateChange {
 pub struct WindowState {
     platform: PlatformKind,
     open_windows: BTreeSet<String>,
+    open_browser_views: BTreeSet<String>,
+    /// The open browser views whose browser keeps the app alive under them;
+    /// each is also in `open_browser_views`.
+    kept_alive_browser_views: BTreeSet<String>,
     in_background: bool,
 }
 
@@ -73,6 +93,8 @@ impl WindowState {
         Self {
             platform,
             open_windows: BTreeSet::new(),
+            open_browser_views: BTreeSet::new(),
+            kept_alive_browser_views: BTreeSet::new(),
             in_background: false,
         }
     }
@@ -86,6 +108,33 @@ impl WindowState {
     /// The window labelled `label` was destroyed.
     pub fn window_destroyed(&mut self, label: &str) -> WindowStateChange {
         self.open_windows.remove(label);
+        self.change(false)
+    }
+
+    /// The in-app browser view `view` opened. Only a view that
+    /// [backgrounds the app](PlatformKind::browser_views_background_the_app)
+    /// is kept: elsewhere the windows already say whether the app is present,
+    /// and a desktop's browser tab never reports its close.
+    pub fn browser_view_opened(&mut self, view: &str) -> WindowStateChange {
+        if self.platform.browser_views_background_the_app() {
+            self.open_browser_views.insert(view.to_owned());
+        }
+        self.change(false)
+    }
+
+    /// The browser of the open in-app browser view `view` keeps the app alive
+    /// under it. A view not kept is ignored.
+    pub fn browser_view_kept_alive(&mut self, view: &str) -> WindowStateChange {
+        if self.open_browser_views.contains(view) {
+            self.kept_alive_browser_views.insert(view.to_owned());
+        }
+        self.change(false)
+    }
+
+    /// The in-app browser view `view` closed.
+    pub fn browser_view_closed(&mut self, view: &str) -> WindowStateChange {
+        self.open_browser_views.remove(view);
+        self.kept_alive_browser_views.remove(view);
         self.change(false)
     }
 
@@ -111,19 +160,35 @@ impl WindowState {
 
     fn change(&self, unit_restarts_needed: bool) -> WindowStateChange {
         WindowStateChange {
-            present_after_event: self.app_present(),
+            presence_after_event: self.app_presence(),
             unit_restarts_needed,
         }
     }
 
-    /// Whether the app is present: on a desktop, any window is open, minimized
-    /// included; on a phone, the app has a window and is in the foreground.
+    /// The app's presence. On a desktop it is present while any window is
+    /// open, minimized included; on a phone, while the app has a window and is
+    /// in the foreground. On Android it is also present while it has an
+    /// in-app browser view open, which moves it to the background: in the
+    /// background, from the moment such a view opens, until every open view's
+    /// browser keeps the app alive under it.
     #[must_use]
-    pub fn app_present(&self) -> bool {
+    pub fn app_presence(&self) -> Presence {
         let any_window_open = !self.open_windows.is_empty();
-        match self.platform {
+        let present = match self.platform {
             PlatformKind::Desktop => any_window_open,
-            PlatformKind::Android | PlatformKind::Ios => any_window_open && !self.in_background,
+            PlatformKind::Ios => any_window_open && !self.in_background,
+            PlatformKind::Android => {
+                any_window_open && (!self.in_background || !self.open_browser_views.is_empty())
+            }
+        };
+        let any_browser_view_unkept =
+            self.open_browser_views.len() > self.kept_alive_browser_views.len();
+        if !present {
+            Presence::Absent
+        } else if any_browser_view_unkept {
+            Presence::PresentInBackground
+        } else {
+            Presence::Present
         }
     }
 }
@@ -141,24 +206,136 @@ mod tests {
     #[test]
     fn a_desktop_app_is_present_while_any_window_is_open() {
         let mut window_state = WindowState::new(PlatformKind::Desktop);
-        assert!(!window_state.app_present());
-        assert!(window_state.window_opened("main").present_after_event);
-        assert!(window_state.window_opened("settings").present_after_event);
-        assert!(window_state.window_destroyed("main").present_after_event);
-        assert!(
-            !window_state
-                .window_destroyed("settings")
-                .present_after_event
-        );
+        assert!(!window_state.app_presence().is_present());
+        assert!(window_state
+            .window_opened("main")
+            .presence_after_event
+            .is_present());
+        assert!(window_state
+            .window_opened("settings")
+            .presence_after_event
+            .is_present());
+        assert!(window_state
+            .window_destroyed("main")
+            .presence_after_event
+            .is_present());
+        assert!(!window_state
+            .window_destroyed("settings")
+            .presence_after_event
+            .is_present());
     }
 
     #[test]
     fn a_phone_app_is_present_while_in_the_foreground() {
         for platform in [PlatformKind::Android, PlatformKind::Ios] {
             let mut window_state = WindowState::new(platform);
-            assert!(window_state.window_opened("main").present_after_event);
-            assert!(!window_state.moved_to_background().present_after_event);
-            assert!(window_state.returned_to_foreground().present_after_event);
+            assert!(window_state
+                .window_opened("main")
+                .presence_after_event
+                .is_present());
+            assert!(!window_state
+                .moved_to_background()
+                .presence_after_event
+                .is_present());
+            assert!(window_state
+                .returned_to_foreground()
+                .presence_after_event
+                .is_present());
+        }
+    }
+
+    #[test]
+    fn an_android_app_with_a_browser_view_open_stays_present_in_the_background_until_it_closes() {
+        let mut window_state = WindowState::new(PlatformKind::Android);
+        window_state.window_opened("main");
+        // In the background from the open, before the view pauses the app, so
+        // a background session can start while the app is still in front.
+        assert_eq!(
+            window_state
+                .browser_view_opened("view")
+                .presence_after_event,
+            Presence::PresentInBackground
+        );
+        // The view pauses the app under it, and switching to another app from
+        // the view doesn't resume it.
+        assert_eq!(
+            window_state.moved_to_background().presence_after_event,
+            Presence::PresentInBackground
+        );
+        // The view's close is reported as the app resumes.
+        window_state.returned_to_foreground();
+        assert_eq!(
+            window_state
+                .browser_view_closed("view")
+                .presence_after_event,
+            Presence::Present
+        );
+        assert_eq!(
+            window_state.moved_to_background().presence_after_event,
+            Presence::Absent
+        );
+    }
+
+    #[test]
+    fn an_android_browser_view_its_browser_keeps_alive_leaves_the_app_present() {
+        let mut window_state = WindowState::new(PlatformKind::Android);
+        window_state.window_opened("main");
+        window_state.browser_view_opened("view");
+        window_state.moved_to_background();
+        assert_eq!(
+            window_state
+                .browser_view_kept_alive("view")
+                .presence_after_event,
+            Presence::Present
+        );
+        assert_eq!(
+            window_state
+                .browser_view_opened("later")
+                .presence_after_event,
+            Presence::PresentInBackground,
+            "a second view not kept alive yet"
+        );
+        window_state.browser_view_kept_alive("later");
+        window_state.returned_to_foreground();
+        window_state.browser_view_closed("view");
+        assert_eq!(
+            window_state
+                .browser_view_closed("later")
+                .presence_after_event,
+            Presence::Present
+        );
+    }
+
+    #[test]
+    fn keeping_alive_a_browser_view_that_isn_t_open_does_nothing() {
+        let mut window_state = WindowState::new(PlatformKind::Android);
+        window_state.window_opened("main");
+        window_state.browser_view_kept_alive("closed");
+        assert_eq!(
+            window_state
+                .browser_view_opened("view")
+                .presence_after_event,
+            Presence::PresentInBackground
+        );
+        window_state.browser_view_closed("view");
+        assert_eq!(window_state.app_presence(), Presence::Present);
+    }
+
+    #[test]
+    fn a_browser_view_keeps_no_other_app_present() {
+        for platform in [PlatformKind::Desktop, PlatformKind::Ios] {
+            let mut window_state = WindowState::new(platform);
+            assert!(!window_state
+                .browser_view_opened("view")
+                .presence_after_event
+                .is_present());
+            window_state.window_opened("main");
+            window_state.moved_to_background();
+            assert_eq!(
+                window_state.app_presence().is_present(),
+                platform == PlatformKind::Desktop,
+                "{platform:?}"
+            );
         }
     }
 

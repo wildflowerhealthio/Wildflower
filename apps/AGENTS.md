@@ -96,8 +96,9 @@ A crate's name carries the `wildflowerhealthio-` prefix because crates.io has
 no namespaces; it stands in for the npm scope. The folder keeps `-rust`, which
 tells a slice's Rust half from its TypeScript half side by side, but the crate
 drops it (crates are Rust by definition), so `slices/scopes/scopes-rust` is
-the crate `wildflowerhealthio-scopes`. Two crates keep other names because
-Tauri derives something from them: `tauri-plugin-native-webview` (a plugin
+the crate `wildflowerhealthio-scopes`. Some crates keep other names because
+Tauri derives something from them: the `tauri-plugin-*` plugins
+(`tauri-plugin-native-webview`, `tauri-plugin-native-page-browser`; a plugin
 crate needs the `tauri-plugin-` prefix) and the host's `host-app` (Tauri
 names the iOS Xcode project and scheme, `gen/apple/host-app.xcodeproj`, the
 binary and the Linux AppImage after the package). No crate is published: the

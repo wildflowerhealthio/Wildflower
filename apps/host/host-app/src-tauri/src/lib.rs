@@ -309,6 +309,10 @@ pub fn run() {
         // WKWebView, Android an android.webkit.WebView, desktop a Tauri
         // WebviewWindow (scoped by capabilities/native-webview-window.json).
         .plugin(tauri_plugin_native_webview::init())
+        // The system's in-app browser (SFSafariViewController on iOS, a Custom
+        // Tab on Android, the default browser on desktop), presented as a
+        // native page that reports its close to Rust.
+        .plugin(tauri_plugin_native_page_browser::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 // Stdout only — no Webview target, so host logs never

@@ -14,8 +14,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
 # Posting the stop and request notifications.
 tauri-plugin-notification = "2"
-# Opening a server's launcher in a native web view of its own.
-tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
+# Opening a server's launcher in the in-app browser, and hearing its view close.
+tauri-plugin-native-page-browser = { path = "../../tauri-plugin-native-page-browser" }
 # The app's `TauriUnitRunner`, which the servers are pushed to as units.
 wildflowerhealthio-tauri-unit-runner = { path = "../../unit-runner/tauri-unit-runner-rust" }
 # The registry, enrolment and the relay client adapter the commands drive;

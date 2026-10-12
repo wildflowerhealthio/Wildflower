@@ -370,7 +370,7 @@ mod tests {
     /// the instance after it is forwarded.
     #[test]
     fn a_user_dismissal_disposes_after_forwarding_every_event() {
-        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-a");
+        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launch-a");
         let message = NativeWebviewEvent::Message {
             payload: "hi".to_owned(),
         };
@@ -390,7 +390,7 @@ mod tests {
         );
         assert_eq!(
             *webview.disposed.lock().unwrap(),
-            vec!["launcher-a".to_owned()]
+            vec!["launch-a".to_owned()]
         );
     }
 
@@ -398,10 +398,10 @@ mod tests {
     /// Android) only hides; the next user dismissal disposes.
     #[test]
     fn a_host_hide_does_not_dispose() {
-        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-a");
+        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launch-a");
         host_hide_sending_hidden(
             &webview.disposing_on_dismissal,
-            "launcher-a",
+            "launch-a",
             &webview.channel,
         );
         webview.run_queued_disposes();
@@ -414,7 +414,7 @@ mod tests {
         webview.dismiss();
         assert_eq!(
             *webview.disposed.lock().unwrap(),
-            vec!["launcher-a".to_owned()]
+            vec!["launch-a".to_owned()]
         );
     }
 
@@ -422,10 +422,10 @@ mod tests {
     /// animation) only hides too.
     #[test]
     fn a_host_hide_s_later_hidden_does_not_dispose() {
-        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-a");
+        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launch-a");
         webview
             .disposing_on_dismissal
-            .host_hide("launcher-a", || Ok::<_, ()>(true))
+            .host_hide("launch-a", || Ok::<_, ()>(true))
             .unwrap();
         webview.dismiss();
         assert!(webview.disposed.lock().unwrap().is_empty());
@@ -436,15 +436,15 @@ mod tests {
     /// disposes.
     #[test]
     fn a_host_hide_that_caused_no_hidden_leaves_no_mark() {
-        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-a");
+        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launch-a");
         webview
             .disposing_on_dismissal
-            .host_hide("launcher-a", || Ok::<_, ()>(false))
+            .host_hide("launch-a", || Ok::<_, ()>(false))
             .unwrap();
         webview.dismiss();
         assert_eq!(
             *webview.disposed.lock().unwrap(),
-            vec!["launcher-a".to_owned()]
+            vec!["launch-a".to_owned()]
         );
 
         let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-b");
@@ -465,10 +465,10 @@ mod tests {
     /// lingering `Dispose` channel no longer disposes.
     #[test]
     fn a_hide_open_forgets_the_instance() {
-        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-a");
+        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launch-a");
         webview
             .disposing_on_dismissal
-            .record_open("launcher-a", DismissalAction::Hide);
+            .record_open("launch-a", DismissalAction::Hide);
         webview.dismiss();
         assert!(webview.disposed.lock().unwrap().is_empty());
     }
@@ -479,7 +479,7 @@ mod tests {
     #[test]
     fn an_open_before_the_queued_dispose_runs_keeps_the_instance() {
         let disposing_on_dismissal = DisposingOnDismissal::default();
-        let first = FakeWebview::opened(&disposing_on_dismissal, "launcher-a");
+        let first = FakeWebview::opened(&disposing_on_dismissal, "launch-a");
         first.channel.send(NativeWebviewEvent::Hidden).unwrap();
         assert_eq!(first.queued.lock().unwrap().len(), 1);
 
@@ -496,14 +496,14 @@ mod tests {
             );
         }
 
-        let second = FakeWebview::opened(&disposing_on_dismissal, "launcher-a");
+        let second = FakeWebview::opened(&disposing_on_dismissal, "launch-a");
         first.run_queued_disposes();
         assert!(first.disposed.lock().unwrap().is_empty());
 
         second.dismiss();
         assert_eq!(
             *second.disposed.lock().unwrap(),
-            vec!["launcher-a".to_owned()]
+            vec!["launch-a".to_owned()]
         );
     }
 
@@ -512,17 +512,17 @@ mod tests {
     #[test]
     fn a_disposed_instance_is_forgotten() {
         let disposing_on_dismissal = DisposingOnDismissal::default();
-        let first = FakeWebview::opened(&disposing_on_dismissal, "launcher-a");
+        let first = FakeWebview::opened(&disposing_on_dismissal, "launch-a");
         first.dismiss();
         assert!(disposing_on_dismissal.lock().disposing.is_empty());
         first.channel.send(NativeWebviewEvent::Hidden).unwrap();
         assert!(first.queued.lock().unwrap().is_empty());
 
-        let second = FakeWebview::opened(&disposing_on_dismissal, "launcher-a");
+        let second = FakeWebview::opened(&disposing_on_dismissal, "launch-a");
         second.dismiss();
         assert_eq!(
             *second.disposed.lock().unwrap(),
-            vec!["launcher-a".to_owned()]
+            vec!["launch-a".to_owned()]
         );
     }
 
@@ -530,14 +530,14 @@ mod tests {
     /// runs, still count as opens since the dismissal.
     #[test]
     fn a_hide_then_dispose_reopen_keeps_the_instance() {
-        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-a");
+        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launch-a");
         webview.channel.send(NativeWebviewEvent::Hidden).unwrap();
         webview
             .disposing_on_dismissal
-            .record_open("launcher-a", DismissalAction::Hide);
+            .record_open("launch-a", DismissalAction::Hide);
         webview
             .disposing_on_dismissal
-            .record_open("launcher-a", DismissalAction::Dispose);
+            .record_open("launch-a", DismissalAction::Dispose);
         webview.run_queued_disposes();
         assert!(webview.disposed.lock().unwrap().is_empty());
     }
@@ -547,7 +547,7 @@ mod tests {
     /// a dispose, which it defers into its own replay.
     #[test]
     fn an_open_during_the_queued_dispose_waits_for_it() {
-        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launcher-a");
+        let webview = FakeWebview::opened(&DisposingOnDismissal::default(), "launch-a");
         webview.channel.send(NativeWebviewEvent::Hidden).unwrap();
         let (id, dismissed) = webview.queued.lock().unwrap().pop().unwrap();
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -559,7 +559,7 @@ mod tests {
                 let disposing_on_dismissal = webview.disposing_on_dismissal.clone();
                 let open_events = events.clone();
                 opener = Some(std::thread::spawn(move || {
-                    disposing_on_dismissal.record_open("launcher-a", DismissalAction::Dispose);
+                    disposing_on_dismissal.record_open("launch-a", DismissalAction::Dispose);
                     open_events.lock().unwrap().push("opened");
                 }));
                 std::thread::sleep(std::time::Duration::from_millis(50));
@@ -574,9 +574,9 @@ mod tests {
     #[test]
     fn host_hides_are_per_instance() {
         let disposing_on_dismissal = DisposingOnDismissal::default();
-        let a = FakeWebview::opened(&disposing_on_dismissal, "launcher-a");
+        let a = FakeWebview::opened(&disposing_on_dismissal, "launch-a");
         let b = FakeWebview::opened(&disposing_on_dismissal, "launcher-b");
-        disposing_on_dismissal.set_host_hide_in_flight("launcher-a", true);
+        disposing_on_dismissal.set_host_hide_in_flight("launch-a", true);
         b.dismiss();
         assert!(a.disposed.lock().unwrap().is_empty());
         assert_eq!(*b.disposed.lock().unwrap(), vec!["launcher-b".to_owned()]);

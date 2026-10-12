@@ -19,7 +19,7 @@ use super::status_publisher::{RunLiveness, StatusPublisher};
 use super::unit_entry::{PendingRestart, RunGeneration, UnitEntry, UnitRun};
 use super::wall_clock_ticker::start_and_stop_runs_on_the_wall_clock;
 use super::RunnerTimings;
-use crate::domain::app_presence::{AppPresence, PresenceChange};
+use crate::domain::app_presence::{AppPresence, Presence, PresenceChange};
 use crate::domain::background_session_length::BackgroundSessionLength;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::session_ledger::{SessionEnd, SessionId, SessionLedger};
@@ -38,7 +38,7 @@ use crate::unit::{Unit, UnitId};
 /// publishes their statuses and whether a background session is wanted.
 ///
 /// A host binds it to its platform. It tells `UnitRunner` when the app becomes
-/// present or absent ([`set_app_present`](Self::set_app_present)), when every
+/// present or absent ([`set_app_presence`](Self::set_app_presence)), when every
 /// running unit should restart
 /// ([`restart_running_units`](Self::restart_running_units)), and when a
 /// background session starts and ends
@@ -289,13 +289,13 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         }
     }
 
-    /// The app is present now, or absent. Becoming present clears an end of
-    /// the background session by the platform, and starts every unit's
+    /// The app's `presence` now. Becoming [`Presence::Present`] clears an end
+    /// of the background session by the platform, and starts every unit's
     /// restarts over, so a unit waiting out its restart delay starts at once.
-    pub fn set_app_present(self: &Arc<Self>, present: bool) {
+    pub fn set_app_presence(self: &Arc<Self>, presence: Presence) {
         let mut state = self.lock_state();
         let now = self.clock.now();
-        match state.app_presence.update(present, now) {
+        match state.app_presence.update(presence, now) {
             PresenceChange::BecamePresent => {
                 state.session_ledger.clear_ended_by_platform();
                 for entry in state.units.values_mut() {
@@ -573,7 +573,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
 
         let session_wanted = self
             .background_session_length
-            .wants_session(some_unit_should_run, state.app_presence.is_present());
+            .wants_session(some_unit_should_run, state.app_presence.presence());
         self.publish_session_demand(state, session_wanted);
         let next_start_and_stop_runs_at = state
             .units

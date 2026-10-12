@@ -3576,6 +3576,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-log",
+ "tauri-plugin-native-page-browser",
  "tauri-plugin-native-webview",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
@@ -7877,6 +7878,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-native-page-browser"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "tauri-plugin-opener",
+ "url",
+]
+
+[[package]]
 name = "tauri-plugin-native-webview"
 version = "0.0.0"
 dependencies = [
@@ -9399,7 +9412,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin-log",
- "tauri-plugin-native-webview",
+ "tauri-plugin-native-page-browser",
  "tauri-plugin-notification",
  "tempfile",
  "tokio",

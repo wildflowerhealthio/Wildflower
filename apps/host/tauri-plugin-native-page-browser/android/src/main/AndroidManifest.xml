@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tauri merges the plugin library into the host app. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 11+ package visibility: without this query
+         `CustomTabsClient.getPackageName` sees no Custom Tabs provider, so every
+         open would fall back to the default browser. -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
+    <application>
+        <!-- The keep-alive service a Custom Tab's browser binds while the tab
+             is open, so Android doesn't treat the app as in the background
+             under it. Exported because another app (the browser) binds it;
+             its binder does nothing. -->
+        <service
+            android:name="io.wildflowerhealth.nativepagebrowser.KeepAliveService"
+            android:exported="true" />
+    </application>
+</manifest>
