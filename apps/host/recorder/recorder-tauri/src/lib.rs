@@ -32,6 +32,7 @@ fn resolve_location<R: Runtime>(
         RecordingsLocation::UserDocuments
         | RecordingsLocation::AppExternalDocuments
         | RecordingsLocation::AppDocuments => app.path().document_dir(),
+        RecordingsLocation::UserDownloads => app.path().download_dir(),
         RecordingsLocation::SharedDocuments => app.path().home_dir(),
     }
 }
@@ -40,8 +41,7 @@ fn resolve_location<R: Runtime>(
 /// resolves and, where another location follows it, that the app can create.
 ///
 /// Only the platform's own locations are resolved, and a last location isn't
-/// created here: `save_har` creates it on the first save, so a desktop's
-/// Documents gains the folder only once something is saved into it.
+/// created here: `save_har` creates it on the first save.
 fn resolve_recordings_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let locations = Platform::CURRENT.recordings_locations();
     let mut reasons = Vec::new();
@@ -58,7 +58,8 @@ fn resolve_recordings_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Str
             return Ok(directory);
         }
         // A later location is the fallback for one the app can't write to,
-        // such as Android's shared Documents before Android 11.
+        // such as Android's shared Documents before Android 11 or a desktop
+        // Documents folder the app can't create the folder in.
         match std::fs::create_dir_all(&directory) {
             Ok(()) => return Ok(directory),
             Err(error) => {

@@ -226,9 +226,14 @@ path API, when the app starts:
 
 | Platform | Folder                                                                                 | How it is reached                                          |
 | -------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Desktop  | `<Documents>/Wildflower Recordings` (`document_dir()`)                                 | Finder, Explorer or the file manager; Show file reveals it |
+| Desktop  | `<Documents>/Wildflower Recordings` (`document_dir()`), else `<Downloads>/…`           | Finder, Explorer or the file manager; Show file reveals it |
 | Android  | `/storage/emulated/0/Documents/Wildflower Recordings` (`home_dir()` + `Documents`)     | the Files app and the system file picker, under Documents  |
 | iOS      | `<container>/Documents/Wildflower Recordings` (`document_dir()`, the data root itself) | the Files app, "On My iPhone → Wildflower"                 |
+
+On the desktop, `attach_recorder` falls back to the user's Downloads folder
+(`download_dir()`) when there is no Documents folder (a Linux desktop without
+an XDG Documents directory, where `document_dir()` fails) or the app can't
+create `Wildflower Recordings` in it.
 
 On Android, Tauri's `document_dir()` is the app's own
 `Android/data/<package>/files/Documents`, which Android 11+ hides from every

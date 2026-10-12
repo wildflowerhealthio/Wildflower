@@ -33,7 +33,9 @@ impl Platform {
 
     /// Where this platform's recordings folder may go, the first choice first.
     ///
-    /// - Desktop: the user's Documents folder.
+    /// - Desktop: the user's Documents folder, or their Downloads folder where
+    ///   there is no Documents folder (a Linux desktop without an XDG
+    ///   Documents directory) or the app can't create the folder in it.
     /// - Android: the shared Documents folder, which the Files app and the
     ///   system file picker show, and which the app can write any file into
     ///   without a storage permission from Android 11 on. On an older Android,
@@ -44,7 +46,10 @@ impl Platform {
     ///   `LSSupportsOpeningDocumentsInPlace`).
     pub fn recordings_locations(self) -> &'static [RecordingsLocation] {
         match self {
-            Platform::Desktop => &[RecordingsLocation::UserDocuments],
+            Platform::Desktop => &[
+                RecordingsLocation::UserDocuments,
+                RecordingsLocation::UserDownloads,
+            ],
             Platform::Android => &[
                 RecordingsLocation::SharedDocuments,
                 RecordingsLocation::AppExternalDocuments,
@@ -65,6 +70,8 @@ impl Platform {
 pub enum RecordingsLocation {
     /// The user's Documents folder: Tauri's `document_dir` on the desktop.
     UserDocuments,
+    /// The user's Downloads folder: Tauri's `download_dir` on the desktop.
+    UserDownloads,
     /// Android's shared `Documents` folder, in the shared-storage root that
     /// Tauri's `home_dir` resolves to there.
     SharedDocuments,
@@ -85,6 +92,7 @@ impl RecordingsLocation {
                 resolved_dir.join("Documents").join(RECORDINGS_DIR_NAME)
             }
             RecordingsLocation::UserDocuments
+            | RecordingsLocation::UserDownloads
             | RecordingsLocation::AppExternalDocuments
             | RecordingsLocation::AppDocuments => resolved_dir.join(RECORDINGS_DIR_NAME),
         }
@@ -117,14 +125,22 @@ mod tests {
     }
 
     #[test]
-    fn the_desktop_saves_to_documents() {
+    fn the_desktop_saves_to_documents_then_downloads() {
         assert_eq!(
             first_choice(Platform::Desktop, "/home/ada/Documents"),
             PathBuf::from("/home/ada/Documents/Wildflower Recordings")
         );
+        let fallback = Platform::Desktop.recordings_locations()[1];
+        assert_eq!(
+            fallback.recordings_dir(Path::new("/home/ada/Downloads")),
+            PathBuf::from("/home/ada/Downloads/Wildflower Recordings")
+        );
         assert_eq!(
             Platform::Desktop.recordings_locations(),
-            [RecordingsLocation::UserDocuments]
+            [
+                RecordingsLocation::UserDocuments,
+                RecordingsLocation::UserDownloads
+            ]
         );
     }
 
