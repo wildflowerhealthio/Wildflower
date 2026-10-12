@@ -63,7 +63,7 @@ mod tests {
     /// — the keys the Swift `OpenArgs` / Kotlin `OpenArgs` decode. Drift here
     /// would silently break decoding on-device.
     #[test]
-    fn open_request_serializes_url_and_closed_channel() {
+    fn open_request_serializes_url_and_events_channel() {
         let json = serde_json::to_value(OpenRequest {
             url: "https://example.test/launcher/".to_owned(),
             events: Channel::new(|_| Ok(())),
@@ -74,7 +74,7 @@ mod tests {
         // `preserve_order` feature is unified into the build.
         let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
         keys.sort_unstable();
-        assert_eq!(keys, ["closed", "url"]);
+        assert_eq!(keys, ["events", "url"]);
         assert_eq!(
             object.get("url").and_then(|v| v.as_str()),
             Some("https://example.test/launcher/")
