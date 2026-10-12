@@ -43,7 +43,7 @@ runtime:
   site (`https://wildflowerhealth.io/importer/`) in production, or the
   loopback dev origin (`http://localhost:5193/`) under the debug-only
   `importer-dev` row. The typed FHIR client emits _relative_ paths
-  (`/fhir-r4/DocumentReference`), which would resolve against the app's own
+  (`/DocumentReference`), which would resolve against the app's own
   origin and 404. So the layer prefixes them with the FHIR base the SMART
   handshake named.
 - **The granted SMART token is its only credential.** So this app
@@ -61,7 +61,7 @@ package growing a second, prop-threaded way in.
 The app is reachable two ways, both wired here:
 
 - **EHR launch** — the homescreen tile (the `importer` row) opens the app
-  root with `iss={origin}/fhir-r4` and a `launch`, and `SmartAppRoot` starts the
+  root with `iss={origin}` and a `launch`, and `SmartAppRoot` starts the
   SMART authorize redirect against that FHIR base at once. The app root is the
   redirect target too.
 - **Standalone launch** — a visitor lands on the published `index.html` directly.
@@ -190,7 +190,7 @@ registered client cannot launch:
 
 - `apps/host/wildflower-server/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
   registration and its launch URL
-  (`https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}/fhir-r4`
+  (`https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}`
   since `0016_launch_first_party_apps_at_root`, and under the tile id
   `importer` since `0019_rekey_site_apps`), `requires_tunnel = 1` (like
   `medications`).

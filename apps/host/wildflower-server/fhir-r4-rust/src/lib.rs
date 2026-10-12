@@ -1,6 +1,6 @@
 //! fhir-r4-rust is a thin embedding of [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs)
-//! as the FHIR R4 backend. It opens a sqlite store, mounts HFS's Axum router
-//! at `/fhir-r4/*`, overrides the SMART discovery doc with a
+//! as the FHIR R4 backend. It opens a sqlite store, serves HFS's Axum router
+//! at the server's root (FHIR base = origin), overrides the SMART discovery doc with a
 //! SMART-App-Launch-shaped one, adds the `$everything` operation HFS lacks, and
 //! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy against
 //! gatekeeper's JWKS.
@@ -13,8 +13,10 @@ mod smart_configuration;
 
 use anyhow::Context;
 use axum::extract::DefaultBodyLimit;
+use axum::http::Method;
 use axum::routing::{get, Router};
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
+use helios_rest::fhir_types::is_valid_resource_type;
 use helios_rest::{create_app_with_auth, ServerConfig};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
@@ -26,41 +28,89 @@ use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
 pub use crate::config::FhirR4Config;
 
-/// The FHIR R4 base path [`setup_fhir_r4`]'s router mounts HFS under.
-pub use wildflowerhealthio_shared_structures::FHIR_R4_PATH;
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
 /// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router, and the bare HFS
-/// router for in-process delegation by other slices.
+/// router for in-process delegation by other slices. Both answer at the root;
+/// the host hands a request to them only when [`is_fhir_r4_route`] says it is
+/// FHIR's.
 pub struct FhirR4Routers {
     pub augmented_fhir_r4_router: Router,
     pub raw_hfs_router: Router,
 }
 
-/// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
-/// [`setup_fhir_r4`]'s router must let through without a bearer token: the FHIR
-/// capabilities statement and the discovery docs a client fetches *before* it
-/// holds a token. Mirrors HFS's own `EXEMPT_PATHS` (helios-rest's
-/// `middleware/auth.rs`), prefixed with [`FHIR_R4_PATH`] — HFS already exempts
+/// Paths a gating layer mounted above [`setup_fhir_r4`]'s router must let
+/// through without a bearer token: the FHIR capabilities statement and the
+/// discovery docs a client fetches *before* it holds a token. Mirrors HFS's own
+/// `EXEMPT_PATHS` (helios-rest's `middleware/auth.rs`) — HFS already exempts
 /// these from its own auth, but the host's bearer gate above us must be told.
+/// HFS's `/health` is left out: the host serves its own `/health` at the root,
+/// so HFS's is never reached.
 pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
-    "/fhir-r4/metadata",
-    "/fhir-r4/.well-known/smart-configuration",
-    "/fhir-r4/$versions",
-    "/fhir-r4/health",
-    "/fhir-r4/_liveness",
-    "/fhir-r4/_readiness",
+    "/metadata",
+    "/.well-known/smart-configuration",
+    "/$versions",
+    "/_liveness",
+    "/_readiness",
 ];
+
+/// First path segments HFS serves that are neither a resource type nor a
+/// `$operation`: the server-level interactions, the discovery docs (under
+/// `.well-known`), and the bulk-data, admin and console surfaces.
+const FHIR_ROOT_SEGMENTS: &[&str] = &[
+    "metadata",
+    "_history",
+    "_search",
+    "_liveness",
+    "_readiness",
+    "export",
+    "export-file",
+    "export-status",
+    "bulk-submit-file",
+    "bulk-submit-status",
+    "admin",
+    "console",
+    "ws",
+];
+
+/// The `.well-known` documents HFS serves.
+const FHIR_WELL_KNOWN_DOCUMENTS: &[&str] = &["smart-configuration", "bulk-submit-jwks.json"];
+
+/// Whether a request belongs to the FHIR API, which shares the server's root
+/// with the other slices. The host routes a request to [`setup_fhir_r4`]'s
+/// router only when this holds, so a path no slice claims still gets the
+/// host's own `404` rather than a FHIR one.
+///
+/// FHIR's are: `POST /` (a batch or transaction Bundle at the base — a `GET /`
+/// is someone opening the server, not a FHIR call), a path under an R4 resource
+/// type (case-sensitive, so `Device` is FHIR's and `devices` is not), a
+/// system-level `$operation`, one of [`FHIR_ROOT_SEGMENTS`], and the
+/// [`FHIR_WELL_KNOWN_DOCUMENTS`].
+#[must_use]
+pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
+    let mut segments = path.trim_start_matches('/').split('/');
+    let first = segments.next().unwrap_or_default();
+    match first {
+        "" => method == Method::POST,
+        ".well-known" => segments
+            .next()
+            .is_some_and(|document| FHIR_WELL_KNOWN_DOCUMENTS.contains(&document)),
+        _ => {
+            first.starts_with('$')
+                || FHIR_ROOT_SEGMENTS.contains(&first)
+                || is_valid_resource_type(first)
+        }
+    }
+}
 
 /// Build the FHIR R4 [`Router`], opening the sqlite backend and initializing
 /// its schema.
 ///
-/// The router serves HFS at `/fhir-r4/*` with two overrides mounted ahead of
-/// it:
-/// - `/fhir-r4/.well-known/smart-configuration` is handled locally so we can
+/// The router serves HFS at the root with two overrides mounted ahead of it:
+/// - `/.well-known/smart-configuration` is handled locally so we can
 ///   advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
 ///   which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
-/// - `/fhir-r4/Patient/{id}/$everything` implements the FHIR `$everything`
+/// - `/Patient/{id}/$everything` implements the FHIR `$everything`
 ///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
 ///   `subject=` searches in-process (see [`patient_everything`]).
 ///
@@ -127,10 +177,9 @@ pub fn setup_fhir_r4(
         .context("failed to init sqlite schema")?;
     let loopback_base_url = runtime.loopback_base_url();
 
-    let mut fhir_base_url = config.public_origin.clone();
-    fhir_base_url.set_path(FHIR_R4_PATH);
+    let server_origin = wildflowerhealthio_shared_structures::origin_string(&config.public_origin);
     let server_config = ServerConfig {
-        base_url: fhir_base_url.to_string(),
+        base_url: server_origin.clone(),
         // The host param only expects the ip to bind to
         host: runtime
             .loopback_base_url_ref()
@@ -144,7 +193,6 @@ pub fn setup_fhir_r4(
         ..ServerConfig::default()
     };
 
-    let server_origin = wildflowerhealthio_shared_structures::origin_string(&config.public_origin);
     let (auth_config, auth_state) =
         build_auth(config.jwks_url.as_deref(), revocation_store, &server_origin);
     let hfs_router = create_app_with_auth(
@@ -159,8 +207,8 @@ pub fn setup_fhir_r4(
     );
 
     // Specific routes win over fallback: our SMART App Launch discovery doc and
-    // the `$everything` operation intercept their paths; everything else under
-    // /fhir-r4 falls through to HFS.
+    // the `$everything` operation intercept their paths; every other FHIR path
+    // falls through to HFS.
     let smart_config_route = Router::new()
         .route(
             "/.well-known/smart-configuration",
@@ -187,17 +235,8 @@ pub fn setup_fhir_r4(
         .fallback_service(hfs_router)
         .layer(DefaultBodyLimit::max(MAX_FHIR_BODY_BYTES));
 
-    // `nest_service`, not `nest`: the FHIR *base* is a real endpoint — a client
-    // submits a batch/transaction Bundle as one `POST /`, which mounted here is
-    // `POST /fhir-r4/` (with the trailing slash a FHIR base URL carries). `nest`
-    // registers only an exact `/fhir-r4` matcher and a `/fhir-r4/{*rest}`
-    // catch-all, and matchit's catch-all does not match zero trailing segments,
-    // so `/fhir-r4/` matched neither and escaped the nest to the host's SPA
-    // fallback (a 200 HTML page for any method). `nest_service` claims the whole
-    // `/fhir-r4` subtree — bare root and trailing slash included — for the inner
-    // router, so the base reaches HFS. Covered by `tests/batch_bundle_at_base.rs`.
     Ok(FhirR4Routers {
-        augmented_fhir_r4_router: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
+        augmented_fhir_r4_router: fhir_with_override,
         raw_hfs_router: hfs_router_for_delegation,
     })
 }
@@ -210,22 +249,71 @@ const SEARCH_PARAMETERS_R4_FILENAME: &str = "search-parameters-r4.json";
 
 #[cfg(test)]
 mod tests {
-    use super::{FHIR_R4_PATH, UNAUTHENTICATED_FHIR_PATHS};
+    use super::{is_fhir_r4_route, UNAUTHENTICATED_FHIR_PATHS};
+    use axum::http::Method;
 
+    /// The gate exempts these only on the FHIR router, so each must route there.
     #[test]
-    fn unauthenticated_paths_live_under_the_fhir_prefix() {
+    fn unauthenticated_paths_are_fhir_routes() {
         for path in UNAUTHENTICATED_FHIR_PATHS {
             assert!(
-                path.starts_with(FHIR_R4_PATH),
-                "{path} must live under {FHIR_R4_PATH}"
+                is_fhir_r4_route(&Method::GET, path),
+                "{path} must route to FHIR"
             );
         }
     }
 
     #[test]
     fn unauthenticated_paths_cover_smart_discovery() {
-        assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/fhir-r4/metadata"));
-        assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/fhir-r4/.well-known/smart-configuration"));
+        assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/metadata"));
+        assert!(UNAUTHENTICATED_FHIR_PATHS.contains(&"/.well-known/smart-configuration"));
+    }
+
+    #[test]
+    fn fhir_routes_are_resource_types_operations_and_hfs_surfaces() {
+        let fhir = [
+            (Method::POST, "/"),
+            (Method::GET, "/Patient"),
+            (Method::GET, "/Patient/p1"),
+            (Method::GET, "/Patient/p1/$everything"),
+            (Method::PUT, "/MedicationRequest/mr1"),
+            (Method::GET, "/Device/d1"),
+            (Method::GET, "/$export"),
+            (Method::GET, "/metadata"),
+            (Method::GET, "/_history"),
+            (Method::GET, "/export-status/job-1"),
+            (Method::GET, "/admin/tenants"),
+            (Method::GET, "/console/metrics/uptime"),
+            (Method::GET, "/.well-known/smart-configuration"),
+            (Method::GET, "/.well-known/bulk-submit-jwks.json"),
+        ];
+        for (method, path) in fhir {
+            assert!(is_fhir_r4_route(&method, path), "{method} {path} is FHIR's");
+        }
+    }
+
+    /// The other slices' routes, a browser opening the server, and paths no one
+    /// serves are not FHIR's — they keep the host's routing and its `404`.
+    #[test]
+    fn host_routes_and_unknown_paths_are_not_fhir_routes() {
+        let not_fhir = [
+            (Method::GET, "/"),
+            (Method::GET, "/home"),
+            (Method::GET, "/health"),
+            (Method::GET, "/devices/ABCD"),
+            (Method::GET, "/patient/p1"),
+            (Method::POST, "/oauth/token"),
+            (Method::GET, "/.well-known/jwks.json"),
+            (Method::GET, "/apps"),
+            (Method::GET, "/fhir-r4/Patient"),
+            (Method::GET, "/NotAResourceType/x"),
+        ];
+        for (method, path) in not_fhir {
+            assert!(
+                !is_fhir_r4_route(&method, path),
+                "{method} {path} is not FHIR's"
+            );
+        }
     }
 
     /// The vendored asset must ship under the filename HFS's loader expects, be

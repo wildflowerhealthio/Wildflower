@@ -131,9 +131,9 @@ reach them from where it is.
 
 A SMART app may also declare, as `aud` on `/oauth/authorize`, the FHIR server
 it means to call. Gatekeeper checks that against the same configured origin:
-it accepts `https://<domain>` or the FHIR base `https://<domain>/fhir-r4` (the
-`iss` every launch hands the app), and refuses anything else with
-`invalid_request`. The token's `aud` claim is the server's origin either way.
+it accepts `https://<domain>`, which is also the FHIR base (the `iss` every
+launch hands the app), and refuses anything else with `invalid_request`. The
+token's `aud` claim is the server's origin.
 
 ### HFS's `base_url` is the server's domain
 
@@ -142,8 +142,8 @@ setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
 `entry.fullUrl`, a create's `Location`), and it ignores `Forwarded`. A client
 that pages by following `next` therefore goes wherever `base_url` points.
 
-So `base_url` is `https://<domain>/fhir-r4`, the server's domain being the
-one from its record, because that is how remote clients reach the
+So `base_url` is `https://<domain>`, where FHIR is served at the root, the
+server's domain being the one from its record, because that is how remote clients reach the
 FHIR server. Loopback callers get the public URLs too. Their tokens still work
 there: a token names the server's origin, not the origin it was used on, so a
 client that authorised over loopback can follow a public `next` link through

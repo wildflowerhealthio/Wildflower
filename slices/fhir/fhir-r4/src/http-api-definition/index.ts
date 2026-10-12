@@ -16,21 +16,6 @@ import * as Practitioner from './practitioner.ts'
 import * as Procedure from './procedure.ts'
 import * as ServiceRequest from './service-request.ts'
 
-/**
- * The path Wildflower's host mounts `fhir-r4-rust` at.
- *
- * @remarks
- * No longer baked into {@link FhirResourcesApi} — the typed client emits
- * base-relative FHIR paths (`/Patient`, not `/fhir-r4/Patient`) so it can be
- * pointed at any FHIR server. This prefix is re-applied only by the two
- * consumers that know they are talking to Wildflower's own host: the host app's
- * client wiring (`apps/launcher/launcher-web`'s `router-context.ts`) and the OpenAPI
- * snapshot generation (`openapi-drift.test.ts`), which keeps the committed
- * `fhir-r4/openapi/fhir-r4.openapi.json` — the server-docs console's source —
- * showing the mounted paths.
- */
-const FhirResourcesApiPrefix = '/fhir-r4'
-
 const FhirResourcesApi: HttpApi.HttpApi<
   'FhirResourcesApi',
   | typeof Patient.httpApiGroup
@@ -68,7 +53,6 @@ const FhirResourcesApi: HttpApi.HttpApi<
 
 export {
   FhirResourcesApi,
-  FhirResourcesApiPrefix,
   Binary,
   Bundle,
   CarePlan,

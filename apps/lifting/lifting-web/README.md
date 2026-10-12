@@ -180,7 +180,7 @@ equal the client's allowed scopes.
 - **`lifting`** is a row (apps migration `0010_seed_lifting_app`, its URL as
   `0016_launch_first_party_apps_at_root` left it, re-keyed by
   `0017_rekey_lifting_app`) launching
-  `https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}/fhir-r4`
+  `https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}`
   with `requires_tunnel` set, as every first-party row has. Its public
   OAuth client (gatekeeper migration `0019_seed_lifting_app_client`, its
   scopes as `0020_first_party_apps_pick_the_patient` left them, re-keyed by

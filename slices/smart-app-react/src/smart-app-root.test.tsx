@@ -122,13 +122,13 @@ const MARKETING_ORIGIN = 'https://wildflowerhealth.io/'
 const STATUS_CONTROL_NAME = /change telemetry settings/
 
 /** An EHR launch, as the desktop base opens a server's launcher with it. */
-const EHR_LAUNCH = '?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4&launch=xyz'
+const EHR_LAUNCH = '?iss=https%3A%2F%2Fruth.wildflowerhealth.io&launch=xyz'
 
 /** A launch the launch page could not start, as it lands in `?launchError=`. */
 const FAILED_LAUNCH = encodeLaunchError({
   error: 'AuthorizeFailed',
   message: 'Failed to fetch',
-  iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
+  iss: 'https://ruth.wildflowerhealth.io',
 })
 
 beforeEach(() => {
@@ -310,7 +310,7 @@ describe('SmartAppRoot', () => {
     const encoded = encodeLaunchError({
       error: 'AuthorizeFailed',
       message: 'Failed to fetch',
-      iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
+      iss: 'https://ruth.wildflowerhealth.io',
     })
     setUrl(`/?launchError=${encoded}`)
 
@@ -437,7 +437,7 @@ describe('SmartAppRoot on a launch', () => {
         Option.some({
           error: 'AuthorizeFailed',
           message: 'Failed to fetch',
-          iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
+          iss: 'https://ruth.wildflowerhealth.io',
         })
       )
     })

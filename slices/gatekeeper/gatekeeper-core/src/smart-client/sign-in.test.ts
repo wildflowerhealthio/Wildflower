@@ -15,7 +15,11 @@ import {
   type PendingStore,
   type SignInEnvironment,
 } from './sign-in.ts'
-import { PlainSmartServer, WildflowerServer } from './smart-discovery.ts'
+import {
+  PlainSmartServer,
+  WILDFLOWER_SERVER_CAPABILITY,
+  WildflowerServer,
+} from './smart-discovery.ts'
 
 const SERVER = 'https://ruth.wildflowerhealth.io'
 
@@ -88,7 +92,7 @@ describe('beginSignIn', () => {
     )
   })
 
-  it('discovers at, and names as its aud, a Wildflower server’s /fhir-r4 base', async () => {
+  it('discovers at, and names as its aud, a Wildflower server’s origin, its FHIR base', async () => {
     // Arrange
     const requested: string[] = []
     const discovery = discoveryOnly()
@@ -105,14 +109,13 @@ describe('beginSignIn', () => {
 
     // Assert
     if (Either.isLeft(result)) throw new Error(result.left.reason)
-    expect(requested).toEqual([`${SERVER}/fhir-r4/.well-known/smart-configuration`])
-    expect(new URL(result.right).searchParams.get('aud')).toBe(`${SERVER}/fhir-r4`)
+    expect(requested).toEqual([`${SERVER}/.well-known/smart-configuration`])
+    expect(new URL(result.right).searchParams.get('aud')).toBe(SERVER)
   })
 
   it('discovers at, and names as its aud, a server URL that is already a FHIR base, and redeems there', async () => {
     // A plain SMART server (the SmartHealthIT demo) is addressed by its FHIR
-    // base alone: `/fhir-r4` under it answers 404, so discovery reads the URL
-    // itself, and its endpoints are its own.
+    // base, which discovery reads, and its endpoints are its own.
     // Arrange
     const store = memoryStore()
     const discovery = discoveryAt(DEMO_FHIR_BASE, DEMO_AUTH_ORIGIN)
@@ -167,7 +170,7 @@ describe('beginSignIn', () => {
     if (Either.isLeft(result)) throw new Error(result.left.reason)
     const url = new URL(result.right)
     expect(url.searchParams.get('launch')).toBe('minted-launch-nonce')
-    expect(url.searchParams.get('aud')).toBe(`${SERVER}/fhir-r4`)
+    expect(url.searchParams.get('aud')).toBe(SERVER)
     expect(store.contents()).not.toContain('minted-launch-nonce')
   })
 
@@ -222,7 +225,7 @@ describe('beginSignIn', () => {
     expect(url.searchParams.get('state')).toBe(pending.state)
     expect(pending.tokenEndpoint).toBe(`${SERVER}/oauth/token`)
     expect(pending.serverUrl).toBe(SERVER)
-    expect(pending.smartServer).toEqual(WildflowerServer.make({ fhirBaseUrl: `${SERVER}/fhir-r4` }))
+    expect(pending.smartServer).toEqual(WildflowerServer.make({ fhirBaseUrl: SERVER }))
   })
 
   it('mints a fresh state and verifier for every sign-in', async () => {
@@ -639,7 +642,7 @@ const stashedRequest = (): PendingAuthorization => ({
   state: 'a-stashed-state',
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
   serverUrl: SERVER,
-  smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER}/fhir-r4` }),
+  smartServer: WildflowerServer.make({ fhirBaseUrl: SERVER }),
   tokenEndpoint: `${SERVER}/oauth/token`,
   returnTo: '/settings/tunnel',
 })
@@ -649,12 +652,13 @@ const discoveryOnly =
   (): typeof globalThis.fetch =>
   (input): Promise<Response> => {
     const url = requestUrl(input)
-    if (url.endsWith('/fhir-r4/.well-known/smart-configuration')) {
+    if (url === `${SERVER}/.well-known/smart-configuration`) {
       return Promise.resolve(
         jsonResponse({
           authorization_endpoint: `${SERVER}/oauth/authorize`,
           token_endpoint: `${SERVER}/oauth/token`,
           code_challenge_methods_supported: ['S256'],
+          capabilities: [WILDFLOWER_SERVER_CAPABILITY],
         })
       )
     }
@@ -662,9 +666,9 @@ const discoveryOnly =
   }
 
 /**
- * A `fetch` that answers the SMART discovery request under `fhirBaseUrl`, with
- * endpoints under `authOrigin`, a 404 for a discovery request anywhere else
- * (as a plain SMART server answers the Wildflower location), and nothing else.
+ * A `fetch` that answers the SMART discovery request under `fhirBaseUrl` as a
+ * plain SMART server, with endpoints under `authOrigin`, a 404 for a discovery
+ * request anywhere else, and nothing else.
  */
 const discoveryAt =
   (fhirBaseUrl: string, authOrigin: string): typeof globalThis.fetch =>

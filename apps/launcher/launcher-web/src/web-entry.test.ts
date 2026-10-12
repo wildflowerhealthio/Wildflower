@@ -78,9 +78,7 @@ describe('apiServerUrl', () => {
 describe('ehrLaunchIn', () => {
   it('should carry the launch, for the server its iss names', () => {
     // Arrange / Act
-    const ehrLaunch = ehrLaunchIn(
-      `?iss=${encodeURIComponent(`${RUTH_SERVER_URL}/fhir-r4`)}&launch=nonce-1`
-    )
+    const ehrLaunch = ehrLaunchIn(`?iss=${encodeURIComponent(RUTH_SERVER_URL)}&launch=nonce-1`)
 
     // Assert — the same server `?server=` is set to, so the landing's sign-in
     // on arrival is the one that carries it.

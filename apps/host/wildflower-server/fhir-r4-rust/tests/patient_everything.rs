@@ -109,7 +109,7 @@ async fn put_patient(router: &Router, id: &str) {
     let (status, body) = send(
         router,
         "PUT",
-        &format!("/fhir-r4/Patient/{id}"),
+        &format!("/Patient/{id}"),
         Some(json!({ "resourceType": "Patient", "id": id })),
     )
     .await;
@@ -124,7 +124,7 @@ async fn put_observation(router: &Router, id: &str, subject: &str) {
     let (status, body) = send(
         router,
         "PUT",
-        &format!("/fhir-r4/Observation/{id}"),
+        &format!("/Observation/{id}"),
         Some(json!({
             "resourceType": "Observation",
             "id": id,
@@ -146,7 +146,7 @@ async fn put_medication_request(router: &Router, id: &str, subject: &str) {
     let (status, body) = send(
         router,
         "PUT",
-        &format!("/fhir-r4/MedicationRequest/{id}"),
+        &format!("/MedicationRequest/{id}"),
         Some(json!({
             "resourceType": "MedicationRequest",
             "id": id,
@@ -169,7 +169,7 @@ async fn put_observation_coded(router: &Router, id: &str, subject: &str, system:
     let (status, body) = send(
         router,
         "PUT",
-        &format!("/fhir-r4/Observation/{id}"),
+        &format!("/Observation/{id}"),
         Some(json!({
             "resourceType": "Observation",
             "id": id,
@@ -198,7 +198,7 @@ async fn returns_bundle_patient_first_then_referencing_observations() {
     put_observation(&router, "o3", "p1").await;
     put_observation(&router, "o-other", "p2").await;
 
-    let (status, bundle) = send(&router, "GET", "/fhir-r4/Patient/p1/$everything", None).await;
+    let (status, bundle) = send(&router, "GET", "/Patient/p1/$everything", None).await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(bundle["resourceType"], "Bundle");
@@ -249,7 +249,7 @@ async fn bundle_includes_multiple_related_types_for_the_target_patient() {
     put_observation(&router, "o-other", "p2").await;
     put_medication_request(&router, "m-other", "p2").await;
 
-    let (status, bundle) = send(&router, "GET", "/fhir-r4/Patient/p1/$everything", None).await;
+    let (status, bundle) = send(&router, "GET", "/Patient/p1/$everything", None).await;
 
     assert_eq!(status, StatusCode::OK);
     let entries = bundle["entry"].as_array().expect("entry array");
@@ -296,13 +296,7 @@ async fn count_truncates_related_observations() {
     put_observation(&router, "o2", "p1").await;
     put_observation(&router, "o3", "p1").await;
 
-    let (status, bundle) = send(
-        &router,
-        "GET",
-        "/fhir-r4/Patient/p1/$everything?_count=2",
-        None,
-    )
-    .await;
+    let (status, bundle) = send(&router, "GET", "/Patient/p1/$everything?_count=2", None).await;
 
     assert_eq!(status, StatusCode::OK);
     let entries = bundle["entry"].as_array().expect("entry array");
@@ -330,7 +324,7 @@ async fn succeeds_when_client_advertises_compression() {
 
     let request = Request::builder()
         .method("GET")
-        .uri("/fhir-r4/Patient/p1/$everything")
+        .uri("/Patient/p1/$everything")
         .header("accept", "application/fhir+json")
         .header("accept-encoding", "gzip, deflate, br")
         .body(Body::empty())
@@ -372,7 +366,7 @@ async fn succeeds_when_client_requests_xml() {
 
     let request = Request::builder()
         .method("GET")
-        .uri("/fhir-r4/Patient/p1/$everything")
+        .uri("/Patient/p1/$everything")
         .header("accept", "application/fhir+xml")
         .body(Body::empty())
         .expect("build request");
@@ -411,7 +405,7 @@ async fn returns_all_related_resources_across_multiple_search_pages() {
         put_observation(&router, &format!("o{n}"), "p1").await;
     }
 
-    let (status, bundle) = send(&router, "GET", "/fhir-r4/Patient/p1/$everything", None).await;
+    let (status, bundle) = send(&router, "GET", "/Patient/p1/$everything", None).await;
 
     assert_eq!(status, StatusCode::OK, "body: {bundle}");
     let entries = bundle["entry"].as_array().expect("entry array");
@@ -451,13 +445,7 @@ async fn subject_search_resolves_server_side() {
     put_observation(&router, "o2", "p1").await;
     put_observation(&router, "o-other", "p2").await;
 
-    let (status, bundle) = send(
-        &router,
-        "GET",
-        "/fhir-r4/Observation?subject=Patient/p1",
-        None,
-    )
-    .await;
+    let (status, bundle) = send(&router, "GET", "/Observation?subject=Patient/p1", None).await;
 
     assert_eq!(status, StatusCode::OK, "body: {bundle}");
     assert_eq!(bundle["resourceType"], "Bundle");
@@ -496,7 +484,7 @@ async fn observation_code_search_filters_server_side() {
     let (status, bundle) = send(
         &router,
         "GET",
-        "/fhir-r4/Observation?code=http://loinc.org|85354-9",
+        "/Observation?code=http://loinc.org|85354-9",
         None,
     )
     .await;
@@ -515,13 +503,7 @@ async fn observation_code_search_filters_server_side() {
 async fn missing_patient_yields_404() {
     let (router, _db) = build_router();
 
-    let (status, _body) = send(
-        &router,
-        "GET",
-        "/fhir-r4/Patient/does-not-exist/$everything",
-        None,
-    )
-    .await;
+    let (status, _body) = send(&router, "GET", "/Patient/does-not-exist/$everything", None).await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
 }

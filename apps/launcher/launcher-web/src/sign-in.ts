@@ -178,9 +178,8 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
  * pending record is written before the URL comes back, so a caller cannot leave
  * on a flow whose verifier was never saved.
  *
- * The FHIR base it discovers at is found by asking: a Wildflower server's
- * `{serverUrl}/fhir-r4` first, then, only if that answers 404, `serverUrl`
- * itself as a plain SMART server's FHIR base (`beginSignIn`).
+ * It discovers at `serverUrl`, the FHIR base for a Wildflower server and a
+ * plain SMART server alike (`beginSignIn`).
  */
 const startSignIn = (
   serverUrl: string,
@@ -301,7 +300,7 @@ const authStateForSession = (session: Session, nowSeconds: number): AuthState =>
 
 /**
  * The {@link ServerKind} a redeemed `session` signed in to: a Wildflower server
- * when discovery found its configuration under `/fhir-r4`, otherwise a plain
+ * when its configuration listed the Wildflower capability, otherwise a plain
  * SMART server, with the FHIR base the token is for and the patient the token
  * response put in context.
  */

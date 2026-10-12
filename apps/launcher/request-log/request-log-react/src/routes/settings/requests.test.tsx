@@ -27,7 +27,7 @@ const loggedRequest = (
   address: '198.51.100.24',
   servedHost: 'dev1.example.com',
   method: 'GET',
-  path: '/fhir-r4/Patient',
+  path: '/Patient',
   status: 200,
   responseBytes: 2048,
   durationMs: 12,
@@ -50,7 +50,7 @@ const FIRST_PAGE = {
 
 const LAST_PAGE = {
   requests: [
-    loggedRequest(2, { method: 'POST', path: '/fhir-r4/Observation' }),
+    loggedRequest(2, { method: 'POST', path: '/Observation' }),
     loggedRequest(1, { clientId: null, path: '/.well-known' }),
   ],
   nextCursor: null,
@@ -267,11 +267,11 @@ describe('/settings/requests', () => {
     renderRequests()
 
     expect(await rowOf('GET /access')).toBeTruthy()
-    expect(screen.queryByText('POST /fhir-r4/Observation')).toBeNull()
+    expect(screen.queryByText('POST /Observation')).toBeNull()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Load more' }))
 
-    expect(await rowOf('POST /fhir-r4/Observation')).toBeTruthy()
+    expect(await rowOf('POST /Observation')).toBeTruthy()
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
     })
@@ -287,7 +287,7 @@ describe('/settings/requests', () => {
     expect(within(await rowOf('unnamed-client')).getByText('GET /access')).toBeTruthy()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Load more' }))
-    const signedIn = await rowOf('POST /fhir-r4/Observation')
+    const signedIn = await rowOf('POST /Observation')
     expect(within(signedIn).getByText('Lifting app')).toBeTruthy()
     expect(within(signedIn).getByText('Signed in')).toBeTruthy()
     expect(within(await rowOf('GET /.well-known')).getByText('No sign-in needed')).toBeTruthy()
@@ -338,20 +338,20 @@ describe('/settings/requests', () => {
         query === '' && newRequestLogged
           ? {
               ...FIRST_PAGE,
-              requests: [loggedRequest(5, { path: '/fhir-r4/Condition' }), ...FIRST_PAGE.requests],
+              requests: [loggedRequest(5, { path: '/Condition' }), ...FIRST_PAGE.requests],
             }
           : PAGED_LOG.pageFor(query),
     }
     renderRequests('', log)
     await rowOf('GET /access')
     await screen.findByText('Recent activity')
-    expect(screen.queryByText('GET /fhir-r4/Condition')).toBeNull()
+    expect(screen.queryByText('GET /Condition')).toBeNull()
     const callersReadsBefore = callersReads
 
     newRequestLogged = true
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
 
-    expect(await rowOf('GET /fhir-r4/Condition')).toBeTruthy()
+    expect(await rowOf('GET /Condition')).toBeTruthy()
     expect(requestQueries.filter((query) => query === '')).toHaveLength(2)
     expect(requestQueries.filter((query) => query === 'auth=refused')).toHaveLength(2)
     expect(callersReads).toBeGreaterThan(callersReadsBefore)
@@ -380,9 +380,9 @@ describe('/settings/requests', () => {
       'received_at,client_id,client_name,access,address,served_host,method,path,status,refusal,response_bytes,duration_ms'
     )
     expect(lines?.slice(1)).toEqual([
-      '2026-07-01T12:04:00.000Z,,No client,refused,203.0.113.9,dev1.example.com,GET,/fhir-r4/Patient,401,tokenRejected,2048,12',
+      '2026-07-01T12:04:00.000Z,,No client,refused,203.0.113.9,dev1.example.com,GET,/Patient,401,tokenRejected,2048,12',
       '2026-07-01T12:03:00.000Z,unnamed-client,unnamed-client,authorized,198.51.100.24,dev1.example.com,GET,/access,200,,2048,12',
-      '2026-07-01T12:02:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,POST,/fhir-r4/Observation,200,,2048,12',
+      '2026-07-01T12:02:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,POST,/Observation,200,,2048,12',
       '2026-07-01T12:01:00.000Z,,Open,public,198.51.100.24,dev1.example.com,GET,/.well-known,200,,2048,12',
     ])
   })

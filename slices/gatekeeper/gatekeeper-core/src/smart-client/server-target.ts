@@ -19,7 +19,6 @@
 import { Option } from 'effect'
 
 import { arrivingSmartLaunchFrom } from './arriving-launch.ts'
-import { WILDFLOWER_FHIR_PATH } from './smart-discovery.ts'
 
 /**
  * The query parameter carrying the API origin the request client targets.
@@ -87,22 +86,6 @@ const searchWithServerUrl = (search: string, serverUrl: string): string => {
   return query === '' ? '' : `?${query}`
 }
 
-/**
- * The Wildflower server `url` names, in {@link normalizeServerUrl}'s canonical
- * form, whether or not `url` carries the server's `/fhir-r4` mount: a
- * Wildflower server's FHIR base less that mount (its API base, under which
- * sign-in discovery finds the FHIR base again), and any other URL as it is.
- * `url` is a SMART launch's `iss` or a server the reader typed in.
- * `undefined` when `url` is not a URL a page would send requests to.
- */
-const serverUrlNamedBy = (url: string): string | undefined => {
-  const fhirBaseUrl = normalizeServerUrl(url)
-  if (fhirBaseUrl === undefined) return undefined
-  return fhirBaseUrl.endsWith(WILDFLOWER_FHIR_PATH)
-    ? normalizeServerUrl(fhirBaseUrl.slice(0, -WILDFLOWER_FHIR_PATH.length))
-    : fhirBaseUrl
-}
-
 /** The query parameters a SMART launch arrives in. */
 const SMART_LAUNCH_PARAMS = ['iss', 'launch'] as const
 
@@ -110,7 +93,7 @@ const SMART_LAUNCH_PARAMS = ['iss', 'launch'] as const
  * The query a page load arriving on `search` settles on. A load opened with a
  * SMART launch ({@link arrivingSmartLaunchFrom}) has `iss` and `launch` taken
  * out, so a reload cannot offer the server a launch it has already spent, and
- * `?server=` set to the server `iss` names ({@link serverUrlNamedBy}),
+ * `?server=` set to the server `iss` names ({@link normalizeServerUrl}),
  * replacing any `?server=` the URL also carried: the launch is what the page
  * was opened to do. An `iss` that names no usable server leaves `?server=` as
  * it was. Any other load's query is `search` itself.
@@ -121,7 +104,7 @@ const searchAfterArrivingLaunch = (search: string): string =>
     onSome: ({ iss }) => {
       const params = new URLSearchParams(search)
       for (const name of SMART_LAUNCH_PARAMS) params.delete(name)
-      const serverUrl = serverUrlNamedBy(iss)
+      const serverUrl = normalizeServerUrl(iss)
       if (serverUrl !== undefined) params.set(SERVER_QUERY_PARAM, serverUrl)
       const query = params.toString()
       return query === '' ? '' : `?${query}`
@@ -133,6 +116,5 @@ export {
   searchAfterArrivingLaunch,
   searchWithServerUrl,
   SERVER_QUERY_PARAM,
-  serverUrlNamedBy,
   serverUrlFromSearch,
 }

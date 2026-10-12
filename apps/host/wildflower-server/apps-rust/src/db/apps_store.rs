@@ -733,7 +733,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}",
         );
 
         // The old ids are fully retired.
@@ -807,7 +807,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}",
         );
     }
 
@@ -837,7 +837,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=941de68e6b59eb9dcc32df8ede89e636",
+            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
         );
     }
 
@@ -863,7 +863,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}",
         );
     }
 
@@ -908,7 +908,7 @@ mod migration_tests {
         assert_eq!(lifting.position, before.position - 1);
         assert_eq!(
             stored_url(&store, "lifting"),
-            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}",
         );
         let dev = store
             .find_app("lifting-dev")
@@ -951,7 +951,7 @@ mod migration_tests {
             insert_registration(&mut conn, dev, Some(dev));
             sql_query("UPDATE app_registrations SET url = ? WHERE id = ?")
                 .bind::<Text, _>(format!(
-                    "http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"
+                    "http://localhost:{port}/?launch={{launch}}&iss={{origin}}"
                 ))
                 .bind::<Text, _>(dev)
                 .execute(&mut conn)
@@ -997,7 +997,7 @@ mod migration_tests {
         assert_eq!(importer.position, before.position);
         assert_eq!(
             stored_url(&store, "importer"),
-            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}",
         );
         assert_eq!(
             stored_url(&store, "server-docs"),
@@ -1006,7 +1006,7 @@ mod migration_tests {
         );
         assert_eq!(
             stored_url(&store, "medications-dev"),
-            "http://localhost:5190/?launch={launch}&iss={origin}/fhir-r4",
+            "http://localhost:5190/?launch={launch}&iss={origin}",
         );
         let ids: Vec<String> = store
             .list_registrations()
@@ -1026,7 +1026,7 @@ mod migration_tests {
         assert!(store.find_app("synthetic-data").unwrap().is_none());
         assert_eq!(
             stored_url(&store, "importer-app"),
-            "https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/importer-app/?launch={launch}&iss={origin}",
         );
         let medications_dev = store
             .find_app("medications-app-dev")
@@ -1046,7 +1046,8 @@ mod migration_tests {
     fn an_install_already_at_0019_rekeys_the_ohif_viewer_clients() {
         let pool = pool_migrated_through("0019");
         let mut conn = pool.get().unwrap();
-        let edited = "https://ohif.example/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer";
+        let edited =
+            "https://ohif.example/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer";
         sql_query("UPDATE app_registrations SET url = ? WHERE id = 'ohif-viewer'")
             .bind::<Text, _>(edited)
             .execute(&mut conn)
@@ -1060,6 +1061,7 @@ mod migration_tests {
             .expect("a dev row seeded before 0020");
         drop(conn);
 
+        // The store applies `0021` too, moving every `iss` to the root.
         let store = SqliteAppsStore::new(pool.clone()).expect("0020 must apply");
         let ohif = store.find_app("ohif-viewer").unwrap().expect("ohif-viewer");
         assert_eq!(
@@ -1068,8 +1070,8 @@ mod migration_tests {
         );
         assert_eq!(
             stored_url(&store, "ohif-viewer"),
-            edited,
-            "the user's edit stays"
+            edited.replace("iss={origin}/fhir-r4", "iss={origin}"),
+            "the user's edit keeps its clientId"
         );
         let dev = store
             .find_app("ohif-viewer-dev")
@@ -1081,9 +1083,12 @@ mod migration_tests {
         );
         assert_eq!(
             stored_url(&store, "ohif-viewer-dev"),
-            "http://localhost:5194/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=f9866f7b1d0d8505dc65ef4f749664b5",
+            "http://localhost:5194/fhir-viewer?launch={launch}&iss={origin}&clientId=f9866f7b1d0d8505dc65ef4f749664b5",
         );
 
+        embedded_migration("0021")
+            .revert(&mut pool.get().unwrap())
+            .expect("revert 0021");
         embedded_migration("0020")
             .revert(&mut pool.get().unwrap())
             .expect("revert 0020");
@@ -1121,7 +1126,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}",
         );
     }
 
@@ -1177,7 +1182,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}",
         );
     }
 
@@ -1235,6 +1240,42 @@ mod migration_tests {
         );
     }
 
+    /// An install already at `0020` moves every launch's `iss` from
+    /// `{origin}/fhir-r4` to `{origin}` when it upgrades, a URL the user edited
+    /// included, and leaves the rest of each URL, and an `iss` naming another
+    /// server, as they are.
+    #[test]
+    fn an_install_already_at_0020_launches_against_the_root_fhir_base() {
+        let pool = pool_migrated_through("0020");
+        let mut conn = pool.get().unwrap();
+        sql_query("UPDATE app_registrations SET url = ? WHERE id = 'lifting'")
+            .bind::<Text, _>("https://lifting.example/?x=1&iss={origin}/fhir-r4&launch={launch}")
+            .execute(&mut conn)
+            .expect("the user edits Lifting's launch URL");
+        let elsewhere = "https://other.example/?launch={launch}&iss=https://ehr.example/fhir-r4";
+        sql_query("UPDATE app_registrations SET url = ? WHERE id = 'importer'")
+            .bind::<Text, _>(elsewhere)
+            .execute(&mut conn)
+            .expect("the user points the Importer at another server");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0021 must apply");
+        assert_eq!(
+            stored_url(&store, "medications"),
+            "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}",
+        );
+        assert_eq!(
+            stored_url(&store, "ohif-viewer"),
+            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
+        );
+        assert_eq!(
+            stored_url(&store, "lifting"),
+            "https://lifting.example/?x=1&iss={origin}&launch={launch}",
+            "the user's edit moves too: nothing answers at /fhir-r4 any more"
+        );
+        assert_eq!(stored_url(&store, "importer"), elsewhere);
+    }
+
     /// An install already at `0015` moves its first-party launches from
     /// `launch.html` to the app root when it upgrades, and a debug build's dev
     /// rows with them, while a launch URL the user edited, production or dev,
@@ -1275,19 +1316,17 @@ mod migration_tests {
         for id in ["medications", "importer", "health-viewer"] {
             assert_eq!(
                 stored_url(&store, id),
-                format!(
-                    "https://wildflowerhealth.io/{id}/?launch={{launch}}&iss={{origin}}/fhir-r4"
-                ),
+                format!("https://wildflowerhealth.io/{id}/?launch={{launch}}&iss={{origin}}"),
             );
         }
         assert_eq!(
             stored_url(&store, "lifting"),
-            edited,
-            "the user's edit stays"
+            "https://lifting.example/launch.html?launch={launch}&iss={origin}",
+            "the user's edit stays, its `iss` moved to the root by `0021`"
         );
         assert_eq!(
             stored_url(&store, "medications-dev"),
-            "http://localhost:5191/?launch={launch}&iss={origin}/fhir-r4",
+            "http://localhost:5191/?launch={launch}&iss={origin}",
         );
         assert_eq!(
             stored_url(&store, "importer-dev"),
@@ -1321,7 +1360,7 @@ mod migration_tests {
         let store = SqliteAppsStore::new(pool).expect("the later migrations must apply");
         assert_eq!(
             stored_url(&store, "ohif-viewer"),
-            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=941de68e6b59eb9dcc32df8ede89e636",
+            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
         );
     }
 
@@ -1470,7 +1509,13 @@ mod migration_tests {
         let dense: Vec<i64> = (0..).take(positions.len()).collect();
         assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
 
-        assert_eq!(stored_url(&store, "growth-chart"), growth_chart_before.url);
+        assert_eq!(
+            stored_url(&store, "growth-chart"),
+            growth_chart_before
+                .url
+                .replace("iss={origin}/fhir-r4", "iss={origin}"),
+            "the launch template carries over, its `iss` moved to the root by `0021`"
+        );
         let user_app = store.find_app("my-cloud-app").unwrap().unwrap();
         assert_eq!(user_app.url.to_string(), "https://example.com/launch");
         assert!(user_app.client_id.is_none());
@@ -1694,7 +1739,7 @@ mod migration_tests {
             "INSERT INTO app_registrations \
              (id, position, on_homescreen, name, url, client_id, requires_tunnel) \
              VALUES (?, (SELECT MAX(position) + 1 FROM app_registrations), 1, ?, \
-                     'http://localhost:5191/?launch={launch}&iss={origin}/fhir-r4', ?, 0)",
+                     'http://localhost:5191/?launch={launch}&iss={origin}', ?, 0)",
         )
         .bind::<Text, _>(id)
         .bind::<Text, _>(id)

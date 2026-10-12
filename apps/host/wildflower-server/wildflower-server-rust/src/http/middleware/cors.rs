@@ -34,9 +34,9 @@ mod tests {
     #[tokio::test]
     async fn a_private_network_preflight_is_allowed() {
         let router = axum::Router::new()
-            .route("/fhir-r4/metadata", axum::routing::get(|| async { "ok" }))
+            .route("/metadata", axum::routing::get(|| async { "ok" }))
             .layer(api_cors_layer());
-        let preflight = axum::http::Request::options("/fhir-r4/metadata")
+        let preflight = axum::http::Request::options("/metadata")
             .header("origin", "https://wildflowerhealth.io")
             .header("access-control-request-method", "GET")
             .header("access-control-request-private-network", "true")
@@ -64,9 +64,9 @@ mod tests {
     #[tokio::test]
     async fn cross_origin_credentials_are_never_allowed() {
         let router = axum::Router::new()
-            .route("/fhir-r4/metadata", axum::routing::get(|| async { "ok" }))
+            .route("/metadata", axum::routing::get(|| async { "ok" }))
             .layer(api_cors_layer());
-        let preflight = axum::http::Request::options("/fhir-r4/metadata")
+        let preflight = axum::http::Request::options("/metadata")
             .header("origin", "https://evil.example")
             .header("access-control-request-method", "GET")
             .header("access-control-request-headers", "authorization")

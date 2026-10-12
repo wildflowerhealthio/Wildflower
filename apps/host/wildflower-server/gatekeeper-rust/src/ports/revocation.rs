@@ -40,7 +40,7 @@ pub(crate) trait Revocation: Send + Sync + 'static {
 /// per-`jti` denylist and the per-subject epoch). `fhir-r4-rust`'s
 /// `RevocationCheckingProvider` re-checks the `jti` denylist alone inside HFS,
 /// because helios's `Principal` carries no `iat`; the gate runs first on every
-/// `/fhir-r4/*` request, so the epoch half is still enforced there. Both fail
+/// FHIR request, so the epoch half is still enforced there. Both fail
 /// closed on a store error.
 pub(crate) trait RevocationCheck: Send + Sync + 'static {
     /// Whether the token identified by `jti` (denylisted individually) or

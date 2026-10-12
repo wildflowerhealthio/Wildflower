@@ -64,7 +64,7 @@ const restoreDialog = (
   else Object.defineProperty(HTMLDialogElement.prototype, key, descriptor)
 }
 
-const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
+const SERVER_URL = 'http://127.0.0.1:8080'
 const ACCESS_TOKEN = 'tok-abc'
 const HAR_TEXT = '{"log":{"version":"1.2","entries":[]}}'
 const PDF_BYTES_TEXT = '%PDF-1.4\n'

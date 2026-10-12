@@ -1,6 +1,6 @@
 //! HFS's `base_url` — the prefix of its search Bundle links, `entry.fullUrl`s
-//! and a create's `Location` — is the configured public origin's FHIR base, on
-//! both routers `setup_fhir_r4` hands back. The SMART discovery document names
+//! and a create's `Location` — is the configured public origin, where FHIR is
+//! mounted, on both routers `setup_fhir_r4` hands back. The SMART discovery document names
 //! the public origin itself as its `issuer`.
 
 use std::path::PathBuf;
@@ -15,7 +15,6 @@ use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config, FhirR4Routers};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 const PUBLIC_ORIGIN: &str = "https://abc.relay.example";
-const PUBLIC_BASE: &str = "https://abc.relay.example/fhir-r4";
 
 /// Unique temp dir per test so parallel tests don't share a sqlite file.
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -101,13 +100,8 @@ fn patient(id: &str) -> Value {
 
 async fn put_patients(router: &Router, ids: &[&str]) {
     for id in ids {
-        let (status, _, body) = send(
-            router,
-            "PUT",
-            &format!("/fhir-r4/Patient/{id}"),
-            Some(patient(id)),
-        )
-        .await;
+        let (status, _, body) =
+            send(router, "PUT", &format!("/Patient/{id}"), Some(patient(id))).await;
         assert!(status.is_success(), "PUT Patient/{id}: {status} {body}");
     }
 }
@@ -127,12 +121,12 @@ async fn every_emitted_url_is_on_the_public_origin() {
     let router = &routers.augmented_fhir_r4_router;
     put_patients(router, &["a", "b"]).await;
 
-    let (status, _, bundle) = send(router, "GET", "/fhir-r4/Patient?_count=1", None).await;
+    let (status, _, bundle) = send(router, "GET", "/Patient?_count=1", None).await;
     assert_eq!(status, StatusCode::OK, "body: {bundle}");
     for relation in ["self", "next"] {
         let url = link(&bundle, relation).unwrap_or_else(|| panic!("no {relation}: {bundle}"));
         assert!(
-            url.starts_with(&format!("{PUBLIC_BASE}/Patient?")),
+            url.starts_with(&format!("{PUBLIC_ORIGIN}/Patient?")),
             "{relation}: {url}"
         );
     }
@@ -140,21 +134,21 @@ async fn every_emitted_url_is_on_the_public_origin() {
         .as_str()
         .expect("entry fullUrl");
     assert!(
-        full_url.starts_with(&format!("{PUBLIC_BASE}/Patient/")),
+        full_url.starts_with(&format!("{PUBLIC_ORIGIN}/Patient/")),
         "fullUrl: {full_url}"
     );
 
     let (status, headers, body) = send(
         router,
         "POST",
-        "/fhir-r4/Patient",
+        "/Patient",
         Some(json!({ "resourceType": "Patient" })),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "body: {body}");
     let location = headers["location"].to_str().expect("ASCII Location");
     assert!(
-        location.starts_with(&format!("{PUBLIC_BASE}/Patient/")),
+        location.starts_with(&format!("{PUBLIC_ORIGIN}/Patient/")),
         "Location: {location}"
     );
 }
@@ -167,7 +161,7 @@ async fn the_delegation_router_is_on_the_public_origin() {
 
     let (_, _, bundle) = send(&routers.raw_hfs_router, "GET", "/Patient", None).await;
     let self_link = link(&bundle, "self").unwrap_or_else(|| panic!("no self link: {bundle}"));
-    assert!(self_link.starts_with(PUBLIC_BASE), "self: {self_link}");
+    assert!(self_link.starts_with(PUBLIC_ORIGIN), "self: {self_link}");
 }
 
 /// Discovery reports the server's origin as `issuer` (every token's `iss`),
@@ -178,7 +172,7 @@ async fn smart_discovery_reports_the_public_origin_as_issuer() {
     let (status, _, document) = send(
         &routers.augmented_fhir_r4_router,
         "GET",
-        "/fhir-r4/.well-known/smart-configuration",
+        "/.well-known/smart-configuration",
         None,
     )
     .await;

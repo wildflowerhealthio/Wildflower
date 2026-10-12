@@ -4,7 +4,6 @@ import {
   searchWithoutAuthorizationResponse,
   searchWithServerUrl,
   serverUrlFromSearch,
-  serverUrlNamedBy,
 } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import {
   gatekeeperLogoutSettingsItem,
@@ -90,7 +89,7 @@ const apiServerUrl = (search: string, store: SignedInServerStore): string =>
 const ehrLaunchIn = (search: string): EhrLaunch | undefined =>
   Option.getOrUndefined(
     Option.flatMap(arrivingSmartLaunchFrom(search), ({ iss, launch }) => {
-      const serverUrl = serverUrlNamedBy(iss)
+      const serverUrl = normalizeServerUrl(iss)
       return serverUrl === undefined || launch === undefined
         ? Option.none()
         : Option.some({ serverUrl, launch })

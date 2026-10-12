@@ -1,0 +1,46 @@
+{
+  "issuer": "https://ruth.wildflowerhealth.io",
+  "jwks_uri": "https://ruth.wildflowerhealth.io/.well-known/jwks.json",
+  "authorization_endpoint": "https://ruth.wildflowerhealth.io/oauth/authorize",
+  "token_endpoint": "https://ruth.wildflowerhealth.io/oauth/token",
+  "registration_endpoint": "https://ruth.wildflowerhealth.io/auth/register",
+  "management_endpoint": "https://ruth.wildflowerhealth.io/user/manage",
+  "introspection_endpoint": "https://ruth.wildflowerhealth.io/user/introspect",
+  "revocation_endpoint": "https://ruth.wildflowerhealth.io/user/revoke",
+  "scopes_supported": [
+    "openid",
+    "profile",
+    "launch",
+    "launch/patient",
+    "patient/*.cruds",
+    "user/*.cruds",
+    "system/*.cruds",
+    "offline_access"
+  ],
+  "response_types_supported": [
+    "code"
+  ],
+  "grant_types_supported": [
+    "authorization_code",
+    "client_credentials"
+  ],
+  "token_endpoint_auth_methods_supported": [
+    "client_secret_basic",
+    "private_key_jwt"
+  ],
+  "code_challenge_methods_supported": [
+    "S256"
+  ],
+  "capabilities": [
+    "launch-ehr",
+    "permission-patient",
+    "permission-v1",
+    "permission-v2",
+    "client-public",
+    "client-confidential-symmetric",
+    "context-ehr-patient",
+    "sso-openid-connect",
+    "wildflower-server"
+  ],
+  "associated_endpoints": []
+}

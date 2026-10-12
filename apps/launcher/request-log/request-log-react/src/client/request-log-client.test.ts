@@ -45,7 +45,7 @@ describe('buildRequestLogClientLayer', () => {
           address: '192.0.2.1',
           servedHost: 'dev1.example.com',
           method: 'GET',
-          path: '/fhir-r4/Patient',
+          path: '/Patient',
           status: 403,
           responseBytes: null,
           durationMs: 12,

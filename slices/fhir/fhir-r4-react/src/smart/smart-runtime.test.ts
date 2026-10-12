@@ -38,15 +38,15 @@ const sendThrough = (
 }
 
 describe('smartHttpClientLayer', () => {
-  const session = { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' }
+  const session = { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' }
 
   test('addresses a relative client path at the FHIR server and attaches the token', async () => {
     const sent = await sendThrough(session, HttpClientRequest.get('/DocumentReference'))
-    expect(sent.url).toBe('http://127.0.0.1:8080/fhir-r4/DocumentReference')
+    expect(sent.url).toBe('http://127.0.0.1:8080/DocumentReference')
     expect(sent.authorization).toBe('Bearer tok-123')
   })
 
-  // The client no longer bakes in `/fhir-r4`, so the base is now whatever server
+  // The client emits base-relative paths, so the base is whatever server
   // the handshake named — a sandbox base with its own subpath, an EHR's `iss`,
   // anything. It is prepended verbatim (trailing slashes trimmed) rather than
   // parsed, so any of these addresses correctly.
@@ -113,7 +113,7 @@ const deadTransport = Layer.succeed(
 describe('buildSmartRouterContext', () => {
   test('runAuthed runs an effect against the built runtime', async () => {
     const context = buildSmartRouterContext(
-      { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
+      { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' },
       deadTransport
     )
     await expect(context.runAuthed(Effect.succeed(42))).resolves.toBe(42)
@@ -121,7 +121,7 @@ describe('buildSmartRouterContext', () => {
 
   test('awaitAuthReady resolves — the handshake is already complete', async () => {
     const context = buildSmartRouterContext(
-      { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
+      { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' },
       deadTransport
     )
     await expect(context.awaitAuthReady()).resolves.toBeUndefined()
@@ -133,7 +133,7 @@ describe('buildSmartRouterContext', () => {
   test('carries the QueryClient it is handed rather than making a second one', () => {
     const queryClient = buildSmartQueryClient()
     const context = buildSmartRouterContext(
-      { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
+      { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' },
       deadTransport,
       queryClient
     )
@@ -141,7 +141,7 @@ describe('buildSmartRouterContext', () => {
   })
 
   test('defaults to a fresh QueryClient when the caller hands none', () => {
-    const session = { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' }
+    const session = { serverUrl: 'http://127.0.0.1:8080', accessToken: 'tok-123' }
     const first = buildSmartRouterContext(session, deadTransport)
     const second = buildSmartRouterContext(session, deadTransport)
     expect(first.queryClient).not.toBe(second.queryClient)

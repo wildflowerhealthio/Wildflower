@@ -133,19 +133,14 @@ async fn medication_request_with_contained_medication_round_trips() {
         },
     });
 
-    let (put_status, put_body) = send(
-        &router,
-        "PUT",
-        "/fhir-r4/MedicationRequest/mr1",
-        Some(request),
-    )
-    .await;
+    let (put_status, put_body) =
+        send(&router, "PUT", "/MedicationRequest/mr1", Some(request)).await;
     assert!(
         put_status.is_success(),
         "PUT MedicationRequest failed: {put_status} {put_body}"
     );
 
-    let (get_status, got) = send(&router, "GET", "/fhir-r4/MedicationRequest/mr1", None).await;
+    let (get_status, got) = send(&router, "GET", "/MedicationRequest/mr1", None).await;
     assert_eq!(get_status, StatusCode::OK, "body: {got}");
     assert_eq!(got["resourceType"], "MedicationRequest");
     assert_eq!(got["id"], "mr1");
@@ -173,19 +168,14 @@ async fn medication_dispense_round_trips() {
         "substitution": { "wasSubstituted": false },
     });
 
-    let (put_status, put_body) = send(
-        &router,
-        "PUT",
-        "/fhir-r4/MedicationDispense/md1",
-        Some(dispense),
-    )
-    .await;
+    let (put_status, put_body) =
+        send(&router, "PUT", "/MedicationDispense/md1", Some(dispense)).await;
     assert!(
         put_status.is_success(),
         "PUT MedicationDispense failed: {put_status} {put_body}"
     );
 
-    let (get_status, got) = send(&router, "GET", "/fhir-r4/MedicationDispense/md1", None).await;
+    let (get_status, got) = send(&router, "GET", "/MedicationDispense/md1", None).await;
     assert_eq!(get_status, StatusCode::OK, "body: {got}");
     assert_eq!(got["resourceType"], "MedicationDispense");
     assert_eq!(got["id"], "md1");

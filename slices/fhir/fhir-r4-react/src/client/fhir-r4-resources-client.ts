@@ -19,12 +19,11 @@ type FhirR4ResourcesClientRequirements = HttpClient.HttpClient | FhirR4Resources
  * `buildXClientLayer()` name matching the other slices (e.g.
  * `gatekeeper-react`'s `buildGatekeeperClientLayer`).
  *
- * The client emits **base-relative** FHIR paths (`/Patient`, not
- * `/fhir-r4/Patient`) — `FhirResourcesApi` no longer bakes in Wildflower's mount
- * prefix, so the client can address any FHIR server. Naming the base is the
- * **provider's** job, not this layer's: the host app re-applies `/fhir-r4` when
- * it wires this layer's `HttpClient` (`apps/launcher/launcher-web`'s
- * `router-context.ts`), and a SMART app prepends the `iss` verbatim
+ * The client emits **base-relative** FHIR paths (`/Patient`), so it can
+ * address any FHIR server. Naming the base is the **provider's** job, not this
+ * layer's: the launcher sends them through its API transport, since a
+ * Wildflower server serves FHIR at its root (`apps/launcher/launcher-web`'s
+ * `runtime-layer.ts`), and a SMART app prepends the `iss` verbatim
  * (`fhir-r4-react/smart`'s `smartHttpClientLayer`).
  *
  * Leaves `HttpClient` unprovided for exactly that reason: the provider supplies

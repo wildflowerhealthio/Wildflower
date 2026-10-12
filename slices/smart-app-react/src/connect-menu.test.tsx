@@ -211,14 +211,14 @@ describe('ConnectMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Launch' }))
 
     await waitFor(() => {
-      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080\/fhir-r4/i)).toBeDefined()
+      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080/i)).toBeDefined()
     })
     // The menu is still there — the launch was attempted, and a retry is possible.
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Launch' })).toBeDefined()
   })
 
-  it('launches against a hosted subdomain’s FHIR R4 base, trimmed and lower-cased', async () => {
+  it('launches against a hosted subdomain’s origin, its FHIR base, trimmed and lower-cased', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
@@ -226,7 +226,7 @@ describe('ConnectMenu', () => {
 
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
     expect(startStandaloneLaunchMock).toHaveBeenCalledWith(
-      expect.objectContaining({ iss: 'https://medication.ruth.wildflowerhealth.io/fhir-r4' })
+      expect.objectContaining({ iss: 'https://medication.ruth.wildflowerhealth.io' })
     )
   })
 
@@ -257,10 +257,10 @@ describe('ConnectMenu', () => {
     expect(field.getAttribute('inputmode')).toBe('url')
   })
 
-  it('spells the hosted address out to the FHIR base the app launches against', () => {
+  it('spells the hosted address out to the origin the app launches against', () => {
     render(<ConnectMenu {...PROPS} />)
 
-    expect(within(hostedForm()).getByText('.wildflowerhealth.io/fhir-r4')).toBeDefined()
+    expect(within(hostedForm()).getByText('.wildflowerhealth.io')).toBeDefined()
   })
 
   it('shows no server notice on the SMART app menu', () => {
@@ -275,7 +275,6 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
     expect(within(hostedForm()).getByText('.wildflowerhealth.io')).toBeDefined()
-    expect(within(hostedForm()).queryByText(/\/fhir-r4/)).toBeNull()
   })
 
   it('signs in to the local server’s origin', async () => {
@@ -328,21 +327,6 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
 
     expect(connectMock).toHaveBeenCalledWith('https://my-server.example.com')
   })
-
-  // `?server=` is the API base; the sign-in finds `/fhir-r4` under it.
-  it.each(['https://example.org/wildflower/fhir-r4', 'https://example.org/wildflower/fhir-r4/'])(
-    'signs in to a Wildflower server entered by its FHIR base (%s) at its API base',
-    async (entered) => {
-      const user = userEvent.setup()
-      render(<ConnectMenu {...WILDFLOWER_PROPS} />)
-
-      const freeEntry = within(screen.getByRole('form', { name: 'Another Wildflower server' }))
-      await user.type(freeEntry.getByLabelText('Server URL'), entered)
-      await user.click(freeEntry.getByRole('button', { name: 'Connect' }))
-
-      expect(connectMock).toHaveBeenCalledWith('https://example.org/wildflower')
-    }
-  )
 
   it('shows a validation message worded for a server URL on an invalid free entry', async () => {
     const user = userEvent.setup()
@@ -599,7 +583,7 @@ describe('ConnectMenu, the Local Network Access hint', () => {
     await user.click(screen.getByRole('button', { name: 'Launch' }))
 
     await waitFor(() => {
-      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080\/fhir-r4/)).toBeDefined()
+      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080/)).toBeDefined()
     })
     expect(screen.getByText(/Local Network Access/)).toBeDefined()
   })

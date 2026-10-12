@@ -6,17 +6,17 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { buildRunAuthed } from '../runtime-layer.ts'
-import { apiTransportAt } from './app-query-runtime.ts'
+import { apiTransport } from './app-query-runtime.ts'
 
 /**
  * Where the launcher's requests land. Only the transport is a stub: the real
- * `apiTransportAt` feeds the real `buildRunAuthed`, and the FHIR read goes
+ * `apiTransport` feeds the real `buildRunAuthed`, and the FHIR read goes
  * through the real typed client, so the URL each request reaches the wire with
  * is the one production sends.
  */
 
-describe('apiTransportAt', () => {
-  it("should address the FHIR slice's reads to the API origin's /fhir-r4 mount", async () => {
+describe('apiTransport', () => {
+  it("should address the FHIR slice's reads to the API origin's root, where FHIR is served", async () => {
     // Arrange
     const { runAuthed, recorded } = runnerOver('http://127.0.0.1:8080', undefined)
 
@@ -24,9 +24,7 @@ describe('apiTransportAt', () => {
     await runAuthed(searchPatients)
 
     // Assert
-    expect(recorded.map((request) => request.url)).toEqual([
-      'http://127.0.0.1:8080/fhir-r4/Patient',
-    ])
+    expect(recorded.map((request) => request.url)).toEqual(['http://127.0.0.1:8080/Patient'])
   })
 
   it("should address every other slice's requests to the API origin's root", async () => {
@@ -40,7 +38,7 @@ describe('apiTransportAt', () => {
     expect(recorded.map((request) => request.url)).toEqual(['http://127.0.0.1:8080/access/clients'])
   })
 
-  it('should keep both mounts page-relative when the page is served by the API server', async () => {
+  it('should keep every request page-relative when the page is served by the API server', async () => {
     // Arrange
     const { runAuthed, recorded } = runnerOver(undefined, undefined)
 
@@ -49,7 +47,7 @@ describe('apiTransportAt', () => {
     await runAuthed(getFromRoot('/access/clients'))
 
     // Assert
-    expect(recorded.map((request) => request.url)).toEqual(['/fhir-r4/Patient', '/access/clients'])
+    expect(recorded.map((request) => request.url)).toEqual(['/Patient', '/access/clients'])
   })
 
   it('should carry the bearer on FHIR reads as well as on root requests', async () => {
@@ -67,7 +65,7 @@ describe('apiTransportAt', () => {
     ])
   })
 
-  it('should always send FHIR reads to {origin}/fhir-r4, whatever the origin', async () => {
+  it("should always send FHIR reads to the origin's root, whatever the origin", async () => {
     await fc.assert(
       fc.asyncProperty(originArb, async (origin) => {
         // Arrange
@@ -77,7 +75,7 @@ describe('apiTransportAt', () => {
         await runAuthed(searchPatients)
 
         // Assert
-        expect(recorded.map((request) => request.url)).toEqual([`${origin}/fhir-r4/Patient`])
+        expect(recorded.map((request) => request.url)).toEqual([`${origin}/Patient`])
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
@@ -115,10 +113,7 @@ const runnerOver = (
       )
     })
   )
-  const { runAuthed } = buildRunAuthed(
-    apiTransportAt(transport, apiBaseUrl, readBearer),
-    Layer.empty
-  )
+  const { runAuthed } = buildRunAuthed(apiTransport(transport, apiBaseUrl, readBearer), Layer.empty)
   return { runAuthed, recorded }
 }
 

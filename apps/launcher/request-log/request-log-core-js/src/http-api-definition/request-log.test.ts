@@ -62,7 +62,7 @@ describe('RequestLogPageSchema', () => {
           address: '192.0.2.1',
           servedHost: 'dev1.example.com',
           method: 'GET',
-          path: '/fhir-r4/Patient',
+          path: '/Patient',
           status: 200,
           responseBytes: null,
           durationMs: 12,

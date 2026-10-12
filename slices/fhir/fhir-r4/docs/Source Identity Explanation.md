@@ -6,7 +6,7 @@ replaces that id.
 ## Why a source's id is not the store's id
 
 The on-device FHIR store is keyed by resource id: every write is a
-`PUT /fhir-r4/{Type}/{id}` (one per resource from `upsertResource`, or one per
+`PUT /{Type}/{id}` (one per resource from `upsertResource`, or one per
 entry of `persistBatchBundle`'s batch Bundle), so the id _is_ the upsert key.
 Writing the id a source uses would make that key mean whatever each source means
 by it:

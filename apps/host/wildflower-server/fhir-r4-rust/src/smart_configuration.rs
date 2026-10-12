@@ -8,11 +8,11 @@
 //! `authorization_endpoint`, and a different auth-methods list.
 //!
 //! Rather than patching helios-auth upstream, we mount this handler at
-//! `/fhir-r4/.well-known/smart-configuration` and put HFS's router behind
-//! it as a fallback (see [`lib.rs`](crate)). The advertised endpoints are
-//! the gatekeeper URLs that already exist at the host root, so the SMART
-//! app fetches discovery here, then follows links straight to gatekeeper
-//! for the authorize/token dance.
+//! `/.well-known/smart-configuration` and put HFS's router behind it as a
+//! fallback (see [`lib.rs`](crate)). The advertised endpoints are the
+//! gatekeeper URLs on the same origin, so the SMART app fetches discovery
+//! here, then follows links straight to gatekeeper for the authorize/token
+//! dance.
 //!
 //! This is the sole discovery implementation; the former TypeScript twin in the
 //! fhir-r4 slice has been removed.
@@ -53,6 +53,13 @@ pub(crate) struct SmartConfiguration {
     associated_endpoints: Vec<&'static str>,
 }
 
+/// The SMART capability that tells a client this is a Wildflower server rather
+/// than a plain SMART one: both serve FHIR at the URL a client signs in to, so
+/// the launcher reads it to choose what it offers. The document is committed as
+/// `snapshots/smart-configuration.json`, which `gatekeeper-core`'s discovery
+/// tests read, so the client is tested against what this serves.
+pub(crate) const WILDFLOWER_SERVER_CAPABILITY: &str = "wildflower-server";
+
 /// The SMART scopes advertised in discovery — the standard public SMART App
 /// Launch read set. Hand-curated (a `const`, built once) rather than enumerated
 /// from `scopes-rust`, so the public document never exposes the system's
@@ -72,7 +79,6 @@ fn build_smart_configuration(server_origin: &str, base_url: &url::Url) -> SmartC
     // The advertised endpoints are per-request URL strings; derive the bare
     // origin (no trailing slash, no default port) once and interpolate.
     let origin = wildflowerhealthio_shared_structures::origin_string(base_url);
-    let host = format!("{origin}/fhir-r4");
     SmartConfiguration {
         // `issuer` = the server's origin (minted tokens' `iss`); the endpoint
         // URLs below stay per-request, derived from the served origin. See
@@ -81,10 +87,10 @@ fn build_smart_configuration(server_origin: &str, base_url: &url::Url) -> SmartC
         jwks_uri: format!("{origin}/.well-known/jwks.json"),
         authorization_endpoint: format!("{origin}/oauth/authorize"),
         token_endpoint: format!("{origin}/oauth/token"),
-        registration_endpoint: format!("{host}/auth/register"),
-        management_endpoint: format!("{host}/user/manage"),
-        introspection_endpoint: format!("{host}/user/introspect"),
-        revocation_endpoint: format!("{host}/user/revoke"),
+        registration_endpoint: format!("{origin}/auth/register"),
+        management_endpoint: format!("{origin}/user/manage"),
+        introspection_endpoint: format!("{origin}/user/introspect"),
+        revocation_endpoint: format!("{origin}/user/revoke"),
         scopes_supported: SCOPES_SUPPORTED.to_vec(),
         response_types_supported: vec!["code"],
         grant_types_supported: vec!["authorization_code", "client_credentials"],
@@ -99,6 +105,7 @@ fn build_smart_configuration(server_origin: &str, base_url: &url::Url) -> SmartC
             "client-confidential-symmetric",
             "context-ehr-patient",
             "sso-openid-connect",
+            WILDFLOWER_SERVER_CAPABILITY,
         ],
         associated_endpoints: vec![],
     }
@@ -124,6 +131,37 @@ mod tests {
 
     fn base(value: &str) -> url::Url {
         url::Url::parse(value).unwrap()
+    }
+
+    /// The committed document `gatekeeper-core`'s discovery tests read
+    /// (`smart-discovery.test.ts`), so the TS client is tested against exactly
+    /// what this serves. Regenerate with
+    /// `UPDATE_SMART_CONFIGURATION=1 cargo test -p wildflowerhealthio-fhir-r4 smart_configuration_snapshot`.
+    #[test]
+    fn smart_configuration_snapshot_is_up_to_date() {
+        let doc =
+            build_smart_configuration(SERVER_ORIGIN, &base("https://ruth.wildflowerhealth.io"));
+        let rendered = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&doc).expect("serialize the discovery document")
+        );
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("snapshots")
+            .join("smart-configuration.json");
+        if std::env::var_os("UPDATE_SMART_CONFIGURATION").is_some() {
+            std::fs::create_dir_all(path.parent().expect("snapshot dir")).expect("create dir");
+            std::fs::write(&path, &rendered).expect("write the snapshot");
+        }
+        let committed = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "read {}: {e}; regenerate with UPDATE_SMART_CONFIGURATION=1",
+                path.display()
+            )
+        });
+        assert_eq!(
+            committed, rendered,
+            "stale snapshot; regenerate with UPDATE_SMART_CONFIGURATION=1"
+        );
     }
 
     #[test]

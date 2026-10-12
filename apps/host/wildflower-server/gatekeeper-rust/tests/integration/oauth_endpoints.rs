@@ -409,7 +409,7 @@ fn smart_launch_query(smart_params: &str) -> String {
 }
 
 /// A SMART App Launch round trip: a `launch` minted for the client and the FHIR
-/// base as `aud` park a pending request the Owner can approve, and the request
+/// base (the server's origin) as `aud` park a pending request the Owner can approve, and the request
 /// carries the consumed launch. The same `launch` is refused the second time.
 #[tokio::test]
 async fn authorize_consumes_a_smart_launch_once() {
@@ -420,7 +420,7 @@ async fn authorize_consumes_a_smart_launch_once() {
         .mint("test-app")
         .expect("mint a launch");
     let query = smart_launch_query(&format!(
-        "launch={launch}&aud=https%3A%2F%2Fruth.relay.example%2Ffhir-r4"
+        "launch={launch}&aud=https%3A%2F%2Fruth.relay.example"
     ));
 
     let request_id = parked_request_id(&get_authorize(&g.router, &query).await);

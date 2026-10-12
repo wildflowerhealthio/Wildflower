@@ -9,8 +9,8 @@ describe('arrivingSmartLaunchFrom', () => {
   it('should read an EHR launch from iss and launch', () => {
     // Act / Assert — the launch the desktop base opens a server's launcher with
     expect(
-      arrivingSmartLaunchFrom('?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4&launch=xyz')
-    ).toStrictEqual(Option.some({ iss: 'https://ruth.wildflowerhealth.io/fhir-r4', launch: 'xyz' }))
+      arrivingSmartLaunchFrom('?iss=https%3A%2F%2Fruth.wildflowerhealth.io&launch=xyz')
+    ).toStrictEqual(Option.some({ iss: 'https://ruth.wildflowerhealth.io', launch: 'xyz' }))
   })
 
   it('should read a lone iss as a standalone launch against it', () => {

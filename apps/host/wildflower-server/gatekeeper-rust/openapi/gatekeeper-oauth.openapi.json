@@ -209,7 +209,7 @@
           {
             "name": "aud",
             "in": "query",
-            "description": "SMART App Launch audience: the FHIR server the app expects to call with\nthe token. When present it must be this server's origin\n(`https://<domain>`) or FHIR base (`https://<domain>/fhir-r4`), else\n`invalid_request`. The minted token's `aud` is the server's origin\neither way.",
+            "description": "SMART App Launch audience: the FHIR server the app expects to call with\nthe token. When present it must be this server's origin\n(`https://<domain>`), which is also its FHIR base, else\n`invalid_request`. The minted token's `aud` is the server's origin.",
             "required": false,
             "schema": {
               "type": "string"

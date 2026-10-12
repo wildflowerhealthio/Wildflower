@@ -59,8 +59,8 @@ The target lives in the URL:
   applies the gate as a layer.
 - The target doubles as the SMART `iss` for signing in — see below.
 - Opened with a SMART launch instead (`?iss=<FHIR base>`, with the EHR's
-  `launch` when there is one), the console targets the server `iss` names: the
-  FHIR base less a Wildflower server's `/fhir-r4` mount, over any `?server=`
+  `launch` when there is one), the console targets the server `iss` names, its
+  FHIR base (a Wildflower server serves FHIR at its root), over any `?server=`
   the link also carried. `iss` and `launch` are taken out of the URL and the
   target written in as `?server=` before anything reads it, and the console
   signs in straight away (see "Opened with a launch" below).
@@ -91,19 +91,18 @@ in by hand.
 ### The flow
 
 1. **Discovery.** The console fetches
-   `{server}/fhir-r4/.well-known/smart-configuration` for the `?server=` target
-   and reads `authorization_endpoint` and `token_endpoint` out of it; the FHIR
-   base that answered, `{server}/fhir-r4`, is the SMART `iss`. A Wildflower
-   server answers that path from `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
-   (unauthenticated, exempt from the bearer gate) and points it at its own
-   gatekeeper, whether it is served at an origin or behind a path prefix. Only
-   if that answers 404 does the console try
-   `{server}/.well-known/smart-configuration`, reading the target as a plain
-   FHIR base. A target that is unreachable, answers with something else, or
-   answers 404 at both fails here, and the reason is shown in the header bar.
+   `{server}/.well-known/smart-configuration` for the `?server=` target and
+   reads `authorization_endpoint` and `token_endpoint` out of it; the target,
+   a FHIR base, is the SMART `iss`. A Wildflower server serves FHIR at its root
+   and answers that path from `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
+   (unauthenticated, exempt from the bearer gate), pointing it at its own
+   gatekeeper and listing the `wildflower-server` capability, whether it is
+   served at an origin or behind a path prefix. A target that is unreachable,
+   answers 404 or with something else fails here, and the reason is shown in
+   the header bar.
 2. **Authorization.** The console redirects to the `authorization_endpoint` as
    the public PKCE client `664a01e8614050cd82ffe90350b81413` — S256 challenge, random
-   `state`, `aud` the FHIR base discovery found (`{server}/fhir-r4` for a
+   `state`, `aud` the FHIR base discovery read (the server's origin for a
    Wildflower server), and the whole scope set the client is
    allowed to request. The Owner approves (or narrows) it on the server's own
    consent page; `allowed_scopes` is only the ceiling, so the grant is whatever

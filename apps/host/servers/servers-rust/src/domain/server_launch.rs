@@ -9,7 +9,6 @@
 //! base's consent sheet answers.
 
 use url::{form_urlencoded, Url};
-use wildflowerhealthio_shared_structures::FHIR_R4_PATH;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::RunState;
 use wildflowerhealthio_wildflower_server::{CertificateStatus, ServerHealth};
@@ -19,16 +18,15 @@ use crate::domain::{LaunchError, ServerDetail, ServerStatus};
 /// The URL a server's launcher opens at: `launcher_url` with `iss`, the
 /// server's FHIR base (its `public_origin`, as
 /// [`ServerRecord::public_origin`](crate::ServerRecord::public_origin) builds
-/// it, at [`FHIR_R4_PATH`]), and the minted `launch` appended to its query.
+/// it, where FHIR is served), and the minted `launch` appended to its query.
 /// Any `iss` or `launch` the launcher URL already carries is dropped; its
 /// other query parameters are kept as they are written, byte for byte, and so
 /// is its fragment.
 #[must_use]
 pub fn launch_url(launcher_url: &Url, public_origin: &Url, launch: &str) -> Url {
-    let mut fhir_base = public_origin.clone();
-    fhir_base.set_path(FHIR_R4_PATH);
+    let fhir_base = wildflowerhealthio_shared_structures::origin_string(public_origin);
     let launch_params = form_urlencoded::Serializer::new(String::new())
-        .append_pair("iss", fhir_base.as_str())
+        .append_pair("iss", &fhir_base)
         .append_pair("launch", launch)
         .finish();
     let query = launcher_url
@@ -163,7 +161,7 @@ mod tests {
                 "nonce-1"
             )
             .as_str(),
-            "https://wildflowerhealth.io/launcher/?iss=https%3A%2F%2Fruth.relay.example.com%2Ffhir-r4&launch=nonce-1"
+            "https://wildflowerhealth.io/launcher/?iss=https%3A%2F%2Fruth.relay.example.com&launch=nonce-1"
         );
     }
 
@@ -182,7 +180,7 @@ mod tests {
                 ("theme".to_owned(), "dark".to_owned()),
                 (
                     "iss".to_owned(),
-                    "https://ruth.relay.example.com/fhir-r4".to_owned()
+                    "https://ruth.relay.example.com".to_owned()
                 ),
                 ("launch".to_owned(), "nonce-1".to_owned()),
             ]
@@ -200,7 +198,7 @@ mod tests {
         );
         assert_eq!(
             url.query(),
-            Some("a=b%20c&flag&iss=https%3A%2F%2Fruth.relay.example.com%2Ffhir-r4&launch=nonce-1")
+            Some("a=b%20c&flag&iss=https%3A%2F%2Fruth.relay.example.com&launch=nonce-1")
         );
     }
 

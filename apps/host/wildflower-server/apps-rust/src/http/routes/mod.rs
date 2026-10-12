@@ -396,7 +396,7 @@ mod tests {
         seed_app(
             &st.store,
             "smart-app",
-            "https://app.example/launch?iss={origin}/fhir-r4&launch={launch}",
+            "https://app.example/launch?iss={origin}&launch={launch}",
             Some("client-1"),
         );
 
@@ -404,9 +404,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
             launch_url(res).await,
-            format!(
-                "https://app.example/launch?iss={PUBLIC_ORIGIN}/fhir-r4&launch=launch-for-client-1"
-            ),
+            format!("https://app.example/launch?iss={PUBLIC_ORIGIN}&launch=launch-for-client-1"),
         );
         assert_eq!(minter.minted_for(), ["client-1"]);
 
@@ -508,7 +506,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let url = launch_url(res).await;
         assert!(
-            url.contains(&format!("iss={PUBLIC_ORIGIN}/fhir-r4")),
+            url.contains(&format!("iss={PUBLIC_ORIGIN}")),
             "expected the public origin in {url}",
         );
     }

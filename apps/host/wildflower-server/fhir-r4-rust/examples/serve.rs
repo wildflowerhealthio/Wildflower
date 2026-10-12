@@ -1,6 +1,6 @@
 //! Dev-only: stands up the FHIR R4 router on 127.0.0.1:8080 against a
-//! throwaway sqlite db so the HFS-served endpoints (`/fhir-r4/metadata`,
-//! `/fhir-r4/.well-known/smart-configuration`, etc.) can be curl'd without
+//! throwaway sqlite db so the HFS-served endpoints (`/metadata`,
+//! `/.well-known/smart-configuration`, etc.) can be curl'd without
 //! booting the Tauri shell. Delete once HFS integration is validated end-to-end.
 
 use anyhow::Context;

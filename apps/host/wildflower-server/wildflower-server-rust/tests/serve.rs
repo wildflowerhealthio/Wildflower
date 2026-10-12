@@ -267,7 +267,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     );
     // The loopback `/health` above is not reported. A forwarded one is logged
     // but not sent to the host; a forwarded FHIR read is sent to both, with no
-    // caller (`/fhir-r4/metadata` is unauthenticated).
+    // caller (`/metadata` is unauthenticated).
     let forwarded_health = reqwest::Client::new()
         .get(loopback_base_url.join("health").expect("health URL"))
         .header("forwarded", FORWARDED)
@@ -290,7 +290,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
             forwarded_request.client_address.as_deref(),
             forwarded_request.caller,
         ),
-        ("/fhir-r4", 200, Some("192.0.2.1"), None)
+        ("/metadata", 200, Some("192.0.2.1"), None)
     );
     assert!(
         forwarded_request_rx.try_recv().is_err(),
@@ -389,24 +389,20 @@ async fn forwarded_request_log_read(
         .expect("GET /requests reaches the server")
 }
 
-/// The status of a `GET /fhir-r4/metadata` relayed from `192.0.2.1`: an
+/// The status of a `GET /metadata` relayed from `192.0.2.1`: an
 /// unauthenticated request the forwarded-request layer reports.
 async fn forwarded_metadata_status(loopback_base_url: &Url) -> reqwest::StatusCode {
     reqwest::Client::new()
-        .get(
-            loopback_base_url
-                .join("fhir-r4/metadata")
-                .expect("metadata URL"),
-        )
+        .get(loopback_base_url.join("metadata").expect("metadata URL"))
         .header("forwarded", FORWARDED)
         .send()
         .await
-        .expect("a forwarded GET /fhir-r4/metadata reaches the server")
+        .expect("a forwarded GET /metadata reaches the server")
         .status()
 }
 
 /// Whether the request log, read with `bearer_token`, holds a
-/// `GET /fhir-r4/metadata` relayed from `192.0.2.1`.
+/// `GET /metadata` relayed from `192.0.2.1`.
 async fn request_log_holds_forwarded_metadata(loopback_base_url: &Url, bearer_token: &str) -> bool {
     let response = forwarded_request_log_read(loopback_base_url, Some(bearer_token)).await;
     assert_eq!(response.status(), reqwest::StatusCode::OK);
@@ -415,7 +411,7 @@ async fn request_log_holds_forwarded_metadata(loopback_base_url: &Url, bearer_to
         .as_array()
         .expect("a requests array")
         .iter()
-        .any(|logged| logged["path"] == "/fhir-r4" && logged["address"] == "192.0.2.1")
+        .any(|logged| logged["path"] == "/metadata" && logged["address"] == "192.0.2.1")
 }
 
 /// The composition root's request-log wiring: the forwarded-request layer feeds
@@ -743,7 +739,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         &tunnel,
         None,
         &tunnel_get(
-            "/fhir-r4/.well-known/smart-configuration",
+            "/.well-known/smart-configuration",
             DOMAIN,
             "Forwarded: for=203.0.113.9;host=evil.example.com;proto=http\r\n",
         ),
@@ -774,7 +770,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     let (status, _) = tunnel_exchange(
         &tunnel,
         None,
-        &tunnel_get("/fhir-r4/metadata", "other.example.com", ""),
+        &tunnel_get("/metadata", "other.example.com", ""),
     )
     .await
     .expect("the tunnel listener answers");
@@ -785,7 +781,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         &tunnel,
         None,
         &tunnel_get(
-            "/fhir-r4/metadata",
+            "/metadata",
             "other.example.com",
             "Origin: https://app.example.com\r\n",
         ),
@@ -836,7 +832,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         let (status, _) = tunnel_exchange(
             &tunnel,
             Some(&proxy_header(source)),
-            &tunnel_get("/fhir-r4/metadata", DOMAIN, ""),
+            &tunnel_get("/metadata", DOMAIN, ""),
         )
         .await
         .expect("the tunnel listener answers after a PROXY header");
@@ -859,13 +855,13 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         tunnel_exchange(
             &tunnel,
             Some(&malformed),
-            &tunnel_get("/fhir-r4/metadata", DOMAIN, "")
+            &tunnel_get("/metadata", DOMAIN, "")
         )
         .await,
         None
     );
     assert!(forwarded_request_rx.try_recv().is_err());
-    let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/fhir-r4/metadata", DOMAIN, ""))
+    let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/metadata", DOMAIN, ""))
         .await
         .expect("the tunnel listener still answers");
     assert_eq!(status, 200);
@@ -996,7 +992,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
             .unwrap_or_else(|| panic!("{launch_url} carries {name}"))
     };
     let (launch, iss) = (launch_param("launch"), launch_param("iss"));
-    assert_eq!(iss, format!("{SERVER_ORIGIN}/fhir-r4"));
+    assert_eq!(iss, SERVER_ORIGIN);
     assert!(!launch.is_empty());
 
     let parked = authorize_health_viewer_launch(&loopback_base_url, &launch, &iss).await;

@@ -131,9 +131,8 @@ pub struct AuthorizeParams {
     pub launch: Option<String>,
     /// SMART App Launch audience: the FHIR server the app expects to call with
     /// the token. When present it must be this server's origin
-    /// (`https://<domain>`) or FHIR base (`https://<domain>/fhir-r4`), else
-    /// `invalid_request`. The minted token's `aud` is the server's origin
-    /// either way.
+    /// (`https://<domain>`), which is also its FHIR base, else
+    /// `invalid_request`. The minted token's `aud` is the server's origin.
     #[serde(default)]
     pub aud: Option<String>,
 }

@@ -2,18 +2,18 @@
  * SMART discovery: finding the FHIR base — the SMART `iss` — a server URL
  * signs in through, and the OAuth endpoints it advertises.
  *
- * A server URL is either a Wildflower server's API base, whose FHIR base is
- * `{serverUrl}/fhir-r4`, or a plain SMART server's FHIR base itself (the
- * SmartHealthIT demo's `…/fhir`). Nothing in the URL says which, so
- * {@link discoverSmartEndpoints} asks: the Wildflower location first, and the
- * URL itself only when that answers 404. A path-prefixed Wildflower server
- * (`https://example.org/wildflower`) is found at the first, like any other.
- * A Wildflower server answers it from `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
- * (mounted at `/fhir-r4/.well-known/smart-configuration`, and exempt from the
- * bearer gate — `gatekeeper-rust`'s `require_valid_bearer_token`), advertising
- * `authorization_endpoint` and `token_endpoint` derived from the origin it was
- * served on. Those advertised URLs are what the client uses; it never assumes
- * `/oauth/authorize` sits at the target's root.
+ * A server URL is a FHIR base: a Wildflower server serves FHIR at its root, so
+ * its address is its FHIR base, and a plain SMART server's is the URL itself
+ * (the SmartHealthIT demo's `…/fhir`). {@link discoverSmartEndpoints} reads the
+ * configuration under it, and the document says which kind of server it is: a
+ * Wildflower server lists {@link WILDFLOWER_SERVER_CAPABILITY} among its
+ * `capabilities`. A Wildflower server answers from
+ * `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
+ * (exempt from the bearer gate — `gatekeeper-rust`'s
+ * `require_valid_bearer_token`), advertising `authorization_endpoint` and
+ * `token_endpoint` derived from the origin it was served on. Those advertised
+ * URLs are what the client uses; it never assumes `/oauth/authorize` sits at
+ * the target's root.
  *
  * The validation is pure and returns an `Either`; the fetch is the async edge
  * and returns an `Effect` failing with {@link DiscoveryFailed}. Every failure a
@@ -22,7 +22,7 @@
  * whose `reason` the header bar renders verbatim.
  */
 
-import { Data, Effect, Either, Option, Schema } from 'effect'
+import { Data, Effect, Either, Schema } from 'effect'
 
 /** Raised when the chosen target cannot be signed in to, with the reason why. */
 class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
@@ -42,20 +42,26 @@ interface SmartEndpoints {
   readonly tokenEndpoint: string
 }
 
-/** Where a Wildflower server's FHIR API is mounted under its API base (`fhir-r4-rust`). */
-const WILDFLOWER_FHIR_PATH = '/fhir-r4'
+/**
+ * The SMART capability a Wildflower server's configuration lists, and a plain
+ * SMART server's doesn't. `smart-discovery.test.ts` reads the document
+ * `fhir-r4-rust` serves (its committed `snapshots/smart-configuration.json`)
+ * and expects a Wildflower server of it, so the two can't drift apart.
+ */
+const WILDFLOWER_SERVER_CAPABILITY = 'wildflower-server'
 
 /**
- * A Wildflower server, found by its SMART configuration answering under
- * `{serverUrl}/fhir-r4`, which is its FHIR base.
+ * A Wildflower server, found by its SMART configuration listing
+ * {@link WILDFLOWER_SERVER_CAPABILITY}. Its FHIR base is its address.
  */
 const WildflowerServer = Schema.TaggedStruct('WildflowerServer', {
   fhirBaseUrl: Schema.NonEmptyString,
 })
 
 /**
- * A plain SMART server, found by its SMART configuration answering under the
- * server URL itself, which is its FHIR base (the SmartHealthIT demo's `…/fhir`).
+ * A plain SMART server, whose SMART configuration doesn't list
+ * {@link WILDFLOWER_SERVER_CAPABILITY}. Its FHIR base is the server URL itself
+ * (the SmartHealthIT demo's `…/fhir`).
  */
 const PlainSmartServer = Schema.TaggedStruct('PlainSmartServer', {
   fhirBaseUrl: Schema.NonEmptyString,
@@ -157,12 +163,15 @@ const SmartConfiguration = Schema.Struct({
   authorization_endpoint: Schema.String,
   token_endpoint: Schema.String,
   code_challenge_methods_supported: Schema.optional(Schema.Array(Schema.String)),
+  capabilities: Schema.optional(Schema.Array(Schema.String)),
 })
 
 const decodeSmartConfiguration = Schema.decodeUnknownEither(SmartConfiguration)
 
 /**
- * The endpoints `document` advertises, or the reason it is unusable.
+ * The issuer the configuration `document` served under the FHIR base
+ * `fhirBaseUrl` describes — which kind of server it is and the endpoints it
+ * advertises — or the reason it is unusable.
  *
  * `code_challenge_methods_supported` is checked for `S256` when present,
  * because a server that cannot do S256 cannot complete this client's flow (the
@@ -170,10 +179,11 @@ const decodeSmartConfiguration = Schema.decodeUnknownEither(SmartConfiguration)
  * a document that omits the field is given the benefit of the doubt rather than
  * blocked on a hint.
  */
-const smartEndpointsFrom = (
+const smartIssuerFrom = (
+  fhirBaseUrl: string,
   document: unknown,
   options: { readonly pageIsSecure: boolean }
-): Either.Either<SmartEndpoints, DiscoveryFailed> => {
+): Either.Either<SmartIssuer, DiscoveryFailed> => {
   const decoded = decodeSmartConfiguration(document)
   if (Either.isLeft(decoded)) {
     return Either.left(
@@ -204,26 +214,28 @@ const smartEndpointsFrom = (
       })
     )
   }
-  return Either.right({ authorizationEndpoint, tokenEndpoint })
+  const smartServer = (configuration.capabilities ?? []).includes(WILDFLOWER_SERVER_CAPABILITY)
+    ? WildflowerServer.make({ fhirBaseUrl })
+    : PlainSmartServer.make({ fhirBaseUrl })
+  return Either.right({ smartServer, endpoints: { authorizationEndpoint, tokenEndpoint } })
 }
 
 /**
- * Fetch the SMART configuration document under the FHIR base `fhirBaseUrl`:
- * `Some` with the body when it answered, `None` when it answered 404 — there
- * is no configuration there, which {@link discoverSmartEndpoints} may try
- * elsewhere.
+ * Find the SMART issuer at `serverUrl` (canonical: no trailing slash), a FHIR
+ * base, and validate what it advertises. The {@link SmartServer} it describes
+ * is returned with the endpoints: its FHIR base is the `aud` the sign-in names,
+ * and its kind is what the signed-in app may offer.
  *
- * Every other way the request can fail — unreachable, another error status, a
- * non-JSON body — is a {@link DiscoveryFailed} naming the URL. An unreachable
- * server is never a 404: a network or CORS failure says nothing about where
- * the configuration is, so it must not send discovery on to a second URL.
+ * Every way the request can fail — unreachable, an error status (a 404
+ * included: there is no configuration there), a non-JSON body — is a
+ * {@link DiscoveryFailed} naming the URL.
  */
-const fetchSmartConfiguration = (
-  fhirBaseUrl: string,
-  options: { readonly fetch: typeof globalThis.fetch }
-): Effect.Effect<Option.Option<unknown>, DiscoveryFailed> =>
+const discoverSmartEndpoints = (
+  serverUrl: string,
+  options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
+): Effect.Effect<SmartIssuer, DiscoveryFailed> =>
   Effect.gen(function* () {
-    const url = smartConfigurationUrl(fhirBaseUrl)
+    const url = smartConfigurationUrl(serverUrl)
     const response = yield* Effect.tryPromise({
       try: () => options.fetch(url, { headers: { Accept: 'application/json' } }),
       // A network-level failure is indistinguishable from a CORS rejection to
@@ -233,7 +245,13 @@ const fetchSmartConfiguration = (
           reason: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
         }),
     })
-    if (response.status === 404) return Option.none()
+    if (response.status === 404) {
+      return yield* new DiscoveryFailed({
+        reason:
+          `${url} was not found (404). ` +
+          'Enter a Wildflower server’s address, or a SMART on FHIR server’s FHIR base URL.',
+      })
+    }
     if (!response.ok) {
       return yield* new DiscoveryFailed({
         reason: `${url} answered ${String(response.status)}. Is this a Wildflower server?`,
@@ -246,46 +264,7 @@ const fetchSmartConfiguration = (
           reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
         }),
     })
-    return Option.some(document)
-  })
-
-/**
- * Find `serverUrl`'s SMART issuer and validate what it advertises.
- *
- * `serverUrl` (canonical: no trailing slash) is read as a Wildflower server's
- * API base first, so the configuration is asked for under
- * `{serverUrl}/fhir-r4`. Only if that answers 404 is `serverUrl` read as a
- * plain FHIR base and asked directly. The {@link SmartServer} that answered is
- * returned with the endpoints: its FHIR base is the `aud` the sign-in names,
- * and its kind is what the signed-in app may offer. Two 404s fail with one
- * reason naming both URLs; any other failure at the first URL fails without
- * trying the second.
- */
-const discoverSmartEndpoints = (
-  serverUrl: string,
-  options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
-): Effect.Effect<SmartIssuer, DiscoveryFailed> =>
-  Effect.gen(function* () {
-    const wildflowerFhirBaseUrl = `${serverUrl}${WILDFLOWER_FHIR_PATH}`
-    const candidates: readonly SmartServer[] = [
-      WildflowerServer.make({ fhirBaseUrl: wildflowerFhirBaseUrl }),
-      PlainSmartServer.make({ fhirBaseUrl: serverUrl }),
-    ]
-    for (const smartServer of candidates) {
-      const document = yield* fetchSmartConfiguration(smartServer.fhirBaseUrl, options)
-      if (Option.isSome(document)) {
-        const endpoints = yield* smartEndpointsFrom(document.value, {
-          pageIsSecure: options.pageIsSecure,
-        })
-        return { smartServer, endpoints }
-      }
-    }
-    return yield* new DiscoveryFailed({
-      reason:
-        `Neither ${smartConfigurationUrl(wildflowerFhirBaseUrl)} nor ` +
-        `${smartConfigurationUrl(serverUrl)} was found (both answered 404). ` +
-        'Enter a Wildflower server’s address, or a SMART on FHIR server’s FHIR base URL.',
-    })
+    return yield* smartIssuerFrom(serverUrl, document, { pageIsSecure: options.pageIsSecure })
   })
 
 export {
@@ -298,8 +277,8 @@ export {
   isLoopbackHost,
   usableEndpointUrl,
   insecureTargetReason,
-  smartEndpointsFrom,
+  smartIssuerFrom,
   discoverSmartEndpoints,
-  WILDFLOWER_FHIR_PATH,
+  WILDFLOWER_SERVER_CAPABILITY,
 }
 export type { SmartEndpoints, SmartIssuer }

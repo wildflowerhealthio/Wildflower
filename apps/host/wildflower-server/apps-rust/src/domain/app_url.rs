@@ -128,7 +128,7 @@ mod tests {
             "https://example.com/x",
             // `http://` is an accepted absolute target too (TLS is not required).
             "http://example.com/x",
-            "https://example.com/x?iss={origin}/fhir-r4&launch={launch}",
+            "https://example.com/x?iss={origin}&launch={launch}",
         ] {
             let url: AppUrl = raw.parse().expect("parses");
             assert_eq!(url.to_string(), raw, "{raw} round-trips");
@@ -180,12 +180,12 @@ mod tests {
 
     #[test]
     fn substitutes_origin_and_launch_in_place() {
-        let url: AppUrl = "https://host/?iss={origin}/fhir-r4&launch={launch}"
+        let url: AppUrl = "https://host/?iss={origin}&launch={launch}"
             .parse()
             .unwrap();
         assert_eq!(
             url.to_url_with_params(&params("http://127.0.0.1:8080", "NONCE")),
-            "https://host/?iss=http://127.0.0.1:8080/fhir-r4&launch=NONCE",
+            "https://host/?iss=http://127.0.0.1:8080&launch=NONCE",
         );
     }
 }

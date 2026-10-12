@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use url::Url;
-use wildflowerhealthio_shared_structures::FHIR_R4_PATH;
 
 use super::LaunchContexts;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
@@ -108,8 +107,8 @@ pub(crate) struct CodeAuthorizationStarter<S: GatekeeperStore> {
     store: S,
     publisher: Arc<dyn PendingConsentPublisher>,
     first_party_client_id: Arc<str>,
-    /// The server's bare origin, `https://<domain>`: an `aud` must name it or
-    /// its FHIR base.
+    /// The server's bare origin, `https://<domain>`, also its FHIR base: an
+    /// `aud` must name it.
     server_origin: Arc<str>,
 }
 
@@ -142,7 +141,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     /// the fast path, and — while its redirect is untrusted — renders every
     /// failure locally rather than risk an open redirect.
     ///
-    /// A declared `aud` must be this server's origin or its FHIR base. A
+    /// A declared `aud` must be this server's origin (its FHIR base). A
     /// `launch` must name an unconsumed, unexpired launch context minted for
     /// this client; it is consumed (so it never works twice) and carried onto
     /// the parked request. Either failure is `invalid_request`, the same for
@@ -403,7 +402,10 @@ fn validate_code_params(
     }
     // A declared SMART `aud` must name this server.
     if let Some(aud) = authorize_query.aud {
-        if !names_this_server(aud, server_origin) {
+        // The server's origin is also its FHIR base, the `iss` every launch
+        // hands the app, so a SMART `aud` names this server exactly when it is
+        // that origin.
+        if aud != server_origin {
             return Err(fail(
                 OAuthErrorCode::InvalidRequest,
                 OAuthErrorKind::InvalidAudience,
@@ -411,16 +413,6 @@ fn validate_code_params(
         }
     }
     Ok(())
-}
-
-/// Whether a SMART `aud` names this server: exactly its origin
-/// (`https://<domain>`) or its FHIR base (`https://<domain>/fhir-r4`), the
-/// `iss` every launch hands the app.
-fn names_this_server(aud: &str, server_origin: &str) -> bool {
-    aud == server_origin
-        || aud
-            .strip_prefix(server_origin)
-            .is_some_and(|path| path == FHIR_R4_PATH)
 }
 
 /// A refusal of `authorize_query`: back to the client as `error` once its
@@ -678,35 +670,29 @@ mod tests {
         starter(store).0
     }
 
-    /// A declared `aud` is accepted when it is exactly this server's origin or
-    /// its FHIR base, and refused as `invalid_request` otherwise — back to a
+    /// A declared `aud` is accepted when it is exactly this server's origin
+    /// (also its FHIR base), and refused as `invalid_request` otherwise — back to a
     /// trusted redirect, or as the local page while the redirect is untrusted.
     #[test]
     fn aud_must_name_this_server() {
         let code_authorization_starter = registered_app_starter();
-        for accepted in [
-            "https://ruth.relay.example",
-            "https://ruth.relay.example/fhir-r4",
-        ] {
-            let authorize_query = AuthorizeRequest {
-                aud: Some(accepted),
-                ..request("app", "openid")
-            };
-            assert!(
-                matches!(
-                    code_authorization_starter.start(&authorize_query, ids(), Utc::now()),
-                    Ok(AuthorizeNextStep::AwaitOwner { .. })
-                ),
-                "{accepted} is this server",
-            );
-        }
+        let authorize_query = AuthorizeRequest {
+            aud: Some("https://ruth.relay.example"),
+            ..request("app", "openid")
+        };
+        assert!(
+            matches!(
+                code_authorization_starter.start(&authorize_query, ids(), Utc::now()),
+                Ok(AuthorizeNextStep::AwaitOwner { .. })
+            ),
+            "the origin is this server",
+        );
         for refused in [
             "https://ruth.relay.example/",
-            "https://ruth.relay.example/fhir-r4/",
-            "https://ruth.relay.example/fhir-r5",
-            "https://ruth.relay.example.evil/fhir-r4",
-            "http://ruth.relay.example/fhir-r4",
-            "https://other.relay.example/fhir-r4",
+            "https://ruth.relay.example/fhir-r4",
+            "https://ruth.relay.example.evil",
+            "http://ruth.relay.example",
+            "https://other.relay.example",
             "",
         ] {
             let authorize_query = AuthorizeRequest {
@@ -845,7 +831,7 @@ mod tests {
             .unwrap();
         let wrong_aud = AuthorizeRequest {
             launch: Some("launch-1"),
-            aud: Some("https://other.relay.example/fhir-r4"),
+            aud: Some("https://other.relay.example"),
             ..request("app", "openid")
         };
         assert!(code_authorization_starter

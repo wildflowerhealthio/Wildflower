@@ -1,22 +1,26 @@
 # fhir-r4-rust FHIR R4 Capability Statement (server)
 
-This describes the **server** — the running FHIR R4 endpoint mounted at `/fhir-r4`. That server is [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs) (HFS) embedded by `fhir-r4-rust` (see `src/lib.rs`); it opens a sqlite store and mounts HFS's Axum router at `/fhir-r4/*`.
+This describes the **server** — the running FHIR R4 endpoint served at the server's root, so its FHIR base is its origin. That server is [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs) (HFS) embedded by `fhir-r4-rust` (see `src/lib.rs`); it opens a sqlite store and serves HFS's Axum router at the root.
 
-**HFS's own `CapabilityStatement` is the source of truth for what the server supports.** HFS implements standard FHIR R4, and it publishes a live, machine-readable `CapabilityStatement` at `GET /fhir-r4/metadata` (unauthenticated). For "does the server support _X_?", read that resource or the [HFS project](https://github.com/HeliosSoftware/hfs) — do not re-catalogue standard FHIR R4 here.
+**HFS's own `CapabilityStatement` is the source of truth for what the server supports.** HFS implements standard FHIR R4, and it publishes a live, machine-readable `CapabilityStatement` at `GET /metadata` (unauthenticated). For "does the server support _X_?", read that resource or the [HFS project](https://github.com/HeliosSoftware/hfs) — do not re-catalogue standard FHIR R4 here.
 
 This doc records only where `fhir-r4-rust` **diverges from, or adds to, stock HFS**: the handlers we mount ahead of HFS's router, the auth wiring, and the store limitations that change observable behaviour. When a divergence is fixed or a new one is introduced, amend this list in the same change.
 
 > The **client** side — what the `fhir-r4` TypeScript `HttpApi`/schemas declare and validate — is catalogued separately in [`fhir-r4/docs/Client Capabilities Reference.md`](../../../../../slices/fhir/fhir-r4/docs/Client%20Capabilities%20Reference.md). There is no automated drift guard between the two; they are hand-synchronized.
 
+## Served at the root, on FHIR paths only
+
+The FHIR API shares the server's root with the other slices (`/oauth`, `/apps`, `/health`, …). HFS answers through a fallback rather than a fixed set of routes, so the host can't merge it in beside them: `wildflower-server-rust`'s `root_fallback` sends a request no slice route claims to the (bearer-gated) FHIR router only when `is_fhir_r4_route` says it is FHIR's, and gives every other path the host's own `404`. FHIR's are: `POST /` (a batch or transaction at the base; a `GET /` is someone opening the server), a path under an R4 resource type (case-sensitive, from `helios_rest::fhir_types`), a system-level `$operation`, `metadata`, `_history`, `_search`, `_liveness`, `_readiness`, HFS's bulk-data (`export*`, `bulk-submit-*`), admin (`admin`), console (`console`) and subscription (`ws`) surfaces, and the `.well-known/smart-configuration` and `.well-known/bulk-submit-jwks.json` documents. HFS's own `/health` is never reached: the host serves `/health` itself.
+
 ## SMART App Launch discovery override
 
-`GET /fhir-r4/.well-known/smart-configuration` is handled locally (`src/smart_configuration.rs`), mounted ahead of HFS with HFS's router as the fallback.
+`GET /.well-known/smart-configuration` is handled locally (`src/smart_configuration.rs`), mounted ahead of HFS with HFS's router as the fallback.
 
-HFS's built-in discovery doc is shaped for **SMART Backend Services** — it advertises `client_credentials` with `token_endpoint_auth_methods_supported: ["private_key_jwt"]` only. Public **SMART App Launch** clients (e.g. the SMART growth-chart sample) need the `authorization_code` grant and an `authorization_endpoint`. Our override advertises the gatekeeper authorize/token URLs that already exist at the host root, so a SMART app fetches discovery here and follows the links straight to gatekeeper for the authorize/token exchange.
+HFS's built-in discovery doc is shaped for **SMART Backend Services** — it advertises `client_credentials` with `token_endpoint_auth_methods_supported: ["private_key_jwt"]` only. Public **SMART App Launch** clients (e.g. the SMART growth-chart sample) need the `authorization_code` grant and an `authorization_endpoint`. Our override advertises the gatekeeper authorize/token URLs that already exist at the host root, so a SMART app fetches discovery here and follows the links straight to gatekeeper for the authorize/token exchange. Its `capabilities` also list `wildflower-server`, which is how a client (`gatekeeper-core`'s discovery) tells a Wildflower server from a plain SMART server answering at the same kind of URL.
 
 ## `$everything` operation (added; Patient only)
 
-`GET /fhir-r4/Patient/{id}/$everything` is implemented locally (`src/patient_everything.rs`), mounted ahead of HFS — **HFS ships no `$everything`**. It delegates data-fetching back into HFS's own handlers in-process (a `read` for the Patient, then an indexed `subject=` search per related type), re-driving a clone of HFS's router with sub-requests that carry the caller's `Authorization` header, so HFS's SMART v2 scope enforcement stays in the path exactly as for a direct `GET /Patient/{id}`.
+`GET /Patient/{id}/$everything` is implemented locally (`src/patient_everything.rs`), mounted ahead of HFS — **HFS ships no `$everything`**. It delegates data-fetching back into HFS's own handlers in-process (a `read` for the Patient, then an indexed `subject=` search per related type), re-driving a clone of HFS's router with sub-requests that carry the caller's `Authorization` header, so HFS's SMART v2 scope enforcement stays in the path exactly as for a direct `GET /Patient/{id}`.
 
 Narrowings relative to spec FHIR `$everything`:
 
@@ -28,7 +32,7 @@ Narrowings relative to spec FHIR `$everything`:
 
 ## `base_url` (the public origin, for every caller)
 
-HFS's `base_url` is the prefix of every URL it emits: search Bundle `self`/`next` links, `entry.fullUrl`, and a create's `Location`. It is `{public_origin}/fhir-r4`, from `FhirR4Config::public_origin`, set once when `setup_fhir_r4` builds HFS's router.
+HFS's `base_url` is the prefix of every URL it emits: search Bundle `self`/`next` links, `entry.fullUrl`, and a create's `Location`. It is the bare `public_origin`, from `FhirR4Config::public_origin`, set once when `setup_fhir_r4` builds HFS's router.
 
 Consequence: **`base_url` is the same for every caller, not the origin the request arrived at.** A request served on loopback gets links on the public origin. The `$everything` and SMART discovery overrides above are different: they render the served origin per request.
 
@@ -54,4 +58,4 @@ Either way, a fixed set of discovery/health paths stays unauthenticated per the 
 
 ## Token revocation on the FHIR path (a revocation-checking `AuthProvider`)
 
-When auth is on, HFS authenticates through `RevocationCheckingProvider` in `src/auth.rs` — a `helios_auth::AuthProvider` that wraps helios's `JwksBearerAuthProvider` and, once the token validates, checks its `jti` (`Principal::jti`) against the shared revocation denylist (`token-revocation-rust`). It rejects the token **iff** its `jti` is on the denylist, and it never stores — it is **not** a single-use nonce cache (that would `401` every FHIR request after the first, since a gatekeeper access token is a multi-use bearer reused across many FHIR calls). helios keeps no revocation hook of its own, hence the wrapper. This is the FHIR-side, per-`jti` half of token revocation (#269); the per-subject _epoch_ half needs `iat`, which helios's `Principal` doesn't carry, and is enforced by gatekeeper's bearer gate, which fronts every `/fhir-r4/*` request and runs first. A store read failure fails closed (`AuthError::InternalError` → the request is rejected, never admitted). Both enforcement points read the one store the host builds on the shared database.
+When auth is on, HFS authenticates through `RevocationCheckingProvider` in `src/auth.rs` — a `helios_auth::AuthProvider` that wraps helios's `JwksBearerAuthProvider` and, once the token validates, checks its `jti` (`Principal::jti`) against the shared revocation denylist (`token-revocation-rust`). It rejects the token **iff** its `jti` is on the denylist, and it never stores — it is **not** a single-use nonce cache (that would `401` every FHIR request after the first, since a gatekeeper access token is a multi-use bearer reused across many FHIR calls). helios keeps no revocation hook of its own, hence the wrapper. This is the FHIR-side, per-`jti` half of token revocation (#269); the per-subject _epoch_ half needs `iat`, which helios's `Principal` doesn't carry, and is enforced by gatekeeper's bearer gate, which fronts every FHIR request and runs first. A store read failure fails closed (`AuthError::InternalError` → the request is rejected, never admitted). Both enforcement points read the one store the host builds on the shared database.

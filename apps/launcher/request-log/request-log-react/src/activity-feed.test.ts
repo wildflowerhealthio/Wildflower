@@ -37,7 +37,7 @@ const refusedRequest = (
   address,
   servedHost: Option.some('dev1.example.com'),
   method: 'GET',
-  path: '/fhir-r4/Patient',
+  path: '/Patient',
   status: 401,
   responseBytes: Option.none(),
   durationMs: 3,

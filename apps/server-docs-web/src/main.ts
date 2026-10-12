@@ -12,9 +12,9 @@ import {
   completeSignIn,
   insecureTargetReason,
   isAuthorizationResponse,
+  normalizeServerUrl,
   redirectUriForPage,
   searchWithServerUrl,
-  serverUrlNamedBy,
   standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
@@ -336,7 +336,7 @@ runSignInEffect(
 // line already says.
 if (
   Option.isSome(arrivingLaunch) &&
-  serverUrlNamedBy(arrivingLaunch.value.iss) !== undefined &&
+  normalizeServerUrl(arrivingLaunch.value.iss) !== undefined &&
   insecureTargetReason(initialServerUrl, { pageIsSecure }) === undefined
 ) {
   startSigningIn(initialServerUrl, arrivingLaunch.value.launch)

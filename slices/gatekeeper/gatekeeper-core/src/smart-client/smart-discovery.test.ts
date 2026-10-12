@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, Match } from 'effect'
 import * as fc from 'fast-check'
@@ -9,8 +11,9 @@ import {
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
-  smartEndpointsFrom,
+  smartIssuerFrom,
   usableEndpointUrl,
+  WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
 } from './smart-discovery.ts'
 
@@ -26,6 +29,13 @@ const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> =>
   grant_types_supported: ['authorization_code', 'client_credentials'],
   response_types_supported: ['code'],
   code_challenge_methods_supported: ['S256'],
+  capabilities: ['launch-ehr', 'client-public', WILDFLOWER_SERVER_CAPABILITY],
+})
+
+/** A plain SMART server's discovery document: the same, without the Wildflower capability. */
+const plainSmartDiscoveryDocument = (origin: string): Record<string, unknown> => ({
+  ...wildflowerDiscoveryDocument(origin),
+  capabilities: ['launch-ehr', 'client-public'],
 })
 
 const onSecurePage = { pageIsSecure: true }
@@ -33,8 +43,8 @@ const onSecurePage = { pageIsSecure: true }
 describe('smartConfigurationUrl', () => {
   it('appends the SMART well-known path to the canonical FHIR base', () => {
     // Act / Assert
-    expect(smartConfigurationUrl('https://ruth.wildflowerhealth.io/fhir-r4')).toBe(
-      'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration'
+    expect(smartConfigurationUrl('https://ruth.wildflowerhealth.io')).toBe(
+      'https://ruth.wildflowerhealth.io/.well-known/smart-configuration'
     )
     expect(smartConfigurationUrl('https://launch.smarthealthit.org/v/r4/fhir')).toBe(
       `https://launch.smarthealthit.org/v/r4/fhir${SMART_CONFIGURATION_PATH}`
@@ -115,20 +125,94 @@ describe('usableEndpointUrl', () => {
   })
 })
 
-describe('smartEndpointsFrom', () => {
-  it('reads both endpoints out of a Wildflower discovery document', () => {
+describe('smartIssuerFrom', () => {
+  it('should read a Wildflower server and both its endpoints out of its discovery document', () => {
     // Arrange
     const document = wildflowerDiscoveryDocument('https://ruth.wildflowerhealth.io')
 
     // Act
-    const result = smartEndpointsFrom(document, onSecurePage)
+    const result = smartIssuerFrom('https://ruth.wildflowerhealth.io', document, onSecurePage)
 
     // Assert
     expect(result).toEqual(
       Either.right({
-        authorizationEndpoint: 'https://ruth.wildflowerhealth.io/oauth/authorize',
-        tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
+        smartServer: WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }),
+        endpoints: {
+          authorizationEndpoint: 'https://ruth.wildflowerhealth.io/oauth/authorize',
+          tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
+        },
       })
+    )
+  })
+
+  it('should read a plain SMART server out of a document without the Wildflower capability', () => {
+    // Arrange — the SmartHealthIT demo: its base is the URL itself.
+    const demo = 'https://launch.smarthealthit.org/v/r4/fhir'
+    const document = plainSmartDiscoveryDocument('https://launch.smarthealthit.org')
+
+    // Act
+    const result = smartIssuerFrom(demo, document, onSecurePage)
+
+    // Assert
+    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+      Either.right(PlainSmartServer.make({ fhirBaseUrl: demo }))
+    )
+  })
+
+  it('should read a document that lists no capabilities at all as a plain SMART server', () => {
+    // Arrange
+    const { capabilities: _omitted, ...document } =
+      wildflowerDiscoveryDocument('https://example.test')
+
+    // Act
+    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+
+    // Assert
+    expect(Either.map(result, (issuer) => issuer.smartServer._tag)).toEqual(
+      Either.right('PlainSmartServer')
+    )
+  })
+
+  it('should read the document a Wildflower server serves as a Wildflower server', () => {
+    // Arrange — the document `fhir-r4-rust` serves for this origin, as its
+    // `smart_configuration_snapshot_is_up_to_date` test commits it.
+    const servedDocument: unknown = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../../../apps/host/wildflower-server/fhir-r4-rust/snapshots/smart-configuration.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    )
+
+    // Act
+    const result = smartIssuerFrom('https://ruth.wildflowerhealth.io', servedDocument, onSecurePage)
+
+    // Assert
+    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
+      Either.right(WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }))
+    )
+  })
+
+  it('should read a Wildflower server wherever the capability sits among the others', () => {
+    fc.assert(
+      fc.property(fc.array(fc.string()), fc.array(fc.string()), (before, after) => {
+        // Arrange
+        const document = {
+          ...plainSmartDiscoveryDocument('https://example.test'),
+          capabilities: [...before, WILDFLOWER_SERVER_CAPABILITY, ...after],
+        }
+
+        // Act
+        const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+
+        // Assert
+        expect(Either.map(result, (issuer) => issuer.smartServer._tag)).toEqual(
+          Either.right('WildflowerServer')
+        )
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
@@ -143,7 +227,7 @@ describe('smartEndpointsFrom', () => {
         ),
         (document) => {
           // Act
-          const result = smartEndpointsFrom(document, onSecurePage)
+          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
 
           // Assert
           expect(Either.isLeft(result)).toBe(true)
@@ -166,7 +250,7 @@ describe('smartEndpointsFrom', () => {
           }
 
           // Act
-          const result = smartEndpointsFrom(document, onSecurePage)
+          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
 
           // Assert
           expect(Either.isLeft(result)).toBe(true)
@@ -182,7 +266,7 @@ describe('smartEndpointsFrom', () => {
         fc.oneof(fc.string(), fc.integer(), fc.constant(null), fc.array(fc.jsonValue())),
         (document) => {
           // Act
-          const result = smartEndpointsFrom(document, onSecurePage)
+          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
 
           // Assert
           expect(Either.isLeft(result)).toBe(true)
@@ -200,7 +284,7 @@ describe('smartEndpointsFrom', () => {
     }
 
     // Act
-    const result = smartEndpointsFrom(document, onSecurePage)
+    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
 
     // Assert
     if (Either.isRight(result)) throw new Error('expected a plain-only server to be refused')
@@ -214,7 +298,7 @@ describe('smartEndpointsFrom', () => {
       wildflowerDiscoveryDocument('https://example.test')
 
     // Act
-    const result = smartEndpointsFrom(document, onSecurePage)
+    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
 
     // Assert
     expect(Either.isRight(result)).toBe(true)
@@ -222,7 +306,7 @@ describe('smartEndpointsFrom', () => {
 })
 
 describe('discoverSmartEndpoints', () => {
-  it('finds a Wildflower server’s configuration under its /fhir-r4 mount, and names it a Wildflower server at that base', async () => {
+  it('should find a Wildflower server’s configuration at its origin, its FHIR base', async () => {
     // Arrange
     const requested: string[] = []
     const fetchStub = respondingWith((url) => {
@@ -238,86 +322,32 @@ describe('discoverSmartEndpoints', () => {
       })
     )
 
-    // Assert — found at the first place asked, so nothing else was.
-    expect(requested).toEqual([
-      'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration',
-    ])
-    expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
-      Either.right(
-        WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io/fhir-r4' })
-      )
-    )
-  })
-
-  it('finds a Wildflower server published behind a path prefix the same way', async () => {
-    // Arrange
-    const fetchStub = respondingWith((url) =>
-      url === 'https://example.org/wildflower/fhir-r4/.well-known/smart-configuration'
-        ? jsonResponse(wildflowerDiscoveryDocument('https://example.org/wildflower'))
-        : new Response('not here', { status: 404 })
-    )
-
-    // Act
-    const result = await runToEither(
-      discoverSmartEndpoints('https://example.org/wildflower', {
-        fetch: fetchStub,
-        pageIsSecure: true,
-      })
-    )
-
     // Assert
+    expect(requested).toEqual(['https://ruth.wildflowerhealth.io/.well-known/smart-configuration'])
     expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
-      Either.right(WildflowerServer.make({ fhirBaseUrl: 'https://example.org/wildflower/fhir-r4' }))
+      Either.right(WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }))
     )
   })
 
-  it('reads the URL as a plain SMART server’s FHIR base when there is nothing under /fhir-r4', async () => {
+  it('should read the URL as a plain SMART server’s FHIR base when its document says so', async () => {
     // Arrange — the SmartHealthIT demo: its base is the URL itself.
     const demo = 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiJd/fhir'
-    const requested: string[] = []
-    const fetchStub = respondingWith((url) => {
-      requested.push(url)
-      return url === `${demo}/.well-known/smart-configuration`
-        ? jsonResponse(wildflowerDiscoveryDocument('https://launch.smarthealthit.org'))
-        : new Response('not here', { status: 404 })
-    })
+    const fetchStub = respondingWith(() =>
+      jsonResponse(plainSmartDiscoveryDocument('https://launch.smarthealthit.org'))
+    )
 
     // Act
     const result = await runToEither(
       discoverSmartEndpoints(demo, { fetch: fetchStub, pageIsSecure: true })
     )
 
-    // Assert — the Wildflower location first, then the URL itself.
-    expect(requested).toEqual([
-      `${demo}/fhir-r4/.well-known/smart-configuration`,
-      `${demo}/.well-known/smart-configuration`,
-    ])
+    // Assert
     expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
       Either.right(PlainSmartServer.make({ fhirBaseUrl: demo }))
     )
   })
 
-  it('does not look anywhere else when the server cannot be reached', async () => {
-    // A network or CORS failure says nothing about where the configuration is.
-    // Arrange
-    const requested: string[] = []
-    const fetchStub: typeof globalThis.fetch = (input) => {
-      requested.push(requestUrl(input))
-      return Promise.reject(new TypeError('Failed to fetch'))
-    }
-
-    // Act
-    const result = await runToEither(
-      discoverSmartEndpoints('https://down.test', { fetch: fetchStub, pageIsSecure: true })
-    )
-
-    // Assert
-    expect(requested).toEqual(['https://down.test/fhir-r4/.well-known/smart-configuration'])
-    if (Either.isRight(result)) throw new Error('expected an unreachable server to be reported')
-    expect(result.left.reason).toContain('Could not reach')
-  })
-
-  it('names both places it looked when neither has a configuration', async () => {
+  it('should name where it looked when there is no configuration there', async () => {
     // Arrange
     const fetchStub = respondingWith(() => new Response('not here', { status: 404 }))
 
@@ -327,10 +357,7 @@ describe('discoverSmartEndpoints', () => {
     )
 
     // Assert
-    if (Either.isRight(result)) throw new Error('expected two 404s to be reported')
-    expect(result.left.reason).toContain(
-      'https://nothing.test/base/fhir-r4/.well-known/smart-configuration'
-    )
+    if (Either.isRight(result)) throw new Error('expected a 404 to be reported')
     expect(result.left.reason).toContain(
       'https://nothing.test/base/.well-known/smart-configuration'
     )
@@ -355,26 +382,22 @@ describe('discoverSmartEndpoints', () => {
 
   it('reports a target that answers with an error status', async () => {
     await fc.assert(
-      // Anything but 404, the one status that sends discovery on to the URL itself.
-      fc.asyncProperty(
-        fc.integer({ min: 400, max: 599 }).filter((status) => status !== 404),
-        async (status) => {
-          // Arrange
-          const fetchStub = respondingWith(() => new Response('nope', { status }))
+      fc.asyncProperty(fc.integer({ min: 400, max: 599 }), async (status) => {
+        // Arrange
+        const fetchStub = respondingWith(() => new Response('nope', { status }))
 
-          // Act
-          const result = await runToEither(
-            discoverSmartEndpoints('https://not-wildflower.test', {
-              fetch: fetchStub,
-              pageIsSecure: true,
-            })
-          )
+        // Act
+        const result = await runToEither(
+          discoverSmartEndpoints('https://not-wildflower.test', {
+            fetch: fetchStub,
+            pageIsSecure: true,
+          })
+        )
 
-          // Assert
-          if (Either.isRight(result)) throw new Error('expected an error status to be reported')
-          expect(result.left.reason).toContain(String(status))
-        }
-      ),
+        // Assert
+        if (Either.isRight(result)) throw new Error('expected an error status to be reported')
+        expect(result.left.reason).toContain(String(status))
+      }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
   })

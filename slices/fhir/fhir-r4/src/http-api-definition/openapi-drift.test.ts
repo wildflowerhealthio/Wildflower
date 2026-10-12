@@ -20,7 +20,7 @@ import * as fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { OpenApi } from '@effect/platform'
 import { describe, expect, it } from 'vite-plus/test'
-import { FhirResourcesApi, FhirResourcesApiPrefix } from './index.ts'
+import { FhirResourcesApi } from './index.ts'
 
 const snapshotUrl = new URL('../../openapi/fhir-r4.openapi.json', import.meta.url)
 
@@ -31,7 +31,7 @@ describe('generateFhirR4OpenApiSpec', () => {
 
     // Assert
     const everythingPaths = Object.keys(spec.paths).filter((p) => p.endsWith('/$everything'))
-    expect(everythingPaths).toEqual(['/fhir-r4/Patient/{id}/$everything'])
+    expect(everythingPaths).toEqual(['/Patient/{id}/$everything'])
   })
 
   it('should strip the framework-injected decode-error responses and their schemas', () => {
@@ -95,18 +95,6 @@ function generateFhirR4OpenApiSpec(): Spec {
   // into the loose `Spec` shape used only for the transforms below.
   // oxlint-disable-next-line typescript/no-unsafe-assignment
   const spec: Spec = JSON.parse(JSON.stringify(OpenApi.fromApi(FhirResourcesApi)))
-
-  // The HttpApi no longer bakes in the mount prefix — the typed client emits
-  // base-relative paths so it can address arbitrary FHIR servers. Re-apply the
-  // prefix here so the committed snapshot the published server-docs console
-  // bundles shows the mounted `/fhir-r4/…` paths. `Object.entries`/`fromEntries`
-  // preserve insertion order, so generation order (asserted below) is unchanged.
-  spec.paths = Object.fromEntries(
-    Object.entries(spec.paths).map(([path, operations]) => [
-      `${FhirResourcesApiPrefix}${path}`,
-      operations,
-    ])
-  )
 
   spec.info = {
     title: 'FHIR R4 (HFS)',

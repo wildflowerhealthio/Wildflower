@@ -115,9 +115,9 @@ was opened with, `iss` and the EHR's `launch`, off its query string. The
 fhirclient-based SMART apps read it through `fhir-r4-react/smart`, which
 re-exports it. A page that signs in with this package turns a launch into its
 `?server=` with `searchAfterArrivingLaunch` (`server-target.ts`): `iss` and
-`launch` leave the URL, and `?server=` becomes the server `iss` names,
-`serverUrlNamedBy`, which drops a Wildflower server's `/fhir-r4` mount. That
-function is the one place the mount is stripped.
+`launch` leave the URL, and `?server=` becomes the server `iss` names, in
+`normalizeServerUrl`'s canonical form: a Wildflower server serves FHIR at its
+root, so its `iss` is its address.
 
 A sign-in is a SMART standalone launch unless the app hands `beginSignIn` a
 non-empty `launch`: the EHR launch value it was opened with (the launching system's
@@ -142,18 +142,19 @@ object instead of a `Window`. `STANDALONE_LAUNCH_SCOPES` is the requested
 identical `allowed_scopes`, with a `db/clients.rs` test that fails if they
 drift, so the browser side is one list rather than a copy per app.
 
-The FHIR base a sign-in discovers at — the SMART `iss`, which the authorization
-request also names as its `aud` — is found by asking, not read off the URL.
-`discoverSmartEndpoints(serverUrl, …)` tries the Wildflower location first,
-`{serverUrl}/fhir-r4/.well-known/smart-configuration`, which finds a Wildflower
-server at its origin or behind a path prefix alike. Only if that answers **404**
-does it try `{serverUrl}/.well-known/smart-configuration`, reading `serverUrl`
-as a plain SMART server's FHIR base (the SmartHealthIT demo's). Any other
-failure — unreachable, blocked by CORS, another status — is reported as it is,
-never sent on to the second URL, and two 404s fail naming both. It returns the
-`SmartServer` that answered — `WildflowerServer` or `PlainSmartServer`, each
-carrying its `fhirBaseUrl` — with the endpoints, and `beginSignIn` names that
-base as the `aud`. The discovered token endpoint, `serverUrl` and the
+The server URL a sign-in starts from is its FHIR base — the SMART `iss`, which
+the authorization request also names as its `aud`: a Wildflower server serves
+FHIR at its root (or at the root of the path prefix it is published behind),
+and a plain SMART server's URL is its FHIR base (the SmartHealthIT demo's).
+`discoverSmartEndpoints(serverUrl, …)` reads
+`{serverUrl}/.well-known/smart-configuration`, and the document says which kind
+of server it is: a Wildflower server lists `WILDFLOWER_SERVER_CAPABILITY`
+(`wildflower-server`, advertised by `fhir-r4-rust`'s discovery override) among
+its `capabilities`. Any failure — unreachable, blocked by CORS, a 404 or another
+status — is reported as it is. It returns the `SmartServer` the document
+describes — `WildflowerServer` or `PlainSmartServer`, each carrying its
+`fhirBaseUrl` — with the endpoints, and `beginSignIn` names that base as the
+`aud`. The discovered token endpoint, `serverUrl` and the
 `SmartServer` ride the pending record, so the return leg is the same either way
 and the redeemed `Session` says which kind of server it signed in to. The
 `Session` also carries the token response's `patient`, the launch context a

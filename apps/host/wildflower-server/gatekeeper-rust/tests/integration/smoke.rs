@@ -41,13 +41,10 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
     // discovery path exempted — exercises the real middleware wiring (full path,
     // exact match) rather than just the `is_exempt` helper.
     let inner = Router::new()
-        .route("/fhir-r4/metadata", get(|| async { "ok" }))
-        .route("/fhir-r4/metadata-x", get(|| async { "ok" }))
-        .route("/fhir-r4/Patient", get(|| async { "ok" }));
-    let gated = inner.layer(gatekeeper_auth_middleware(
-        g.state.clone(),
-        &["/fhir-r4/metadata"],
-    ));
+        .route("/metadata", get(|| async { "ok" }))
+        .route("/metadata-x", get(|| async { "ok" }))
+        .route("/Patient", get(|| async { "ok" }));
+    let gated = inner.layer(gatekeeper_auth_middleware(g.state.clone(), &["/metadata"]));
 
     let status = |path: &'static str| {
         let gated = gated.clone();
@@ -61,14 +58,11 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
     };
 
     // Exempt path: served without any bearer token.
-    assert_eq!(status("/fhir-r4/metadata").await, StatusCode::OK);
+    assert_eq!(status("/metadata").await, StatusCode::OK);
     // A path that merely shares a prefix is NOT exempt — still gated.
-    assert_eq!(
-        status("/fhir-r4/metadata-x").await,
-        StatusCode::UNAUTHORIZED
-    );
+    assert_eq!(status("/metadata-x").await, StatusCode::UNAUTHORIZED);
     // A normal resource path is gated — 401 without a token.
-    assert_eq!(status("/fhir-r4/Patient").await, StatusCode::UNAUTHORIZED);
+    assert_eq!(status("/Patient").await, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -153,19 +147,19 @@ async fn a_token_for_this_server_passes_over_loopback_and_the_tunnel() {
 /// A token another server minted is refused, owner scopes and all, even signed
 /// with a key this server holds: its `iss` and `aud` name the other server.
 /// So is a token naming another server as only one of the two, and one whose
-/// `aud` is this server's FHIR base rather than its origin.
+/// `aud` is a path under this server's origin.
 #[tokio::test]
 async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
     let (g, _host_owner_token, db) = spin_up();
     let other_server = "https://lab.relay.example";
-    let fhir_base = format!("{SERVER_ORIGIN}/fhir-r4");
+    let path_under_origin = format!("{SERVER_ORIGIN}/fhir-r4");
     let owner_scopes: Vec<String> = wildflowerhealthio_gatekeeper::default_local_granted_scopes();
     let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
     for (issuer, audience) in [
         (other_server, other_server),
         (other_server, SERVER_ORIGIN),
         (SERVER_ORIGIN, other_server),
-        (SERVER_ORIGIN, fhir_base.as_str()),
+        (SERVER_ORIGIN, path_under_origin.as_str()),
     ] {
         let token = mint_token_naming(&db, &owner_scopes, issuer, audience);
         for forwarded in [false, true] {

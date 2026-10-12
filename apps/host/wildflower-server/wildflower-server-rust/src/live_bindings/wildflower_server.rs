@@ -33,9 +33,9 @@ use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
-use crate::http::not_found;
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
+use crate::http::{not_found, root_fallback};
 use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 
 // Filenames of the server's SQLite databases in its folder. These
@@ -320,7 +320,8 @@ pub async fn set_up(
 
     // The FHIR router carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
-    // the bearer gate; every other `/fhir-r4/*` path still requires a token.
+    // the bearer gate; every other FHIR path still requires a token. It serves
+    // at the root through the fallback below, not as merged routes.
     let gated_fhir_r4 = fhir_r4_router.layer(gatekeeper_auth_middleware(
         gatekeeper.state.clone(),
         wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
@@ -471,7 +472,6 @@ pub async fn set_up(
     // listener serves. The listener-specific layers go on top of this, below.
     let inner_router = Router::new()
         .merge(gatekeeper.router)
-        .merge(gated_fhir_r4)
         .merge(gated_ohif_server)
         .merge(gated_request_log)
         // `/health`: the draft-06 health report of the server's checks,
@@ -485,12 +485,16 @@ pub async fn set_up(
         )
         .merge(gated_apps)
         .merge(gated_databases)
-        // No slice claimed the route: `404`, pointing a browser at the hosted
-        // launcher (the server serves no UI of its own). See `not_found.rs`.
-        .fallback(not_found::fallback(Arc::new(not_found::NotFoundConfig {
-            launcher_base,
-            loopback_base_url: loopback_base_url.clone(),
-        })));
+        // No slice claimed the route: the FHIR API when the request is FHIR's,
+        // else `404`, pointing a browser at the hosted launcher (the server
+        // serves no UI of its own). See `root_fallback.rs` and `not_found.rs`.
+        .fallback_service(root_fallback::fallback(
+            gated_fhir_r4,
+            Arc::new(not_found::NotFoundConfig {
+                launcher_base,
+                loopback_base_url: loopback_base_url.clone(),
+            }),
+        ));
 
     // Every forwarded request is reported to the request log once its response
     // is ready, and to the host unless it is a `/health` check (the

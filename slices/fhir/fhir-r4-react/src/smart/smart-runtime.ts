@@ -46,9 +46,9 @@ const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test
  * the app cross-origin. So this app authenticates the way any third-party SMART
  * app does: with the token it was granted.
  *
- * The base is `session.serverUrl` verbatim — the typed client no longer bakes in
- * Wildflower's `/fhir-r4` mount path, so whatever server the handshake named is
- * the base, prepended as-is (trailing slashes trimmed). The typed client emits
+ * The base is `session.serverUrl` verbatim — the typed client emits
+ * base-relative paths, so whatever server the handshake named is the base,
+ * prepended as-is (trailing slashes trimmed). The typed client emits
  * base-relative paths like `/Patient`, which become `{serverUrl}/Patient`.
  *
  * The prefix is applied to *relative* URLs only. Prepending it to an
