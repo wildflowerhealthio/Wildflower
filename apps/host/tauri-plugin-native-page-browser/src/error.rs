@@ -2,22 +2,27 @@
 //! the JS `invoke(...)` rejection. Kept dependency-free (no `thiserror`) to
 //! match the workspace's lean host crates.
 //!
-//! The variants are platform-gated so each build constructs exactly the one it
-//! uses — an always-present variant that a given target never constructs would
-//! trip the `dead_code` lint (CI runs clippy with warnings denied).
+//! [`Error::InvalidUrl`] is built on every target, since both backends validate
+//! through `url_scheme::parse_http_url`. The failure variants are
+//! platform-gated so each build has only the one it constructs: an
+//! always-present variant that a target never constructs would trip the
+//! `dead_code` lint (CI runs clippy with warnings denied).
 
 use serde::{Serialize, Serializer};
 
 /// Errors returned by the native-page-browser plugin command.
 #[derive(Debug)]
 pub enum Error {
-    /// The native (Swift/Kotlin) plugin invocation failed, or the URL was
-    /// rejected before it. Carries the underlying message; only constructed on
-    /// mobile targets.
+    /// The caller's URL doesn't parse, or isn't `http(s)`. Carries why; no
+    /// backend was asked to open it.
+    InvalidUrl(String),
+    /// The native (Swift/Kotlin) plugin couldn't be registered, or its `open`
+    /// failed. Carries the underlying message; only constructed on mobile
+    /// targets.
     #[cfg(mobile)]
     PluginInvoke(String),
-    /// The URL was rejected, or the default browser couldn't be opened. Only
-    /// constructed on desktop targets.
+    /// The default browser couldn't be opened. Only constructed on desktop
+    /// targets.
     #[cfg(desktop)]
     Internal(String),
 }
@@ -25,12 +30,20 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Error::InvalidUrl(message) => {
+                write!(f, "native page browser can't open this URL: {message}")
+            }
             #[cfg(mobile)]
             Error::PluginInvoke(message) => {
                 write!(f, "native page browser plugin invocation failed: {message}")
             }
             #[cfg(desktop)]
-            Error::Internal(message) => write!(f, "native page browser error: {message}"),
+            Error::Internal(message) => {
+                write!(
+                    f,
+                    "native page browser couldn't open the default browser: {message}"
+                )
+            }
         }
     }
 }

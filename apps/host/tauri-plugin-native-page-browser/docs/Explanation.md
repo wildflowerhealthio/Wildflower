@@ -61,7 +61,7 @@ apps/host/tauri-plugin-native-page-browser/
 │   ├── lib.rs                 — init(), NativePageBrowserExt, plugin wiring
 │   ├── commands.rs            — the open IPC command
 │   ├── models.rs              — OpenRequest, BrowserEvent + wire-shape tests
-│   ├── error.rs               — Error (PluginInvoke on mobile / Internal on desktop)
+│   ├── error.rs               — Error (InvalidUrl; PluginInvoke on mobile / Internal on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
 │   ├── desktop.rs             — opens the default browser through tauri-plugin-opener
 │   └── mobile.rs              — registers + forwards open to the Swift (iOS) / Kotlin (Android) plugin
