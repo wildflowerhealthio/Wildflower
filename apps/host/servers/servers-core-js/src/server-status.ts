@@ -67,21 +67,43 @@ type Health = typeof HealthSchema.Type
 const optionalHealth = Schema.optionalWith(HealthSchema, { as: 'Option', exact: true })
 
 /**
+ * Where a running server's tunnel's connection to its relay stands: the first
+ * dial is under way (`connecting`); the relay accepted it (`connected`); a
+ * dial failed or the connection dropped, with why, and the tunnel dials
+ * again after a backoff (`reconnecting`); or the relay refused the tunnel's
+ * token (`tokenRejected`) or has no tunnel of its name (`tunnelUnknown`), and
+ * the tunnel has stopped dialing.
+ */
+const TunnelStateSchema = Schema.Union(
+  Schema.Struct({
+    kind: Schema.Literal('connecting', 'connected', 'tokenRejected', 'tunnelUnknown'),
+  }),
+  Schema.Struct({ kind: Schema.Literal('reconnecting'), error: Schema.String })
+)
+
+/** A decoded {@link TunnelStateSchema}. */
+type TunnelState = typeof TunnelStateSchema.Type
+
+/** `tunnel` while a run is in progress: absent until the run first reports it. */
+const optionalTunnel = Schema.optionalWith(TunnelStateSchema, { as: 'Option', exact: true })
+
+/**
  * One server's status on the host's unit runner, keyed by its domain, with
  * its certificate's state, as `servers_list` and the {@link EVENT} carry it.
  *
  * @remarks
  * Narrowed by its run state: a `running` status has `runningSince`; a
  * `stopped` one has the `lastStop` of its latest run, once it has run; only
- * a run in progress has `health`. Every status has `certificate`: the state
- * the run reported, while it has reported one, or else what the server's
- * certificate cache says.
+ * a run in progress has `health` and `tunnel`. Every status has
+ * `certificate`: the state the run reported, while it has reported one, or
+ * else what the server's certificate cache says.
  */
 const ServerStatusSchema = Schema.Union(
   Schema.Struct({
     domain: Schema.String,
     runState: Schema.Literal('starting'),
     health: optionalHealth,
+    tunnel: optionalTunnel,
     certificate: CertificateState.Schema,
   }),
   Schema.Struct({
@@ -89,6 +111,7 @@ const ServerStatusSchema = Schema.Union(
     runState: Schema.Literal('running'),
     runningSince: Schema.DateTimeUtc,
     health: optionalHealth,
+    tunnel: optionalTunnel,
     certificate: CertificateState.Schema,
   }),
   Schema.Struct({
@@ -122,6 +145,10 @@ const decodeEvent = Schema.decodeUnknownEither(ServerStatusSchema)
 const healthOf = (status: Type): Option.Option<Health> =>
   status.runState === 'stopped' ? Option.none() : status.health
 
+/** The server's tunnel's state, while a run in progress has reported it. */
+const tunnelOf = (status: Type): Option.Option<TunnelState> =>
+  status.runState === 'stopped' ? Option.none() : status.tunnel
+
 /** How the server's latest run stopped, while it is stopped and once it has run. */
 const lastStopOf = (status: Type): Option.Option<RunStop> =>
   status.runState === 'stopped' ? status.lastStop : Option.none()
@@ -136,5 +163,7 @@ export {
   RunStopSchema,
   ServerStatusSchema as Schema,
   StopReasonSchema,
+  TunnelStateSchema,
+  tunnelOf,
 }
-export type { Health, RunState, RunStop, Type }
+export type { Health, RunState, RunStop, TunnelState, Type }

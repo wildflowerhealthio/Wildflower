@@ -1,6 +1,10 @@
 import type { StatusTone } from '@wildflowerhealthio/react-tundraish'
-import { type HealthReport, ServerStatus } from '@wildflowerhealthio/servers-core-js'
-import { DateTime, Option } from 'effect'
+import {
+  type HealthReport,
+  type ListedServer,
+  ServerStatus,
+} from '@wildflowerhealthio/servers-core-js'
+import { DateTime, Match, Option } from 'effect'
 
 /** How the base shows an instant, in the device's locale and time zone. */
 const INSTANT_FORMAT = new Intl.DateTimeFormat(undefined, {
@@ -35,15 +39,48 @@ const runningStatus = (health: ServerStatus.Health): StatusSummary =>
     : { tone: 'warning', label: 'Running, not reachable yet' }
 
 /**
- * The status, merged from the run state and the health: a running server is
- * a success only once it answers `/health`, and a stopped server whose
- * latest run failed is in danger.
+ * The status of a running server by its tunnel's state, when that says more
+ * than its health: the relay refused the tunnel, or the tunnel is dialing it
+ * again. None while the tunnel is connecting or connected, which its health
+ * says.
+ */
+const tunnelStatus = (tunnel: ServerStatus.TunnelState): Option.Option<StatusSummary> =>
+  Match.value(tunnel).pipe(
+    Match.withReturnType<Option.Option<StatusSummary>>(),
+    Match.when({ kind: 'tokenRejected' }, () =>
+      Option.some({ tone: 'danger', label: "The relay rejected this server's tunnel token" })
+    ),
+    Match.when({ kind: 'tunnelUnknown' }, () =>
+      Option.some({ tone: 'danger', label: 'The relay has no tunnel for this server' })
+    ),
+    Match.when({ kind: 'reconnecting' }, () =>
+      Option.some({ tone: 'warning', label: 'Running, reconnecting to the relay' })
+    ),
+    Match.when({ kind: Match.is('connecting', 'connected') }, () => Option.none()),
+    Match.exhaustive
+  )
+
+/** The tunnel's state of the server whose status is `status`, while it runs. */
+const runningTunnelOf = (status: ServerStatus.Type): Option.Option<ServerStatus.TunnelState> =>
+  status.runState === 'running' ? ServerStatus.tunnelOf(status) : Option.none()
+
+/**
+ * The status, merged from the run state, the tunnel's state and the health:
+ * a running server is a success only once it answers `/health`, one whose
+ * relay refused its tunnel is in danger, and so is a stopped server whose
+ * latest run failed.
+ *
+ * @remarks
+ * A refused or reconnecting tunnel takes priority over the health: the host
+ * checks the health only until it first answers, so a reachable health may
+ * predate it.
  */
 const statusSummary = (status: ServerStatus.Type): StatusSummary => {
   if (status.runState === 'starting') return { tone: 'info', label: 'Starting' }
   if (status.runState === 'running') {
-    return ServerStatus.healthOf(status).pipe(
-      Option.map(runningStatus),
+    return runningTunnelOf(status).pipe(
+      Option.flatMap(tunnelStatus),
+      Option.orElse(() => ServerStatus.healthOf(status).pipe(Option.map(runningStatus))),
       Option.getOrElse((): StatusSummary => ({
         tone: 'info',
         label: 'Running, checking it can be reached',
@@ -57,15 +94,34 @@ const statusSummary = (status: ServerStatus.Type): StatusSummary => {
 }
 
 /**
- * What the status says beyond the run state, with the host's reason a
- * running server isn't reachable when it has one; nothing for a server
- * that is plainly running or stopped, which the dot says alone.
+ * What a relay's refusal of a server's tunnel, named `tunnelName`, says
+ * beyond its status, and what to do about it, by the refusal.
  */
-const statusNote = (status: ServerStatus.Type): Option.Option<string> => {
+const tunnelRefusalNote = (
+  refusal: 'tokenRejected' | 'tunnelUnknown',
+  tunnelName: string
+): string =>
+  refusal === 'tokenRejected'
+    ? "Enter a new token on the Relay tab of the server's page."
+    : `The tunnel ${tunnelName} may have been deleted. Check the tunnel name, or ask whoever runs the relay.`
+
+/**
+ * What `server`'s status says beyond the run state: what to do about a
+ * relay's refusal of its tunnel, why its tunnel is reconnecting, or the
+ * host's reason a running server isn't reachable when it has one; nothing
+ * for a server that is plainly running or stopped, which the dot says alone.
+ */
+const statusNote = (server: ListedServer.Type): Option.Option<string> => {
+  const { status } = server
   if (status.runState === 'stopped') return Option.none()
+  const { label } = statusSummary(status)
+  const tunnel = Option.getOrNull(runningTunnelOf(status))
+  if (tunnel?.kind === 'reconnecting') return Option.some(`${label}: ${tunnel.error}`)
+  if (tunnel?.kind === 'tokenRejected' || tunnel?.kind === 'tunnelUnknown') {
+    return Option.some(`${label}. ${tunnelRefusalNote(tunnel.kind, server.tunnelName)}`)
+  }
   const health = Option.getOrNull(ServerStatus.healthOf(status))
   if (health?.kind === 'reachable' && health.status === 'pass') return Option.none()
-  const { label } = statusSummary(status)
   return Option.some(health?.kind === 'unreachable' ? `${label}: ${health.error}` : label)
 }
 

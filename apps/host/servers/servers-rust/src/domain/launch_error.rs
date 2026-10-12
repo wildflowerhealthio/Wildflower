@@ -20,6 +20,14 @@ pub enum LaunchError {
     /// The server's `/health` didn't answer through its relay.
     #[error("the server {domain} can't be reached through its relay: {error}")]
     Unreachable { domain: String, error: String },
+    /// The relay refused the server's tunnel token, so its tunnel has
+    /// stopped dialing.
+    #[error("the relay rejected the server {domain}'s tunnel token")]
+    TokenRejected { domain: String },
+    /// The relay has no tunnel of the server's tunnel name, so its tunnel has
+    /// stopped dialing.
+    #[error("the relay has no tunnel for the server {domain}")]
+    TunnelUnknown { domain: String },
     /// The server's certificate isn't valid: none is issued yet, it is
     /// being ordered, its orders are failing, it has expired, or its cache
     /// can't be read.
@@ -56,6 +64,8 @@ impl LaunchError {
             Self::ServerNotRunning { .. } => "serverNotRunning",
             Self::NotYetProbed { .. } => "notYetProbed",
             Self::Unreachable { .. } => "unreachable",
+            Self::TokenRejected { .. } => "tokenRejected",
+            Self::TunnelUnknown { .. } => "tunnelUnknown",
             Self::NoValidCertificate { .. } => "noValidCertificate",
             Self::UntrustedCertificate { .. } => "untrustedCertificate",
             Self::Gatekeeper(_) => "gatekeeper",
@@ -102,6 +112,18 @@ mod tests {
                     error: "connection refused".to_owned(),
                 },
                 "unreachable",
+            ),
+            (
+                LaunchError::TokenRejected {
+                    domain: DOMAIN.to_owned(),
+                },
+                "tokenRejected",
+            ),
+            (
+                LaunchError::TunnelUnknown {
+                    domain: DOMAIN.to_owned(),
+                },
+                "tunnelUnknown",
             ),
             (
                 LaunchError::NoValidCertificate {
@@ -165,6 +187,12 @@ mod tests {
             LaunchError::UntrustedCertificate {
                 domain: DOMAIN.to_owned(),
                 issuer: CertificateAuthority::LetsEncryptStaging,
+            },
+            LaunchError::TokenRejected {
+                domain: DOMAIN.to_owned(),
+            },
+            LaunchError::TunnelUnknown {
+                domain: DOMAIN.to_owned(),
             },
         ];
         assert_eq!(

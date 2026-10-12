@@ -188,6 +188,7 @@ mod tests {
     };
     use wildflowerhealthio_shared_structures::health_check::HealthReport;
     use wildflowerhealthio_tauri_unit_runner::RunState;
+    use wildflowerhealthio_tunnel::TunnelState;
     use wildflowerhealthio_wildflower_server::{CertificateState, CertificateStatus, ServerHealth};
 
     use super::*;
@@ -236,14 +237,15 @@ mod tests {
     type DetailChange = fn(&mut ServerDetail);
 
     /// The servers' statuses with the server's run up over `gatekeeper`,
-    /// reachable through its relay, with a valid certificate from Let's
-    /// Encrypt, changed by `change`.
+    /// connected to and reachable through its relay, with a valid certificate
+    /// from Let's Encrypt, changed by `change`.
     fn running_with(
         gatekeeper: &TestGatekeeper,
         change: impl FnOnce(&mut ServerDetail),
     ) -> UnitStatuses<ServerDetail> {
         let mut detail = ServerDetail {
             health: Some(ServerHealth::Reachable(HealthReport::pass())),
+            tunnel: Some(TunnelState::Connected),
             certificate: Some(CertificateState {
                 status: CertificateStatus::NoRenewalNeeded,
                 issuer: CertificateAuthority::LetsEncrypt,
@@ -330,8 +332,16 @@ mod tests {
         let on_staging = |detail: &mut ServerDetail| {
             detail.certificate.as_mut().unwrap().issuer = CertificateAuthority::LetsEncryptStaging;
         };
-        let changes: [(&str, DetailChange); 3] = [
+        let token_rejected = |detail: &mut ServerDetail| {
+            detail.tunnel = Some(TunnelState::TokenRejected);
+        };
+        let tunnel_unknown = |detail: &mut ServerDetail| {
+            detail.tunnel = Some(TunnelState::TunnelUnknown);
+        };
+        let changes: [(&str, DetailChange); 5] = [
             ("unreachable", unreachable),
+            ("tokenRejected", token_rejected),
+            ("tunnelUnknown", tunnel_unknown),
             ("noValidCertificate", ordering),
             ("untrustedCertificate", on_staging),
         ];

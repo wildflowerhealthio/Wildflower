@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { type ListedServer, ServerStatus } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
-import type { JSX } from 'react'
+import { type JSX, useId } from 'react'
 
 import { LaunchButton } from './launch-button.tsx'
 import type { RunHostCommand } from './router-context.ts'
@@ -18,8 +18,11 @@ import styles from './server-card.module.css'
  *
  * @remarks
  * The picker is disabled while a change is pending. Launch opens the
- * server's launcher, or says why it can't (see `LaunchButton`). Edit opens
- * the server's page, `/servers/$domain`, where it is removed.
+ * server's launcher, or says why it can't when the status note or the
+ * latest run's stop doesn't (see `LaunchButton`); disabled for what the
+ * status shows, it is described by whichever of the two is on the card,
+ * never both. Edit opens the server's page, `/servers/$domain`, where it is
+ * removed.
  */
 const ServerCard = ({
   server,
@@ -29,6 +32,8 @@ const ServerCard = ({
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
   const status = statusSummary(server.status)
+  // The note and the latest run's stop are never on the card together.
+  const statusId = useId()
   return (
     <li className={styles['server-card']} data-tone={status.tone} aria-label={server.domain}>
       <div className={styles['server-card__title']}>
@@ -43,9 +48,13 @@ const ServerCard = ({
         />
       </div>
       <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
-      {statusNote(server.status).pipe(
+      {statusNote(server).pipe(
         Option.map((note) => (
-          <p key="status-note" className={`text-body-3 ${styles['server-card__note']}`}>
+          <p
+            key="status-note"
+            id={statusId}
+            className={`text-body-3 ${styles['server-card__note']}`}
+          >
             {note}
           </p>
         )),
@@ -53,7 +62,7 @@ const ServerCard = ({
       )}
       {ServerStatus.lastStopOf(server.status).pipe(
         Option.map((stop) => (
-          <p key="last-stop" className={`text-body-3 ${styles['server-card__note']}`}>
+          <p key="last-stop" id={statusId} className={`text-body-3 ${styles['server-card__note']}`}>
             {lastStopText(stop)}
           </p>
         )),
@@ -64,6 +73,7 @@ const ServerCard = ({
           server={server}
           runHostCommand={runHostCommand}
           className={styles['server-card__action']}
+          statusDescriptionId={statusId}
         />
         <Link
           to="/servers/$domain"

@@ -10,6 +10,7 @@
 
 use url::{form_urlencoded, Url};
 use wildflowerhealthio_shared_structures::FHIR_R4_PATH;
+use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::RunState;
 use wildflowerhealthio_wildflower_server::{CertificateStatus, ServerHealth};
 
@@ -52,9 +53,10 @@ fn is_a_launch_param(param: &str) -> bool {
 }
 
 /// The detail of the run of the server whose status is `status`, once the
-/// server can be launched: its run is up, its `/health` has answered through
-/// its relay, and its certificate is valid (no renewal needed, or renewal
-/// due) and from a CA browsers trust. Nothing waits for any of them: the base waits, and asks again.
+/// server can be launched: its run is up, its relay hasn't refused its
+/// tunnel, its `/health` has answered through its relay, and its certificate
+/// is valid (no renewal needed, or renewal due) and from a CA browsers trust.
+/// Nothing waits for any of them: the base waits, and asks again.
 ///
 /// The certificate is the status's, the state the base receives: its run's,
 /// once the run has reported one, or else what its cache says. So the base,
@@ -63,8 +65,10 @@ fn is_a_launch_param(param: &str) -> bool {
 /// # Errors
 ///
 /// - [`LaunchError::ServerNotRunning`] when its run isn't up;
-/// - [`LaunchError::NotYetProbed`] when its `/health` hasn't been asked yet,
-///   or its run hasn't reported a detail;
+/// - [`LaunchError::TokenRejected`] when the relay refused its tunnel's token;
+/// - [`LaunchError::TunnelUnknown`] when the relay has no tunnel of its name;
+/// - [`LaunchError::NotYetProbed`] when its run hasn't reported a detail, or
+///   its `/health` hasn't been asked yet;
 /// - [`LaunchError::Unreachable`] when it didn't answer;
 /// - [`LaunchError::NoValidCertificate`] when its certificate isn't valid;
 /// - [`LaunchError::UntrustedCertificate`] when it is, but from a CA browsers
@@ -86,6 +90,24 @@ pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchE
         .detail
         .as_ref()
         .ok_or_else(not_yet_probed)?;
+    // A refused tunnel is refused before the health: the monitor stops after
+    // its first answer, so a reachable health may predate the refusal.
+    match detail.tunnel {
+        Some(TunnelState::TokenRejected) => {
+            return Err(LaunchError::TokenRejected {
+                domain: domain.clone(),
+            })
+        }
+        Some(TunnelState::TunnelUnknown) => {
+            return Err(LaunchError::TunnelUnknown {
+                domain: domain.clone(),
+            })
+        }
+        Some(
+            TunnelState::Connecting | TunnelState::Connected | TunnelState::Reconnecting { .. },
+        )
+        | None => {}
+    }
     match detail.health.as_ref().ok_or_else(not_yet_probed)? {
         ServerHealth::Unreachable { error } => {
             return Err(LaunchError::Unreachable {
@@ -116,6 +138,7 @@ pub fn ensure_launchable(status: &ServerStatus) -> Result<&ServerDetail, LaunchE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wildflowerhealthio_shared_structures::health_check::HealthReport;
     use wildflowerhealthio_unit_runner::UnitStatus;
 
     use crate::domain::server_status::tests::{
@@ -251,6 +274,39 @@ mod tests {
             ensure_launchable(&status_of(unreachable)),
             Err(LaunchError::Unreachable { error, .. }) if error == "the relay answered 502"
         ));
+    }
+
+    #[test]
+    fn a_server_whose_relay_refused_its_tunnel_is_refused_whatever_its_health() {
+        for health in [Some(ServerHealth::Reachable(HealthReport::pass())), None] {
+            let refused_as = |tunnel| {
+                let mut refused = running_and_reachable();
+                let detail = refused.detail.as_mut().unwrap();
+                detail.health.clone_from(&health);
+                detail.tunnel = Some(tunnel);
+                ensure_launchable(&status_of(refused)).map(|_| ())
+            };
+            assert!(
+                matches!(
+                    refused_as(TunnelState::TokenRejected),
+                    Err(LaunchError::TokenRejected { .. })
+                ),
+                "{health:?}"
+            );
+            assert!(
+                matches!(
+                    refused_as(TunnelState::TunnelUnknown),
+                    Err(LaunchError::TunnelUnknown { .. })
+                ),
+                "{health:?}"
+            );
+        }
+        // A tunnel that is dialing again is no refusal of its own.
+        let mut reconnecting = running_and_reachable();
+        reconnecting.detail.as_mut().unwrap().tunnel = Some(TunnelState::Reconnecting {
+            error: "the relay closed the connection".to_owned(),
+        });
+        assert!(ensure_launchable(&status_of(reconnecting)).is_ok());
     }
 
     #[test]

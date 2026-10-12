@@ -12,6 +12,7 @@
         "runState": "running",
         "runningSince": "2026-10-06T17:00:00Z",
         "health": { "kind": "reachable", "status": "pass" },
+        "tunnel": { "kind": "connected" },
         "certificate": {
           "status": "noRenewalNeeded",
           "issuer": "letsEncrypt",
@@ -74,6 +75,7 @@
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
       "health": { "kind": "reachable", "status": "pass" },
+      "tunnel": { "kind": "connected" },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncrypt",
@@ -89,6 +91,7 @@
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
       "health": { "kind": "reachable", "status": "pass" },
+      "tunnel": { "kind": "connected" },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncryptStaging",
@@ -104,6 +107,7 @@
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
       "health": { "kind": "reachable", "status": "pass" },
+      "tunnel": { "kind": "connected" },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncrypt",
@@ -130,6 +134,7 @@
     "startingCaUnreachable": {
       "domain": "ruth.relay.example.com",
       "runState": "starting",
+      "tunnel": { "kind": "connecting" },
       "certificate": {
         "status": "orderFailing",
         "issuer": "letsEncrypt",
@@ -144,6 +149,7 @@
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
       "health": { "kind": "unreachable", "error": "the relay answered 502" },
+      "tunnel": { "kind": "connected" },
       "certificate": {
         "status": "orderFailing",
         "issuer": "letsEncrypt",
@@ -169,10 +175,59 @@
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
+      "tunnel": { "kind": "connecting" },
       "certificate": {
         "status": "ordering",
         "issuer": "letsEncrypt",
         "lastError": { "kind": "cache", "message": "account cache store: disk full" }
+      }
+    },
+    "runningReconnecting": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "tunnel": { "kind": "reconnecting", "error": "the relay closed the connection" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "runningTokenRejected": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "tunnel": { "kind": "tokenRejected" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      }
+    },
+    "runningTunnelUnknown": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": { "kind": "reachable", "status": "pass" },
+      "tunnel": { "kind": "tunnelUnknown" },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
       }
     },
     "neverRun": {
@@ -398,6 +453,9 @@
     "runningUnreachable": "unreachable",
     "runningRenewalFailed": "notYetProbed",
     "runningCacheFailed": "notYetProbed",
+    "runningReconnecting": null,
+    "runningTokenRejected": "tokenRejected",
+    "runningTunnelUnknown": "tunnelUnknown",
     "neverRun": "serverNotRunning",
     "stoppedWithAnError": "serverNotRunning",
     "stoppedByThePlatform": "serverNotRunning",
@@ -433,6 +491,14 @@
     {
       "kind": "untrustedCertificate",
       "message": "the server ruth.relay.example.com's certificate is from Let's Encrypt's staging CA, which browsers don't trust"
+    },
+    {
+      "kind": "tokenRejected",
+      "message": "the relay rejected the server ruth.relay.example.com's tunnel token"
+    },
+    {
+      "kind": "tunnelUnknown",
+      "message": "the relay has no tunnel for the server ruth.relay.example.com"
     }
   ],
   "browserTrustedCertificateAuthorities": { "letsEncrypt": true, "letsEncryptStaging": false }

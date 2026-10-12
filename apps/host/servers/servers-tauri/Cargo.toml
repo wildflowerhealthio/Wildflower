@@ -58,6 +58,9 @@ wildflowerhealthio-token-revocation = { path = "../../wildflower-server/token-re
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"
+# The tunnel states a launchable or refused run's detail carries in the
+# launch command's tests.
+wildflowerhealthio-tunnel = { path = "../../wildflower-server/tunnel-rust" }
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
 # The shutdown token the tests' units keep, to see whether a command stopped
 # their run.

@@ -134,8 +134,9 @@ type CopyOutcome = 'idle' | 'copied' | 'refused'
  * run-policy field; and Launch.
  *
  * @remarks
- * Launch opens the server's launcher, or says why it can't (see
- * `LaunchButton`). The clipboard needs a focused, secure page and may still
+ * Launch opens the server's launcher, or says why it can't when the status
+ * row doesn't (see `LaunchButton`); disabled for what the status shows, it
+ * is described by the status row. The clipboard needs a focused, secure page and may still
  * refuse; the domain is on screen to copy by hand either way, and the page
  * says so.
  */
@@ -147,6 +148,7 @@ const StatusHero = ({
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
   const status = statusSummary(server.status)
+  const statusId = useId()
   const [copyOutcome, setCopyOutcome] = useState<CopyOutcome>('idle')
   const copyDomain = async (): Promise<void> => {
     try {
@@ -177,7 +179,7 @@ const StatusHero = ({
           The clipboard refused. Select the domain to copy it by hand.
         </p>
       ) : null}
-      <div className={styles['server-page__status-row']}>
+      <div id={statusId} className={styles['server-page__status-row']}>
         <StatusBadge tone={status.tone} pulse={status.tone === 'success'}>
           {status.label}
         </StatusBadge>
@@ -188,7 +190,11 @@ const StatusHero = ({
         ) : null}
       </div>
       <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
-      <LaunchButton server={server} runHostCommand={runHostCommand} />
+      <LaunchButton
+        server={server}
+        runHostCommand={runHostCommand}
+        statusDescriptionId={statusId}
+      />
     </section>
   )
 }
@@ -197,6 +203,13 @@ const StatusHero = ({
  * What the Connection row says: the host's own check of the server's
  * `/health` through its public origin while a run is in progress, or how
  * its latest run stopped.
+ *
+ * @remarks
+ * The host checks the health only while the tunnel is connected to the
+ * relay, so a run whose tunnel hasn't connected has no health yet, and says
+ * why. It stops checking once the health first answers, so once the tunnel's
+ * connection has dropped or been refused, a `reachable` health is from
+ * before then, and says so.
  */
 const connectionText = (status: ServerStatus.Type): string => {
   if (status.runState === 'stopped') {
@@ -205,17 +218,59 @@ const connectionText = (status: ServerStatus.Type): string => {
       Option.getOrElse(() => "It hasn't run yet.")
     )
   }
+  const tunnel = ServerStatus.tunnelOf(status)
+  const relayConnectionChanged = Option.exists(
+    tunnel,
+    ({ kind }) => kind !== 'connecting' && kind !== 'connected'
+  )
   return ServerStatus.healthOf(status).pipe(
-    Option.map((health) =>
-      health.kind === 'reachable'
-        ? `Reachable: its /health answers ${health.status}.`
-        : `Not reachable yet: ${health.error}`
-    ),
-    Option.getOrElse(() =>
-      status.runState === 'starting' ? 'Starting.' : 'Checking it can be reached.'
-    )
+    Option.map((health) => {
+      if (health.kind === 'unreachable') return `Not reachable yet: ${health.error}`
+      return relayConnectionChanged
+        ? `Reachable before its relay connection changed: its /health answered ${health.status}.`
+        : `Reachable: its /health answers ${health.status}.`
+    }),
+    Option.getOrElse(() => {
+      if (status.runState === 'starting') return 'Starting.'
+      return Option.exists(tunnel, ({ kind }) => kind !== 'connected')
+        ? 'Not checked until the relay connection is up.'
+        : 'Checking it can be reached.'
+    })
   )
 }
+
+/**
+ * The Relay connection row, while a run in progress has reported its
+ * tunnel's state: where the tunnel's connection to the relay stands, a
+ * failure once the relay has refused the tunnel named `tunnelName`.
+ */
+const relayConnectionItems = ({ status, tunnelName }: ListedServer.Type): readonly ItemListItem[] =>
+  ServerStatus.tunnelOf(status).pipe(
+    Option.map((tunnel): ItemListItem => {
+      const item = { id: 'relay-connection', title: 'Relay connection' } as const
+      return Match.value(tunnel).pipe(
+        Match.withReturnType<ItemListItem>(),
+        Match.when({ kind: 'connecting' }, () => ({ ...item, subtitle: 'Connecting.' })),
+        Match.when({ kind: 'connected' }, () => ({ ...item, subtitle: 'Connected.' })),
+        Match.when({ kind: 'reconnecting' }, ({ error }) => ({
+          ...item,
+          subtitle: `Reconnecting: ${error}`,
+        })),
+        Match.when({ kind: 'tokenRejected' }, () => ({
+          ...item,
+          subtitle: 'The relay rejected the tunnel token. Enter a new one on the Relay tab.',
+          tone: 'danger',
+        })),
+        Match.when({ kind: 'tunnelUnknown' }, () => ({
+          ...item,
+          subtitle: `The relay has no tunnel named ${tunnelName}. It may have been deleted.`,
+          tone: 'danger',
+        })),
+        Match.exhaustive
+      )
+    }),
+    Option.toArray
+  )
 
 /** The rows for how a stopped server's latest run stopped: the platform's reason, and when. */
 const lastStopItems = (status: ServerStatus.Type): readonly ItemListItem[] =>
@@ -389,9 +444,10 @@ const CredentialsForm = ({
 }
 
 /**
- * The server's connection: as the host last checked it, or how the latest
- * run stopped; and, while the server runs, its `/health` report as the
- * webview reads it.
+ * The server's connection: as the host last checked it, with its tunnel's
+ * connection to the relay while a run reports it, or how the latest run
+ * stopped; and, while the server runs, its `/health` report as the webview
+ * reads it.
  */
 const Connection = ({
   server,
@@ -406,6 +462,7 @@ const Connection = ({
       maxLines={3}
       items={[
         { id: 'connection', title: 'Connection', subtitle: connectionText(server.status) },
+        ...relayConnectionItems(server),
         ...lastStopItems(server.status),
       ]}
     />
