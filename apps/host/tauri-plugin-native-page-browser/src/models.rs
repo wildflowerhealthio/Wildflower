@@ -61,10 +61,11 @@ mod tests {
         })
         .expect("serialize");
         let object = json.as_object().expect("object");
-        assert_eq!(
-            object.keys().map(String::as_str).collect::<Vec<_>>(),
-            ["closed", "url"],
-        );
+        // Sorted, because key order depends on whether serde_json's
+        // `preserve_order` feature is unified into the build.
+        let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
+        keys.sort_unstable();
+        assert_eq!(keys, ["closed", "url"]);
         assert_eq!(
             object.get("url").and_then(|v| v.as_str()),
             Some("https://example.test/launcher/")
