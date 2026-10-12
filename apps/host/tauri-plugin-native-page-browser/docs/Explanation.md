@@ -8,7 +8,7 @@ presented as a **native page**, and tells Rust when the user closes it.
 It exposes one command, `open(url, closed)`, with a backend per platform:
 
 - `url` must be `http(s)`; anything else (`javascript:`, `file:`, `data:`, …) is rejected before any backend sees it (`src/url_scheme.rs`).
-- `closed` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open`: when the user closes the view (close button, edge swipe, system back), or when a newer `open` replaces it. Desktop never sends one.
+- `closed` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or when a newer `open` replaces it. Desktop never sends one.
 
 The caller can't script the page, read it, or navigate an open view. It learns that a view opened and that it closed, nothing else.
 

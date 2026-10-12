@@ -36,7 +36,6 @@ class OpenArgs {
     lateinit var closed: Channel
 }
 
-
 /**
  * Presents an external URL in a Custom Tab, the system's in-app browser: the
  * app can't script the page or read what's typed into it. It slides in from the
@@ -44,9 +43,9 @@ class OpenArgs {
  * the default browser (`ACTION_VIEW`) when no Custom Tabs provider is installed.
  *
  * One view shows at a time — `open` closes a showing view (reporting its close)
- * before launching the next. Every open sends `{"event":"closed"}` exactly once
- * on its channel: from the Custom Tabs session's `TAB_HIDDEN` when a session is
- * bound, and otherwise when the host activity next resumes.
+ * before launching the next. Every open that resolves sends `{"event":"closed"}`
+ * exactly once on its channel: from the Custom Tabs session's `TAB_HIDDEN` when
+ * a session is bound, and otherwise when the host activity next resumes.
  *
  * Views launch only while the host activity is in front. An `open` that arrives
  * with the host in the background — the usual case when it replaces a showing

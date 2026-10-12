@@ -21,7 +21,7 @@ pub struct OpenRequest {
     /// The external URL to open. Only `http(s)://` is accepted.
     pub url: String,
     /// Hears this view close: exactly one [`BrowserEvent::Closed`] on iOS and
-    /// Android, nothing on desktop.
+    /// Android once `open` returns `Ok`, nothing on desktop or after an `Err`.
     pub closed: Channel<BrowserEvent>,
 }
 
