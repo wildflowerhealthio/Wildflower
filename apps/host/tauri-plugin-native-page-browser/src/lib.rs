@@ -15,6 +15,11 @@
 //! - **Desktop** — the default browser, through `tauri-plugin-opener`. A browser
 //!   tab isn't a window the app owns, so desktop never reports a close.
 //!
+//! On every platform a URL that doesn't parse or isn't `http(s)` returns
+//! [`Error::InvalidUrl`] before any backend sees it. On iOS and Android the
+//! `closed` channel hears exactly one [`BrowserEvent::Closed`] per `open` that
+//! returns `Ok`, and none after one that returns an `Err`.
+//!
 //! Usage (Rust caller — the canonical path). `open` is async on every
 //! platform; await it rather than blocking on it, since iOS answers from the
 //! main thread:

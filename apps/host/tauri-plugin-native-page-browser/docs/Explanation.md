@@ -5,9 +5,9 @@
 A Tauri v2 plugin that opens an external URL in the **system's in-app browser**,
 presented as a **native page**, and tells Rust when the user closes it.
 
-It exposes one command, `open(url, closed)`, with a backend per platform:
+It exposes one command, `open(url, closed)`, with a backend per platform. `open` is async on every platform: iOS answers from the main thread, so a caller awaits it rather than blocking on it.
 
-- `url` must be `http(s)`; anything else (`javascript:`, `file:`, `data:`, …) is rejected before any backend sees it (`src/url_scheme.rs`). A backend gets the parsed URL, normalised (leading and trailing spaces trimmed, tabs and newlines removed), not the caller's string.
+- `url` must be `http(s)`; anything else (`javascript:`, `file:`, `data:`, …), or a string that doesn't parse, returns `Error::InvalidUrl` before any backend sees it (`src/url_scheme.rs`). A backend gets the parsed URL, normalised (leading and trailing spaces trimmed, tabs and newlines removed), not the caller's string.
 - `closed` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `open` replaces it. Desktop never sends one.
 
 The caller can't script the page, read it, or navigate an open view. It learns that a view opened and that it closed, nothing else.
@@ -79,7 +79,7 @@ apps/host/tauri-plugin-native-page-browser/
 [caller (Rust or JS)]  open(url, closed: Channel<BrowserEvent>)
       │
       ▼
-[Rust] commands::open → NativePageBrowserExt::open → url_scheme::parse_http_url → platform backend
+[Rust] commands::open → app.native_page_browser().open → url_scheme::parse_http_url → platform backend
       │
       ├─ iOS/Android: run_mobile_plugin_async("open", { url, closed }).await
       │     → iOS: dismiss the showing view, if any → channel.send({ event:"closed" }) on ITS channel
