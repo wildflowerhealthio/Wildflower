@@ -173,16 +173,16 @@ impl EnteredCredentials {
     ///
     /// [`EnrolmentError::EmptyClaimCode`], [`EnrolmentError::InvalidTunnelName`]
     /// or [`EnrolmentError::EmptyToken`].
-    fn checked(self) -> Result<Credentials, EnrolmentError> {
+    fn checked(self) -> Result<CheckedCredentials, EnrolmentError> {
         match self {
             Self::ClaimCode { code } => {
                 let code = code.trim();
                 if code.is_empty() {
                     return Err(EnrolmentError::EmptyClaimCode);
                 }
-                Ok(Credentials::ClaimCode(code.to_owned()))
+                Ok(CheckedCredentials::ClaimCode(code.to_owned()))
             }
-            Self::Token { tunnel_name, token } => Ok(Credentials::Token {
+            Self::Token { tunnel_name, token } => Ok(CheckedCredentials::Token {
                 tunnel_name: TunnelName::parse(tunnel_name)?,
                 token: TunnelToken::entered(&token)?,
             }),
@@ -191,7 +191,7 @@ impl EnteredCredentials {
 }
 
 /// [`EnteredCredentials`] once checked.
-enum Credentials {
+enum CheckedCredentials {
     /// A claim code, trimmed, for the relay to redeem.
     ClaimCode(String),
     Token {
@@ -271,7 +271,7 @@ pub async fn add_server<S: RelayClient>(
             (RelayKind::SelfHostedWildflower { base_url }, enrolled)
         }
         EnteredRelay::Rathole { identity, domain } => {
-            let Credentials::Token { tunnel_name, token } = credentials else {
+            let CheckedCredentials::Token { tunnel_name, token } = credentials else {
                 return Err(EnrolmentError::ClaimCodesNotOffered);
             };
             let RelayIdentity {
@@ -464,13 +464,13 @@ async fn expected_public_settings(
 /// `expect` runs before the code is redeemed or the signed request is sent.
 async fn enrolled_tunnel(
     relay_client: &impl RelayClient,
-    credentials: Credentials,
+    credentials: CheckedCredentials,
     expect: impl FnOnce(&PublicRatholeSettings) -> Result<(), EnrolmentError>,
 ) -> Result<EnrolledTunnel, EnrolmentError> {
     let public_settings = expected_public_settings(relay_client, expect).await?;
     let (tunnel_name, token) = match credentials {
-        Credentials::Token { tunnel_name, token } => (tunnel_name, token),
-        Credentials::ClaimCode(code) => {
+        CheckedCredentials::Token { tunnel_name, token } => (tunnel_name, token),
+        CheckedCredentials::ClaimCode(code) => {
             let ClaimedTunnel {
                 tunnel_name,
                 token,

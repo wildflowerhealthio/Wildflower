@@ -273,8 +273,11 @@ describe('addServer', () => {
     async (_name, entered) => {
       // Arrange
       const relay = Schema.decodeUnknownSync(EnteredRelay.Schema)(entered)
+      // A rathole relay offers no claim codes, so the page sends a token for it.
       const credentials = Schema.decodeUnknownSync(EnteredCredentials.Schema)(
-        golden.enteredCredentials.claimCode
+        relay.kind === 'rathole'
+          ? golden.enteredCredentials.token
+          : golden.enteredCredentials.claimCode
       )
 
       // Act
