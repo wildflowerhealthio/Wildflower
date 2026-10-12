@@ -3,11 +3,13 @@
 
 use crate::domain::session_ledger::SessionPhase;
 
-/// Whether some unit should run, and where the background session is.
+/// Whether a background session is wanted, and where it is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SessionDemand {
-    /// Some unit should run.
-    pub some_unit_should_run: bool,
+    /// A background session is wanted: some unit should run, and the
+    /// [`BackgroundSessionLength`](crate::BackgroundSessionLength) wants one
+    /// for it.
+    pub session_wanted: bool,
     /// Whether a background session is running, and whether `UnitRunner` is
     /// ending it.
     pub session_phase: SessionPhase,
@@ -16,18 +18,18 @@ pub struct SessionDemand {
 /// What `UnitRunner` asks the platform for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionRequest {
-    /// Start a background session, because some unit should run.
+    /// Start a background session, because one is wanted.
     Start,
-    /// End the running session, because no unit should run.
+    /// End the running session, because none is wanted.
     End,
 }
 
 /// What `UnitRunner` asks the platform for under `demand`: a session's start
-/// when some unit should run and none is running, its end when one is running
-/// and no unit should run, and otherwise nothing.
+/// when one is wanted and none is running, its end when one is running and
+/// none is wanted, and otherwise nothing.
 #[must_use]
 pub fn plan_session_request_for_demand(demand: SessionDemand) -> Option<SessionRequest> {
-    match (demand.some_unit_should_run, demand.session_phase) {
+    match (demand.session_wanted, demand.session_phase) {
         (true, SessionPhase::NoSession) => Some(SessionRequest::Start),
         (false, SessionPhase::Running) => Some(SessionRequest::End),
         // Wait for the ending session's end: the platform would take a start
@@ -42,9 +44,9 @@ pub fn plan_session_request_for_demand(demand: SessionDemand) -> Option<SessionR
 mod tests {
     use super::*;
 
-    fn demand(some_unit_should_run: bool, session_phase: SessionPhase) -> SessionDemand {
+    fn demand(session_wanted: bool, session_phase: SessionPhase) -> SessionDemand {
         SessionDemand {
-            some_unit_should_run,
+            session_wanted,
             session_phase,
         }
     }
@@ -59,11 +61,11 @@ mod tests {
             (false, SessionPhase::Running, Some(SessionRequest::End)),
             (false, SessionPhase::Ending, None),
         ];
-        for (some_unit_should_run, session_phase, expected) in table {
+        for (session_wanted, session_phase, expected) in table {
             assert_eq!(
-                plan_session_request_for_demand(demand(some_unit_should_run, session_phase)),
+                plan_session_request_for_demand(demand(session_wanted, session_phase)),
                 expected,
-                "{some_unit_should_run} {session_phase:?}"
+                "{session_wanted} {session_phase:?}"
             );
         }
     }

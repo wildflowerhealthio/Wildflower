@@ -311,7 +311,7 @@ describe('the server commands', () => {
       runAgainstHostAnswering(
         enableBackgroundSessionRecovery({
           serviceLabel: 'Wildflower server is running',
-          foregroundServiceType: 'specialUse',
+          foregroundServiceType: 'shortService',
         }),
         () => Promise.resolve(null)
       ),
@@ -349,7 +349,7 @@ describe('the server commands', () => {
             enabled: true,
             config: {
               serviceLabel: 'Wildflower server is running',
-              foregroundServiceType: 'specialUse',
+              foregroundServiceType: 'shortService',
             },
           },
         },

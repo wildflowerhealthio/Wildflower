@@ -20,6 +20,7 @@ use super::unit_entry::{PendingRestart, RunGeneration, UnitEntry, UnitRun};
 use super::wall_clock_ticker::start_and_stop_runs_on_the_wall_clock;
 use super::RunnerTimings;
 use crate::domain::app_presence::{AppPresence, PresenceChange};
+use crate::domain::background_session_length::BackgroundSessionLength;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::session_ledger::{SessionEnd, SessionId, SessionLedger};
 use crate::domain::session_plan::SessionDemand;
@@ -54,6 +55,7 @@ pub struct UnitRunner<D> {
     runtime: Handle,
     clock: Arc<dyn WallClock>,
     timings: RunnerTimings,
+    background_session_length: BackgroundSessionLength,
     session_demand_tx: watch::Sender<SessionDemand>,
     /// Wakes the wall-clock ticker when the next deadline moves.
     pub(super) next_start_and_stop_runs_moved: Notify,
@@ -81,15 +83,25 @@ impl<D> UnitRunnerState<D> {
 
 impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// A `UnitRunner` with no units, whose tasks run on `runtime`, judging
-    /// policies on `clock`. Starts its wall-clock ticker on `runtime`.
+    /// policies on `clock`, for a platform whose background session lasts
+    /// `background_session_length`. Starts its wall-clock ticker on `runtime`.
     ///
     /// The ticker, like the task
     /// [`attach_background_session_platform`](Self::attach_background_session_platform)
     /// starts, holds the `UnitRunner` and runs until `runtime` shuts down, so a
     /// `UnitRunner` lives as long as its runtime.
     #[must_use]
-    pub fn new(runtime: Handle, clock: Arc<dyn WallClock>) -> Arc<Self> {
-        Self::with_timings(runtime, clock, RunnerTimings::default())
+    pub fn new(
+        runtime: Handle,
+        clock: Arc<dyn WallClock>,
+        background_session_length: BackgroundSessionLength,
+    ) -> Arc<Self> {
+        Self::with_timings(
+            runtime,
+            clock,
+            RunnerTimings::default(),
+            background_session_length,
+        )
     }
 
     /// [`new`](Self::new), with `timings` in place of the public constants.
@@ -97,6 +109,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         runtime: Handle,
         clock: Arc<dyn WallClock>,
         timings: RunnerTimings,
+        background_session_length: BackgroundSessionLength,
     ) -> Arc<Self> {
         let unit_runner = Arc::new(Self {
             state: Mutex::new(UnitRunnerState {
@@ -110,6 +123,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             runtime,
             clock,
             timings,
+            background_session_length,
             session_demand_tx: watch::Sender::new(SessionDemand::default()),
             next_start_and_stop_runs_moved: Notify::new(),
         });
@@ -317,14 +331,14 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         id
     }
 
-    /// `UnitRunner` is about to end the background session because no unit
-    /// should run; returns it, or `None` when there is none to end or a unit
-    /// should run again.
+    /// `UnitRunner` is about to end the background session because none is
+    /// wanted; returns it, or `None` when there is none to end or one is
+    /// wanted again.
     pub(crate) fn mark_session_no_longer_needed(self: &Arc<Self>) -> Option<SessionId> {
         let mut state = self.lock_state();
-        let some_unit_should_run = self.start_and_stop_runs_per_policy_locked(&mut state);
-        if some_unit_should_run {
-            // A unit should run again since the demand was read.
+        let session_wanted = self.start_and_stop_runs_per_policy_locked(&mut state);
+        if session_wanted {
+            // A session is wanted again since the demand was read.
             return None;
         }
         let id = state.session_ledger.mark_no_longer_needed();
@@ -459,7 +473,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         let mut state = self.lock_state();
         let now = self.clock.now();
         let app_present_or_in_grace = state.app_presence.present_or_in_grace(now);
-        let runs_discouraged_by_platform = state.session_ledger.runs_discouraged_by_platform();
+        let runs_discouraged = self.runs_discouraged(&state, app_present_or_in_grace);
         let Some(entry) = state.units.get_mut(unit_id) else {
             return;
         };
@@ -475,8 +489,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         if ran_stably {
             entry.restarts_in_a_row = 0;
         }
-        let should_run =
-            entry.should_run(now, app_present_or_in_grace, runs_discouraged_by_platform);
+        let should_run = entry.should_run(now, app_present_or_in_grace, runs_discouraged);
         if restarts_after(reason, should_run) {
             let (pending_restart, restart_token) = PendingRestart::new();
             entry.pending_restart = Some(pending_restart);
@@ -524,21 +537,20 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
 
     /// Start every unit that should run and isn't running, stop every running
     /// unit that shouldn't be, publish the background session's demand (some
-    /// unit should run, one waiting out its restart delay included), and move
-    /// the wall-clock ticker's next deadline. Returns whether some unit
-    /// should run.
+    /// unit should run, one waiting out its restart delay included, and the
+    /// [`BackgroundSessionLength`] wants a session for it), and move the
+    /// wall-clock ticker's next deadline. Returns whether a session is wanted.
     fn start_and_stop_runs_per_policy_locked(
         self: &Arc<Self>,
         state: &mut UnitRunnerState<D>,
     ) -> bool {
         let now = self.clock.now();
         let app_present_or_in_grace = state.app_presence.present_or_in_grace(now);
-        let runs_discouraged_by_platform = state.session_ledger.runs_discouraged_by_platform();
+        let runs_discouraged = self.runs_discouraged(state, app_present_or_in_grace);
         let mut starts = Vec::new();
         let mut some_unit_should_run = false;
         for (unit_id, entry) in &mut state.units {
-            let should_run =
-                entry.should_run(now, app_present_or_in_grace, runs_discouraged_by_platform);
+            let should_run = entry.should_run(now, app_present_or_in_grace, runs_discouraged);
             some_unit_should_run |= should_run;
             if !should_run {
                 // A unit that shouldn't run has no restarts in a row to carry
@@ -559,7 +571,10 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             self.start_run(state, unit_id);
         }
 
-        self.publish_session_demand(state, some_unit_should_run);
+        let session_wanted = self
+            .background_session_length
+            .wants_session(some_unit_should_run, state.app_presence.is_present());
+        self.publish_session_demand(state, session_wanted);
         let next_start_and_stop_runs_at = state
             .units
             .values()
@@ -575,12 +590,22 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             state.next_start_and_stop_runs_at = next_start_and_stop_runs_at;
             self.next_start_and_stop_runs_moved.notify_one();
         }
-        some_unit_should_run
+        session_wanted
     }
 
-    fn publish_session_demand(&self, state: &UnitRunnerState<D>, some_unit_should_run: bool) {
+    /// Whether no unit should run, whatever its policy: the platform ended the
+    /// background session and nothing has cleared that, or the app's grace
+    /// period has ended on a platform whose session can't outlast it.
+    fn runs_discouraged(&self, state: &UnitRunnerState<D>, app_present_or_in_grace: bool) -> bool {
+        state.session_ledger.runs_discouraged_by_platform()
+            || !self
+                .background_session_length
+                .lets_units_run(app_present_or_in_grace)
+    }
+
+    fn publish_session_demand(&self, state: &UnitRunnerState<D>, session_wanted: bool) {
         let demand = SessionDemand {
-            some_unit_should_run,
+            session_wanted,
             session_phase: state.session_ledger.session_phase(),
         };
         self.session_demand_tx.send_if_modified(|current| {

@@ -38,7 +38,7 @@ async fn a_session_runs_exactly_while_some_unit_should_run() {
     }
     // A session is requested only once some unit should run.
     assert!(
-        !harness.session_demand().some_unit_should_run,
+        !harness.session_demand().session_wanted,
         "no unit should run"
     );
     assert_eq!(session.session_start_requests(), 0);
@@ -55,7 +55,7 @@ async fn a_session_runs_exactly_while_some_unit_should_run() {
     harness.set_unit_policy("first", RunPolicy::Off);
     // The session's end is requested only once no unit should run.
     assert!(
-        harness.session_demand().some_unit_should_run,
+        harness.session_demand().session_wanted,
         "the second unit still should run"
     );
     assert!(session.session_running());
@@ -84,7 +84,7 @@ async fn a_unit_waiting_to_restart_still_wants_a_session() {
         probe.starts() == 2 && harness.phase("unit") == Some(UnitPhase::AwaitingRestart)
     })
     .await;
-    assert!(harness.session_demand().some_unit_should_run);
+    assert!(harness.session_demand().session_wanted);
     eventually("a session runs", || session.session_running()).await;
     assert_eq!(session.session_end_requests(), 0);
 }
@@ -114,7 +114,7 @@ async fn the_platform_ending_the_session_stops_every_unit_without_restart() {
     // Neither unit waits to restart, and no unit should run.
     assert_eq!(harness.phase("first"), Some(UnitPhase::Idle));
     assert_eq!(harness.phase("second"), Some(UnitPhase::Idle));
-    assert!(!harness.session_demand().some_unit_should_run);
+    assert!(!harness.session_demand().session_wanted);
     assert_eq!(
         probe.starts(),
         2,

@@ -10,7 +10,9 @@ use url::Url;
 use wildflowerhealthio_servers::{ServerDetail, ServerRecord};
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
-use wildflowerhealthio_tauri_unit_runner::{BackgroundServiceStartConfig, TauriUnitRunner};
+use wildflowerhealthio_tauri_unit_runner::{
+    BackgroundServiceStartConfig, BackgroundSessionLength, TauriUnitRunner,
+};
 use wildflowerhealthio_wildflower_server::{HostPorts, WildflowerServerConfig};
 
 // Loopback hostname/port for the embedded API server, derived at compile time
@@ -63,6 +65,17 @@ const DEFAULT_LAUNCHER_URL: &str = env!("WILDFLOWER_LAUNCHER_BASE_URL");
 const BACKGROUND_SERVICE_LABEL: &str = env!("WILDFLOWER_BACKGROUND_SERVICE_LABEL");
 const BACKGROUND_SERVICE_FOREGROUND_TYPE: &str =
     env!("WILDFLOWER_BACKGROUND_SERVICE_FOREGROUND_TYPE");
+
+// How long the background session can keep the app alive once it leaves the
+// foreground. On Android it is a `shortService`, which Android times out after
+// 3 minutes, so it covers only the grace period: servers run while the app is
+// open and for the grace period after. iOS ends its background task itself,
+// and a desktop app keeps running.
+const BACKGROUND_SESSION_LENGTH: BackgroundSessionLength = if cfg!(target_os = "android") {
+    BackgroundSessionLength::GracePeriod
+} else {
+    BackgroundSessionLength::AsLongAsNeeded
+};
 
 /// Resolves the data root, the directory the host keeps everything in: the
 /// server registry, saved files, and each server's own folder under
@@ -252,10 +265,13 @@ pub fn run() {
     // Runs every server as a unit. Built before the Tauri builder: the
     // background-service plugin takes `TauriUnitRunner`'s background session
     // service before `.setup()`, which pushes the servers to it.
-    let runner = TauriUnitRunner::<ServerDetail>::new(BackgroundServiceStartConfig {
-        service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
-        foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
-    });
+    let runner = TauriUnitRunner::<ServerDetail>::new(
+        BackgroundServiceStartConfig {
+            service_label: BACKGROUND_SERVICE_LABEL.to_owned(),
+            foreground_service_type: BACKGROUND_SERVICE_FOREGROUND_TYPE.to_owned(),
+        },
+        BACKGROUND_SESSION_LENGTH,
+    );
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             // Gated web→host data-plane transport for the desktop sniffer's
@@ -695,9 +711,10 @@ mod tests {
     }
 
     /// The background-service plugin's manifest asks for the permissions its
-    /// calling and other foreground-service types use. Android grants every
-    /// permission the merged manifest asks for, and Play reviews each, so the
-    /// app's manifest removes all the server doesn't use from the merge.
+    /// calling, other foreground-service types and boot recovery use. Android
+    /// grants every permission the merged manifest asks for, and Play reviews
+    /// each, so the app's manifest removes all the server doesn't use from the
+    /// merge.
     #[test]
     fn android_manifest_removes_the_plugin_s_unused_permissions() {
         let manifest_text = read_android_manifest();
@@ -712,6 +729,8 @@ mod tests {
             "android.permission.FOREGROUND_SERVICE_MICROPHONE",
             "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
             "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
+            "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+            "android.permission.RECEIVE_BOOT_COMPLETED",
         ] {
             let removal = android_element(&manifest, "uses-permission", permission)
                 .unwrap_or_else(|| panic!("{ANDROID_MANIFEST} must name {permission}"));
@@ -733,12 +752,26 @@ mod tests {
             call_service.attribute((TOOLS_NAMESPACE, "node")),
             Some("remove")
         );
+        // A `shortService` can't start at boot, so the plugin's boot receiver
+        // goes with RECEIVE_BOOT_COMPLETED, removed above.
+        let boot_receiver = android_element(
+            &manifest,
+            "receiver",
+            "app.tauri.backgroundservice.BootReceiver",
+        )
+        .unwrap_or_else(|| panic!("{ANDROID_MANIFEST} must name the plugin's boot receiver"));
+        assert_eq!(
+            boot_receiver.attribute((TOOLS_NAMESPACE, "node")),
+            Some("remove"),
+            "{ANDROID_MANIFEST} must remove the plugin's boot receiver from the merge"
+        );
     }
 
     /// The plugin declares its foreground service with every type it might
-    /// start as. The app narrows it to the one the server starts as, which the
-    /// plugin also checks a start against, and replaces the plugin's generic
-    /// `specialUse` reason with the server's own.
+    /// start as. The app narrows it to the one the server starts as, a
+    /// `shortService`, which the plugin also checks a start against, and drops
+    /// the plugin's `specialUse` subtype, which a `shortService` has no use
+    /// for.
     #[test]
     fn android_manifest_narrows_the_plugin_s_foreground_service() {
         let manifest_text = read_android_manifest();
@@ -761,6 +794,13 @@ mod tests {
             "the type must replace the plugin's, not merge into it"
         );
 
+        assert_eq!(
+            super::BACKGROUND_SERVICE_FOREGROUND_TYPE,
+            "shortService",
+            "the server runs only while the app is open and for the grace period \
+             after, which a `shortService` covers"
+        );
+
         let special_use_subtype = lifecycle_service
             .children()
             .find(|node| {
@@ -768,18 +808,13 @@ mod tests {
                     && node.attribute((ANDROID_NAMESPACE, "name"))
                         == Some("android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE")
             })
-            .unwrap_or_else(|| panic!("{ANDROID_MANIFEST} must give the service its subtype"));
+            .unwrap_or_else(|| {
+                panic!("{ANDROID_MANIFEST} must name the plugin's specialUse subtype")
+            });
         assert_eq!(
-            special_use_subtype.attribute((TOOLS_NAMESPACE, "replace")),
-            Some("android:value"),
-            "the subtype must replace the plugin's generic one"
-        );
-        let subtype = special_use_subtype
-            .attribute((ANDROID_NAMESPACE, "value"))
-            .unwrap_or_else(|| panic!("{ANDROID_MANIFEST}'s subtype must have a value"));
-        assert!(
-            subtype.contains("health records"),
-            "the subtype must say what the service does, not {subtype:?}"
+            special_use_subtype.attribute((TOOLS_NAMESPACE, "node")),
+            Some("remove"),
+            "the plugin's specialUse subtype must go from the merge"
         );
     }
 }

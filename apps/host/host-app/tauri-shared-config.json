@@ -10,5 +10,5 @@
   "first_party_client_id": "wildflower-host",
   "launcher_base_url": "https://wildflowerhealth.io/launcher/",
   "background_service_label": "Wildflower server is running",
-  "background_service_foreground_type": "specialUse"
+  "background_service_foreground_type": "shortService"
 }

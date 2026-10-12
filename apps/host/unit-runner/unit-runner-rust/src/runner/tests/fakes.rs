@@ -9,6 +9,7 @@ use std::time::Duration;
 use chrono::{DateTime, TimeDelta, Utc};
 use tokio::sync::{Barrier, Semaphore};
 
+use crate::domain::background_session_length::BackgroundSessionLength;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::session_ledger::SessionId;
 use crate::domain::session_plan::SessionDemand;
@@ -59,6 +60,18 @@ impl Harness {
     /// to [`MAX_UNIT_RESTART_BACKOFF`] until a run stays running for
     /// [`STABLE_UNIT_UPTIME`].
     pub(super) fn with_restart_delay(restart_delay: Duration) -> Self {
+        Self::build(restart_delay, BackgroundSessionLength::AsLongAsNeeded)
+    }
+
+    /// A `UnitRunner` for a platform whose background session lasts
+    /// `background_session_length`.
+    pub(super) fn with_background_session_length(
+        background_session_length: BackgroundSessionLength,
+    ) -> Self {
+        Self::build(Duration::from_millis(100), background_session_length)
+    }
+
+    fn build(restart_delay: Duration, background_session_length: BackgroundSessionLength) -> Self {
         let clock = Arc::new(ManualClock(Mutex::new(
             DateTime::from_timestamp(1_800_000_000, 0).expect("a valid instant"),
         )));
@@ -72,6 +85,7 @@ impl Harness {
                 run_runtime_shutdown_timeout: Duration::from_secs(1),
                 start_and_stop_runs_per_policy_interval: Duration::from_secs(10),
             },
+            background_session_length,
         );
         Self { unit_runner, clock }
     }

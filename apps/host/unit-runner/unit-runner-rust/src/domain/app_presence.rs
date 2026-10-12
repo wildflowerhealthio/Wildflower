@@ -58,6 +58,12 @@ impl AppPresence {
         }
     }
 
+    /// Whether the app is present.
+    #[must_use]
+    pub fn is_present(&self) -> bool {
+        self.present
+    }
+
     /// Whether the app is present, or became absent less than
     /// [`WHILE_OPEN_GRACE`] before the wall-clock instant `now`.
     #[must_use]
