@@ -80,13 +80,13 @@ changing how servers run or what the host notifies about them.
   `/health` at its public origin, an Effect over `@effect/platform`'s
   `HttpClient` decoded as a `HealthReport`. No DOM, no React, no
   `@tauri-apps/api`.
-- **`servers-react`** — `BaseRoot`, which `apps/host/host-app/src/main.tsx`
-  mounts with `@tauri-apps/api/core`'s `invoke`, `@tauri-apps/api/event`'s
+- **`servers-react`** — `BaseRoot`, which `apps/host/host-app`'s shell
+  mounts as its Servers page, on the history its links navigate too, with `@tauri-apps/api/core`'s `invoke`, `@tauri-apps/api/event`'s
   `listen`, and the background service's start config and the default
   launcher from `tauri-shared-config.json`: the base's telemetry
   consent gate, then the background session's recovery and its router over
   `routes/`, `/` the server list, `/servers/new` Add server,
-  `/servers/$domain` a server's page and `/settings` Host Settings, for the app on this device rather than any one
+  `/servers/$domain` a server's page and `/settings` Host Settings (any other path is the shell's, where the base shows no screen), for the app on this device rather than any one
   server (Notifications, Telemetry, Legal — the privacy policy, consumer health data
   policy, terms of use and deletion page on the canonical site, opened in the system browser — and
   About). The server list is a card per
@@ -486,7 +486,8 @@ changing how servers run or what the host notifies about them.
 - **The base reaches the host only through Tauri commands.** Every call goes
   through `servers-core-js`'s `invokeHostCommand`, which decodes the answer with
   the command's schema, so nothing the host sends is trusted by its static
-  type. The base mounts no effect-messaging transport. A command the base
+  type. The base mounts no effect-messaging transport; the host shell's one
+  serves the Recorder tab alone. A command the base
   calls is granted to the `main` webview in
   `apps/host/host-app/src-tauri/capabilities/default.json`; the server
   commands through the app-defined `allow-server-enrolment`,

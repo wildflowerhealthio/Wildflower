@@ -25,6 +25,12 @@ import {
 const Stub = (): JSX.Element => <div>stub</div>
 
 /**
+ * A tab an entry contributes through `platformTabs`. No entry contributes one
+ * today, so it borrows a real destination the Wildflower bar doesn't show.
+ */
+const PLATFORM_TAB: TabSpec = { key: 'home', label: 'Platform', path: '/fhir-home' }
+
+/**
  * Mount `<TabBar>` inside a minimal router whose tree mirrors the real
  * tab destinations — plus a `/collector/detail` descendant so the
  * exact-or-prefix active matching can be exercised. The root renders the
@@ -66,18 +72,12 @@ const renderTabBarAt = (
     path: '/settings',
     component: Stub,
   })
-  const harRecorderRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/har-recorder',
-    component: Stub,
-  })
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       homeRoute,
       fhirHomeRoute,
       collectorRoute.addChildren([collectorDetailRoute]),
       settingsRoute,
-      harRecorderRoute,
     ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   })
@@ -119,16 +119,16 @@ describe('TabBar', () => {
   })
 
   test('renders an entry-contributed platform tab between collector and settings', async () => {
-    renderTabBarAt('/home', [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }])
+    renderTabBarAt('/home', [PLATFORM_TAB])
     const links = await screen.findAllByRole('link')
     expect(links.map((l) => l.textContent)).toEqual([
       'Home',
       'Collector',
-      'HAR Recorder',
+      PLATFORM_TAB.label,
       'Settings',
     ])
-    expect(screen.getByRole('link', { name: 'HAR Recorder' }).getAttribute('href')).toBe(
-      '/har-recorder'
+    expect(screen.getByRole('link', { name: PLATFORM_TAB.label }).getAttribute('href')).toBe(
+      PLATFORM_TAB.path
     )
   })
 
@@ -136,7 +136,7 @@ describe('TabBar', () => {
     renderTabBarAt('/home')
     const links = await screen.findAllByRole('link')
     expect(links.map((l) => l.textContent)).toEqual(['Home', 'Collector', 'Settings'])
-    expect(screen.queryByRole('link', { name: 'HAR Recorder' })).toBeNull()
+    expect(screen.queryByRole('link', { name: PLATFORM_TAB.label })).toBeNull()
   })
 
   test('renders only Home, at the plain SMART Home, on a plain SMART server', async () => {
@@ -144,7 +144,7 @@ describe('TabBar', () => {
     // Wildflower-only endpoints.
     renderTabBarAt(
       '/fhir-home',
-      [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }],
+      [PLATFORM_TAB],
       ServerKind.PlainSmart({ fhirBaseUrl: 'https://launcher.test/fhir', patient: undefined })
     )
     const links = await screen.findAllByRole('link')

@@ -38,7 +38,7 @@ function TabBar(): JSX.Element {
     <nav className={styles['tab-bar']} aria-label="Primary">
       {tabsFor(serverKind, platformTabs).map((tab) => (
         <Link
-          key={tab.key}
+          key={tab.path}
           to={tab.path}
           className={styles['tab']}
           activeProps={{ className: styles['tab--active'] }}

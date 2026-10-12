@@ -43,12 +43,6 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
 - **`request-log-rust`** — each forwarded request the server served, kept in
   `wildflower.sqlite` and served at `/requests`. Its TypeScript half is
   `apps/launcher/request-log`.
-- **`har-recorder-rust`** — the HAR Recorder's bridge-wire mirror and the
-  validated, atomic `save_har`. No `tauri` dependency.
-- **`har-recorder-tauri`** — the HAR Recorder's host glue, attached from
-  `host-app`'s `setup()`, not from the server. Its TypeScript half, and the
-  recorder's design, are in
-  [`apps/launcher/har-recorder`](../../launcher/har-recorder/AGENTS.md).
 
 ## Rules
 
@@ -74,7 +68,7 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
   [OpenAPI Spec Drift How-To](../../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
 - **Slice layering still applies.** The crates here are still layered as
   slices are (`domain` / `db` / `http`, scope-gated capabilities, no `tauri`
-  dependency except in `har-recorder-tauri`).
+  dependency).
 
 ## References
 

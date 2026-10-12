@@ -178,8 +178,8 @@ interface RenderAppOptions {
    * Platform-specific tabs this entry contributes to the primary bar, after the
    * shared `TABS` (see `session/platform-tabs-context.ts`). Chosen at the entry
    * for the same reason as `platformSettingsItems`: only the entry knows the
-   * platform, so the bar needs no `entry`-sniffing branch. `main-tauri`
-   * contributes the HAR Recorder; web entries pass `[]`.
+   * platform, so the bar needs no `entry`-sniffing branch. Web entries pass
+   * `[]`.
    */
   readonly platformTabs: AppRootTreeProps['platformTabs']
   /**

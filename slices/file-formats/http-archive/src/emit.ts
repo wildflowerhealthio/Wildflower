@@ -291,7 +291,7 @@ const entryFromArchiveEntry = (entry: HttpArchive.Entry, requestComment: string)
  * guessed: `request.method` is `UNKNOWN`, timings are `-1`, and a dropped body
  * is a `HarNoBody` with the archive stating why in the entry `comment`.
  *
- * The anonymizer's re-encode and the HAR recorder's live capture share this
+ * The anonymizer's re-encode and the Recorder's live capture share this
  * emitter, differing only in `creatorName` and `requestComment`; both default
  * to the anonymize path's wording.
  *

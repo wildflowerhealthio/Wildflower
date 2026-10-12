@@ -51,8 +51,6 @@
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/gatekeeper-core": "workspace:*",
     "@wildflowerhealthio/gatekeeper-react": "workspace:*",
-    "@wildflowerhealthio/har-recorder-core-js": "workspace:*",
-    "@wildflowerhealthio/har-recorder-react": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/navigation-core": "workspace:*",
     "@wildflowerhealthio/navigation-react": "workspace:*",

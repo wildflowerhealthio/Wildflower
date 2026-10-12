@@ -3584,8 +3584,8 @@ dependencies = [
  "wildflowerhealthio-apps",
  "wildflowerhealthio-browser-sniffer-tauri",
  "wildflowerhealthio-gatekeeper",
- "wildflowerhealthio-har-recorder-tauri",
  "wildflowerhealthio-rathole-settings",
+ "wildflowerhealthio-recorder-tauri",
  "wildflowerhealthio-servers",
  "wildflowerhealthio-servers-tauri",
  "wildflowerhealthio-shared-structures",
@@ -9219,28 +9219,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wildflowerhealthio-har-recorder"
-version = "0.0.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "wildflowerhealthio-har-recorder-tauri"
-version = "0.0.0"
-dependencies = [
- "serde_json",
- "tauri",
- "tauri-plugin-log",
- "wildflowerhealthio-har-recorder",
- "wildflowerhealthio-shared-structures",
-]
-
-[[package]]
 name = "wildflowerhealthio-kitchen-sink"
 version = "0.0.0"
 
@@ -9287,6 +9265,28 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "wildflowerhealthio-recorder"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "wildflowerhealthio-recorder-tauri"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "tauri",
+ "tauri-plugin-log",
+ "wildflowerhealthio-recorder",
+ "wildflowerhealthio-shared-structures",
 ]
 
 [[package]]

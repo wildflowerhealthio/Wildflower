@@ -1,0 +1,60 @@
+/*
+ * The host's main window: the Servers | Recorder bar of links and the two
+ * pages they navigate between. On phone-width viewports the bar pins to the
+ * bottom, in thumb reach and clear of the pages' own sticky headers; at
+ * >=768px it moves above the pages.
+ */
+.host-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.host-shell__nav {
+  position: sticky;
+  bottom: 0;
+  z-index: 1000;
+  order: 1;
+  display: flex;
+  background: var(--color-canvas);
+  border-top: 1px solid var(--color-divider);
+}
+
+.host-shell__link {
+  flex: 1 1 0;
+  padding: var(--space-5) var(--space-4)
+    max(var(--space-5), calc(env(safe-area-inset-bottom, 0px) / 2 + var(--space-5)));
+  border: none;
+  background: none;
+  color: var(--color-neutral-4);
+  text-align: center;
+  text-decoration: none;
+}
+
+.host-shell__link:hover {
+  color: var(--color-neutral-1);
+}
+
+.host-shell__link[aria-current='page'] {
+  color: var(--color-neutral-1);
+  font-weight: var(--font-weight-4);
+}
+
+/* No `display` here: the page the location doesn't name is hidden by its
+ * `hidden` attribute. */
+.host-shell__page {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 768px) {
+  .host-shell__nav {
+    position: static;
+    order: -1;
+    border-top: none;
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .host-shell__link {
+    padding: var(--space-4);
+  }
+}

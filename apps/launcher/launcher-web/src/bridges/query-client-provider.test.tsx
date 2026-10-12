@@ -80,9 +80,6 @@ vi.mock('@wildflowerhealthio/apps-react', () => ({
 vi.mock('./collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: Passthrough,
 }))
-vi.mock('./har-recorder-sender-forwarder.tsx', () => ({
-  HarRecorderSenderForwarder: Passthrough,
-}))
 vi.mock('@wildflowerhealthio/telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
