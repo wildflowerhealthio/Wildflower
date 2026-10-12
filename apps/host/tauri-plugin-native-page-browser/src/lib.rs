@@ -13,7 +13,9 @@
 //! - **Desktop** — the default browser, through `tauri-plugin-opener`. A browser
 //!   tab isn't a window the app owns, so desktop never reports a close.
 //!
-//! Usage (Rust caller — the canonical path):
+//! Usage (Rust caller — the canonical path). `open` is async on every
+//! platform; await it rather than blocking on it, since iOS answers from the
+//! main thread:
 //! ```ignore
 //! use tauri::ipc::Channel;
 //! use tauri_plugin_native_page_browser::{BrowserEvent, NativePageBrowserExt, OpenRequest};
@@ -25,7 +27,8 @@
 //! app.native_page_browser().open(OpenRequest {
 //!     url: "https://example.test/".to_owned(),
 //!     closed,
-//! })?;
+//! })
+//! .await?;
 //! ```
 //!
 //! JS callers can also drive the plugin through

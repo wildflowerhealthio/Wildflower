@@ -1,5 +1,6 @@
 //! Wire shapes shared between the Rust command layer and the native (Swift /
-//! Kotlin) plugin. `OpenRequest` is what crosses `run_mobile_plugin("open", …)`.
+//! Kotlin) plugin. `OpenRequest` is what crosses
+//! `run_mobile_plugin_async("open", …)`.
 //! Field names are `camelCase` on the wire to match the Swift `Decodable` /
 //! Kotlin `@InvokeArg` sides.
 //!

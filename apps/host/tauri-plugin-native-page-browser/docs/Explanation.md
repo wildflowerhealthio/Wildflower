@@ -84,7 +84,7 @@ apps/host/tauri-plugin-native-page-browser/
       ▼
 [Rust] commands::open → NativePageBrowserExt::open → url_scheme::parse_http_url → platform backend
       │
-      ├─ iOS/Android: run_mobile_plugin("open", { url, closed })
+      ├─ iOS/Android: run_mobile_plugin_async("open", { url, closed }).await
       │     → close the showing view, if any → channel.send({ event:"closed" }) on ITS channel
       │     → present SFSafariViewController / launch the Custom Tab
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler

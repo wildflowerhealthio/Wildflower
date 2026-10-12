@@ -1,6 +1,10 @@
 //! Mobile backend. Registers the native plugin — Swift `NativePageBrowserPlugin`
 //! on iOS, Kotlin `NativePageBrowserPlugin` on Android — and forwards `open` to
-//! it via `run_mobile_plugin`.
+//! it via `run_mobile_plugin_async`.
+//!
+//! Async because the Swift side resolves only after a hop to the main queue: a
+//! blocking `run_mobile_plugin` from the iOS main thread would never return,
+//! and from an async command it would hold a tokio worker until it did.
 //!
 //! A phone shows one in-app browser view at a time: the native `open` dismisses
 //! a showing view (sending `Closed` on that view's channel) before presenting
@@ -49,16 +53,17 @@ impl<R: Runtime> NativePageBrowser<R> {
     /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] and
     /// sends its normalised form, so the native side parses exactly the
     /// `http(s)` URL Rust accepted (not, say, the caller's leading space).
-    pub fn open(&self, request: OpenRequest) -> crate::Result<()> {
+    pub async fn open(&self, request: OpenRequest) -> crate::Result<()> {
         let url = crate::url_scheme::parse_http_url(&request.url)?;
         self.0
-            .run_mobile_plugin::<()>(
+            .run_mobile_plugin_async::<()>(
                 "open",
                 OpenRequest {
                     url: url.into(),
                     ..request
                 },
             )
+            .await
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))
     }
 }

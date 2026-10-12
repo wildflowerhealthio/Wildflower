@@ -25,8 +25,8 @@ pub struct NativePageBrowser<R: Runtime>(PhantomData<fn() -> R>);
 
 impl<R: Runtime> NativePageBrowser<R> {
     /// Open `request.url` in the default browser. Never sends on
-    /// `request.closed`.
-    pub fn open(&self, request: OpenRequest) -> crate::Result<()> {
+    /// `request.closed`. Async only to match the mobile backend's `open`.
+    pub async fn open(&self, request: OpenRequest) -> crate::Result<()> {
         let url = crate::url_scheme::parse_http_url(&request.url)?;
         tauri_plugin_opener::open_url(url.as_str(), None::<&str>)
             .map_err(|error| crate::Error::Internal(error.to_string()))

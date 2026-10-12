@@ -18,5 +18,7 @@ pub(crate) async fn open<R: Runtime>(
     url: String,
     closed: Channel<BrowserEvent>,
 ) -> Result<()> {
-    app.native_page_browser().open(OpenRequest { url, closed })
+    app.native_page_browser()
+        .open(OpenRequest { url, closed })
+        .await
 }
