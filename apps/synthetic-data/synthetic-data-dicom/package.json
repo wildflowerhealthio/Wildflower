@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The DICOM synthetic data generator: a real, de-identified DICOM Part 10 image re-identified as a synthetic-data-fundamentals person on a story day (patient, dates and UIDs written with dicom's Part10, pixels untouched), and read back through dicom-importer-core onto the person's Patient from another source. Pure — no DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

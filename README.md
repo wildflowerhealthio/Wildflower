@@ -27,3 +27,7 @@ vp run build -r
 ```bash
 vp run dev
 ```
+
+## Licence
+
+The code is released under the [MIT licence](LICENSE).

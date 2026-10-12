@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<!-- The overlay Tauri merges on macOS AND iOS; `Info.ios.plist` beside it is
-	     the iOS-only one. Why these two keys, what the scoped ATS exemptions
+	     the iOS-only one. Why the two network keys, what the scoped ATS exemptions
 	     each cover, and why `NSAllowsArbitraryLoads` is absent: see "Reaching
 	     the network at all" in the Data Directory Explanation. -->
 	<key>NSLocalNetworkUsageDescription</key>
@@ -23,5 +23,12 @@
 			</dict>
 		</dict>
 	</dict>
+	<!-- The export-compliance answer, so App Store Connect stops asking on every
+	     iOS and Mac App Store upload. The app bundles standard encryption
+	     (TLS and certificate libraries, beyond Apple's own), isn't distributed
+	     in France, and so needs no documentation: exempt, hence NO. Shipping to France, or
+	     adding proprietary encryption, changes this answer. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

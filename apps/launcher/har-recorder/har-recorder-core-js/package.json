@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The HAR Recorder's pure core: `Recording` accumulates the browser-sniffer's response events into an `HttpArchive.Log`, `isOmittedFromRecording` decides what a recording keeps, `recordingFileName` names the file, `toHar` emits the archive through `http-archive`, and `HarRecorderBridge` carries the finished text to the host that writes it. No DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

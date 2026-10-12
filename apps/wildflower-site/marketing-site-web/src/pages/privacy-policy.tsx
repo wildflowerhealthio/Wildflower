@@ -23,7 +23,7 @@ const EMAIL = 'ruthmarks151@gmail.com'
  */
 function PrivacyPolicy(): JSX.Element {
   return (
-    <PolicyPage title="Privacy policy" updated="2026-10-10">
+    <PolicyPage title="Privacy policy" updated="2026-10-11">
       <PolicySection title="In short">
         <ul>
           <li>
@@ -128,14 +128,14 @@ function PrivacyPolicy(): JSX.Element {
             title="Crash reports"
             where="Sentry, a third-party error-reporting service in the United States."
             when="Only if you turn Crash reports on."
-            keptFor="90 days. Sentry deletes each report 90 days after it arrives."
+            keptFor="30 days. Sentry deletes each report 30 days after it arrives."
             delete="Email me with the app and roughly when you used it."
           />
           <PolicyDataCard
             title="Performance data and session counts"
             where="Sentry, in the United States."
             when="Only if you turn Performance data on. Session counts are sent while either switch is on."
-            keptFor="90 days, the same as crash reports."
+            keptFor="30 days, the same as crash reports."
             delete="Email me, the same as for crash reports."
           />
         </PolicyDataGroup>
@@ -243,7 +243,7 @@ function PrivacyPolicy(): JSX.Element {
         <ul>
           <li>
             <strong>Sentry</strong> receives the reports you opt in to, under its data processing
-            agreement, and keeps them for 90 days. See{' '}
+            agreement, and keeps them for 30 days, the retention of my Sentry plan. See{' '}
             <a href="https://sentry.io/privacy/">Sentry&rsquo;s privacy policy</a>.
           </li>
           <li>
@@ -296,7 +296,7 @@ function PrivacyPolicy(): JSX.Element {
             Swiss-US framework.
           </li>
           <li>
-            <strong>Retention.</strong> As the cards above say: 90 days for anything sent to Sentry,
+            <strong>Retention.</strong> As the cards above say: 30 days for anything sent to Sentry,
             until deleted for tunnel details, and until you ask for emails.
           </li>
           <li>

@@ -122,7 +122,7 @@ const SOURCE_CODE: LinkedSentenceCopy = {
  * answered the old wording are asked again.
  */
 const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
-  version: 2,
+  version: 3,
   title: 'Before you start',
   warning: [
     'The Wildflower Health Project is an early-stage open source project, ' +
@@ -174,11 +174,13 @@ const TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
  * warning and the disclaimer name the app, the session counts name no browser, and the answer is
  * changed from the Settings screen rather than a button on the page. The
  * switch labels are the shared ones, so the Telemetry row in Settings reads
- * the same on every entry. Its answer is stored in the webview's own
- * storage, under this copy's `version`, apart from any web app's.
+ * the same on every entry. The terms, policy links, disclaimer and source
+ * link are the web apps' own, so its `version` is theirs too: a change to
+ * the shared terms asks Host users again. Its answer is stored in the
+ * webview's own storage, apart from any web app's.
  */
 const WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY: TelemetryConsentCopy = {
-  version: 2,
+  version: TELEMETRY_CONSENT_COPY.version,
   title: TELEMETRY_CONSENT_COPY.title,
   warning: [
     'Wildflower Host is an early-stage open source project, ' +

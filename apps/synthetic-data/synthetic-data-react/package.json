@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Browser UI for loading a published synthetic data snapshot into a FHIR server: SyntheticDataScreen reads a snapshot's index.json header from its address, lists its members to choose from, fetches the chosen members' files and reads them back through synthetic-data-core-js's Snapshot.Reader (every source file checked against its attachment's size and hash), and writes nothing unless every file reads — then writes the resources as Snapshot.WriteOrder's batch bundles, in reference order, through the route context's authed runner, and shows every entry's outcome grouped by response status.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

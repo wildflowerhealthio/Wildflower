@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Browser UI adapter for the importer slice: the source picker that hands the importer one or more files to import. A file dropped or picked on device (HAR, LifeLabs PDF or DICOM), or a previously uploaded source file read back off the device's own FHIR server, all converge on one PickedFile carrying bytes. The picker identifies each file syntactically against the registered formats' detect; the full parse runs in that format's decode one step downstream. Presentation and interaction only.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

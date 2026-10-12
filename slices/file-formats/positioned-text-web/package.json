@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The browser (non-React) extraction seam of the file-formats slice: `extractPositionedText` turns a PDF's raw bytes into a `Document.Type` via a dynamically imported `pdfjs-dist`. Both the PDF anonymizer and a future PDF importer feed off this one seam. Untested by design — everything downstream is tested on hand-written fixture documents.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

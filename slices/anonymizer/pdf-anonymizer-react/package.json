@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The PDF anonymizer UI: the panel a host mounts to extract positioned text from a PDF, enter literal-substring substitution rules, preview the masked runs, and download anonymized positioned-text JSON. Uses pdfjs-dist for extraction behind a seam; everything downstream tested on hand-written fixtures.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

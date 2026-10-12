@@ -40,7 +40,7 @@ describe('PrivacyPolicy', () => {
     ).toBeDefined()
     expect(screen.getByRole('heading', { name: 'Not medical advice' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'If something goes wrong' })).toBeDefined()
-    expect(screen.getAllByText(/90 days/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/30 days/).length).toBeGreaterThan(0)
   })
 })
 
@@ -87,9 +87,20 @@ describe('Terms', () => {
     expect(screen.getByRole('link', { name: 'deletion page' }).getAttribute('href')).toBe(
       '../deletion/'
     )
-    for (const title of ['Not medical advice', 'No warranty', 'Limitation of liability']) {
+    for (const title of [
+      'Not medical advice',
+      'No warranty',
+      'Limitation of liability',
+      'Governing law',
+    ]) {
       expect(screen.getByRole('heading', { name: title })).toBeDefined()
     }
+    expect(screen.getByText(/Province of Ontario/)).toBeDefined()
+    // Within the prose: the shared footer carries the same link.
+    const main = within(screen.getByRole('main'))
+    expect(main.getByRole('link', { name: 'MIT licence' }).getAttribute('href')).toBe(
+      'https://github.com/wildflowerhealthio/Wildflower/blob/main/LICENSE'
+    )
   })
 })
 

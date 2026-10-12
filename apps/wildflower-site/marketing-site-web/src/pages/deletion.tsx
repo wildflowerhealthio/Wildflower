@@ -10,7 +10,7 @@ import { PolicyPage, PolicySection } from '../components/policy-page.tsx'
  */
 function Deletion(): JSX.Element {
   return (
-    <PolicyPage title="Deleting your data" updated="2026-10-10">
+    <PolicyPage title="Deleting your data" updated="2026-10-11">
       <PolicySection title="Who this covers">
         <p>
           This page explains how to delete the data kept by Wildflower Host and the other apps of
@@ -28,7 +28,7 @@ function Deletion(): JSX.Element {
           <li>
             <strong>Crash reports.</strong> Name the app and roughly when you used it. Reports carry
             no user id, so I can&rsquo;t pick out yours by name: I delete every report from that app
-            and period that could be yours. Sentry deletes all reports on its own 90 days after they
+            and period that could be yours. Sentry deletes all reports on its own 30 days after they
             arrive.
           </li>
           <li>

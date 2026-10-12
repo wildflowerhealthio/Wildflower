@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The LifeLabs synthetic data generator: a synthetic-data-fundamentals Story's lab draws as the LifeLabs reports a laboratory prints, and as the FHIR R4 resources lifelabs-pdf-importer makes of them, filed on the person's pharmacy Patient. Pure — no DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

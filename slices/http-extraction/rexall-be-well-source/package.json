@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The Rexall Be Well source: the carebook STU3 dialect (extension/identifier/coding-system constants, Bundle shapes, extension promotion) and the profile/medication-list response kinds that define how Rexall letsbewell.ca traffic decodes into FHIR R4 resources, assembled as a SourceDescriptor for both live and archive extraction. No DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

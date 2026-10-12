@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Development-purposes collector that records a hand-driven browsing session: point it at a URL, browse the portal by hand, close the window, and every XHR/fetch the pages fired is on device as a FHIR DocumentReference via web-trace-core's codec. Captures everything and filters nothing — the content-type allowlist governs bodies, never whether an exchange is recorded.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

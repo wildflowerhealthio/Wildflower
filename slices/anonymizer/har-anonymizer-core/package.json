@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The HAR engine of the anonymizer: the shape-preserving pseudonymizer that redacts a captured session at the export boundary — the redaction policy (enum carve-out, namespace URIs, per-path overrides), the HMAC-keyed value→pseudonym table, the shape detectors and fake generators, and the leaf walkers over both TraceExchange and HttpArchive entries. No DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",

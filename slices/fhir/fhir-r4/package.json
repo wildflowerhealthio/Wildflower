@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/fhir-r4",
   "version": "0.0.1",
   "description": "FHIR R4 wire schemas, HttpApi description, and HTTP client",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "Ruth Marks",
   "type": "module",
   "exports": {

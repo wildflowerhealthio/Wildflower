@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The Rexall Be Well synthetic data generator: a synthetic-data-fundamentals Story, filled under a Rexall account, as the HAR a letsbewell.ca session exports — the carebook profile and the STU3 prescriptions searchset, spelled from rexall-be-well-source's dialect and typed by its schemas. Pure — no DOM, no fs, no React.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
