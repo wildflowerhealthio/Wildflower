@@ -7,10 +7,10 @@ import {
   RadioGroup,
   TextField,
 } from '@wildflowerhealthio/react-tundraish'
-import type {
+import {
   EnteredCredentials,
-  EnteredRelay,
-  RunPolicyChoice,
+  type EnteredRelay,
+  type RunPolicyChoice,
 } from '@wildflowerhealthio/servers-core-js'
 import { Match, Option } from 'effect'
 import { type JSX, type ReactNode, useId, useState } from 'react'
@@ -337,10 +337,14 @@ const enteredCredentialsOf = (
     ? { kind: 'claimCode', code: entries.claimCode }
     : { kind: 'token', tunnelName: entries.tunnelName, token: entries.token }
 
-/** Whether `credentials` lack a value the host needs: one left blank. */
+/**
+ * Whether `credentials` lack a value the host needs: a claim code that isn't
+ * one, such as one missing a character, or a tunnel name or token left
+ * blank.
+ */
 const isIncomplete = (credentials: EnteredCredentials.Type): boolean =>
   Match.value(credentials).pipe(
-    Match.when({ kind: 'claimCode' }, ({ code }) => code.trim() === ''),
+    Match.when({ kind: 'claimCode' }, ({ code }) => !EnteredCredentials.isClaimCode(code)),
     Match.when(
       { kind: 'token' },
       ({ tunnelName, token }) => tunnelName.trim() === '' || token.trim() === ''
@@ -349,7 +353,8 @@ const isIncomplete = (credentials: EnteredCredentials.Type): boolean =>
   )
 
 /**
- * A claim code's field, uppercased as typed, over a note that the server's
+ * A claim code's field, uppercased as typed, saying the format Add server
+ * waits for, over a note that the server's
  * address becomes public in the Certificate Transparency logs.
  */
 const ClaimCodeFields = ({
@@ -369,7 +374,7 @@ const ClaimCodeFields = ({
       placeholder="ABCD-EFGH"
       autoComplete="off"
       autoCapitalize="characters"
-      description="It works once: the relay exchanges it for your server's tunnel name and token, which are saved on this device."
+      description="Eight letters and digits, such as ABCD-EFGH; codes have no 0, 1, I, L or O. It works once: the relay exchanges it for your server's tunnel name and token, which are saved on this device."
     />
     <p className={`text-body-3 ${styles['add-server-page__note']}`}>
       Your server's address becomes public: when your server gets its certificate, the certificate

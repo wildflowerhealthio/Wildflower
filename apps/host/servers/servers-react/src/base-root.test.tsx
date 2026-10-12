@@ -2654,6 +2654,45 @@ describe('Add server', () => {
   })
 
   it.each([
+    ['ABCD-EFG', 'one character short'],
+    ['ABCDEFG', 'seven characters'],
+    ['ABCD-EFGO', 'an O'],
+    ['ABCD-EFG1', 'a 1'],
+  ])('should not add a server with the claim code %j, %s', async (code) => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    await enterRelay(user)
+    const tunnel = await stepTitled('Tunnel')
+
+    // Act
+    await user.type(within(tunnel).getByLabelText('Claim code'), code)
+
+    // Assert
+    expect(within(tunnel).getByRole('button', { name: 'Add server' })).toHaveProperty(
+      'disabled',
+      true
+    )
+  })
+
+  it.each([['abcd-2345'], ['ABCD2345']])('should let the claim code %j be added', async (code) => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer()
+    await enterRelay(user)
+    const tunnel = await stepTitled('Tunnel')
+
+    // Act
+    await user.type(within(tunnel).getByLabelText('Claim code'), code)
+
+    // Assert
+    expect(within(tunnel).getByRole('button', { name: 'Add server' })).toHaveProperty(
+      'disabled',
+      false
+    )
+  })
+
+  it.each([
     [
       'a self-hosted Wildflower relay',
       { baseUrl: 'https://relay.example.com' },

@@ -26,5 +26,24 @@ const EnteredCredentialsSchema = Schema.Union(
 /** A decoded {@link EnteredCredentialsSchema}. */
 type Type = typeof EnteredCredentialsSchema.Type
 
-export { EnteredCredentialsSchema as Schema }
+/**
+ * A claim code as a Wildflower relay reads one, mirroring the relay's
+ * `ClaimCode::parse` (`relay-server`'s `domain/claim_code.rs`): after
+ * trimming, eight characters of `23456789ABCDEFGHJKMNPQRSTUVWXYZ`, in either
+ * case, optionally split into two groups of four by a dash, `ABCD-EFGH`.
+ */
+const ClaimCodeSchema = Schema.String.pipe(
+  Schema.pattern(/^\s*[2-9A-HJKMNP-Z]{4}-?[2-9A-HJKMNP-Z]{4}\s*$/i, {
+    description: 'a claim code, such as ABCD-EFGH',
+  })
+)
+
+/**
+ * Whether `code`, as typed, is a claim code a Wildflower relay could
+ * redeem, by {@link ClaimCodeSchema}'s format; whether the relay knows it is
+ * for the relay to say.
+ */
+const isClaimCode: (code: string) => boolean = Schema.is(ClaimCodeSchema)
+
+export { ClaimCodeSchema, EnteredCredentialsSchema as Schema, isClaimCode }
 export type { Type }
