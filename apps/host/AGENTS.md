@@ -8,10 +8,11 @@ stores, and the packages beside it that only the host uses. The app itself is
 ## Packages
 
 - [`host-app`](./host-app/README.md) — the app: the Vite entry its webview
-  loads, a shell with two tabs, **Servers** (the base, `servers-react`'s
-  `BaseRoot`) and **Recorder** (`recorder-react`'s `RecorderPage`, over an
-  `effect-messaging-tauri-js` transport for `RecorderBridge`), both kept
-  mounted, and, in `src-tauri`, the `host-app` crate (`host_app_lib`) that builds
+  loads, a shell with a bar of two links, **Servers** (the base,
+  `servers-react`'s `BaseRoot`, whose router owns every path but `/recorder`)
+  and **Recorder** (`/recorder`, `recorder-react`'s `RecorderPage`, over an
+  `effect-messaging-tauri-js` transport for `RecorderBridge`), over one browser
+  history with both pages kept mounted, and, in `src-tauri`, the `host-app` crate (`host_app_lib`) that builds
   the Tauri app, registers the plugins and commands, and hosts the servers. The
   committed `src-tauri/gen/` holds its Xcode and Gradle projects.
 - [`servers/`](./servers/AGENTS.md) — the servers this install knows about, how

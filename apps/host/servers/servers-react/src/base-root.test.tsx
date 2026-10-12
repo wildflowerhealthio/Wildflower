@@ -337,6 +337,20 @@ describe('BaseRoot', () => {
     // Assert
     expect(await screen.findByText('No servers yet')).toBeDefined()
   })
+
+  it("should show no screen at a path outside its routes, the shell's own", async () => {
+    // Act
+    renderBase({
+      invoke: hostWith().invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: '/recorder',
+    })
+    await act(async () => {})
+
+    // Assert
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(screen.queryByText('Not Found')).toBeNull()
+  })
 })
 
 describe('the background session recovery', () => {

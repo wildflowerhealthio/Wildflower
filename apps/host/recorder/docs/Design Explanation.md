@@ -68,7 +68,7 @@ webview down and the host must hold the bytes first.
 | Writing the file       | `recorder-rust` (`save_har`)     | The page has no `fs` grant and should not get one; Rust validates the name before any filesystem call, writes to a temp file and renames, and refuses to overwrite.                                    |
 | Choosing the folder    | `recorder-rust` (`Platform`)     | A pure function of the platform and the directories Tauri resolves, tested without a webview; `recorder-tauri` resolves them once at startup and answers `recorder_save_folder`.                       |
 | The wire               | `RecorderBridge`                 | One bridge for the sniffer's data plane, the window's lifecycle and the save, with the tags `browser-sniffer-tauri` already routes. The archive rides as encoded text, so the host needs no HAR model. |
-| The tab                | `apps/host/host-app`             | The host shell's Recorder tab, beside the base's Servers tab, over an `effect-messaging-tauri-js` transport for `RecorderBridge` alone. Both tabs stay mounted.                                        |
+| The page               | `apps/host/host-app`             | The host shell's `/recorder` page, which its Recorder link navigates to beside the base's Servers, over an `effect-messaging-tauri-js` transport for `RecorderBridge` alone. Both pages stay mounted.  |
 | Downloads              | `tauri-plugin-native-webview`    | The `on_download` hook must be set when the content webview is built, so the plugin owns it; the sniffer passes `saved_data` on every open.                                                            |
 
 ## Decisions

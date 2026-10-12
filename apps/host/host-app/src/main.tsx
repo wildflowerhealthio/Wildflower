@@ -1,3 +1,4 @@
+import { createBrowserHistory } from '@tanstack/react-router'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
@@ -29,7 +30,7 @@ const backgroundServiceStartConfig = {
   foregroundServiceType: backgroundServiceForegroundType,
 } as const
 
-// The Recorder tab's bridge transport, built once for the page's lifetime:
+// The Recorder's bridge transport, built once for the page's lifetime:
 // one listener on the host's bridge channel for `RecorderBridge` alone, so the
 // host's other bridge traffic (the gatekeeper messages it pushes on every
 // `__Ready`) is dropped without a word. The base doesn't use it.
@@ -38,9 +39,10 @@ const recorderTransport = makeTauriTransport({ bridges: [RecorderBridge] as cons
 const rootElement = document.getElementById('root')
 if (rootElement === null) throw new Error('index.html has no #root element')
 
-// The Servers | Recorder shell. The base, in the Servers tab, shows its own
-// telemetry consent dialog first, then its screens, which reach the host only
-// through Tauri commands and events. The launcher the host gives a new server
+// The Servers | Recorder shell, over the webview's history, which its links and
+// the base's router both navigate. The base shows its own telemetry consent
+// dialog first, then its screens, which reach the host only through Tauri
+// commands and events. The launcher the host gives a new server
 // is the published launcher, `launcher_base_url` from the same
 // `tauri-shared-config.json` in every build, which the server page offers as
 // Reset to default.
@@ -57,6 +59,7 @@ createRoot(rootElement).render(
           app: 'host-app',
         },
       }}
+      history={createBrowserHistory()}
       recorderTransport={recorderTransport}
       revealFile={revealItemInDir}
     />

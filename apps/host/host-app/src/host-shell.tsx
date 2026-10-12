@@ -1,3 +1,4 @@
+import type { RouterHistory } from '@tanstack/react-router'
 import { HandlerCoordinatorContext } from '@wildflowerhealthio/effect-messaging-react'
 import type { TauriTransport } from '@wildflowerhealthio/effect-messaging-tauri-js'
 import { usePromiseOrDefault } from '@wildflowerhealthio/react-kitchen-sink'
@@ -12,23 +13,14 @@ import { PendingConsent } from '@wildflowerhealthio/servers-core-js'
 import { BaseRoot, type BaseRootProps } from '@wildflowerhealthio/servers-react'
 import { CrashReportingBoundary } from '@wildflowerhealthio/telemetry-react'
 import { Either, Match, Option } from 'effect'
-import { useEffect, useId, useMemo, useState, type JSX } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState, useSyncExternalStore, type JSX } from 'react'
 
 import styles from './host-shell.module.css'
 
-/** The bridge transport the Recorder tab runs over: `RecorderBridge` alone. */
+/** The bridge transport the Recorder runs over: `RecorderBridge` alone. */
 type RecorderTransport = TauriTransport<readonly [RecorderBridge]>
 
-/** The shell's tabs, in the order the bar shows them. */
-const TABS = [
-  { id: 'servers', label: 'Servers' },
-  { id: 'recorder', label: 'Recorder' },
-] as const
-
-/** The id of one of the shell's {@link TABS}. */
-type Tab = (typeof TABS)[number]['id']
-
-/** Where the Recorder tab's transport is. */
+/** Where the Recorder's transport is. */
 type RecorderConnection =
   | { readonly _tag: 'Connecting' }
   | { readonly _tag: 'Connected'; readonly transport: RecorderTransport }
@@ -40,7 +32,7 @@ const CONNECTING: RecorderConnection = { _tag: 'Connecting' }
  * The Recorder page, once its transport has told the host the page is ready,
  * inside the coordinator and sender it registers and sends through.
  */
-function RecorderTab({
+function RecorderScreen({
   recorderTransport,
   page,
 }: {
@@ -78,14 +70,41 @@ function RecorderTab({
   )
 }
 
+/** The shell's one route of its own: the Recorder. Every other path is the base's. */
+const RECORDER_PATH = '/recorder'
+
+/** Where the shell is: which page shows, and where its Servers link goes. */
+interface HostRoute {
+  /** Whether the location is {@link RECORDER_PATH}, so the Recorder shows. */
+  readonly onRecorder: boolean
+  /**
+   * The base's last location, `/` until the base has had one: where the
+   * Servers link goes, so coming back finds the base where it was left.
+   */
+  readonly serversHref: string
+}
+
+/** The shell's {@link HostRoute}, read from `history` as it navigates. */
+const useHostRoute = (history: RouterHistory): HostRoute => {
+  const location = useSyncExternalStore(history.subscribe, () => history.location)
+  const onRecorder = location.pathname === RECORDER_PATH
+  const [serversHref, setServersHref] = useState(onRecorder ? '/' : location.href)
+  if (!onRecorder && serversHref !== location.href) setServersHref(location.href)
+  return { onRecorder, serversHref }
+}
+
 /**
- * Show the Servers tab whenever a consent comes to wait on a server, so the
- * base's consent sheet, which lives in that tab, is on screen to answer.
+ * Navigate to the base whenever a consent comes to wait on a server, so the
+ * base's consent sheet is on screen to answer.
  */
-const useServersTabForPendingConsents = (
+const useServersForPendingConsents = (
   listen: BaseRootProps['listen'],
-  showServers: () => void
+  history: RouterHistory,
+  { onRecorder, serversHref }: HostRoute
 ): void => {
+  const showServers = useEffectEvent(() => {
+    if (onRecorder) history.push(serversHref)
+  })
   useEffect(() => {
     let unmounted = false
     let stopListening: (() => void) | undefined
@@ -104,15 +123,20 @@ const useServersTabForPendingConsents = (
       unmounted = true
       stopListening?.()
     }
-  }, [listen, showServers])
+  }, [listen])
 }
 
 /** Props for {@link HostShell}. */
 interface HostShellProps {
-  /** The base's props, passed to `BaseRoot` unchanged. */
-  readonly base: BaseRootProps
+  /** The base's props, passed to `BaseRoot` with {@link HostShellProps.history}. */
+  readonly base: Omit<BaseRootProps, 'history'>
   /**
-   * The Recorder tab's bridge transport: `makeTauriTransport` over
+   * The window's history, which the shell's links and the base's router both
+   * navigate: `createBrowserHistory()` in the app, a memory one in tests.
+   */
+  readonly history: RouterHistory
+  /**
+   * The Recorder's bridge transport: `makeTauriTransport` over
    * `RecorderBridge`, which resolves once the host has been told the page is
    * ready.
    */
@@ -126,71 +150,67 @@ interface HostShellProps {
 }
 
 /**
- * The host's main window: a bar with two tabs, Servers (the base,
+ * The host's main window: a bar of two links, Servers (the base,
  * `servers-react`'s `BaseRoot`) and Recorder (`recorder-react`'s
- * `RecorderPage`).
+ * `RecorderPage`), over the page the location names.
  *
  * @remarks
- * **Both tabs stay mounted.** The inactive one is hidden, not unmounted, so
- * switching keeps the base's router and a running recording where they were.
+ * **The location picks the page.** `/recorder` is the Recorder; every other
+ * path is the base's, which its router, on the same `history`, routes. The
+ * links navigate that history, so the platform's Back moves between them too.
+ * The Servers link goes to the base's last location rather than `/`.
+ *
+ * **Both pages stay mounted.** The one the location doesn't name is hidden,
+ * not unmounted, so a running recording keeps going while the base shows.
  *
  * **The base's gates stay in the base.** `BaseRoot` holds its own telemetry
  * consent dialog, which is modal, so on first launch it covers the bar too and
- * nothing else can be reached until it is answered; Servers is the tab the
- * shell opens on. The Recorder tab has a `CrashReportingBoundary` of its own,
- * whose reports are sent once that answer has started telemetry.
+ * nothing else can be reached until it is answered. The Recorder has a
+ * `CrashReportingBoundary` of its own, whose reports are sent once that answer
+ * has started telemetry.
  *
- * **A consent shows the Servers tab.** The base's consent sheet lives in the
- * Servers tab, so when the host emits a consent waiting on a server, the shell
- * shows that tab.
+ * **A consent navigates to the base.** The base's consent sheet is the base's,
+ * so when the host emits a consent waiting on a server while the Recorder
+ * shows, the shell navigates to the Servers link's location.
  */
-function HostShell({ base, recorderTransport, revealFile }: HostShellProps): JSX.Element {
-  const [tab, setTab] = useState<Tab>('servers')
-  const [showServers] = useState(() => () => {
-    setTab('servers')
-  })
-  useServersTabForPendingConsents(base.listen, showServers)
-  const panelId = useId()
-  const tabIdOf = (id: Tab): string => `${panelId}-${id}-tab`
-  const panelIdOf = (id: Tab): string => `${panelId}-${id}-panel`
+function HostShell({ base, history, recorderTransport, revealFile }: HostShellProps): JSX.Element {
+  const route = useHostRoute(history)
+  useServersForPendingConsents(base.listen, history, route)
+  const links = [
+    { label: 'Servers', href: route.serversHref, current: !route.onRecorder },
+    { label: 'Recorder', href: RECORDER_PATH, current: route.onRecorder },
+  ]
   return (
     <div className={styles['host-shell']}>
-      <div className={styles['host-shell__tabs']} role="tablist" aria-label="Wildflower Host">
-        {TABS.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={tabIdOf(id)}
-            aria-selected={tab === id}
-            aria-controls={panelIdOf(id)}
-            className={`text-label-2 ${styles['host-shell__tab']}`}
-            onClick={() => {
-              setTab(id)
+      <nav className={styles['host-shell__nav']} aria-label="Wildflower Host">
+        {links.map(({ label, href, current }) => (
+          <a
+            key={label}
+            href={history.createHref(href)}
+            aria-current={current ? 'page' : undefined}
+            className={`text-label-2 ${styles['host-shell__link']}`}
+            onClick={(event) => {
+              const plainClick =
+                event.button === 0 &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                !event.shiftKey &&
+                !event.altKey
+              if (!plainClick) return
+              event.preventDefault()
+              if (!current) history.push(href)
             }}
           >
             {label}
-          </button>
+          </a>
         ))}
+      </nav>
+      <div hidden={route.onRecorder} className={styles['host-shell__page']}>
+        <BaseRoot {...base} history={history} />
       </div>
-      <div
-        id={panelIdOf('servers')}
-        role="tabpanel"
-        aria-labelledby={tabIdOf('servers')}
-        hidden={tab !== 'servers'}
-        className={styles['host-shell__panel']}
-      >
-        <BaseRoot {...base} />
-      </div>
-      <div
-        id={panelIdOf('recorder')}
-        role="tabpanel"
-        aria-labelledby={tabIdOf('recorder')}
-        hidden={tab !== 'recorder'}
-        className={styles['host-shell__panel']}
-      >
-        <CrashReportingBoundary extraContext={{ app: base.telemetry.app, tab: 'recorder' }}>
-          <RecorderTab
+      <div hidden={!route.onRecorder} className={styles['host-shell__page']}>
+        <CrashReportingBoundary extraContext={{ app: base.telemetry.app, page: 'recorder' }}>
+          <RecorderScreen
             recorderTransport={recorderTransport}
             page={{ invoke: base.invoke, revealFile }}
           />
