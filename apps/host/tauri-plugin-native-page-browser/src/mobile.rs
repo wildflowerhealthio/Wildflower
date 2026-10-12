@@ -48,10 +48,12 @@ pub struct NativePageBrowser<R: Runtime>(tauri::plugin::PluginHandle<R>);
 
 impl<R: Runtime> NativePageBrowser<R> {
     /// Present `request.url` in the in-app browser by invoking the Swift/Kotlin
-    /// `open` command. iOS replaces a view already showing; Android returns an
-    /// error instead (see the module doc). The native side sends
-    /// [`BrowserEvent::Closed`](crate::BrowserEvent::Closed) on
-    /// `request.closed` once the view is gone.
+    /// `open` command. iOS replaces a view already showing; Android joins a
+    /// view still launching instead (see the module doc). The native side
+    /// sends [`BrowserEvent::Closed`](crate::BrowserEvent::Closed) on
+    /// `request.events` once the view is gone, and on Android
+    /// [`BrowserEvent::KeptAlive`](crate::BrowserEvent::KeptAlive) before it
+    /// when the view's browser keeps the app alive.
     ///
     /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] and
     /// sends its normalised form, so the native side parses exactly the

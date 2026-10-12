@@ -1,5 +1,5 @@
 .env
-
+.tanstack/
 .local-notes/
 
 # Logs

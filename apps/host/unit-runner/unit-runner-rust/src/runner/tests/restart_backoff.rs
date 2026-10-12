@@ -11,6 +11,7 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 
 use super::fakes::{eventually_on_the_paused_clock, Harness, Probe, Script};
+use crate::domain::app_presence::Presence;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
 use crate::runner::{FIRST_UNIT_RESTART_BACKOFF, MAX_UNIT_RESTART_BACKOFF, STABLE_UNIT_UPTIME};
@@ -240,7 +241,7 @@ async fn the_app_becoming_present_starts_a_unit_waiting_out_its_delay_at_once() 
         .await;
     failing_unit.fail(&harness).await;
 
-    harness.unit_runner.set_app_present(true);
+    harness.unit_runner.set_app_presence(Presence::Present);
     eventually_on_the_paused_clock("the unit starts at once", || {
         failing_unit.probe.starts() == 4
     })

@@ -9,16 +9,19 @@
 //! - **iOS** — Swift `SFSafariViewController`, in the app's colours. An `open`
 //!   replaces a showing view.
 //! - **Android** — Kotlin `androidx.browser` Custom Tab sliding in from the
-//!   right, in the app's colours; the default browser when no Custom Tabs
-//!   provider is installed. An `open` returns an error while a view is showing
-//!   or the app is in the background.
+//!   right, in the app's colours, which asks its browser to keep the app alive
+//!   under it; the default browser when no Custom Tabs provider is installed.
+//!   An `open` joins a view still launching, and returns an error while the
+//!   app is in the background.
 //! - **Desktop** — the default browser, through `tauri-plugin-opener`. A browser
 //!   tab isn't a window the app owns, so desktop never reports a close.
 //!
 //! On every platform a URL that doesn't parse or isn't `http(s)` returns
 //! [`Error::InvalidUrl`] before any backend sees it. On iOS and Android the
-//! `closed` channel hears exactly one [`BrowserEvent::Closed`] per `open` that
-//! returns `Ok`, and none after one that returns an `Err`.
+//! `events` channel hears exactly one [`BrowserEvent::Closed`] per `open` that
+//! returns `Ok`, and none after one that returns an `Err`. On Android it hears
+//! [`BrowserEvent::KeptAlive`] before that when the view's browser keeps the
+//! app alive under the view.
 //!
 //! Usage (Rust caller — the canonical path). `open` is async on every
 //! platform; await it rather than blocking on it, since iOS answers from the
@@ -27,19 +30,19 @@
 //! use tauri::ipc::Channel;
 //! use tauri_plugin_native_page_browser::{BrowserEvent, NativePageBrowserExt, OpenRequest};
 //!
-//! let closed: Channel<BrowserEvent> = Channel::new(move |body| {
+//! let events: Channel<BrowserEvent> = Channel::new(move |body| {
 //!     // body: tauri::ipc::InvokeResponseBody — deserialise as BrowserEvent.
 //!     Ok(())
 //! });
 //! app.native_page_browser().open(OpenRequest {
 //!     url: "https://example.test/".to_owned(),
-//!     closed,
+//!     events,
 //! })
 //! .await?;
 //! ```
 //!
 //! JS callers can also drive the plugin through
-//! `invoke('plugin:native-page-browser|open', { url, closed })` with a
+//! `invoke('plugin:native-page-browser|open', { url, events })` with a
 //! `new Channel<BrowserEvent>()`.
 
 use tauri::{

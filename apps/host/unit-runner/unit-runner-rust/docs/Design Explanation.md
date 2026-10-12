@@ -104,7 +104,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         self: &Arc<Self>,
         platform: Arc<P>,
     );
-    pub fn set_app_present(self: &Arc<Self>, present: bool);
+    pub fn set_app_presence(self: &Arc<Self>, presence: Presence);
     pub fn restart_running_units(self: &Arc<Self>);
     pub fn session_started(self: &Arc<Self>) -> SessionId;
     pub fn session_ended(
@@ -172,8 +172,9 @@ forgets it, status included. Run shutdown is bounded (see Runs), so
 that was never set are logged and ignored.
 
 **The host binds.** `UnitRunner` learns about the platform only through its
-host. The host tells it when the app becomes present or absent
-(`set_app_present`), when
+host. The host tells it the app's presence (`set_app_presence`): absent,
+present, or present in the background, where the platform treats a present
+app as in the background so only a background session keeps it alive; when
 every running unit should restart (`restart_running_units`), and when a
 background session starts and ends (`session_started`, `session_ended`). It
 hands `UnitRunner` its `BackgroundSessionPlatform` once, when the platform can
@@ -350,10 +351,10 @@ one is stale, and changes nothing.
 `UnitRunner` is built with the host's `BackgroundSessionLength`: how long the
 platform's background session can keep the app alive after it becomes absent.
 
-| Length           | A session is wanted                              | While the app is absent, a unit should run        | Host                                                                                |
-| ---------------- | ------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `AsLongAsNeeded` | while some unit should run                       | as its policy says                                | a desktop, and iOS, which ends the session itself when its background time runs out |
-| `GracePeriod`    | while the app is absent and some unit should run | only within the grace period, whatever its policy | Android with a `shortService`, which Android times out after 3 minutes              |
+| Length           | A session is wanted                                                                                 | While the app is absent, a unit should run        | Host                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `AsLongAsNeeded` | while some unit should run                                                                          | as its policy says                                | a desktop, and iOS, which ends the session itself when its background time runs out |
+| `GracePeriod`    | while the app isn't plainly present (absent, or present in the background) and some unit should run | only within the grace period, whatever its policy | Android with a `shortService`, which Android times out after 3 minutes              |
 
 A `GracePeriod` session isn't started while the app is present: Android
 would time it out with the app still on screen. So it is wanted only once the
@@ -362,6 +363,11 @@ grace period ends, every unit stops with `PolicyInactive` and `UnitRunner`
 ends the session as no longer needed, so the session ends before the platform's
 limit. When the app becomes present again, the session is no longer wanted, and
 the units run without one.
+
+An app present in the background wants a `GracePeriod` session too, though
+it is present: no grace period runs, and every policy means what it says, so
+only the platform's 3-minute limit ends that session. Ending it that way
+discourages runs until the app is plainly present again.
 
 ## What the app does
 

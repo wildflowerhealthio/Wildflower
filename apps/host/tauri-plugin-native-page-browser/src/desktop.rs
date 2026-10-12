@@ -1,6 +1,6 @@
 //! Desktop backend. Opens the URL in the default browser through
 //! `tauri-plugin-opener`'s Rust API. A browser tab isn't a window the app owns
-//! or can see close, so the `closed` channel is dropped without an event.
+//! or can see close, so the `events` channel is dropped without an event.
 
 use std::marker::PhantomData;
 
@@ -25,7 +25,7 @@ pub struct NativePageBrowser<R: Runtime>(PhantomData<fn() -> R>);
 
 impl<R: Runtime> NativePageBrowser<R> {
     /// Open `request.url` in the default browser. Never sends on
-    /// `request.closed`. Async only to match the mobile backend's `open`.
+    /// `request.events`. Async only to match the mobile backend's `open`.
     pub async fn open(&self, request: OpenRequest) -> crate::Result<()> {
         let url = crate::url_scheme::parse_http_url(&request.url)?;
         tauri_plugin_opener::open_url(url.as_str(), None::<&str>)
@@ -46,7 +46,7 @@ mod tests {
         let browser = NativePageBrowser::<tauri::Wry>(PhantomData);
         let result = tauri::async_runtime::block_on(browser.open(OpenRequest {
             url: "javascript:alert(1)".to_owned(),
-            closed: Channel::new(|_| Ok(())),
+            events: Channel::new(|_| Ok(())),
         }));
         assert!(
             matches!(result, Err(crate::Error::InvalidUrl(_))),

@@ -7,9 +7,11 @@
 //! [`launch_url`](wildflowerhealthio_servers::launch_url) in the in-app
 //! browser, [`LaunchBrowser`], which shows one view at a time: on iOS a launch
 //! replaces the view an earlier one opened, and on Android a launch that
-//! arrives while an earlier one's view is still opening joins that view. While a launch's view is open it counts toward the
-//! `WhileOpen` run policy ([`LaunchPresence`]), until the browser reports it
-//! closed. The outcome is logged by domain.
+//! arrives while an earlier one's view is still opening joins that view. While
+//! a launch's view is open it counts toward the `WhileOpen` run policy
+//! ([`LaunchPresence`]), until the browser reports it closed; on Android, a
+//! background session keeps the app alive under it until the browser reports
+//! it keeps the app alive itself. The outcome is logged by domain.
 //!
 //! Launching never changes the server's run policy: a server that isn't
 //! launchable answers at once, and the base waits for it to become so.
@@ -61,8 +63,9 @@ pub async fn server_launch(
     .await
 }
 
-/// Called once a launch's in-app browser view is gone.
-pub(crate) type LaunchViewClosed = Box<dyn Fn() + Send + Sync>;
+/// Hears a launch's in-app browser view's events: that its browser keeps the
+/// app alive under it (Android), and that it is gone.
+pub(crate) type LaunchViewEvents = Box<dyn Fn(BrowserEvent) + Send + Sync>;
 
 /// Where launches open: in the app, the native-page browser plugin's in-app
 /// browser; in the tests, a record of what was opened.
@@ -70,8 +73,10 @@ pub(crate) trait LaunchBrowser: Send + Sync + 'static {
     /// Open `launch_url` in a view of the in-app browser. A view already
     /// showing is replaced on iOS; on Android, where only a view still opening
     /// can show while the app is in front, the open joins that view instead of
-    /// opening `launch_url`. `view_closed` is called once the view is gone: the
-    /// user closed it, or, on iOS, a later open replaced it. It never is on a
+    /// opening `launch_url`. `view_events` hears [`BrowserEvent::Closed`] once
+    /// the view is gone: the user closed it, or, on iOS, a later open replaced
+    /// it; and, on Android, [`BrowserEvent::KeptAlive`] before that when the
+    /// view's browser keeps the app alive under it. It hears nothing on a
     /// desktop, whose view is a default-browser tab, nor after an error.
     ///
     /// # Errors
@@ -81,7 +86,7 @@ pub(crate) trait LaunchBrowser: Send + Sync + 'static {
     fn open(
         &self,
         launch_url: Url,
-        view_closed: LaunchViewClosed,
+        view_events: LaunchViewEvents,
     ) -> impl Future<Output = Result<(), LaunchError>> + Send;
 }
 
@@ -91,6 +96,8 @@ pub(crate) trait LaunchBrowser: Send + Sync + 'static {
 pub(crate) trait LaunchPresence: Clone + Send + Sync + 'static {
     /// The launch view `view` opened.
     fn view_opened(&self, view: &str);
+    /// The browser of the launch view `view` keeps the app alive under it.
+    fn view_kept_alive(&self, view: &str);
     /// The launch view `view` closed.
     fn view_closed(&self, view: &str);
 }
@@ -98,6 +105,10 @@ pub(crate) trait LaunchPresence: Clone + Send + Sync + 'static {
 impl LaunchPresence for ServerUnits {
     fn view_opened(&self, view: &str) {
         self.launch_view_opened(view);
+    }
+
+    fn view_kept_alive(&self, view: &str) {
+        self.launch_view_kept_alive(view);
     }
 
     fn view_closed(&self, view: &str) {
@@ -152,21 +163,26 @@ async fn launch(
 
 /// Open `launch_url` in a new view of `launch_browser`, open in
 /// `launch_presence` from before the open until the browser reports the view
-/// closed, or the open fails.
+/// closed, or the open fails, and kept alive there once the browser reports
+/// that.
 async fn open_launch_view(
     launch_browser: &impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
     launch_url: Url,
 ) -> Result<(), LaunchError> {
     let view = next_launch_view();
-    // Before the open, so a close reported as the view opens finds it.
+    // Before the open, so a close reported as the view opens finds it, and
+    // a background session can start while the app is still in front.
     launch_presence.view_opened(&view);
-    let view_closed: LaunchViewClosed = {
+    let view_events: LaunchViewEvents = {
         let launch_presence = launch_presence.clone();
         let view = view.clone();
-        Box::new(move || launch_presence.view_closed(&view))
+        Box::new(move |event| match event {
+            BrowserEvent::KeptAlive => launch_presence.view_kept_alive(&view),
+            BrowserEvent::Closed => launch_presence.view_closed(&view),
+        })
     };
-    let opened = launch_browser.open(launch_url, view_closed).await;
+    let opened = launch_browser.open(launch_url, view_events).await;
     if opened.is_err() {
         launch_presence.view_closed(&view);
     }
@@ -207,19 +223,17 @@ impl LaunchBrowser for NativePageLaunchBrowser {
     async fn open(
         &self,
         launch_url: Url,
-        view_closed: LaunchViewClosed,
+        view_events: LaunchViewEvents,
     ) -> Result<(), LaunchError> {
-        let closed = Channel::new(move |body| {
-            match body.deserialize()? {
-                BrowserEvent::Closed => view_closed(),
-            }
+        let events = Channel::new(move |body| {
+            view_events(body.deserialize()?);
             Ok(())
         });
         self.app
             .native_page_browser()
             .open(OpenRequest {
                 url: launch_url.to_string(),
-                closed,
+                events,
             })
             .await
             .map_err(|error| LaunchError::OpeningLauncher {
@@ -265,12 +279,12 @@ mod tests {
     }
 
     /// Each launch URL a [`OneViewBrowser`] opened, and how its showing view
-    /// reports its close: once for each open that opened or joined it, none
+    /// reports its events: once for each open that opened or joined it, none
     /// while no view shows.
     #[derive(Default)]
     struct BrowserViews {
         opened: Vec<Url>,
-        showing: Vec<LaunchViewClosed>,
+        showing: Vec<LaunchViewEvents>,
     }
 
     impl OneViewBrowser {
@@ -288,12 +302,21 @@ mod tests {
             self.views.lock().unwrap().opened.clone()
         }
 
+        /// The showing view's browser keeps the app alive under it.
+        fn keep_showing_alive(&self) {
+            let views = self.views.lock().unwrap();
+            assert!(!views.showing.is_empty(), "a view is showing");
+            for view_events in &views.showing {
+                view_events(BrowserEvent::KeptAlive);
+            }
+        }
+
         /// The user closes the showing view.
         fn close_showing(&self) {
             let showing = std::mem::take(&mut self.views.lock().unwrap().showing);
             assert!(!showing.is_empty(), "a view is showing");
-            for view_closed in showing {
-                view_closed();
+            for view_events in showing {
+                view_events(BrowserEvent::Closed);
             }
         }
     }
@@ -302,21 +325,21 @@ mod tests {
         async fn open(
             &self,
             launch_url: Url,
-            view_closed: LaunchViewClosed,
+            view_events: LaunchViewEvents,
         ) -> Result<(), LaunchError> {
             let replaced = {
                 let mut views = self.views.lock().unwrap();
                 if !views.showing.is_empty() {
                     if let WhileAViewShows::Join = self.while_a_view_shows {
-                        views.showing.push(view_closed);
+                        views.showing.push(view_events);
                         return Ok(());
                     }
                 }
                 views.opened.push(launch_url);
-                std::mem::replace(&mut views.showing, vec![view_closed])
+                std::mem::replace(&mut views.showing, vec![view_events])
             };
-            for replaced_view_closed in replaced {
-                replaced_view_closed();
+            for replaced_view_events in replaced {
+                replaced_view_events(BrowserEvent::Closed);
             }
             Ok(())
         }
@@ -326,30 +349,52 @@ mod tests {
     struct FailingBrowser;
 
     impl LaunchBrowser for FailingBrowser {
-        async fn open(&self, _: Url, _: LaunchViewClosed) -> Result<(), LaunchError> {
+        async fn open(&self, _: Url, _: LaunchViewEvents) -> Result<(), LaunchError> {
             Err(LaunchError::OpeningLauncher {
                 reason: "no browser".to_owned(),
             })
         }
     }
 
-    /// The launch views open, as a [`LaunchPresence`] hears them.
+    /// The launch views open, and those kept alive, as a [`LaunchPresence`]
+    /// hears them.
     #[derive(Clone, Default)]
-    struct OpenLaunchViews(Arc<Mutex<BTreeSet<String>>>);
+    struct OpenLaunchViews(Arc<Mutex<LaunchViews>>);
+
+    #[derive(Default)]
+    struct LaunchViews {
+        open: BTreeSet<String>,
+        kept_alive: BTreeSet<String>,
+    }
 
     impl OpenLaunchViews {
         fn views(&self) -> BTreeSet<String> {
-            self.0.lock().unwrap().clone()
+            self.0.lock().unwrap().open.clone()
+        }
+
+        fn kept_alive_views(&self) -> BTreeSet<String> {
+            self.0.lock().unwrap().kept_alive.clone()
         }
     }
 
     impl LaunchPresence for OpenLaunchViews {
         fn view_opened(&self, view: &str) {
-            assert!(self.0.lock().unwrap().insert(view.to_owned()), "{view}");
+            assert!(
+                self.0.lock().unwrap().open.insert(view.to_owned()),
+                "{view}"
+            );
+        }
+
+        fn view_kept_alive(&self, view: &str) {
+            let mut views = self.0.lock().unwrap();
+            assert!(views.open.contains(view), "{view}");
+            assert!(views.kept_alive.insert(view.to_owned()), "{view}");
         }
 
         fn view_closed(&self, view: &str) {
-            assert!(self.0.lock().unwrap().remove(view), "{view}");
+            let mut views = self.0.lock().unwrap();
+            assert!(views.open.remove(view), "{view}");
+            views.kept_alive.remove(view);
         }
     }
 
@@ -478,6 +523,24 @@ mod tests {
         browser.close_showing();
 
         assert!(presence.views().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_launch_view_its_browser_keeps_alive_is_kept_alive_until_it_closes() {
+        let gatekeeper = test_gatekeeper();
+        let browser = OneViewBrowser::new(WhileAViewShows::Join);
+        let presence = OpenLaunchViews::default();
+        launch_launchable(&gatekeeper, browser.clone(), &presence)
+            .await
+            .unwrap();
+        assert!(presence.kept_alive_views().is_empty());
+
+        browser.keep_showing_alive();
+
+        assert_eq!(presence.kept_alive_views(), presence.views());
+        browser.close_showing();
+        assert!(presence.views().is_empty());
+        assert!(presence.kept_alive_views().is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -9,16 +9,16 @@ use crate::models::{BrowserEvent, OpenRequest};
 use crate::{NativePageBrowserExt, Result};
 
 /// JS entry point for [`crate::NativePageBrowserExt::native_page_browser`]'s
-/// `open`. Invoked as `invoke('plugin:native-page-browser|open', { url, closed })`,
-/// where `closed` is a `new Channel<BrowserEvent>()` the caller constructed to
-/// hear the view close.
+/// `open`. Invoked as `invoke('plugin:native-page-browser|open', { url, events })`,
+/// where `events` is a `new Channel<BrowserEvent>()` the caller constructed to
+/// hear the view's events.
 #[tauri::command]
 pub(crate) async fn open<R: Runtime>(
     app: AppHandle<R>,
     url: String,
-    closed: Channel<BrowserEvent>,
+    events: Channel<BrowserEvent>,
 ) -> Result<()> {
     app.native_page_browser()
-        .open(OpenRequest { url, closed })
+        .open(OpenRequest { url, events })
         .await
 }

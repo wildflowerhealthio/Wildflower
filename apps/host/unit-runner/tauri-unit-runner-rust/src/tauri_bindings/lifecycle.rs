@@ -96,13 +96,23 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
 
     /// The app opened the in-app browser view `view`, a page it presents
     /// outside its windows. While it is open, it keeps the app present on a
-    /// platform where it moves the app to the background (Android).
+    /// platform where it moves the app to the background (Android), and,
+    /// until its browser keeps the app alive under it
+    /// ([`Self::browser_view_kept_alive`]), present in the background, so a
+    /// background session keeps the app alive. Report the open before the
+    /// view launches: the session can start only while the app is in front.
     ///
     /// Report each view's close with [`Self::browser_view_closed`], under the
     /// same `view`: a view replacing another (iOS) can open before the
     /// other's close is reported, so give each open its own.
     pub fn browser_view_opened(&self, view: &str) {
         self.record_window_event(|window_state| window_state.browser_view_opened(view));
+    }
+
+    /// The browser of the in-app browser view `view` keeps the app alive
+    /// under it, so a background session needn't (Android).
+    pub fn browser_view_kept_alive(&self, view: &str) {
+        self.record_window_event(|window_state| window_state.browser_view_kept_alive(view));
     }
 
     /// The in-app browser view `view` closed.
@@ -130,6 +140,7 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
         if change.unit_restarts_needed {
             self.unit_runner.restart_running_units();
         }
-        self.unit_runner.set_app_present(change.present_after_event);
+        self.unit_runner
+            .set_app_presence(change.presence_after_event);
     }
 }

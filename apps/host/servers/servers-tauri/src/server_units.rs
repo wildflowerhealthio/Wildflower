@@ -112,6 +112,12 @@ impl ServerUnits {
         self.runner.browser_view_opened(view);
     }
 
+    /// The browser of the in-app browser view `view`, a launch's, keeps the app
+    /// alive under it, so the servers need no background session for it.
+    pub fn launch_view_kept_alive(&self, view: &str) {
+        self.runner.browser_view_kept_alive(view);
+    }
+
     /// The in-app browser view `view`, a launch's, closed.
     pub fn launch_view_closed(&self, view: &str) {
         self.runner.browser_view_closed(view);

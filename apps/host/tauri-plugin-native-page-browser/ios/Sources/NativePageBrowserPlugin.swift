@@ -2,19 +2,19 @@ import SafariServices
 import Tauri
 import UIKit
 
-/// Arguments decoded from `invoke('plugin:native-page-browser|open', { url, closed })`.
+/// Arguments decoded from `invoke('plugin:native-page-browser|open', { url, events })`.
 /// Keys match `OpenRequest`'s camelCase serde wire shape (see `models.rs`).
-/// `closed` is a Tauri `Channel<BrowserEvent>` that hears `{"event":"closed"}`
+/// `events` is a Tauri `Channel<BrowserEvent>` that hears `{"event":"closed"}`
 /// once this view is gone.
 class OpenArgs: Decodable {
   let url: String
-  let closed: Channel
+  let events: Channel
 }
 
 /// The view the plugin is showing, with the channel its close reports on.
 struct ShowingPage {
   let controller: SFSafariViewController
-  let closed: Channel
+  let events: Channel
 }
 
 /// Presents an external URL in `SFSafariViewController`, the system's in-app
@@ -64,7 +64,7 @@ class NativePageBrowserPlugin: Plugin, SFSafariViewControllerDelegate {
         // Default presentation: SFSafariViewController brings its own push-style
         // transition (slides in from the right, edge swipe to go back). If a
         // device shows it as a sheet instead, set `modalPresentationStyle` here.
-        self.showing = ShowingPage(controller: controller, closed: args.closed)
+        self.showing = ShowingPage(controller: controller, events: args.events)
         presenter.present(controller, animated: true)
         invoke.resolve()
       }
@@ -103,7 +103,7 @@ class NativePageBrowserPlugin: Plugin, SFSafariViewControllerDelegate {
   private static func reportClosed(_ page: ShowingPage) {
     // Lowercase tag matches `models.rs`; `JsonObject` pins the non-throwing send overload.
     let data: JsonObject = ["event": "closed"]
-    page.closed.send(data)
+    page.events.send(data)
   }
 
   /// The top-most view controller above Tauri's root, to present from — a native

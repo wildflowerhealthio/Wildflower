@@ -2,13 +2,18 @@ package io.wildflowerhealth.nativepagebrowser
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.browser.customtabs.CustomTabsServiceConnection
+import androidx.browser.customtabs.CustomTabsSession
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import app.tauri.annotation.Command
@@ -20,15 +25,16 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 /**
- * Arguments decoded from `invoke('plugin:native-page-browser|open', { url, closed })`.
+ * Arguments decoded from `invoke('plugin:native-page-browser|open', { url, events })`.
  * Keys match `OpenRequest`'s camelCase serde wire shape (see `models.rs`).
- * `closed` is a Tauri `Channel<BrowserEvent>` that hears `{"event":"closed"}`
- * once this view is gone.
+ * `events` is a Tauri `Channel<BrowserEvent>` that hears `{"event":"keptAlive"}`
+ * when the view's browser keeps the app alive, and `{"event":"closed"}` once
+ * this view is gone.
  */
 @InvokeArg
 class OpenArgs {
     lateinit var url: String
-    lateinit var closed: Channel
+    lateinit var events: Channel
 }
 
 /**
@@ -37,12 +43,22 @@ class OpenArgs {
  * right in the app's colours with a back-arrow close button, and falls back to
  * the default browser (`ACTION_VIEW`) when no Custom Tabs provider is installed.
  *
+ * A Custom Tab runs in its browser's process, so under one Android treats the
+ * app as in the background and cuts its network. The plugin binds the
+ * provider's Custom Tabs service for a session, and launches each tab from it
+ * with the keep-alive extra naming [KeepAliveService]: a browser that honours
+ * it (Chrome does) binds that service while the tab is open, which keeps the
+ * app alive, and the binding sends `{"event":"keptAlive"}`. An `open` that
+ * arrives before the session has connected waits up to
+ * [SESSION_WAIT_MILLIS] for it, then launches without one.
+ *
  * One view shows at a time, and a Custom Tab can't be closed programmatically.
  * An `open` arriving while the host is in front can only find a view still
  * launching (a second tap before the tab covers the host): it joins that view
- * instead of launching another, and resolves. `open` rejects while the host
- * activity isn't in front: Android blocks activity starts from the background.
- * Every other `open` launches its view and resolves.
+ * instead of launching another, and resolves as that view's `open` does.
+ * `open` rejects while the host activity isn't in front: Android blocks
+ * activity starts from the background. Every other `open` launches its view
+ * and resolves.
  *
  * A view counts as closed when the host activity resumes after pausing under
  * it, and that resume sends `{"event":"closed"}` on the channel of each `open`
@@ -65,44 +81,150 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         private const val COLOR_BACKGROUND_DARK = 0xFF221B16.toInt()
         private const val COLOR_NEUTRAL_1_LIGHT = 0xFF2C211D.toInt()
         private const val COLOR_NEUTRAL_1_DARK = 0xFFF3E9DB.toInt()
+
+        /**
+         * The Custom Tabs extra asking the browser to bind a service of the
+         * app's while the tab is open. Not in `androidx.browser`'s API; Chrome
+         * honours it only on a tab launched from a session.
+         */
+        private const val EXTRA_KEEP_ALIVE = "android.support.customtabs.extra.KEEP_ALIVE"
+
+        /** How long an `open` waits for the Custom Tabs session to connect. */
+        private const val SESSION_WAIT_MILLIS = 1_000L
     }
 
-    /** One launched view, with the channel of each `open` its close reports on. */
-    private class Page(closed: Channel) {
-        private val closedChannels = mutableListOf(closed)
+    /**
+     * One view, from its `open` until its close, with the channel of each
+     * `open` that launched or joined it, and the joined `open`s still waiting
+     * for the launch.
+     */
+    private class Page(events: Channel) {
+        private val eventChannels = mutableListOf(events)
+        private val invokesAwaitingLaunch = mutableListOf<Invoke>()
+
+        /** The view's launch is issued. */
+        var launched = false
+            private set
 
         /** The host activity paused after this view launched: the view is up over it. */
         var hostLeft = false
 
-        /** A later `open` lands on this view: its close reports on `closed` too. */
-        fun join(closed: Channel) {
-            closedChannels.add(closed)
+        private var keptAlive = false
+
+        /**
+         * A later `open` lands on this view: it hears the view's events on
+         * `events`, and resolves once the view has launched.
+         */
+        fun join(invoke: Invoke, events: Channel) {
+            eventChannels.add(events)
+            if (keptAlive) send(events, "keptAlive")
+            if (launched) invoke.resolve() else invokesAwaitingLaunch.add(invoke)
+        }
+
+        /** The launch is issued: every joined `open` resolves. */
+        fun markLaunched() {
+            launched = true
+            invokesAwaitingLaunch.forEach { it.resolve() }
+            invokesAwaitingLaunch.clear()
+        }
+
+        /** The launch failed with `message`: every joined `open` rejects with it. */
+        fun rejectJoined(message: String) {
+            invokesAwaitingLaunch.forEach { it.reject(message) }
+            invokesAwaitingLaunch.clear()
+        }
+
+        fun reportKeptAlive() {
+            if (keptAlive) return
+            keptAlive = true
+            eventChannels.forEach { send(it, "keptAlive") }
         }
 
         fun reportClosed() {
-            for (closed in closedChannels) {
-                // Lowercase tag matches `models.rs` `BrowserEvent`.
-                val payload = JSObject()
-                payload.put("event", "closed")
-                closed.send(payload)
-            }
+            eventChannels.forEach { send(it, "closed") }
+        }
+
+        private fun send(events: Channel, event: String) {
+            // Tags match `models.rs` `BrowserEvent`.
+            val payload = JSObject()
+            payload.put("event", event)
+            events.send(payload)
         }
     }
 
-    /** The launched view, or null. UI thread only, like every field below. */
+    /** The view from its `open` until its close, or null. UI thread only, like every field below. */
     private var showing: Page? = null
 
     /** The host activity is resumed. Tracked by [HostLifecycle]. */
     private var hostInFront = true
 
+    /** The Custom Tabs session tabs launch from, once connected. */
+    private var customTabsSession: CustomTabsSession? = null
+
+    /** The provider's Custom Tabs service is binding, so a session may connect. */
+    private var sessionConnecting = false
+
+    /** What runs once the session connects or [SESSION_WAIT_MILLIS] pass. */
+    private val awaitingSession = mutableListOf<() -> Unit>()
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val runAwaitingSession = Runnable {
+        val actions = awaitingSession.toList()
+        awaitingSession.clear()
+        actions.forEach { it() }
+    }
+
     init {
         activity.application.registerActivityLifecycleCallbacks(HostLifecycle())
+        KeepAliveService.onBound = { showing?.reportKeptAlive() }
+        connectSession()
+    }
+
+    /** Bind the Custom Tabs provider's service, for a session tabs launch from. */
+    private fun connectSession() {
+        val provider = CustomTabsClient.getPackageName(activity, null) ?: return
+        sessionConnecting =
+            CustomTabsClient.bindCustomTabsService(
+                activity,
+                provider,
+                object : CustomTabsServiceConnection() {
+                    override fun onCustomTabsServiceConnected(
+                        name: ComponentName,
+                        client: CustomTabsClient,
+                    ) {
+                        client.warmup(0)
+                        customTabsSession = client.newSession(null)
+                        sessionConnecting = false
+                        mainHandler.removeCallbacks(runAwaitingSession)
+                        runAwaitingSession.run()
+                    }
+
+                    /** The provider went away (updated, or killed): connect again. */
+                    override fun onServiceDisconnected(name: ComponentName?) {
+                        customTabsSession = null
+                        activity.unbindService(this)
+                        connectSession()
+                    }
+                },
+            )
+    }
+
+    /** Run `action` once the session has connected, or at most [SESSION_WAIT_MILLIS] from now. */
+    private fun whenSessionReady(action: () -> Unit) {
+        if (customTabsSession != null || !sessionConnecting) {
+            action()
+            return
+        }
+        awaitingSession.add(action)
+        mainHandler.removeCallbacks(runAwaitingSession)
+        mainHandler.postDelayed(runAwaitingSession, SESSION_WAIT_MILLIS)
     }
 
     /**
-     * Present `url`. Resolves once the launch is issued, or at once when a view
-     * is still launching, which the `open` joins; rejects while the host is in
-     * the background, or when nothing can open it.
+     * Present `url`. Resolves once the launch is issued, also for an `open`
+     * that joins a view still launching; rejects while the host is in the
+     * background, or when nothing can open it.
      */
     @Command
     fun open(invoke: Invoke) {
@@ -117,20 +239,38 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
             // The host is in front, so a showing view hasn't covered it yet.
             val launching = showing
             if (launching != null) {
-                launching.join(args.closed)
-                invoke.resolve()
+                launching.join(invoke, args.events)
                 return@runOnUiThread
             }
-            // Showing before the launch, so the pause the launch causes marks `hostLeft`.
-            showing = Page(args.closed)
-            try {
-                startView(Uri.parse(args.url))
-                invoke.resolve()
-            } catch (error: Exception) {
-                showing = null
-                invoke.reject("native-page-browser: could not open ${args.url}: ${error.message}")
-            }
+            val page = Page(args.events)
+            showing = page
+            whenSessionReady { launch(page, invoke, Uri.parse(args.url)) }
         }
+    }
+
+    /** Launch `page`'s view of `url`, unless the host left while it waited for the session. */
+    private fun launch(page: Page, invoke: Invoke, url: Uri) {
+        val failure =
+            if (!hostInFront) {
+                "the app is in the background"
+            } else {
+                try {
+                    // Launched before the start, so the pause the start causes marks `hostLeft`.
+                    page.markLaunched()
+                    startView(url)
+                    null
+                } catch (error: Exception) {
+                    error.message ?: error.toString()
+                }
+            }
+        if (failure == null) {
+            invoke.resolve()
+            return
+        }
+        showing = null
+        val message = "native-page-browser: could not open $url: $failure"
+        page.rejectJoined(message)
+        invoke.reject(message)
     }
 
     /** Launch the view for `url` over the host. Throws when nothing can open it. */
@@ -145,7 +285,7 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
             (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
         val customTabsIntent =
-            CustomTabsIntent.Builder()
+            (customTabsSession?.let { CustomTabsIntent.Builder(it) } ?: CustomTabsIntent.Builder())
                 // Push-style: the tab slides in from the right over the app, and
                 // slides back out to the right when closed.
                 .setStartAnimations(activity, R.anim.npb_slide_in_right, R.anim.npb_slide_out_left)
@@ -168,6 +308,10 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
                 .build()
         // Name the provider so Android doesn't offer a chooser.
         customTabsIntent.intent.setPackage(provider)
+        customTabsIntent.intent.putExtra(
+            EXTRA_KEEP_ALIVE,
+            Intent().setClassName(activity.packageName, KeepAliveService::class.java.name),
+        )
         customTabsIntent.launchUrl(activity, url)
     }
 
@@ -186,7 +330,8 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
     private fun hostPaused() {
         hostInFront = false
-        showing?.hostLeft = true
+        // A view still waiting for the session hasn't covered the host.
+        showing?.takeIf { it.launched }?.hostLeft = true
     }
 
     /** The host is back in front, so the view that was up over it is gone. */

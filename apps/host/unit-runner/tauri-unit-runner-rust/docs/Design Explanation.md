@@ -68,7 +68,17 @@ The lifecycle plugin tells `UnitRunner` whether the app is present:
   from the view and back returns to the view, so the app's window doesn't
   resume until the view is gone. The app reports each view it opens and closes
   (`browser_view_opened`, `browser_view_closed`, one id per open), and while
-  any is open the app stays present. On iOS an
+  any is open the app stays present. A Custom Tab runs in its browser's
+  process, though, so Android treats the app under it as in the background
+  and cuts its network a few seconds in, unless the browser keeps the app
+  alive by binding a service of the app's. So from the open, before the view
+  pauses the app, the app is present in the background
+  (`Presence::PresentInBackground`), and the background session starts while
+  the app is still in front, as Android requires of a `shortService`. When
+  the browser binds, the app reports it (`browser_view_kept_alive`), and once
+  every open view is kept alive the app is plainly present and the session is
+  no longer needed. A browser that never binds leaves the session running,
+  until Android times it out after 3 minutes. On iOS an
   `SFSafariViewController` is presented in the app's window, which stays in
   the foreground, and on a desktop the view is a default-browser tab, which
   never reports its close; neither keeps a view.

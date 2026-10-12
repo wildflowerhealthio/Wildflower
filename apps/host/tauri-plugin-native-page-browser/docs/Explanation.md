@@ -5,12 +5,12 @@
 A Tauri v2 plugin that opens an external URL in the **system's in-app browser**,
 presented as a **native page**, and tells Rust when the user closes it.
 
-It exposes one command, `open(url, closed)`, with a backend per platform. `open` is async on every platform: iOS answers from the main thread, so a caller awaits it rather than blocking on it.
+It exposes one command, `open(url, events)`, with a backend per platform. `open` is async on every platform: iOS answers from the main thread, so a caller awaits it rather than blocking on it.
 
 - `url` must be `http(s)`; anything else (`javascript:`, `file:`, `data:`, …), or a string that doesn't parse, returns `Error::InvalidUrl` before any backend sees it (`src/url_scheme.rs`). A backend gets the parsed URL, normalised (leading and trailing spaces trimmed, tabs and newlines removed), not the caller's string.
-- `closed` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `open` replaces it. Desktop never sends one.
+- `events` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `open` replaces it. On Android it may hear one `BrowserEvent::KeptAlive` (`{"event":"keptAlive"}`) before that, when the view's browser keeps the app alive under it (see Keeping the app alive on Android). Desktop never sends either.
 
-The caller can't script the page, read it, or navigate an open view. It learns that a view opened and that it closed, nothing else.
+The caller can't script the page, read it, or navigate an open view. It learns that a view opened, whether its browser keeps the app alive, and that it closed, nothing else.
 
 | Platform | Backend                                    | Presentation                                                                                                                                | Close report                                                   |
 | -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -32,7 +32,7 @@ Launches open in the system's in-app browser so the app can't script the pages w
 A phone shows one in-app browser view. What an `open` does while a view is showing differs by platform:
 
 - **iOS** replaces the showing view. It dismisses the showing `SFSafariViewController` from its presenter, sends its `Closed` on its own channel from the dismissal's completion, then presents the new one from the top of Tauri's root view controller. An `open` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
-- **Android** can't replace a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front. It doesn't need to, though: a showing view covers the host, so an `open` from the app can only arrive while the view is still launching (a second tap before the tab slides in). That `open` joins the launching view instead of launching another, so it doesn't open its own URL, resolves at once, and hears its `Closed` when that view closes. An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
+- **Android** can't replace a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front. It doesn't need to, though: a showing view covers the host, so an `open` from the app can only arrive while the view is still launching (a second tap before the tab slides in). That `open` joins the launching view instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events. An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
 
 ## How Android hears the close
 
@@ -41,6 +41,18 @@ A Custom Tab runs in the browser's process, so the plugin watches the host activ
 The plugin hears the host pause and resume through `Application.registerActivityLifecycleCallbacks`, filtered to the host activity, not through `Plugin.onPause` / `onResume`. Tauri's generated `TauriActivity` defines `TauriLifecycleObserver`, which forwards those, but never registers it, so they never run. Even registered, it would observe `ProcessLifecycleOwner`, which reports the whole process and delivers a pause about 700 ms late.
 
 The tab lives in the host's task, so switching apps from it mid-sign-in (to a password manager or an authenticator) and back returns to the tab, not the host: the host doesn't resume, and the view stays open. The host's activity is `singleTop` for the same reason: a `singleTask` one would finish the tab whenever the user taps the launcher icon.
+
+## Keeping the app alive on Android
+
+Under a Custom Tab, Android ranks the host as a cached app: the tab's activity is the browser's process, not the host's. A few seconds in, Android blocks a cached app's network and destroys its sockets (`Software caused connection abort`), which drops the servers' tunnels while the user is in the page those servers serve.
+
+The Custom Tabs keep-alive extra, `android.support.customtabs.extra.KEEP_ALIVE`, asks the browser to bind a service of the app's while the tab is open. Chrome honours it, but only for a tab launched from a Custom Tabs session. So the plugin binds the provider's Custom Tabs service when it loads, creates a session, and launches every tab from it with the extra naming `KeepAliveService`. While Chrome, in front, holds that binding, Android ranks the host as bound by the top app (`BOUND_TOP`), which keeps its network. The binding also tells the plugin the view is kept alive, and it sends `KeptAlive`. The extra isn't `androidx.browser` API, and another browser may ignore it; that browser's views never send `KeptAlive`.
+
+An `open` that arrives before the session has connected, as one right after the app starts can, waits up to a second for it, then launches without one. That view isn't kept alive.
+
+`KeepAliveService` is exported, since the browser is another app; its binder does nothing. Binding it only raises the app's priority.
+
+What covers a view that isn't kept alive is the host's: the unit runner counts the app as present in the background from the moment a view opens until its `KeptAlive`, and starts its background session (a `shortService` foreground service) for that time. It has to start before the tab launches, since Android won't start one for an app already in the background. See the unit runner's [Design Explanation](../../unit-runner/tauri-unit-runner-rust/docs/Design%20Explanation.md).
 
 ## Colours
 
@@ -59,7 +71,7 @@ apps/host/tauri-plugin-native-page-browser/
 ├── src/
 │   ├── lib.rs                 — init(), NativePageBrowserExt, plugin wiring
 │   ├── commands.rs            — the open IPC command
-│   ├── models.rs              — OpenRequest, BrowserEvent + wire-shape tests
+│   ├── models.rs              — OpenRequest, BrowserEvent (KeptAlive, Closed) + wire-shape tests
 │   ├── error.rs               — Error (InvalidUrl; PluginInvoke on mobile / OpenDefaultBrowser on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
 │   ├── desktop.rs             — opens the default browser through tauri-plugin-opener
@@ -70,26 +82,29 @@ apps/host/tauri-plugin-native-page-browser/
 └── android/
     ├── build.gradle.kts · settings.gradle · proguard-rules.pro · .gitignore
     └── src/main/
-        ├── AndroidManifest.xml — the Custom Tabs service <queries> entry
+        ├── AndroidManifest.xml — the Custom Tabs service <queries> entry; the exported KeepAliveService
         ├── java/io/wildflowerhealth/nativepagebrowser/NativePageBrowserPlugin.kt
+        ├── java/io/wildflowerhealth/nativepagebrowser/KeepAliveService.kt
         └── res/ — anim/ (slide in/out) and drawable/npb_ic_arrow_back.xml
 ```
 
 ## Round trip
 
 ```text
-[caller (Rust or JS)]  open(url, closed: Channel<BrowserEvent>)
+[caller (Rust or JS)]  open(url, events: Channel<BrowserEvent>)
       │
       ▼
 [Rust] commands::open → app.native_page_browser().open → url_scheme::parse_http_url → platform backend
       │
-      ├─ iOS/Android: run_mobile_plugin_async("open", { url, closed }).await
+      ├─ iOS/Android: run_mobile_plugin_async("open", { url, events }).await
       │     → iOS: dismiss the showing view, if any → channel.send({ event:"closed" }) on ITS channel
-      │       Android: reject if the app is in the background; join a view still launching
-      │     → present SFSafariViewController / launch the Custom Tab
+      │       Android: reject if the app is in the background; join a view still launching;
+      │                wait up to 1 s for the Custom Tabs session
+      │     → present SFSafariViewController / launch the Custom Tab (with the keep-alive extra)
+      │     → Android: the browser binds KeepAliveService → channel.send({ event:"keptAlive" })
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler
       │
-      └─ Desktop: tauri_plugin_opener::open_url(url) → default browser; `closed` is dropped unsent
+      └─ Desktop: tauri_plugin_opener::open_url(url) → default browser; `events` is dropped unsent
 ```
 
 ## Building / verifying
@@ -114,4 +129,8 @@ colours; close, an edge swipe and system back each return to the app and report
 `Closed` once; switching apps from an Android view and back reports nothing. A
 second `open` replaces the first and reports `Closed` for it on iOS. On Android
 a launch after the first view closed opens a new view, and a double-tapped
-launch opens one view whose close reports `Closed` to both.
+launch opens one view whose close reports `Closed` to both. With Chrome as the
+Custom Tabs provider, `adb shell dumpsys netpolicy` shows the host's uid at
+`procState=BTOP` with `effective=NONE` (no network block) while a view is open,
+and `adb shell dumpsys activity services <package>` shows Chrome bound to
+`KeepAliveService`.
