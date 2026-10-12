@@ -54,8 +54,9 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
                 init_script: Some(bootstrap.to_owned()),
                 native_webview_event_channel: channel,
                 // `initial_title` unset → page URL shows via the plugin's
-                // URL-fallback; `initial_message` empty. See this fn's doc for why the subtitle goes through
-                // `open_url` rather than a post-open `patch_window_text`.
+                // URL-fallback; `initial_message` empty. See this fn's doc for
+                // why the subtitle goes through `open_url` rather than a
+                // post-open `patch_window_text`.
                 initial_title: None,
                 initial_subtitle: Some("Recording".to_owned()),
                 initial_message: None,
