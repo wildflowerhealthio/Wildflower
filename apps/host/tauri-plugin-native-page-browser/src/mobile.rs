@@ -46,12 +46,19 @@ impl<R: Runtime> NativePageBrowser<R> {
     /// sends [`BrowserEvent::Closed`](crate::BrowserEvent::Closed) on
     /// `request.closed` once the view is gone.
     ///
-    /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] so
-    /// no non-`http(s)` string reaches the native side.
+    /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] and
+    /// sends its normalised form, so the native side parses exactly the
+    /// `http(s)` URL Rust accepted (not, say, the caller's leading space).
     pub fn open(&self, request: OpenRequest) -> crate::Result<()> {
-        crate::url_scheme::parse_http_url(&request.url)?;
+        let url = crate::url_scheme::parse_http_url(&request.url)?;
         self.0
-            .run_mobile_plugin::<()>("open", request)
+            .run_mobile_plugin::<()>(
+                "open",
+                OpenRequest {
+                    url: url.into(),
+                    ..request
+                },
+            )
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))
     }
 }

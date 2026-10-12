@@ -43,6 +43,21 @@ mod tests {
         }
     }
 
+    /// The backends hand on the parsed URL's string, so what the native side
+    /// parses is the normalised form, not the caller's raw string.
+    #[test]
+    fn normalises_surrounding_space_and_embedded_tabs_and_newlines() {
+        for uri in [
+            " https://example.test/",
+            "https://example.test/ ",
+            "https://exam\tple.test/",
+            "https://example.test/\n",
+        ] {
+            let parsed = parse_http_url(uri).expect("should parse");
+            assert_eq!(parsed.as_str(), "https://example.test/", "for {uri:?}");
+        }
+    }
+
     #[test]
     fn rejects_non_http_schemes() {
         for uri in [
