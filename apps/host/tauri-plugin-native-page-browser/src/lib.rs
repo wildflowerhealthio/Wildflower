@@ -6,10 +6,12 @@
 //! (RFC 8252). See `docs/Explanation.md` for why this is its own plugin.
 //!
 //! Backends:
-//! - **iOS** — Swift `SFSafariViewController`, in the app's colours.
+//! - **iOS** — Swift `SFSafariViewController`, in the app's colours. An `open`
+//!   replaces a showing view.
 //! - **Android** — Kotlin `androidx.browser` Custom Tab sliding in from the
 //!   right, in the app's colours; the default browser when no Custom Tabs
-//!   provider is installed.
+//!   provider is installed. An `open` returns an error while a view is showing
+//!   or the app is in the background.
 //! - **Desktop** — the default browser, through `tauri-plugin-opener`. A browser
 //!   tab isn't a window the app owns, so desktop never reports a close.
 //!

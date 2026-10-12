@@ -54,8 +54,9 @@ Denies the open command without any pre-configured scope.
 Allow opening an external `http(s)` URL in the system's in-app browser, presented
 as a native page: `SFSafariViewController` (iOS), a Custom Tab (Android), or the
 default browser (desktop). A `Channel<BrowserEvent>` carries one `closed` event
-back when the user closes the view, or when a newer `open` replaces it (iOS and
-Android only; desktop never sends one). The caller cannot script or navigate the
+back when the user closes the view (iOS and Android only; desktop never sends
+one). On iOS a newer `open` replaces a showing view and reports its close; on
+Android it is rejected while a view is showing. The caller cannot script or navigate the
 open page. Non-`http(s)` schemes are rejected.
 
 

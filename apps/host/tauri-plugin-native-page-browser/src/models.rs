@@ -23,6 +23,8 @@ pub struct OpenRequest {
     pub url: String,
     /// Hears this view close: exactly one [`BrowserEvent::Closed`] on iOS and
     /// Android once `open` returns `Ok`, nothing on desktop or after an `Err`.
+    /// On iOS a newer `open` replaces a showing view, which sends this view's
+    /// `Closed`; on Android that `open` returns an `Err` instead.
     pub closed: Channel<BrowserEvent>,
 }
 
@@ -37,8 +39,8 @@ pub struct OpenRequest {
 #[serde(tag = "event")]
 pub enum BrowserEvent {
     /// The view is gone: the user closed it (close button, edge swipe, system
-    /// back), or a newer `open` replaced it. Sent once per open, on iOS and
-    /// Android only — on desktop the page opens in a browser tab, which isn't a
+    /// back), or, on iOS, a newer `open` replaced it. Sent once per open, on iOS
+    /// and Android only — on desktop the page opens in a browser tab, which isn't a
     /// window the app owns.
     #[serde(rename = "closed")]
     Closed,

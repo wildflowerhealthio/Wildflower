@@ -6,9 +6,11 @@
 //! blocking `run_mobile_plugin` from the iOS main thread would never return,
 //! and from an async command it would hold a tokio worker until it did.
 //!
-//! A phone shows one in-app browser view at a time: the native `open` dismisses
-//! a showing view (sending `Closed` on that view's channel) before presenting
-//! the new one.
+//! A phone shows one in-app browser view at a time. On iOS the native `open`
+//! dismisses a showing view (sending `Closed` on that view's channel) before
+//! presenting the new one. On Android, where a Custom Tab can't be closed
+//! programmatically, it returns an error while a view is showing or while the
+//! app is in the background.
 
 use serde::de::DeserializeOwned;
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
@@ -46,8 +48,9 @@ pub struct NativePageBrowser<R: Runtime>(tauri::plugin::PluginHandle<R>);
 
 impl<R: Runtime> NativePageBrowser<R> {
     /// Present `request.url` in the in-app browser by invoking the Swift/Kotlin
-    /// `open` command, replacing any view already showing. The native side
-    /// sends [`BrowserEvent::Closed`](crate::BrowserEvent::Closed) on
+    /// `open` command. iOS replaces a view already showing; Android returns an
+    /// error instead (see the module doc). The native side sends
+    /// [`BrowserEvent::Closed`](crate::BrowserEvent::Closed) on
     /// `request.closed` once the view is gone.
     ///
     /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] and

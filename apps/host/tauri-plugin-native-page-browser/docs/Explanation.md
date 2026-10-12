@@ -8,14 +8,14 @@ presented as a **native page**, and tells Rust when the user closes it.
 It exposes one command, `open(url, closed)`, with a backend per platform:
 
 - `url` must be `http(s)`; anything else (`javascript:`, `file:`, `data:`, …) is rejected before any backend sees it (`src/url_scheme.rs`). A backend gets the parsed URL, normalised (leading and trailing spaces trimmed, tabs and newlines removed), not the caller's string.
-- `closed` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or when a newer `open` replaces it. Desktop never sends one.
+- `closed` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `open` replaces it. Desktop never sends one.
 
 The caller can't script the page, read it, or navigate an open view. It learns that a view opened and that it closed, nothing else.
 
 | Platform | Backend                                    | Presentation                                                                                                                                | Close report                                                   |
 | -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | iOS      | Swift `SFSafariViewController`             | Default presentation (slides in from the right); `.close` dismiss button; bar and controls in the app's palette                             | `safariViewControllerDidFinish`, or the plugin's own dismissal |
-| Android  | Kotlin `androidx.browser` Custom Tab       | Slides in from the right and out to the right; toolbar in the app's palette, light and dark; back-arrow close icon; URL bar hides on scroll | Session `TAB_HIDDEN`, or the host activity's next resume       |
+| Android  | Kotlin `androidx.browser` Custom Tab       | Slides in from the right and out to the right; toolbar in the app's palette, light and dark; back-arrow close icon; URL bar hides on scroll | The host activity's next resume                                |
 | Desktop  | Default browser, via `tauri-plugin-opener` | A browser tab                                                                                                                               | None                                                           |
 
 ## Why
@@ -29,19 +29,16 @@ Launches open in the system's in-app browser so the app can't script the pages w
 
 ## One view at a time
 
-A phone shows one in-app browser view. An `open` while a view is showing replaces it: the showing view reports `Closed` on its own channel, then the new view is presented.
+A phone shows one in-app browser view. What an `open` does while a view is showing differs by platform:
 
-- **iOS** dismisses the showing `SFSafariViewController` from its presenter, sends its `Closed` from the dismissal's completion, then presents the new one from the top of Tauri's root view controller. An `open` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
-- **Android** can't close a Custom Tab programmatically. It reports the showing view's `Closed`, then brings the host activity back to the front (`FLAG_ACTIVITY_CLEAR_TOP | FLAG_ACTIVITY_SINGLE_TOP`), which finishes the tab above it in the task. The host's activity is `singleTop`: a `singleTask` one would also finish the tab when the user taps the launcher icon. The new view launches on the host's next resume. Views only ever launch with the host activity in front, so an `open` that arrives while the app is in the background also waits for the next resume (Android blocks activity starts from the background anyway); a newer `open` replaces a waiting one, which still reports its one `Closed`.
+- **iOS** replaces the showing view. It dismisses the showing `SFSafariViewController` from its presenter, sends its `Closed` on its own channel from the dismissal's completion, then presents the new one from the top of Tauri's root view controller. An `open` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
+- **Android** rejects the `open` with an error saying a page is already open. A Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front. An `open` that arrives while the host activity isn't in front is rejected too, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
 
 ## How Android hears the close
 
-A Custom Tab runs in the browser's process, so the plugin has two signals:
+A Custom Tab runs in the browser's process, so the plugin watches the host activity instead. Launching a view pauses the host under it; when the host next resumes, the view is gone, and the plugin reports its `Closed`. The `ACTION_VIEW` fallback to the default browser, when no Custom Tabs provider is installed, closes the same way.
 
-- **`TAB_HIDDEN`.** The plugin binds the Custom Tabs service when it loads. When the service is connected, each view gets its own `CustomTabsSession`, whose callback reports `Closed` on `TAB_HIDDEN`. A session per view means a replaced view's late `TAB_HIDDEN` reaches that view, not the one replacing it.
-- **The host's resume.** A view launched without a session, including the `ACTION_VIEW` fallback to the default browser when no Custom Tabs provider is installed, reports `Closed` when the host activity next resumes after the view came up over it. The resume also backs up a session whose `TAB_HIDDEN` never arrives.
-
-Each view reports at most once, whichever signal gets there first.
+The tab lives in the host's task, so switching apps from it mid-sign-in (to a password manager or an authenticator) and back returns to the tab, not the host: the host doesn't resume, and the view stays open. The host's activity is `singleTop` for the same reason: a `singleTask` one would finish the tab whenever the user taps the launcher icon.
 
 ## Colours
 
@@ -85,7 +82,8 @@ apps/host/tauri-plugin-native-page-browser/
 [Rust] commands::open → NativePageBrowserExt::open → url_scheme::parse_http_url → platform backend
       │
       ├─ iOS/Android: run_mobile_plugin_async("open", { url, closed }).await
-      │     → close the showing view, if any → channel.send({ event:"closed" }) on ITS channel
+      │     → iOS: dismiss the showing view, if any → channel.send({ event:"closed" }) on ITS channel
+      │       Android: reject if a view is showing or the app is in the background
       │     → present SFSafariViewController / launch the Custom Tab
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler
       │
@@ -110,4 +108,6 @@ The Rust wire shapes and URL validation are covered by unit tests in
 `models.rs` and `url_scheme.rs`. The presentation and the close reports are
 checked by hand on each device: the view slides in from the right in the app's
 colours; close, an edge swipe and system back each return to the app and report
-`Closed` once; a second `open` replaces the first and reports `Closed` for it.
+`Closed` once; switching apps from an Android view and back reports nothing. A
+second `open` replaces the first and reports `Closed` for it on iOS, and is
+rejected on Android.

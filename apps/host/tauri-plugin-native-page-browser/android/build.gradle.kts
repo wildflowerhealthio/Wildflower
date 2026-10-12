@@ -29,10 +29,11 @@ android {
 dependencies {
     // ContextCompat + Drawable.toBitmap for the close icon.
     implementation("androidx.core:core-ktx:1.13.1")
-    // AppCompatActivity in the Plugin lifecycle hooks.
+    // AppCompatActivity, which `Plugin`'s lifecycle hooks take: subclassing
+    // `Plugin` needs it on the compile classpath.
     implementation("androidx.appcompat:appcompat:1.7.0")
-    // CustomTabsIntent, CustomTabsClient / CustomTabsCallback (the TAB_HIDDEN
-    // close report), and the per-scheme colour params.
+    // CustomTabsIntent, CustomTabsClient.getPackageName (the provider), and the
+    // per-scheme colour params.
     implementation("androidx.browser:browser:1.8.0")
     // The Tauri Android library, injected by the host app's generated project.
     implementation(project(":tauri-android"))
