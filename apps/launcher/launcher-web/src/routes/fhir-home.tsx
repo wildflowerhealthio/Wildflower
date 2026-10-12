@@ -13,7 +13,6 @@ import type { JSX } from 'react'
 import type { RouterContext } from '../router-context.ts'
 import { plainSmartRouteOptions } from '../session/auth-gated-route-options.ts'
 import { ServerKind } from '../session/server-kind.ts'
-import { AppTabShell } from '../session/tab-bar.tsx'
 
 /** Props for {@link FhirServerHome}. */
 interface FhirServerHomeProps {
@@ -46,36 +45,34 @@ interface FhirServerHomeProps {
  */
 function FhirServerHome({ server, siteRoot }: FhirServerHomeProps): JSX.Element {
   return (
-    <AppTabShell>
-      <div className={pageLayoutStyles['page']}>
-        <PageHeader title="Home" />
-        <p>
-          You are signed in to <code>{server.fhirBaseUrl}</code>, a SMART on FHIR server rather than
-          a Wildflower server, so Wildflower specific features aren’t available here. You can launch
-          any of Wildflower’s apps against it.
-        </p>
-        <ul className={appTileStyles['app-tiles']} aria-label="Apps">
-          {smartAppLaunchPages(siteRoot).map(({ app, launchPageUrl }) => (
-            <li key={app} className={appTileStyles['app-tile']}>
-              <a
-                href={appLaunchUrl(launchPageUrl, server)}
-                className={cn(appTileStyles['app-tile__body'], appTileStyles['app-tile__launch'])}
-                rel="nofollow noreferrer"
-              >
-                <span className={appTileStyles['app-tile__head']}>
-                  <span className={cn(appTileStyles['app-tile__name'], 'text-body-2')}>
-                    {APP_DESCRIPTIONS[app].name}
-                  </span>
-                  <span className={cn(appTileStyles['app-tile__subtitle'], 'text-body-3')}>
-                    {APP_DESCRIPTIONS[app].tagline}
-                  </span>
+    <div className={pageLayoutStyles['page']}>
+      <PageHeader title="Home" />
+      <p>
+        You are signed in to <code>{server.fhirBaseUrl}</code>, a SMART on FHIR server rather than a
+        Wildflower server, so Wildflower specific features aren’t available here. You can launch any
+        of Wildflower’s apps against it.
+      </p>
+      <ul className={appTileStyles['app-tiles']} aria-label="Apps">
+        {smartAppLaunchPages(siteRoot).map(({ app, launchPageUrl }) => (
+          <li key={app} className={appTileStyles['app-tile']}>
+            <a
+              href={appLaunchUrl(launchPageUrl, server)}
+              className={cn(appTileStyles['app-tile__body'], appTileStyles['app-tile__launch'])}
+              rel="nofollow noreferrer"
+            >
+              <span className={appTileStyles['app-tile__head']}>
+                <span className={cn(appTileStyles['app-tile__name'], 'text-body-2')}>
+                  {APP_DESCRIPTIONS[app].name}
                 </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </AppTabShell>
+                <span className={cn(appTileStyles['app-tile__subtitle'], 'text-body-3')}>
+                  {APP_DESCRIPTIONS[app].tagline}
+                </span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

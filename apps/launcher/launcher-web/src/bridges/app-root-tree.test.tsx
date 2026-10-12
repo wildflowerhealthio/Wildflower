@@ -15,7 +15,6 @@ import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { RootShell } from '../session/root-shell.tsx'
-import { ServerKind } from '../session/server-kind.ts'
 import { AppRootTree } from './app-root-tree.tsx'
 import { stubTransport } from './transport-context.ts'
 
@@ -40,9 +39,7 @@ const renderTree = ({ platformBanner }: { readonly platformBanner: ReactNode }):
           router={router}
           transportPromise={Promise.resolve(stubTransport)}
           platformSettingsItems={[]}
-          platformTabs={[]}
           platformBanner={platformBanner}
-          serverKind={ServerKind.Wildflower()}
         />
       </ActivePendingConsentProvider>
     </AuthStateProvider>

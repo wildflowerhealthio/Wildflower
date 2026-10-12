@@ -3,11 +3,9 @@ import { appsListQueryOptions } from '@wildflowerhealthio/apps-react'
 import { remotesQueryOptions } from '@wildflowerhealthio/collector-react'
 import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import { Effect } from 'effect'
-import type { JSX } from 'react'
 
 import type { RouterContext } from '../router-context.ts'
 import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'
-import { AppTabShell } from '../session/tab-bar.tsx'
 
 /**
  * Pathless `_auth` layout. Gates owner-facing routes on a live bearer
@@ -52,16 +50,8 @@ const authLoader = async ({ context }: { readonly context: RouterContext }): Pro
   })
 }
 
-function AuthLayout(): JSX.Element {
-  return (
-    <AppTabShell>
-      <Outlet />
-    </AppTabShell>
-  )
-}
-
 export const Route = createFileRoute('/_auth')({
   ...wildflowerRouteOptions,
   loader: authLoader,
-  component: AuthLayout,
+  component: Outlet,
 })

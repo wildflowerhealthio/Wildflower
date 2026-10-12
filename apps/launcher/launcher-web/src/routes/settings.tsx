@@ -3,11 +3,9 @@ import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
 
 import { wildflowerRouteOptions } from '../session/auth-gated-route-options.ts'
-import { AppTabShell } from '../session/tab-bar.tsx'
 
 /**
- * `/settings` layout — the persistent tab shell plus the shared page
- * shell that the slice-contributed `/settings/<slice>/…` subtrees render
+ * `/settings` layout — the shared page shell that the slice-contributed `/settings/<slice>/…` subtrees render
  * into via `<Outlet />`. The layout deliberately renders no heading of
  * its own: each child page owns a single `<PageHeader>` (the index's
  * "Settings", a sub-page's own short title + back link), so a settings
@@ -24,11 +22,9 @@ import { AppTabShell } from '../session/tab-bar.tsx'
  */
 function SettingsLayout(): JSX.Element {
   return (
-    <AppTabShell>
-      <div className={pageLayoutStyles['page']}>
-        <Outlet />
-      </div>
-    </AppTabShell>
+    <div className={pageLayoutStyles['page']}>
+      <Outlet />
+    </div>
   )
 }
 

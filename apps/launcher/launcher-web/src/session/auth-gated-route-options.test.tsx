@@ -23,7 +23,7 @@ import { ServerKind } from './server-kind.ts'
  * Pins the server-kind half of the auth gate: past `awaitAuthReady`, a route
  * for the other kind of server redirects to that kind's Home before its loader
  * runs. The tree is a real `Router` with the real options spread into stub
- * routes at the paths `homeTabFor` names, plus a Wildflower-only `/collector`
+ * routes at the paths `homePathFor` names, plus a Wildflower-only `/collector`
  * whose loader is a spy — the stand-in for `_auth`'s Wildflower-only
  * prefetches.
  */
