@@ -18,22 +18,35 @@
       "id": "r1",
       "data": "eyJyZXNvdXJjZVR5cGUiOiJQYXRpZW50In0="
     },
-    "ResponseFinished": { "_tag": "ResponseFinished", "id": "r1" },
+    "ResponseFinished": {
+      "_tag": "ResponseFinished",
+      "id": "r1"
+    },
     "RequestError": {
       "_tag": "RequestError",
       "id": "r2",
       "url": "https://portal.example.org/api/Observation",
       "message": "Failed to fetch"
     },
-    "Cancelled": { "_tag": "Cancelled", "id": "r3" },
+    "Cancelled": {
+      "_tag": "Cancelled",
+      "id": "r3"
+    },
     "PageLoaded": {
       "_tag": "PageLoaded",
       "url": "https://portal.example.org/dashboard",
       "pageContentId": "page-1"
     },
-    "PageRequested": { "_tag": "PageRequested", "url": "https://portal.example.org/dashboard" },
-    "UserDismissed": { "_tag": "UserDismissed" },
-    "SnifferDisposed": { "_tag": "SnifferDisposed" },
+    "PageRequested": {
+      "_tag": "PageRequested",
+      "url": "https://portal.example.org/dashboard"
+    },
+    "UserDismissed": {
+      "_tag": "UserDismissed"
+    },
+    "SnifferDisposed": {
+      "_tag": "SnifferDisposed"
+    },
     "HarSaved": {
       "_tag": "HarSaved",
       "fileName": "2026-09-13T14-02-11Z-portal.example.org.har",
@@ -48,13 +61,24 @@
   "webToHost": {
     "Open": {
       "_tag": "Open",
-      "source": { "_tag": "Uri", "uri": "https://portal.example.org/dashboard" }
+      "source": {
+        "_tag": "Uri",
+        "uri": "https://portal.example.org/dashboard"
+      }
     },
-    "SniffingComplete": { "_tag": "SniffingComplete" },
+    "SniffingComplete": {
+      "_tag": "SniffingComplete"
+    },
     "SaveHar": {
       "_tag": "SaveHar",
       "fileName": "2026-09-13T14-02-11Z-portal.example.org.har",
       "text": "{\"log\":{}}"
+    }
+  },
+  "commands": {
+    "recorder_save_folder": {
+      "path": "/home/ada/Downloads/Wildflower Recordings",
+      "revealsFiles": true
     }
   }
 }

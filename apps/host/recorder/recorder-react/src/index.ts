@@ -6,7 +6,7 @@
  *
  * @packageDocumentation
  */
-export { RecorderPage } from './recorder-page.tsx'
+export { RecorderPage, type RecorderPageProps } from './recorder-page.tsx'
 export {
   RecorderSenderProvider,
   type RecorderSenderProviderProps,
@@ -15,3 +15,4 @@ export type { RecorderOutboundMessage, RecorderSender } from './recorder-sender-
 export { useRecorderRegister } from './use-recorder-register.ts'
 export { useRecorderSender } from './use-recorder-sender.ts'
 export { useRecorder, type Recorder, type RecorderState } from './use-recorder.ts'
+export { useSaveFolder, type SaveFolderState } from './use-save-folder.ts'

@@ -5,7 +5,7 @@ The host keeps everything it owns under one directory, the data root:
 ```text
 <data root>/
   servers.json            the install's servers
-  saved_data/             saved HAR recordings, shared by every server
+  saved_data/             desktop only: files a page in the sniffer webview downloads
   fhir-search-params/     Android only: the materialized FHIR SearchParameter bundle
   acme-account/           the install's ACME account keys, one per CA
   servers/<domain>/       one folder per server, named by its domain
@@ -37,6 +37,9 @@ whole folder and then its record. A `servers.json` that can't be read is
 logged, and no server runs; the base's `servers_list` answers with the error,
 which the base shows. Every slice that needs a path joins onto the data root or
 the server's folder rather than resolving its own.
+
+Recordings are the exception: the Recorder saves them where the user can
+browse to them, outside the data root (see [Recordings](#recordings)).
 
 ## `servers.json`
 
@@ -210,6 +213,32 @@ Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist):
   client, the reachability monitor's `/health` probe and the collectors'
   upstream fetches open their own sockets and speak their own TLS. Whatever those are allowed to
   reach is a question for that code, not for this plist.
+
+## Recordings
+
+The Recorder saves each recording, a `.har` file, into a folder named
+`Wildflower Recordings` that the user can browse to and the Importer's file
+picker can reach. `recorder-rust`'s `Platform::recordings_locations` picks it,
+and `recorder-tauri`'s `attach_recorder` resolves it once, through Tauri's
+path API, when the app starts:
+
+| Platform | Folder                                                                                 | How it is reached                                          |
+| -------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Desktop  | `<Downloads>/Wildflower Recordings` (`download_dir()`)                                 | Finder, Explorer or the file manager; Show file reveals it |
+| Android  | `/storage/emulated/0/Download/Wildflower Recordings` (`home_dir()` + `Download`)       | the Files app and the system file picker, under Downloads  |
+| iOS      | `<container>/Documents/Wildflower Recordings` (`document_dir()`, the data root itself) | the Files app, "On My iPhone → Wildflower"                 |
+
+On Android, Tauri's `download_dir()` is the app's own
+`Android/data/<package>/files/Download`, which Android 11+ hides from every
+file manager, so the Recorder uses the shared `Download` folder instead. An
+app can create files there without a storage permission from Android 11 on;
+on an older Android, where it can't, `attach_recorder` falls back to the app's
+own `Download` folder, which a computer still sees over USB. A platform where
+no folder resolves still runs, and the Recorder page says why it can't save.
+
+The Recorder page shows the folder, read through the `recorder_save_folder`
+command, and on the desktop offers Show file after a save, which reveals the
+file in the file manager through `tauri-plugin-opener`.
 
 ## Android is still private
 

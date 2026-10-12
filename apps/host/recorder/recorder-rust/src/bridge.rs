@@ -33,7 +33,7 @@ pub const TAGS: [&str; 3] = [SAVE_HAR, HAR_SAVED, HAR_SAVE_FAILED];
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "_tag")]
 pub enum RecorderWebToHost {
-    /// Write this archive into the app's `saved_data` directory.
+    /// Write this archive into the recordings folder.
     ///
     /// `file_name` is one path segment as `recordingFileName` produces it,
     /// re-validated by [`validate_file_name`][crate::save::validate_file_name]
@@ -57,7 +57,7 @@ pub enum RecorderHostToWeb {
     /// The archive was written, and `path` is where it landed. `file_name`
     /// echoes the request so the page can tell whose answer this is.
     ///
-    /// Wire: `{"_tag":"HarSaved","fileName":"…","path":"/…/saved_data/….har"}`.
+    /// Wire: `{"_tag":"HarSaved","fileName":"…","path":"/…/Wildflower Recordings/….har"}`.
     #[serde(rename_all = "camelCase")]
     HarSaved { file_name: String, path: String },
     /// Nothing was written, and `message` says why — a rejected file name or
@@ -120,11 +120,12 @@ mod tests {
     fn har_saved_serializes_to_pinned_wire_format() {
         let message = RecorderHostToWeb::HarSaved {
             file_name: "2026-01-02T03-04-05Z-example.test.har".to_owned(),
-            path: "/home/u/saved_data/2026-01-02T03-04-05Z-example.test.har".to_owned(),
+            path: "/home/u/Downloads/Wildflower Recordings/2026-01-02T03-04-05Z-example.test.har"
+                .to_owned(),
         };
         assert_eq!(
             serde_json::to_string(&message).expect("serialize"),
-            r#"{"_tag":"HarSaved","fileName":"2026-01-02T03-04-05Z-example.test.har","path":"/home/u/saved_data/2026-01-02T03-04-05Z-example.test.har"}"#
+            r#"{"_tag":"HarSaved","fileName":"2026-01-02T03-04-05Z-example.test.har","path":"/home/u/Downloads/Wildflower Recordings/2026-01-02T03-04-05Z-example.test.har"}"#
         );
     }
 
@@ -166,7 +167,10 @@ mod tests {
         let save_har = &golden["webToHost"][SAVE_HAR];
         let decoded: RecorderWebToHost =
             serde_json::from_value(save_har.clone()).expect("SaveHar decodes");
-        assert_eq!(serde_json::to_value(&decoded).expect("serialize"), *save_har);
+        assert_eq!(
+            serde_json::to_value(&decoded).expect("serialize"),
+            *save_har
+        );
 
         for tag in [HAR_SAVED, HAR_SAVE_FAILED] {
             let answer = &golden["hostToWeb"][tag];
@@ -191,9 +195,8 @@ mod tests {
     /// empty archive.
     #[test]
     fn save_har_without_text_fails_to_decode() {
-        let error = serde_json::from_str::<RecorderWebToHost>(
-            r#"{"_tag":"SaveHar","fileName":"a.har"}"#,
-        );
+        let error =
+            serde_json::from_str::<RecorderWebToHost>(r#"{"_tag":"SaveHar","fileName":"a.har"}"#);
         assert!(error.is_err(), "expected a missing `text` to be rejected");
     }
 

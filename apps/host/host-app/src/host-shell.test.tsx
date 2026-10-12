@@ -69,6 +69,7 @@ const renderShell = async (hostEvents: FakeHostEvents = fakeHostEvents()): Promi
         telemetry: { dsn: '', app: 'host-app' },
       }}
       recorderTransport={readyRecorderTransport()}
+      revealFile={() => Promise.resolve()}
     />
   )
   // Let the transport's promise settle into the Recorder tab.
@@ -168,6 +169,7 @@ describe('HostShell', () => {
           telemetry: { dsn: '', app: 'host-app' },
         }}
         recorderTransport={Promise.reject(new Error('listen refused'))}
+        revealFile={() => Promise.resolve()}
       />
     )
     await act(async () => {})

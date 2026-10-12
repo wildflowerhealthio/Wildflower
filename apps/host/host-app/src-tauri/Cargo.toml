@@ -34,7 +34,8 @@ serde_json.workspace = true
 wildflowerhealthio-apps = { path = "../../wildflower-server/apps-rust" }
 wildflowerhealthio-browser-sniffer-tauri = { path = "../../browser-sniffer-tauri" }
 # Host glue for the Recorder: the `BRIDGE_EVENT` listener that writes a
-# recorded archive into `<data root>/saved_data`.
+# recorded archive into the `Wildflower Recordings` folder, and the
+# `recorder_save_folder` command.
 wildflowerhealthio-recorder-tauri = { path = "../../recorder/recorder-tauri" }
 # The install's servers on the unit runner, the notifications about them, and
 # the base's commands for adding a server and re-entering its token, over the

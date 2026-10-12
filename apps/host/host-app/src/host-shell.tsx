@@ -3,7 +3,11 @@ import type { TauriTransport } from '@wildflowerhealthio/effect-messaging-tauri-
 import { usePromiseOrDefault } from '@wildflowerhealthio/react-kitchen-sink'
 import { GateCard, PageBodyError, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { RecorderBridge } from '@wildflowerhealthio/recorder-core-js'
-import { RecorderPage, RecorderSenderProvider } from '@wildflowerhealthio/recorder-react'
+import {
+  RecorderPage,
+  type RecorderPageProps,
+  RecorderSenderProvider,
+} from '@wildflowerhealthio/recorder-react'
 import { PendingConsent } from '@wildflowerhealthio/servers-core-js'
 import { BaseRoot, type BaseRootProps } from '@wildflowerhealthio/servers-react'
 import { CrashReportingBoundary } from '@wildflowerhealthio/telemetry-react'
@@ -38,8 +42,10 @@ const CONNECTING: RecorderConnection = { _tag: 'Connecting' }
  */
 function RecorderTab({
   recorderTransport,
+  page,
 }: {
   readonly recorderTransport: Promise<RecorderTransport>
+  readonly page: RecorderPageProps
 }): JSX.Element {
   const connected = useMemo(
     () =>
@@ -64,7 +70,7 @@ function RecorderTab({
     Match.tag('Connected', ({ transport }) => (
       <HandlerCoordinatorContext.Provider value={transport.coordinator}>
         <RecorderSenderProvider send={transport.sendMessage}>
-          <RecorderPage />
+          <RecorderPage {...page} />
         </RecorderSenderProvider>
       </HandlerCoordinatorContext.Provider>
     )),
@@ -111,6 +117,12 @@ interface HostShellProps {
    * ready.
    */
   readonly recorderTransport: Promise<RecorderTransport>
+  /**
+   * Show a saved recording in the file manager: `tauri-plugin-opener`'s
+   * `revealItemInDir`. The Recorder page reads its folder with the base's
+   * `invoke`.
+   */
+  readonly revealFile: RecorderPageProps['revealFile']
 }
 
 /**
@@ -132,7 +144,7 @@ interface HostShellProps {
  * Servers tab, so when the host emits a consent waiting on a server, the shell
  * shows that tab.
  */
-function HostShell({ base, recorderTransport }: HostShellProps): JSX.Element {
+function HostShell({ base, recorderTransport, revealFile }: HostShellProps): JSX.Element {
   const [tab, setTab] = useState<Tab>('servers')
   const [showServers] = useState(() => () => {
     setTab('servers')
@@ -178,7 +190,10 @@ function HostShell({ base, recorderTransport }: HostShellProps): JSX.Element {
         className={styles['host-shell__panel']}
       >
         <CrashReportingBoundary extraContext={{ app: base.telemetry.app, tab: 'recorder' }}>
-          <RecorderTab recorderTransport={recorderTransport} />
+          <RecorderTab
+            recorderTransport={recorderTransport}
+            page={{ invoke: base.invoke, revealFile }}
+          />
         </CrashReportingBoundary>
       </div>
     </div>

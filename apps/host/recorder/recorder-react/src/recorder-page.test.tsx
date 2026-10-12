@@ -4,10 +4,12 @@ import type { MessageHandler } from '@wildflowerhealthio/effect-messaging-core'
 import type { HandlerCoordinator } from '@wildflowerhealthio/effect-messaging-react'
 import { HandlerCoordinatorContext } from '@wildflowerhealthio/effect-messaging-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { SAVE_FOLDER_COMMAND } from '@wildflowerhealthio/recorder-core-js'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import golden from '../../recorder-wire-golden.json' with { type: 'json' }
 import { RecorderPage } from './recorder-page.tsx'
 import type { RecorderSender } from './recorder-sender-context.ts'
 import { RecorderSenderProvider } from './recorder-sender-provider.tsx'
@@ -138,9 +140,90 @@ describe('RecorderPage', () => {
       `Saved to /home/user/Downloads/Wildflower Recordings/${fileName}`
     )
   })
+
+  it('should show the folder recordings are saved to', async () => {
+    // Act
+    renderPage()
+
+    // Assert
+    const folder = await screen.findByText(DESKTOP_SAVE_FOLDER.path)
+    expect(folder.parentElement?.textContent).toBe(
+      `Recordings are saved to ${DESKTOP_SAVE_FOLDER.path}`
+    )
+  })
+
+  it("should say why recordings can't be saved when the host has no folder", async () => {
+    // Act
+    renderPage({ saveFolder: () => Promise.reject('no recordings folder: no Downloads') })
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      "Recordings can't be saved on this device: no recordings folder: no Downloads"
+    )
+  })
+
+  it('should reveal the saved file on Show file', async () => {
+    // Arrange
+    const harness = renderPage()
+    const path = await saveOneRecording(harness)
+
+    // Act
+    await harness.user.click(screen.getByRole('button', { name: 'Show file' }))
+
+    // Assert
+    expect(harness.revealedPaths).toEqual([path])
+  })
+
+  it("should say so when the file can't be shown", async () => {
+    // Arrange
+    const harness = renderPage({
+      revealFile: () => Promise.reject(new Error('no file manager')),
+    })
+    await saveOneRecording(harness)
+
+    // Act
+    await harness.user.click(screen.getByRole('button', { name: 'Show file' }))
+
+    // Assert
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      "The file couldn't be shown: no file manager"
+    )
+  })
+
+  it("should offer no Show file where the platform can't reveal one", async () => {
+    // Arrange
+    const harness = renderPage({
+      saveFolder: () =>
+        Promise.resolve({
+          path: '/storage/emulated/0/Download/Wildflower Recordings',
+          revealsFiles: false,
+        }),
+    })
+
+    // Act
+    await saveOneRecording(harness)
+
+    // Assert
+    expect(screen.queryByRole('button', { name: 'Show file' })).toBeNull()
+  })
 })
 
 // Helpers
+
+/** Record nothing from example.com, stop, and have the host answer that it saved; the saved path. */
+const saveOneRecording = async (harness: PageHarness): Promise<string> => {
+  // Let the folder's read settle, so Show file's offer follows the host's answer.
+  await act(async () => {})
+  await harness.user.type(screen.getByLabelText('URL'), 'https://example.com')
+  await harness.user.click(startButton())
+  await harness.user.click(screen.getByRole('button', { name: 'Stop & Save' }))
+  const fileName = harness.savedFileNames[0] ?? ''
+  const path = `${DESKTOP_SAVE_FOLDER.path}/${fileName}`
+  await act(async () => {
+    await Effect.runPromise(harness.deliver({ _tag: 'HarSaved', fileName, path }))
+  })
+  return path
+}
 
 /**
  * Type `text` into `element` character for character.
@@ -186,11 +269,21 @@ type HostMessage = { readonly _tag: string; readonly [field: string]: unknown }
 interface PageHarness {
   readonly user: ReturnType<typeof userEvent.setup>
   readonly savedFileNames: string[]
+  readonly revealedPaths: string[]
   readonly deliver: (message: HostMessage) => Effect.Effect<void>
 }
 
+/** What the fake host does when asked for the recordings folder, and to reveal a file. */
+interface FakeHost {
+  readonly saveFolder?: () => Promise<unknown>
+  readonly revealFile?: (path: string) => Promise<void>
+}
+
+/** The desktop's answer, from the golden file both languages read. */
+const DESKTOP_SAVE_FOLDER = golden.commands.recorder_save_folder
+
 /** Render the page over a coordinator and senders that record what they see. */
-const renderPage = (): PageHarness => {
+const renderPage = (host: FakeHost = {}): PageHarness => {
   const registered = new Map<string, MessageHandler.AnyHandlers>()
   const savedFileNames: string[] = []
   const coordinator: HandlerCoordinator = {
@@ -209,10 +302,19 @@ const renderPage = (): PageHarness => {
     Effect.sync(() => {
       if (message._tag === 'SaveHar') savedFileNames.push(message.fileName)
     })
+  const revealedPaths: string[] = []
+  const invoke = (command: string): Promise<unknown> =>
+    command === SAVE_FOLDER_COMMAND
+      ? (host.saveFolder ?? (() => Promise.resolve(DESKTOP_SAVE_FOLDER)))()
+      : Promise.reject(new Error(`no ${command} on this fake host`))
+  const revealFile = (path: string): Promise<void> => {
+    revealedPaths.push(path)
+    return host.revealFile?.(path) ?? Promise.resolve()
+  }
   render(
     <HandlerCoordinatorContext.Provider value={coordinator}>
       <RecorderSenderProvider send={send}>
-        <RecorderPage />
+        <RecorderPage invoke={invoke} revealFile={revealFile} />
       </RecorderSenderProvider>
     </HandlerCoordinatorContext.Provider>
   )
@@ -220,6 +322,7 @@ const renderPage = (): PageHarness => {
     // No timer between keystrokes: the property types many generated URLs.
     user: userEvent.setup({ delay: null }),
     savedFileNames,
+    revealedPaths,
     deliver: (message) => {
       const handler = registered.get('Recorder')?.[message._tag]
       if (handler === undefined) throw new Error(`no Recorder handler for ${message._tag}`)

@@ -56,7 +56,7 @@ const timestampOf = (startedAt: DateTime.Utc): string =>
  *   {@link MAX_FILE_NAME_LENGTH} characters
  *
  * @remarks
- * Recordings land flat in `saved_data/`, so the name carries what distinguishes
+ * Recordings land flat in the recordings folder, so the name carries what distinguishes
  * one: when, and from where. The timestamp leads so a listing sorts
  * chronologically, and over-long names are trimmed from the *host* — a
  * truncated instant would read as a different one. The result is a valid single

@@ -6,22 +6,83 @@
 //! Every decision lives in [`wildflowerhealthio_recorder`], which needs no webview to be
 //! tested; this module is only the glue.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use tauri::{AppHandle, Emitter, Listener};
+use tauri::{AppHandle, Emitter, Listener, Manager, Runtime};
 use tauri_plugin_log::log;
-use wildflowerhealthio_recorder::bridge::{
-    RecorderHostToWeb, RecorderWebToHost, SAVE_HAR, TAGS,
-};
-use wildflowerhealthio_recorder::save::{save_har, saved_data_dir};
+use wildflowerhealthio_recorder::bridge::{RecorderHostToWeb, RecorderWebToHost, SAVE_HAR, TAGS};
+use wildflowerhealthio_recorder::recordings_folder::{Platform, RecordingsLocation};
+use wildflowerhealthio_recorder::save::save_har;
 use wildflowerhealthio_shared_structures::bridge::{BridgeEnvelope, BRIDGE_EVENT};
 
-/// Wire the recorder's listener on the multiplexed bridge event.
+mod commands;
+
+pub use commands::recorder_save_folder;
+
+/// The recordings folder this run saves to, or why there is none, resolved
+/// once by [`attach_recorder`]. `recorder_save_folder` reads it.
+pub struct RecordingsFolder(Result<PathBuf, String>);
+
+/// The directory Tauri resolves for `location`.
+fn resolve_location<R: Runtime>(
+    app: &AppHandle<R>,
+    location: RecordingsLocation,
+) -> tauri::Result<PathBuf> {
+    match location {
+        RecordingsLocation::UserDownloads | RecordingsLocation::AppDownloads => {
+            app.path().download_dir()
+        }
+        RecordingsLocation::SharedDownloads => app.path().home_dir(),
+        RecordingsLocation::AppDocuments => app.path().document_dir(),
+    }
+}
+
+/// The recordings folder for [`Platform::CURRENT`]: its first location that
+/// resolves and, where another location follows it, that the app can create.
 ///
-/// `app_data_dir` is the directory the host already resolved and created in
-/// `setup()`, passed in rather than resolved a second way; the `saved_data`
-/// folder under it is named once, in
-/// [`wildflowerhealthio_recorder::save::saved_data_dir`].
+/// Only the platform's own locations are resolved, and a last location isn't
+/// created here: `save_har` creates it on the first save, so a desktop's
+/// Downloads gains the folder only once something is saved into it.
+fn resolve_recordings_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let locations = Platform::CURRENT.recordings_locations();
+    let mut reasons = Vec::new();
+    for (index, location) in locations.iter().enumerate() {
+        let directory = match resolve_location(app, *location) {
+            Ok(resolved_dir) => location.recordings_dir(&resolved_dir),
+            Err(error) => {
+                reasons.push(format!("{location:?} could not be resolved: {error}"));
+                continue;
+            }
+        };
+        let has_fallback = index + 1 < locations.len();
+        if !has_fallback {
+            return Ok(directory);
+        }
+        // A later location is the fallback for one the app can't write to,
+        // such as Android's shared Downloads before Android 11.
+        match std::fs::create_dir_all(&directory) {
+            Ok(()) => return Ok(directory),
+            Err(error) => {
+                log::warn!(
+                    "[recorder] can't save into {}, trying the next location: {error}",
+                    directory.display()
+                );
+                reasons.push(format!(
+                    "{} could not be created: {error}",
+                    directory.display()
+                ));
+            }
+        }
+    }
+    Err(format!("no recordings folder: {}", reasons.join("; ")))
+}
+
+/// Wire the recorder's listener on the multiplexed bridge event, and manage
+/// the [`RecordingsFolder`] it saves into.
+///
+/// The recordings folder is resolved here, once, for
+/// [`Platform::CURRENT`]. A platform where none resolves still attaches: each
+/// `SaveHar` is answered with `HarSaveFailed` saying why.
 ///
 /// Registers synchronously, so a `setup()` call cannot miss a message — the
 /// webview's first `SaveHar` can only follow its own `__Ready`. Call once per
@@ -30,16 +91,17 @@ use wildflowerhealthio_shared_structures::bridge::{BridgeEnvelope, BRIDGE_EVENT}
 /// Sibling slices' tags are dropped silently; an undecodable payload is warned
 /// and, when a file name can still be read out of it, answered with
 /// `HarSaveFailed` so the page does not wait forever.
-pub fn attach_recorder(app: &AppHandle, app_data_dir: PathBuf) {
+pub fn attach_recorder(app: &AppHandle) {
     // The shared bridge channel has no automated cross-process tag guard, so
     // the boot log records who dispatches what. See the effect-messaging-tauri-js
     // README ("Tag uniqueness across processes").
-    log::info!(
-        "[recorder] listening on '{BRIDGE_EVENT}' for tags: {:?}",
-        TAGS
-    );
-    // Resolved once, from the directory the host already created.
-    let directory = saved_data_dir(&app_data_dir);
+    log::info!("[recorder] listening on '{BRIDGE_EVENT}' for tags: {TAGS:?}");
+    let directory = resolve_recordings_dir(app);
+    match &directory {
+        Ok(path) => log::info!("[recorder] recordings are saved to {}", path.display()),
+        Err(reason) => log::error!("[recorder] recordings can't be saved: {reason}"),
+    }
+    app.manage(RecordingsFolder(directory.clone()));
     let handle = app.clone();
     app.listen(BRIDGE_EVENT, move |event| {
         let payload = event.payload();
@@ -65,7 +127,7 @@ pub fn attach_recorder(app: &AppHandle, app_data_dir: PathBuf) {
 /// filesystem. See [Review Standards][rs] rule 7.
 ///
 /// [rs]: ../../../../../docs/Agents/Review%20Standards%20Reference.md
-fn handle_save_har(app: &AppHandle, directory: &Path, payload: &str) {
+fn handle_save_har(app: &AppHandle, directory: &Result<PathBuf, String>, payload: &str) {
     let (file_name, text) = match serde_json::from_str::<RecorderWebToHost>(payload) {
         Ok(RecorderWebToHost::SaveHar { file_name, text }) => (file_name, text),
         Err(error) => {
@@ -89,8 +151,20 @@ fn handle_save_har(app: &AppHandle, directory: &Path, payload: &str) {
         }
     };
 
+    let directory = match directory {
+        Ok(directory) => directory.clone(),
+        Err(reason) => {
+            emit(
+                app,
+                RecorderHostToWeb::HarSaveFailed {
+                    file_name,
+                    message: reason.clone(),
+                },
+            );
+            return;
+        }
+    };
     let handle = app.clone();
-    let directory = directory.to_path_buf();
     // Detached on purpose: the answer is the emit inside.
     let _worker = tauri::async_runtime::spawn_blocking(move || {
         let answer = match save_har(&directory, &file_name, &text) {

@@ -1,5 +1,4 @@
-//! Validating and writing a recorded archive into the app's `saved_data`
-//! directory.
+//! Validating and writing a recorded archive into the recordings folder.
 //!
 //! The file name arrives from the web side, so it is untrusted: every check
 //! runs before any filesystem call, and a rejected name leaves the
@@ -13,10 +12,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// The folder, under the app data directory, that user-visible artifacts are
-/// written to. Join it through [`saved_data_dir`], not by hand.
-pub const SAVED_DATA_DIR_NAME: &str = "saved_data";
-
 /// The longest file name accepted, in bytes. The producer
 /// (`recordingFileName` in `recorder-core-js`) trims its host component to
 /// the same bound, so a name it built is never rejected for length.
@@ -24,11 +19,6 @@ pub const MAX_FILE_NAME_LENGTH: usize = 200;
 
 /// The extension every saved recording carries.
 pub const HAR_EXTENSION: &str = ".har";
-
-/// Where saved artifacts live: `<app data dir>/saved_data`.
-pub fn saved_data_dir(app_data_dir: &Path) -> PathBuf {
-    app_data_dir.join(SAVED_DATA_DIR_NAME)
-}
 
 /// Why a save did not happen.
 #[derive(Debug, thiserror::Error)]
@@ -89,7 +79,7 @@ pub fn validate_file_name(name: &str) -> Result<(), SaveError> {
 /// them across processes. Only the temporary name needs it.
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-/// Writes `text` to `<saved_data_dir>/<file_name>` and returns the path it
+/// Writes `text` to `<recordings_dir>/<file_name>` and returns the path it
 /// wrote.
 ///
 /// The name is validated before the directory is created, so a rejected save
@@ -100,18 +90,18 @@ static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 /// An existing target is refused ([`SaveError::AlreadyExists`]) rather than
 /// overwritten. Check and rename are two syscalls, so this guards against the
 /// ordinary repeat, not against a racing second writer.
-pub fn save_har(saved_data_dir: &Path, file_name: &str, text: &str) -> Result<PathBuf, SaveError> {
+pub fn save_har(recordings_dir: &Path, file_name: &str, text: &str) -> Result<PathBuf, SaveError> {
     validate_file_name(file_name)?;
 
-    fs::create_dir_all(saved_data_dir)?;
+    fs::create_dir_all(recordings_dir)?;
 
-    let target = saved_data_dir.join(file_name);
+    let target = recordings_dir.join(file_name);
     if target.try_exists()? {
         return Err(SaveError::AlreadyExists(target));
     }
 
     let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let temporary = saved_data_dir.join(format!(
+    let temporary = recordings_dir.join(format!(
         ".{file_name}.tmp-{}-{sequence}",
         std::process::id()
     ));
@@ -152,15 +142,6 @@ mod tests {
     }
 
     #[test]
-    fn saved_data_dir_is_the_one_folder_name() {
-        assert_eq!(
-            saved_data_dir(Path::new("/home/u/.wildflower")),
-            PathBuf::from("/home/u/.wildflower/saved_data")
-        );
-        assert_eq!(SAVED_DATA_DIR_NAME, "saved_data");
-    }
-
-    #[test]
     fn a_valid_save_writes_the_exact_bytes_and_returns_its_path() {
         let dir = tempfile::tempdir().expect("tempdir");
         let text = r#"{"log":{"version":"1.2","entries":[]}}"#;
@@ -183,7 +164,7 @@ mod tests {
     #[test]
     fn the_directory_is_created_on_demand() {
         let root = tempfile::tempdir().expect("tempdir");
-        let target_dir = saved_data_dir(root.path());
+        let target_dir = root.path().join("Wildflower Recordings");
 
         let path = save_har(&target_dir, "a.har", "{}").expect("save succeeds");
 
@@ -283,11 +264,11 @@ mod tests {
     fn an_unwritable_directory_surfaces_as_io() {
         let dir = tempfile::tempdir().expect("tempdir");
         // A file sits where the directory would go, so it cannot be created.
-        let occupied = dir.path().join(SAVED_DATA_DIR_NAME);
+        let occupied = dir.path().join("Wildflower Recordings");
         fs::write(&occupied, "not a directory").expect("seed");
 
-        let error = save_har(&saved_data_dir(dir.path()), "a.har", "{}")
-            .expect_err("expected create_dir_all to fail");
+        let error =
+            save_har(&occupied, "a.har", "{}").expect_err("expected create_dir_all to fail");
 
         assert!(matches!(error, SaveError::Io(_)), "{error:?}");
     }

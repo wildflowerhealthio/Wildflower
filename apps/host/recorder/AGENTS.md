@@ -2,8 +2,10 @@
 
 The **Recorder**: the host's Recorder tab, which opens a URL in the sniffer
 webview, records every fetch/XHR response the injected `browser-sniffer`
-reports, and writes a HAR 1.2 file into the recordings folder when the
-recording stops. The file is what the Importer opens. Designed in
+reports, and writes a HAR 1.2 file into the recordings folder,
+`Wildflower Recordings` (in Downloads on the desktop and Android, in the app's
+Documents on iOS), when the recording stops. The file is what the Importer
+opens. Designed in
 [#652](https://github.com/wildflowerhealthio/Wildflower/issues/652); read the
 [Design Explanation](./docs/Design%20Explanation.md) before changing anything
 here.
@@ -22,18 +24,34 @@ mounts `RecorderPage` as its Recorder tab and attaches `recorder-tauri` in its
 
 - **[`recorder-core-js`](./recorder-core-js/AGENTS.md)** — the pure layer:
   `Recording` (sniffer events → `HttpArchive.Log`), `isOmittedFromRecording`,
-  `recordingFileName`, `toHar`, and `RecorderBridge`. Platform-neutral.
+  `recordingFileName`, `toHar`, `RecorderBridge`, and `readSaveFolder`, the
+  `recorder_save_folder` command decoded as a `SaveFolder`. Platform-neutral.
 - **[`recorder-react`](./recorder-react/AGENTS.md)** — `RecorderPage` and its
-  `useRecorder` state machine, over `RecorderBridge` alone.
-- **`recorder-rust`** — serde mirror of the save channel (`bridge.rs`) plus
-  the validated, atomic `save_har` and the recordings folder's name
-  (`save.rs`). No `tauri` dependency, so it compiles and tests without GTK.
-- **`recorder-tauri`** — the host glue: one `BRIDGE_EVENT` listener that
-  decodes `SaveHar`, writes off the event thread, and answers `HarSaved` /
-  `HarSaveFailed`. Attached from `host-app`'s `setup()`.
+  `useRecorder` state machine, over `RecorderBridge` alone; the page shows the
+  recordings folder and, where the platform can, Show file after a save.
+- **`recorder-rust`** — serde mirror of the save channel (`bridge.rs`), the
+  validated, atomic `save_har` (`save.rs`), and where each platform saves
+  (`recordings_folder.rs`: `Platform`, `RecordingsLocation`, `SaveFolder`).
+  No `tauri` dependency, so it compiles and tests without GTK.
+- **`recorder-tauri`** — the host glue: `attach_recorder`, called from
+  `host-app`'s `setup()`, resolves the recordings folder once through Tauri's
+  path API and wires one `BRIDGE_EVENT` listener that decodes `SaveHar`,
+  writes off the event thread, and answers `HarSaved` / `HarSaveFailed`; and
+  the `recorder_save_folder` command, granted to the `main` webview by
+  `host-app`'s `allow-recorder` permission.
 - **`recorder-wire-golden.json`** — one wire payload per `RecorderBridge`
-  tag, read by `recorder-core-js`'s and `recorder-rust`'s tests: change both
-  sides with it.
+  tag and the `recorder_save_folder` answer, read by `recorder-core-js`'s and
+  `recorder-rust`'s tests: change both sides with it.
+
+## Rules
+
+- **The folder is fixed per platform.** `Platform::recordings_locations` is
+  the one place it is chosen; the page only shows it. There is no folder
+  picker and nothing persisted. Show file goes through
+  `tauri-plugin-opener`'s `revealItemInDir`, offered only where
+  `Platform::reveals_files` says so (the desktop).
+- **A folder that can't be resolved doesn't stop the host.** The Recorder
+  page says why, and every `SaveHar` is answered with `HarSaveFailed`.
 
 ## Layering
 

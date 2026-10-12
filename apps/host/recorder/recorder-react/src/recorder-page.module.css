@@ -10,9 +10,13 @@
   margin: 0;
 }
 
-/* The written file's absolute path: a machine string, so mono and wrapping. */
-.recorder-page__path {
+/* Where recordings go, under the page's description. */
+.recorder-page__folder {
   margin: 0;
+}
+
+/* A folder's or file's absolute path: a machine string, so mono and wrapping. */
+.recorder-page__path {
   font-family: var(--font-family-mono);
   word-break: break-all;
 }

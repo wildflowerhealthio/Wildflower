@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import 'tundra-css'
 import '@wildflowerhealthio/react-tundraish/styles.css'
 import { makeTauriTransport } from '@wildflowerhealthio/effect-messaging-tauri-js'
@@ -57,6 +58,7 @@ createRoot(rootElement).render(
         },
       }}
       recorderTransport={recorderTransport}
+      revealFile={revealItemInDir}
     />
   </StrictMode>
 )

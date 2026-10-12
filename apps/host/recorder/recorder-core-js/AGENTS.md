@@ -30,9 +30,14 @@ runtime.
   `http(s)` `Uri` source only, `HttpUrl`), `SniffingComplete` and `SaveHar`.
   Every tag and shape is the one `browser-sniffer-tauri` already routes and
   emits. The TSDoc holds each wire string.
-- `src/index.ts` — re-exports all five.
-- `../recorder-wire-golden.json` — one wire payload per `RecorderBridge` tag,
-  read by `bridge.test.ts` and by `recorder-rust`'s save-channel tests.
+- `src/save-folder.ts` — **`readSaveFolder`**: the host's
+  `recorder_save_folder` command over an injected `invoke`, its answer
+  decoded as a `SaveFolder` (`path`, `revealsFiles`), or a
+  `SaveFolderUnreadable` with the host's reason.
+- `src/index.ts` — re-exports all six.
+- `../recorder-wire-golden.json` — one wire payload per `RecorderBridge` tag
+  and the `recorder_save_folder` answer, read by `bridge.test.ts`,
+  `save-folder.test.ts` and `recorder-rust`'s tests.
 
 ## Layering
 
@@ -72,6 +77,8 @@ package, `collector-*`, or anything from `slices/importer`.
   to itself, the data plane decodes as `BrowserSnifferBridge` decodes it,
   every web→host message encodes to its golden shape, and `Open` refuses a
   non-`http(s)` URL; plus the save channel's JSON-string wire.
+- `save-folder.test.ts` — the golden answer decodes, a refusal carries the
+  host's reason, and an empty path is refused.
 
 ## References
 

@@ -15,8 +15,13 @@ shell that drives it over `RecorderBridge`.
 - `src/recorder-sender-context.ts` / `-provider.tsx` / `src/use-recorder-sender.ts`
   — the `RecorderBridge` sender (`Open`, `SniffingComplete`, `SaveHar`), which
   the app provides from its transport's `sendMessage`.
+- `src/use-save-folder.ts` — **`useSaveFolder(invoke)`**: the recordings
+  folder, read once on mount: `Reading` → `Read(folder)` | `Unreadable(message)`.
 - `src/recorder-page.tsx` — **`RecorderPage`**, a plain component with no
-  route. `apps/host/host-app` mounts it as the Recorder tab, inside a
+  route, taking `invoke` (Tauri's) and `revealFile` (`tauri-plugin-opener`'s
+  `revealItemInDir`). It shows the recordings folder, and after a save offers
+  Show file where the folder's `revealsFiles` says the platform can.
+  `apps/host/host-app` mounts it as the Recorder tab, inside a
   `HandlerCoordinatorContext` and a `RecorderSenderProvider` over its
   `RecorderBridge` transport.
 
@@ -48,8 +53,10 @@ shell that drives it over `RecorderBridge`.
   answer matching by file name, `stop()` idempotence, and unmount while
   recording or idle.
 - `src/recorder-page.test.tsx` — the page's affordances: Start enablement
-  follows the URL's validity, Stop shows only while recording, and the saved
-  path is rendered.
+  follows the URL's validity, Stop shows only while recording, the folder and
+  the saved path are shown, a folder the host can't give says why, and Show
+  file reveals the saved file, says so when it can't, and is absent where the
+  platform can't reveal one.
 
 ## References
 

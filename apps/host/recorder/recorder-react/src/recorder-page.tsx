@@ -5,11 +5,12 @@ import {
   pageLayoutStyles,
   TextField,
 } from '@wildflowerhealthio/react-tundraish'
-import { HttpUrl } from '@wildflowerhealthio/recorder-core-js'
+import { HttpUrl, type InvokeHostCommand } from '@wildflowerhealthio/recorder-core-js'
 import { Match, Schema } from 'effect'
 import { useId, useState, type JSX } from 'react'
 
 import { useRecorder } from './use-recorder.ts'
+import { type SaveFolderState, useSaveFolder } from './use-save-folder.ts'
 import styles from './recorder-page.module.css'
 
 /**
@@ -28,9 +29,43 @@ const SUGGESTED_URLS: readonly string[] = [
   'https://virtualcare.telushealth.com/',
 ]
 
+/** Props for {@link RecorderPage}. */
+interface RecorderPageProps {
+  /** How the page reads the recordings folder: Tauri's `invoke`. */
+  readonly invoke: InvokeHostCommand
+  /**
+   * Show a saved file selected in the platform's file manager:
+   * `tauri-plugin-opener`'s `revealItemInDir`. Offered only where the host
+   * says the platform can.
+   */
+  readonly revealFile: (path: string) => Promise<void>
+}
+
+/** Where recordings go, or why the host can't say. */
+function SaveFolderLine({ saveFolder }: { readonly saveFolder: SaveFolderState }): JSX.Element {
+  return Match.value(saveFolder).pipe(
+    Match.tag('Reading', () => (
+      <p className={styles['recorder-page__folder']}>Finding the recordings folder…</p>
+    )),
+    Match.tag('Read', ({ folder }) => (
+      <p className={styles['recorder-page__folder']}>
+        Recordings are saved to <span className={styles['recorder-page__path']}>{folder.path}</span>
+      </p>
+    )),
+    Match.tag('Unreadable', ({ message }) => (
+      <p className={styles['recorder-page__folder']} role="alert">
+        Recordings can't be saved on this device: {message}
+      </p>
+    )),
+    Match.exhaustive
+  )
+}
+
 /**
  * The Recorder page: type a URL, record the responses the sniffer webview
- * reports, and save them as a `.har` file.
+ * reports, and save them as a `.har` file in the recordings folder, which the
+ * page shows. After a save it offers Show file where the platform's file
+ * manager can reveal one.
  *
  * @remarks
  * Needs a `RecorderSenderProvider` and a `HandlerCoordinatorContext`
@@ -38,10 +73,13 @@ const SUGGESTED_URLS: readonly string[] = [
  * the state machine's face — {@link useRecorder} owns the recording, the
  * ordering and the bridge.
  */
-function RecorderPage(): JSX.Element {
+function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
   const [url, setUrl] = useState('')
   const { state, start, stop } = useRecorder()
+  const saveFolder = useSaveFolder(invoke)
+  const [revealFailure, setRevealFailure] = useState<string | null>(null)
   const suggestionsId = useId()
+  const revealsFiles = saveFolder._tag === 'Read' && saveFolder.folder.revealsFiles
 
   const isRecording = state._tag === 'Recording'
   // `Saving` blocks a new recording: starting again would re-point the file
@@ -57,7 +95,9 @@ function RecorderPage(): JSX.Element {
         that window saves the recording, just like Stop &amp; Save.
       </FieldDescription>
 
-      <ErrorBanner error={state._tag === 'Failed' ? state.message : null} />
+      <SaveFolderLine saveFolder={saveFolder} />
+
+      <ErrorBanner error={state._tag === 'Failed' ? state.message : revealFailure} />
 
       <TextField
         label="URL"
@@ -83,6 +123,7 @@ function RecorderPage(): JSX.Element {
           className="button-2 filled"
           disabled={!canStart}
           onClick={() => {
+            setRevealFailure(null)
             start(url)
           }}
         >
@@ -107,9 +148,29 @@ function RecorderPage(): JSX.Element {
           </p>
         )),
         Match.when({ _tag: 'Saved' }, (s) => (
-          <p className={styles['recorder-page__path']} role="status">
-            Saved to {s.path}
-          </p>
+          <>
+            <p className={styles['recorder-page__status']} role="status">
+              Saved to <span className={styles['recorder-page__path']}>{s.path}</span>
+            </p>
+            {revealsFiles ? (
+              <div className={styles['recorder-page__buttons']}>
+                <button
+                  type="button"
+                  className="button-2"
+                  onClick={() => {
+                    setRevealFailure(null)
+                    revealFile(s.path).catch((error: unknown) => {
+                      setRevealFailure(
+                        `The file couldn't be shown: ${error instanceof Error ? error.message : String(error)}`
+                      )
+                    })
+                  }}
+                >
+                  Show file
+                </button>
+              </div>
+            ) : null}
+          </>
         )),
         Match.orElse(() => null)
       )}
@@ -117,4 +178,4 @@ function RecorderPage(): JSX.Element {
   )
 }
 
-export { RecorderPage }
+export { RecorderPage, type RecorderPageProps }
