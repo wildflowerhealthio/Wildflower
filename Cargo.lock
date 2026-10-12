@@ -3576,6 +3576,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-log",
+ "tauri-plugin-native-page-browser",
  "tauri-plugin-native-webview",
  "tauri-plugin-notification",
  "tauri-plugin-opener",

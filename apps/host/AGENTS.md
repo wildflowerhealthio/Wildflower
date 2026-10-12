@@ -32,6 +32,9 @@ stores, and the packages beside it that only the host uses. The app itself is
   Tauri glue for `shared-structures-rust`, such as `resolve_http_url`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)
   — the native, JS-injectable web view plugin (iOS, Android, desktop).
+- [`tauri-plugin-native-page-browser`](./tauri-plugin-native-page-browser/docs/Explanation.md)
+  — the system's in-app browser as a native page that reports its close to
+  Rust (iOS, Android; the default browser on desktop).
 - [`browser-sniffer-tauri`](./browser-sniffer-tauri) — the browser
   sniffer's Tauri host adapter, which opens the sniffer in that plugin's web
   view and embeds the bootstrap that `slices/browser-sniffer`'s

@@ -51,6 +51,9 @@ wildflowerhealthio-tauri-unit-runner = { path = "../../unit-runner/tauri-unit-ru
 # Native, JS-injectable web view (iOS, Android, desktop); runs in parallel
 # with the browser-sniffer WebviewWindow path. Registered in `run()`.
 tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
+# The system's in-app browser as a native page, reporting its close to Rust
+# (iOS, Android; the default browser on desktop). Registered in `run()`.
+tauri-plugin-native-page-browser = { path = "../../tauri-plugin-native-page-browser" }
 wildflowerhealthio-gatekeeper = { path = "../../wildflower-server/gatekeeper-rust" }
 # `ServerRuntimeConfig` and `LauncherBase` for the server config, and the bridge
 # envelope the host's listeners decode.
