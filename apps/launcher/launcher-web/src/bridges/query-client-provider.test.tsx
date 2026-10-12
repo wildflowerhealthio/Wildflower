@@ -137,7 +137,6 @@ describe('in-memory QueryClientProvider', () => {
           effectTelemetryLayer: Layer.empty,
           externalLinkRoot: () => 'https://example.test',
           platformSettingsItems: [],
-          platformTabs: [],
           platformBanner: null,
           redirectToDeviceLoginOnUnauthorized: false,
           serverKind: ServerKind.Wildflower(),

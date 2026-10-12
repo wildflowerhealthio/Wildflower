@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover` lays the page out edge to edge, under the notch
+         and the home indicator, so `env(safe-area-inset-*)` reports them;
+         `<RootShell>` and `<PageHeader>` pad by those insets. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Wildflower</title>
     <meta name="color-scheme" content="light dark" />
     <style>

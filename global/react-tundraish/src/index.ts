@@ -48,6 +48,8 @@ export {
   type SegmentedToggleOption,
   type SegmentedToggleProps,
 } from './segmented-toggle.tsx'
+export { SettingsIcon } from './settings-icon.tsx'
+export { SettingsLink, type SettingsLinkProps } from './settings-link.tsx'
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from './status-badge.tsx'
 export { TextField, type TextFieldProps } from './text-field.tsx'
 export { ToggleSwitch, type ToggleSwitchProps } from './toggle-switch.tsx'

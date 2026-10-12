@@ -8,24 +8,11 @@
  *   - tundra-style `<code>` / `<hr>` rules
  *   - the `--app-accent` token chain and `.app-{color}` accent classes
  *
- * So this file only carries what those upstream stylesheets can't
- * provide: the SPA-shell sizing (`html`/`body`/`#root` fill the viewport)
- * and the font-family stack.
+ * So this file only carries what those upstream stylesheets can't provide:
+ * the font-family stack. The page's sizing is `<RootShell>`'s
+ * (`session/root-shell.module.css`): the document scrolls, so nothing here
+ * pins `html`/`body`/`#root` to the viewport's height.
  */
-html,
-body,
-#root {
-  height: 100%;
-}
-
-/* `#root` carries the host's safe-area insets as padding (see
-   `apply-root-insets.ts`). `border-box` keeps that padding inside the
-   100% height so the content area shrinks instead of overflowing, and
-   the inset strip shows `body`'s background below. */
-#root {
-  box-sizing: border-box;
-}
-
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }

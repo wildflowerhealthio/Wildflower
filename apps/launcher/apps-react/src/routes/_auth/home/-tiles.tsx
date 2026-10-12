@@ -2,31 +2,10 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Link } from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import { StatusBadge, type StatusTone } from '@wildflowerhealthio/react-tundraish'
 import type { CSSProperties, JSX, MouseEvent } from 'react'
 
 import type { AppRegistration } from '../../../queries.ts'
 import tileStyles from '../../../styles/app-tiles.module.css'
-
-/** A registry-flag pill: its label and the {@link StatusTone} it paints. */
-interface Pill {
-  readonly key: string
-  readonly label: string
-  readonly tone: StatusTone
-}
-
-/**
- * The pills a tile shows for an app's registry flags: `SMART` when `isSmart` and
- * `Tunnel` when `requiresTunnel` (a label only; it has no effect on launch).
- * Pure — derives the list from the row so it can be unit-tested without
- * rendering.
- */
-const tilePills = (app: AppRegistration): readonly Pill[] => {
-  const pills: Pill[] = []
-  if (app.isSmart) pills.push({ key: 'smart', label: 'SMART', tone: 'info' })
-  if (app.requiresTunnel) pills.push({ key: 'tunnel', label: 'Tunnel', tone: 'warning' })
-  return pills
-}
 
 interface SortableAppTileProps {
   readonly app: AppRegistration
@@ -41,24 +20,15 @@ interface SortableAppTileProps {
   readonly onDisable: (app: AppRegistration) => void
 }
 
-/** The app's name / subtitle / pills — shared by the launch button (view mode)
- * and the plain display wrapper (edit mode). */
+/** The app's name and subtitle — shared by the launch link (view mode) and the
+ * plain display wrapper (edit mode). */
 const TileContent = ({ app }: { readonly app: AppRegistration }): JSX.Element => (
-  <>
-    <span className={tileStyles['app-tile__head']}>
-      <span className={cn(tileStyles['app-tile__name'], 'text-body-2')}>{app.name}</span>
-      {app.subtitle !== undefined ? (
-        <span className={cn(tileStyles['app-tile__subtitle'], 'text-body-3')}>{app.subtitle}</span>
-      ) : null}
-    </span>
-    <span className={tileStyles['app-tile__pills']}>
-      {tilePills(app).map((pill) => (
-        <StatusBadge key={pill.key} tone={pill.tone}>
-          {pill.label}
-        </StatusBadge>
-      ))}
-    </span>
-  </>
+  <span className={tileStyles['app-tile__head']}>
+    <span className={cn(tileStyles['app-tile__name'], 'text-body-2')}>{app.name}</span>
+    {app.subtitle !== undefined ? (
+      <span className={cn(tileStyles['app-tile__subtitle'], 'text-body-3')}>{app.subtitle}</span>
+    ) : null}
+  </span>
 )
 
 /** Where a click on a launch tile opens the app. */
@@ -185,5 +155,5 @@ const SortableAppTile = ({
   )
 }
 
-export { launchPlaceFor, SortableAppTile, tilePills }
-export type { LaunchPlace, Pill, SortableAppTileProps }
+export { launchPlaceFor, SortableAppTile }
+export type { LaunchPlace, SortableAppTileProps }

@@ -10,18 +10,20 @@ the generic [`PageHeader`](../../global/react-tundraish/src/page-header.tsx) in
   page shell. A page never stacks two headings — `PageHeader` owns the page's
   single `<h1>`, so a child screen must not render its own `<h1>` on top of a
   layout that already renders one.
-- **Top-level tab surfaces omit the back link.** The three tab destinations
-  (`/home`, `/collector`, `/settings` — see `session/tabs.ts`) render a
-  `PageHeader` with **no** `backHref`, because there is nowhere to go back to.
-  **Every other screen sets `backHref`.**
+- **Only a top-level page omits the back link.** The apps home (`/home`), a plain SMART
+  server's home (`/fhir-home`) and `/collector`, reached only by its URL,
+  render a `PageHeader` with **no** `backHref`, because there is nowhere to go
+  back to. **Every other screen sets `backHref`**, `/settings` included: it
+  leads back to `/home`, whose header links to it with a gear
+  (`react-tundraish`'s `SettingsLink`) in `actions`.
 
 ## Props
 
 - **`title`** — single line, ellipsis-truncates rather than wrapping. `ReactNode`, so a small inline chip can sit beside the text.
 - **`subtitle?`** — optional secondary line: a machine string (a URL, a client id), mono, single-line. **Not** a heading, so the page keeps one `<h1>`.
-- **`backHref?`** — absolute path to the page's **fixed logical parent**. Renders a leading back arrow. Omit only on the tab surfaces.
+- **`backHref?`** — absolute path to the page's **fixed logical parent**. Renders a leading back arrow. Omit only on a top-level page.
 - **`backLabel?`** — accessible label for the back arrow (defaults to `Back`).
-- **`actions?`** — optional trailing control (e.g. an overflow menu), aligned to the end of the bar.
+- **`actions?`** — optional trailing control (e.g. the home's Settings gear), aligned to the end of the bar.
 
 ## Why a fixed parent, not `history.back()`
 

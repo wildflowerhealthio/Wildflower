@@ -1,0 +1,10 @@
+/*
+ * The apps home's header: while the home screen is being arranged, Done (a
+ * tundra ghost button) stands where the Settings gear does, trimmed to the
+ * gear's padding (react-tundraish's `settings-link.module.css`) so the header
+ * bar keeps its height.
+ */
+.apps-home__done {
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}

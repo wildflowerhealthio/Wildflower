@@ -56,7 +56,7 @@ function SettingsIndex({
 }): JSX.Element {
   return (
     <>
-      <PageHeader title="Settings" />
+      <PageHeader title="Settings" backHref="/home" backLabel="Apps" />
       <ItemList items={[...sliceSettingsItems, ...entrySettingsItems, ...legalSettingsItems]} />
     </>
   )

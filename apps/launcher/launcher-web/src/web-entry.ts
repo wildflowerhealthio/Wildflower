@@ -160,7 +160,6 @@ const underBasepath = (basepath: string, route: string): string =>
  *   bare landing page at `basepath`.
  *   Nothing then names a server, so the reader picks one rather than being
  *   signed straight back in.
- * - `platformTabs`: none.
  * - `platformBanner`: none — no host runs a server for this page, so there is
  *   no server status to show.
  * - `redirectToDeviceLoginOnUnauthorized`: true — a 401 that outlives the
@@ -188,7 +187,6 @@ const makeWebEntryOptions = (
   | 'externalLinkRoot'
   | 'readBearer'
   | 'platformSettingsItems'
-  | 'platformTabs'
   | 'platformBanner'
   | 'redirectToDeviceLoginOnUnauthorized'
 > & { readonly bearerStore: BearerAuthStateStore } => {
@@ -215,7 +213,6 @@ const makeWebEntryOptions = (
         },
       }),
     ],
-    platformTabs: [],
     platformBanner: null,
     redirectToDeviceLoginOnUnauthorized: true,
   }

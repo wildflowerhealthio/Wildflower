@@ -175,17 +175,9 @@ interface RenderAppOptions {
    */
   readonly platformSettingsItems: readonly SettingsItem[]
   /**
-   * Platform-specific tabs this entry contributes to the primary bar, after the
-   * shared `TABS` (see `session/platform-tabs-context.ts`). Chosen at the entry
-   * for the same reason as `platformSettingsItems`: only the entry knows the
-   * platform, so the bar needs no `entry`-sniffing branch. Web entries pass
-   * `[]`.
-   */
-  readonly platformTabs: AppRootTreeProps['platformTabs']
-  /**
    * The banner this entry renders above every route (see
    * `session/platform-banner-context.ts`). Chosen at the entry for the same
-   * reason as `platformTabs`. Web entries pass `null`.
+   * reason as `platformSettingsItems`. Web entries pass `null`.
    */
   readonly platformBanner: AppRootTreeProps['platformBanner']
   /**
@@ -205,8 +197,7 @@ interface RenderAppOptions {
    * (`sign-in.ts`'s `serverKindForSession`), and `ServerKind.Wildflower()` when no
    * sign-in was redeemed on this load — the shell is then reached only by the
    * device-code flow, which only a Wildflower server serves. Threaded into
-   * router context for the route guards and the plain SMART Home, and into
-   * the tree for `<TabBar>`.
+   * router context for the route guards and the plain SMART Home.
    */
   readonly serverKind: ServerKind
   /**
@@ -293,7 +284,6 @@ const buildAppTree = ({
   firstPartyClientId,
   externalLinkRoot,
   platformSettingsItems,
-  platformTabs,
   platformBanner,
   redirectToDeviceLoginOnUnauthorized,
   serverKind,
@@ -414,9 +404,7 @@ const buildAppTree = ({
                 router={router}
                 transportPromise={transportPromise}
                 platformSettingsItems={platformSettingsItems}
-                platformTabs={platformTabs}
                 platformBanner={platformBanner}
-                serverKind={serverKind}
               />
             </ActivePendingConsentProvider>
           </TokenResponseHandlerContext>

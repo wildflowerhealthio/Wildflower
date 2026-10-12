@@ -9,9 +9,6 @@ import { Fragment, useMemo, type JSX, type PropsWithChildren, type ReactNode } f
 import { renderScopeError } from '../scope-error-renderer.tsx'
 import { PlatformBannerContext } from '../session/platform-banner-context.ts'
 import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
-import { PlatformTabsProvider } from '../session/platform-tabs.tsx'
-import { ServerKindContext, type ServerKind } from '../session/server-kind.ts'
-import type { TabSpec } from '../session/tabs.ts'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
 
@@ -21,15 +18,9 @@ interface AppRootTreeProps {
   /** The entry's platform-specific settings rows, provided to the tree so the
    * `/settings` route can append them. See {@link PlatformSettingsItemsProvider}. */
   readonly platformSettingsItems: readonly SettingsItem[]
-  /** The entry's platform-specific tabs, provided to the tree so the primary
-   * bar can render them after the shared ones. See {@link PlatformTabsProvider}. */
-  readonly platformTabs: readonly TabSpec[]
   /** The entry's platform banner, provided to the tree so `<RootShell>` can
    * render it above every route. See {@link PlatformBannerContext}. */
   readonly platformBanner: ReactNode
-  /** The kind of server the tree is for, provided so the primary bar renders
-   * only the tabs it serves. See {@link ServerKindContext}. */
-  readonly serverKind: ServerKind
 }
 
 /**
@@ -49,9 +40,7 @@ const AppRootTree = ({
   router,
   transportPromise,
   platformSettingsItems,
-  platformTabs,
   platformBanner,
-  serverKind,
 }: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
 
@@ -74,17 +63,13 @@ const AppRootTree = ({
   return (
     <ErrorBodyRendererContext.Provider value={renderScopeError}>
       <PlatformSettingsItemsProvider items={platformSettingsItems}>
-        <PlatformTabsProvider tabs={platformTabs}>
-          <PlatformBannerContext value={platformBanner}>
-            <ServerKindContext value={serverKind}>
-              <TransportContext.Provider value={transport}>
-                <HandlerCoordinatorContext.Provider value={transport.coordinator}>
-                  <RouterProvider router={router} InnerWrap={InnerWrap} />
-                </HandlerCoordinatorContext.Provider>
-              </TransportContext.Provider>
-            </ServerKindContext>
-          </PlatformBannerContext>
-        </PlatformTabsProvider>
+        <PlatformBannerContext value={platformBanner}>
+          <TransportContext.Provider value={transport}>
+            <HandlerCoordinatorContext.Provider value={transport.coordinator}>
+              <RouterProvider router={router} InnerWrap={InnerWrap} />
+            </HandlerCoordinatorContext.Provider>
+          </TransportContext.Provider>
+        </PlatformBannerContext>
       </PlatformSettingsItemsProvider>
     </ErrorBodyRendererContext.Provider>
   )
