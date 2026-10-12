@@ -717,12 +717,33 @@ importers:
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../../slices/branding/branding-core
+      '@wildflowerhealthio/browser-sniffer-core':
+        specifier: workspace:*
+        version: link:../../../slices/browser-sniffer/browser-sniffer-core
+      '@wildflowerhealthio/effect-messaging-core':
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-core
+      '@wildflowerhealthio/effect-messaging-react':
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-react
+      '@wildflowerhealthio/effect-messaging-tauri-js':
+        specifier: workspace:*
+        version: link:../../../global/effect-messaging/effect-messaging-tauri-js
+      '@wildflowerhealthio/http-archive':
+        specifier: workspace:*
+        version: link:../../../slices/file-formats/http-archive
       '@wildflowerhealthio/react-kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/react-kitchen-sink
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/recorder-core-js':
+        specifier: workspace:*
+        version: link:../recorder/recorder-core-js
+      '@wildflowerhealthio/recorder-react':
+        specifier: workspace:*
+        version: link:../recorder/recorder-react
       '@wildflowerhealthio/scopes-core':
         specifier: workspace:*
         version: link:../../../slices/scopes/scopes-core
@@ -744,6 +765,9 @@ importers:
       '@wildflowerhealthio/telemetry-web':
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-web
+      '@wildflowerhealthio/web-trace-core':
+        specifier: workspace:*
+        version: link:../../../slices/web-trace-core
       effect:
         specifier: 'catalog:'
         version: 3.22.2
@@ -760,6 +784,15 @@ importers:
       '@tauri-apps/cli':
         specifier: ^2
         version: 2.11.5
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -769,6 +802,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.1.2(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(babel-plugin-react-compiler@1.0.0)
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -778,6 +814,9 @@ importers:
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.3(vitest@5.0.3))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.2)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
   apps/host/recorder/recorder-core-js:
     devDependencies:

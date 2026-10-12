@@ -8,11 +8,14 @@ stores, and the packages beside it that only the host uses. The app itself is
 ## Packages
 
 - [`host-app`](./host-app/README.md) — the app: the Vite entry its webview
-  loads and, in `src-tauri`, the `host-app` crate (`host_app_lib`) that builds
+  loads, a shell with two tabs, **Servers** (the base, `servers-react`'s
+  `BaseRoot`) and **Recorder** (`recorder-react`'s `RecorderPage`, over an
+  `effect-messaging-tauri-js` transport for `RecorderBridge`), both kept
+  mounted, and, in `src-tauri`, the `host-app` crate (`host_app_lib`) that builds
   the Tauri app, registers the plugins and commands, and hosts the servers. The
   committed `src-tauri/gen/` holds its Xcode and Gradle projects.
 - [`servers/`](./servers/AGENTS.md) — the servers this install knows about, how
-  the host runs them, and the **base**, the UI the host's webview mounts:
+  the host runs them, and the **base**, the UI of the host's Servers tab:
   `servers-core-js`, `servers-react`, `servers-rust`, `servers-tauri`,
   their docs and `servers-wire-golden.json`.
 - [`recorder/`](./recorder/AGENTS.md) — the **Recorder**, which records a
@@ -52,6 +55,8 @@ stores, and the packages beside it that only the host uses. The app itself is
 - **Slice layering still applies inside a group.** `servers-react` imports
   `servers-core-js`, never the reverse; `servers-tauri` composes
   `servers-rust`; `tauri-unit-runner-rust` binds `unit-runner-rust`.
+- **Groups don't import each other.** `servers-react` knows nothing of the
+  recorder, nor `recorder-react` of the servers; `host-app` composes both.
 
 ## References
 

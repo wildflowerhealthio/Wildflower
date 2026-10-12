@@ -58,6 +58,7 @@ export default defineConfig({
       'apps/fhir-sync-pebble/fhir-sync-pebble-watchapp/test/vite.config.ts',
       'apps/fhir-sync-pebble/fhir-sync-pebble-web/vite.config.ts',
       'apps/health-viewer/*/vite.config.ts',
+      'apps/host/host-app/vitest.config.ts',
       'apps/host/recorder/*/vite.config.ts',
       'apps/host/servers/*/vite.config.ts',
       'apps/importer-web/vite.config.ts',
