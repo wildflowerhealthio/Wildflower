@@ -26,12 +26,12 @@ describe('readSaveFolder', () => {
   it("should carry the host's reason when it has no folder", async () => {
     // Act
     const result = await Effect.runPromise(
-      Effect.either(readSaveFolder(() => Promise.reject('no recordings folder: no Downloads')))
+      Effect.either(readSaveFolder(() => Promise.reject('no recordings folder: no Documents')))
     )
 
     // Assert
     expect(result).toEqual(
-      Either.left(new SaveFolderUnreadable({ message: 'no recordings folder: no Downloads' }))
+      Either.left(new SaveFolderUnreadable({ message: 'no recordings folder: no Documents' }))
     )
   })
 

@@ -224,16 +224,17 @@ path API, when the app starts:
 
 | Platform | Folder                                                                                 | How it is reached                                          |
 | -------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Desktop  | `<Downloads>/Wildflower Recordings` (`download_dir()`)                                 | Finder, Explorer or the file manager; Show file reveals it |
-| Android  | `/storage/emulated/0/Download/Wildflower Recordings` (`home_dir()` + `Download`)       | the Files app and the system file picker, under Downloads  |
+| Desktop  | `<Documents>/Wildflower Recordings` (`document_dir()`)                                 | Finder, Explorer or the file manager; Show file reveals it |
+| Android  | `/storage/emulated/0/Documents/Wildflower Recordings` (`home_dir()` + `Documents`)     | the Files app and the system file picker, under Documents  |
 | iOS      | `<container>/Documents/Wildflower Recordings` (`document_dir()`, the data root itself) | the Files app, "On My iPhone → Wildflower"                 |
 
-On Android, Tauri's `download_dir()` is the app's own
-`Android/data/<package>/files/Download`, which Android 11+ hides from every
-file manager, so the Recorder uses the shared `Download` folder instead. An
-app can create files there without a storage permission from Android 11 on;
-on an older Android, where it can't, `attach_recorder` falls back to the app's
-own `Download` folder, which a computer still sees over USB. A platform where
+On Android, Tauri's `document_dir()` is the app's own
+`Android/data/<package>/files/Documents`, which Android 11+ hides from every
+file manager, so the Recorder uses the shared `Documents` folder instead. An
+app can create files of any type there without a storage permission from
+Android 11 on; on an older Android, where it can't, `attach_recorder` falls
+back to the app's own `Documents` folder, which a computer still sees over
+USB. A platform where
 no folder resolves still runs, and the Recorder page says why it can't save.
 
 The Recorder page shows the folder, read through the `recorder_save_folder`

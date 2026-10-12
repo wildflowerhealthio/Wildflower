@@ -50,7 +50,7 @@
     "HarSaved": {
       "_tag": "HarSaved",
       "fileName": "2026-09-13T14-02-11Z-portal.example.org.har",
-      "path": "/home/ada/Downloads/Wildflower Recordings/2026-09-13T14-02-11Z-portal.example.org.har"
+      "path": "/home/ada/Documents/Wildflower Recordings/2026-09-13T14-02-11Z-portal.example.org.har"
     },
     "HarSaveFailed": {
       "_tag": "HarSaveFailed",
@@ -77,7 +77,7 @@
   },
   "commands": {
     "recorder_save_folder": {
-      "path": "/home/ada/Downloads/Wildflower Recordings",
+      "path": "/home/ada/Documents/Wildflower Recordings",
       "revealsFiles": true
     }
   }

@@ -130,14 +130,14 @@ describe('RecorderPage', () => {
         harness.deliver({
           _tag: 'HarSaved',
           fileName,
-          path: `/home/user/Downloads/Wildflower Recordings/${fileName}`,
+          path: `/home/user/Documents/Wildflower Recordings/${fileName}`,
         })
       )
     })
 
     // Assert
     expect(screen.getByRole('status').textContent).toBe(
-      `Saved to /home/user/Downloads/Wildflower Recordings/${fileName}`
+      `Saved to /home/user/Documents/Wildflower Recordings/${fileName}`
     )
   })
 
@@ -154,11 +154,11 @@ describe('RecorderPage', () => {
 
   it("should say why recordings can't be saved when the host has no folder", async () => {
     // Act
-    renderPage({ saveFolder: () => Promise.reject('no recordings folder: no Downloads') })
+    renderPage({ saveFolder: () => Promise.reject('no recordings folder: no Documents') })
 
     // Assert
     expect((await screen.findByRole('alert')).textContent).toBe(
-      "Recordings can't be saved on this device: no recordings folder: no Downloads"
+      "Recordings can't be saved on this device: no recordings folder: no Documents"
     )
   })
 
@@ -195,7 +195,7 @@ describe('RecorderPage', () => {
     const harness = renderPage({
       saveFolder: () =>
         Promise.resolve({
-          path: '/storage/emulated/0/Download/Wildflower Recordings',
+          path: '/storage/emulated/0/Documents/Wildflower Recordings',
           revealsFiles: false,
         }),
     })

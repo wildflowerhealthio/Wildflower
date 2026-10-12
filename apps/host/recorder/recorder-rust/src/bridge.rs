@@ -120,12 +120,12 @@ mod tests {
     fn har_saved_serializes_to_pinned_wire_format() {
         let message = RecorderHostToWeb::HarSaved {
             file_name: "2026-01-02T03-04-05Z-example.test.har".to_owned(),
-            path: "/home/u/Downloads/Wildflower Recordings/2026-01-02T03-04-05Z-example.test.har"
+            path: "/home/u/Documents/Wildflower Recordings/2026-01-02T03-04-05Z-example.test.har"
                 .to_owned(),
         };
         assert_eq!(
             serde_json::to_string(&message).expect("serialize"),
-            r#"{"_tag":"HarSaved","fileName":"2026-01-02T03-04-05Z-example.test.har","path":"/home/u/Downloads/Wildflower Recordings/2026-01-02T03-04-05Z-example.test.har"}"#
+            r#"{"_tag":"HarSaved","fileName":"2026-01-02T03-04-05Z-example.test.har","path":"/home/u/Documents/Wildflower Recordings/2026-01-02T03-04-05Z-example.test.har"}"#
         );
     }
 

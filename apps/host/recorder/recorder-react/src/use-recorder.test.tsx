@@ -191,13 +191,13 @@ describe('useRecorder', () => {
     await deliver(harness, {
       _tag: 'HarSaved',
       fileName,
-      path: `/home/user/Downloads/Wildflower Recordings/${fileName}`,
+      path: `/home/user/Documents/Wildflower Recordings/${fileName}`,
     })
 
     // Assert
     expect(result.current.state).toEqual({
       _tag: 'Saved',
-      path: `/home/user/Downloads/Wildflower Recordings/${fileName}`,
+      path: `/home/user/Documents/Wildflower Recordings/${fileName}`,
     })
   })
 
@@ -221,7 +221,7 @@ describe('useRecorder', () => {
         await deliver(harness, {
           _tag: 'HarSaved',
           fileName: otherFileName,
-          path: '/home/user/Downloads/Wildflower Recordings/somebody-elses.har',
+          path: '/home/user/Documents/Wildflower Recordings/somebody-elses.har',
         })
         await deliver(harness, {
           _tag: 'HarSaveFailed',
@@ -342,7 +342,7 @@ describe('useRecorder', () => {
     await deliver(harness, {
       _tag: 'HarSaved',
       fileName,
-      path: `/home/user/Downloads/Wildflower Recordings/${fileName}`,
+      path: `/home/user/Documents/Wildflower Recordings/${fileName}`,
     })
     expect(result.current.state._tag).toBe('Saved')
 

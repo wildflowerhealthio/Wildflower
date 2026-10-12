@@ -33,20 +33,21 @@ impl Platform {
 
     /// Where this platform's recordings folder may go, the first choice first.
     ///
-    /// - Desktop: the user's Downloads folder.
-    /// - Android: the shared Downloads folder, which the Files app and the
-    ///   system file picker show, and which the app can write to without a
-    ///   storage permission from Android 11 on. On an older Android, where it
-    ///   can't, the app's own Downloads folder, which a computer sees over USB.
+    /// - Desktop: the user's Documents folder.
+    /// - Android: the shared Documents folder, which the Files app and the
+    ///   system file picker show, and which the app can write any file into
+    ///   without a storage permission from Android 11 on. On an older Android,
+    ///   where it can't, the app's own Documents folder in its external
+    ///   storage, which a computer sees over USB.
     /// - iOS: the app's Documents folder, which the Files app shows under the
     ///   app's name (the bundle sets `UIFileSharingEnabled` and
     ///   `LSSupportsOpeningDocumentsInPlace`).
     pub fn recordings_locations(self) -> &'static [RecordingsLocation] {
         match self {
-            Platform::Desktop => &[RecordingsLocation::UserDownloads],
+            Platform::Desktop => &[RecordingsLocation::UserDocuments],
             Platform::Android => &[
-                RecordingsLocation::SharedDownloads,
-                RecordingsLocation::AppDownloads,
+                RecordingsLocation::SharedDocuments,
+                RecordingsLocation::AppExternalDocuments,
             ],
             Platform::Ios => &[RecordingsLocation::AppDocuments],
         }
@@ -62,14 +63,15 @@ impl Platform {
 /// A place the recordings folder can go, named for the directory it sits in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordingsLocation {
-    /// The user's Downloads folder: Tauri's `download_dir` on the desktop.
-    UserDownloads,
-    /// Android's shared `Download` folder, in the shared-storage root that
+    /// The user's Documents folder: Tauri's `document_dir` on the desktop.
+    UserDocuments,
+    /// Android's shared `Documents` folder, in the shared-storage root that
     /// Tauri's `home_dir` resolves to there.
-    SharedDownloads,
-    /// The app's own Downloads folder in its external storage: Tauri's
-    /// `download_dir` on Android.
-    AppDownloads,
+    SharedDocuments,
+    /// The app's own Documents folder in its external storage,
+    /// `Android/data/<package>/files/Documents`: Tauri's `document_dir` on
+    /// Android.
+    AppExternalDocuments,
     /// The app's Documents folder: Tauri's `document_dir` on iOS.
     AppDocuments,
 }
@@ -79,11 +81,11 @@ impl RecordingsLocation {
     /// resolves for it.
     pub fn recordings_dir(self, resolved_dir: &Path) -> PathBuf {
         match self {
-            RecordingsLocation::SharedDownloads => {
-                resolved_dir.join("Download").join(RECORDINGS_DIR_NAME)
+            RecordingsLocation::SharedDocuments => {
+                resolved_dir.join("Documents").join(RECORDINGS_DIR_NAME)
             }
-            RecordingsLocation::UserDownloads
-            | RecordingsLocation::AppDownloads
+            RecordingsLocation::UserDocuments
+            | RecordingsLocation::AppExternalDocuments
             | RecordingsLocation::AppDocuments => resolved_dir.join(RECORDINGS_DIR_NAME),
         }
     }
@@ -115,30 +117,30 @@ mod tests {
     }
 
     #[test]
-    fn the_desktop_saves_to_downloads() {
+    fn the_desktop_saves_to_documents() {
         assert_eq!(
-            first_choice(Platform::Desktop, "/home/ada/Downloads"),
-            PathBuf::from("/home/ada/Downloads/Wildflower Recordings")
+            first_choice(Platform::Desktop, "/home/ada/Documents"),
+            PathBuf::from("/home/ada/Documents/Wildflower Recordings")
         );
         assert_eq!(
             Platform::Desktop.recordings_locations(),
-            [RecordingsLocation::UserDownloads]
+            [RecordingsLocation::UserDocuments]
         );
     }
 
     #[test]
-    fn android_saves_to_the_shared_downloads_then_its_own() {
+    fn android_saves_to_the_shared_documents_then_its_own() {
         assert_eq!(
             first_choice(Platform::Android, "/storage/emulated/0"),
-            PathBuf::from("/storage/emulated/0/Download/Wildflower Recordings")
+            PathBuf::from("/storage/emulated/0/Documents/Wildflower Recordings")
         );
         let fallback = Platform::Android.recordings_locations()[1];
         assert_eq!(
             fallback.recordings_dir(Path::new(
-                "/storage/emulated/0/Android/data/io.wildflowerhealth.hostapp/files/Download"
+                "/storage/emulated/0/Android/data/io.wildflowerhealth.hostapp/files/Documents"
             )),
             PathBuf::from(
-                "/storage/emulated/0/Android/data/io.wildflowerhealth.hostapp/files/Download/Wildflower Recordings"
+                "/storage/emulated/0/Android/data/io.wildflowerhealth.hostapp/files/Documents/Wildflower Recordings"
             )
         );
         assert_eq!(Platform::Android.recordings_locations().len(), 2);

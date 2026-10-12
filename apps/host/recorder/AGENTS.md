@@ -3,8 +3,8 @@
 The **Recorder**: the host's Recorder tab, which opens a URL in the sniffer
 webview, records every fetch/XHR response the injected `browser-sniffer`
 reports, and writes a HAR 1.2 file into the recordings folder,
-`Wildflower Recordings` (in Downloads on the desktop and Android, in the app's
-Documents on iOS), when the recording stops. The file is what the Importer
+`Wildflower Recordings` (in Documents: the user's on the desktop, the shared
+one on Android, the app's on iOS), when the recording stops. The file is what the Importer
 opens. Designed in
 [#652](https://github.com/wildflowerhealthio/Wildflower/issues/652); read the
 [Design Explanation](./docs/Design%20Explanation.md) before changing anything
