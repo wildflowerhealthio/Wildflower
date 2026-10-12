@@ -1943,12 +1943,6 @@ importers:
       '@wildflowerhealthio/gatekeeper-react':
         specifier: workspace:*
         version: link:../../../slices/gatekeeper/gatekeeper-react
-      '@wildflowerhealthio/har-recorder-core-js':
-        specifier: workspace:*
-        version: link:../har-recorder/har-recorder-core-js
-      '@wildflowerhealthio/har-recorder-react':
-        specifier: workspace:*
-        version: link:../har-recorder/har-recorder-react
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
