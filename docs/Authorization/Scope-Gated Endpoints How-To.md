@@ -60,7 +60,7 @@ must run first and insert them. This is one half of a **pair** of claims-inserti
 middlewares (see the Explanation):
 
 - A router the host layers with
-  `wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware` is already covered —
+  `wildflowerhealthio_authorization_server::authorization_server_auth_middleware` is already covered —
   `require_valid_bearer_token` inserts a `ScopeClaims` after verifying the token,
   so downstream slices read scopes **without depending on gatekeeper's domain
   claims type**.
@@ -171,7 +171,7 @@ sees `State<…>` or the store — that's the point.
 ### 5. Guard it with a source test
 
 Copy the source-guard test (see
-`gatekeeper-rust/src/domain/capabilities/mod.rs` or
+`authorization-server-rust/src/domain/capabilities/mod.rs` or
 `databases-rust/src/domain/capabilities.rs`): it enumerates the routes directory at
 test time and asserts each handler's source never contains `State<` or a direct
 store accessor, so a NEW handler file is guarded by default and must be
@@ -281,7 +281,7 @@ Scope gates answer "may this caller reach this data?". Gatekeeper additionally
 answers "on what authority is this row being written?" for every privileged
 write (approving a request, issuing a code, recording or widening a grant or a
 registration, minting a token, issuing a refresh token). Each such write lives
-in exactly one **writer** (`gatekeeper-rust/src/domain/capabilities/writers/`),
+in exactly one **writer** (`authorization-server-rust/src/domain/capabilities/writers/`),
 and each writer method takes a **proof** from `domain/authority/` — a type with
 private fields and a single constructor, which is the one function that checks
 the rule the proof stands for:
@@ -339,24 +339,24 @@ lets a guard test assert `domain/` never imports `crate::http`.
 
 ## Worked examples
 
-- **Fixed:** `apps/host/wildflower-server/gatekeeper-rust/src/domain/capabilities/` — the
+- **Fixed:** `apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/` — the
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
   `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
-  concrete store in `gatekeeper-rust/src/live_bindings/`. Their privileged writes
+  concrete store in `authorization-server-rust/src/live_bindings/`. Their privileged writes
   go through the writers under an authority proof (see the section above).
 - **Data-dependent:** `apps/host/wildflower-server/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
   the `DatabaseFiles` port (stubbed with an in-memory fake in the unit tests).
-- **Authenticated-only:** `gatekeeper-rust/src/live_bindings/session.rs` —
+- **Authenticated-only:** `authorization-server-rust/src/live_bindings/session.rs` —
   `LiveSessionEnder` / `LiveSessionReader`, built from the caller's
   `VerifiedClaims` and acquired through `Authenticated<…>`.
-- **Authority proofs and writers:** `gatekeeper-rust/src/domain/authority/` and
-  `gatekeeper-rust/src/domain/capabilities/writers/`; the flows that obtain a
+- **Authority proofs and writers:** `authorization-server-rust/src/domain/authority/` and
+  `authorization-server-rust/src/domain/capabilities/writers/`; the flows that obtain a
   proof and hand it to a writer are `domain/capabilities/oauth/` (the pre-auth
   front door) and `domain/capabilities/access/consents/` (the Owner's approvals).
 - **The authN-pair contract:**
-  `gatekeeper-rust/tests/integration/smoke.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
+  `authorization-server-rust/tests/integration/smoke.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
   drives the real bearer gate into the real databases capability.
 
 ## References

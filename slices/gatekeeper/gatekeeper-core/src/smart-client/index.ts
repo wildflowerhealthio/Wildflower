@@ -1,5 +1,5 @@
 /**
- * The browser side of the SMART sign-in `gatekeeper-rust` serves — a standalone
+ * The browser side of the SMART sign-in `authorization-server-rust` serves — a standalone
  * launch, or an EHR launch when the app was opened with one — shared by every
  * static Wildflower page that signs in to a reader-chosen server. See "The
  * SMART sign-in client" in the package README for the shape of the flow, what

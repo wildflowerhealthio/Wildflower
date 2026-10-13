@@ -82,7 +82,7 @@
           // FHIR data source issues. MUST equal, element for element and in
           // order, the `allowed_scopes` of the production client (gatekeeper
           // migration `0009_seed_ohif_viewer_client`) and of the dev client
-          // (`gatekeeper-rust/src/seeding.rs`): a
+          // (`authorization-server-rust/src/seeding.rs`): a
           // requested scope the client is not allowed fails `/authorize`.
           smartScope:
             'launch openid fhirUser system/Patient.rs system/ImagingStudy.rs system/DocumentReference.rs',

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
-use wildflowerhealthio_gatekeeper::{LoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_authorization_server::{LoopbackConsentPrompt, PendingConsentHead};
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
@@ -30,7 +30,7 @@ pub struct WildflowerServerConfig {
     pub launcher_base: LauncherBase,
     /// The scopes gatekeeper seeds the first-party client with and mints the host
     /// owner token under (see
-    /// [`GatekeeperConfig::host_owner_scopes`](wildflowerhealthio_gatekeeper::GatekeeperConfig::host_owner_scopes)).
+    /// [`AuthorizationServerConfig::host_owner_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_owner_scopes)).
     pub host_owner_scopes: Vec<String>,
     /// The host's first-party OAuth `client_id`.
     pub first_party_client_id: String,

@@ -5,7 +5,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use wildflowerhealthio_gatekeeper::{
+use wildflowerhealthio_authorization_server::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, HostConsentDecider,
 };
 use wildflowerhealthio_unit_runner::{UnitId, UnitStatuses};

@@ -1,5 +1,5 @@
 //! Open-time configuration for the apps slice, mirroring
-//! `gatekeeper-rust`'s `GatekeeperConfig`. The shared database is passed
+//! `authorization-server-rust`'s `AuthorizationServerConfig`. The shared database is passed
 //! separately into [`setup_apps`](crate::setup_apps), not via this config.
 
 use url::Url;

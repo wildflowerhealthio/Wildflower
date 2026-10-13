@@ -3,14 +3,14 @@
  * documented slice of `/access` (client management).
  *
  * Diffs the Rust/axum server's OpenAPI spec (emitted by `utoipa`, committed at
- * `gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json`) against the TypeScript
+ * `authorization-server-rust/openapi/gatekeeper-oauth.openapi.json`) against the TypeScript
  * client's spec (`OpenApi.fromApi(GatekeeperApi)`). The generic wire-shape
  * comparison + the parse/dereference/assert harness live in
  * `shared-structures-core/openapi-drift`; this file owns only the
  * gatekeeper-specific scope and accepted differences.
  *
  * Regenerate the committed server spec after a wire-type change with:
- *   UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-gatekeeper openapi_spec_snapshot_is_up_to_date
+ *   UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-authorization-server openapi_spec_snapshot_is_up_to_date
  */
 
 import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/openapi-drift/testing'
@@ -19,7 +19,7 @@ import { GatekeeperApi } from './index.ts'
 defineSpecDriftTest({
   name: 'gatekeeper OAuth',
   serverSpec: new URL(
-    '../../../../../apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json',
+    '../../../../../apps/host/wildflower-server/authorization-server-rust/openapi/gatekeeper-oauth.openapi.json',
     import.meta.url
   ),
   clientApi: GatekeeperApi,

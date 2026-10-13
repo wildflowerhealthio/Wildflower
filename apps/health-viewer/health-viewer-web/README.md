@@ -115,7 +115,7 @@ dev server (random ids, not the tile ids). Each must equal the `client_id` of
 the app row it is launched through — a launch checks the caller's grant against
 that client's scopes, and `/authorize` matches the redirect against that
 client's registered URIs — and its scope string must equal the client's allowed
-scopes; `gatekeeper-rust`'s `seeding.rs` test reads `config.ts` to hold both
+scopes; `authorization-server-rust`'s `seeding.rs` test reads `config.ts` to hold both
 clients to it.
 
 - **`health-viewer`** is a row (apps migration
@@ -130,7 +130,7 @@ clients to it.
 - **`health-viewer-dev`** is seeded in debug builds only, at runtime rather
   than by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
-  `http://localhost:<port>/` (`gatekeeper-rust/src/seeding.rs`).
+  `http://localhost:<port>/` (`authorization-server-rust/src/seeding.rs`).
 
 ## Running locally
 
@@ -144,7 +144,7 @@ connect menu (the SMART Health IT sandbox works), sign in, and choose a patient
 
 **From a Wildflower host**: debug builds of the host seed a
 `health-viewer-dev` row on that port plus its own OAuth client
-(`apps-rust`'s `seed_dev_apps` / `gatekeeper-rust`'s `seed_dev_app_clients`),
+(`apps-rust`'s `seed_dev_apps` / `authorization-server-rust`'s `seed_dev_app_clients`),
 so the homescreen carries a "Health Viewer (Dev)" tile that launches whatever is
 serving that port — the vite dev server when it is up, nothing when it is down.
 A launch with a patient in context opens on that patient. The port has a

@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use tokio::sync::mpsc;
 use url::Url;
-use wildflowerhealthio_gatekeeper::{NoLoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_authorization_server::{NoLoopbackConsentPrompt, PendingConsentHead};
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_servers::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
@@ -50,11 +50,11 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         )),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),
-        host_owner_scopes: wildflowerhealthio_gatekeeper::WILDFLOWER_WIDEST_SCOPES
+        host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)
             .collect(),
-        first_party_client_id: wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID.to_owned(),
+        first_party_client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // reachability monitor finds the server unreachable.
@@ -276,7 +276,7 @@ async fn start_device_authorization(loopback_base_url: &Url) -> String {
         .header("content-type", "application/x-www-form-urlencoded")
         .body(format!(
             "client_id={}&scope=system%2F*.cruds",
-            wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID
+            wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
         ))
         .send()
         .await
@@ -329,7 +329,7 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     assert_eq!(user_code, user_codes[0]);
     assert_eq!(
         client_id,
-        wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID
+        wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
     );
     assert_eq!(requested_scopes, ["system/*.cruds"]);
 

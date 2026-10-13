@@ -18,7 +18,7 @@
 //! `iat < not_before(subject)`.
 //!
 //! It carries no auth policy and no helios dependency, so both enforcement
-//! points can read it in-process without pulling each other in: `gatekeeper-rust`
+//! points can read it in-process without pulling each other in: `authorization-server-rust`
 //! (the gate + the revoke control surface) and `fhir-r4-rust`'s HFS auth-provider
 //! wrapper (per-`jti` denylist only — helios's `Principal` carries no `iat`).
 

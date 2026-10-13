@@ -37,7 +37,7 @@ stores, and the packages beside it that only the host uses. The app itself is
   [`wildflower-server-rust`](./wildflower-server/wildflower-server-rust/AGENTS.md),
   which composes the server features' Rust crates (gatekeeper, FHIR R4, OHIF,
   request log, apps, databases, tunnel) into one API; beside it the
-  crates only the host composes: `gatekeeper-rust`, `token-revocation-rust`,
+  crates only the host composes: `authorization-server-rust`, `token-revocation-rust`,
   `fhir-r4-rust`, `apps-rust`, `tunnel-rust`, `databases-rust` and
   `request-log-rust`.
 - [`tauri-plugin-native-webview`](./tauri-plugin-native-webview/docs/Explanation.md)

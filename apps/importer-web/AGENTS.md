@@ -111,7 +111,7 @@ accepts the writes and the set has room to grow.
   unreachable through patient context and a `patient/` scope would match
   nothing.
 - **The pin.** This string MUST equal the `allowed_scopes` JSON array the
-  `gatekeeper-rust` migrations seed for the Importer's client — originally
+  `authorization-server-rust` migrations seed for the Importer's client — originally
   `0008_seed_wildflower_importer_client`, widened by
   `0009_widen_importer_client_write_scopes` (which broadens every type to full
   `.cruds` and adds `Practitioner`, `DiagnosticReport`, `Medication`,
@@ -123,9 +123,9 @@ accepts the writes and the set has room to grow.
   needs one source, and a SQL seed and a TS constant have none in common. So the
   pairing is held by three mirrors instead: the doc comment in `src/config.ts`,
   the migrations' own comments, and the exact
-  vector asserted in `gatekeeper-rust`'s `db/clients.rs`. Change
+  vector asserted in `authorization-server-rust`'s `db/clients.rs`. Change
   one, change all four. A **dev** build authorizes against the sibling
-  `importer-dev` tile's client instead (`gatekeeper-rust`'s `seed_dev_app_clients`,
+  `importer-dev` tile's client instead (`authorization-server-rust`'s `seed_dev_app_clients`,
   see [Seeded registration](#seeded-registration) below), which carries the same
   set — widen it in step too, or `/authorize` fails only in a vite dev build. Do
   **not** invent a parity test that hand-copies the list a third time — that is
@@ -194,7 +194,7 @@ registered client cannot launch:
   since `0016_launch_first_party_apps_at_root`, and under the tile id
   `importer` since `0019_rekey_site_apps`), `requires_tunnel = 1` (like
   `medications`).
-- `apps/host/wildflower-server/gatekeeper-rust/migrations/0008_seed_wildflower_importer_client/`
+- `apps/host/wildflower-server/authorization-server-rust/migrations/0008_seed_wildflower_importer_client/`
   — the OAuth client, re-keyed to `165cd26573e5ac72378e6ad2d2198330` by
   `0028_rekey_site_app_clients`. Its one registered redirect is
   `https://wildflowerhealth.io/importer/`, the page it launches from.
@@ -205,7 +205,7 @@ the client's id in both.
 A **debug build** additionally seeds an `importer-dev` row
 (`apps-rust`'s `dev_seed.rs`) whose launch URL names this app's vite dev-server
 port (`dev-app-ports.json` → `5193`), plus its sibling OAuth client
-(`gatekeeper-rust`'s `seed_dev_app_clients`) carrying the same write scopes. That
+(`authorization-server-rust`'s `seed_dev_app_clients`) carrying the same write scopes. That
 row is what a developer running `vp run -F @wildflowerhealthio/importer-web dev` launches;
 there is no fallback build, so the tile opens nothing when vite is not holding
 the port.

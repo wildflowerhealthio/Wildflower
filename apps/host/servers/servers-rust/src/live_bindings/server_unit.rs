@@ -1,7 +1,7 @@
 //! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
 
 use tokio::sync::{mpsc, watch};
-use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_authorization_server::PendingConsentHead;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};

@@ -24,7 +24,7 @@
 //! so a release build contains no code that could write these ids.
 //!
 //! Each app's dev gatekeeper client (`seed_dev_app_clients` in
-//! gatekeeper-rust) registers an absolute `http://localhost:{port}` redirect
+//! authorization-server-rust) registers an absolute `http://localhost:{port}` redirect
 //! URI that the OAuth authorize flow matches directly — the row is a launch URL
 //! and nothing else.
 
@@ -36,7 +36,7 @@ use wildflowerhealthio_persistence::DieselPool;
 use crate::db::SqliteAppsStore;
 
 /// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
-/// tile ids. gatekeeper-rust's `seed_dev_app_clients` registers each (but
+/// tile ids. authorization-server-rust's `seed_dev_app_clients` registers each (but
 /// Server Docs', whose console signs in as its production client), and each
 /// app's `src/config.ts` (the OHIF viewer's `config/app-config.js` and launch
 /// URL) launches as its own under the dev server.

@@ -10,7 +10,7 @@ snapshots**:
 
 | Sidebar group | Snapshot                                                                            |
 | ------------- | ----------------------------------------------------------------------------------- |
-| Gatekeeper    | `apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json` |
+| Gatekeeper    | `apps/host/wildflower-server/authorization-server-rust/openapi/gatekeeper-oauth.openapi.json` |
 | Apps          | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                   |
 | Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`         |
 | Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`     |
@@ -123,7 +123,7 @@ line asking the server how to sign in. On that restore (`pageshow` with
 `persisted`) the button and status line start over.
 
 The client is registered by
-`apps/host/wildflower-server/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`
+`apps/host/wildflower-server/authorization-server-rust/migrations/0007_seed_wildflower_server_docs_client`
 and re-keyed to that random id, with its redirect moved to `/server-docs/`, by
 `0028_rekey_site_app_clients`;
 `src/smart-client.ts` is the browser-side reading of that row's `client_id` and
@@ -191,7 +191,7 @@ and from `vp run -F @wildflowerhealthio/server-docs-web dev`, with nothing to ke
 the seed carries only the published URL. The other addresses are **not**
 rejected: for every client but the first-party host, an unregistered redirect
 reaches the Owner's consent prompt as a "this redirect is new" warning, and
-approving it adds the entry to the client row (`gatekeeper-rust`'s
+approving it adds the entry to the client row (`authorization-server-rust`'s
 `domain/client_registration.rs`). The Owner's consent is the gate — which is
 the honest one, since a static page cannot know what a given server's row holds.
 

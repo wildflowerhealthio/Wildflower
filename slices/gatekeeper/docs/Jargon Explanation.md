@@ -37,7 +37,7 @@ straight first.
 
 ## Slice-internal terms
 
-These are the concepts stored by `gatekeeper-rust` and named in
+These are the concepts stored by `authorization-server-rust` and named in
 `gatekeeper-core/src/contexts/`. Each one corresponds to either a table,
 an event, or a Tag.
 
@@ -240,7 +240,7 @@ re-authorizations.
 - **Indexed by:** `(clientId, redirectUri)` pair, queried via
   `byClientIdAndRedirectUri$`. Re-approval updates via `grantUpdated`
   rather than minting a duplicate row.
-- **Scopes union across approvals** (gatekeeper-rust): a later approval
+- **Scopes union across approvals** (authorization-server-rust): a later approval
   merges its scopes into the standing grant — approving a narrower
   request never un-approves earlier consent. Revoking the grant is the
   way to withdraw consent (and also revokes the client's refresh
@@ -401,7 +401,7 @@ The page `/oauth/authorize` parks a browser on while the Owner decides:
 origin the browser reached it at (loopback, a tunnel, a forwarded front). The
 `Location` is relative to `/oauth/authorize`, so no launcher address is
 involved. The page is static HTML, CSS and JS
-(`gatekeeper-rust/src/http/routes/oauth/wait_page/`). It polls
+(`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
 `GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
 redirect the status carries, which the gatekeeper built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
@@ -483,7 +483,7 @@ the consent page so the Owner can approve again.
 ### Bootstrap URL
 
 Replaces the deleted PIN flow's "operator gets onto a cold deployment"
-mechanism. The host process (`gatekeeper-rust`, native-shell wrapper, dev
+mechanism. The host process (`authorization-server-rust`, native-shell wrapper, dev
 server) has direct access to the signing key and mints a short-lived owner
 access token directly. It verifies normally
 because `wildflower-host` is a registered [`Client`](#client) and
@@ -646,7 +646,7 @@ the [Device flow](#device-flow-rfc-8628) section above.
 
 ### Refresh token / `grant_type=refresh_token`
 
-RFC 6749 §6, implemented in gatekeeper-rust with OAuth 2.1 rotation
+RFC 6749 §6, implemented in authorization-server-rust with OAuth 2.1 rotation
 semantics. Issued at `/oauth/token` only when the granted scopes include
 `offline_access` (the SMART on FHIR convention).
 
@@ -734,7 +734,7 @@ collected for the next round:
 ## References
 
 - [README](../gatekeeper-core/README.md) — current tables and routes
-- `apps/host/wildflower-server/gatekeeper-rust/src/` — server implementation and storage
+- `apps/host/wildflower-server/authorization-server-rust/src/` — server implementation and storage
 - `slices/gatekeeper/gatekeeper-core/src/http-api-definition/` — endpoint groups
 - RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 7519 (JWT), RFC 7517 (JWK),
   RFC 6750 (Bearer), RFC 5785 (`.well-known`), RFC 8628 (Device

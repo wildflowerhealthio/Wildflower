@@ -37,14 +37,14 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  *   URL.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/fhir-sync-pebble-web dev`, on the port
  *   `dev-app-ports.json` pins) authorizes as the debug-only
- *   `61e195d6b08bab6bf2cedb1ef3831fa7` client (`gatekeeper-rust`'s `seed_dev_app_clients`),
+ *   `61e195d6b08bab6bf2cedb1ef3831fa7` client (`authorization-server-rust`'s `seed_dev_app_clients`),
  *   which registers `http://localhost:{port}/`.
  *
  * The scope string MUST equal the client's `allowed_scopes` element for
  * element: a scope the app requests but the client is not allowed fails
  * `/authorize`. Nothing spans the TS/Rust boundary to check it, so the pairing
  * is held by mirrors — this comment, the migration's header, the vector asserted
- * in `gatekeeper-rust`'s `db/clients.rs`, and the dev client in `seeding.rs`.
+ * in `authorization-server-rust`'s `db/clients.rs`, and the dev client in `seeding.rs`.
  * Change one, change all four.
  */
 const smartRegistration: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {

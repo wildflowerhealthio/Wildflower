@@ -19,7 +19,7 @@ file the macro sits in, so moving _either_ file breaks it — silently, because
 
 **Grep for `include_str!` before moving any file**, and repoint every hit. When
 `consents.rs` splits into `consents/{mod,oauth,device,delegation}.rs`, the guard
-in `gatekeeper-rust/src/domain/capabilities/mod.rs` that counts
+in `authorization-server-rust/src/domain/capabilities/mod.rs` that counts
 `_scopes() -> Vec<Scope>` occurrences must repoint its
 `include_str!("consents.rs")` to `include_str!("consents/mod.rs")` (the split
 kept both `*_scopes()` fns in `mod.rs`).

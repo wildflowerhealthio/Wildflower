@@ -44,7 +44,7 @@ In `slices/<slice>/<slice>-rust`:
 3. `#[utoipa::path(...)]` on each handler (method + `path` + `responses` +
    `request_body`), and assemble them with `utoipa_axum`'s `OpenApiRouter` +
    `routes!` so the spec is collected from the same routes that serve traffic
-   (see `gatekeeper-rust`/`request-log-rust` `http/mod.rs` → `documented_router()`).
+   (see `authorization-server-rust`/`request-log-rust` `http/mod.rs` → `documented_router()`).
 4. Add the snapshot test, delegating to the shared helper with the **shared
    name** so CI's workspace-wide run picks it up:
 

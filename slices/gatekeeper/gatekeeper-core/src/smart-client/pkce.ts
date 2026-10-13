@@ -59,7 +59,7 @@ const randomBase64Url = (byteLength: number, random: RandomBytesSource): string 
 /**
  * A fresh `code_verifier`: 32 random bytes, which base64url-encode to 43
  * characters — the shortest length RFC 7636 §4.1 allows, and the length
- * `gatekeeper-rust` validates against.
+ * `authorization-server-rust` validates against.
  */
 const createCodeVerifier = (random: RandomBytesSource): string => randomBase64Url(32, random)
 
@@ -75,7 +75,7 @@ const createState = (random: RandomBytesSource): string => randomBase64Url(16, r
  *
  * S256 only. RFC 7636 also defines `plain`, and some clients silently fall back
  * to it when `crypto.subtle` is missing; this one does not — a `plain`
- * challenge is no protection at all, and `gatekeeper-rust`'s authorize endpoint
+ * challenge is no protection at all, and `authorization-server-rust`'s authorize endpoint
  * rejects it anyway.
  */
 const codeChallengeS256 = (

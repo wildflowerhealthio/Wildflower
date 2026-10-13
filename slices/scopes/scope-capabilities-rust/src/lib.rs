@@ -130,7 +130,7 @@ impl MissingScopes {
 /// scope depends on the target resource, and then store `granted` for the
 /// methods to re-check per call.
 pub trait Capability: Sized {
-    /// The slice's router state (e.g. `Arc<GatekeeperState>`) — the same type the
+    /// The slice's router state (e.g. `Arc<AuthorizationServerState>`) — the same type the
     /// router is built over, so `Scoped<Self>` is a valid extractor for it.
     type State: Clone + Send + Sync + 'static;
 

@@ -1,7 +1,7 @@
 {
   "name": "@wildflowerhealthio/gatekeeper-core",
   "version": "0.0.0",
-  "description": "OAuth domain package: HTTP API definitions, generated clients, and page paths for the gatekeeper slice (served by gatekeeper-rust).",
+  "description": "OAuth domain package: HTTP API definitions, generated clients, and page paths for the gatekeeper slice (served by authorization-server-rust).",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -42,7 +42,7 @@
     "build": "vp pack",
     "check": "vp check",
     "dev": "vp pack --watch",
-    "generate:openapi-schemas": "mkdir -p src/http-api-definition/generated && openapi-to-effect gen ../../../apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json src/http-api-definition/generated",
+    "generate:openapi-schemas": "mkdir -p src/http-api-definition/generated && openapi-to-effect gen ../../../apps/host/wildflower-server/authorization-server-rust/openapi/gatekeeper-oauth.openapi.json src/http-api-definition/generated",
     "prepublishOnly": "vp run build",
     "test": "vp test"
   },

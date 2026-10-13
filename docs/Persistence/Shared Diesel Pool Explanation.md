@@ -69,6 +69,6 @@ fresh one. A genuinely new table keeps plain `CREATE TABLE`.
   why the stock diesel harness collides.
 - The implementations: apps' `SqliteAppsStore`
   (`apps-rust/src/db/apps_store.rs`), gatekeeper's
-  `SqliteGatekeeperStore` (`gatekeeper-rust/src/db/gatekeeper_store.rs`),
+  `SqliteGatekeeperStore` (`authorization-server-rust/src/db/gatekeeper_store.rs`),
   and the request log's `SqliteRequestLogStore`
   (`request-log-rust/src/db/request_log_store.rs`).

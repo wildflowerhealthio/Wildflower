@@ -20,7 +20,7 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
   /**
    * The host's granted-scope string (e.g. `system/*.cruds wildflower/*.cruds`),
    * threaded from the Tauri shell's `tauri-shared-config.json` so the WebView's
-   * device-login request asks for exactly the scopes gatekeeper-rust seeds for
+   * device-login request asks for exactly the scopes authorization-server-rust seeds for
    * the first-party client. Omitted on web/standalone builds, where
    * {@link useGatekeeperLocalGrantedScopes} returns `undefined` and the caller
    * falls back to the canonical default.
@@ -29,7 +29,7 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
   /**
    * The host's first-party OAuth `client_id` (e.g. `wildflower-host`), threaded
    * from the Tauri shell's `tauri-shared-config.json` so the WebView's
-   * device-login `client_id` matches the id gatekeeper-rust seeds the first-party
+   * device-login `client_id` matches the id authorization-server-rust seeds the first-party
    * client under. Omitted on web/standalone builds, where
    * {@link useGatekeeperFirstPartyClientId} returns `undefined` and the caller
    * falls back to gatekeeper-core's `FIRST_PARTY_CLIENT_ID`.

@@ -9,7 +9,7 @@
 //! [`AppsState`](state::AppsState) the bindings build from.
 //!
 //! The `Claims` type is the ready-made [`ScopeClaims`](wildflowerhealthio_scope_capabilities::ScopeClaims)
-//! the host's bearer gate (`wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware`)
+//! the host's bearer gate (`wildflowerhealthio_authorization_server::authorization_server_auth_middleware`)
 //! inserts, so this slice scope-gates without depending on gatekeeper's domain
 //! claims type.
 

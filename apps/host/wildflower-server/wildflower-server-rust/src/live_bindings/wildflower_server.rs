@@ -16,16 +16,16 @@ use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
-use wildflowerhealthio_gatekeeper::{
-    gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
-    GatekeeperConfig, HostConsentDecider,
+use wildflowerhealthio_authorization_server::{
+    authorization_server_auth_middleware, require_loopback_peer_middleware, setup_authorization_server,
+    AuthorizationServerConfig, HostConsentDecider,
 };
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
 use crate::adapters::acme_certificate::DeviceCertificate;
-use crate::adapters::app_launch_scopes::GatekeeperAppLaunchScopes;
+use crate::adapters::app_launch_scopes::AuthorizationServerAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
-use crate::adapters::launch_context_minter::GatekeeperLaunchContextMinter;
+use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMinter;
 use crate::domain::reachability_monitor::ReachabilityMonitor;
 use crate::http::health::ServerHealthChecks;
 use crate::http::middleware::cors::api_cors_layer;
@@ -86,7 +86,7 @@ pub struct WildflowerServer {
     reachability_monitor: ReachabilityMonitor,
     /// Mints the SMART App Launch `launch` values this server's
     /// `/oauth/authorize` consumes.
-    launch_context_minter: wildflowerhealthio_gatekeeper::LaunchContextMinter,
+    launch_context_minter: wildflowerhealthio_authorization_server::LaunchContextMinter,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
@@ -103,7 +103,7 @@ impl WildflowerServer {
     /// before [`serve`](Self::serve); it mints for as long as the server's
     /// database is open.
     #[must_use]
-    pub fn launch_context_minter(&self) -> wildflowerhealthio_gatekeeper::LaunchContextMinter {
+    pub fn launch_context_minter(&self) -> wildflowerhealthio_authorization_server::LaunchContextMinter {
         self.launch_context_minter.clone()
     }
 
@@ -250,7 +250,7 @@ pub async fn set_up(
         search_parameter_data_dir,
         public_origin: public_origin.clone(),
     };
-    let gatekeeper_config = GatekeeperConfig {
+    let authorization_server_config = AuthorizationServerConfig {
         loopback_base_url: loopback_base_url.clone(),
         server_origin: public_origin.clone(),
         host_owner_scopes,
@@ -274,7 +274,7 @@ pub async fn set_up(
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(db.clone())
         .context("failed to open token-revocation store")?;
 
-    // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
+    // Bind BEFORE minting/publishing the Owner token: `setup_authorization_server`
     // pushes the freshly-minted token onto the owner-token channel the
     // loopback owner trust presents. If the port were already taken, minting
     // first would mean minting a full-Owner bearer while a *foreign* process
@@ -303,7 +303,7 @@ pub async fn set_up(
     // ridden out by a shared `busy_timeout`. This is where that trade-off is
     // accepted — see docs/Persistence/Shared Diesel Pool Explanation.md.
     //
-    // Built BEFORE `setup_gatekeeper` because the gatekeeper store now rides
+    // Built BEFORE `setup_authorization_server` because the gatekeeper store now rides
     // this pool too (its diesel migrations run when the store is constructed).
     let diesel_pool = wildflowerhealthio_persistence::open_pool(&db_path)
         .context("failed to open diesel db pool")?;
@@ -322,21 +322,21 @@ pub async fn set_up(
         if let Err(error) = wildflowerhealthio_apps::seed_dev_apps(diesel_pool.clone()) {
             tracing::warn!("failed to seed dev app rows: {error:#}");
         }
-        if let Err(error) = wildflowerhealthio_gatekeeper::seed_dev_app_clients(diesel_pool.clone())
+        if let Err(error) = wildflowerhealthio_authorization_server::seed_dev_app_clients(diesel_pool.clone())
         {
             tracing::warn!("failed to seed dev app OAuth clients: {error:#}");
         }
     }
 
-    // `setup_gatekeeper` publishes the freshly-minted host owner token on
+    // `setup_authorization_server` publishes the freshly-minted host owner token on
     // `host_owner_token_tx`, which the loopback owner trust reads (so its
     // receiver must be alive by then), and the head of its pending-consent
     // queue on the host's channel.
     let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
-    let gatekeeper = setup_gatekeeper(
+    let gatekeeper = setup_authorization_server(
         diesel_pool.clone(),
         revocation_store.clone(),
-        &gatekeeper_config,
+        &authorization_server_config,
         &host_owner_token_tx,
         observers.pending_consent_tx,
         host.loopback_consent_prompt,
@@ -354,7 +354,7 @@ pub async fn set_up(
         &fhir_r4_config,
         revocation_store,
         ui_sessions.clone(),
-        gatekeeper_auth_middleware(
+        authorization_server_auth_middleware(
             gatekeeper.state.clone(),
             wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
         ),
@@ -376,11 +376,11 @@ pub async fn set_up(
                 present_ui_session_bearer,
             ));
 
-    let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
+    let authorization_server_auth_layer = authorization_server_auth_middleware(gatekeeper.state.clone(), &[]);
 
     let gated_ohif_server =
         wildflowerhealthio_ohif_server::setup_ohif_server(fhir_routers.raw_hfs_router)
-            .layer(gatekeeper_auth_layer.clone());
+            .layer(authorization_server_auth_layer.clone());
 
     // The tunnel dials the relay from the server's record for as long as the
     // server runs, handing each visitor's stream, in process, to the tunnel
@@ -428,7 +428,7 @@ pub async fn set_up(
     // `wildflower/RequestLog.r` behind the bearer gate.
     let request_log = wildflowerhealthio_request_log::setup_request_log(diesel_pool.clone())
         .context("failed to set up the request log")?;
-    let gated_request_log = request_log.router.layer(gatekeeper_auth_layer.clone());
+    let gated_request_log = request_log.router.layer(authorization_server_auth_layer.clone());
 
     // The apps surface, behind the gatekeeper bearer gate (`gated_apps`, below).
     // `GET /apps` (list), the admin surface (`POST /apps`,
@@ -444,14 +444,14 @@ pub async fn set_up(
     // scopes so the launch handler can require the caller's grant to cover them.
     // The launch umbrella (`wildflower/launch`) is enforced separately by the
     // bearer gate + `Scoped<AppLauncher>` on the launch route (below).
-    let launch_scopes: Arc<dyn AppLaunchScopes> = Arc::new(GatekeeperAppLaunchScopes {
+    let launch_scopes: Arc<dyn AppLaunchScopes> = Arc::new(AuthorizationServerAppLaunchScopes {
         state: gatekeeper.state.clone(),
     });
 
     // A SMART app's launch URL carries a `launch` value minted through
     // gatekeeper, which its `/oauth/authorize` then consumes.
     let launch_context_minter: Arc<dyn LaunchContextMinter> =
-        Arc::new(GatekeeperLaunchContextMinter {
+        Arc::new(AuthorizationServerLaunchContextMinter {
             launch_context_minter: gatekeeper.launch_context_minter.clone(),
         });
 
@@ -465,7 +465,7 @@ pub async fn set_up(
     // The bearer gate gives every `Scoped<…>` extractor the caller's scope claims,
     // the launch's `Scoped<AppLauncher>` included (the per-app SMART check then
     // runs in-handler).
-    let gated_apps = apps.router.layer(gatekeeper_auth_layer.clone());
+    let gated_apps = apps.router.layer(authorization_server_auth_layer.clone());
 
     // The server's `/health`: the shared database pool and the tunnel's
     // state, checked in-process on each request.
@@ -512,7 +512,7 @@ pub async fn set_up(
         ],
     };
     let gated_databases = wildflowerhealthio_databases::setup_databases(&databases_config)
-        .layer(gatekeeper_auth_layer);
+        .layer(authorization_server_auth_layer);
 
     // Every slice's routes, gated per slice, composed once: the routes each
     // listener serves. The listener-specific layers go on top of this, below.

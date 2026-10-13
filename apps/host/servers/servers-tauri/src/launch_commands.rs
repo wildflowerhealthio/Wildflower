@@ -27,7 +27,7 @@ use tauri::AppHandle;
 use tauri_plugin_log::log;
 use tauri_plugin_native_page_browser::{BrowserEvent, NativePageBrowserExt, OpenRequest};
 use url::Url;
-use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
+use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
     LaunchError, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry,
     ServerStatus,
@@ -144,7 +144,7 @@ async fn launch(
         let launch = tokio::task::spawn_blocking(move || launch_minter.mint())
             .await
             .map_err(|error| {
-                LaunchError::Gatekeeper(GatekeeperError::infrastructure("minting a launch", error))
+                LaunchError::AuthorizationServer(AuthorizationServerError::infrastructure("minting a launch", error))
             })??;
         let launch_url = wildflowerhealthio_servers::launch_url(
             &record.launcher_url,
@@ -257,7 +257,7 @@ mod tests {
     use wildflowerhealthio_wildflower_server::{CertificateState, CertificateStatus, ServerHealth};
 
     use super::*;
-    use crate::test_gatekeeper::{test_gatekeeper, TestGatekeeper, DOMAIN};
+    use crate::test_authorization_server::{test_authorization_server, TestAuthorizationServer, DOMAIN};
 
     const LAUNCHER: &str = "https://launcher.example/app?theme=dark";
 
@@ -431,7 +431,7 @@ mod tests {
     /// connected to and reachable through its relay, with a valid certificate
     /// from Let's Encrypt, changed by `change`.
     fn running_with(
-        gatekeeper: &TestGatekeeper,
+        gatekeeper: &TestAuthorizationServer,
         change: impl FnOnce(&mut ServerDetail),
     ) -> UnitStatuses<ServerDetail> {
         let mut detail = ServerDetail {
@@ -459,14 +459,14 @@ mod tests {
     }
 
     /// The servers' statuses with the server launchable over `gatekeeper`.
-    fn launchable(gatekeeper: &TestGatekeeper) -> UnitStatuses<ServerDetail> {
+    fn launchable(gatekeeper: &TestAuthorizationServer) -> UnitStatuses<ServerDetail> {
         running_with(gatekeeper, |_| {})
     }
 
     /// Launch the server [`DOMAIN`], launchable over `gatekeeper`, in
     /// `browser`, with `presence` hearing its view.
     async fn launch_launchable(
-        gatekeeper: &TestGatekeeper,
+        gatekeeper: &TestAuthorizationServer,
         browser: impl LaunchBrowser,
         presence: &OpenLaunchViews,
     ) -> Result<(), LaunchError> {
@@ -484,7 +484,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launchable_server_s_launcher_opens_at_its_launch_url() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         let browser = OneViewBrowser::new(WhileAViewShows::Replace);
         let presence = OpenLaunchViews::default();
 
@@ -510,7 +510,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn closing_a_launch_s_view_ends_its_presence() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         let browser = OneViewBrowser::new(WhileAViewShows::Replace);
         let presence = OpenLaunchViews::default();
         launch_launchable(&gatekeeper, browser.clone(), &presence)
@@ -524,7 +524,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launch_view_its_browser_keeps_alive_is_kept_alive_until_it_closes() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         let browser = OneViewBrowser::new(WhileAViewShows::Join);
         let presence = OpenLaunchViews::default();
         launch_launchable(&gatekeeper, browser.clone(), &presence)
@@ -542,7 +542,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn on_ios_a_second_launch_replaces_the_first_s_view() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         let browser = OneViewBrowser::new(WhileAViewShows::Replace);
         let presence = OpenLaunchViews::default();
         launch_launchable(&gatekeeper, browser.clone(), &presence)
@@ -566,7 +566,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn on_android_a_second_launch_while_the_first_s_view_opens_joins_it() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         let browser = OneViewBrowser::new(WhileAViewShows::Join);
         let presence = OpenLaunchViews::default();
         launch_launchable(&gatekeeper, browser.clone(), &presence)
@@ -588,7 +588,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launch_the_browser_can_t_open_leaves_no_view_open() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         let presence = OpenLaunchViews::default();
 
         let failed = launch_launchable(&gatekeeper, FailingBrowser, &presence).await;
@@ -624,7 +624,7 @@ mod tests {
             ("untrustedCertificate", on_staging),
         ];
         for (kind, change) in changes {
-            let gatekeeper = test_gatekeeper();
+            let gatekeeper = test_authorization_server();
             let (data_root, registry) = registry();
             let browser = OneViewBrowser::new(WhileAViewShows::Replace);
             let presence = OpenLaunchViews::default();
@@ -674,7 +674,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_server_that_isn_t_registered_is_refused() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         let (data_root, registry) = registry();
         let browser = OneViewBrowser::new(WhileAViewShows::Replace);
         let presence = OpenLaunchViews::default();

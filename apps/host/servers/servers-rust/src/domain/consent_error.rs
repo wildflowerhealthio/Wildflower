@@ -2,7 +2,7 @@
 
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
-use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
+use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 
 /// Why a consent couldn't be read or decided. Serialises as
 /// `{"kind", "message"}`.
@@ -21,7 +21,7 @@ pub enum ConsentError {
     RegistrationNotAcknowledged,
     /// Any other failure of the server's gatekeeper.
     #[error("the server's gatekeeper failed: {0}")]
-    Gatekeeper(GatekeeperError),
+    AuthorizationServer(AuthorizationServerError),
 }
 
 impl ConsentError {
@@ -32,20 +32,20 @@ impl ConsentError {
             Self::ServerNotRunning { .. } => "serverNotRunning",
             Self::NotPending => "notPending",
             Self::RegistrationNotAcknowledged => "registrationNotAcknowledged",
-            Self::Gatekeeper(_) => "gatekeeper",
+            Self::AuthorizationServer(_) => "gatekeeper",
         }
     }
 }
 
-impl From<GatekeeperError> for ConsentError {
-    fn from(error: GatekeeperError) -> Self {
+impl From<AuthorizationServerError> for ConsentError {
+    fn from(error: AuthorizationServerError) -> Self {
         match error {
-            GatekeeperError::DeviceConsentNotFound { .. }
-            | GatekeeperError::OAuthConsentNotFound { .. } => Self::NotPending,
-            GatekeeperError::RegistrationNotAcknowledged { .. } => {
+            AuthorizationServerError::DeviceConsentNotFound { .. }
+            | AuthorizationServerError::OAuthConsentNotFound { .. } => Self::NotPending,
+            AuthorizationServerError::RegistrationNotAcknowledged { .. } => {
                 Self::RegistrationNotAcknowledged
             }
-            other => Self::Gatekeeper(other),
+            other => Self::AuthorizationServer(other),
         }
     }
 }
@@ -64,33 +64,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_gatekeeper_errors_the_base_branches_on_get_their_own_kind() {
+    fn the_authorization_server_errors_the_base_branches_on_get_their_own_kind() {
         let cases = [
             (
-                GatekeeperError::DeviceConsentNotFound {
+                AuthorizationServerError::DeviceConsentNotFound {
                     user_code: "ABCD-EFGH".to_owned(),
                 },
                 "notPending",
             ),
             (
-                GatekeeperError::OAuthConsentNotFound {
+                AuthorizationServerError::OAuthConsentNotFound {
                     id: "req-1".to_owned(),
                 },
                 "notPending",
             ),
             (
-                GatekeeperError::RegistrationNotAcknowledged {
+                AuthorizationServerError::RegistrationNotAcknowledged {
                     id: "req-1".to_owned(),
                 },
                 "registrationNotAcknowledged",
             ),
             (
-                GatekeeperError::infrastructure("reading a consent", "the database is locked"),
+                AuthorizationServerError::infrastructure("reading a consent", "the database is locked"),
                 "gatekeeper",
             ),
         ];
-        for (gatekeeper_error, kind) in cases {
-            assert_eq!(ConsentError::from(gatekeeper_error).kind(), kind);
+        for (authorization_server_error, kind) in cases {
+            assert_eq!(ConsentError::from(authorization_server_error).kind(), kind);
         }
     }
 }

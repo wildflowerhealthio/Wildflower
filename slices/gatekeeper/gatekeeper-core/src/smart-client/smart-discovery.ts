@@ -9,7 +9,7 @@
  * Wildflower server lists {@link WILDFLOWER_SERVER_CAPABILITY} among its
  * `capabilities`. A Wildflower server answers from
  * `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
- * (exempt from the bearer gate — `gatekeeper-rust`'s
+ * (exempt from the bearer gate — `authorization-server-rust`'s
  * `require_valid_bearer_token`), advertising `authorization_endpoint` and
  * `token_endpoint` derived from the origin it was served on. Those advertised
  * URLs are what the client uses; it never assumes `/oauth/authorize` sits at

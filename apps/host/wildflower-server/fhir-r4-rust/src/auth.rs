@@ -114,9 +114,9 @@ mod tests {
     use axum::{Json, Router};
     use helios_auth::error::AuthError;
     use helios_auth::{AuthProvider, Principal, ScopeSet};
-    use wildflowerhealthio_gatekeeper::crypto_util::public_jwk::PublicJwk;
-    use wildflowerhealthio_gatekeeper::domain::signing_key::SigningKey;
-    use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
+    use wildflowerhealthio_authorization_server::crypto_util::public_jwk::PublicJwk;
+    use wildflowerhealthio_authorization_server::domain::signing_key::SigningKey;
+    use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
     use wildflowerhealthio_token_revocation::RevocationStore;
 
     /// This server's origin.

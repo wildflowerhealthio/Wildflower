@@ -95,7 +95,7 @@ mod pending_consents;
 mod server_status;
 mod server_units;
 #[cfg(test)]
-mod test_gatekeeper;
+mod test_authorization_server;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

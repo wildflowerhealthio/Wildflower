@@ -15,9 +15,9 @@ use axum::http::{Request, StatusCode};
 use tokio::sync::watch;
 use tower::ServiceExt;
 use url::Url;
-use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
-use wildflowerhealthio_gatekeeper::{
-    gatekeeper_auth_middleware, setup_gatekeeper, GatekeeperConfig, GatekeeperStore,
+use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
+use wildflowerhealthio_authorization_server::{
+    authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig, GatekeeperStore,
     NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
 };
 use wildflowerhealthio_persistence::{Connection, DieselPool};
@@ -29,12 +29,12 @@ const SERVER_ORIGIN: &str = "https://test.relay.invalid";
 
 /// A gatekeeper over an in-memory database, and the host owner token it
 /// published on start.
-fn set_up_gatekeeper(pool: &DieselPool) -> (wildflowerhealthio_gatekeeper::Gatekeeper, String) {
-    let config = GatekeeperConfig {
+fn set_up_authorization_server(pool: &DieselPool) -> (wildflowerhealthio_authorization_server::AuthorizationServer, String) {
+    let config = AuthorizationServerConfig {
         loopback_base_url: Url::parse("http://127.0.0.1").expect("loopback URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
-        host_owner_scopes: wildflowerhealthio_gatekeeper::default_local_granted_scopes(),
-        first_party_client_id: wildflowerhealthio_gatekeeper::default_first_party_client_id(),
+        host_owner_scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+        first_party_client_id: wildflowerhealthio_authorization_server::default_first_party_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base URL"),
@@ -46,7 +46,7 @@ fn set_up_gatekeeper(pool: &DieselPool) -> (wildflowerhealthio_gatekeeper::Gatek
         Connection::open_in_memory().expect("open revocation db"),
     )
     .expect("revocation store");
-    let gatekeeper = setup_gatekeeper(
+    let gatekeeper = setup_authorization_server(
         pool.clone(),
         revocation_store,
         &config,
@@ -58,7 +58,7 @@ fn set_up_gatekeeper(pool: &DieselPool) -> (wildflowerhealthio_gatekeeper::Gatek
     let host_owner_token = owner_token_rx
         .borrow()
         .clone()
-        .expect("setup_gatekeeper publishes the host owner token");
+        .expect("setup_authorization_server publishes the host owner token");
     (gatekeeper, host_owner_token)
 }
 
@@ -88,7 +88,7 @@ fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
 #[tokio::test]
 async fn bearer_gate_inserts_scope_claims_a_databases_capability_reads() {
     let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
-    let (gatekeeper, host_owner_token) = set_up_gatekeeper(&pool);
+    let (gatekeeper, host_owner_token) = set_up_authorization_server(&pool);
 
     // A one-database catalogue gated by `wildflower/*` read/delete, backed by a
     // real on-disk SQLite file so the metadata read and snapshot have something
@@ -115,7 +115,7 @@ async fn bearer_gate_inserts_scope_claims_a_databases_capability_reads() {
         }],
     };
     let gated = wildflowerhealthio_databases::setup_databases(&config)
-        .layer(gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]));
+        .layer(authorization_server_auth_middleware(gatekeeper.state.clone(), &[]));
 
     let get_status = |token: Option<String>| {
         let gated = gated.clone();

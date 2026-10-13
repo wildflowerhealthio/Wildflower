@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_authorization_server::PendingConsentHead;
 use wildflowerhealthio_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
 use crate::domain::ServerDetail;

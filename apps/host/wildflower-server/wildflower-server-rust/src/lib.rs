@@ -34,7 +34,7 @@
 //! Layered like the other Rust slices:
 //!
 //!  - `config` — the host's inputs above, at the crate root like
-//!    `gatekeeper-rust`'s `config`.
+//!    `authorization-server-rust`'s `config`.
 //!  - `domain` — [`ServerHealth`] and the reachability monitor that publishes
 //!    it, through its `HealthProbe` port; [`CertificateAuthority`],
 //!    [`CertificateState`] with what a run observed that it is derived from,

@@ -261,7 +261,7 @@ describe('<NeedsAuthMessage> device flow', () => {
   test('identifies the request with the host-threaded first-party client id', async () => {
     // The live Tauri app threads the id from `tauri-shared-config.json`; the
     // request must carry that value, not the standalone fallback — so the id
-    // gatekeeper-rust seeds and the id the WebView presents derive from one
+    // authorization-server-rust seeds and the id the WebView presents derive from one
     // source and can't drift. A regression to a hardcoded literal fails this.
     clientIdHolder.current = 'wildflower-host-from-config'
     let capturedInput: unknown

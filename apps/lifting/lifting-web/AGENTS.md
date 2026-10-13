@@ -82,7 +82,7 @@ they cover.
   (gatekeeper migrations `0019_seed_lifting_app_client`,
   `0020_first_party_apps_pick_the_patient` and
   `0025_rekey_lifting_app_clients`, and `LIFTING_DEV_SCOPES` in
-  `gatekeeper-rust/src/seeding.rs`, whose test reads `src/config.ts`). A
+  `authorization-server-rust/src/seeding.rs`, whose test reads `src/config.ts`). A
   change here is a new gatekeeper migration and a dev-scope edit too.
 
 ## Testing

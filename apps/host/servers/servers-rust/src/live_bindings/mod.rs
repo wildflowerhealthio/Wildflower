@@ -3,7 +3,7 @@
 //! [`ServerConsentDecider`](server_consent_decider::ServerConsentDecider), how
 //! the host decides a run's consents, and
 //! [`ServerLaunchMinter`](server_launch_minter::ServerLaunchMinter), how it
-//! mints a run's launches, both bound to `gatekeeper-rust`.
+//! mints a run's launches, both bound to `authorization-server-rust`.
 
 pub mod server_consent_decider;
 pub mod server_launch_minter;

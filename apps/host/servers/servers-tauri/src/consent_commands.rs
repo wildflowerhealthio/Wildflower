@@ -11,7 +11,7 @@
 
 use chrono::Utc;
 use tauri_plugin_log::log;
-use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
+use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, PendingConsent,
     ServerConsentDecider, ServerDetail,
@@ -91,7 +91,7 @@ async fn on_decider<T: Send + 'static>(
     tokio::task::spawn_blocking(move || operation(&decider))
         .await
         .map_err(|error| {
-            ConsentError::Gatekeeper(GatekeeperError::infrastructure(
+            ConsentError::AuthorizationServer(AuthorizationServerError::infrastructure(
                 "running a consent operation",
                 error,
             ))
@@ -141,18 +141,18 @@ async fn deny(
 mod tests {
     use chrono::Duration;
     use url::Url;
-    use wildflowerhealthio_gatekeeper::domain::authorization_request::{
+    use wildflowerhealthio_authorization_server::domain::authorization_request::{
         AuthorizationRequest, GrantType, RequestStatus,
     };
-    use wildflowerhealthio_gatekeeper::GatekeeperStore;
+    use wildflowerhealthio_authorization_server::GatekeeperStore;
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
     use super::*;
-    use crate::test_gatekeeper::{test_gatekeeper, TestGatekeeper, DOMAIN};
+    use crate::test_authorization_server::{test_authorization_server, TestAuthorizationServer, DOMAIN};
 
     /// Park a pending request on the gatekeeper's store, as its `/oauth/*`
     /// routes do.
-    fn park(gatekeeper: &TestGatekeeper, id: &str, grant_type: GrantType) {
+    fn park(gatekeeper: &TestAuthorizationServer, id: &str, grant_type: GrantType) {
         let now = chrono::Utc::now();
         let is_device = grant_type == GrantType::DeviceCode;
         gatekeeper
@@ -160,7 +160,7 @@ mod tests {
             .insert_authorization_request(&AuthorizationRequest {
                 id: id.to_owned(),
                 grant_type,
-                client_id: wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID.to_owned(),
+                client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID.to_owned(),
                 requested_scopes: vec!["system/*.cruds".to_owned()],
                 code_challenge: (!is_device).then(|| "challenge".to_owned()),
                 code_challenge_method: (!is_device).then(|| "S256".to_owned()),
@@ -182,7 +182,7 @@ mod tests {
     }
 
     /// The servers' statuses with the server's run up over `gatekeeper`.
-    fn running(gatekeeper: &TestGatekeeper) -> UnitStatuses<ServerDetail> {
+    fn running(gatekeeper: &TestAuthorizationServer) -> UnitStatuses<ServerDetail> {
         let detail = ServerDetail {
             health: None,
             tunnel: None,
@@ -203,7 +203,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_device_request_is_read_and_approved_through_the_commands() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         park(&gatekeeper, "device-1", GrantType::DeviceCode);
         let statuses = running(&gatekeeper);
         let key = ConsentKey::Device {
@@ -246,7 +246,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn an_authorization_request_is_denied_through_the_commands() {
-        let gatekeeper = test_gatekeeper();
+        let gatekeeper = test_authorization_server();
         park(&gatekeeper, "req-1", GrantType::AuthorizationCode);
         let statuses = running(&gatekeeper);
         let key = ConsentKey::OAuth {

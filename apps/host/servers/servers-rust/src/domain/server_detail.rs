@@ -1,7 +1,7 @@
 //! [`ServerDetail`], what a server's run reports to `UnitRunner` beyond its
 //! run state.
 
-use wildflowerhealthio_gatekeeper::PendingConsentHead;
+use wildflowerhealthio_authorization_server::PendingConsentHead;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 

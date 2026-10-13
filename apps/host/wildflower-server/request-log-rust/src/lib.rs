@@ -78,7 +78,7 @@ pub struct RequestLog {
 /// The returned router carries no middleware, but every endpoint is scope-gated
 /// (the handlers take a `Scoped<…>` capability). The consumer MUST still layer
 /// it with its auth gate (the server applies
-/// `wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware`), which inserts the
+/// `wildflowerhealthio_authorization_server::authorization_server_auth_middleware`), which inserts the
 /// `ScopeClaims` the capability reads, so an ungated router fails closed with a
 /// 500 rather than admitting an unauthenticated caller.
 ///

@@ -1,5 +1,5 @@
 //! [`AppsError`] — the apps slice's semantic failure vocabulary, the domain
-//! counterpart of gatekeeper's `GatekeeperError`. The store and actions speak it; the
+//! counterpart of gatekeeper's `AuthorizationServerError`. The store and actions speak it; the
 //! HTTP layer ([`crate::http::errors`]) renders each variant to a status + wire
 //! body (or a logged opaque 500 for
 //! [`Infrastructure`](AppsError::Infrastructure)). Nothing here knows about HTTP,

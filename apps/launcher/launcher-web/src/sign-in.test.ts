@@ -90,7 +90,7 @@ describe('signInEnvironment', () => {
   it('names the published app root', () => {
     // `/oauth/authorize` matches the seeded row's entry by exact string
     // equality. This holds the constant to the published section address;
-    // gatekeeper-rust's `clients.rs` holds the seeded row to the same value.
+    // authorization-server-rust's `clients.rs` holds the seeded row to the same value.
     expect(REGISTERED_REDIRECT_URI).toBe(`${sectionUrl('launcher')}/`)
   })
 

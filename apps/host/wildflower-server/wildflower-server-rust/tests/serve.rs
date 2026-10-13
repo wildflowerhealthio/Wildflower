@@ -36,8 +36,8 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
-use wildflowerhealthio_gatekeeper::{
+use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
+use wildflowerhealthio_authorization_server::{
     GatekeeperStore, NoLoopbackConsentPrompt, SqliteGatekeeperStore,
 };
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
@@ -88,11 +88,11 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),
         // The owner-defining scopes gatekeeper requires the host owner token to cover.
-        host_owner_scopes: wildflowerhealthio_gatekeeper::WILDFLOWER_WIDEST_SCOPES
+        host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)
             .collect(),
-        first_party_client_id: wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID.to_owned(),
+        first_party_client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // domain below never answers.
@@ -1194,7 +1194,7 @@ impl UiServer {
 /// and a FHIR read carrying only that cookie is served, while the same read
 /// without it is refused at the gate.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_fhir_ui_signs_in_through_gatekeeper_and_reads_fhir_on_its_session() {
+async fn the_fhir_ui_signs_in_through_authorization_server_and_reads_fhir_on_its_session() {
     let server = UiServer::start().await;
 
     // The UI's assets are served before sign-in, past the gate; a `/ui` path

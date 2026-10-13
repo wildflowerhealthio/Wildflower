@@ -104,7 +104,7 @@ Every JWT gatekeeper mints, whether through the OAuth flows or as the host owner
 token, names one origin in both its origin-shaped claims: **`iss` = `aud` =
 `https://<domain>`, the server's origin**. It is the public origin the server
 builds from its domain at startup (`wildflower_server.rs`), handed to gatekeeper
-as [`GatekeeperConfig::server_origin`] and to fhir-r4-rust as
+as [`AuthorizationServerConfig::server_origin`] and to fhir-r4-rust as
 [`FhirR4Config`]`.public_origin`, and spelled as a bare origin (no trailing slash,
 no path) by [`origin_string`].
 
@@ -234,9 +234,9 @@ restate the grammar.
   and the tunnel listener, and what its operator is trusted with.
 
 [`origin_string`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
-[`GatekeeperConfig::server_origin`]: ../../apps/host/wildflower-server/gatekeeper-rust/src/config.rs
+[`AuthorizationServerConfig::server_origin`]: ../../apps/host/wildflower-server/authorization-server-rust/src/config.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
-[`require_loopback_peer`]: ../../apps/host/wildflower-server/gatekeeper-rust/src/http/middleware/require_loopback_peer.rs
+[`require_loopback_peer`]: ../../apps/host/wildflower-server/authorization-server-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/lib.rs
 [`FhirR4Config`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/config.rs

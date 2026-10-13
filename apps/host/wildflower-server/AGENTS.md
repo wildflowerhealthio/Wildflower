@@ -12,13 +12,13 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
 - [`wildflower-server-rust`](./wildflower-server-rust/AGENTS.md) — the server:
   `set_up` composes every server slice into one API and binds it, and
   `WildflowerServer::serve` serves it.
-- **`gatekeeper-rust`** — the OAuth 2.0 / SMART authorization server: clients,
+- **`authorization-server-rust`** — the OAuth 2.0 / SMART authorization server: clients,
   grants, tokens, the bearer gate every other surface sits behind, and the
   `/access` admin routes. Its TypeScript half,
   [`slices/gatekeeper`](../../../slices/gatekeeper/AGENTS.md), is shared by
   every app that signs in.
 - **`token-revocation-rust`** — the per-token denylist and per-subject epoch
-  both enforcement points read: `gatekeeper-rust`'s gate and
+  both enforcement points read: `authorization-server-rust`'s gate and
   `fhir-r4-rust`'s `JtiCache`. Neither of those depends on the other.
 - **`fhir-r4-rust`** — the embedded HFS FHIR R4 server, served at the root on FHIR paths;
   its deltas from stock HFS are in its

@@ -2,17 +2,17 @@
 
 OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./docs/Jargon%20Explanation.md) before touching auth flows — the domain vocabulary is precise and reviewers hold names to it.
 
-The slice is the TypeScript half every signing-in app shares: `gatekeeper-core` and `gatekeeper-react`. The server, `gatekeeper-rust`, and the revocation store it shares with the FHIR server, `token-revocation-rust`, are used by the host alone, so they live in [`apps/host/wildflower-server/`](../../apps/host/wildflower-server/AGENTS.md); `gatekeeper-rust/…` paths below are relative to that folder.
+The slice is the TypeScript half every signing-in app shares: `gatekeeper-core` and `gatekeeper-react`. The server, `authorization-server-rust`, and the revocation store it shares with the FHIR server, `token-revocation-rust`, are used by the host alone, so they live in [`apps/host/wildflower-server/`](../../apps/host/wildflower-server/AGENTS.md); `authorization-server-rust/…` paths below are relative to that folder.
 
 ## Guardrails
 
-- **Page paths are duplicated TS ⇄ Rust by design**: `gatekeeper-core/src/page-paths.ts` ⇄ `gatekeeper-rust/src/domain/page_paths.rs`, drift-tested by `gatekeeper-react/src/routes.test.tsx`. Changing a route means changing all three together — the drift test fails otherwise.
+- **Page paths are duplicated TS ⇄ Rust by design**: `gatekeeper-core/src/page-paths.ts` ⇄ `authorization-server-rust/src/domain/page_paths.rs`, drift-tested by `gatekeeper-react/src/routes.test.tsx`. Changing a route means changing all three together — the drift test fails otherwise.
 
 ## Traps
 
 - The bootstrap-URL / `?token=` minting path is **dev-only** (NODE_ENV-gated) — not a shipping pattern to extend.
 - The bearer store keeps its token in page memory only — see the [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) before changing where it lives.
-- `gatekeeper-rust` has a committed OpenAPI snapshot, which `gatekeeper-core`'s drift test and `generate:openapi-schemas` read across folders; regenerate a stale one per the [OpenAPI Spec Drift How-To](../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
+- `authorization-server-rust` has a committed OpenAPI snapshot, which `gatekeeper-core`'s drift test and `generate:openapi-schemas` read across folders; regenerate a stale one per the [OpenAPI Spec Drift How-To](../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
 
 ## References
 
@@ -21,5 +21,5 @@ The slice is the TypeScript half every signing-in app shares: `gatekeeper-core` 
 - [gatekeeper-core README](./gatekeeper-core/README.md) — tables, OAuth routes, page-path drift test
 - [Jargon Explanation](./docs/Jargon%20Explanation.md) — the domain vocabulary
 - [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) — token storage policies
-- [Retention Explanation](../../apps/host/wildflower-server/gatekeeper-rust/docs/Retention%20Explanation.md) — the 90-day / 7-day windows, why they are measured past `expires_at`, and the startup+daily sweep that applies them
+- [Retention Explanation](../../apps/host/wildflower-server/authorization-server-rust/docs/Retention%20Explanation.md) — the 90-day / 7-day windows, why they are measured past `expires_at`, and the startup+daily sweep that applies them
 - [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) — the webview ↔ host bridge this slice speaks over

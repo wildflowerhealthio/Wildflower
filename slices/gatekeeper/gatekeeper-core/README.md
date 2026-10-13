@@ -13,7 +13,7 @@ the OAuth dialect spoken on the wire; details are in
 
 ## Tables
 
-The tables live in `gatekeeper-rust`'s store; they are described here
+The tables live in `authorization-server-rust`'s store; they are described here
 because the wire schemas in this package mirror their rows.
 
 - `clients` — registered OAuth clients with per-client `redirectUris`
@@ -50,7 +50,7 @@ because the wire schemas in this package mirror their rows.
   unambiguous. The domain is one struct per kind (`AuthorizationCodeGrant`,
   `DeviceGrant`) sharing behaviour through the `CumulativeConsent` trait,
   with a thin `Grant` enum as the `grantType`-tagged wire union. See
-  `gatekeeper-rust/src/db/grants/` and `gatekeeper-rust/src/domain/grant.rs`.
+  `authorization-server-rust/src/db/grants/` and `authorization-server-rust/src/domain/grant.rs`.
 - `signingKeys` — RSA keys backing JWS signatures and the JWKS
   endpoint. `isActive: boolean` selects the signing key; verify-side
   iterates all keys for rotation.
@@ -61,7 +61,7 @@ because the wire schemas in this package mirror their rows.
 lineage are the three that would otherwise only grow — a background sweep
 reclaims them a fixed window past their own `expires_at` (7 days, 7 days,
 and 90 days respectively). See the
-[Retention Explanation](../../../apps/host/wildflower-server/gatekeeper-rust/docs/Retention%20Explanation.md).
+[Retention Explanation](../../../apps/host/wildflower-server/authorization-server-rust/docs/Retention%20Explanation.md).
 
 ## Routes
 
@@ -75,7 +75,7 @@ and 90 days respectively). See the
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/authorize/:id/wait` — the **wait page**, served by the gatekeeper
-  itself: static HTML, CSS and JS (`gatekeeper-rust`'s
+  itself: static HTML, CSS and JS (`authorization-server-rust`'s
   `http/routes/oauth/wait_page/`) that polls `/oauth/authorize/:id` and, once
   the Owner decides, leaves for the redirect the status carries. See "Wait
   page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
@@ -103,7 +103,7 @@ and 90 days respectively). See the
 ## The SMART sign-in client
 
 [`gatekeeper-core/smart-client`](./src/smart-client/index.ts) is the browser
-side of the protocol `gatekeeper-rust` serves: a static Wildflower page points
+side of the protocol `authorization-server-rust` serves: a static Wildflower page points
 itself at whichever server the reader runs (`server-target.ts`), asks that
 server how to sign in (`smart-discovery.ts`), mints a PKCE pair (`pkce.ts`),
 works out where the server should send the reader back to
@@ -180,7 +180,7 @@ construction: the outbound string and the one derived again on the callback
 (which arrives carrying `code` and `state`) come from the same directory.
 
 An address the client has not registered is not a dead end. For every client but
-the first-party host, `gatekeeper-rust` carries an unregistered `redirect_uri`
+the first-party host, `authorization-server-rust` carries an unregistered `redirect_uri`
 to the Owner's consent prompt as a warning and adds it to the row on approval
 (`domain/client_registration.rs`), so the Owner is the gate rather than a list
 inside the page.
@@ -255,7 +255,7 @@ not part of the page contract.
 
 ## Bootstrap URL (dev-mode workaround)
 
-The host process (`gatekeeper-rust`, native shell, dev server) has direct
+The host process (`authorization-server-rust`, native shell, dev server) has direct
 access to the signing key and can mint an owner access token directly.
 
 The web SPA has no client-side URL-token consumption: it holds only the

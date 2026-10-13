@@ -12,7 +12,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  *
  * The seeded OAuth clients carry exactly this set — the production client
  * (gatekeeper migration `0022_seed_health_viewer_app_client`) and the
- * debug-only `health-viewer-dev` client in `gatekeeper-rust`'s
+ * debug-only `health-viewer-dev` client in `authorization-server-rust`'s
  * `seed_dev_app_clients` — so a scope added here alone fails `/authorize`
  * against a Wildflower host.
  *

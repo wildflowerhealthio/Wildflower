@@ -105,7 +105,7 @@ launch:
 - `apps/host/wildflower-server/apps-rust/migrations/0003_seed_wildflower_medication_app/`,
   `0005_first_party_apps_to_cloud/` and `0019_rekey_site_apps/`, which gives the
   row its tile id `medications`
-- `apps/host/wildflower-server/gatekeeper-rust/migrations/0004_seed_wildflower_medication_client/`,
+- `apps/host/wildflower-server/authorization-server-rust/migrations/0004_seed_wildflower_medication_client/`,
   `0006_rename_first_party_app_clients/` and `0028_rekey_site_app_clients/`,
   which gives the client its random id, `9769f8b274370708d0d3ebb2e3e59b7c`
 
@@ -126,7 +126,7 @@ reads the patients the picker lists and the one named under the H1. The
 production client (its scopes as gatekeeper migration
 `0020_first_party_apps_pick_the_patient` left them) and the debug-only
 `medications-dev` tile's client (`seed_dev_app_clients` in
-`gatekeeper-rust/src/seeding.rs`) allow exactly this set; a test there reads
+`authorization-server-rust/src/seeding.rs`) allow exactly this set; a test there reads
 `src/config.ts` and pins both clients to it.
 
 ## Running the dev server
@@ -137,7 +137,7 @@ vp run -F @wildflowerhealthio/medications-web dev     # strictPort, from dev-app
 
 Debug builds of the host additionally seed a `medications-dev`
 row on that port plus its own OAuth client (`apps-rust`'s `seed_dev_apps` /
-`gatekeeper-rust`'s `seed_dev_app_clients`), so the homescreen carries a
+`authorization-server-rust`'s `seed_dev_app_clients`), so the homescreen carries a
 "Medications (Dev)" tile that launches whatever is serving that port — the vite
 dev server when it is up, nothing when it is down (there is no fallback build).
 The port has a single source, `dev-app-ports.json`: `vite.config.ts`

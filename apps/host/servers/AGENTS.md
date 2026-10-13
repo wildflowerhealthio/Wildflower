@@ -44,7 +44,7 @@ changing how servers run or what the host notifies about them.
     `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
-    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`;
+    `ServerConsentDecider`, bound to `authorization-server-rust`'s `HostConsentDecider`;
     and `ServerLaunchMinter`, bound to its `LaunchContextMinter`.
     `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.

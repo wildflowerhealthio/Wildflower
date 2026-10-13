@@ -13,7 +13,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  *
  * The seeded OAuth clients carry exactly this set — the production client
  * (gatekeeper migration `0020_first_party_apps_pick_the_patient`) and the
- * debug-only dev client (`gatekeeper-rust`'s
+ * debug-only dev client (`authorization-server-rust`'s
  * `seed_dev_app_clients`, whose test reads this file) — so a scope added here
  * alone fails `/authorize` against a Wildflower host.
  *
@@ -35,7 +35,7 @@ const MEDICATIONS_SCOPE =
  *   registers that absolute Pages URL as its redirect URI.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/medications-web dev`, on the port
  *   `dev-app-ports.json` pins) launches as the `medications-dev`
- *   tile's client, `4be2ee91360733fdcb99b43a3822de5f` (`gatekeeper-rust`'s
+ *   tile's client, `4be2ee91360733fdcb99b43a3822de5f` (`authorization-server-rust`'s
  *   `seed_dev_app_clients`), which registers the dev server's loopback root
  *   (`http://localhost:{port}/`) as its redirect.
  *

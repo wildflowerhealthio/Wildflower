@@ -1,4 +1,4 @@
-//! The Tauri host's [`wildflowerhealthio_gatekeeper::LoopbackConsentPrompt`]: a native
+//! The Tauri host's [`wildflowerhealthio_authorization_server::LoopbackConsentPrompt`]: a native
 //! Approve / Reject dialog for a direct-loopback login by the hosted launcher
 //! (`launcher-web` on its public origin, pointed at this machine's server).
 //!
@@ -10,7 +10,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use wildflowerhealthio_gatekeeper::{
+use wildflowerhealthio_authorization_server::{
     LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
 };
 
@@ -127,7 +127,7 @@ fn capitalized(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wildflowerhealthio_gatekeeper::LoopbackRegistrationNotice;
+    use wildflowerhealthio_authorization_server::LoopbackRegistrationNotice;
 
     fn owned(scopes: &[&str]) -> Vec<String> {
         scopes.iter().map(|scope| (*scope).to_owned()).collect()

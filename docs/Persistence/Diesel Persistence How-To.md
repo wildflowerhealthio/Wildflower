@@ -68,7 +68,7 @@ pre-diesel stores — not this pattern. Don't reach for it in a diesel slice.
 
 The same `sql_type = Text` newtype shape extends to any typed inner —
 `Vec<String>`, `Url`, a domain enum — for **non-`Option`** fields.
-`gatekeeper-rust/src/db/shared.rs` generates these with two macros so a
+`authorization-server-rust/src/db/shared.rs` generates these with two macros so a
 `db/<concern>.rs` gets a mapping after one `use`:
 
 - `json_text_column!(Name, Inner)` — binds `Inner` as compact JSON in a TEXT
@@ -95,7 +95,7 @@ Selectable, Insertable)]` row struct in `db/` whose fields **are** the wrapper
 types (`Option<UrlText>`, `Option<JsonStrings>` — the blanket `Option<T: ToSql /
 FromSql>` impls cover `Nullable`), and convert to/from the domain type with
 `From` at the query boundary. In gatekeeper only `authorization_requests` needs
-this (`gatekeeper-rust/src/db/authorization_requests.rs`, the private `Row`
+this (`authorization-server-rust/src/db/authorization_requests.rs`, the private `Row`
 struct + its two `From` impls); every other table maps its domain struct
 directly.
 
@@ -105,12 +105,12 @@ Two adjacent facts:
   feature, `DateTime<Utc>` / `Option<DateTime<Utc>>` map to `TimestamptzSqlite`
   (text `%F %T%.f%:z`, whose lexicographic order stays chronological) with no
   wrapper. Enable the feature on the slice's diesel dep
-  (`gatekeeper-rust/Cargo.toml`).
+  (`authorization-server-rust/Cargo.toml`).
 - **`thiserror` claims a field literally named `source`** as the structured
   error source and requires it to `impl Error`. An error variant that wants a
   plain `source: String` (context string, not a nested error) must hand-write
   `Display`/`Error` instead of `#[derive(thiserror::Error)]` — see
-  `gatekeeper-rust/src/domain/gatekeeper_error.rs`'s `Infrastructure` variant.
+  `authorization-server-rust/src/domain/authorization_server_error.rs`'s `Infrastructure` variant.
 
 ## Pool an in-memory database for tests
 
@@ -180,14 +180,14 @@ then-expire, a three-state consume) and you don't want that business logic
 trapped inside the SQLite adapter and re-implemented in the in-memory fake.
 
 Gatekeeper is the worked example
-(`gatekeeper-rust/src/domain/gatekeeper_store/{mod,store,tx}.rs`). Split the port
+(`authorization-server-rust/src/domain/gatekeeper_store/{mod,store,tx}.rs`). Split the port
 into two traits:
 
 - **`GatekeeperTx`** — single-statement primitives taking `&mut self`
   (`tx.rs`).
 - **`GatekeeperStore`** — a seam with a GAT `type Tx<'a>: GatekeeperTx` plus
   `with_connection` / `transaction` / `immediate_transaction`, each taking
-  `impl FnOnce(&mut Self::Tx<'_>) -> Result<T, GatekeeperError>` (`store.rs`).
+  `impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>` (`store.rs`).
 
 Compose the compound operations in `domain/capabilities/*` inside those
 closures, so their logic runs against the fast in-memory fake as well as SQLite.
@@ -204,7 +204,7 @@ Load-bearing details:
   `transaction` (`domain/capabilities/grants.rs`).
 - **diesel's `transaction`/`immediate_transaction` require `E: From<diesel::result::Error>`**
   (BEGIN/COMMIT can fail even when the closure maps its own query errors), so add
-  `impl From<diesel::result::Error> for GatekeeperError` in the `db` layer
+  `impl From<diesel::result::Error> for AuthorizationServerError` in the `db` layer
   (`db/gatekeeper_store.rs`) to keep `domain::error` diesel-free.
 - **The concrete `Tx` type is public interface.** `type Tx<'a>` on a `pub` trait
   makes the SQLite adapter's `SqliteGatekeeperTx` a public type (E0446) — it must

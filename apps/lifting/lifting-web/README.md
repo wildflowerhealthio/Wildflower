@@ -152,7 +152,7 @@ app never deletes. That one string is what the `lifting` tile's OAuth client
 (gatekeeper migrations `0019_seed_lifting_app_client`,
 `0020_first_party_apps_pick_the_patient` and `0025_rekey_lifting_app_clients`)
 and the debug-only `lifting-dev` tile's client (`seed_dev_app_clients` in
-`gatekeeper-rust/src/seeding.rs`) allow, exactly; a test there reads
+`authorization-server-rust/src/seeding.rs`) allow, exactly; a test there reads
 `src/config.ts` and pins both clients to it.
 
 ## Where the bundle is served
@@ -189,7 +189,7 @@ equal the client's allowed scopes.
 - **`lifting-dev`** is seeded in debug builds only, at runtime rather than
   by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
-  `http://localhost:<port>/` (`gatekeeper-rust/src/seeding.rs`).
+  `http://localhost:<port>/` (`authorization-server-rust/src/seeding.rs`).
 
 ## Running locally
 
