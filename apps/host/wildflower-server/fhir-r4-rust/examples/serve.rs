@@ -42,6 +42,8 @@ async fn main() -> anyhow::Result<()> {
         &config,
         revocation_store,
         ui_sessions(&runtime, &config),
+        // No host gate in front: these drive HFS and the UI directly.
+        tower::layer::util::Identity::new(),
     )?;
     let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(
         wildflowerhealthio_ohif_server::setup_ohif_server(routers.raw_hfs_router),

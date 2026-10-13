@@ -12,16 +12,19 @@ mod delegate;
 mod patient_everything;
 mod smart_configuration;
 
+use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::Method;
-use axum::routing::{get, Router};
+use axum::response::IntoResponse;
+use axum::routing::{get, Route, Router};
 use helios_auth::{LoginConfig, SessionStore};
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
 use helios_rest::fhir_types::is_valid_resource_type;
 use helios_rest::{create_app_with_auth, ServerConfig};
+use tower::{Layer, Service};
 use wildflowerhealthio_scopes::{Permission, Scope};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
@@ -35,20 +38,20 @@ pub use crate::config::FhirR4Config;
 
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
-/// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router, and the bare HFS
-/// router for in-process delegation by other slices. Both answer at the root;
-/// the host hands a request to them only when [`is_fhir_r4_route`] says it is
-/// FHIR's.
+/// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router (the FHIR API
+/// behind the host's gate, under the web UI), and the bare HFS router for
+/// in-process delegation by other slices. Both answer at the root; the host
+/// hands a request to them only when [`is_fhir_r4_route`] says it is FHIR's.
 pub struct FhirR4Routers {
     pub augmented_fhir_r4_router: Router,
     pub raw_hfs_router: Router,
 }
 
-/// Paths a gating layer mounted above [`setup_fhir_r4`]'s router must let
-/// through without a bearer token: the FHIR capabilities statement and the
+/// Paths the gate passed to [`setup_fhir_r4`] must let through without a
+/// bearer token: the FHIR capabilities statement and the
 /// discovery docs a client fetches *before* it holds a token. Mirrors HFS's own
 /// `EXEMPT_PATHS` (helios-rest's `middleware/auth.rs`) — HFS already exempts
-/// these from its own auth, but the host's bearer gate above us must be told.
+/// these from its own auth, but the host's bearer gate must be told.
 /// HFS's `/health` is left out: the host serves its own `/health` at the root,
 /// so HFS's is never reached.
 pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
@@ -121,11 +124,17 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// HFS's `/metadata` remain unauthenticated per the SMART spec — see
 /// [`UNAUTHENTICATED_FHIR_PATHS`].
 ///
+/// `fhir_api_gate` is the host's bearer gate, layered over the FHIR API (HFS
+/// and both overrides) and not over the web UI: HFS sends a visitor without a
+/// session to its sign-in, which a bearer gate would refuse outright. The UI
+/// is mounted over the gated API, so its pages pass by route while anything
+/// else, an unknown `/ui/…` path included, falls through to the gate.
+///
 /// `ui_sessions` holds the web UI's signed-in sessions (built from
-/// [`ui_login_config`] by the host, which shares it with the gate in front of
-/// this router): the UI's login runs against it, and HFS takes a same-site
-/// request carrying its `hfs_session` cookie and no `Authorization` as the
-/// session's bearer.
+/// [`ui_login_config`] by the host, which shares it with the middleware in
+/// front of this router): the UI's login runs against it, and HFS takes a
+/// same-site request carrying its `hfs_session` cookie and no `Authorization`
+/// as the session's bearer.
 ///
 /// `revocation_store` is the shared token-revocation store the host wires into
 /// both this and gatekeeper; when auth is enabled, HFS consults it per validated
@@ -143,12 +152,20 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// Returns an error if the configured SearchParameter asset directory does not
 /// contain the R4 spec bundle, if the sqlite backend cannot be opened at the
 /// configured path, or if initializing its schema fails.
-pub fn setup_fhir_r4(
+pub fn setup_fhir_r4<Gate>(
     runtime: &ServerRuntimeConfig,
     config: &FhirR4Config,
     revocation_store: RevocationStore,
     ui_sessions: Arc<SessionStore>,
-) -> anyhow::Result<FhirR4Routers> {
+    fhir_api_gate: Gate,
+) -> anyhow::Result<FhirR4Routers>
+where
+    Gate: Layer<Route> + Clone + Send + Sync + 'static,
+    Gate::Service: Service<Request> + Clone + Send + Sync + 'static,
+    <Gate::Service as Service<Request>>::Response: IntoResponse + 'static,
+    <Gate::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+    <Gate::Service as Service<Request>>::Future: Send + 'static,
+{
     // Point HFS's backend at the on-disk FHIR R4 SearchParameter asset directory
     // the host provides (a bundled resource — never embedded in the binary), so
     // HFS registers every standard R4 search parameter and indexes it at write
@@ -218,14 +235,6 @@ pub fn setup_fhir_r4(
         None,
     );
 
-    let hfs_router = mount_ui(
-        hfs_router,
-        spec_dir,
-        &server_origin,
-        auth_config.outbound_provider(),
-        ui_sessions,
-    );
-
     // Specific routes win over fallback: our SMART App Launch discovery doc and
     // the `$everything` operation intercept their paths; every other FHIR path
     // falls through to HFS.
@@ -236,7 +245,7 @@ pub fn setup_fhir_r4(
         )
         .with_state(SmartConfigState {
             loopback_base_url: loopback_base_url.clone(),
-            server_origin,
+            server_origin: server_origin.clone(),
         });
 
     // `$everything` delegates back into HFS in-process (see
@@ -250,13 +259,24 @@ pub fn setup_fhir_r4(
         });
 
     let hfs_router_for_delegation = hfs_router.clone();
-    let fhir_with_override = smart_config_route
+    let fhir_api = smart_config_route
         .merge(patient_everything_route)
         .fallback_service(hfs_router)
-        .layer(DefaultBodyLimit::max(MAX_FHIR_BODY_BYTES));
+        .layer(DefaultBodyLimit::max(MAX_FHIR_BODY_BYTES))
+        .layer(fhir_api_gate);
+
+    // The UI's routes sit beside the gated API, not inside it; everything they
+    // don't claim falls through to the gate.
+    let fhir_api_with_ui = mount_ui(
+        fhir_api,
+        spec_dir,
+        &server_origin,
+        auth_config.outbound_provider(),
+        ui_sessions,
+    );
 
     Ok(FhirR4Routers {
-        augmented_fhir_r4_router: fhir_with_override,
+        augmented_fhir_r4_router: fhir_api_with_ui,
         raw_hfs_router: hfs_router_for_delegation,
     })
 }
@@ -267,15 +287,16 @@ pub fn setup_fhir_r4(
 /// other's session store.
 static UI_MOUNT: Mutex<()> = Mutex::new(());
 
-/// Mount HFS's web UI (`helios-ui`) at `/ui` on `hfs_router`, with its
-/// interactive login over `ui_sessions`.
+/// Mount HFS's web UI (`helios-ui`) at `/ui` over `fhir_api`, which serves
+/// every request the UI's routes don't claim, with its interactive login over
+/// `ui_sessions`.
 ///
 /// The UI's conformance pages call the server's own FHIR API over HTTP. They
 /// call it at `server_origin`, never loopback: a direct-local request without a
 /// bearer is given the host owner's token, and these calls carry the signed-in
 /// user's bearer or none.
 fn mount_ui(
-    hfs_router: Router,
+    fhir_api: Router,
     spec_dir: &std::path::Path,
     server_origin: &str,
     outbound_auth: Arc<dyn helios_auth::outbound::OutboundAuthProvider>,
@@ -293,7 +314,7 @@ fn mount_ui(
         settled_secs: u32::MAX,
     });
     helios_ui::mount_with_body_limit_and_tenant_routing(
-        hfs_router,
+        fhir_api,
         env!("CARGO_PKG_VERSION"),
         Some(spec_dir.to_path_buf()),
         helios_ui::NlSearch {

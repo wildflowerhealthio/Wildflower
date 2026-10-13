@@ -278,14 +278,6 @@ pub async fn set_up(
         &loopback_base_url,
         FHIR_UI_CLIENT_ID,
     )));
-    let fhir_routers = setup_fhir_r4(
-        &runtime,
-        &fhir_r4_config,
-        revocation_store.clone(),
-        ui_sessions.clone(),
-    )
-    .context("failed to set up FHIR R4 router")?;
-    let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
@@ -327,7 +319,7 @@ pub async fn set_up(
     // them to the webview.
     let gatekeeper = setup_gatekeeper(
         diesel_pool.clone(),
-        revocation_store,
+        revocation_store.clone(),
         &gatekeeper_config,
         &host.host_owner_token_tx,
         host.active_pending_consent_tx,
@@ -336,28 +328,33 @@ pub async fn set_up(
     .context("failed to set up gatekeeper")?;
     let consent_decider_for_host = HostConsentDecider::new(gatekeeper.state.clone());
 
-    // The FHIR router carries discovery docs (metadata, SMART well-known) that a
+    // The FHIR API carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
-    // the bearer gate; every other FHIR path still requires a token. It serves
+    // the bearer gate; every other FHIR path still requires a token. The web
+    // UI's pages sit outside the gate (see `setup_fhir_r4`). The router serves
     // at the root through the fallback below, not as merged routes.
-    // The web UI's pages pass the gate: HFS sends a visitor without a session
-    // to its sign-in, which a bearer gate would refuse outright. A signed-in
-    // browser's other FHIR calls carry only the session cookie, so the session's
-    // bearer is presented for them ahead of the gate (`ui_session_bearer`).
-    let gated_fhir_r4 = Router::new()
-        .route("/ui", axum::routing::any_service(fhir_r4_router.clone()))
-        .route(
-            "/ui/{*rest}",
-            axum::routing::any_service(fhir_r4_router.clone()),
-        )
-        .fallback_service(fhir_r4_router.layer(gatekeeper_auth_middleware(
+    let fhir_routers = setup_fhir_r4(
+        &runtime,
+        &fhir_r4_config,
+        revocation_store,
+        ui_sessions.clone(),
+        gatekeeper_auth_middleware(
             gatekeeper.state.clone(),
             wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
-        )))
-        .layer(axum::middleware::from_fn_with_state(
-            ui_sessions,
-            present_ui_session_bearer,
-        ));
+        ),
+    )
+    .context("failed to set up FHIR R4 router")?;
+
+    // A signed-in browser's FHIR calls carry only the UI's session cookie, so
+    // the session's bearer is presented for them ahead of the gate
+    // (`ui_session_bearer`).
+    let gated_fhir_r4 =
+        fhir_routers
+            .augmented_fhir_r4_router
+            .layer(axum::middleware::from_fn_with_state(
+                ui_sessions,
+                present_ui_session_bearer,
+            ));
 
     let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
 

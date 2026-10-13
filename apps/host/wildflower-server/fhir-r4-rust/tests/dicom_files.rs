@@ -57,6 +57,8 @@ fn build_router() -> (Router, TempDb) {
         &config,
         revocation_store,
         ui_sessions(&runtime, &config),
+        // No host gate in front: these drive HFS and the UI directly.
+        tower::layer::util::Identity::new(),
     )
     .expect("setup_fhir_r4");
     let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(

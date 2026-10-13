@@ -1048,8 +1048,8 @@ fn on_loopback(loopback_base_url: &Url, url: &str) -> Url {
     on_loopback
 }
 
-/// The FHIR web UI's sign-in, end to end through the composed server: the UI
-/// sends the browser to gatekeeper's authorize endpoint as its seeded client,
+/// The FHIR web UI's sign-in, end to end through the composed server: its
+/// assets are served without a session, the UI sends the browser to gatekeeper's authorize endpoint as its seeded client,
 /// the Owner approves it, the UI redeems the code on its callback and sets its
 /// session cookie, and a FHIR read carrying only that cookie is served, while
 /// the same read without it is refused at the gate.
@@ -1091,6 +1091,29 @@ async fn the_fhir_ui_signs_in_through_gatekeeper_and_reads_fhir_on_its_session()
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .expect("an HTTP client");
+
+    // The UI's assets are served before sign-in, past the gate; a `/ui` path
+    // the UI doesn't serve falls through to the gate.
+    let ui_status = |path: &str| {
+        browser
+            .get(loopback_base_url.join(path).expect("UI URL"))
+            .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+            .send()
+    };
+    assert_eq!(
+        ui_status("ui/assets/app.css")
+            .await
+            .expect("GET /ui/assets/app.css reaches the server")
+            .status(),
+        reqwest::StatusCode::OK
+    );
+    assert_eq!(
+        ui_status("ui/no-such-page")
+            .await
+            .expect("GET /ui/no-such-page reaches the server")
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
 
     // The UI sends a visitor to gatekeeper's authorize endpoint, on the public
     // origin, remembering the pending sign-in in a cookie.
