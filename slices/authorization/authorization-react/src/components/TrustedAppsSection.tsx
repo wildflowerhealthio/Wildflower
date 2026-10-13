@@ -15,7 +15,7 @@ import { useClientsQuery, useUpdateClientMutation, type Client } from '../querie
 import { trustedAppRow, type TrustedAppRow } from './trusted-app-row.ts'
 
 /**
- * The Access screen's "Trusted Apps" section, loaded on its own: it suspends
+ * Wildflower Authorization's "Trusted Apps" section, loaded on its own: it suspends
  * on the clients query and catches that query's failure (e.g. a `403` for a
  * session without `wildflower/Client.r`) in place, with a Retry, so the rest
  * of the screen — grants included — still renders.

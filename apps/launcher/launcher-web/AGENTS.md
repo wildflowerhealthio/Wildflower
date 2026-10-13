@@ -87,6 +87,15 @@ the base opens a server's launcher.
   standalone `?iss=` launch for any other. The list is static; the page calls
   nothing on the server.
 
+- **Access is managed in Wildflower Authorization**
+  (`apps/authorization/authorization-web`), not here. The settings screen's
+  Manage access row (`session/manage-access-settings-item.ts`) links out to
+  the `management_endpoint` the session's server advertises in its SMART
+  configuration; no settings route manages access. The approval routes
+  (`/authorization/devices*`, `/authorization/oauth-consent/$id`) stay: they
+  are how a device or an app is approved. Tests: `route-tree.test.ts`,
+  `routes/settings.test.tsx`.
+
 ## References
 
 - [Telemetry Explanation](../../../slices/telemetry/docs/Telemetry%20Explanation.md)

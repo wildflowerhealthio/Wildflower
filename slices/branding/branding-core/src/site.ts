@@ -22,6 +22,10 @@ const SECTION_PATHS = {
   // The hosted launcher (`apps/launcher/launcher-web`), published cross-origin
   // to the API, under its folder's name.
   launcher: 'launcher',
+  // Wildflower Authorization (`apps/authorization/authorization-web`), where
+  // the Owner manages what a server has authorized: every Wildflower server's
+  // SMART `management_endpoint`, so this path is a published contract.
+  authorization: 'authorization',
 } as const
 
 /** Identifies one section of the assembled site. */

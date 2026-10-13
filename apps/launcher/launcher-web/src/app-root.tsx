@@ -173,6 +173,9 @@ const deviceFlowTokenResponseHandler = (
  * this, a stale-token failure pins until the user navigates away —
  * the cache is keyed on the query, not on the bearer.
  *
+ * The settings screen's Manage access row links to the `management_endpoint`
+ * of `tokenStore`'s server.
+ *
  * The settings screen's Logout row is the authorization server's, over `tokenStore`: it
  * revokes the bearer at the session's server, clears the tab's
  * `sessionStorage` (the session's server included) and reloads the bare
@@ -268,6 +271,11 @@ const buildAppTree = ({
             <AppRootTree
               router={router}
               logoutSettingsItem={logoutSettingsItem(window, basepath, tokenStore)}
+              manageAccessSource={{
+                serverUrl: () => tokenStore.serverUrl(),
+                fetch: (input, init) => window.fetch(input, init),
+                pageIsSecure: window.location.protocol === 'https:',
+              }}
             />
           </TokenResponseHandlerContext>
         </AuthStateProvider>

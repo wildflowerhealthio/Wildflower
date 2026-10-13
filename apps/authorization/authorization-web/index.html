@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Wildflower Authorization</title>
+    <meta name="color-scheme" content="light dark" />
+    <style>
+      /* Paint the design system's page canvas (`--color-canvas` in
+       * react-tundraish's colors-custom.css) before the bundle's CSS arrives,
+       * so a page load doesn't flash white at dark-mode users. */
+      html {
+        background-color: #dedede;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: #161616;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

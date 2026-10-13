@@ -60,7 +60,6 @@ export const routes = rootRoute('__root.tsx', [
   route('/settings', 'settings.tsx', [
     index('settings/index.tsx'),
     physical('', launcherRoutesDir('request-log/request-log-react', 'settings')),
-    physical('', sliceRoutesDir('authorization', 'settings')),
     physical('', launcherRoutesDir('databases/databases-react', 'settings')),
     physical('', launcherRoutesDir('apps-react', 'settings')),
   ]),

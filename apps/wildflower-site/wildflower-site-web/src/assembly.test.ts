@@ -159,6 +159,17 @@ describe('site layout', () => {
     expect(launcher?.requiredPaths).toEqual([join(outDir, 'launcher', 'index.html')])
   })
 
+  it('serves Wildflower Authorization from /authorization with its SPA entry', () => {
+    const [authorization] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/authorization-web'),
+    ])
+    expect(authorization?.from).toBe(
+      join(repoRoot, 'apps', 'authorization', 'authorization-web', 'dist')
+    )
+    expect(authorization?.to).toBe(join(outDir, 'authorization'))
+    expect(authorization?.requiredPaths).toEqual([join(outDir, 'authorization', 'index.html')])
+  })
+
   it('resolves every destination inside the output directory', () => {
     fc.assert(
       fc.property(fc.array(sectionArb), (sections) => {
@@ -216,6 +227,7 @@ describe('site layout', () => {
     expect(destPaths).toEqual(
       [
         '',
+        'authorization',
         'fhir-sync-pebble',
         'health-viewer',
         'importer',

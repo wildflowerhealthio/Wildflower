@@ -12,15 +12,15 @@ import { MARKETING_ANCHORS } from './nav.ts'
 import { SECTION_PATHS, SITE_ORIGIN, siteRootFor } from './site.ts'
 
 /**
- * Every described app: the homepage's SMART apps, and the launcher, which has a
- * landing page but no homepage row.
+ * Every described app: the homepage's SMART apps, and the launcher and
+ * Wildflower Authorization, which have a landing page but no homepage row.
  */
-const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'launcher']
+const DESCRIBED_APP_IDS: readonly AppSectionId[] = [...APP_SECTION_IDS, 'launcher', 'authorization']
 
 const appSectionIdArb = fc.constantFrom<AppSectionId>(...DESCRIBED_APP_IDS)
 
 describe('APP_SECTION_IDS', () => {
-  it('should list every described app but the launcher exactly once, and nothing else', () => {
+  it('should list every described app but the launcher and authorization exactly once, and nothing else', () => {
     expect(DESCRIBED_APP_IDS.toSorted()).toStrictEqual(Object.keys(APP_DESCRIPTIONS).toSorted())
   })
 
@@ -109,9 +109,10 @@ describe('smartAppLaunchPages', () => {
     )
   })
 
-  it('should leave out the launcher and FHIR Sync for Pebble, which no URL launches', () => {
+  it('should leave out the launcher, Wildflower Authorization and FHIR Sync for Pebble, which no URL launches', () => {
     const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
     expect(listedApps).not.toContain('launcher')
+    expect(listedApps).not.toContain('authorization')
     expect(listedApps).not.toContain('fhirSyncPebble')
   })
 

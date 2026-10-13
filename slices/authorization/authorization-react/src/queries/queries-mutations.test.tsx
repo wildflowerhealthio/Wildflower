@@ -23,7 +23,6 @@ import { useUpdateClientMutation } from './clients.ts'
 import { useDeviceConsentMutation } from './device-consent.ts'
 import { useRevokeGrantMutation } from './grants.ts'
 import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
-import { useDecideRequestMutation } from './requests.ts'
 
 /**
  * Pins each authorization server mutation's `onSuccess` invalidation keys — the
@@ -82,12 +81,36 @@ describe('useRevokeGrantMutation invalidation', () => {
     const { result, queryClient } = renderWithClient(() => useRevokeGrantMutation())
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
-    await result.current.mutateAsync({ id: 'grant-1' })
+    await result.current.mutateAsync({ id: 'grant-1', clientId: 'client-a' })
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grant', 'grant-1'] })
+  })
+})
+
+describe('useRevokeGrantMutation request', () => {
+  test('deletes the grant, then revokes every token its client holds', async () => {
+    // Arrange
+    const requests = routeRunAuthedThroughRecordingHttpClient(
+      DateTime.unsafeMake(0),
+      () => new Response(null, { status: 204 })
+    )
+    const { result } = renderWithClient(() => useRevokeGrantMutation())
+
+    // Act
+    await result.current.mutateAsync({ id: 'grant-1', clientId: 'client-a' })
+
+    // Assert
+    expect(requests.map(({ method, url, body }) => ({ method, url, body }))).toEqual([
+      { method: 'DELETE', url: '/authorization/grants/grant-1', body: undefined },
+      {
+        method: 'POST',
+        url: '/authorization/revocations',
+        body: { subject: 'client-a' },
+      },
+    ])
   })
 })
 
@@ -200,32 +223,6 @@ describe('useUpdateClientMutation request', () => {
       ),
       { numRuns: numRunsFor({ base: 50 }) }
     )
-  })
-})
-
-describe('useDecideRequestMutation invalidation', () => {
-  test('approving invalidates the requests list root and the decided request detail', async () => {
-    const { result, queryClient } = renderWithClient(() => useDecideRequestMutation())
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-
-    await result.current.mutateAsync({ id: 'req-1', decision: 'approved' })
-
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'requests'] })
-    })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'request', 'req-1'] })
-  })
-
-  test('rejecting invalidates the same list + detail keys', async () => {
-    const { result, queryClient } = renderWithClient(() => useDecideRequestMutation())
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-
-    await result.current.mutateAsync({ id: 'req-2', decision: 'rejected' })
-
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'requests'] })
-    })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'request', 'req-2'] })
   })
 })
 

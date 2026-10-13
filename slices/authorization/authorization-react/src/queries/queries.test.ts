@@ -10,8 +10,6 @@ import {
   GRANTS_QUERY_KEY,
   grantsQueryOptions,
   oauthConsentQueryOptions,
-  REQUESTS_QUERY_KEY,
-  requestsQueryOptions,
   type RunAuthed,
 } from './index.ts'
 
@@ -33,21 +31,6 @@ const GRANT_BODY = [
     grantedAt: '2024-01-01T00:00:00.000Z',
     lastUsedAt: null,
     patient: null,
-  },
-]
-
-// Wire shape mirrors `AccessManagement.HttpRequestSchema`.
-const REQUEST_BODY = [
-  {
-    id: 'req-1',
-    method: 'GET',
-    url: '/Patient',
-    origin: 'https://app.example',
-    userAgent: 'test',
-    requestedAt: '2024-01-01T00:00:00.000Z',
-    status: 'pending',
-    statusCode: null,
-    respondedAt: null,
   },
 ]
 
@@ -154,23 +137,6 @@ describe('grantsQueryOptions', () => {
 
     await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(GRANTS_QUERY_KEY)).toBeUndefined()
-  })
-})
-
-describe('requestsQueryOptions', () => {
-  test('exposes the canonical REQUESTS_QUERY_KEY', () => {
-    const options = requestsQueryOptions(makeRunAuthed(stubHttpClientLayer()))
-    expect(options.queryKey).toEqual(REQUESTS_QUERY_KEY)
-  })
-
-  test('queryFn reads the requests list through the authed runner', async () => {
-    const options = requestsQueryOptions(makeRunAuthed(stubHttpClientLayer({ body: REQUEST_BODY })))
-    const queryClient = freshQueryClient()
-
-    const requests = await queryClient.query({ ...options, staleTime: 'static' })
-
-    expect(requests).toHaveLength(1)
-    expect(requests[0]?.status).toBe('pending')
   })
 })
 

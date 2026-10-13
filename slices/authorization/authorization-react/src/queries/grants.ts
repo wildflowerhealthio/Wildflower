@@ -63,16 +63,31 @@ const grantQueryOptions = (
 const useGrantQuery = (id: string): UseSuspenseQueryResult<Grant, Error> =>
   useSuspenseQuery(grantQueryOptions(useRunAuthed(), id))
 
-/** `RevokeGrant` (DELETE). Invalidates the grants list + the revoked grant's detail. */
-const useRevokeGrantMutation = (): UseMutationResult<unknown, Error, { readonly id: string }> => {
+/** `useRevokeGrantMutation`'s input: the grant, and the client it was granted to. */
+interface RevokeGrantVariables {
+  readonly id: string
+  readonly clientId: string
+}
+
+/**
+ * Revoke a grant: `RevokeGrant` (DELETE), then `CreateRevocation` for the
+ * grant's client, so every token the client holds stops working now, whatever
+ * else it was issued under. The second call runs only once the grant is gone.
+ * Invalidates the grants list and the revoked grant's detail.
+ */
+const useRevokeGrantMutation = (): UseMutationResult<void, Error, RevokeGrantVariables> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id }) =>
+    mutationFn: ({ id, clientId }) =>
       runAuthed(
-        Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
-          c['access-management'].RevokeGrant({ path: { id } })
-        )
+        Effect.gen(function* () {
+          const client = yield* AuthorizationServerHttpApiClient
+          yield* client['access-management'].RevokeGrant({ path: { id } })
+          yield* client['access-management'].CreateRevocation({
+            payload: { subject: clientId },
+          })
+        })
       ),
     onSuccess: async (_data, { id }) => {
       await Promise.all([
@@ -90,4 +105,4 @@ export {
   useGrantsQuery,
   useRevokeGrantMutation,
 }
-export type { AppGrant, DeviceGrant, Grant }
+export type { AppGrant, DeviceGrant, Grant, RevokeGrantVariables }

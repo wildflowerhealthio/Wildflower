@@ -12,7 +12,11 @@ import { AppLandingPage } from './app-landing-page.tsx'
 
 // The homepage's SMART apps, and the launcher, which has a landing page but no
 // homepage row.
-const appSectionIdArb = fc.constantFrom<AppSectionId>(...APP_SECTION_IDS, 'launcher')
+const appSectionIdArb = fc.constantFrom<AppSectionId>(
+  ...APP_SECTION_IDS,
+  'launcher',
+  'authorization'
+)
 
 afterEach(() => {
   cleanup()

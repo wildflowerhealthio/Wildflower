@@ -1,5 +1,3 @@
-export { authorizationSettingsItemsFragment } from './settings-fragments.ts'
-
 export {
   buildDeviceLoginTarget,
   buildStepUpTarget,
@@ -19,33 +17,35 @@ export {
 export * as AuthorizationRouterContext from './router-context.ts'
 
 export {
+  CLIENTS_QUERY_KEY,
   clientsQueryOptions,
   deviceConsentQueryOptions,
   GRANTS_QUERY_KEY,
   grantQueryOptions,
   grantsQueryOptions,
   oauthConsentQueryOptions,
-  REQUESTS_QUERY_KEY,
-  requestQueryOptions,
-  requestsQueryOptions,
-  useDecideRequestMutation,
   useDeviceConsentMutation,
   useDeviceConsentQuery,
   useGrantQuery,
   useGrantsQuery,
   useOAuthConsentMutation,
   useOAuthConsentQuery,
-  useRequestQuery,
-  useRequestsQuery,
+  useClientsQuery,
+  useUpdateClientMutation,
   useRevokeGrantMutation,
   useRunAuthed,
   type ApproveOAuthPayload,
+  type AppGrant,
   type Client,
+  type DeviceGrant,
   type Grant,
-  type HttpRequest,
-  type RequestDecision,
+  type RevokeGrantVariables,
   type RunAuthed,
 } from './queries/index.ts'
+
+export { TrustedAppsSection } from './components/TrustedAppsSection.tsx'
+
+export { formatInstant } from './format-date.ts'
 
 export { NeedsAuthMessage, sanitizeReturnTo } from './components/NeedsAuthMessage.tsx'
 

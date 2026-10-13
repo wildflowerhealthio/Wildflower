@@ -9,20 +9,15 @@ import pageLayout from '../../styles/page-layout.module.css'
 type DeviceCodeEntryFormProps = {
   /**
    * Called with a validated `XXXX-XXXX` code when the owner submits. The
-   * caller navigates to its own device-consent route — the public flow to
-   * `/authorization/devices/$userCode`, the in-settings flow to
-   * `/settings/authorization/devices/$userCode` — which is the only thing that
-   * differs between the two surfaces that render this form.
+   * caller navigates to its device-consent route,
+   * `/authorization/devices/$userCode`.
    */
   readonly onSubmit: (code: string) => void
 }
 
 /**
- * The device-code entry form, lifted out of its route so the public
- * (`/authorization/devices`) and owner-facing (`/settings/authorization/devices`)
- * surfaces share one implementation and differ only in their page header
- * (the in-settings one carries a back link). Renders no header itself —
- * each route supplies its own `<PageHeader>`.
+ * The device-code entry form of the public `/authorization/devices` route.
+ * Renders no header itself — the route supplies its own `<PageHeader>`.
  */
 const DeviceCodeEntryForm = ({ onSubmit }: DeviceCodeEntryFormProps): JSX.Element => {
   const codeInputDomId = useId()

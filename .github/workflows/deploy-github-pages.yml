@@ -6,7 +6,8 @@ name: Deploy GitHub Pages
 # Sync for Pebble at /fhir-sync-pebble, the Health Viewer at /health-viewer, the
 # Synthetic Data Loader at /synthetic-data, the lifting app at /lifting, the
 # WatchLifts settings page at /watch-lifts, the prebuilt OHIF viewer at
-# /ohif-viewer and the launcher at /launcher) and publishes it to GitHub Pages.
+# /ohif-viewer, the launcher at /launcher and Wildflower Authorization at
+# /authorization) and publishes it to GitHub Pages.
 # Runs on every push to main and on manual dispatch: the assembled apps
 # depend on much of the workspace, so a path filter would only ever be wrong
 # about which changes can alter the published site.
@@ -76,6 +77,7 @@ jobs:
           VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB: ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
           VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
           VITE_SENTRY_DSN_LAUNCHER_WEB: ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
+          VITE_SENTRY_DSN_AUTHORIZATION_WEB: ${{ vars.VITE_SENTRY_DSN_AUTHORIZATION_WEB }}
           VITE_SENTRY_ENVIRONMENT: production
           VITE_SENTRY_RELEASE: ${{ github.sha }}
 
@@ -98,6 +100,7 @@ jobs:
             ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
             ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
             ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
+            ${{ vars.VITE_SENTRY_DSN_AUTHORIZATION_WEB }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

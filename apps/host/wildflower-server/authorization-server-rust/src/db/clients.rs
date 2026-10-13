@@ -296,7 +296,8 @@ mod tests {
     /// `0019`, the Synthesized Health Viewer by `0022`, and the Synthetic Data
     /// Loader by `0028` (which re-keys Medications, the console, the Importer and
     /// the Health Viewer to random ids, as `0025` / `0026` did Lifting and the
-    /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble) — so a
+    /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble), and
+    /// Wildflower Authorization by `0031` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -318,6 +319,7 @@ mod tests {
             "bdf9fc5cb5a28c6683b49896b0ef8a75",
             "474e103de61f9141c4b640d59bfa130e",
             "225ba6af034a3acec6be7ff8010df67f",
+            "7277e898bee8ac81ea44788236e619a5",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -661,6 +663,64 @@ mod tests {
         );
         assert_eq!(
             synthetic_data.allowed_grant_types,
+            vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken,
+            ],
+        );
+    }
+
+    /// Wildflower Authorization's client (`0031`) is a public PKCE client
+    /// returning to the app's published root, allowed exactly the scopes the
+    /// app asks for. Its id and scope string are read out of the app's
+    /// `src/config.ts`, the one place the app writes them, so the row can't
+    /// drift from it unnoticed: a scope the app asks for that the row doesn't
+    /// allow fails `/oauth/authorize`.
+    #[test]
+    fn migrations_seed_the_authorization_web_client_with_the_apps_own_scopes() {
+        const AUTHORIZATION_WEB_CONFIG_TS: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../../apps/authorization/authorization-web/src/config.ts"
+        ));
+        const AUTHORIZATION_WEB_CLIENT_ID: &str = "7277e898bee8ac81ea44788236e619a5";
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let client = store
+            .client_by_id(AUTHORIZATION_WEB_CLIENT_ID)
+            .expect("query (a decode failure surfaces here)")
+            .expect("0031 seeds the Wildflower Authorization client");
+
+        assert!(
+            AUTHORIZATION_WEB_CONFIG_TS.contains(&format!("'{AUTHORIZATION_WEB_CLIENT_ID}'")),
+            "apps/authorization/authorization-web/src/config.ts must sign in as {AUTHORIZATION_WEB_CLIENT_ID}",
+        );
+        let scope_string = format!("'{}'", client.allowed_scopes.join(" "));
+        assert!(
+            AUTHORIZATION_WEB_CONFIG_TS.contains(&scope_string),
+            "apps/authorization/authorization-web/src/config.ts must request exactly {scope_string}",
+        );
+        assert_eq!(client.name, "Wildflower Authorization");
+        assert_eq!(client.kind, ClientKind::Public);
+        assert!(client.secret_hash.is_none());
+        assert_eq!(client.disabled_at, None);
+        assert_eq!(
+            client.redirect_uris,
+            vec![
+                url::Url::parse("https://wildflowerhealth.io/authorization/")
+                    .expect("a valid absolute redirect")
+            ],
+        );
+        assert_eq!(
+            client.allowed_scopes,
+            vec![
+                "openid".to_string(),
+                "wildflower/Grant.rd".to_string(),
+                "wildflower/Client.ru".to_string(),
+                "wildflower/Token.d".to_string(),
+                "wildflower/AuthorizationRequest.r".to_string(),
+            ],
+        );
+        assert_eq!(
+            client.allowed_grant_types,
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken,

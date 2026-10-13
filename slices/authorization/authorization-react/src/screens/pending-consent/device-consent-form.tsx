@@ -1,11 +1,7 @@
 /**
- * Shared device-consent form, reused by:
- *
- *  - the standalone `/authorization/devices/:userCode` route, which
- *    navigates away on `onDone`, and
- *  - the in-settings `/settings/authorization/devices/:userCode` route,
- *    which additionally lets the approver rename the device
- *    (`editableName`).
+ * The device-consent form of the standalone `/authorization/devices/:userCode`
+ * route, which navigates away on `onDone`. With `editableName`, the approver
+ * may also rename the device.
  *
  * The device-code consent is **expandable**: the owner edits the request through
  * the shared {@link ScopePicker} in `expandable` mode, so they can add scopes the
@@ -35,7 +31,7 @@ import styles from './device-consent-form.module.css'
 interface DeviceConsentFormProps {
   readonly consent: DeviceConsent
   readonly onDone: () => void
-  /** When true (the settings surface), the approver may rename the device before approving. */
+  /** When true, the approver may rename the device before approving. */
   readonly editableName?: boolean
 }
 
@@ -70,14 +66,14 @@ const DeviceConsentForm = ({
 
   // The statement subject: the device's (possibly just-edited) name, falling back to the
   // registered client name. Two-step so the naming policy reads plainly:
-  //  1. the device name in play here — the approver's edit on the settings surface,
+  //  1. the device name in play here — the approver's edit when `editableName`,
   //     otherwise whatever the device supplied at pairing;
   //  2. that, or the registered client name when no device name is available.
   const trimmedName = name.trim()
   const enteredDeviceName = editableName ? trimmedName : (consent.deviceName ?? '')
   const subjectName = enteredDeviceName || consent.clientName
 
-  // The device-name control: an editable field on the settings surface, a read-only line
+  // The device-name control: an editable field with `editableName`, a read-only line
   // elsewhere (only when the device actually named itself).
   const renderDeviceName = (): JSX.Element | null => {
     if (editableName) {
@@ -108,7 +104,7 @@ const DeviceConsentForm = ({
         kind: 'approve',
         userCode: consent.userCode,
         approvedScopes: GrantDraft.serializeAll(draft),
-        // Only send an adjusted name from the settings surface, and only when non-empty —
+        // Only send an adjusted name when `editableName`, and only when non-empty —
         // an omitted name keeps whatever the device supplied (server-side COALESCE).
         ...(editableName && trimmedName !== '' ? { deviceName: trimmedName } : {}),
         // The chosen launch patient rides to the token's `patient` claim; the picker

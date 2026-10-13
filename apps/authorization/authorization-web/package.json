@@ -1,0 +1,40 @@
+{
+  "name": "@wildflowerhealthio/authorization-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vp build",
+    "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
+    "test": "vp test --passWithNoTests"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@wildflowerhealthio/authorization-core": "workspace:*",
+    "@wildflowerhealthio/authorization-react": "workspace:*",
+    "@wildflowerhealthio/branding-core": "workspace:*",
+    "@wildflowerhealthio/branding-react": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-react": "workspace:*",
+    "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/smart-app-react": "workspace:*",
+    "@wildflowerhealthio/telemetry-react": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

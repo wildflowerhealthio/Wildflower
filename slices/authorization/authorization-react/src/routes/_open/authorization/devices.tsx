@@ -10,10 +10,6 @@ import { DeviceCodeEntryForm } from '../../../screens/device/device-code-entry-f
  * {@link DeviceCodeEntryForm} with no back link (this surface is entered
  * directly via the published URL, so there is nowhere in-app to go back
  * to). Submitting advances to the public consent route.
- *
- * The owner-facing equivalent (`/settings/authorization/devices`) renders the
- * same form with a back link to the access page — same inner content,
- * different chrome.
  */
 function DeviceEntryScreen(): JSX.Element {
   const navigate = useNavigate()

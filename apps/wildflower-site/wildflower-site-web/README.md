@@ -21,6 +21,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/lifting`              | `lifting-web` (`apps/lifting/lifting-web`)                            |
 | `/watch-lifts`          | `watch-lifts-web` (`apps/watch-lifts/watch-lifts-web`)                |
 | `/launcher`             | `launcher-web` (`apps/launcher/launcher-web`, `dist-web`)             |
+| `/authorization`        | `authorization-web` (`apps/authorization/authorization-web`)          |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 

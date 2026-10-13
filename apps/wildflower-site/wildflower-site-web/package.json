@@ -10,6 +10,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@wildflowerhealthio/authorization-web": "workspace:*",
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/fhir-sync-pebble-web": "workspace:*",
     "@wildflowerhealthio/health-viewer-web": "workspace:*",

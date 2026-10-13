@@ -78,14 +78,15 @@ the row is created or widened only when the Owner approves — see
   as follows:
   - any UTC time disables the client now, stamped with the server's own
     now whatever time was sent. A disable can be neither scheduled nor
-    backdated. The launcher sends its current time.
+    backdated. Wildflower Authorization sends its current time.
   - `null` re-enables the client.
   - a client that already has a `disabledAt` keeps it. The update is
     idempotent, and a repeated disable doesn't move the time.
 
   An unknown `clientId` is a 404. The routes are gated on
   `wildflower/Client.r` (list) and `wildflower/Client.u` (the `PATCH`). The
-  settings UI shows them as the "Trusted Apps" list on the Access screen.
+  Wildflower Authorization app (`apps/authorization/authorization-web`) shows
+  them as the "Trusted Apps" list on its access page.
   Disabling leaves the client's [grants](#grant) and
   refresh-token families in place — unusable while it's disabled, live again
   once it's enabled; revoke a grant to end it for good.
