@@ -6,7 +6,7 @@
     "description": "The subset of the embedded HFS FHIR R4 server that the Wildflower client uses — generated from the `fhir-r4` Effect HttpApi, not from the server. See slices/fhir/fhir-r4/docs/Client Capabilities Reference.md."
   },
   "paths": {
-    "/fhir-r4/Patient": {
+    "/Patient": {
       "get": {
         "tags": [
           "Patient"
@@ -562,7 +562,7 @@
         }
       }
     },
-    "/fhir-r4/Patient/{id}": {
+    "/Patient/{id}": {
       "get": {
         "tags": [
           "Patient"
@@ -1287,7 +1287,7 @@
         }
       }
     },
-    "/fhir-r4/Patient/_search": {
+    "/Patient/_search": {
       "post": {
         "tags": [
           "Patient"
@@ -1479,7 +1479,7 @@
         }
       }
     },
-    "/fhir-r4/Patient/{id}/$everything": {
+    "/Patient/{id}/$everything": {
       "get": {
         "tags": [
           "Patient"
@@ -1629,7 +1629,7 @@
         }
       }
     },
-    "/fhir-r4/Binary": {
+    "/Binary": {
       "get": {
         "tags": [
           "Binary"
@@ -1895,7 +1895,7 @@
         }
       }
     },
-    "/fhir-r4/Binary/{id}": {
+    "/Binary/{id}": {
       "get": {
         "tags": [
           "Binary"
@@ -2156,7 +2156,7 @@
         }
       }
     },
-    "/fhir-r4/Binary/_search": {
+    "/Binary/_search": {
       "post": {
         "tags": [
           "Binary"
@@ -2305,7 +2305,7 @@
         }
       }
     },
-    "/fhir-r4/Observation": {
+    "/Observation": {
       "get": {
         "tags": [
           "Observation"
@@ -3103,7 +3103,7 @@
         }
       }
     },
-    "/fhir-r4/Observation/{id}": {
+    "/Observation/{id}": {
       "get": {
         "tags": [
           "Observation"
@@ -4152,7 +4152,7 @@
         }
       }
     },
-    "/fhir-r4/Observation/_search": {
+    "/Observation/_search": {
       "post": {
         "tags": [
           "Observation"
@@ -4389,7 +4389,7 @@
         }
       }
     },
-    "/fhir-r4/MedicationRequest": {
+    "/MedicationRequest": {
       "get": {
         "tags": [
           "MedicationRequest"
@@ -5079,7 +5079,7 @@
         }
       }
     },
-    "/fhir-r4/MedicationRequest/{id}": {
+    "/MedicationRequest/{id}": {
       "get": {
         "tags": [
           "MedicationRequest"
@@ -6188,7 +6188,7 @@
         }
       }
     },
-    "/fhir-r4/MedicationRequest/_search": {
+    "/MedicationRequest/_search": {
       "post": {
         "tags": [
           "MedicationRequest"
@@ -6337,7 +6337,7 @@
         }
       }
     },
-    "/fhir-r4/MedicationDispense": {
+    "/MedicationDispense": {
       "get": {
         "tags": [
           "MedicationDispense"
@@ -6913,7 +6913,7 @@
         }
       }
     },
-    "/fhir-r4/MedicationDispense/{id}": {
+    "/MedicationDispense/{id}": {
       "get": {
         "tags": [
           "MedicationDispense"
@@ -7794,7 +7794,7 @@
         }
       }
     },
-    "/fhir-r4/MedicationDispense/_search": {
+    "/MedicationDispense/_search": {
       "post": {
         "tags": [
           "MedicationDispense"
@@ -7943,7 +7943,7 @@
         }
       }
     },
-    "/fhir-r4/DocumentReference": {
+    "/DocumentReference": {
       "get": {
         "tags": [
           "DocumentReference"
@@ -8472,7 +8472,7 @@
         }
       }
     },
-    "/fhir-r4/DocumentReference/{id}": {
+    "/DocumentReference/{id}": {
       "get": {
         "tags": [
           "DocumentReference"
@@ -9153,7 +9153,7 @@
         }
       }
     },
-    "/fhir-r4/DocumentReference/_search": {
+    "/DocumentReference/_search": {
       "post": {
         "tags": [
           "DocumentReference"
@@ -9325,7 +9325,7 @@
         }
       }
     },
-    "/fhir-r4/DiagnosticReport": {
+    "/DiagnosticReport": {
       "get": {
         "tags": [
           "DiagnosticReport"
@@ -9925,7 +9925,7 @@
         }
       }
     },
-    "/fhir-r4/DiagnosticReport/{id}": {
+    "/DiagnosticReport/{id}": {
       "get": {
         "tags": [
           "DiagnosticReport"
@@ -10718,7 +10718,7 @@
         }
       }
     },
-    "/fhir-r4/DiagnosticReport/_search": {
+    "/DiagnosticReport/_search": {
       "post": {
         "tags": [
           "DiagnosticReport"
@@ -10900,7 +10900,7 @@
         }
       }
     },
-    "/fhir-r4/Practitioner": {
+    "/Practitioner": {
       "get": {
         "tags": [
           "Practitioner"
@@ -11344,7 +11344,7 @@
         }
       }
     },
-    "/fhir-r4/Practitioner/{id}": {
+    "/Practitioner/{id}": {
       "get": {
         "tags": [
           "Practitioner"
@@ -11913,7 +11913,7 @@
         }
       }
     },
-    "/fhir-r4/Practitioner/_search": {
+    "/Practitioner/_search": {
       "post": {
         "tags": [
           "Practitioner"
@@ -12071,7 +12071,7 @@
         }
       }
     },
-    "/fhir-r4/ServiceRequest": {
+    "/ServiceRequest": {
       "get": {
         "tags": [
           "ServiceRequest"
@@ -12911,7 +12911,7 @@
         }
       }
     },
-    "/fhir-r4/ServiceRequest/{id}": {
+    "/ServiceRequest/{id}": {
       "get": {
         "tags": [
           "ServiceRequest"
@@ -14104,7 +14104,7 @@
         }
       }
     },
-    "/fhir-r4/ServiceRequest/_search": {
+    "/ServiceRequest/_search": {
       "post": {
         "tags": [
           "ServiceRequest"
@@ -14306,7 +14306,7 @@
         }
       }
     },
-    "/fhir-r4/ImagingStudy": {
+    "/ImagingStudy": {
       "get": {
         "tags": [
           "ImagingStudy"
@@ -14897,7 +14897,7 @@
         }
       }
     },
-    "/fhir-r4/ImagingStudy/{id}": {
+    "/ImagingStudy/{id}": {
       "get": {
         "tags": [
           "ImagingStudy"
@@ -15682,7 +15682,7 @@
         }
       }
     },
-    "/fhir-r4/ImagingStudy/_search": {
+    "/ImagingStudy/_search": {
       "post": {
         "tags": [
           "ImagingStudy"
@@ -15859,7 +15859,7 @@
         }
       }
     },
-    "/fhir-r4/CarePlan": {
+    "/CarePlan": {
       "get": {
         "tags": [
           "CarePlan"
@@ -16524,7 +16524,7 @@
         }
       }
     },
-    "/fhir-r4/CarePlan/{id}": {
+    "/CarePlan/{id}": {
       "get": {
         "tags": [
           "CarePlan"
@@ -17441,7 +17441,7 @@
         }
       }
     },
-    "/fhir-r4/CarePlan/_search": {
+    "/CarePlan/_search": {
       "post": {
         "tags": [
           "CarePlan"
@@ -17626,7 +17626,7 @@
         }
       }
     },
-    "/fhir-r4/Goal": {
+    "/Goal": {
       "get": {
         "tags": [
           "Goal"
@@ -18159,7 +18159,7 @@
         }
       }
     },
-    "/fhir-r4/Goal/{id}": {
+    "/Goal/{id}": {
       "get": {
         "tags": [
           "Goal"
@@ -18868,7 +18868,7 @@
         }
       }
     },
-    "/fhir-r4/Goal/_search": {
+    "/Goal/_search": {
       "post": {
         "tags": [
           "Goal"
@@ -19040,7 +19040,7 @@
         }
       }
     },
-    "/fhir-r4/PlanDefinition": {
+    "/PlanDefinition": {
       "get": {
         "tags": [
           "PlanDefinition"
@@ -19748,7 +19748,7 @@
         }
       }
     },
-    "/fhir-r4/PlanDefinition/{id}": {
+    "/PlanDefinition/{id}": {
       "get": {
         "tags": [
           "PlanDefinition"
@@ -20753,7 +20753,7 @@
         }
       }
     },
-    "/fhir-r4/PlanDefinition/_search": {
+    "/PlanDefinition/_search": {
       "post": {
         "tags": [
           "PlanDefinition"
@@ -20932,7 +20932,7 @@
         }
       }
     },
-    "/fhir-r4/Procedure": {
+    "/Procedure": {
       "get": {
         "tags": [
           "Procedure"
@@ -21692,7 +21692,7 @@
         }
       }
     },
-    "/fhir-r4/Procedure/{id}": {
+    "/Procedure/{id}": {
       "get": {
         "tags": [
           "Procedure"
@@ -22745,7 +22745,7 @@
         }
       }
     },
-    "/fhir-r4/Procedure/_search": {
+    "/Procedure/_search": {
       "post": {
         "tags": [
           "Procedure"
@@ -22937,7 +22937,7 @@
         }
       }
     },
-    "/fhir-r4/": {
+    "/": {
       "post": {
         "tags": [
           "Bundle"

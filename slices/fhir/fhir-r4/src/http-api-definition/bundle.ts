@@ -12,9 +12,8 @@ import * as Bundle from '../data-types/resources/bundle.ts'
  * @remarks
  * A *group of its own*, at the FHIR root — not another per-resource endpoint.
  * Every domain-resource group carries its own `/${resourceType}` prefix; this
- * one carries none, so the endpoint lives at bare `/` (the mount prefix
- * `/fhir-r4` is applied by the host — see the "The `HttpApi` is base-relative"
- * entry in the Client Capabilities Reference).
+ * one carries none, so the endpoint lives at bare `/`, the FHIR base (see the
+ * "The `HttpApi` is base-relative" entry in the Client Capabilities Reference).
  *
  * The entry `resource` type on this endpoint is deliberately `Schema.Any`
  * rather than {@link Bundle.Schema} parameterised over the discriminated

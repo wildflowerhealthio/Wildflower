@@ -41,7 +41,6 @@ export {
   searchAfterArrivingLaunch,
   searchWithServerUrl,
   SERVER_QUERY_PARAM,
-  serverUrlNamedBy,
   serverUrlFromSearch,
 } from './server-target.ts'
 
@@ -69,8 +68,9 @@ export {
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
-  smartEndpointsFrom,
+  smartIssuerFrom,
   usableEndpointUrl,
+  WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
 } from './smart-discovery.ts'
 export type { SmartEndpoints, SmartIssuer, SmartServer } from './smart-discovery.ts'

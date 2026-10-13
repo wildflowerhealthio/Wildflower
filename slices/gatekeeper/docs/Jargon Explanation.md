@@ -690,7 +690,7 @@ levers:
 
 A token is **revoked** iff its `jti` is denylisted **or** its `iat` predates its
 subject's epoch. The auth gate (`verify_auth_token_claims`) runs the full check
-on every Owner-gated and every `/fhir-r4/*` request; HFS additionally checks the
+on every Owner-gated and every FHIR request; HFS additionally checks the
 per-`jti` denylist in-process (defense-in-depth). Expired denylist rows are swept
 at startup and daily. See `docs/Origins/Explanation.md` for how this composes
 with the served-origin model.
@@ -720,9 +720,8 @@ imitating. Concretely it adds:
 - The `launch` parameter on `/oauth/authorize`: a
   [LaunchContext](#launchcontext) this server minted for the client.
 - The `aud` parameter on `/oauth/authorize`: when present it must be the
-  server's origin, `https://<domain>`, or its FHIR base,
-  `https://<domain>/fhir-r4`, else `invalid_request`. The token's `aud` claim
-  is the server's origin either way (see
+  server's origin, `https://<domain>`, which is also its FHIR base, else
+  `invalid_request`. The token's `aud` claim is the server's origin (see
   [`iss` and `aud`](#iss-issuer-and-aud-audience)).
 
 ## See-also: where these concepts may overlap

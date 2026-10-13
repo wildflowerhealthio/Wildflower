@@ -418,7 +418,7 @@ changing how servers run or what the host notifies about them.
   `renewalDue` and from a CA browsers trust,
   `CertificateAuthority::is_browser_trusted`), mints a launch through the `ServerLaunchMinter` in the
   run's detail on a blocking thread, and opens `launch_url`: the launcher
-  URL with `iss=https://<domain>/fhir-r4` and `launch` in its query, any
+  URL with `iss=https://<domain>` and `launch` in its query, any
   earlier `iss` or `launch` dropped and its other parameters kept as
   written. The launch binds no OAuth client, so
   any app can be a launcher. The launcher opens in the in-app browser

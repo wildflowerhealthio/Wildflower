@@ -49,7 +49,7 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   with `gatekeeper-core/smart-client`'s `searchAfterArrivingLaunch`, over
   `arrivingSmartLaunchFrom`, the reader the SMART apps share: it takes both
   out of the URL and points `?server=` at the server `iss` names
-  (`serverUrlNamedBy`), over any `?server=` already there. The landing then
+  (`normalizeServerUrl`), over any `?server=` already there. The landing then
   signs in to that server on arrival, as it does for any `?server=`, through
   `ConnectMenu`'s `autoConnect`, so the insecure-target refusal and the
   one-sign-in-at-a-time guard apply. Boot holds the launch once per page load
@@ -67,8 +67,8 @@ two entries, each passing its platform's wiring to `app-root.tsx`'s
   as a launch. Tests: `web-entry.test.ts`,
   `sign-in.test.ts`, `routes/index.test.tsx`.
 - **A plain SMART server gets only Home.** `main-web` can sign in to a SMART
-  on FHIR server that is not a Wildflower server (discovery found its
-  configuration at the URL itself, not under `/fhir-r4`). `sign-in.ts`'s
+  on FHIR server that is not a Wildflower server (its SMART configuration
+  does not list the `wildflower-server` capability). `sign-in.ts`'s
   `serverKindForSession` turns the redeemed session into
   `session/server-kind.ts`'s `ServerKind.PlainSmart`, carrying the FHIR base
   and the token response's `patient`; `main-tauri` and every other `main-web`

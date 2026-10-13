@@ -26,7 +26,7 @@ import { PUBLISHED_SNAPSHOT_ADDRESS, SYNTHETIC_DATA_SCOPE } from './config.ts'
  *   update.
  */
 
-const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
+const SERVER_URL = 'http://127.0.0.1:8080'
 const ACCESS_TOKEN = 'tok-abc'
 
 interface RecordedWrite {

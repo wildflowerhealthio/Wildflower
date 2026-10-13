@@ -49,12 +49,12 @@ describe('AppBodySchema', () => {
 })
 
 describe('AppUrlSchema', () => {
-  it.each([
-    'https://example.com',
-    'https://example.com/launch?launch={launch}&iss={origin}/fhir-r4',
-  ])('accepts %s', (url) => {
-    expectRightToEqual(Schema.decodeUnknownEither(AppUrlSchema)(url), url)
-  })
+  it.each(['https://example.com', 'https://example.com/launch?launch={launch}&iss={origin}'])(
+    'accepts %s',
+    (url) => {
+      expectRightToEqual(Schema.decodeUnknownEither(AppUrlSchema)(url), url)
+    }
+  )
 
   it.each([
     '',

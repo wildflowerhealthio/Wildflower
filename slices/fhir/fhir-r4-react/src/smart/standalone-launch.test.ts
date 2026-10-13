@@ -3,14 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   insecureTargetReason as sharedInsecureTargetReason,
   normalizeServerUrl as sharedNormalizeServerUrl,
-  serverUrlNamedBy as sharedServerUrlNamedBy,
 } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import { Match } from 'effect'
 import {
   detectSmartSupport,
   insecureTargetReason,
   normalizeServerUrl,
-  serverUrlNamedBy,
   startStandaloneLaunch,
 } from './standalone-launch.ts'
 
@@ -168,12 +166,6 @@ describe('startStandaloneLaunch', () => {
 describe('normalizeServerUrl', () => {
   it('is the one implementation gatekeeper-core owns, not a local copy', () => {
     expect(normalizeServerUrl).toBe(sharedNormalizeServerUrl)
-  })
-})
-
-describe('serverUrlNamedBy', () => {
-  it('is the one implementation gatekeeper-core owns, not a local copy', () => {
-    expect(serverUrlNamedBy).toBe(sharedServerUrlNamedBy)
   })
 })
 

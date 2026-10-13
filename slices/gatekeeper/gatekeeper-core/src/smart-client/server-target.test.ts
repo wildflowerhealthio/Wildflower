@@ -7,7 +7,6 @@ import {
   searchAfterArrivingLaunch,
   SERVER_QUERY_PARAM,
   searchWithServerUrl,
-  serverUrlNamedBy,
   serverUrlFromSearch,
 } from './server-target.ts'
 
@@ -166,59 +165,12 @@ describe('searchWithServerUrl', () => {
   })
 })
 
-describe('serverUrlNamedBy', () => {
-  it('names a Wildflower server by its API base, less the /fhir-r4 mount', () => {
-    expect(serverUrlNamedBy('https://ruth.wildflowerhealth.io/fhir-r4')).toBe(
-      'https://ruth.wildflowerhealth.io'
-    )
-    expect(serverUrlNamedBy('https://example.org/wildflower/fhir-r4/')).toBe(
-      'https://example.org/wildflower'
-    )
-  })
-
-  it('takes any other FHIR base as it is', () => {
-    expect(serverUrlNamedBy('https://launch.smarthealthit.org/v/r4/fhir')).toBe(
-      'https://launch.smarthealthit.org/v/r4/fhir'
-    )
-    expect(serverUrlNamedBy('https://example.org/fhir-r4x')).toBe('https://example.org/fhir-r4x')
-  })
-
-  it('reads the mount off the canonical form: no query, fragment or stray slashes', () => {
-    expect(serverUrlNamedBy('https://ruth.wildflowerhealth.io/fhir-r4/?a=1#top')).toBe(
-      'https://ruth.wildflowerhealth.io'
-    )
-    expect(serverUrlNamedBy('https://example.org/wildflower//fhir-r4')).toBe(
-      'https://example.org/wildflower'
-    )
-    expect(serverUrlNamedBy('http://127.0.0.1:8080/fhir-r4')).toBe('http://127.0.0.1:8080')
-  })
-
-  it('names nothing for a URL a page would not send requests to', () => {
-    expect(serverUrlNamedBy('javascript:alert(1)')).toBeUndefined()
-  })
-
-  it('property: is the canonical form of the URL, with any /fhir-r4 mount gone', () => {
-    fc.assert(
-      fc.property(httpUrl, fc.boolean(), (serverUrl, mounted) => {
-        // Arrange
-        const canonical = normalizeServerUrl(serverUrl)
-        fc.pre(canonical !== undefined && !canonical.endsWith('/fhir-r4'))
-        const iss = mounted ? `${canonical}/fhir-r4` : serverUrl
-
-        // Act / Assert
-        expect(serverUrlNamedBy(iss)).toBe(canonical)
-      }),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
-  })
-})
-
 describe('searchAfterArrivingLaunch', () => {
   it('points the page at the server a launch names, over ?server=, and takes the launch out', () => {
     // Arrange — the base opening a server's launcher, on a link that also
     // carried another server
     const search = `?server=${encodeURIComponent('https://other.example')}&iss=${encodeURIComponent(
-      'https://ruth.wildflowerhealth.io/fhir-r4'
+      'https://ruth.wildflowerhealth.io'
     )}&launch=nonce-1&tab=logs`
 
     // Act
@@ -234,9 +186,7 @@ describe('searchAfterArrivingLaunch', () => {
   it('points the page at the server a standalone launch names', () => {
     // Act / Assert — `iss` alone
     expect(
-      searchAfterArrivingLaunch(
-        `?iss=${encodeURIComponent('https://ruth.wildflowerhealth.io/fhir-r4/')}`
-      )
+      searchAfterArrivingLaunch(`?iss=${encodeURIComponent('https://ruth.wildflowerhealth.io/')}`)
     ).toBe(`?server=${encodeURIComponent('https://ruth.wildflowerhealth.io')}`)
   })
 

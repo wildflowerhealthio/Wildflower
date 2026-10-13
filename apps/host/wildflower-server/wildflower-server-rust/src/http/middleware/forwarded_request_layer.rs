@@ -142,13 +142,13 @@ mod tests {
     }
 
     /// A router wrapped in the layer, whose routes answer the way the gated
-    /// slices do: `/fhir-r4/Patient/{id}` a `200` to the `lifting` client,
+    /// slices do: `/Patient/{id}` a `200` to the `lifting` client,
     /// `/access/grants` a scope `403` to it, `/refused/{refusal}` each bearer
     /// gate `401`, and `/anonymous` an ungated `200`.
     fn reporting_router(forwarded_request_senders: ForwardedRequestSenders) -> Router {
         Router::new()
             .route(
-                "/fhir-r4/Patient/{id}",
+                "/Patient/{id}",
                 get(|| async { stamped(StatusCode::OK, Some(lifting()), None) }),
             )
             .route(
@@ -252,7 +252,7 @@ mod tests {
     #[tokio::test]
     async fn a_forwarded_request_reports_its_record() {
         let before = SystemTime::now();
-        let forwarded_request = reported(forwarded_get("/fhir-r4/Patient/123?_format=json")).await;
+        let forwarded_request = reported(forwarded_get("/Patient/123?_format=json")).await;
 
         assert!(forwarded_request.received_at >= before);
         assert!(forwarded_request.received_at <= SystemTime::now());
@@ -262,7 +262,7 @@ mod tests {
                 client_address: Some("192.0.2.1".to_owned()),
                 served_host: Some("demo.example.com".to_owned()),
                 method: "GET".to_owned(),
-                reduced_path: "/fhir-r4/Patient".to_owned(),
+                reduced_path: "/Patient".to_owned(),
                 status: 200,
                 response_bytes: Some(4),
                 caller: Some(lifting()),
@@ -323,7 +323,7 @@ mod tests {
     #[tokio::test]
     async fn a_loopback_request_is_not_reported() {
         let (senders, mut host_rx, mut request_log_rx) = senders(4);
-        let request = Request::get("/fhir-r4/Patient/123")
+        let request = Request::get("/Patient/123")
             .body(Body::empty())
             .expect("request");
         // Held, so the senders outlive the request and an empty channel reads

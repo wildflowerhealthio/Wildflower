@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 import {
   insecureTargetReason,
   normalizeServerUrl,
-  serverUrlNamedBy,
   startStandaloneLaunch,
   withLocalNetworkAccessHint,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -12,7 +11,6 @@ import {
   DEFAULT_SERVER_PRESET_GROUPS,
   hostedServerUrlFor,
   serverPresetGroupsFor,
-  wildflowerServerUrlFor,
   WILDFLOWER_DOMAIN,
   type ConnectTarget,
   type ServerPresetGroup,
@@ -58,11 +56,11 @@ interface FhirR4ConnectMenuProps {
 interface WildflowerConnectMenuProps {
   readonly target: 'wildflower'
   /**
-   * Sign in to the server at `url`, in `normalizeServerUrl`'s canonical form:
-   * the server's origin for the local and hosted picks, whatever the reader
-   * typed for the free entry (less a trailing `/fhir-r4`, so it is an API
-   * base), and the FHIR base for the demo server. The sign-in finds which by
-   * discovery: `{url}/fhir-r4` first, the URL itself on a 404.
+   * Sign in to the server at `url`, a FHIR base in `normalizeServerUrl`'s
+   * canonical form: the server's origin for the local and hosted picks (a
+   * Wildflower server serves FHIR at its root), whatever the reader typed for
+   * the free entry, and the FHIR base for the demo server. The sign-in's
+   * discovery reads which kind of server it is.
    * Resolves to a problem to show in the menu's error banner, or `undefined`
    * once the page is leaving for the authorization server; a rejection is
    * shown as its message.
@@ -304,7 +302,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   const onHostedSubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const hostedUrl = hostedServerUrlFor(props.target, hostedSubdomain)
+    const hostedUrl = hostedServerUrlFor(hostedSubdomain)
     if (hostedUrl === undefined) {
       setHostedProblem(
         "Enter your server's subdomain: letters, digits and hyphens, with dots between parts, e.g. my-server."
@@ -316,12 +314,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   const onFreeEntrySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    // The launcher's `?server=` is a Wildflower server's API base, never its
-    // FHIR base, so an entry of the latter is taken back to the former.
-    const serverUrl =
-      props.target === 'wildflower'
-        ? serverUrlNamedBy(freeEntryUrl)
-        : normalizeServerUrl(freeEntryUrl)
+    const serverUrl = normalizeServerUrl(freeEntryUrl)
     if (serverUrl === undefined) {
       setFreeEntryProblem(copy.invalidFreeEntry)
       return
@@ -398,9 +391,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
               className={styles['hosted__input']}
             />
           </div>
-          <span className={styles['hosted__domain']}>
-            {wildflowerServerUrlFor(props.target, WILDFLOWER_DOMAIN)}
-          </span>
+          <span className={styles['hosted__domain']}>{WILDFLOWER_DOMAIN}</span>
         </div>
         <ErrorBanner error={hostedProblem} />
         <div className={styles['actions']}>

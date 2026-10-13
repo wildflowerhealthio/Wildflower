@@ -27,8 +27,8 @@ pub struct FhirR4Config {
     pub jwks_url: Option<String>,
     /// The server's public origin, e.g. `https://ruth.relay.wildflowerhealth.io`.
     /// HFS's `base_url` — the prefix of every URL it emits (search Bundle links,
-    /// `entry.fullUrl`s, a create's `Location`) — is `{public_origin}/fhir-r4`,
-    /// fixed for the life of the router. Its bare origin is also the `iss` and
+    /// `entry.fullUrl`s, a create's `Location`) — is the bare `public_origin`,
+    /// where FHIR is mounted, fixed for the life of the router. Its bare origin is also the `iss` and
     /// `aud` HFS requires of every token, and the `issuer` the SMART discovery
     /// document reports. See `docs/Origins/Explanation.md`.
     pub public_origin: url::Url,

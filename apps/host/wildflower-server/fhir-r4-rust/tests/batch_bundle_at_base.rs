@@ -1,16 +1,9 @@
 //! The FHIR batch/transaction endpoint lives at the server *base* — a client
 //! submits one `POST /` Bundle of PUT entries (this is what `fhir-r4`'s
-//! `persistBatchBundle` and `classifyAgainstServer` clients do). Mounted under
-//! Wildflower that base is `/fhir-r4/` (with the trailing slash a FHIR base URL
-//! conventionally carries).
-//!
-//! This exercises the seam the per-resource PUT/GET tests never touch: the bare
-//! nest root. `nest("/fhir-r4", …)` only registers an exact `/fhir-r4` matcher
-//! and a `/fhir-r4/{*rest}` catch-all, and matchit's catch-all does not match
-//! zero trailing segments — so `POST /fhir-r4/` matched neither and escaped the
-//! nest entirely (in the full app it fell through to the SPA fallback; here, with
-//! no such fallback, it surfaced as a 404). `nest_service` claims the whole
-//! subtree instead, so the base reaches HFS. See `wildflowerhealthio_fhir_r4::setup_fhir_r4`.
+//! `persistBatchBundle` and `classifyAgainstServer` clients do). Wildflower
+//! serves FHIR at the root, so that base is the bare `/`, a path the
+//! per-resource PUT/GET tests never touch: it must reach HFS through
+//! `setup_fhir_r4`'s overrides rather than match none of them.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -118,14 +111,13 @@ fn one_put_batch() -> Value {
     })
 }
 
-/// The regression this file exists for: a batch Bundle POSTed to the base *with*
-/// the trailing slash a FHIR base URL carries must reach HFS and come back as a
-/// `batch-response` Bundle — not escape the `/fhir-r4` nest.
+/// A batch Bundle POSTed to the base must reach HFS and come back as a
+/// `batch-response` Bundle.
 #[tokio::test]
-async fn batch_bundle_posts_to_base_with_trailing_slash() {
+async fn batch_bundle_posts_to_base() {
     let (router, _db) = build_router();
 
-    let (status, body) = send(&router, "POST", "/fhir-r4/", Some(one_put_batch())).await;
+    let (status, body) = send(&router, "POST", "/", Some(one_put_batch())).await;
 
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert_eq!(body["resourceType"], "Bundle");
@@ -140,21 +132,8 @@ async fn batch_bundle_posts_to_base_with_trailing_slash() {
     );
 
     // The write landed: the resource reads back from HFS.
-    let (get_status, got) = send(&router, "GET", "/fhir-r4/Patient/p1", None).await;
+    let (get_status, got) = send(&router, "GET", "/Patient/p1", None).await;
     assert_eq!(get_status, StatusCode::OK, "body: {got}");
     assert_eq!(got["resourceType"], "Patient");
     assert_eq!(got["id"], "p1");
-}
-
-/// The base without the trailing slash must reach HFS too, so the fix isn't
-/// sensitive to which spelling a client uses for the base.
-#[tokio::test]
-async fn batch_bundle_posts_to_base_without_trailing_slash() {
-    let (router, _db) = build_router();
-
-    let (status, body) = send(&router, "POST", "/fhir-r4", Some(one_put_batch())).await;
-
-    assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert_eq!(body["resourceType"], "Bundle");
-    assert_eq!(body["type"], "batch-response");
 }

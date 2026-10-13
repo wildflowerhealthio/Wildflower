@@ -86,7 +86,7 @@ pub fn ensure_bearer_header(headers: &mut HeaderMap, bearer: &HeaderValue) {
 
 /// Whether `path` is in the exempt set. Exact match after trimming trailing
 /// slashes, mirroring HFS's own `is_exempt_path` — exact (not prefix) so gating
-/// stays precise: `/fhir-r4/metadata-x` is gated, `/fhir-r4/metadata/` is exempt.
+/// stays precise: `/metadata-x` is gated, `/metadata/` is exempt.
 fn is_exempt(path: &str, exempt: &[String]) -> bool {
     let path = path.trim_end_matches('/');
     exempt.iter().any(|p| p == path)
@@ -99,38 +99,35 @@ mod tests {
 
     fn exempt() -> Vec<String> {
         vec![
-            "/fhir-r4/metadata".to_string(),
-            "/fhir-r4/.well-known/smart-configuration".to_string(),
+            "/metadata".to_string(),
+            "/.well-known/smart-configuration".to_string(),
         ]
     }
 
     #[test]
     fn exact_path_is_exempt() {
-        assert!(is_exempt("/fhir-r4/metadata", &exempt()));
-        assert!(is_exempt(
-            "/fhir-r4/.well-known/smart-configuration",
-            &exempt()
-        ));
+        assert!(is_exempt("/metadata", &exempt()));
+        assert!(is_exempt("/.well-known/smart-configuration", &exempt()));
     }
 
     #[test]
     fn trailing_slashes_are_trimmed_before_matching() {
-        assert!(is_exempt("/fhir-r4/metadata/", &exempt()));
-        assert!(is_exempt("/fhir-r4/metadata///", &exempt()));
+        assert!(is_exempt("/metadata/", &exempt()));
+        assert!(is_exempt("/metadata///", &exempt()));
     }
 
     #[test]
     fn near_misses_stay_gated() {
         // Exact, not prefix/substring: a sibling path that merely starts the same
         // is NOT exempt, nor is a deeper path under an exempt one.
-        assert!(!is_exempt("/fhir-r4/metadata-x", &exempt()));
-        assert!(!is_exempt("/fhir-r4/metadata/extra", &exempt()));
-        assert!(!is_exempt("/fhir-r4/Patient", &exempt()));
+        assert!(!is_exempt("/metadata-x", &exempt()));
+        assert!(!is_exempt("/metadata/extra", &exempt()));
+        assert!(!is_exempt("/Patient", &exempt()));
     }
 
     #[test]
     fn empty_exempt_list_gates_everything() {
-        assert!(!is_exempt("/fhir-r4/metadata", &[]));
+        assert!(!is_exempt("/metadata", &[]));
     }
 
     fn bearer(headers: &HeaderMap) -> Option<&str> {

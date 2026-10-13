@@ -37,8 +37,7 @@ import { UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
  * Covers the shared per-resource batch write. Two concerns:
  *
  * - **Routing**: each resource type reaches *its* client group's `Update`
- *   endpoint (a `PUT /<Type>/<id>`, base-relative — the client no longer bakes
- *   in the `/fhir-r4` mount prefix), keyed on the resource's id. Driven
+ *   endpoint (a `PUT /<Type>/<id>`, base-relative), keyed on the resource's id. Driven
  *   over the real `FhirR4ResourcesHttpApiClient` layer against a recording stub
  *   `HttpClient` — cast-free. (The `switch` itself lives in `upsertResource`;
  *   this pins that a batch reaches it correctly.)

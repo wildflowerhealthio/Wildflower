@@ -114,7 +114,7 @@ Three workable options:
 
 1. **Drop `topLevel: true`** on all groups under a multi-group Api. The client will then expose `client.Patient.Collection()` etc., which is what you usually want anyway.
 2. **Address each resource with its own `HttpApiClient`** against a single-group `HttpApi`. Use this when you genuinely want flat client surfaces and the resources live behind separate `HttpApi`s.
-3. **Fall back to raw `fetch('/fhir-r4/Patient')`** for the affected resources. Lowest-friction escape hatch when neither of the above fits.
+3. **Fall back to raw `fetch('/Patient')`** for the affected resources. Lowest-friction escape hatch when neither of the above fits.
 
 `{ topLevel: true }` is designed for single-group APIs. If you find yourself reaching for it on a multi-group composition, that's a smell — the `HttpApi` should probably be split, or `topLevel` should come off.
 

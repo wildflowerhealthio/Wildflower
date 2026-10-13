@@ -46,10 +46,7 @@ describe('runAuthed telemetry', () => {
       },
       context: (execute) => execute(),
     })
-    const { runAuthed } = buildRunAuthed(
-      () => capturingHttpClientLayer([]),
-      Layer.setTracer(entryTracer)
-    )
+    const { runAuthed } = buildRunAuthed(capturingHttpClientLayer([]), Layer.setTracer(entryTracer))
 
     // Act
     const tracer = await runAuthed(Effect.tracer)
@@ -72,7 +69,7 @@ describe('runAuthed telemetry', () => {
       context: (execute, fiber) => defaultTracer.context(execute, fiber),
     })
     const { runAuthed } = buildRunAuthed(
-      () => capturingHttpClientLayer([]),
+      capturingHttpClientLayer([]),
       Layer.setTracer(recordingTracer)
     )
 
@@ -87,7 +84,7 @@ describe('runAuthed telemetry', () => {
 describe('runAuthed boot-race integration', () => {
   it('re-sends a 401 and resolves once the request clears', async () => {
     // Arrange
-    const { runAuthed } = buildRunAuthed(() => flakyUnauthorizedThenOkLayer(), Layer.empty)
+    const { runAuthed } = buildRunAuthed(flakyUnauthorizedThenOkLayer(), Layer.empty)
 
     // Act — the first send 401s; the runner re-sends and gets the 204.
     const status = await runAuthed(fetchStatus)
@@ -114,7 +111,7 @@ describe('runAuthed boot-race integration', () => {
             )
       })
     )
-    const { runAuthed } = buildRunAuthed(() => layer, Layer.empty)
+    const { runAuthed } = buildRunAuthed(layer, Layer.empty)
 
     // Act — boot, then a genuine post-boot 401.
     expect(await runAuthed(fetchStatus)).toBe(204)
@@ -149,7 +146,7 @@ const makeRunner = (
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
-} => buildRunAuthed(() => capturingHttpClientLayer(captures), Layer.empty)
+} => buildRunAuthed(capturingHttpClientLayer(captures), Layer.empty)
 
 // Requires `HttpClient` and issues one request so the stub can record
 // the (absent) Authorization header.

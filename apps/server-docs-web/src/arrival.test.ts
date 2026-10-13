@@ -24,9 +24,9 @@ describe('searchSettledFrom', () => {
 
   it('should turn a SMART launch into the server its iss names', () => {
     // Act / Assert
-    expect(
-      searchSettledFrom('?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4&launch=xyz')
-    ).toBe('?server=https%3A%2F%2Fruth.wildflowerhealth.io')
+    expect(searchSettledFrom('?iss=https%3A%2F%2Fruth.wildflowerhealth.io&launch=xyz')).toBe(
+      '?server=https%3A%2F%2Fruth.wildflowerhealth.io'
+    )
   })
 
   it('should leave an ordinary load as it arrived', () => {

@@ -10,7 +10,7 @@ import type { SmartClient } from './smart-client.ts'
  * `buildSmartRouterContext` writes over.
  */
 
-const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
+const SERVER_URL = 'http://127.0.0.1:8080'
 const ACCESS_TOKEN = 'tok-lift'
 
 /** The codings of a concept the fake server searches on. */

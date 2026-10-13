@@ -6,6 +6,7 @@ import {
   type Session,
   type SignInPage,
   PlainSmartServer,
+  WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
 } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
@@ -237,7 +238,7 @@ describe('finishSignIn', () => {
       accessToken: 'tok_hosted',
       scope: 'system/*.cruds',
       serverUrl: SERVER_URL,
-      smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER_URL}/fhir-r4` }),
+      smartServer: WildflowerServer.make({ fhirBaseUrl: SERVER_URL }),
       expiresInSeconds: 3600,
       patient: undefined,
       returnTo: '/settings/requests',
@@ -368,7 +369,7 @@ describe('serverKindForSession', () => {
     // Act
     const serverKind = serverKindForSession({
       ...sessionWith(3600),
-      smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER_URL}/fhir-r4` }),
+      smartServer: WildflowerServer.make({ fhirBaseUrl: SERVER_URL }),
     })
 
     // Assert
@@ -522,7 +523,7 @@ const sessionWith = (expiresInSeconds: number | undefined): Session => ({
   accessToken: 'tok_hosted',
   scope: 'system/*.cruds',
   serverUrl: SERVER_URL,
-  smartServer: WildflowerServer.make({ fhirBaseUrl: `${SERVER_URL}/fhir-r4` }),
+  smartServer: WildflowerServer.make({ fhirBaseUrl: SERVER_URL }),
   expiresInSeconds,
   patient: undefined,
   returnTo: undefined,
@@ -556,7 +557,7 @@ const requestUrl = (input: RequestInfo | URL): string => {
   return input instanceof URL ? input.href : input.url
 }
 
-/** Answers SMART discovery; anything else is out of scope for the caller. */
+/** Answers SMART discovery as a Wildflower server; anything else is out of scope for the caller. */
 const discoveryOnly = (): typeof globalThis.fetch => (input) => {
   const url = requestUrl(input)
   if (url.endsWith('/.well-known/smart-configuration')) {
@@ -564,6 +565,7 @@ const discoveryOnly = (): typeof globalThis.fetch => (input) => {
       jsonResponse({
         authorization_endpoint: `${SERVER_URL}/oauth/authorize`,
         token_endpoint: `${SERVER_URL}/oauth/token`,
+        capabilities: [WILDFLOWER_SERVER_CAPABILITY],
       })
     )
   }

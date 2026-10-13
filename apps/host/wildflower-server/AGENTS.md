@@ -20,7 +20,7 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
 - **`token-revocation-rust`** — the per-token denylist and per-subject epoch
   both enforcement points read: `gatekeeper-rust`'s gate and
   `fhir-r4-rust`'s `JtiCache`. Neither of those depends on the other.
-- **`fhir-r4-rust`** — the embedded HFS FHIR R4 server mounted at `/fhir-r4`;
+- **`fhir-r4-rust`** — the embedded HFS FHIR R4 server, served at the root on FHIR paths;
   its deltas from stock HFS are in its
   [Capability Statement](./fhir-r4-rust/docs/Capability%20Statement.md). The
   schemas and client every app reads it through are

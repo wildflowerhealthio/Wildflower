@@ -25,6 +25,6 @@ pub enum OAuthErrorKind {
     InvalidCodeChallenge,
     /// `launch` names no unused, unexpired launch minted for this client.
     InvalidLaunch,
-    /// `aud` names neither this server's origin nor its FHIR base.
+    /// `aud` does not name this server's origin, its FHIR base.
     InvalidAudience,
 }

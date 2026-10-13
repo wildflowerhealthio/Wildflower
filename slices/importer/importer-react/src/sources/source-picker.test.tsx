@@ -55,7 +55,7 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
   return { ...actual, useRunAuthed: (): FhirR4React.RunAuthed => currentRunAuthed }
 })
 
-const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
+const SERVER_URL = 'http://127.0.0.1:8080'
 const ACCESS_TOKEN = 'tok-abc'
 
 /** A minimal but complete HAR 1.2 source file, shared by every source in a test. */

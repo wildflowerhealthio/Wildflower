@@ -14,7 +14,10 @@ only it composes. Rust-only, no `-core`.
   `WildflowerServer::serve(shutdown)` serves both listeners until `shutdown` is
   cancelled. It derives the server's public origin from its domain once
   and hands it to fhir-r4-rust (HFS's `base_url`), apps (every launch's origin) and the
-  tunnel front. The unmatched-route `404` is here too.
+  tunnel front. The root fallback is here too (`http/root_fallback.rs`): a request
+  no slice route claims goes to the FHIR API when `fhir-r4-rust`'s
+  `is_fhir_r4_route` says it is FHIR's, and gets the unmatched-route `404`
+  otherwise.
   - **Two listeners, two routers.** Each listener serves its own router,
     built from the one inner router:
     - The **loopback listener** (the bound loopback port) serves the local

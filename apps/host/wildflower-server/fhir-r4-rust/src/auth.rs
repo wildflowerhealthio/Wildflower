@@ -216,8 +216,7 @@ mod tests {
 
     /// HFS accepts a token whose `iss` and `aud` are this server's origin, and
     /// refuses one another server minted — even signed with a key this server
-    /// trusts — one naming another server as only its issuer or audience, and
-    /// one whose `aud` is the FHIR base rather than the origin.
+    /// trusts — and one naming another server as only its issuer or audience.
     #[tokio::test]
     async fn hfs_accepts_only_tokens_naming_this_server_as_iss_and_aud() {
         let key = SigningKey::generate().expect("generate a signing key");
@@ -229,12 +228,10 @@ mod tests {
             .expect("a token for this server is accepted");
         assert_eq!(principal.issuer, SERVER_ORIGIN);
 
-        let fhir_base = format!("{SERVER_ORIGIN}/fhir-r4");
         for (issuer, audience) in [
             (OTHER_ORIGIN, OTHER_ORIGIN),
             (OTHER_ORIGIN, SERVER_ORIGIN),
             (SERVER_ORIGIN, OTHER_ORIGIN),
-            (SERVER_ORIGIN, fhir_base.as_str()),
         ] {
             assert!(
                 matches!(

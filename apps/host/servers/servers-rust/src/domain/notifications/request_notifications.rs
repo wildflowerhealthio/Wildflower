@@ -218,7 +218,7 @@ mod tests {
             client_address: Some("192.0.2.1".to_owned()),
             served_host: Some("demo.example.com".to_owned()),
             method: "GET".to_owned(),
-            reduced_path: "/fhir-r4/Patient".to_owned(),
+            reduced_path: "/Patient".to_owned(),
             status: 200,
             response_bytes: None,
             duration: Duration::ZERO,

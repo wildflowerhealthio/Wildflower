@@ -2,9 +2,9 @@ import { normalizeServerUrl } from '@wildflowerhealthio/fhir-r4-react/smart'
 
 /**
  * What a connect menu connects: a SMART app launching against a FHIR R4 base
- * (`fhir-r4`), or the Wildflower launcher signing in to a Wildflower server's
- * origin (`wildflower`). The same server is addressed differently by each, so
- * every URL on the menu is built for one of them.
+ * (`fhir-r4`), or the Wildflower launcher signing in to a server
+ * (`wildflower`). Both address a Wildflower server by its origin, its FHIR
+ * base; they differ in what a pick does there.
  */
 type ConnectTarget = 'fhir-r4' | 'wildflower'
 
@@ -35,13 +35,6 @@ interface ServerPresetGroup {
 }
 
 /**
- * The URL a `target` connects to for the Wildflower server at `origin`: its
- * FHIR R4 base for a SMART app, the origin itself for the launcher.
- */
-const wildflowerServerUrlFor = (target: ConnectTarget, origin: string): string =>
-  target === 'fhir-r4' ? `${origin}/fhir-r4` : origin
-
-/**
  * One or more dot-separated DNS labels: letters, digits and hyphens, no label
  * starting or ending with a hyphen — so `ruth` and `medication.ruth` pass, and
  * `-ruth`, `ruth.` and `ru..th` do not.
@@ -49,8 +42,8 @@ const wildflowerServerUrlFor = (target: ConnectTarget, origin: string): string =
 const HOSTED_SUBDOMAIN = /^[a-z\d](?:[a-z\d-]*[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]*[a-z\d])?)*$/i
 
 /**
- * The URL a `target` connects to for the Wildflower-hosted server at
- * `subdomain` of {@link WILDFLOWER_DOMAIN}, in `normalizeServerUrl`'s canonical
+ * The origin of the Wildflower-hosted server at `subdomain` of
+ * {@link WILDFLOWER_DOMAIN}, its FHIR base, in `normalizeServerUrl`'s canonical
  * form (the host lower-cased), or `undefined` when the trimmed `subdomain` is
  * not one.
  *
@@ -59,12 +52,10 @@ const HOSTED_SUBDOMAIN = /^[a-z\d](?:[a-z\d-]*[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]*[
  * would otherwise read a `/`, `@` or `:` in it as the start of a path,
  * userinfo or port, and connect somewhere other than a Wildflower subdomain.
  */
-const hostedServerUrlFor = (target: ConnectTarget, subdomain: string): string | undefined => {
+const hostedServerUrlFor = (subdomain: string): string | undefined => {
   const trimmedSubdomain = subdomain.trim()
   if (!HOSTED_SUBDOMAIN.test(trimmedSubdomain)) return undefined
-  return normalizeServerUrl(
-    wildflowerServerUrlFor(target, `https://${trimmedSubdomain}${WILDFLOWER_DOMAIN}`)
-  )
+  return normalizeServerUrl(`https://${trimmedSubdomain}${WILDFLOWER_DOMAIN}`)
 }
 
 /**
@@ -96,8 +87,8 @@ const SMART_HEALTH_IT_WILDFLOWER_NOTICE =
  * `.well-known/smart-configuration`, so a SMART app takes the full OAuth
  * path), then the public SmartHealthIT R4 demo server.
  *
- * @param target - What the menu connects, which picks each Wildflower URL's
- *   form and whether the demo server carries its notice.
+ * @param target - What the menu connects, which picks the local server's
+ *   button label and whether the demo server carries its notice.
  * @param localOrigin - The local Wildflower server's origin, e.g.
  *   `http://127.0.0.1:8080`, with no path.
  */
@@ -118,7 +109,7 @@ const serverPresetGroupsFor = (
         {
           // The launcher signs in rather than launching an app.
           label: target === 'fhir-r4' ? 'Launch' : 'Connect',
-          url: wildflowerServerUrlFor(target, localOrigin),
+          url: localOrigin,
         },
       ],
     },
@@ -148,7 +139,6 @@ export {
   DEFAULT_SERVER_PRESETS,
   hostedServerUrlFor,
   serverPresetGroupsFor,
-  wildflowerServerUrlFor,
   WILDFLOWER_DOMAIN,
 }
 export type { ConnectTarget, ServerPreset, ServerPresetGroup }

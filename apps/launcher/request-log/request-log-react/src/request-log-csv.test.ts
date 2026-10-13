@@ -11,7 +11,7 @@ const request = (overrides: Partial<LoggedRequest>): LoggedRequest => ({
   address: Option.some('198.51.100.24'),
   servedHost: Option.some('dev1.example.com'),
   method: 'GET',
-  path: '/fhir-r4/Patient',
+  path: '/Patient',
   status: 200,
   responseBytes: Option.none(),
   durationMs: 12,
@@ -27,7 +27,7 @@ describe('requestLogCsv', () => {
 
     expect(csv).toBe(
       'received_at,client_id,client_name,access,address,served_host,method,path,status,refusal,response_bytes,duration_ms\r\n' +
-        '2026-07-01T12:00:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,GET,/fhir-r4/Patient,200,,,12\r\n'
+        '2026-07-01T12:00:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,GET,/Patient,200,,,12\r\n'
     )
   })
 
@@ -54,7 +54,7 @@ describe('requestLogCsv', () => {
     )
 
     expect(bodyOf(csv)[0]).toBe(
-      `2026-07-01T12:00:00.000Z,,Open,public,"'=HYPERLINK(""x"")",'@x,'+SUM,/fhir-r4/Patient,200,,,12`
+      `2026-07-01T12:00:00.000Z,,Open,public,"'=HYPERLINK(""x"")",'@x,'+SUM,/Patient,200,,,12`
     )
   })
 })

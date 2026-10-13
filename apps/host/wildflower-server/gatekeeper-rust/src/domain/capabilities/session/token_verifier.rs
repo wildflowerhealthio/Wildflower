@@ -177,9 +177,9 @@ mod tests {
         }
     }
 
-    /// `aud` must be the bare origin: the FHIR base under it is refused.
+    /// `aud` must be the bare origin: a path under it is refused.
     #[test]
-    fn rejects_the_fhir_base_as_audience() {
+    fn rejects_a_path_under_the_origin_as_audience() {
         let (store, key) = store_with_key();
         let verifier = verifier(store);
         assert!(matches!(

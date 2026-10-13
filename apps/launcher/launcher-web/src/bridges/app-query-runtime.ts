@@ -4,12 +4,12 @@ import type { Layer } from 'effect'
 
 import { buildQueryClient } from '../query-client.ts'
 import type { RunAuthed, RuntimeLayer } from '../router-context.ts'
-import { buildRunAuthed, type ApiTransport } from '../runtime-layer.ts'
+import { buildRunAuthed } from '../runtime-layer.ts'
 import { attachBearer } from './attach-bearer.ts'
 import { prependApiBaseUrl } from './prepend-api-base-url.ts'
 
 /**
- * The API server's transport, per mount path, over `transport`.
+ * The API server's transport over `transport`.
  *
  * @param transport - The underlying `HttpClient` layer (the real one is
  *   `FetchHttpClient.layer`; tests pass a stub).
@@ -20,28 +20,18 @@ import { prependApiBaseUrl } from './prepend-api-base-url.ts'
  *   carries `Authorization: Bearer <token>`.
  *
  * @remarks
- * The mount path is joined onto the origin into **one** prefix
- * (`{apiBaseUrl}{mountPath}`), not stacked as a second wrapper.
- * `HttpClient.mapRequest` runs the wrapped client's rewrite before the
- * wrapper's own, so a `/fhir-r4` wrapper around an origin-prefixing layer
- * would only ever see the already-absolute URL and skip it — which is what
- * sent the launcher's FHIR reads to `{origin}/Patient`.
- *
  * The bearer wrapper is the inner one for the same reason: it must see a
  * still-relative URL, or its absolute-URL guard drops the `Authorization`
  * header from every request (pinned in `attach-bearer.test.ts`).
  */
-const apiTransportAt =
-  (
-    transport: Layer.Layer<HttpClient.HttpClient>,
-    apiBaseUrl: string | undefined,
-    readBearer: (() => string | undefined) | undefined
-  ): ApiTransport =>
-  (mountPath) => {
-    const authenticated = readBearer === undefined ? transport : attachBearer(transport, readBearer)
-    const prefix = `${apiBaseUrl ?? ''}${mountPath}`
-    return prefix === '' ? authenticated : prependApiBaseUrl(authenticated, prefix)
-  }
+const apiTransport = (
+  transport: Layer.Layer<HttpClient.HttpClient>,
+  apiBaseUrl: string | undefined,
+  readBearer: (() => string | undefined) | undefined
+): Layer.Layer<HttpClient.HttpClient> => {
+  const authenticated = readBearer === undefined ? transport : attachBearer(transport, readBearer)
+  return apiBaseUrl === undefined ? authenticated : prependApiBaseUrl(authenticated, apiBaseUrl)
+}
 
 /**
  * Build the shared `QueryClient` + authed runner threaded into the
@@ -76,10 +66,10 @@ const buildAppQueryRuntime = (
 } => {
   const queryClient = buildQueryClient(onUnauthorized)
   const { runAuthed, runtimeLayer } = buildRunAuthed(
-    apiTransportAt(FetchHttpClient.layer, apiBaseUrl, readBearer),
+    apiTransport(FetchHttpClient.layer, apiBaseUrl, readBearer),
     effectTelemetryLayer
   )
   return { queryClient, runAuthed, runtimeLayer }
 }
 
-export { apiTransportAt, buildAppQueryRuntime }
+export { apiTransport, buildAppQueryRuntime }

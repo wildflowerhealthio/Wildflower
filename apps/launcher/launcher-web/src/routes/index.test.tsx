@@ -301,22 +301,22 @@ describe('Landing', () => {
     })
     fireEvent.click(hosted.getByRole('button', { name: 'Connect' }))
 
-    // Assert — an origin, so its sign-in discovers at its `/fhir-r4` base.
+    // Assert — an origin, its FHIR base, so its sign-in discovers there.
     await waitFor(() => {
       expect(signIn.started).toEqual(['https://ruth.wildflowerhealth.io'])
     })
     await waitFor(() => {
       expect(discovery.requested).toEqual([
-        'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration',
+        'https://ruth.wildflowerhealth.io/.well-known/smart-configuration',
       ])
     })
     expect(serverUrlFromSearch(window.location.search)).toBe('https://ruth.wildflowerhealth.io')
   })
 
   test('signs in to the demo server at its FHIR base, under its notice', async () => {
-    // Arrange — the SmartHealthIT demo is a plain SMART server: it has no
-    // `/fhir-r4` of its own, so its preset is its FHIR base.
-    const discovery = discoveringStart(onDemoServer)
+    // Arrange — the SmartHealthIT demo is a plain SMART server, so its preset
+    // is its FHIR base.
+    const discovery = discoveringStart()
     const signIn = recordingSignIn(discovery.start)
     await mountLanding('/', { signIn: signIn.stub })
     const demo = within(await screen.findByRole('region', { name: DEMO_GROUP_NAME }))
@@ -332,24 +332,17 @@ describe('Landing', () => {
     })
     const [demoFhirBase] = signIn.started
     expect(demoFhirBase).toMatch(/^https:\/\/launch\.smarthealthit\.org\/.*\/fhir$/)
-    // Nothing under the Wildflower location, so the URL itself is the base.
-    expect(discovery.requested).toEqual([
-      `${demoFhirBase}/fhir-r4/.well-known/smart-configuration`,
-      `${demoFhirBase}/.well-known/smart-configuration`,
-    ])
+    expect(discovery.requested).toEqual([`${demoFhirBase}/.well-known/smart-configuration`])
     expect(serverUrlFromSearch(window.location.search)).toBe(demoFhirBase)
   })
 
   test('signs in to a demo server named by ?server= at its FHIR base, on arrival and on a retry', async () => {
     // Arrange — the page a failed demo pick, or a reload of a demo session,
-    // leaves: `?server=` names the demo server's FHIR base. Nothing answers
-    // under `/fhir-r4` there, so discovery goes on to the base itself.
-    const discovery = discoveringStart(onDemoServer)
+    // leaves: `?server=` names the demo server's FHIR base, where discovery
+    // asks.
+    const discovery = discoveringStart()
     const signIn = recordingSignIn(discovery.start)
-    const demoDiscovery = [
-      `${DEMO_FHIR_BASE}/fhir-r4/.well-known/smart-configuration`,
-      `${DEMO_FHIR_BASE}/.well-known/smart-configuration`,
-    ]
+    const demoDiscovery = `${DEMO_FHIR_BASE}/.well-known/smart-configuration`
 
     // Act — the sign-in on arrival fails (the stub server is unreachable), and
     // the reader retries from the "Sign in to …" button.
@@ -362,7 +355,7 @@ describe('Landing', () => {
 
     // Assert
     await waitFor(() => {
-      expect(discovery.requested).toEqual([...demoDiscovery, ...demoDiscovery])
+      expect(discovery.requested).toEqual([demoDiscovery, demoDiscovery])
     })
   })
 
@@ -713,9 +706,6 @@ const LOCAL_GROUP_NAME = 'Local Wildflower Server'
 const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
 const DEMO_GROUP_NAME = 'Smart Health IT Demo Server'
 
-/** Whether `base` is on the SmartHealthIT demo server, a plain SMART server. */
-const onDemoServer = (base: string): boolean => base.startsWith('https://launch.smarthealthit.org/')
-
 /** A SmartHealthIT demo FHIR base, the shape the demo group's presets have. */
 const DEMO_FHIR_BASE = 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiJd/fhir'
 
@@ -738,13 +728,10 @@ const pendingStart = (): Promise<SignInStep<string>> => new Promise(() => {})
 /**
  * The real sign-in start, `startSignIn`, run against a published page whose
  * `fetch` records each URL asked for — so a test sees where discovery went.
- * Under a base `isPlainFhirBase` accepts, the Wildflower location answers 404,
- * as a plain SMART server's does; every other request fails as an unreachable
- * server's would, so the start fails there.
+ * Every request fails as an unreachable server's would, so the start fails
+ * there.
  */
-const discoveringStart = (
-  isPlainFhirBase: (base: string) => boolean = () => false
-): {
+const discoveringStart = (): {
   readonly start: (target: string) => Promise<SignInStep<string>>
   readonly requested: string[]
 } => {
@@ -754,11 +741,7 @@ const discoveringStart = (
     fetch: (input) => {
       const url = input instanceof Request ? input.url : String(input)
       requested.push(url)
-      const wildflowerLocation = '/fhir-r4/.well-known/smart-configuration'
-      return url.endsWith(wildflowerLocation) &&
-        isPlainFhirBase(url.slice(0, -wildflowerLocation.length))
-        ? Promise.resolve(new Response('not here', { status: 404 }))
-        : Promise.reject(new TypeError('Failed to fetch'))
+      return Promise.reject(new TypeError('Failed to fetch'))
     },
     crypto: globalThis.crypto,
     sessionStorage: {

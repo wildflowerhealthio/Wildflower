@@ -24,8 +24,7 @@ import { Effect, Layer } from 'effect'
  * Apply it **once** per transport, with the whole prefix: a second wrapper
  * over a layer that already prefixed the origin never fires, because
  * `HttpClient.mapRequest` runs the wrapped client's rewrite first, so the outer
- * wrapper only sees an absolute URL. `app-query-runtime.ts`'s `apiTransportAt`
- * joins a mount path (`/fhir-r4`) onto the origin for exactly that reason.
+ * wrapper only sees an absolute URL.
  */
 // URL is absolute when it leads with a scheme (`http:`, `https:`, `tauri:`, …).
 // Matches RFC 3986's `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` so the

@@ -62,7 +62,7 @@ fn build_router() -> (Router, TempDb) {
 async fn put_document_reference(router: &Router, id: &str, resource: Value) {
     let request = Request::builder()
         .method("PUT")
-        .uri(format!("/fhir-r4/DocumentReference/{id}"))
+        .uri(format!("/DocumentReference/{id}"))
         .header("accept", "application/fhir+json")
         .header("content-type", "application/fhir+json")
         .body(Body::from(

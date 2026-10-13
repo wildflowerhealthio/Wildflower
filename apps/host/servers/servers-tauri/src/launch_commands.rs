@@ -501,10 +501,7 @@ mod tests {
             .map(|(name, value)| (name.into_owned(), value.into_owned()))
             .collect();
         assert_eq!(query[0], ("theme".to_owned(), "dark".to_owned()));
-        assert_eq!(
-            query[1],
-            ("iss".to_owned(), format!("https://{DOMAIN}/fhir-r4"))
-        );
+        assert_eq!(query[1], ("iss".to_owned(), format!("https://{DOMAIN}")));
         assert_eq!(query[2].0, "launch");
         assert!(!query[2].1.is_empty(), "a minted launch: {launch_url}");
         assert_eq!(gatekeeper.minted_launches(), 1);

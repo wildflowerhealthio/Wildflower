@@ -2,21 +2,12 @@ import type { HttpClient } from '@effect/platform'
 import { AppsRouterContext } from '@wildflowerhealthio/apps-react'
 import { DatabasesRouterContext } from '@wildflowerhealthio/databases-react'
 import { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
-import { FhirResourcesApiPrefix } from '@wildflowerhealthio/fhir-r4/http-api-definition'
 import { GatekeeperRouterContext } from '@wildflowerhealthio/gatekeeper-react'
 import { RequestLogRouterContext } from '@wildflowerhealthio/request-log-react'
 import { Effect, Layer, pipe } from 'effect'
 
 import { unauthorizedRetrySchedule } from './retry-policy.ts'
 import type { RunAuthed, RuntimeLayer } from './router-context.ts'
-
-/**
- * The API server's transport for the requests mounted at `mountPath` on it —
- * `''` for the server root (every slice but FHIR), `/fhir-r4` for the FHIR
- * slice. The entry builds it (`app-query-runtime.ts`'s `apiTransportAt`), so
- * it decides the origin and how a request authenticates.
- */
-type ApiTransport = (mountPath: string) => Layer.Layer<HttpClient.HttpClient>
 
 /**
  * Builds the page-lifetime runtime layer + authed runner. The runtime
@@ -29,33 +20,27 @@ type ApiTransport = (mountPath: string) => Layer.Layer<HttpClient.HttpClient>
  * signal is ready before any authed loader runs, so there's no
  * `isTokenReady` reader here — loaders are plain `ensureQueryData`.
  *
+ * @param apiTransport - The API server's transport, which every slice's
+ *   client (FHIR's included: the server serves it at its root) sends through.
+ *   The entry builds it (`app-query-runtime.ts`'s `apiTransport`), so it
+ *   decides the origin and how a request authenticates.
  * @param effectTelemetryLayer - The entry's Effect telemetry layer, merged
  *   into the runtime so every authed request runs under the page's tracer
  *   (see `RenderAppOptions.effectTelemetryLayer`)
  */
 const buildRunAuthed = (
-  transportAt: ApiTransport,
+  apiTransport: Layer.Layer<HttpClient.HttpClient>,
   effectTelemetryLayer: Layer.Layer<never>
 ): {
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
-  const baseRuntimeLayer = Layer.mergeAll(transportAt(''), effectTelemetryLayer)
+  const baseRuntimeLayer = Layer.mergeAll(apiTransport, effectTelemetryLayer)
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(
       AppsRouterContext.sliceRuntimeLayer,
       GatekeeperRouterContext.sliceRuntimeLayer,
-      // The FHIR slice's typed client emits base-relative paths (`/Patient`) —
-      // `FhirResourcesApi` does not bake in the mount prefix — so it gets the
-      // entry's transport mounted at `/fhir-r4`, while every other slice keeps
-      // the root-mounted `baseRuntimeLayer` transport. The entry joins the mount
-      // path onto the API origin in one prefix (`{origin}/fhir-r4`); stacking a
-      // second prefix wrapper over an origin-prefixing layer does not work,
-      // because `HttpClient.mapRequest` runs the wrapped client's rewrite first,
-      // so the outer `/fhir-r4` wrapper would see an absolute URL and skip it.
-      FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(
-        Layer.provide(transportAt(FhirResourcesApiPrefix))
-      ),
+      FhirR4ResourcesRouterContext.sliceRuntimeLayer,
       DatabasesRouterContext.sliceRuntimeLayer,
       RequestLogRouterContext.sliceRuntimeLayer
     ),
@@ -94,4 +79,4 @@ const buildRunAuthed = (
   }
 }
 
-export { buildRunAuthed, type ApiTransport }
+export { buildRunAuthed }

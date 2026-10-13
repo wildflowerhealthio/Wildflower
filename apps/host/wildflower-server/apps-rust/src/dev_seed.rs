@@ -70,7 +70,7 @@ struct DevApp {
 /// The SMART EHR-launch URL template for a standard first-party dev app,
 /// pointed at its loopback dev server's root.
 fn dev_launch_url(port: i32) -> String {
-    format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4")
+    format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}")
 }
 
 /// The OHIF viewer's dev launch URL — `/fhir-viewer` route with the **dev**
@@ -78,7 +78,7 @@ fn dev_launch_url(port: i32) -> String {
 fn ohif_viewer_dev_url(port: i32) -> String {
     format!(
         "http://localhost:{port}/fhir-viewer\
-         ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId={OHIF_VIEWER_DEV_CLIENT_ID}"
+         ?launch={{launch}}&iss={{origin}}&clientId={OHIF_VIEWER_DEV_CLIENT_ID}"
     )
 }
 
@@ -350,7 +350,7 @@ mod tests {
             registration.url.to_string(),
             format!(
                 "http://localhost:{port}/fhir-viewer\
-                 ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId={OHIF_VIEWER_DEV_CLIENT_ID}"
+                 ?launch={{launch}}&iss={{origin}}&clientId={OHIF_VIEWER_DEV_CLIENT_ID}"
             ),
         );
         assert_eq!(
@@ -375,7 +375,7 @@ mod tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"),
+            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}"),
         );
     }
 
@@ -395,7 +395,7 @@ mod tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"),
+            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}"),
         );
     }
 
@@ -419,7 +419,7 @@ mod tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}/fhir-r4"),
+            format!("http://localhost:{port}/?launch={{launch}}&iss={{origin}}"),
         );
     }
 

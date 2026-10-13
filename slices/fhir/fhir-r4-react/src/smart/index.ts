@@ -14,7 +14,6 @@ export {
   detectSmartSupport,
   insecureTargetReason,
   normalizeServerUrl,
-  serverUrlNamedBy,
   startStandaloneLaunch,
   type SmartSupport,
   type StandaloneLaunchConfig,

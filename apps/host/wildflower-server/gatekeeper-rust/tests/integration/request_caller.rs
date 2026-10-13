@@ -27,12 +27,9 @@ fn bearer_gated_router(g: &Gatekeeper) -> axum::Router {
     use wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware;
 
     axum::Router::new()
-        .route("/fhir-r4/metadata", get(|| async { "ok" }))
-        .route("/fhir-r4/Patient", get(|| async { "ok" }))
-        .layer(gatekeeper_auth_middleware(
-            g.state.clone(),
-            &["/fhir-r4/metadata"],
-        ))
+        .route("/metadata", get(|| async { "ok" }))
+        .route("/Patient", get(|| async { "ok" }))
+        .layer(gatekeeper_auth_middleware(g.state.clone(), &["/metadata"]))
 }
 
 fn get_with_bearer(path: &str, token: Option<&str>) -> Request<Body> {
@@ -49,7 +46,7 @@ async fn the_bearer_gate_stamps_the_token_s_client() {
     let token = mint_scoped_token(&db, &["patient/*.rs"]);
 
     let response = bearer_gated_router(&g)
-        .oneshot(get_with_bearer("/fhir-r4/Patient", Some(&token)))
+        .oneshot(get_with_bearer("/Patient", Some(&token)))
         .await
         .expect("oneshot");
 
@@ -69,14 +66,14 @@ async fn the_bearer_gate_stamps_nothing_on_a_rejected_or_exempt_request() {
 
     let rejected = router
         .clone()
-        .oneshot(get_with_bearer("/fhir-r4/Patient", None))
+        .oneshot(get_with_bearer("/Patient", None))
         .await
         .expect("oneshot");
     assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(stamped_caller(&rejected), None);
 
     let exempt = router
-        .oneshot(get_with_bearer("/fhir-r4/metadata", None))
+        .oneshot(get_with_bearer("/metadata", None))
         .await
         .expect("oneshot");
     assert_eq!(exempt.status(), StatusCode::OK);
@@ -131,7 +128,7 @@ async fn the_bearer_gate_stamps_why_it_refused_each_401() {
     ] {
         let response = router
             .clone()
-            .oneshot(get_with_bearer("/fhir-r4/Patient", token))
+            .oneshot(get_with_bearer("/Patient", token))
             .await
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -139,7 +136,7 @@ async fn the_bearer_gate_stamps_why_it_refused_each_401() {
     }
 
     let exempt = router
-        .oneshot(get_with_bearer("/fhir-r4/metadata", None))
+        .oneshot(get_with_bearer("/metadata", None))
         .await
         .expect("oneshot");
     assert_eq!(

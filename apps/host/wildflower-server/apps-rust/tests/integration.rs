@@ -163,7 +163,7 @@ async fn a_smart_app_launch_carries_a_launch_minted_for_its_client() {
         handle.0.lock().expect("handle mutex").clone(),
         vec![
             "https://examples.smarthealthit.org/growth-chart-app/launch.html\
-             ?iss=https://dev1.example.com/fhir-r4&launch=launch-for-growth_chart"
+             ?iss=https://dev1.example.com&launch=launch-for-growth_chart"
                 .to_string()
         ],
     );

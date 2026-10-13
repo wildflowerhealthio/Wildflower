@@ -56,8 +56,8 @@ pub struct ForwardedRequest {
     pub served_host: Option<String>,
     /// The request method, e.g. `GET`.
     pub method: String,
-    /// The request path reduced to its route: the first segment, plus the FHIR
-    /// resource type under the FHIR base (`/fhir-r4/Patient`).
+    /// The request path reduced to its route, its first segment (`/access`,
+    /// or a FHIR resource type such as `/Patient`).
     pub reduced_path: String,
     /// The response status code.
     pub status: u16,

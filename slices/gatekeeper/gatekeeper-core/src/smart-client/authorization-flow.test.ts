@@ -21,7 +21,7 @@ const pendingRecord: PendingAuthorization = {
   state: 'Zm9vYmFyYmF6cXV4',
   codeVerifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
   serverUrl: 'https://ruth.wildflowerhealth.io',
-  smartServer: WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io/fhir-r4' }),
+  smartServer: WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }),
   tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
   returnTo: '/settings/tunnel',
 }
@@ -160,7 +160,7 @@ describe('authorizationRequestUrl', () => {
         scope: 'openid system/*.cruds',
         state: 'state-value',
         codeChallenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
-        audience: 'https://ruth.wildflowerhealth.io/fhir-r4',
+        audience: 'https://ruth.wildflowerhealth.io',
       })
     )
 
@@ -174,7 +174,7 @@ describe('authorizationRequestUrl', () => {
       state: 'state-value',
       code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
       code_challenge_method: 'S256',
-      aud: 'https://ruth.wildflowerhealth.io/fhir-r4',
+      aud: 'https://ruth.wildflowerhealth.io',
     })
   })
 
@@ -191,7 +191,7 @@ describe('authorizationRequestUrl', () => {
               scope: 'openid launch',
               state: 's',
               codeChallenge: 'c',
-              audience: 'https://ruth.wildflowerhealth.io/fhir-r4',
+              audience: 'https://ruth.wildflowerhealth.io',
               launch,
             })
           )
@@ -389,9 +389,9 @@ describe('isAuthorizationResponse', () => {
     // Act / Assert — `?server=` alone, nothing, or a SMART launch's `iss` is not a return.
     expect(isAuthorizationResponse('?server=https%3A%2F%2Fruth.wildflowerhealth.io')).toBe(false)
     expect(isAuthorizationResponse('')).toBe(false)
-    expect(
-      isAuthorizationResponse('?iss=https%3A%2F%2Fruth.wildflowerhealth.io%2Ffhir-r4&launch=xyz')
-    ).toBe(false)
+    expect(isAuthorizationResponse('?iss=https%3A%2F%2Fruth.wildflowerhealth.io&launch=xyz')).toBe(
+      false
+    )
   })
 
   it('is true as soon as any one response parameter is present', () => {
