@@ -1,9 +1,8 @@
-//! The API router's fallback. The FHIR API shares the server's root with the
-//! other slices, but HFS answers through a fallback of its own rather than a
-//! fixed set of routes, so it can't be merged in beside them: a request no
-//! slice claims reaches the FHIR router when
-//! [`is_fhir_r4_route`](wildflowerhealthio_fhir_r4::is_fhir_r4_route) says it
-//! is FHIR's, and the [`not_found`](super::not_found) page otherwise.
+//! The API router's fallback: a request no slice route claims reaches the FHIR
+//! router when [`is_fhir_r4_route`](wildflowerhealthio_fhir_r4::is_fhir_r4_route)
+//! says it is FHIR's, and the [`not_found`](super::not_found) page otherwise.
+//! See "Served at the root, on FHIR paths only" in `fhir-r4-rust`'s
+//! `docs/Capability Statement.md`.
 
 use std::sync::Arc;
 

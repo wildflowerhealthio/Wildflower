@@ -77,15 +77,9 @@ const FHIR_ROOT_SEGMENTS: &[&str] = &[
 const FHIR_WELL_KNOWN_DOCUMENTS: &[&str] = &["smart-configuration", "bulk-submit-jwks.json"];
 
 /// Whether a request belongs to the FHIR API, which shares the server's root
-/// with the other slices. The host routes a request to [`setup_fhir_r4`]'s
-/// router only when this holds, so a path no slice claims still gets the
-/// host's own `404` rather than a FHIR one.
-///
-/// FHIR's are: `POST /` (a batch or transaction Bundle at the base — a `GET /`
-/// is someone opening the server, not a FHIR call), a path under an R4 resource
-/// type (case-sensitive, so `Device` is FHIR's and `devices` is not), a
-/// system-level `$operation`, one of [`FHIR_ROOT_SEGMENTS`], and the
-/// [`FHIR_WELL_KNOWN_DOCUMENTS`].
+/// with the other slices: the host routes a request to [`setup_fhir_r4`]'s
+/// router only when this holds. Which paths are FHIR's, and why, is "Served at
+/// the root, on FHIR paths only" in `docs/Capability Statement.md`.
 #[must_use]
 pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
     let mut segments = path.trim_start_matches('/').split('/');
