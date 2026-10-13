@@ -1022,7 +1022,6 @@ fn on_loopback(loopback_base_url: &Url, url: &str) -> Url {
 struct UiServer {
     app_data_dir: tempfile::TempDir,
     loopback_base_url: Url,
-    host_owner_token_rx: watch::Receiver<Option<String>>,
     browser: reqwest::Client,
     shutdown: CancellationToken,
     serving: JoinHandle<anyhow::Result<()>>,
@@ -1035,14 +1034,8 @@ impl UiServer {
         let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
         let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
             .expect("loopback base URL");
-        let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
-        let (active_pending_consent_tx, _active_pending_consent_rx) =
-            watch::channel::<Option<PendingConsentHead>>(None);
         let host_ports = HostPorts {
             loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-            on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-            host_owner_token_tx,
-            active_pending_consent_tx,
         };
         let (server_health_tx, _server_health_rx) = watch::channel(None);
         let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
@@ -1050,6 +1043,7 @@ impl UiServer {
             server_health_tx,
             tunnel_state_tx: watch::channel(None).0,
             certificate_tx: watch::channel(None).0,
+            pending_consent_tx: watch::channel(None).0,
             forwarded_request_tx,
         };
         let shutdown = CancellationToken::new();
@@ -1071,7 +1065,6 @@ impl UiServer {
         Self {
             app_data_dir,
             loopback_base_url,
-            host_owner_token_rx,
             browser,
             shutdown,
             serving,
@@ -1109,11 +1102,12 @@ impl UiServer {
             .strip_prefix("authorize/")
             .and_then(|rest| rest.strip_suffix("/wait"))
             .unwrap_or_else(|| panic!("parked for the Owner, got {wait_page}"));
-        let owner_token = self
-            .host_owner_token_rx
-            .borrow()
-            .clone()
-            .expect("the host owner token is minted at set-up");
+        let owner_scopes: Vec<String> =
+            wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+        let owner_token = client_token(self.app_data_dir.path(), SERVER_ORIGIN, &owner_scopes);
         let approved: Value = self
             .browser
             .post(
