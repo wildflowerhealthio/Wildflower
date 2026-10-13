@@ -189,7 +189,8 @@ only it composes. Rust-only, no `-core`.
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
   listeners, not those tasks (the tunnel's supervisor, the reachability
   monitor and the device certificate's ordering and renewal are the exception: they
-  stop when `serve` returns). The host runs
+  stop when `serve` returns, and the FHIR API's bulk-export worker runs inside
+  `serve`, stopping with `shutdown`). The host runs
   each server as a unit on the unit runner, which gives each run a dedicated
   runtime and shuts it down when the run ends, which is what ends them.
 

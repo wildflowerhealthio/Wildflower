@@ -47,6 +47,7 @@ fn build_router() -> (Router, TempDb) {
     let config = FhirR4Config {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
+        bulk_export_dir: dir.join("fhir-exports"),
         jwks_url: None,
         // The SearchParameter bundle is a deployed asset, not embedded — point
         // HFS at the crate's vendored copy (the host ships it as a bundled

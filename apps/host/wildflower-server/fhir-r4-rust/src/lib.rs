@@ -7,6 +7,7 @@
 //! gatekeeper's JWKS.
 
 mod auth;
+mod bulk_export;
 mod config;
 mod delegate;
 mod patient_everything;
@@ -21,6 +22,7 @@ use axum::http::Method;
 use axum::response::IntoResponse;
 use axum::routing::{get, Route, Router};
 use helios_auth::{LoginConfig, SessionStore};
+use helios_persistence::backends::local_fs::LocalFsOutputStore;
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
 use helios_persistence::core::SettingsStore;
 use helios_rest::fhir_types::is_valid_resource_type;
@@ -32,20 +34,24 @@ use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::auth::build_auth;
+use crate::bulk_export::bulk_export_bundle;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
+pub use crate::bulk_export::BulkExportWorker;
 pub use crate::config::FhirR4Config;
 
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
 /// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router (the FHIR API
-/// behind the host's gate, under the web UI), and the bare HFS router for
-/// in-process delegation by other slices. Both answer at the root; the host
-/// hands a request to them only when [`is_fhir_r4_route`] says it is FHIR's.
+/// behind the host's gate, under the web UI), the bare HFS router for
+/// in-process delegation by other slices, and the worker that runs the jobs
+/// `$export` accepts. Both routers answer at the root; the host hands a request
+/// to them only when [`is_fhir_r4_route`] says it is FHIR's.
 pub struct FhirR4Routers {
     pub augmented_fhir_r4_router: Router,
     pub raw_hfs_router: Router,
+    pub bulk_export_worker: BulkExportWorker,
 }
 
 /// Paths the gate passed to [`setup_fhir_r4`] must let through without a
@@ -219,18 +225,31 @@ where
         ..ServerConfig::default()
     };
 
+    let bulk_export_config = server_config.bulk_export.clone();
     let (auth_config, auth_state) = build_auth(
         config.jwks_url.as_deref(),
         revocation_store,
         &server_origin,
         ui_sessions.clone(),
     );
-    // The web UI's per-user settings (`/_user/settings`) live in the health
-    // data's own sqlite file, in HFS's `user_settings` table.
+    // The web UI's per-user settings (`/_user/settings`), which also track its
+    // bulk-export jobs, live in the health data's own sqlite file, in HFS's
+    // `user_settings` table; so do the export jobs themselves.
     let sqlite_backend = Arc::new(sqlite_backend);
     let ui_settings_store: Arc<dyn SettingsStore> = sqlite_backend.clone();
+    // Export files are only ever downloaded through HFS's `/export-file`, which
+    // asks for a bearer exactly when HFS auth is on.
+    let export_output_store = Arc::new(
+        LocalFsOutputStore::new(&config.bulk_export_dir, server_origin.clone())
+            .with_access_token_required(config.jwks_url.is_some()),
+    );
+    let bulk_export_worker = BulkExportWorker::new(
+        sqlite_backend.clone(),
+        export_output_store.clone(),
+        bulk_export_config,
+    );
     let hfs_router = create_app_with_auth_bulk_and_settings(
-        sqlite_backend,
+        sqlite_backend.clone(),
         server_config,
         auth_config.clone(),
         auth_state,
@@ -238,10 +257,10 @@ where
         // fhir-r4-rust today; the gatekeeper gating layer above us handles
         // owner/admin access auditing separately.
         None,
-        // Neither bulk export nor bulk submit is wired.
+        Some(bulk_export_bundle(sqlite_backend, export_output_store)),
+        // Bulk submit is not wired.
         None,
-        None,
-        Some(ui_settings_store),
+        Some(ui_settings_store.clone()),
     );
 
     // Specific routes win over fallback: our SMART App Launch discovery doc and
@@ -282,11 +301,13 @@ where
         &server_origin,
         auth_config.outbound_provider(),
         ui_sessions,
+        ui_settings_store,
     );
 
     Ok(FhirR4Routers {
         augmented_fhir_r4_router: fhir_api_with_ui,
         raw_hfs_router: hfs_router_for_delegation,
+        bulk_export_worker,
     })
 }
 
@@ -298,7 +319,8 @@ static UI_MOUNT: Mutex<()> = Mutex::new(());
 
 /// Mount HFS's web UI (`helios-ui`) at `/ui` over `fhir_api`, which serves
 /// every request the UI's routes don't claim, with its interactive login over
-/// `ui_sessions`.
+/// `ui_sessions` and its per-user settings in `ui_settings_store`. Without a
+/// settings store the UI turns its bulk export and import pages off.
 ///
 /// The UI's conformance pages call the server's own FHIR API over HTTP. They
 /// call it at `server_origin`, never loopback: a direct-local request without a
@@ -310,6 +332,7 @@ fn mount_ui(
     server_origin: &str,
     outbound_auth: Arc<dyn helios_auth::outbound::OutboundAuthProvider>,
     ui_sessions: Arc<SessionStore>,
+    ui_settings_store: Arc<dyn SettingsStore>,
 ) -> Router {
     let _serialized = UI_MOUNT
         .lock()
@@ -332,7 +355,7 @@ fn mount_ui(
             model: String::new(),
         },
         None,
-        None,
+        Some(ui_settings_store),
         String::new(),
         server_origin.to_string(),
         outbound_auth,

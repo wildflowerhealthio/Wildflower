@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_gatekeeper::{
     gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
     GatekeeperConfig, HostConsentDecider,
@@ -47,6 +47,9 @@ use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 // these names — `databases-rust` has no built-in knowledge of them.
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
+/// The folder, beside the health data, that the FHIR API's bulk `$export`
+/// stages each job's files in until they're downloaded and expire.
+const FHIR_EXPORTS_DIR: &str = "fhir-exports";
 /// The `client_id` of the FHIR server's web UI (`helios-ui`): gatekeeper seeds
 /// the client under it and `fhir-r4-rust` signs the UI's users in as it.
 const FHIR_UI_CLIENT_ID: &str = "5ea43272eba5e825c50de39032f96bf0";
@@ -87,6 +90,9 @@ pub struct WildflowerServer {
     device_certificate: DeviceCertificate,
     /// How the host's Owner decides the server's pending consents.
     consent_decider_for_host: HostConsentDecider,
+    /// Runs the FHIR API's bulk `$export` jobs and deletes expired ones, for
+    /// as long as the server serves.
+    bulk_export_worker: BulkExportWorker,
 }
 
 impl WildflowerServer {
@@ -116,9 +122,10 @@ impl WildflowerServer {
     }
 
     /// Serve the composed API on the bound loopback port and the tunnel
-    /// listener until `shutdown` is cancelled. Cancelling stops both accepting
-    /// connections, and the call returns `Ok` once the open ones on both
-    /// close. The tunnel, the reachability monitor and the certificate's
+    /// listener, and run the FHIR API's bulk-export jobs, until `shutdown` is
+    /// cancelled. Cancelling stops both accepting connections and hands a
+    /// running export job back, and the call returns `Ok` once the open
+    /// connections on both close and the export worker stops. The tunnel, the reachability monitor and the certificate's
     /// ordering and renewal stop when the call returns.
     ///
     /// # Errors
@@ -133,6 +140,7 @@ impl WildflowerServer {
             tunnel_daemon,
             reachability_monitor,
             device_certificate,
+            bulk_export_worker,
             // The launch context minter, the host's consent decider, and the
             // `test-support` feature's
             // `tunnel_stream_tx`.
@@ -147,8 +155,12 @@ impl WildflowerServer {
             tunnel_listener,
             tunnel_router.into_make_service_with_connect_info::<TunnelVisitor>(),
         )
-        .with_graceful_shutdown(shutdown.cancelled_owned());
-        tokio::try_join!(loopback.into_future(), tunnel.into_future())?;
+        .with_graceful_shutdown(shutdown.clone().cancelled_owned());
+        let bulk_export = async {
+            bulk_export_worker.run(shutdown).await;
+            Ok(())
+        };
+        tokio::try_join!(loopback.into_future(), tunnel.into_future(), bulk_export)?;
         drop(reachability_monitor);
         drop(tunnel_daemon);
         drop(device_certificate);
@@ -227,6 +239,7 @@ pub async fn set_up(
     let fhir_r4_config = FhirR4Config {
         log_level: "debug".to_string(),
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
+        bulk_export_dir: runtime.server_dir.join(FHIR_EXPORTS_DIR),
         // HFS-enforced auth: every FHIR request must carry a Bearer JWT
         // signed by a gatekeeper-issued key whose `iss` and `aud` are the
         // server's origin — set by gatekeeper at mint, checked by both
@@ -607,5 +620,6 @@ pub async fn set_up(
         launch_context_minter: gatekeeper.launch_context_minter,
         device_certificate,
         consent_decider_for_host,
+        bulk_export_worker: fhir_routers.bulk_export_worker,
     })
 }

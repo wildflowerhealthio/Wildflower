@@ -1048,7 +1048,6 @@ fn on_loopback(loopback_base_url: &Url, url: &str) -> Url {
     on_loopback
 }
 
-
 /// A composed server serving over a temporary folder, for a browser to use
 /// its FHIR web UI.
 struct UiServer {
@@ -1194,7 +1193,10 @@ impl UiServer {
     ) -> reqwest::RequestBuilder {
         let request = self
             .browser
-            .request(method, self.loopback_base_url.join(path).expect("UI call URL"))
+            .request(
+                method,
+                self.loopback_base_url.join(path).expect("UI call URL"),
+            )
             .header("forwarded", PUBLIC_BROWSER_FORWARDED)
             .header("sec-fetch-site", "same-origin");
         match session_cookie {
@@ -1288,19 +1290,30 @@ async fn the_fhir_ui_keeps_its_settings_in_the_health_data_file() {
     let settings = serde_json::json!({ "theme": "dark" });
 
     let put = server
-        .ui_request(reqwest::Method::PUT, "_user/settings", Some(&session_cookie))
+        .ui_request(
+            reqwest::Method::PUT,
+            "_user/settings",
+            Some(&session_cookie),
+        )
         .json(&settings)
         .send()
         .await
         .expect("PUT /_user/settings reaches the server");
     assert_eq!(put.status(), reqwest::StatusCode::OK);
     let got = server
-        .ui_request(reqwest::Method::GET, "_user/settings", Some(&session_cookie))
+        .ui_request(
+            reqwest::Method::GET,
+            "_user/settings",
+            Some(&session_cookie),
+        )
         .send()
         .await
         .expect("GET /_user/settings reaches the server");
     assert_eq!(got.status(), reqwest::StatusCode::OK);
-    assert_eq!(got.json::<Value>().await.expect("a JSON document"), settings);
+    assert_eq!(
+        got.json::<Value>().await.expect("a JSON document"),
+        settings
+    );
     assert_eq!(
         server
             .ui_request(reqwest::Method::GET, "_user/settings", None)
@@ -1321,4 +1334,161 @@ async fn the_fhir_ui_keeps_its_settings_in_the_health_data_file() {
         serde_json::from_slice::<Value>(&stored).expect("stored as JSON"),
         settings
     );
+}
+
+/// The FHIR web UI's bulk export pages, signed in: its list of jobs and its
+/// form for a new one are offered, not turned off for want of a settings
+/// store to track the jobs in.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_fhir_ui_offers_bulk_export() {
+    let server = UiServer::start().await;
+    let session_cookie = server.sign_in().await;
+    let page_at = |path: &'static str| {
+        let request = server.ui_request(reqwest::Method::GET, path, Some(&session_cookie));
+        async move {
+            let page = request
+                .send()
+                .await
+                .unwrap_or_else(|error| panic!("GET /{path} reaches the server: {error}"));
+            assert_eq!(page.status(), reqwest::StatusCode::OK, "GET /{path}");
+            page.text().await.expect("an HTML page")
+        }
+    };
+
+    let jobs_page = page_at("ui/bulk-export").await;
+    assert!(
+        jobs_page.contains("No exports yet."),
+        "the list of jobs is offered, got {jobs_page}"
+    );
+    let new_export_page = page_at("ui/bulk-export/new").await;
+    assert!(
+        new_export_page.contains(r#"action="/ui/bulk-export""#),
+        "the form for a new export is offered, got {new_export_page}"
+    );
+
+    server.shut_down().await;
+}
+
+/// A bulk `$export` on the UI's session, end to end: the server accepts it,
+/// its worker runs it to a manifest, the manifest's file downloads on the same
+/// session with the Patient the session wrote, and the file is staged in the
+/// server's `fhir-exports` folder.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_bulk_export_runs_and_its_files_download() {
+    let server = UiServer::start().await;
+    let session_cookie = server.sign_in().await;
+
+    let created = server
+        .ui_request(reqwest::Method::POST, "Patient", Some(&session_cookie))
+        .header("content-type", "application/fhir+json")
+        .json(&serde_json::json!({
+            "resourceType": "Patient",
+            "name": [{ "family": "Exported" }],
+        }))
+        .send()
+        .await
+        .expect("POST /Patient reaches the server");
+    assert_eq!(created.status(), reqwest::StatusCode::CREATED);
+    let patient_id = created.json::<Value>().await.expect("the created Patient")["id"]
+        .as_str()
+        .expect("an id")
+        .to_owned();
+
+    let kickoff = server
+        .ui_request(reqwest::Method::GET, "$export", Some(&session_cookie))
+        .header("accept", "application/fhir+json")
+        .header("prefer", "respond-async")
+        .send()
+        .await
+        .expect("GET /$export reaches the server");
+    assert_eq!(kickoff.status(), reqwest::StatusCode::ACCEPTED);
+    let status_url = kickoff
+        .headers()
+        .get(reqwest::header::CONTENT_LOCATION)
+        .and_then(|location| location.to_str().ok())
+        .expect("a Content-Location to poll")
+        .to_owned();
+
+    let manifest: Value = tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
+        loop {
+            let status = server
+                .browser
+                .get(on_loopback(&server.loopback_base_url, &status_url))
+                .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+                .header("cookie", &session_cookie)
+                .send()
+                .await
+                .expect("the status poll reaches the server");
+            match status.status() {
+                reqwest::StatusCode::ACCEPTED => {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+                reqwest::StatusCode::OK => {
+                    break status.json().await.expect("a manifest");
+                }
+                other => panic!("the export fails: {other} {:?}", status.text().await),
+            }
+        }
+    })
+    .await
+    .expect("the export finishes in time");
+
+    let patient_file_url = manifest["output"]
+        .as_array()
+        .expect("output files")
+        .iter()
+        .find(|file| file["type"] == "Patient")
+        .and_then(|file| file["url"].as_str())
+        .unwrap_or_else(|| panic!("a Patient file, in {manifest}"))
+        .to_owned();
+    assert!(
+        patient_file_url.starts_with(&format!("{SERVER_ORIGIN}/export-file/")),
+        "downloaded from the server's public origin, got {patient_file_url}"
+    );
+    let download = server
+        .browser
+        .get(on_loopback(&server.loopback_base_url, &patient_file_url))
+        .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+        .header("cookie", &session_cookie)
+        .send()
+        .await
+        .expect("the download reaches the server");
+    assert_eq!(download.status(), reqwest::StatusCode::OK);
+    let exported_ids: Vec<String> = download
+        .text()
+        .await
+        .expect("NDJSON")
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<Value>(line).expect("a JSON resource")["id"]
+                .as_str()
+                .expect("an id")
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(exported_ids, vec![patient_id]);
+
+    let app_data_dir = server.shut_down().await;
+    let staged_files = walk_files(&app_data_dir.path().join("fhir-exports"));
+    assert!(
+        staged_files.iter().any(|file| file
+            .extension()
+            .is_some_and(|extension| extension == "ndjson")),
+        "the export's files are staged in fhir-exports, found {staged_files:?}"
+    );
+}
+
+/// Every file under `dir`, at any depth.
+fn walk_files(dir: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .unwrap_or_else(|error| panic!("{} reads: {error}", dir.display()))
+        .map(|entry| entry.expect("a directory entry").path())
+        .flat_map(|path| {
+            if path.is_dir() {
+                walk_files(&path)
+            } else {
+                vec![path]
+            }
+        })
+        .collect()
 }

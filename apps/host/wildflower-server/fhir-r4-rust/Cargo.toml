@@ -53,6 +53,9 @@ async-trait = "0.1"
 # The `JtiCache::check_and_store` signature is in `chrono::DateTime<Utc>`; already
 # in the tree via helios, pinned here as a direct dep for the type reference.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Runs bulk `$export`'s worker and cleanup until the server shuts down.
+tokio = { workspace = true, features = ["macros", "time"] }
+tokio-util = "0.7"
 
 [dev-dependencies]
 base64.workspace = true
@@ -67,6 +70,8 @@ wildflowerhealthio-ohif-server = { path = "../../../../slices/ohif-server-rust" 
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+# The export folder the bulk-export worker's tests write to.
+tempfile = "3"
 
 [lints]
 workspace = true

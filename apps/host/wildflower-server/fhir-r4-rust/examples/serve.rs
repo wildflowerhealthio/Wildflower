@@ -22,6 +22,7 @@ async fn main() -> anyhow::Result<()> {
     let config = FhirR4Config {
         log_level: "info".to_string(),
         db_file_path: tmp.join("health-data.sqlite"),
+        bulk_export_dir: tmp.join("fhir-exports"),
         // Dev binary: HFS auth off. Discovery + /metadata still served;
         // anything that would normally require auth (Patient, etc.) is open.
         jwks_url: None,
@@ -45,6 +46,12 @@ async fn main() -> anyhow::Result<()> {
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),
     )?;
+    // Runs `$export`'s jobs for as long as the dev server runs.
+    tokio::spawn(
+        routers
+            .bulk_export_worker
+            .run(tokio_util::sync::CancellationToken::new()),
+    );
     let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(
         wildflowerhealthio_ohif_server::setup_ohif_server(routers.raw_hfs_router),
     );
