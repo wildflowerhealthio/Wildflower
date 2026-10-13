@@ -2,6 +2,7 @@ import {
   arrivingSmartLaunchFrom,
   normalizeServerUrl,
 } from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
@@ -11,44 +12,42 @@ import { PENDING_AUTHORIZATION_KEY } from './sign-in.ts'
 import {
   chosenServerUrl,
   ehrLaunchIn,
-  makeWebEntryOptions,
-  rememberSignedInServer,
+  logoutSettingsItem,
   searchAfterReturnLeg,
   SIGNED_IN_SERVER_KEY,
-  type SignedInServerStore,
 } from './web-entry.ts'
 
 describe('chosenServerUrl', () => {
-  it('should point a load past sign-in at the server the tab remembered', () => {
-    // Arrange — the settled URL names no server; the tab remembered the one
-    // the sign-in was redeemed against.
+  it('should choose the server the tab last signed in to when the URL names none', () => {
+    // Arrange — the settled URL names no server; a sign-in kept its server
+    // with its bearer.
     const store = memoryStore()
-    rememberSignedInServer(store, RUTH_SERVER_URL)
+    signInTo(store, RUTH_SERVER_URL)
 
     // Act
-    const serverUrl = chosenServerUrl('?tab=logs', store)
+    const chosen = chosenServerUrl('?tab=logs', store)
 
     // Assert
-    expect(serverUrl).toBe(RUTH_SERVER_URL)
+    expect(chosen).toBe(RUTH_SERVER_URL)
   })
 
-  it('should point a load at the server ?server= names', () => {
+  it('should choose the server ?server= names', () => {
     // Arrange
     const search = `?server=${encodeURIComponent(RUTH_SERVER_URL)}`
 
     // Act
-    const serverUrl = chosenServerUrl(search, memoryStore())
+    const chosen = chosenServerUrl(search, memoryStore())
 
     // Assert
-    expect(serverUrl).toBe(RUTH_SERVER_URL)
+    expect(chosen).toBe(RUTH_SERVER_URL)
   })
 
-  it('should name no server when neither names one', () => {
+  it('should choose none when neither names one', () => {
     // Arrange / Act
-    const serverUrl = chosenServerUrl('', memoryStore())
+    const chosen = chosenServerUrl('', memoryStore())
 
     // Assert — there is no default server; the reader picks one.
-    expect(serverUrl).toBeUndefined()
+    expect(chosen).toBeUndefined()
   })
 
   it('should prefer a usable ?server= over the remembered server', () => {
@@ -56,14 +55,14 @@ describe('chosenServerUrl', () => {
       fc.property(fc.webUrl(), fc.webUrl(), (rememberedServerUrl, searchServerUrl) => {
         // Arrange
         const store = memoryStore()
-        rememberSignedInServer(store, rememberedServerUrl)
+        signInTo(store, rememberedServerUrl)
         const search = `?server=${encodeURIComponent(searchServerUrl)}`
 
         // Act
-        const serverUrl = chosenServerUrl(search, store)
+        const chosen = chosenServerUrl(search, store)
 
         // Assert
-        expect(serverUrl).toBe(
+        expect(chosen).toBe(
           normalizeServerUrl(searchServerUrl) ?? normalizeServerUrl(rememberedServerUrl)
         )
       }),
@@ -127,53 +126,21 @@ describe('searchAfterReturnLeg', () => {
   })
 })
 
-describe('makeWebEntryOptions', () => {
-  it('should send requests to the server it is given', () => {
-    // Arrange
-    const page = stubPage()
-
-    // Act
-    const options = makeWebEntryOptions(page, '/launcher/', RUTH_SERVER_URL)
-
-    // Assert
-    expect(options.apiBaseUrl).toBe(RUTH_SERVER_URL)
-  })
-
-  it('should offer no logout before a server is chosen, as there is none to revoke at', () => {
-    // Arrange / Act
-    const options = makeWebEntryOptions(stubPage(), '/launcher/', undefined)
-
-    // Assert
-    expect(options.apiBaseUrl).toBeUndefined()
-    expect(options.platformSettingsItems).toEqual([])
-  })
-
-  it('should render no platform banner, since no host runs a server for the page', () => {
-    // Arrange / Act
-    const options = makeWebEntryOptions(stubPage(), '/launcher/', RUTH_SERVER_URL)
-
-    // Assert
-    expect(options.platformBanner).toBeNull()
-  })
-
-  it('should link other devices to the page’s own origin', () => {
-    // Arrange / Act
-    const options = makeWebEntryOptions(stubPage(), '/staging/pr-7/launcher/', RUTH_SERVER_URL)
-
-    // Assert
-    expect(options.externalLinkRoot()).toBe(PAGE_ORIGIN)
-  })
-
+describe('logoutSettingsItem', () => {
   it('should leave for the bare landing on logout, clearing the tab’s session storage', async () => {
     // Arrange — a PR preview served under a subpath, signed in to a remote
     // server, with a half-finished sign-in's record also in the tab.
     const page = stubPage()
-    rememberSignedInServer(page.sessionStorage, RUTH_SERVER_URL)
+    const bearerStore = makeBearerAuthStateStore(page.sessionStorage, SIGNED_IN_SERVER_KEY)
+    bearerStore.writeSession({ serverUrl: RUTH_SERVER_URL, bearer: 'eyJ.owner.token' })
     page.sessionStorage.setItem(PENDING_AUTHORIZATION_KEY, '{"state":"abc"}')
-    const options = makeWebEntryOptions(page, '/staging/pr-7/launcher/', RUTH_SERVER_URL)
+    const logout = logoutSettingsItem(page, '/staging/pr-7/launcher/', bearerStore)
 
     // Act
-    logOutWith(options.platformSettingsItems)
+    if (!('onClick' in logout) || logout.onClick === undefined) {
+      throw new Error('the logout row is no action row')
+    }
+    logout.onClick()
 
     // Assert — the landing at the served base, with no server, in the URL or
     // the tab, to sign back in to, and nothing else left behind.
@@ -186,10 +153,9 @@ describe('makeWebEntryOptions', () => {
 // Helpers
 
 const RUTH_SERVER_URL = 'https://ruth.relay.wildflowerhealth.io'
-const PAGE_ORIGIN = 'https://wildflowerhealthio.github.io'
 
 /** A `sessionStorage` stand-in with no browser behind it. */
-const memoryStore = (): SignedInServerStore => {
+const memoryStore = (): Pick<Storage, 'getItem' | 'setItem' | 'clear'> => {
   const items = new Map<string, string>()
   return {
     getItem: (key) => items.get(key) ?? null,
@@ -202,35 +168,31 @@ const memoryStore = (): SignedInServerStore => {
   }
 }
 
+/** Sign in to `serverUrl` in `store`, as a redeemed sign-in does. */
+const signInTo = (store: Pick<Storage, 'getItem' | 'setItem'>, serverUrl: string): void => {
+  makeBearerAuthStateStore(store, SIGNED_IN_SERVER_KEY).writeSession({
+    serverUrl,
+    bearer: 'eyJ.owner.token',
+  })
+}
+
 /**
  * A stub page. `assigned` resolves with the first URL the page is sent to.
  * `fetch` answers `204` (logout revocation's response).
  */
-const stubPage = (): Parameters<typeof makeWebEntryOptions>[0] & {
+const stubPage = (): Parameters<typeof logoutSettingsItem>[0] & {
   readonly assigned: Promise<string>
-  readonly sessionStorage: SignedInServerStore
+  readonly sessionStorage: Pick<Storage, 'getItem' | 'setItem' | 'clear'>
 } => {
   const assignment = Promise.withResolvers<string>()
   return {
     assigned: assignment.promise,
     fetch: () => Promise.resolve(new Response(null, { status: 204 })),
     location: {
-      origin: PAGE_ORIGIN,
       assign: (url: string | URL) => {
         assignment.resolve(String(url))
       },
     },
     sessionStorage: memoryStore(),
   }
-}
-
-/** Click the logout row among `items`, failing when there is none. */
-const logOutWith = (
-  items: ReturnType<typeof makeWebEntryOptions>['platformSettingsItems']
-): void => {
-  const logout = items.find((item) => item.id === 'logout')
-  if (logout?.onClick === undefined) {
-    throw new Error('main-web offers no logout action row')
-  }
-  logout.onClick()
 }

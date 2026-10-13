@@ -1,13 +1,13 @@
 //! Host/HTTP-seam **dependency-inversion** traits the gatekeeper domain actions
 //! call out through — so the store-and-HTTP-free
 //! `actions` can still trigger the runtime side-effects
-//! a consent or logout flow needs without the domain learning axum, the bridge,
-//! or the revocation store's concrete type. The HTTP layer's
+//! a consent or logout flow needs without the domain learning axum, the head's
+//! watch channel, or the revocation store's concrete type. The HTTP layer's
 //! [`GatekeeperState`](crate::http::GatekeeperState) wires the real implementations (see
 //! `http::state`); tests wire in-memory fakes. Mirrors `apps-rust`'s `ports/`.
 //!
 //!  - [`PendingConsentPublisher`] — republish the active pending-consent head
-//!    over the bridge after any transition that may change it (an
+//!    to the host after any transition that may change it (an
 //!    `/authorize` or `/device_authorization` insert, an approve/deny on
 //!    either consent surface);
 //!  - [`Revocation`] / [`RevocationCheck`] — denylist a token `jti` or

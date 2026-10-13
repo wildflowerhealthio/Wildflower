@@ -20,7 +20,7 @@
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
 //! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
-//! native adapters and the channels its bridge reads arrive in [`HostPorts`];
+//! native adapters arrive in [`HostPorts`];
 //! the channels the host watches the server through arrive in
 //! [`ServerObservers`], among them the [`ServerHealth`] the reachability
 //! monitor reads from the server's own `/health` through its public origin,

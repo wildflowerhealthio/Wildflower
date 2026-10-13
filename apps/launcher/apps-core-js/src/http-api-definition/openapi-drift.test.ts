@@ -37,11 +37,10 @@ defineSpecDriftTest({
 })
 
 describe('LaunchApp success statuses', () => {
-  // Every launcher drives `POST /apps/{id}` through the typed client, so both
-  // success statuses the host returns — `204` (host sink opened the popup) and
-  // `200` (the URL for a forwarded caller to navigate to) — must be *declared*.
-  // An undeclared one matches no success and the client rejects, reporting a
-  // failed launch for one that worked. The server's own statuses are read from
+  // Every launcher drives `POST /apps/{id}` through the typed client, so every
+  // success status the host returns — `200`, the URL for the caller to
+  // navigate to — must be *declared*. An undeclared one matches no success and
+  // the client rejects, reporting a failed launch for one that worked. The server's own statuses are read from
   // its committed spec, so a status added on either side alone fails here.
   test('declares exactly the success statuses the server answers', () => {
     const spec = OpenApi.fromApi(AppsApi)

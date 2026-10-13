@@ -38,6 +38,7 @@ import {
   startSignIn,
   unsentEhrLaunch,
 } from './sign-in.ts'
+import { SIGNED_IN_SERVER_KEY } from './web-entry.ts'
 
 describe('signInEnvironment', () => {
   it('returns to the app root, not to the section the reader signed in from', () => {
@@ -403,8 +404,8 @@ describe('scheduleExpiry', () => {
   it('returns the store to Unauthed when the reported lifetime lapses', () => {
     // Arrange — a live session in the same bearer store the entry uses.
     vi.useFakeTimers()
-    const store = makeBearerAuthStateStore()
-    store.writeBearer('tok_hosted')
+    const store = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
+    store.writeSession({ serverUrl: 'https://ruth.wildflowerhealth.io', bearer: 'tok_hosted' })
     store.setAuthState(AuthedUntil({ exp: 3600 }))
 
     // Act
@@ -427,8 +428,8 @@ describe('scheduleExpiry', () => {
     // A `HostAuthed` session has no honest `exp` to count down to, so nothing is
     // scheduled and it stays authed.
     vi.useFakeTimers()
-    const store = makeBearerAuthStateStore()
-    store.writeBearer('tok_hosted')
+    const store = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
+    store.writeSession({ serverUrl: 'https://ruth.wildflowerhealth.io', bearer: 'tok_hosted' })
     store.setAuthState(HostAuthed())
 
     scheduleExpiry(store.setAuthState, undefined)
@@ -440,7 +441,7 @@ describe('scheduleExpiry', () => {
   it('cancels the pending flip when its canceller is called', () => {
     // A replaced or torn-down session must not be dropped by a stale timer.
     vi.useFakeTimers()
-    const store = makeBearerAuthStateStore()
+    const store = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
     store.setAuthState(AuthedUntil({ exp: 3600 }))
 
     const cancel = scheduleExpiry(store.setAuthState, 3600)

@@ -196,8 +196,7 @@ const ClickAction = Schema.Struct({
  * password) into `value`, so this action can carry a secret across the
  * bridge. This is an accepted v1 deviation from the "never put secrets
  * in a bridge payload" guidance in `docs/Messaging/Wire Pinning How-To.md`;
- * a follow-up can gate it behind an out-of-band capability fetch
- * (the `AuthTokenIssued` pattern).
+ * a follow-up can gate it behind an out-of-band capability fetch.
  */
 const FillAction = Schema.Struct({
   kind: Schema.Literal('Fill'),

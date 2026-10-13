@@ -1,7 +1,6 @@
-pub mod bridge;
 pub mod config;
 // The modules below aren't part of the host contract (the Tauri host imports
-// the crate-root re-exports plus `bridge`), but they stay `pub` because a web of
+// the crate-root re-exports), but they stay `pub` because a web of
 // cross-module intra-doc links references them: narrowing a link *target* to
 // `pub(crate)` while a `pub` module's doc links into it fails
 // `cargo doc -D warnings` (rustdoc's `private_intra_doc_links`). `seeding` has no
@@ -214,17 +213,16 @@ pub struct Gatekeeper {
 /// (schema migrations, signing-key seed, first-party client seed), mints
 /// the boot-time host owner token for `config.server_origin`, and:
 ///
-///  - publishes the host owner token on `local_owner_token_tx` so subscribers (e.g.
-///    the `WebView` bridge listener) observe it the moment it exists;
+///  - publishes the host owner token on `local_owner_token_tx` so subscribers (the
+///    loopback owner trust) observe it the moment it exists;
 ///  - publishes the current head of the pending consent queue — device-code
 ///    and authorization-code requests share one FIFO slot — on
 ///    `active_pending_consent_tx`. On the Tauri host, the server's run
 ///    reports it as its detail, from which the host emits the base's
 ///    `pending-consent` event and brings the desktop window forward when
-///    the server gets one, and forwards it to the host's channel the
-///    bridge emits as `bridge:PendingConsentRequested`. Seeding at boot means a request that was pending across an app restart still
-///    drives the popup (the row survived in SQLite, the in-memory
-///    `watch` value didn't);
+///    the server gets one. Seeding at boot means a request that was pending
+///    across an app restart is still reported (the row survived in SQLite, the
+///    in-memory `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/access/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
@@ -463,7 +461,7 @@ fn spawn_retention_sweep(store: SqliteGatekeeperStore) {
 /// unrelated handler happens to write. The reaper drops the stale head
 /// within `DEVICE_CONSENT_REAPER_INTERVAL`, and `send_if_modified`
 /// suppresses ticks that leave the head unchanged so an idle queue
-/// produces no bridge traffic.
+/// publishes nothing.
 fn spawn_device_consent_reaper(state: Arc<GatekeeperState>) {
     tokio::spawn(async move {
         let mut ticks = interval(DEVICE_CONSENT_REAPER_INTERVAL);

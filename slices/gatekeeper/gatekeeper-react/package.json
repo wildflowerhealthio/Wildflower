@@ -8,10 +8,6 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./web-bridge": {
-      "source": "./src/web-bridge.ts",
-      "default": "./dist/web-bridge.js"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -30,8 +26,6 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
-    "@wildflowerhealthio/effect-messaging-react": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/gatekeeper-core": "workspace:*",
@@ -55,8 +49,6 @@
     "@effect/platform": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
-    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
-    "@wildflowerhealthio/effect-messaging-react": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/gatekeeper-core": "workspace:*",

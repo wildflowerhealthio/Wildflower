@@ -1,5 +1,5 @@
 //! Cross-crate constants and envelope shape for the multiplexed Tauri
-//! bridge channel. Both the host-app host crate and the
+//! bridge channel. Both the Recorder's host crate and the
 //! browser-sniffer host crate (and any future Rust crate that listens
 //! on the bridge) must agree on the channel name and the discriminator
 //! field, otherwise tag routing silently breaks with no compile error.
@@ -19,12 +19,6 @@ use serde::Deserialize;
 /// within a single event name — cross-tag ordering broke streaming
 /// (notably the sniffer's chunked page-content stream).
 pub const BRIDGE_EVENT: &str = "bridge";
-
-/// The `_tag` of the web side's one-way ready handshake. The page sends it on
-/// every load and reload; a host listener that replays state (the owner-token
-/// notify, a slice's status snapshot) does so in reply, because Tauri events
-/// emitted before the page listens are lost.
-pub const READY_TAG: &str = "__Ready";
 
 /// Wire shape of the bridge envelope's `_tag` discriminator. Used to
 /// peek the tag without committing to a specific message struct, so a
@@ -47,21 +41,12 @@ mod tests {
         assert_eq!(BRIDGE_EVENT, "bridge");
     }
 
-    /// Drift guard: the TS transport sends `{"_tag":"__Ready"}`
-    /// (`effect-messaging-core`'s handshake).
-    #[test]
-    fn ready_tag_matches_the_ts_convention() {
-        let decoded: BridgeEnvelope =
-            serde_json::from_str(r#"{"_tag":"__Ready"}"#).expect("decode");
-        assert_eq!(decoded.tag, READY_TAG);
-    }
-
     /// The envelope deserializer ignores fields beyond `_tag` so the
     /// same peek decodes any concrete payload shape.
     #[test]
     fn envelope_decodes_the_tag_and_ignores_other_fields() {
         let decoded: BridgeEnvelope =
-            serde_json::from_str(r#"{"_tag":"AuthTokenIssued","extra":42}"#).expect("decode");
-        assert_eq!(decoded.tag, "AuthTokenIssued");
+            serde_json::from_str(r#"{"_tag":"SaveHar","extra":42}"#).expect("decode");
+        assert_eq!(decoded.tag, "SaveHar");
     }
 }

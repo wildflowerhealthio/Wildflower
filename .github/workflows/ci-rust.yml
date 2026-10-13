@@ -8,8 +8,8 @@ on:
   # including the crates that pull in `tauri = "2"` (host-app,
   # wildflowerhealthio-browser-sniffer-tauri,
   # wildflowerhealthio-recorder-tauri, wildflowerhealthio-servers-tauri,
-  # wildflowerhealthio-shared-structures-tauri, tauri-plugin-native-webview,
-  # tauri-plugin-native-page-browser, wildflowerhealthio-tauri-unit-runner).
+  # tauri-plugin-native-webview, tauri-plugin-native-page-browser,
+  # wildflowerhealthio-tauri-unit-runner).
   # Those need GTK/webkit system libs, so the job installs them and stubs the
   # generated web bundles the Tauri crates `include_str!` (and the relay's
   # admin UI, which wildflowerhealthio-relay-server embeds).

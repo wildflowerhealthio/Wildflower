@@ -1,16 +1,16 @@
 # Wire Pinning How-To
 
-How to add or change a message that crosses the TS ⇄ Rust bridge boundary while keeping both sides byte-compatible. The canonical example is the gatekeeper bridge: `slices/gatekeeper/gatekeeper-core/src/bridge.ts` (TS) mirrored by `apps/host/wildflower-server/gatekeeper-rust/src/bridge.rs` (Rust). For why the bridge works the way it does, see the [Bridge Explanation](./Bridge%20Explanation.md).
+How to add or change a message that crosses the TS ⇄ Rust bridge boundary while keeping both sides byte-compatible. The canonical example is the Recorder bridge: `apps/host/recorder/recorder-core-js/src/bridge.ts` (TS) mirrored by `apps/host/recorder/recorder-rust/src/bridge.rs` (Rust). For why the bridge works the way it does, see the [Bridge Explanation](./Bridge%20Explanation.md).
 
 ## 1. Declare the TS schema
 
-In the slice's `<name>-core/src/bridge.ts`, add a `Schema.parseJson(Schema.TaggedStruct('YourTag', { ... }))` entry with camelCase field names, and register it in the slice's `Bridge.make` record for the right direction. Document the exact wire string in the TSDoc (`Wire: {"_tag":"YourTag","someField":"…"}`).
+In the slice's core package's `src/bridge.ts`, add a `Schema.parseJson(Schema.TaggedStruct('YourTag', { ... }))` entry with camelCase field names, and register it in the slice's `Bridge.make` record for the right direction. Document the exact wire string in the TSDoc (`Wire: {"_tag":"YourTag","someField":"…"}`).
 
 Before choosing the tag literal, confirm it is unused across every listener on the shared channel — the checklist is in the [effect-messaging-tauri-js README](../../global/effect-messaging/effect-messaging-tauri-js/README.md). Tag collisions dispatch silently on both listeners; no test catches them.
 
 ## 2. Mirror the Rust type
 
-In the slice's `<name>-rust/src/bridge.rs`, mirror the shape as a serde enum:
+In the slice's Rust crate's `src/bridge.rs`, mirror the shape as a serde enum:
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ The TS side needs no separate golden test: the schema _is_ the validator — inb
 
 - Optionality must match between sides: a field the host can omit or `null` must decode as absent/`null` in TS, and vice versa.
 - If the message is host-emitted on Tauri, the host must only send after `__Ready` (see the [Bridge Explanation](./Bridge%20Explanation.md)).
-- Never put secrets in a bridge payload — use a contentless notify plus an out-of-band capability-gated fetch (the `AuthTokenIssued` pattern).
+- Never put secrets in a bridge payload — use a contentless notify plus an out-of-band capability-gated fetch.
 
 ## See also
 

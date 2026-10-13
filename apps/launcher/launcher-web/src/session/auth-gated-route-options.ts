@@ -18,11 +18,10 @@ import type { ServerKind } from './server-kind.ts'
  * a Wildflower one. The redirect is in `beforeLoad`, so the route's loader
  * never runs for the other kind.
  *
- * `errorComponent` is `AuthGatedErrorComponent`, which wraps the body-only
- * `TokenTimeoutRetry` in the shared `.page` shell so the failure surface
- * gets the same layout every other route does. The wrap lives in a
- * separate `.tsx` file so this options module stays JSX-free and the
- * React Fast-Refresh `only-export-components` rule has no qualm.
+ * `errorComponent` is `AuthGatedErrorComponent`, a retry screen in the
+ * shared `.page` shell. It lives in a separate `.tsx` file so this options
+ * module stays JSX-free and the React Fast-Refresh `only-export-components`
+ * rule has no qualm.
  */
 const authGatedRouteOptionsFor = (servedKind: ServerKind['_tag']) =>
   ({

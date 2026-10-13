@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
-import { Effect, Layer } from 'effect'
+import { Layer } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -75,11 +75,6 @@ const renderGatedAt = (
     runAuthed: () => Promise.reject(new Error('runAuthed not used')),
     runtimeLayer: Layer.die('runtimeLayer not used'),
     awaitAuthReady,
-    transport: Promise.resolve({
-      sendMessage: () => Effect.void,
-      coordinator: { register: () => Effect.void, unregister: () => Effect.void },
-    }),
-    entry: 'main-web',
     externalLinkRoot: () => 'https://example.test',
     serverKind,
   }

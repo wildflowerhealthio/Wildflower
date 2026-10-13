@@ -4,8 +4,8 @@ import type { RouterContext } from '../router-context.ts'
 import { RootShell } from '../session/root-shell.tsx'
 
 /**
- * The search every route carries: `server`, the API server `main-web` points
- * at (`web-entry.ts` reads it at boot). Absent for `main-tauri`.
+ * The search every route carries: `server`, the server the landing page signs
+ * in to (`web-entry.ts`'s `chosenServerUrl`).
  */
 interface RootSearch {
   readonly server?: string
@@ -27,8 +27,8 @@ const validateRootSearch = (search: Record<string, unknown>): RootSearch => {
  * auth gate's bounce back to the landing. After sign-in `main-web` settles on
  * a URL without it (see `postSignInUrl`), and from then on there is nothing to
  * retain: the address bar and the links the router builds name no server. The
- * tab remembers it in `sessionStorage` instead, so a reload signs back in to
- * the same server (see `web-entry.ts`'s `chosenServerUrl`).
+ * session keeps it in the tab's `sessionStorage` instead, so a reload signs
+ * back in to the same server (see `web-entry.ts`'s `chosenServerUrl`).
  */
 /** The root's search handling, shared with its test. */
 const rootSearchOptions = {

@@ -11,10 +11,8 @@ import type { RunAuthed, RuntimeLayer } from './router-context.ts'
 
 /**
  * Builds the page-lifetime runtime layer + authed runner. The runtime
- * attaches no credential itself: the entry's transport decides how a
- * request authenticates — the hosted web entry's `readBearer` is stamped on by
- * `attachBearer`, and on Tauri the host stamps its owner bearer onto direct-loopback requests
- * by connection provenance.
+ * attaches no credential itself: the transport decides how a request
+ * authenticates — `attachBearer` stamps the session's bearer on.
  *
  * The `beforeLoad` auth gate (not the loaders) guarantees the auth
  * signal is ready before any authed loader runs, so there's no
@@ -22,9 +20,9 @@ import type { RunAuthed, RuntimeLayer } from './router-context.ts'
  *
  * @param apiTransport - The API server's transport, which every slice's
  *   client (FHIR's included: the server serves it at its root) sends through.
- *   The entry builds it (`app-query-runtime.ts`'s `apiTransport`), so it
- *   decides the origin and how a request authenticates.
- * @param effectTelemetryLayer - The entry's Effect telemetry layer, merged
+ *   `app-query-runtime.ts`'s `apiTransport` builds it over the page's
+ *   session, so it decides the server and how a request authenticates.
+ * @param effectTelemetryLayer - The page's Effect telemetry layer, merged
  *   into the runtime so every authed request runs under the page's tracer
  *   (see `RenderAppOptions.effectTelemetryLayer`)
  */

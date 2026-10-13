@@ -12,7 +12,7 @@ use crate::GatekeeperStore;
 /// capability holds.
 impl PendingConsentPublisher for GatekeeperState {
     /// Recompute the head of the pending-consent queue from the store and
-    /// publish it through the bridge's watch sender. Call after every transition
+    /// publish it on the head's watch sender. Call after every transition
     /// that may change the head (`/oauth/device_authorization` insert,
     /// `/oauth/authorize` insert, `/access/oauth-consents/{id}/approve`,
     /// `/access/oauth-consents/{id}/deny`, `/access/devices/{userCode}/approve`,
@@ -30,7 +30,7 @@ impl PendingConsentPublisher for GatekeeperState {
     ///
     /// Uses `send_if_modified` so a transition that leaves the head
     /// unchanged (e.g. denying a non-head request) does not produce a
-    /// spurious bridge event — the host's window-focus path only wakes
+    /// spurious `pending-consent` event — the host's window-focus path only wakes
     /// on real head changes.
     ///
     /// On a DB-read failure the watch is *cleared* to `None`: the

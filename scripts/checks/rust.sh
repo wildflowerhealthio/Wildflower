@@ -47,12 +47,12 @@ non_tauri=(--workspace
   --exclude wildflowerhealthio-browser-sniffer-tauri
   --exclude wildflowerhealthio-recorder-tauri
   --exclude wildflowerhealthio-servers-tauri
-  --exclude wildflowerhealthio-shared-structures-tauri
   --exclude tauri-plugin-native-webview
   --exclude tauri-plugin-native-page-browser
   --exclude wildflowerhealthio-tauri-unit-runner)
-tauri=(-p host-app -p wildflowerhealthio-browser-sniffer-tauri -p wildflowerhealthio-recorder-tauri -p wildflowerhealthio-servers-tauri -p wildflowerhealthio-shared-structures-tauri -p tauri-plugin-native-webview -p tauri-plugin-native-page-browser -p wildflowerhealthio-tauri-unit-runner)
-tauri_names=" host-app wildflowerhealthio-browser-sniffer-tauri wildflowerhealthio-har-recorder-tauri wildflowerhealthio-servers-tauri wildflowerhealthio-shared-structures-tauri tauri-plugin-native-webview tauri-plugin-native-page-browser wildflowerhealthio-tauri-unit-runner "
+
+tauri=(-p host-app -p wildflowerhealthio-browser-sniffer-tauri -p wildflowerhealthio-recorder-tauri -p wildflowerhealthio-servers-tauri -p tauri-plugin-native-webview -p tauri-plugin-native-page-browser -p wildflowerhealthio-tauri-unit-runner)
+tauri_names=" host-app wildflowerhealthio-browser-sniffer-tauri wildflowerhealthio-recorder-tauri wildflowerhealthio-servers-tauri tauri-plugin-native-webview tauri-plugin-native-page-browser wildflowerhealthio-tauri-unit-runner "
 
 # Exact-match a crate name against the Tauri set. Iterating + string equality
 # avoids the substring ambiguity a `case "$tauri_names" in *" $n "*)` glob would

@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { basenameOf } from '@wildflowerhealthio/branding-core'
 import { AppLandingPage } from '@wildflowerhealthio/branding-react'
 import { withLocalNetworkAccessHint } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -28,12 +28,13 @@ import { chosenServerUrl } from '../web-entry.ts'
 /**
  * Record `serverUrl` as this page's target without reloading.
  *
- * `?server=` is what `web-entry.ts` reads to point the transport, so it has
- * to be in the URL — but a reload is not needed to get there and would only
- * throw away the page mid-action. It does not survive the sign-in round trip,
- * and does not need to: the registered redirect carries no query, and
- * `main-web`'s boot remembers the redeemed session's server in the tab's
- * `sessionStorage`, leaving `?server=` out of the settled URL.
+ * `?server=` is what the landing reads to choose its server (`web-entry.ts`'s
+ * `chosenServerUrl`), so it has to be in the URL — but a reload is not needed
+ * to get there and would only throw away the page mid-action. It does not
+ * survive the sign-in round trip, and does not need to: the registered
+ * redirect carries no query, and the redeemed session's server is kept with
+ * its bearer, in the tab's `sessionStorage`, leaving `?server=` out of the
+ * settled URL.
  *
  * The current `pathname` is kept, not replaced with `/`: this build is served
  * under a subpath (`/launcher/`, or a PR preview's `/staging/pr-<n>/launcher/`), so a
@@ -46,25 +47,16 @@ const rememberServer = (serverUrl: string): void => {
 }
 
 /**
- * Root index. Behavior varies by entry:
+ * Root index:
  *
- * - **`main-web` + unauthed**: renders the landing page (the launcher's
- *   introduction beside the server picker), which signs in by SMART standalone
- *   launch, or with the EHR launch the page was opened with — see
- *   `../sign-in.ts` for the flow and why this entry uses it rather than the
- *   device-code screen.
- * - **`main-web` + authed**: redirects to `/home`, whose gate sends a plain
- *   SMART server's session on to `/fhir-home`.
- * - **`main-tauri`**: redirects to `/home` unconditionally. The host webview
- *   talks to its own loopback server, so there is no server to pick, and the
- *   `_auth` gate handles the auth check.
+ * - **unauthed**: renders the landing page (the launcher's introduction beside
+ *   the server picker), which signs in by SMART standalone launch, or with the
+ *   EHR launch the page was opened with — see `../sign-in.ts` for the flow and
+ *   why the launcher uses it rather than the device-code screen.
+ * - **authed**: redirects to `/home`, whose gate sends a plain SMART server's
+ *   session on to `/fhir-home`.
  */
 const Route = createFileRoute('/')({
-  beforeLoad: ({ context }: { readonly context: RouterContext }): void => {
-    if (context.entry !== 'main-web') {
-      throw redirect({ to: '/home' })
-    }
-  },
   component: LandingRoute,
 })
 
@@ -188,9 +180,9 @@ function Landing({
 
   if (authed) return <></>
 
-  // The server this page is pointed at, if any — the same resolution
-  // `main-web` gives the transport, so the token is asked of whichever server
-  // the requests will go to.
+  // The server this page is pointed at, if any: the one `?server=` names, else
+  // the one this tab last signed in to. A sign-in to it makes it the session's
+  // server, which every request then goes to.
   const serverUrl = chosenServerUrl(window.location.search, window.sessionStorage)
   const pageIsSecure = window.location.protocol === 'https:'
 

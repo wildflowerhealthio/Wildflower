@@ -2,7 +2,6 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 import { Either } from 'effect'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import type { LaunchOutcome } from './-launch.ts'
 import { LaunchScreen } from './launch.$id.tsx'
 
 describe('LaunchScreen', () => {
@@ -11,8 +10,8 @@ describe('LaunchScreen', () => {
   })
 
   it('should launch the app named in the route once, and stay while the tab moves to it', async () => {
-    // Arrange — a forwarded launch: `launch` has already sent the tab on.
-    const run = recordingRun(Either.right('navigated'))
+    // Arrange — `launch` has already sent the tab on.
+    const run = recordingRun(Either.void)
 
     // Act
     const { rerender } = render(<LaunchScreen id="medications" {...run.props} />)
@@ -23,16 +22,6 @@ describe('LaunchScreen', () => {
       expect(run.launched).toEqual(['medications'])
     })
     expect(run.wentHome).toEqual([])
-  })
-
-  it('should go home when the host opened the app natively', async () => {
-    const run = recordingRun(Either.right('openedOnHost'))
-
-    render(<LaunchScreen id="medications" {...run.props} />)
-
-    await waitFor(() => {
-      expect(run.wentHome).toEqual([undefined])
-    })
   })
 
   it('should go home carrying the failure for the banner', async () => {
@@ -50,17 +39,17 @@ describe('LaunchScreen', () => {
 
 /** `LaunchScreen`'s `launch` and `goHome`, answering `result` and recording each call. */
 const recordingRun = (
-  result: Either.Either<LaunchOutcome, string>
+  result: Either.Either<void, string>
 ): {
   readonly props: {
-    readonly launch: (id: string) => Promise<Either.Either<LaunchOutcome, string>>
-    readonly goHome: (launchError: string | undefined) => void
+    readonly launch: (id: string) => Promise<Either.Either<void, string>>
+    readonly goHome: (launchError: string) => void
   }
   readonly launched: string[]
-  readonly wentHome: (string | undefined)[]
+  readonly wentHome: string[]
 } => {
   const launched: string[] = []
-  const wentHome: (string | undefined)[] = []
+  const wentHome: string[] = []
   return {
     launched,
     wentHome,

@@ -1,6 +1,6 @@
 //! What the host hands [`set_up`](crate::set_up): its build-time and
-//! platform-path values, its native adapters and bridge channels, and the
-//! channels it watches the server through.
+//! platform-path values, its native adapters, and the channels it watches the
+//! server through.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, watch};
 use wildflowerhealthio_gatekeeper::{LoopbackConsentPrompt, PendingConsentHead};
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
-use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_tunnel::TunnelState;
 
 use crate::{CertificateAuthority, CertificateState, ServerHealth};
@@ -66,25 +66,13 @@ pub struct DeviceCertificateConfig {
     pub acme_account_dir: PathBuf,
 }
 
-/// The host's side of [`set_up`](crate::set_up): its native adapters and the
-/// channels the server publishes host→webview state on.
-///
-/// The senders are owned by the host, so their receivers (the host's bridge)
-/// outlive any one server; cloning the ports for another run keeps the same
-/// channels.
+/// The host's side of [`set_up`](crate::set_up): its native adapters, which
+/// every run of every server shares.
 #[derive(Clone)]
 pub struct HostPorts {
     /// The native Approve / Reject dialog gatekeeper raises when the hosted owner
     /// UI logs in over direct loopback.
     pub loopback_consent_prompt: Arc<dyn LoopbackConsentPrompt>,
-    /// Opens a loopback app launch in an on-device native webview popup.
-    pub on_device_webview_handle: Arc<dyn OnDeviceWebviewHandle>,
-    /// The channel gatekeeper publishes each minted host owner token on. The
-    /// loopback owner trust reads it, so a receiver must be alive when
-    /// [`set_up`](crate::set_up) mints the first token.
-    pub host_owner_token_tx: watch::Sender<Option<String>>,
-    /// The channel gatekeeper publishes the active pending consent request on.
-    pub active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
 }
 
 /// The channels the host watches a running server through. The host owns the
@@ -107,6 +95,10 @@ pub struct ServerObservers {
     /// renewal falls due or it expires. `None` until the run's certificate
     /// starts; the run publishes nothing after it stops.
     pub certificate_tx: watch::Sender<Option<CertificateState>>,
+    /// The head of the server's pending-consent queue, published by
+    /// gatekeeper as the run starts and after each change to the queue, for
+    /// as long as the server runs.
+    pub pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     /// Each forwarded request (every request through the tunnel, and each one
     /// a front run on this machine relayed), reported by the forwarded-request
     /// layer after its response is ready (see `forwarded_request_layer`). A

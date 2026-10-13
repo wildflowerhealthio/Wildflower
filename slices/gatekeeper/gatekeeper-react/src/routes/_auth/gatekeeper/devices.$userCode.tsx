@@ -31,10 +31,6 @@ const DeviceConsentScreen = ({
  * Reads the typed `$userCode` path param via `Route.useParams()`. The
  * `_auth` `beforeLoad` gate guarantees a token before this loader runs, so
  * it's a plain `ensureQueryData` — failures propagate to `errorComponent`.
- *
- * The same form is reused by the in-app {@link PendingConsentModalHost}
- * popup (Tauri-only), which dismisses the modal on `onDone` instead of
- * navigating.
  */
 function DeviceConsentRoute(): JSX.Element {
   const { userCode } = Route.useParams()

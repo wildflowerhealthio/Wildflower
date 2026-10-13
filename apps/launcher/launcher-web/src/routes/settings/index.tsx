@@ -6,17 +6,18 @@ import { gatekeeperSettingsItemsFragment } from '@wildflowerhealthio/gatekeeper-
 import { ItemList, PageHeader } from '@wildflowerhealthio/react-tundraish'
 import { requestLogSettingsItemsFragment } from '@wildflowerhealthio/request-log-react'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
+import { Option } from 'effect'
 import type { JSX } from 'react'
 
-import { usePlatformSettingsItems } from '../../session/platform-settings-items-context.ts'
+import { useLogoutSettingsItem } from '../../session/logout-settings-item-context.ts'
 import { useTelemetrySettingsItems } from '../../session/telemetry-settings-items.ts'
 
 /**
  * Compile-time concatenation of every slice's
  * `<slice>SettingsItemsFragment`. Fragment-declaration order is
  * canonical for v1 — sorting and grouping are v2 concerns (issue #47).
- * The entry's rows (the Telemetry row, the web logout POST) are
- * appended after these — the entry, not this route, decides those.
+ * The app's own rows (the Telemetry row, the Logout row) are appended
+ * after these.
  */
 const sliceSettingsItems: readonly SettingsItem[] = [
   ...requestLogSettingsItemsFragment,
@@ -26,7 +27,7 @@ const sliceSettingsItems: readonly SettingsItem[] = [
 ]
 
 /**
- * The Legal rows every entry ends on: the privacy policy, the consumer health
+ * The Legal rows the settings screen ends on: the privacy policy, the consumer health
  * data policy, the terms of use and the deletion page on the canonical site,
  * opened in a new tab (the system browser, inside Wildflower Host's webview). The app stores require the apps
  * to link to the first and the last.
@@ -41,38 +42,40 @@ const legalSettingsItems: readonly SettingsItem[] = POLICY_IDS.map((id) => ({
 /**
  * Index of `/settings`. Renders the section's single "Settings" header
  * (this is a top-level tab, so no back link) followed by one row per
- * slice that opts in via `*SettingsItemsFragment`, then the entry's own
- * rows, `entrySettingsItems` (e.g. the Telemetry row and the web logout row),
- * then the Legal rows.
+ * slice that opts in via `*SettingsItemsFragment`, then the app's own
+ * rows, `appSettingsItems` (the Telemetry row and the Logout row), then the
+ * Legal rows.
  *
  * Presentational and prop-driven — the route binding below feeds
- * `entrySettingsItems` from the entry's providers, so this component stays
+ * `appSettingsItems` from the app's providers, so this component stays
  * trivially testable without standing up the app's full context.
  */
 function SettingsIndex({
-  entrySettingsItems,
+  appSettingsItems,
 }: {
-  readonly entrySettingsItems: readonly SettingsItem[]
+  readonly appSettingsItems: readonly SettingsItem[]
 }): JSX.Element {
   return (
     <>
       <PageHeader title="Settings" backHref="/home" backLabel="Apps" />
-      <ItemList items={[...sliceSettingsItems, ...entrySettingsItems, ...legalSettingsItems]} />
+      <ItemList items={[...sliceSettingsItems, ...appSettingsItems, ...legalSettingsItems]} />
     </>
   )
 }
 
 /**
- * Route binding: reads the entry's rows and hands them to the presentational
- * {@link SettingsIndex}: the Telemetry row where the entry mounted the consent
- * gate ({@link useTelemetrySettingsItems}), then the entry's platform settings
- * rows from the {@link usePlatformSettingsItems} provider.
+ * Route binding: reads the app's rows and hands them to the presentational
+ * {@link SettingsIndex}: the Telemetry row inside the consent gate
+ * ({@link useTelemetrySettingsItems}), then the Logout row
+ * ({@link useLogoutSettingsItem}).
  */
 function SettingsIndexRoute(): JSX.Element {
   const telemetrySettingsItems = useTelemetrySettingsItems()
-  const platformSettingsItems = usePlatformSettingsItems()
+  const logoutSettingsItem = useLogoutSettingsItem()
   return (
-    <SettingsIndex entrySettingsItems={[...telemetrySettingsItems, ...platformSettingsItems]} />
+    <SettingsIndex
+      appSettingsItems={[...telemetrySettingsItems, ...Option.toArray(logoutSettingsItem)]}
+    />
   )
 }
 

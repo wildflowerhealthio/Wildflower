@@ -3,9 +3,8 @@
 The **launcher**: the web app that manages a Wildflower server, published at
 <https://wildflowerhealth.io/launcher/>, and the packages beside it that only
 the launcher uses: the TypeScript halves of the server features it manages
-(databases, the request log, the app registry),
-the server-status wire and its screens, and the host navigation reporter. The
-app itself is [`launcher-web`](./launcher-web/AGENTS.md).
+(databases, the request log, the app registry). The app itself is
+[`launcher-web`](./launcher-web/AGENTS.md).
 
 Where a feature also has a server half, its Rust crate lives with the server
 the host runs, in
@@ -13,15 +12,12 @@ the host runs, in
 
 ## Packages
 
-- [`launcher-web`](./launcher-web/AGENTS.md) — the app. One source tree and two
-  entries, each passing its platform's wiring to `buildAppTree`: `main-web`, the
-  build published at `/launcher/`, cross-origin to the server `?server=` names,
-  signing in by SMART redirect and holding its bearer in page memory; and
-  `main-tauri`, the wiring for a webview the host authenticates, which no app
-  mounts today (the Tauri host's webview mounts the servers base,
-  `apps/host/servers/servers-react`, instead). Both boot only after the telemetry
-  consent dialog is answered. It mounts the settings and route fragments of the
-  packages it composes (`routes.config.ts`).
+- [`launcher-web`](./launcher-web/AGENTS.md) — the app, published at
+  `/launcher/`: cross-origin to the server it signs in to, signing in by SMART
+  redirect and holding its session (the server and its bearer) for every
+  request. It boots only after the telemetry consent dialog is answered, and
+  mounts the settings and route fragments of the packages it composes
+  (`routes.config.ts`).
 - [`apps-core-js`](./apps-core-js) and [`apps-react`](./apps-react) — the
   TypeScript half of the app registry, whose server half is
   [`apps-rust`](../host/wildflower-server/apps-rust/AGENTS.md). `apps-core-js` is the
@@ -32,9 +28,6 @@ the host runs, in
   and `databases-react`, the `/settings/databases` screen.
 - `request-log/` — `request-log-core-js`, the `/requests` `HttpApi` and client,
   and `request-log-react`, the `/settings/requests` activity page.
-- [`navigation-react`](./navigation-react) — the bridge handler that reports
-  route changes to the host. Its wire, `navigation-core`, stays in
-  `slices/navigation-core`, because `fhir-r4` reads it too.
 
 ## Rules
 
@@ -55,4 +48,3 @@ the host runs, in
 - [apps/host/wildflower-server/AGENTS.md](../host/wildflower-server/AGENTS.md)
   — the Rust halves of the features here
 - [Architecture / slice layering](../../slices/AGENTS.md)
-- [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) — the webview ↔ host bridge the wires ride

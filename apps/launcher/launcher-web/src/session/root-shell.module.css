@@ -1,8 +1,8 @@
 /*
- * The root of every route: the entry's platform banner (when it has something
- * to say) above the matched route. A flex column rather than a grid: a flex
- * column stretches its children to its own width, where a grid's implicit
- * column grows to fit the widest child and pushes wide routes off-screen.
+ * The root of every route, around the matched route. A flex column rather
+ * than a grid: a flex column stretches its children to its own width, where a
+ * grid's implicit column grows to fit the widest child and pushes wide routes
+ * off-screen.
  *
  * The document scrolls, not a box inside it: the shell is at least the
  * viewport tall and grows with the route, so on iOS the page scrolls under

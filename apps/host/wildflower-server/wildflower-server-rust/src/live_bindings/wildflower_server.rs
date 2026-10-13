@@ -11,7 +11,7 @@ use anyhow::Context;
 use axum::Router;
 use helios_auth::SessionStore;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
@@ -175,8 +175,8 @@ impl WildflowerServer {
 /// [`serve`](WildflowerServer::serve).
 ///
 /// `config` is what the host derived at build time or from its paths; `host`
-/// carries its native adapters and its bridge's channels; `observers` carries
-/// the channels the host watches the server through.
+/// carries its native adapters; `observers` carries the channels the host
+/// watches the server through.
 ///
 /// # Errors
 ///
@@ -276,10 +276,9 @@ pub async fn set_up(
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
     // pushes the freshly-minted token onto the owner-token channel the
-    // loopback owner trust presents (and the bridge emits a contentless
-    // `AuthTokenIssued` notify to flip the page's auth-readiness signal).
-    // If the port were already taken, minting first would mean minting a
-    // full-Owner bearer while a *foreign* process owns `127.0.0.1:<port>`.
+    // loopback owner trust presents. If the port were already taken, minting
+    // first would mean minting a full-Owner bearer while a *foreign* process
+    // owns `127.0.0.1:<port>`.
     // Binding first guarantees the token is only ever minted once this
     // process owns the port.
     let loopback_listener = TcpListener::bind(&loopback_host)
@@ -329,15 +328,17 @@ pub async fn set_up(
         }
     }
 
-    // `setup_gatekeeper` publishes the freshly-minted host owner token (and
-    // pending-consent heads) on the host's channels; the host's bridge delivers
-    // them to the webview.
+    // `setup_gatekeeper` publishes the freshly-minted host owner token on
+    // `host_owner_token_tx`, which the loopback owner trust reads (so its
+    // receiver must be alive by then), and the head of its pending-consent
+    // queue on the host's channel.
+    let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
     let gatekeeper = setup_gatekeeper(
         diesel_pool.clone(),
         revocation_store.clone(),
         &gatekeeper_config,
-        &host.host_owner_token_tx,
-        host.active_pending_consent_tx,
+        &host_owner_token_tx,
+        observers.pending_consent_tx,
         host.loopback_consent_prompt,
     )
     .context("failed to set up gatekeeper")?;
@@ -454,12 +455,9 @@ pub async fn set_up(
             launch_context_minter: gatekeeper.launch_context_minter.clone(),
         });
 
-    // A loopback launch hands the resolved URL to the host's on-device webview
-    // handle, which opens it in a native popup (the server 204s).
     let apps = setup_apps(
         diesel_pool.clone(),
         &apps_config,
-        host.on_device_webview_handle,
         launch_scopes,
         launch_context_minter,
     )
@@ -566,7 +564,7 @@ pub async fn set_up(
         // preflight first) and of the loopback-peer gate.
         .layer(axum::middleware::from_fn_with_state(
             LoopbackOwnerTrust {
-                token_rx: host.host_owner_token_tx.subscribe(),
+                token_rx: host_owner_token_rx,
             },
             inject_loopback_owner_token,
         ))

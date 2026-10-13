@@ -12,7 +12,7 @@ describe('prependApiBaseUrl', () => {
 
     // Act
     await Effect.flatMap(HttpClient.HttpClient, (client) => client.get('/apps')).pipe(
-      Effect.provide(prependApiBaseUrl(innerClient, 'http://127.0.0.1:8080')),
+      Effect.provide(prependApiBaseUrl(innerClient, () => 'http://127.0.0.1:8080')),
       Effect.runPromise
     )
 
@@ -29,7 +29,7 @@ describe('prependApiBaseUrl', () => {
     await Effect.flatMap(HttpClient.HttpClient, (client) =>
       client.get('https://example.test/apps')
     ).pipe(
-      Effect.provide(prependApiBaseUrl(innerClient, 'http://127.0.0.1:8080')),
+      Effect.provide(prependApiBaseUrl(innerClient, () => 'http://127.0.0.1:8080')),
       Effect.runPromise
     )
 
@@ -45,7 +45,7 @@ describe('prependApiBaseUrl', () => {
     const body = await Effect.flatMap(HttpClient.HttpClient, (client) =>
       Effect.flatMap(client.get('/apps'), (response) => response.json)
     ).pipe(
-      Effect.provide(prependApiBaseUrl(innerClient, 'http://127.0.0.1:8080')),
+      Effect.provide(prependApiBaseUrl(innerClient, () => 'http://127.0.0.1:8080')),
       Effect.runPromise
     )
 
@@ -61,7 +61,7 @@ describe('prependApiBaseUrl', () => {
 
       // Act
       await Effect.flatMap(HttpClient.HttpClient, (client) => client.get('/apps')).pipe(
-        Effect.provide(prependApiBaseUrl(innerClient, 'http://127.0.0.1:8080')),
+        Effect.provide(prependApiBaseUrl(innerClient, () => 'http://127.0.0.1:8080')),
         Effect.runPromise
       )
 
@@ -82,7 +82,7 @@ describe('prependApiBaseUrl', () => {
 
       // Act
       await Effect.flatMap(HttpClient.HttpClient, (client) => client.get('/apps')).pipe(
-        Effect.provide(prependApiBaseUrl(innerClient, 'http://127.0.0.1:8080')),
+        Effect.provide(prependApiBaseUrl(innerClient, () => 'http://127.0.0.1:8080')),
         Effect.runPromise
       )
 
@@ -91,6 +91,42 @@ describe('prependApiBaseUrl', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  test('reads the base URL at request time, not when the layer is built', async () => {
+    // Arrange
+    const seenUrls: string[] = []
+    let apiBaseUrl = 'https://first.example'
+    const layer = prependApiBaseUrl(capturingClientLayer(seenUrls), () => apiBaseUrl)
+    const get = Effect.flatMap(HttpClient.HttpClient, (client) => client.get('/apps')).pipe(
+      Effect.provide(layer)
+    )
+
+    // Act
+    await Effect.runPromise(get)
+    apiBaseUrl = 'https://second.example'
+    await Effect.runPromise(get)
+
+    // Assert
+    expect(seenUrls).toEqual(['https://first.example/apps', 'https://second.example/apps'])
+  })
+
+  test('fails a relative request, sending nothing, when no base URL is known', async () => {
+    // Arrange
+    const seenUrls: string[] = []
+
+    // Act
+    const result = await Effect.flatMap(HttpClient.HttpClient, (client) =>
+      client.get('/apps')
+    ).pipe(
+      Effect.provide(prependApiBaseUrl(capturingClientLayer(seenUrls), () => undefined)),
+      Effect.flip,
+      Effect.runPromise
+    )
+
+    // Assert
+    expect(result._tag).toBe('RequestError')
+    expect(seenUrls).toEqual([])
   })
 })
 

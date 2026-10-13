@@ -1,7 +1,7 @@
 {
   "name": "@wildflowerhealthio/gatekeeper-core",
   "version": "0.0.0",
-  "description": "OAuth domain package: HTTP API definitions, generated clients, bridge contract, and page paths for the gatekeeper slice (served by gatekeeper-rust).",
+  "description": "OAuth domain package: HTTP API definitions, generated clients, and page paths for the gatekeeper slice (served by gatekeeper-rust).",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -24,10 +24,6 @@
     "./http-api-definition": {
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"
-    },
-    "./bridge": {
-      "source": "./src/bridge.ts",
-      "default": "./dist/bridge.js"
     },
     "./smart-client": {
       "source": "./src/smart-client/index.ts",
@@ -53,7 +49,6 @@
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
-    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "bumpp": "catalog:",
@@ -72,7 +67,6 @@
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
-    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:",

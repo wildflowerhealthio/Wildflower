@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use url::Url;
 use wildflowerhealthio_gatekeeper::{NoLoopbackConsentPrompt, PendingConsentHead};
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
@@ -24,7 +24,7 @@ use wildflowerhealthio_servers::{
     RunPolicy, ServerConsentDecider, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
-use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{
     BackgroundSessionLength, RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus,
@@ -41,13 +41,6 @@ const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The server's domain, and so its unit id.
 const DOMAIN: &str = "test.relay.invalid";
-
-/// An on-device webview handle with no popup: the test never launches an app.
-struct NoOnDeviceWebview;
-
-impl OnDeviceWebviewHandle for NoOnDeviceWebview {
-    fn open(&self, _app_id: String, _title: String, _url: String) {}
-}
 
 fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {
     WildflowerServerConfig {
@@ -135,12 +128,6 @@ async fn health_status(loopback_base_url: &Url) -> reqwest::StatusCode {
 struct ServerOnARunner {
     unit_runner: Arc<UnitRunner<ServerDetail>>,
     loopback_base_url: Url,
-    /// The host's pending-consent channel, which every run forwards its head
-    /// to; the sender stands in for another server's run.
-    host_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
-    host_pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
-    /// Held so gatekeeper can publish the host owner token.
-    _host_owner_token_rx: watch::Receiver<Option<String>>,
     _server_dir: tempfile::TempDir,
 }
 
@@ -148,14 +135,8 @@ fn server_on_a_runner() -> ServerOnARunner {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
-    let (active_pending_consent_tx, host_pending_consent_rx) =
-        watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_tx,
-        active_pending_consent_tx: active_pending_consent_tx.clone(),
     };
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned(), loopback_base_url.clone());
@@ -175,9 +156,6 @@ fn server_on_a_runner() -> ServerOnARunner {
     ServerOnARunner {
         unit_runner,
         loopback_base_url,
-        host_pending_consent_tx: active_pending_consent_tx,
-        host_pending_consent_rx,
-        _host_owner_token_rx: host_owner_token_rx,
         _server_dir: server_dir,
     }
 }
@@ -190,13 +168,6 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         loopback_base_url,
         ..
     } = &server;
-    // Another server's consent waits on the host's channel.
-    let other_servers_head = PendingConsentHead::Device {
-        user_code: "OTHER-SERVER".to_owned(),
-    };
-    server
-        .host_pending_consent_tx
-        .send_replace(Some(other_servers_head.clone()));
 
     wait_for(unit_runner, "running", |status| {
         status.run_state == RunState::Running
@@ -230,11 +201,6 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
             .as_ref()
             .is_some_and(|detail| detail.health.is_none()),
         "a tunnel that isn't connected is never probed"
-    );
-    assert_eq!(
-        *server.host_pending_consent_rx.borrow(),
-        Some(other_servers_head),
-        "a run with nothing waiting leaves another server's head alone"
     );
     // The run's detail holds its launch minter, which mints through the
     // run's gatekeeper; a server whose health is unknown isn't launchable,
@@ -343,11 +309,6 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
             .is_some_and(|detail| detail.pending_consent.as_ref() == Some(&first))
     })
     .await;
-    assert_eq!(
-        *server.host_pending_consent_rx.borrow(),
-        Some(first),
-        "the run forwards its head to the host's channel"
-    );
 
     let decider = ServerConsentDecider::of_running_server(&unit_runner.statuses(), DOMAIN)
         .expect("the run's detail holds its decider");

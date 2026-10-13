@@ -9,23 +9,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
 /**
  * Regression guard for the provider tier that lives above the router.
  * `<RootShell>` renders ONLY an `<Outlet />` — no slice client providers
- * nest there. The stack lives in two places:
+ * nest there. The stack lives above `<RouterProvider>`: `AuthStateProvider`
+ * among it.
  *
- *  - Above `<RouterProvider>`: `AuthStateProvider` and the in-tree
- *    `TransportContext.Provider` (the value is seeded by a promise
- *    resolved outside React; the tree itself doesn't build the
- *    transport).
- *  - `InnerWrap` (passed to `<RouterProvider>`): `NavigationBridgeHandler`,
- *    which watches the location and reports each route change to the host.
- *
- * The invariant: TanStack's `<RouterProvider>` does NOT remount the
- * `InnerWrap` on child navigations — children mount/unmount inside the
+ * The invariant: TanStack's `<RouterProvider>` does NOT remount what sits
+ * above it on child navigations — children mount/unmount inside the
  * `<Outlet />` — so the provider tier keeps state across nav.
  *
- * Strategy: mock every provider/bridge as an identity passthrough that
- * records `'mount'` / `'unmount'` events into a shared `lifecycleSpy`,
- * so the test exercises only mount semantics — not Effect runtimes or
- * console interceptors. The event log distinguishes "the provider
+ * Strategy: mock each provider as an identity passthrough that records
+ * `'mount'` / `'unmount'` events into a shared `lifecycleSpy`, so the test
+ * exercises only mount semantics — not Effect runtimes. The event log distinguishes "the provider
  * stayed put" (log unchanged by nav) from "rebuilt under the new
  * route" (mount + unmount appended).
  */
@@ -58,11 +51,8 @@ const { lifecycleSpy, makePassthrough } = vi.hoisted(() => {
   return { lifecycleSpy: spy, makePassthrough: factory }
 })
 
-// Mock every slice provider package and every app-local bridge file as
-// a passthrough. Mocks only need to satisfy the surface the modules
-// under test import. `authTokenRef` is a non-component export and is
-// reduced to a stub `Subscribable` that reports null and never
-// publishes — the mocked AuthStateProvider doesn't use it.
+// Mock every slice provider package as a passthrough. Mocks only need to
+// satisfy the surface the modules under test import.
 vi.mock('@wildflowerhealthio/react-kitchen-sink', () => ({
   AuthStateProvider: makePassthrough('AuthStateProvider'),
   // The test seeds the store with `Unauthed()`; the mock only needs a value the
@@ -74,30 +64,15 @@ vi.mock('@wildflowerhealthio/react-kitchen-sink', () => ({
   cn: (
     ...args: ReadonlyArray<string | undefined | null | false | Record<string, boolean>>
   ): string => args.filter((a): a is string => typeof a === 'string').join(' '),
-  // `AppRootTree` consumes the transport promise through this hook;
-  // resolve immediately to the fallback so the test renders past the
-  // suspense window.
-  usePromiseOrDefault: <T,>(_promise: Promise<T>, fallback: T): T => fallback,
 }))
 // The `RootShell` lifecycle test only consumes the slice runtime
-// layer; the `AuthStateStore` itself is constructed inline in the
-// test body below. `ActivePendingConsentProvider` is reduced to a
-// passthrough and `PendingConsentModalHost` to nothing — the popup
-// surface isn't what's being pinned here, and the real Effect
-// `SubscriptionRef` plumbing would drag a runtime into this harness.
+// layer and the logout row; the `AuthStateStore` itself is constructed
+// inline in the test body below.
 vi.mock('@wildflowerhealthio/gatekeeper-react', async (importOriginal) => {
   const actual = await importOriginal<typeof GatekeeperReact>()
   return {
     GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
-    ActivePendingConsentProvider: makePassthrough('ActivePendingConsentProvider'),
-    makeActivePendingConsentStore: () => ({
-      subscribable: {
-        get: Effect.succeed(null),
-        changes: { pipe: () => ({}) },
-      },
-      setActiveHead: () => {},
-    }),
-    PendingConsentModalHost: (): null => null,
+    gatekeeperLogoutSettingsItem: actual.gatekeeperLogoutSettingsItem,
     TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
   }
 })
@@ -109,9 +84,6 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
 }))
 vi.mock('@wildflowerhealthio/apps-react', () => ({
   AppsRouterContext: { sliceRuntimeLayer: Layer.empty },
-}))
-vi.mock('@wildflowerhealthio/navigation-react', () => ({
-  NavigationBridgeHandler: makePassthrough('NavigationBridgeHandler'),
 }))
 // `buildAppTree` wraps the tree in `telemetry-web`'s `<ErrorBoundary>` and
 // reports to `Sentry`. Neither is the thing under test, and the real
@@ -125,12 +97,12 @@ vi.mock('@wildflowerhealthio/telemetry-web', () => ({
 // `buildAppTree` imports the real `routeTree.gen.ts`, whose top-level
 // imports eagerly pull in every slice's route screens (Effect HttpApi
 // clients, CSS modules, sync runners). Those modules are incidental to
-// the `InnerWrap` wiring the "buildAppTree InnerWrap lifecycle" block
+// the provider wiring the "buildAppTree provider lifecycle" block
 // pins, and would drag network/Effect machinery into the harness — so
 // swap the generated tree for a minimal one built from the real
 // `__root` route (`RootShell`, already mocked down to passthroughs)
 // plus two leaf routes. The router still mounts through the real
-// `buildAppTree` + `InnerWrap`, which is the thing being pinned.
+// `buildAppTree`, which is the thing being pinned.
 //
 // `@tanstack/react-router` is not mocked, so the `createRootRoute` /
 // `createRoute` imported at the top of this file are the real builders.
@@ -160,13 +132,9 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
     .filter(([, providerName]) => providerName === name)
     .map(([event]) => event)
 
-describe('buildAppTree InnerWrap lifecycle', () => {
-  // The providers that live around the router above its matched routes:
-  // `AuthStateProvider` (just above `<RouterProvider>`) and the
-  // `NavigationBridgeHandler` that sits inside `InnerWrap`.
-  // The `TransportContext.Provider` is also above the router (in `AppRoot`)
-  // but is a plain context provider with no React-tree work to pin.
-  const INNER_WRAP_PROVIDERS = ['AuthStateProvider', 'NavigationBridgeHandler'] as const
+describe('buildAppTree provider lifecycle', () => {
+  // The providers that live around the router above its matched routes.
+  const PROVIDERS_ABOVE_ROUTER = ['AuthStateProvider'] as const
 
   // `mountAtRoot` mounts into `document.getElementById('root')` via
   // `createRoot`, so the container must exist before each render and be
@@ -186,31 +154,28 @@ describe('buildAppTree InnerWrap lifecycle', () => {
     vi.restoreAllMocks()
   })
 
-  test('the relocated auth/runtime/transport stack mounts once and survives navigation', async () => {
+  test('the auth/runtime stack mounts once and survives navigation', async () => {
     const { buildAppTree, mountAtRoot } = await import('../app-root.tsx')
     const history = createMemoryHistory({ initialEntries: ['/a'] })
 
-    const { stubTransport } = await import('../bridges/transport-context.ts')
-    // Minimal in-memory `AuthStateStore` — this test is about provider
-    // lifetimes across navigation, not the bearer itself.
+    // Minimal in-memory bearer store — this test is about provider lifetimes
+    // across navigation, not the session itself.
     const tokenRef = Effect.runSync(SubscriptionRef.make<AuthState>(Unauthed()))
     const tokenStore = {
       subscribable: tokenRef,
       setAuthState: (s: AuthState): void => Effect.runSync(SubscriptionRef.set(tokenRef, s)),
+      serverUrl: (): string | undefined => undefined,
+      bearer: (): string | undefined => undefined,
+      writeSession: (): void => {},
     }
     await act(async () => {
       mountAtRoot(
         buildAppTree({
           history,
-          entry: 'main-web',
           tokenStore,
-          awaitAuthReady: () => () => Promise.resolve(),
-          makeTransport: () => Promise.resolve(stubTransport),
+          awaitAuthReady: () => Promise.resolve(),
           effectTelemetryLayer: Layer.empty,
           externalLinkRoot: () => 'https://example.test',
-          platformSettingsItems: [],
-          platformBanner: null,
-          redirectToDeviceLoginOnUnauthorized: false,
           serverKind: ServerKind.Wildflower(),
         })
       )
@@ -229,12 +194,12 @@ describe('buildAppTree InnerWrap lifecycle', () => {
     // after. Pinning stability across nav isolates the regression
     // cleanly without coupling to StrictMode's mount-count semantics.
     const beforeNav = Object.fromEntries(
-      INNER_WRAP_PROVIDERS.map((name) => [name, lifecycleEventsFor(name)])
+      PROVIDERS_ABOVE_ROUTER.map((name) => [name, lifecycleEventsFor(name)])
     )
     // Every relocated provider must be present (mounted at least once)
     // before navigation — guards against the snapshot silently being
     // empty if a provider were dropped from the `InnerWrap`.
-    for (const name of INNER_WRAP_PROVIDERS) {
+    for (const name of PROVIDERS_ABOVE_ROUTER) {
       expect(beforeNav[name]).toContain('mount')
     }
 
@@ -256,7 +221,7 @@ describe('buildAppTree InnerWrap lifecycle', () => {
     // log gained a trailing unmount/remount. A layout-route regression
     // that pushed any of these below the router's stable boundary would
     // append `'unmount', 'mount'` here.
-    for (const name of INNER_WRAP_PROVIDERS) {
+    for (const name of PROVIDERS_ABOVE_ROUTER) {
       expect(lifecycleEventsFor(name)).toEqual(beforeNav[name])
     }
   })

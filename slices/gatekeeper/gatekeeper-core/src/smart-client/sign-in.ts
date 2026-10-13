@@ -31,7 +31,7 @@
  * by this module: no `localStorage`, no `sessionStorage`, no cookie. The client
  * is a public page and the token it obtains can be admin-capable, so it belongs
  * in one in-memory binding that dies with the tab — the same policy
- * `makeEmbeddedAuthStateStore` follows for the same reason
+ * `makeBearerAuthStateStore` follows for the same reason
  * (`slices/gatekeeper/docs/Auth Token Storage Explanation.md`). The only thing
  * that does reach `sessionStorage` is the pending record — no credential, and
  * deleted the instant the client returns, before the code is even redeemed.
