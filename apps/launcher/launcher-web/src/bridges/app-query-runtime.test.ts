@@ -33,10 +33,12 @@ describe('apiTransport', () => {
     const { runAuthed, recorded } = runnerOver('http://127.0.0.1:8080', undefined)
 
     // Act
-    await runAuthed(getFromRoot('/access/clients'))
+    await runAuthed(getFromRoot('/authorization/clients'))
 
     // Assert
-    expect(recorded.map((request) => request.url)).toEqual(['http://127.0.0.1:8080/access/clients'])
+    expect(recorded.map((request) => request.url)).toEqual([
+      'http://127.0.0.1:8080/authorization/clients',
+    ])
   })
 
   it('should send nothing while no server is signed in to', async () => {
@@ -44,7 +46,7 @@ describe('apiTransport', () => {
     const { runAuthed, recorded } = runnerOver(undefined, undefined)
 
     // Act
-    const outcome = await runAuthed(getFromRoot('/access/clients')).then(
+    const outcome = await runAuthed(getFromRoot('/authorization/clients')).then(
       () => 'sent',
       () => 'refused'
     )
@@ -93,7 +95,7 @@ describe('apiTransport', () => {
 
     // Act
     await runAuthed(searchPatients)
-    await runAuthed(getFromRoot('/access/clients'))
+    await runAuthed(getFromRoot('/authorization/clients'))
 
     // Assert
     expect(recorded.map((request) => request.authorization)).toEqual([

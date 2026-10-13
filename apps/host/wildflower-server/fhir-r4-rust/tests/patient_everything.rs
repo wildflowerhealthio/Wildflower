@@ -56,6 +56,11 @@ fn build_router() -> (Router, TempDb) {
         public_origin: "https://dev1.example.com"
             .parse()
             .expect("parse public origin"),
+        authorization_app_base:
+            wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase::parse(
+                "https://wildflowerhealth.io/authorization/",
+            )
+            .expect("parse the authorization app base"),
     };
 
     // Auth is off here (jwks_url is None), so the revocation store is never

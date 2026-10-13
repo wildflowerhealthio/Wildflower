@@ -64,7 +64,7 @@ pub use live_bindings::HostConsentDecider;
 // Re-exported so the host can name the pool type at the `setup_authorization_server`
 // call site without a direct diesel dependency; the canonical home is
 // persistence-rust (apps and request-log re-export it the same way).
-/// The admin scopes the `/access` surface enforces — the registry meant to
+/// The admin scopes the `/authorization` surface enforces — the registry meant to
 /// couple *enforced* (the scope-gated capability extractors) with *grantable*
 /// (the vocabulary the consent surfaces will offer). Re-exported for the host
 /// and the resource-authz epic's consent UI; nothing consumes it yet — its
@@ -99,7 +99,7 @@ pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access
 /// (`wildflower/*.cruds`). An Owner token covers *every* one of these, so it
-/// covers every per-resource `/access/*` scope the scope-gated extractors
+/// covers every per-resource `/authorization/*` scope the scope-gated extractors
 /// require — the fail-closed owner default. (Replaced the bespoke
 /// `wildflower/admin` scope.)
 pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
@@ -224,7 +224,7 @@ pub struct AuthorizationServer {
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
-///    `/oauth/*`, and `/access/*` (authenticated bearer JWT + per-resource
+///    `/oauth/*`, and `/authorization/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
 ///  - returns the `Arc<AuthorizationServerState>` the caller passes to
@@ -263,10 +263,10 @@ pub fn setup_authorization_server(
     loopback_consent_prompt: Arc<dyn ports::LoopbackConsentPrompt>,
 ) -> anyhow::Result<AuthorizationServer> {
     // The host owner token is minted from `host_owner_scopes` (the live app sources
-    // these from `tauri-shared-config.json`), but the `/access/*` owner gate
+    // these from `tauri-shared-config.json`), but the `/authorization/*` owner gate
     // still checks coverage of every `WILDFLOWER_WIDEST_SCOPES` entry. The JSON
     // must keep covering WIDEST or the launcher silently 401s, so fail loudly at
-    // boot rather than at first `/access/*` call.
+    // boot rather than at first `/authorization/*` call.
     let host_owner: Vec<Scope> = config
         .host_owner_scopes
         .iter()
@@ -278,7 +278,7 @@ pub fn setup_authorization_server(
             .all(|widest| host_owner.iter().any(|held| held.covers(widest))),
         "host_owner_scopes (from tauri-shared-config.json) must cover every \
          WILDFLOWER_WIDEST_SCOPES entry, or the host owner token can't pass the \
-         /access/* owner gate; got {:?}",
+         /authorization/* owner gate; got {:?}",
         config.host_owner_scopes
     );
     let store = seeding::open_and_seed_store(
@@ -398,7 +398,7 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
             // Retention floor = the longest access token we mint (the 2h host
             // owner token dwarfs the 15-min OAuth `ACCESS_TOKEN_TTL`), so a
             // denylist row is never dropped while its token could still be live —
-            // even if the `/access/revocations` caller supplied a too-early
+            // even if the `/authorization/revocations` caller supplied a too-early
             // `expiresAt`. See `RevocationStore::purge_expired`.
             match revocation_store.purge_expired(Utc::now(), HOST_OWNER_TOKEN_TTL) {
                 Ok(purged) if purged > 0 => {

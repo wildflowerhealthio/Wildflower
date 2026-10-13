@@ -5,7 +5,7 @@ use axum::http::Uri;
 
 /// `uri`'s path reduced to its route, its first segment:
 /// `/Patient/123/_history/2?x=y` reduces to `/Patient` and
-/// `/access/clients/abc` to `/access`. FHIR is served at the root, so a FHIR
+/// `/authorization/clients/abc` to `/authorization`. FHIR is served at the root, so a FHIR
 /// request's first segment is its resource type (or a `$operation`,
 /// `metadata`, …), and an id never comes first.
 ///
@@ -38,8 +38,8 @@ mod tests {
             ("/Patient/123/$everything", "/Patient"),
             ("/.well-known/smart-configuration", "/.well-known"),
             ("/$versions", "/$versions"),
-            ("/access/clients/abc", "/access"),
-            ("/access", "/access"),
+            ("/authorization/clients/abc", "/authorization"),
+            ("/authorization", "/authorization"),
             ("/requests/abc?x=1", "/requests"),
             ("/apps/lifting", "/apps"),
             ("/health", "/health"),

@@ -205,6 +205,7 @@ pub async fn set_up(
         runtime,
         search_parameter_data_dir,
         launcher_base,
+        authorization_app_base,
         host_owner_scopes,
         first_party_client_id,
         relay_settings,
@@ -251,6 +252,7 @@ pub async fn set_up(
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
         search_parameter_data_dir,
         public_origin: public_origin.clone(),
+        authorization_app_base,
     };
     let authorization_server_config = AuthorizationServerConfig {
         loopback_base_url: loopback_base_url.clone(),

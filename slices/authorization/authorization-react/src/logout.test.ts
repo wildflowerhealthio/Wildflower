@@ -21,7 +21,7 @@ describe('logOutBearerSession', () => {
     // Assert
     expect(requests.seen).toEqual([
       {
-        url: 'https://abc.tunnel.example/access/logout',
+        url: 'https://abc.tunnel.example/authorization/logout',
         method: 'POST',
         authorization: 'Bearer eyJ.owner.token',
         redirect: 'manual',
@@ -122,7 +122,9 @@ describe('logOutBearerSession', () => {
           })
 
           // Assert
-          expect(requests.seen.map((request) => request.url)).toEqual([`${origin}/access/logout`])
+          expect(requests.seen.map((request) => request.url)).toEqual([
+            `${origin}/authorization/logout`,
+          ])
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }

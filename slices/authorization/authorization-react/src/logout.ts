@@ -25,7 +25,7 @@ interface BearerLogoutDeps {
  *
  * @remarks
  * Forgetting the in-memory bearer is the logout that matters, so it runs first
- * and can't fail. Revoking at `POST {server}/access/logout` (which denylists
+ * and can't fail. Revoking at `POST {server}/authorization/logout` (which denylists
  * the token's `jti`) is best-effort defence in depth. `redirect: 'manual'`
  * stops `fetch` following the endpoint's `303` to the launcher's root (`leave`
  * owns the navigation); `keepalive` lets the revoke outlive `leave` unloading
@@ -37,7 +37,7 @@ const logOutBearerSession = async (deps: BearerLogoutDeps): Promise<void> => {
   deps.bearerStore.setAuthState(Unauthed())
   if (bearer !== undefined && serverUrl !== undefined) {
     try {
-      await deps.fetch(`${serverUrl.replace(/\/+$/, '')}/access/logout`, {
+      await deps.fetch(`${serverUrl.replace(/\/+$/, '')}/authorization/logout`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${bearer}` },
         redirect: 'manual',
@@ -53,7 +53,7 @@ const logOutBearerSession = async (deps: BearerLogoutDeps): Promise<void> => {
 /**
  * The authorization server's "Logout" settings row, for a page that holds a bearer (the
  * launcher). An action row (`onClick`): logging out purges the page's
- * in-memory bearer and invalidates it server-side (`POST /access/logout`
+ * in-memory bearer and invalidates it server-side (`POST /authorization/logout`
  * revokes its `jti`) — see {@link logOutBearerSession}.
  */
 const authorizationLogoutSettingsItem = (deps: BearerLogoutDeps): SettingsItem => ({

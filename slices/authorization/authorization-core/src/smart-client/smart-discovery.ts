@@ -22,7 +22,7 @@
  * whose `reason` the header bar renders verbatim.
  */
 
-import { Data, Effect, Either, Schema } from 'effect'
+import { Data, Effect, Either, Option, Schema } from 'effect'
 
 /** Raised when the chosen target cannot be signed in to, with the reason why. */
 class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
@@ -79,10 +79,18 @@ type SmartServer = Schema.Schema.Type<typeof SmartServer>
 /**
  * A server's SMART issuer as discovery found it: the {@link SmartServer} that
  * served the configuration and the endpoints it advertised.
+ *
+ * `managementEndpoint` is SMART's page where the reader manages what they have
+ * authorized (a Wildflower server's is the Wildflower Authorization app), and
+ * `wildflowerAuthorizationApi` is the base of a Wildflower server's
+ * authorization JSON API, which a plain SMART server doesn't advertise. Each is
+ * `None` when the document omits it or doesn't name a usable URL.
  */
 interface SmartIssuer {
   readonly smartServer: SmartServer
   readonly endpoints: SmartEndpoints
+  readonly managementEndpoint: Option.Option<string>
+  readonly wildflowerAuthorizationApi: Option.Option<string>
 }
 
 /**
@@ -158,10 +166,13 @@ const insecureTargetReason = (
 /**
  * The part of a SMART configuration document (SMART App Launch §2.1) this
  * client reads. Only the two endpoints the flow needs are required.
+ * `wildflower_authorization_api` is a Wildflower extension field.
  */
 const SmartConfiguration = Schema.Struct({
   authorization_endpoint: Schema.String,
   token_endpoint: Schema.String,
+  management_endpoint: Schema.optionalWith(Schema.String, { as: 'Option', exact: true }),
+  wildflower_authorization_api: Schema.optionalWith(Schema.String, { as: 'Option', exact: true }),
   code_challenge_methods_supported: Schema.optional(Schema.Array(Schema.String)),
   capabilities: Schema.optional(Schema.Array(Schema.String)),
 })
@@ -217,7 +228,14 @@ const smartIssuerFrom = (
   const smartServer = (configuration.capabilities ?? []).includes(WILDFLOWER_SERVER_CAPABILITY)
     ? WildflowerServer.make({ fhirBaseUrl })
     : PlainSmartServer.make({ fhirBaseUrl })
-  return Either.right({ smartServer, endpoints: { authorizationEndpoint, tokenEndpoint } })
+  const usableOptionalUrl = (candidate: Option.Option<string>): Option.Option<string> =>
+    candidate.pipe(Option.flatMapNullable((url) => usableEndpointUrl(url, options)))
+  return Either.right({
+    smartServer,
+    endpoints: { authorizationEndpoint, tokenEndpoint },
+    managementEndpoint: usableOptionalUrl(configuration.management_endpoint),
+    wildflowerAuthorizationApi: usableOptionalUrl(configuration.wildflower_authorization_api),
+  })
 }
 
 /**

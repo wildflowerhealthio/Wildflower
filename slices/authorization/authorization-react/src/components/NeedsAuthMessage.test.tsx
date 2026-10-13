@@ -35,7 +35,7 @@ import { TokenResponseHandlerContext } from '../client/token-response-handler.ts
 // cast keeps the stub minimal instead of re-declaring the whole API.
 //
 // `accessManagement` is optional on purpose: omitting it stubs a client with no
-// `access-management` at all, which is what the screen's `GET /access/session`
+// `access-management` at all, which is what the screen's `GET /authorization/session`
 // read meets on the plain sign-in path (there, a 401). Either way the read fails
 // and the preset seed stands — so every test that isn't *about* the session seed
 // exercises that fallback, exactly as it behaved before the endpoint existed.
@@ -498,7 +498,7 @@ describe('<NeedsAuthMessage> step-up pre-fill', () => {
 })
 
 /**
- * Seeding the new grant from the caller's *current* token (`GET /access/session`)
+ * Seeding the new grant from the caller's *current* token (`GET /authorization/session`)
  * rather than a fixed preset. The device flow mints a whole new grant, so
  * whatever the form doesn't request is access the user loses on the way back —
  * which turns "step up to get one more scope" into a net downgrade whenever the

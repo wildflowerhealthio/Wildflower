@@ -1,4 +1,4 @@
-//! Every Owner `/access/*` response is cache-suppressed by one blanket layer —
+//! Every Owner `/authorization/*` response is cache-suppressed by one blanket layer —
 //! handler output, the session gate's 401, and 404s alike — so a shared or
 //! browser cache never retains a consent prompt, a device prompt, or the
 //! grants list.
@@ -35,7 +35,7 @@ async fn device_prompt_is_cache_suppressed() {
         .clone()
         .oneshot(owner_get(
             &host_owner_token,
-            &format!("/access/devices/{user_code}"),
+            &format!("/authorization/devices/{user_code}"),
         ))
         .await
         .expect("oneshot");
@@ -55,7 +55,7 @@ async fn oauth_consent_prompt_is_cache_suppressed() {
         .clone()
         .oneshot(owner_get(
             &host_owner_token,
-            &format!("/access/oauth-consents/{request_id}"),
+            &format!("/authorization/oauth-consents/{request_id}"),
         ))
         .await
         .expect("oneshot");
@@ -85,7 +85,7 @@ async fn unauthenticated_401_is_cache_suppressed() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get("/access/grants").header("host", "127.0.0.1"),
+            Request::get("/authorization/grants").header("host", "127.0.0.1"),
             Body::empty(),
         ))
         .await
@@ -101,7 +101,10 @@ async fn unknown_device_404_is_cache_suppressed() {
     let res = g
         .router
         .clone()
-        .oneshot(owner_get(&host_owner_token, "/access/devices/NOPE-NOPE"))
+        .oneshot(owner_get(
+            &host_owner_token,
+            "/authorization/devices/NOPE-NOPE",
+        ))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NOT_FOUND);

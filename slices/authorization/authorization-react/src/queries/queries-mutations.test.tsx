@@ -120,7 +120,7 @@ describe('useUpdateClientMutation request', () => {
     expect(requests.map(({ method, body }) => ({ method, body }))).toEqual([
       { method: 'PATCH', body: { disabledAt: '2026-09-01T12:00:00.000Z' } },
     ])
-    expect(requests[0]?.url).toMatch(/\/access\/clients\/ohif-viewer$/)
+    expect(requests[0]?.url).toMatch(/\/authorization\/clients\/ohif-viewer$/)
     expect(updated.clientId).toBe(respondedClient.clientId)
   })
 

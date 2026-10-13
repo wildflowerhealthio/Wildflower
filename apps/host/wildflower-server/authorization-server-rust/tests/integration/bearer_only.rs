@@ -65,7 +65,7 @@ async fn a_cookie_carried_token_is_not_a_credential() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get("/access/grants")
+            Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("cookie", format!("wf_auth={host_owner_token}")),
             Body::empty(),
@@ -75,7 +75,7 @@ async fn a_cookie_carried_token_is_not_a_credential() {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// `POST /access/logout` with a bearer redirects to the hosted launcher and
+/// `POST /authorization/logout` with a bearer redirects to the hosted launcher and
 /// sets no cookies.
 #[tokio::test]
 async fn logout_redirects_to_the_launcher_without_cookies() {
@@ -84,7 +84,7 @@ async fn logout_redirects_to_the_launcher_without_cookies() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::post("/access/logout")
+            Request::post("/authorization/logout")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),

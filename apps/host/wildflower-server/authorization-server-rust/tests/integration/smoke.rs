@@ -71,7 +71,7 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
 #[tokio::test]
 async fn access_grants_without_auth_returns_401() {
     let (g, _host_owner_token, _db) = spin_up();
-    let req = loopback_request(Request::get("/access/grants"), Body::empty());
+    let req = loopback_request(Request::get("/authorization/grants"), Body::empty());
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
@@ -80,7 +80,7 @@ async fn access_grants_without_auth_returns_401() {
 async fn access_grants_with_owner_token_returns_empty_list() {
     let (g, host_owner_token, _db) = spin_up();
     let req = loopback_request(
-        Request::get("/access/grants")
+        Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}")),
         Body::empty(),
@@ -99,7 +99,7 @@ async fn access_grants_with_owner_token_returns_empty_list() {
 async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
     let (g, host_owner_token, _db) = spin_up();
     let req = loopback_request(
-        Request::get("/access/grants")
+        Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header(
                 "forwarded",
@@ -112,10 +112,10 @@ async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
     assert_eq!(res.status(), StatusCode::OK);
 }
 
-/// `GET /access/grants` with `token`, over loopback or relayed through the
+/// `GET /authorization/grants` with `token`, over loopback or relayed through the
 /// tunnel.
 async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: bool) -> StatusCode {
-    let mut builder = Request::get("/access/grants")
+    let mut builder = Request::get("/authorization/grants")
         .header("host", "127.0.0.1")
         .header("authorization", format!("Bearer {token}"));
     if forwarded {
@@ -181,7 +181,7 @@ async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
 async fn get_unknown_grant_returns_404() {
     let (g, host_owner_token, _db) = spin_up();
     let req = loopback_request(
-        Request::get("/access/grants/nope")
+        Request::get("/authorization/grants/nope")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}")),
         Body::empty(),

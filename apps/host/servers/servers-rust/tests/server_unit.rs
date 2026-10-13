@@ -23,6 +23,7 @@ use wildflowerhealthio_servers::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
     RunPolicy, ServerConsentDecider, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_tunnel::TunnelState;
@@ -50,6 +51,10 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         )),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),
+        authorization_app_base: AuthorizationAppBase::parse(
+            "https://authorization.test/authorization/",
+        )
+        .expect("authorization app base"),
         host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)

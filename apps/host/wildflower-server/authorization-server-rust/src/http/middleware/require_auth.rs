@@ -12,7 +12,7 @@ use crate::http::errors;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
 
-/// The `/access` authN gate: verify the request carries a **valid, non-revoked**
+/// The `/authorization` authN gate: verify the request carries a **valid, non-revoked**
 /// bearer token and stash the resulting [`VerifiedClaims`]
 /// in the request's extensions for the scope-gated capability extractors
 /// (`domain::capabilities`) to read — a missing/invalid token is a `401`.
@@ -27,7 +27,7 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 ///
 /// This is one of the **pair** of claims-inserting authN gates (see
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`, "Wiring the claims"):
-/// this one guards the authorization server's own `/access` router and inserts the domain
+/// this one guards the authorization server's own `/authorization` router and inserts the domain
 /// [`VerifiedClaims`]; its sibling
 /// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
 /// wraps the host's downstream slice routers and inserts the framework-neutral

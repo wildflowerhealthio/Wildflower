@@ -14,9 +14,9 @@ impl OwnerApproval for AuthorizationServerState {
     /// Recompute the head of the pending-consent queue from the store and
     /// publish it on the head's watch sender. Call after every transition
     /// that may change the head (`/oauth/device_authorization` insert,
-    /// `/oauth/authorize` insert, `/access/oauth-consents/{id}/approve`,
-    /// `/access/oauth-consents/{id}/deny`, `/access/devices/{userCode}/approve`,
-    /// `/access/devices/{userCode}/deny`).
+    /// `/oauth/authorize` insert, `/authorization/oauth-consents/{id}/approve`,
+    /// `/authorization/oauth-consents/{id}/deny`, `/authorization/devices/{userCode}/approve`,
+    /// `/authorization/devices/{userCode}/deny`).
     ///
     /// The DB read happens *inside* `send_if_modified`, so the watch
     /// sender's internal lock serialises the read+publish pair across

@@ -132,7 +132,7 @@ const httpApiGroup = HttpApiGroup.make('oauth-consent', { topLevel: false })
   // form's error surface can offer the step-up instead of an opaque failure.
   .addError(InsufficientScopeSchema, { status: 403 })
   .middleware(RequireAuthMiddleware)
-  .prefix('/access')
+  .prefix('/authorization')
 
 export {
   httpApiGroup,

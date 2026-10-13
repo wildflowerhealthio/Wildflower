@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
 use wildflowerhealthio_authorization_server::{LoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
@@ -28,6 +29,9 @@ pub struct WildflowerServerConfig {
     pub search_parameter_data_dir: PathBuf,
     /// The hosted launcher every browser-facing link points at.
     pub launcher_base: LauncherBase,
+    /// The hosted Wildflower Authorization app, which the server's SMART
+    /// discovery advertises as its `management_endpoint`.
+    pub authorization_app_base: AuthorizationAppBase,
     /// The scopes the authorization server seeds the first-party client with and mints the host
     /// owner token under (see
     /// [`AuthorizationServerConfig::host_owner_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_owner_scopes)).

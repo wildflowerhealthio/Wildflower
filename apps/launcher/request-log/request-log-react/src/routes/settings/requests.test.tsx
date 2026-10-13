@@ -43,7 +43,7 @@ const FIRST_PAGE = {
       status: 401,
       refusal: 'tokenRejected',
     }),
-    loggedRequest(3, { clientId: 'unnamed-client', path: '/access' }),
+    loggedRequest(3, { clientId: 'unnamed-client', path: '/authorization' }),
   ],
   nextCursor: 3,
 }
@@ -266,7 +266,7 @@ describe('/settings/requests', () => {
   test('pages through the log behind "Load more"', async () => {
     renderRequests()
 
-    expect(await rowOf('GET /access')).toBeTruthy()
+    expect(await rowOf('GET /authorization')).toBeTruthy()
     expect(screen.queryByText('POST /Observation')).toBeNull()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Load more' }))
@@ -284,7 +284,7 @@ describe('/settings/requests', () => {
     const refused = await rowOf('No client')
     expect(within(refused).getByText('Refused · token rejected')).toBeTruthy()
     expect(refused.className).toMatch(/requests__row--refused/)
-    expect(within(await rowOf('unnamed-client')).getByText('GET /access')).toBeTruthy()
+    expect(within(await rowOf('unnamed-client')).getByText('GET /authorization')).toBeTruthy()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Load more' }))
     const signedIn = await rowOf('POST /Observation')
@@ -343,7 +343,7 @@ describe('/settings/requests', () => {
           : PAGED_LOG.pageFor(query),
     }
     renderRequests('', log)
-    await rowOf('GET /access')
+    await rowOf('GET /authorization')
     await screen.findByText('Recent activity')
     expect(screen.queryByText('GET /Condition')).toBeNull()
     const callersReadsBefore = callersReads
@@ -366,7 +366,7 @@ describe('/settings/requests', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
     renderRequests('?auth=refused')
-    await rowOf('GET /access')
+    await rowOf('GET /authorization')
 
     fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }))
 
@@ -381,7 +381,7 @@ describe('/settings/requests', () => {
     )
     expect(lines?.slice(1)).toEqual([
       '2026-07-01T12:04:00.000Z,,No client,refused,203.0.113.9,dev1.example.com,GET,/Patient,401,tokenRejected,2048,12',
-      '2026-07-01T12:03:00.000Z,unnamed-client,unnamed-client,authorized,198.51.100.24,dev1.example.com,GET,/access,200,,2048,12',
+      '2026-07-01T12:03:00.000Z,unnamed-client,unnamed-client,authorized,198.51.100.24,dev1.example.com,GET,/authorization,200,,2048,12',
       '2026-07-01T12:02:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,POST,/Observation,200,,2048,12',
       '2026-07-01T12:01:00.000Z,,Open,public,198.51.100.24,dev1.example.com,GET,/.well-known,200,,2048,12',
     ])

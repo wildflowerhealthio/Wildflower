@@ -10,7 +10,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PendingConsentHead {
     /// An RFC 8628 device-code request. Hydrated through
-    /// `GET /access/devices/{userCode}`.
+    /// `GET /authorization/devices/{userCode}`.
     Device {
         /// The pairing code the Owner would otherwise type at
         /// `/authorization/devices`. Never `NULL` in the row — the head query skips
@@ -18,7 +18,7 @@ pub enum PendingConsentHead {
         user_code: String,
     },
     /// An RFC 6749 §4.1 request parked by `/oauth/authorize` awaiting Owner
-    /// approval. Hydrated through `GET /access/oauth-consents/{id}`.
+    /// approval. Hydrated through `GET /authorization/oauth-consents/{id}`.
     OAuth {
         /// The `AuthorizationRequest` primary key, which is also the `$id` of
         /// the wait page the requesting browser is sitting on.

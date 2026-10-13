@@ -80,7 +80,7 @@ async fn logout_revokes_the_presented_jti() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::post("/access/logout")
+            Request::post("/authorization/logout")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -193,7 +193,7 @@ async fn revocations_endpoint_requires_owner_auth() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::post("/access/revocations")
+            Request::post("/authorization/revocations")
                 .header("host", "127.0.0.1")
                 .header("content-type", "application/json"),
             Body::from(serde_json::json!({ "subject": "c" }).to_string()),
@@ -227,7 +227,7 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::delete("/access/grants/grant-1")
+            Request::delete("/authorization/grants/grant-1")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -253,7 +253,7 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
 async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     // Integration point with the polymorphic device grants (#332): the
     // Authorized Devices list revokes a device through the same
-    // `DELETE /access/grants/{id}` surface, so token revocation must fire for a
+    // `DELETE /authorization/grants/{id}` surface, so token revocation must fire for a
     // `DeviceCode` grant exactly as it does for an authorization-code one. This
     // is the token-revocation half of "revoke this device" — the access-token
     // epoch is keyed on `sub = client_id`, so revoking one device grant revokes
@@ -279,7 +279,7 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::delete("/access/grants/device-grant-1")
+            Request::delete("/authorization/grants/device-grant-1")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),

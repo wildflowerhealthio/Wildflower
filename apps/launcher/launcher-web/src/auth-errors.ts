@@ -19,7 +19,7 @@ import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-c
  *   `statusOrElse` (an *undeclared* status) or a raw `filterStatusOk` produce;
  *   and
  * - a typed `HttpApiError.Unauthorized` — what an endpoint that *declares* 401
- *   via `RequireAuthMiddleware` (the authorization server's `/access` surface — grants,
+ *   via `RequireAuthMiddleware` (the authorization server's `/authorization` surface — grants,
  *   devices, consents) decodes its 401 into. `HttpApiClient` never surfaces
  *   these as a `ResponseError`.
  *

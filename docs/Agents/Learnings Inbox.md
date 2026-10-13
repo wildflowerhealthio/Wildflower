@@ -256,10 +256,10 @@ doc that otherwise uses `_word_` flags every _later_ underscore, hundreds of
 lines below the edit — the reported lines are not where the problem is. Match
 the file's existing marker (the authorization slice docs use underscores).
 
-## The authorization server OpenAPI snapshot covers `/oauth/*` only, not `/access/*`
+## The authorization server OpenAPI snapshot covers `/oauth/*` only, not `/authorization/*`
 
 `documented_router()` in `authorization-server-rust` deliberately leaves the Owner-facing
-`/access` surface out of the committed `openapi/authorization-server-oauth.openapi.json`,
+`/authorization` surface out of the committed `openapi/authorization-server-oauth.openapi.json`,
 so a change to a consent body (e.g. the `registration` verdict, the approve
 body's `acknowledgedRegistration`) never shows up in the snapshot and
 `UPDATE_OPENAPI=1` regenerates only the `/oauth` prose. The TS mirror in
@@ -411,7 +411,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## Documenting a gated route in OpenAPI means splitting its `OpenApiRouter`
 
 **Discovered during**: ruthmarks/owner-manage-clients (#162, `/access/clients`)
-**Learning**: authorization-server-rust's `documented_router()` fed both the served router and the spec, so nesting a new `/access/*` `OpenApiRouter` there would have served it _outside_ the `require_valid_session` layer that wraps the rest of `/access`. The fix is to build the gated routes once as an `OpenApiRouter` and split it twice: the axum half merges into the session-gated `access` router, the spec half nests under `/access` in a spec-only `documented_router()` (the served pre-auth half is `documented_public_router()`). Pair it with `InsufficientScopeResponses::for_paths` (needs `scope-capabilities-rust`'s `openapi` feature) so the spec carries the `403` that the TS group declares, and feed it the spec's own `/access/` path keys rather than a hand-kept list that a new route can miss. Two drift details: an `Option<…>` field serde always writes (as `null`) needs `#[schema(required = true)]` to match an Effect `Schema.NullOr`, and `DateTime<Utc>` needs `value_type = String` since the workspace's utoipa has no `chrono` feature.
+**Learning**: authorization-server-rust's `documented_router()` fed both the served router and the spec, so nesting a new `/authorization/*` `OpenApiRouter` there would have served it _outside_ the `require_valid_session` layer that wraps the rest of `/authorization`. The fix is to build the gated routes once as an `OpenApiRouter` and split it twice: the axum half merges into the session-gated `access` router, the spec half nests under `/authorization` in a spec-only `documented_router()` (the served pre-auth half is `documented_public_router()`). Pair it with `InsufficientScopeResponses::for_paths` (needs `scope-capabilities-rust`'s `openapi` feature) so the spec carries the `403` that the TS group declares, and feed it the spec's own `/authorization/` path keys rather than a hand-kept list that a new route can miss. Two drift details: an `Option<…>` field serde always writes (as `null`) needs `#[schema(required = true)]` to match an Effect `Schema.NullOr`, and `DateTime<Utc>` needs `value_type = String` since the workspace's utoipa has no `chrono` feature.
 **Suggested destination**: OpenAPI Spec Drift How-To, and the Scope-Gated Endpoints How-To
 
 ## A section-local suspense query needs `QueryErrorResetBoundary`, and commits on the next `act` in jsdom

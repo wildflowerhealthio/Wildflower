@@ -1,7 +1,7 @@
 //! The authorization server's capabilities — the narrow, purpose-built doors through which
 //! the HTTP layer reaches the store, split by **what unlocks them**:
 //!
-//!  - [`access`] — the `/access/*` Owner surface, gated on the caller's
+//!  - [`access`] — the `/authorization/*` Owner surface, gated on the caller's
 //!    **scopes**: acquired through the `Scoped<…>` extractor, which checks the
 //!    covering scope before the capability exists. The origin of the
 //!    default-safe pattern (`docs/Authorization/Scope-Gated Endpoints How-To.md`).

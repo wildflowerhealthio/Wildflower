@@ -10,7 +10,7 @@ use crate::domain::capabilities::Scoped;
 use crate::http::errors::{ClientNotFoundBody, FirstPartyClientLockedBody};
 use crate::live_bindings::LiveClientsDisabler;
 
-/// Body of `PATCH /access/clients/{clientId}` — the one client field the Owner
+/// Body of `PATCH /authorization/clients/{clientId}` — the one client field the Owner
 /// can edit.
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -25,7 +25,7 @@ pub(crate) struct UpdateClientBody {
     disabled_at: Option<DateTime<Utc>>,
 }
 
-/// `PATCH /access/clients/{clientId}` — disable (stamped with the server's now,
+/// `PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,
 /// whatever time is sent) or re-enable a client by writing its `disabledAt`;
 /// answers with the client as stored. A disabled client is refused at
 /// `/oauth/authorize` and `/oauth/token`. Idempotent (a client that already

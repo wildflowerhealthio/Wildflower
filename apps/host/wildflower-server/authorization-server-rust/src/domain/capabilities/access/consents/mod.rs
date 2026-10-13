@@ -1,5 +1,5 @@
 //! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
-//! behind `/access/oauth-consents/*` and `/access/devices/*`. The flows
+//! behind `/authorization/oauth-consents/*` and `/authorization/devices/*`. The flows
 //! (load-and-validate, approve, deny) are `&impl GrantStore` functions in
 //! the submodules; an approval's privileged writes go through the
 //! [`writers`](crate::domain::capabilities::writers) under the
@@ -134,7 +134,7 @@ pub struct ApproveDeviceConsentInput {
 // ---------------------------------------------------------------------------
 
 /// Read access to pending consent prompts — the `GET` sides of
-/// `/access/oauth-consents/{id}` and `/access/devices/{userCode}`.
+/// `/authorization/oauth-consents/{id}` and `/authorization/devices/{userCode}`.
 pub(crate) struct ConsentReader<S: GrantStore> {
     store: S,
 }

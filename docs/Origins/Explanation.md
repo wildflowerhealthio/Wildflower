@@ -111,7 +111,7 @@ no path) by [`origin_string`].
 The claims say which server the token is for, not which origin a request was
 served on, so they are checked against configuration, never against the request:
 
-- **The authorization server's bearer gates** (the `/access` session gate and the bearer gate
+- **The authorization server's bearer gates** (the `/authorization` session gate and the bearer gate
   in front of the FHIR server and the other slices) run the `TokenVerifier`,
   which accepts a token only when its `iss` and its `aud` are both the
   configured server origin.

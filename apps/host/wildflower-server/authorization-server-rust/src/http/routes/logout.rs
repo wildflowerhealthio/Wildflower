@@ -1,8 +1,8 @@
-//! `POST /access/logout` — ends the caller's session by revoking the presented
+//! `POST /authorization/logout` — ends the caller's session by revoking the presented
 //! access token and redirecting to the hosted launcher.
 //!
 //! **Self-service, authN-only:** logout is a caller ending *their own* session,
-//! not an admin resource operation, so it takes no scope — the `/access` mount's
+//! not an admin resource operation, so it takes no scope — the `/authorization` mount's
 //! [`require_valid_session`](crate::http::middleware::require_valid_session) gate
 //! (any valid, non-revoked bearer) is the whole authorization it needs, and it
 //! acts on the already-verified claims through the authenticated-only

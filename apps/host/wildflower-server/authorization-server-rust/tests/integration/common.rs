@@ -435,7 +435,7 @@ pub async fn get_oauth_consent(
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get(format!("/access/oauth-consents/{request_id}"))
+            Request::get(format!("/authorization/oauth-consents/{request_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -446,7 +446,7 @@ pub async fn get_oauth_consent(
     body_json(res.into_body()).await
 }
 
-/// `POST /access/oauth-consents/{id}/approve` with an owned JSON body.
+/// `POST /authorization/oauth-consents/{id}/approve` with an owned JSON body.
 pub async fn approve_oauth_consent(
     g: &AuthorizationServer,
     host_owner_token: &str,
@@ -456,10 +456,12 @@ pub async fn approve_oauth_consent(
     g.router
         .clone()
         .oneshot(loopback_request(
-            Request::post(format!("/access/oauth-consents/{request_id}/approve"))
-                .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}"))
-                .header("content-type", "application/json"),
+            Request::post(format!(
+                "/authorization/oauth-consents/{request_id}/approve"
+            ))
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("content-type", "application/json"),
             Body::from(body),
         ))
         .await
@@ -505,10 +507,12 @@ pub async fn authorize_and_approve(
         .to_string();
     let request_id = polling_request_id(&polling);
     let approve = loopback_request(
-        Request::post(format!("/access/oauth-consents/{request_id}/approve"))
-            .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
-            .header("content-type", "application/json"),
+        Request::post(format!(
+            "/authorization/oauth-consents/{request_id}/approve"
+        ))
+        .header("host", "127.0.0.1")
+        .header("authorization", format!("Bearer {host_owner_token}"))
+        .header("content-type", "application/json"),
         Body::from(approve_body),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
@@ -645,7 +649,7 @@ pub fn set_cookie_values(res: &axum::response::Response) -> Vec<String> {
 
 // ---------------------------------------------------------------------------
 // Token revocation (#269). The auth gate enforces the shared denylist + subject
-// epoch, and the control surfaces (logout, POST /access/revocations, grant
+// epoch, and the control surfaces (logout, POST /authorization/revocations, grant
 // revoke) write to it. Central invariant of the reframe: a `jti` is a
 // revocation *handle*, not a single-use nonce — a live token must keep passing.
 // ---------------------------------------------------------------------------
@@ -677,17 +681,17 @@ pub fn jti_of(token: &str) -> String {
 /// authenticate?" probe against the gate.
 pub fn owner_grants_probe(token: &str) -> Request<Body> {
     loopback_request(
-        Request::get("/access/grants")
+        Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
         Body::empty(),
     )
 }
 
-/// Build an owner-authenticated `POST /access/revocations` with a JSON body.
+/// Build an owner-authenticated `POST /authorization/revocations` with a JSON body.
 pub fn owner_revocation_request(token: &str, body: Value) -> Request<Body> {
     loopback_request(
-        Request::post("/access/revocations")
+        Request::post("/authorization/revocations")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}"))
             .header("content-type", "application/json"),
