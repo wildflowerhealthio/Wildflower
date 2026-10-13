@@ -27,7 +27,7 @@ const PROPS = {
   redirectUri: 'https://app.example/',
 } as const
 
-const LOCAL_ORIGIN = 'http://127.0.0.1:8123'
+const LOOPBACK_ORIGIN = 'http://127.0.0.1:8123'
 
 // The launcher's sign-in, which the menu hands every pick to. Default: the page
 // is leaving for the authorization server, so there is nothing to show.
@@ -36,10 +36,19 @@ const connectMock = vi.fn<(url: string) => Promise<string | undefined>>()
 const WILDFLOWER_PROPS = {
   target: 'wildflower',
   connect: connectMock,
-  localOrigin: LOCAL_ORIGIN,
 } as const
 
-const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
+const RELAY_GROUP_NAME = 'Official Wildflower Relay'
+
+const RELAY_NAME_LABEL = 'Official Wildflower Relay Name'
+
+const DEMO_GROUP_NAME = 'Smart Health IT Demo Server'
+
+/** The demo server's first preset: the same label and URL under either target. */
+const DEMO_PRESET = DEFAULT_SERVER_PRESETS[0] ?? {
+  label: 'missing demo preset',
+  url: 'https://missing.example',
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -62,30 +71,40 @@ const groupNames = (): readonly (string | null)[] =>
     group.getAttribute('aria-label')
   )
 
-/** The hosted-server form, where a subdomain is entered. */
-const hostedForm = (): HTMLElement => screen.getByRole('form', { name: HOSTED_GROUP_NAME })
+/** The relay form, where a relay name is entered. */
+const relayForm = (): HTMLElement => screen.getByRole('form', { name: RELAY_GROUP_NAME })
 
-/**
- * The local server's one button. Under `wildflower` it reads "Connect", like
- * the entries' own, so it is found inside its group.
- */
-const localConnectButton = (): HTMLElement => localConnectButtonFor('Connect')
-
-/** The local server's one button, labelled `name` for the menu's target. */
-const localConnectButtonFor = (name: 'Launch' | 'Connect'): HTMLElement =>
-  within(screen.getByRole('region', { name: 'Local Wildflower Server' })).getByRole('button', {
-    name,
+/** The demo server's first preset button: the pick the tests make when any pick will do. */
+const demoPresetButton = (): HTMLElement =>
+  within(screen.getByRole('region', { name: DEMO_GROUP_NAME })).getByRole('button', {
+    name: DEMO_PRESET.label,
   })
 
-/** Type `subdomain` into the hosted group and submit it. */
-const connectToSubdomain = async (
+/** Type `relayName` into the relay group and submit it. */
+const connectToRelayName = async (
   user: ReturnType<typeof userEvent.setup>,
-  subdomain: string
+  relayName: string
 ): Promise<void> => {
-  const hosted = within(hostedForm())
-  await user.type(hosted.getByLabelText('Subdomain of wildflowerhealth.io'), subdomain)
-  await user.click(hosted.getByRole('button', { name: 'Connect' }))
+  const relay = within(relayForm())
+  await user.type(relay.getByLabelText(RELAY_NAME_LABEL), relayName)
+  await user.click(relay.getByRole('button', { name: 'Connect' }))
 }
+
+/** Submit `url` through the free entry `formName`, whose field is `fieldLabel`. */
+const enterFreeUrl = async (
+  user: ReturnType<typeof userEvent.setup>,
+  formName: string,
+  fieldLabel: string,
+  url: string
+): Promise<void> => {
+  const freeEntry = within(screen.getByRole('form', { name: formName }))
+  await user.type(freeEntry.getByLabelText(fieldLabel), url)
+  await user.click(freeEntry.getByRole('button', { name: 'Connect' }))
+}
+
+/** Submit the loopback server through the `wildflower` menu's free entry. */
+const connectToLoopback = (user: ReturnType<typeof userEvent.setup>): Promise<void> =>
+  enterFreeUrl(user, 'Another Wildflower server', 'Server URL', LOOPBACK_ORIGIN)
 
 describe('ConnectMenu', () => {
   it('renders one button per preset, under its server group, and launches against the picked preset URL', async () => {
@@ -103,7 +122,7 @@ describe('ConnectMenu', () => {
       }
     }
 
-    // Act — pick a non-Local preset and launch against exactly its URL.
+    // Act — pick a preset and launch against exactly its URL.
     const picked = DEFAULT_SERVER_PRESETS.at(1)
     if (picked === undefined) throw new Error('expected a second default preset to click')
     await user.click(screen.getByRole('button', { name: picked.label }))
@@ -126,52 +145,32 @@ describe('ConnectMenu', () => {
       'Another Wildflower server',
     ],
   ])(
-    'lists the local server, then the hosted server, then the other presets, then free entry (%s)',
+    'lists the relay entry, then the presets, then free entry (%s)',
     (_target, menu, freeEntryName) => {
       render(menu)
 
-      expect(groupNames()).toEqual([
-        'Local Wildflower Server',
-        HOSTED_GROUP_NAME,
-        'Smart Health IT Demo Server',
-        freeEntryName,
-      ])
+      expect(groupNames()).toEqual([RELAY_GROUP_NAME, DEMO_GROUP_NAME, freeEntryName])
     }
   )
 
-  it('slots the hosted server in after the first group of custom presets', () => {
-    const [local, smartHealthIt] = DEFAULT_SERVER_PRESET_GROUPS
-    if (local === undefined || smartHealthIt === undefined) {
-      throw new Error('expected the local and demo default groups')
-    }
-    const secondLocal = { ...local, name: 'Second Wildflower Server' }
-    render(<ConnectMenu {...PROPS} presetGroups={[smartHealthIt, local, secondLocal]} />)
-
-    expect(groupNames()).toEqual([
-      'Smart Health IT Demo Server',
-      HOSTED_GROUP_NAME,
-      'Local Wildflower Server',
-      'Second Wildflower Server',
-      'Another FHIR R4 server',
-    ])
-  })
-
-  it('follows a lone custom group with the hosted server', () => {
-    const [, smartHealthIt] = DEFAULT_SERVER_PRESET_GROUPS
+  it('leads with the relay entry before custom presets', () => {
+    const [smartHealthIt] = DEFAULT_SERVER_PRESET_GROUPS
     if (smartHealthIt === undefined) throw new Error('expected the demo default group')
-    render(<ConnectMenu {...PROPS} presetGroups={[smartHealthIt]} />)
+    const second = { ...smartHealthIt, name: 'Second Server' }
+    render(<ConnectMenu {...PROPS} presetGroups={[smartHealthIt, second]} />)
 
     expect(groupNames()).toEqual([
-      'Smart Health IT Demo Server',
-      HOSTED_GROUP_NAME,
+      RELAY_GROUP_NAME,
+      DEMO_GROUP_NAME,
+      'Second Server',
       'Another FHIR R4 server',
     ])
   })
 
-  it('leads with the hosted server when there are no custom presets at all', () => {
+  it('shows only the relay entry and free entry when there are no custom presets at all', () => {
     render(<ConnectMenu {...PROPS} presetGroups={[]} />)
 
-    expect(groupNames()).toEqual([HOSTED_GROUP_NAME, 'Another FHIR R4 server'])
+    expect(groupNames()).toEqual([RELAY_GROUP_NAME, 'Another FHIR R4 server'])
   })
 
   it('launches against the normalized form of a valid free-entry URL', async () => {
@@ -208,59 +207,61 @@ describe('ConnectMenu', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    await user.click(screen.getByRole('button', { name: 'Launch' }))
+    await user.click(demoPresetButton())
 
     await waitFor(() => {
-      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080/i)).toBeDefined()
+      expect(screen.getByText(`Could not reach ${DEMO_PRESET.url}`, { exact: false })).toBeDefined()
     })
     // The menu is still there — the launch was attempted, and a retry is possible.
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('button', { name: 'Launch' })).toBeDefined()
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 
-  it('launches against a hosted subdomain’s origin, its FHIR base, trimmed and lower-cased', async () => {
+  it('launches against a relay name’s origin, its FHIR base, trimmed and lower-cased', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    await connectToSubdomain(user, '  Medication.Ruth ')
+    await connectToRelayName(user, '  Ruth-Lab ')
 
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
     expect(startStandaloneLaunchMock).toHaveBeenCalledWith(
-      expect.objectContaining({ iss: 'https://medication.ruth.wildflowerhealth.io' })
+      expect.objectContaining({ iss: 'https://ruth-lab.relay.wildflowerhealth.io' })
     )
   })
 
-  it.each(['', '-ruth', 'ruth.', 'ru..th', 'ruth/evil.example', 'evil.example@ruth'])(
-    'shows a validation message and does not launch on the subdomain %j',
-    async (subdomain) => {
+  it.each(['', '-ruth', 'medication.ruth', 'ruth/evil.example', 'evil.example@ruth'])(
+    'shows a validation message and does not launch on the relay name %j',
+    async (relayName) => {
       const user = userEvent.setup()
       render(<ConnectMenu {...PROPS} />)
 
       // `user.type` rejects an empty string, so the empty case only submits.
-      if (subdomain === '') {
-        await user.click(within(hostedForm()).getByRole('button', { name: 'Connect' }))
+      if (relayName === '') {
+        await user.click(within(relayForm()).getByRole('button', { name: 'Connect' }))
       } else {
-        await connectToSubdomain(user, subdomain)
+        await connectToRelayName(user, relayName)
       }
 
-      expect(within(hostedForm()).getByText(/Enter your server's subdomain/)).toBeDefined()
+      expect(within(relayForm()).getByText(/Enter your server's relay name/)).toBeDefined()
       expect(startStandaloneLaunchMock).not.toHaveBeenCalled()
     }
   )
 
-  it('names the subdomain field for its domain, with a URL keyboard', () => {
+  it('names the relay name field, with a URL keyboard', () => {
     render(<ConnectMenu {...PROPS} />)
 
-    const field = within(hostedForm()).getByRole('textbox', {
-      name: 'Subdomain of wildflowerhealth.io',
-    })
+    const field = within(relayForm()).getByRole('textbox', { name: RELAY_NAME_LABEL })
     expect(field.getAttribute('inputmode')).toBe('url')
   })
 
-  it('spells the hosted address out to the origin the app launches against', () => {
+  it('says under the relay name field where the named server is found', () => {
     render(<ConnectMenu {...PROPS} />)
 
-    expect(within(hostedForm()).getByText('.wildflowerhealth.io')).toBeDefined()
+    expect(
+      within(relayForm()).getByText(
+        'This server is found at https://[Name].relay.wildflowerhealth.io'
+      )
+    ).toBeDefined()
   })
 
   it('shows no server notice on the SMART app menu', () => {
@@ -271,32 +272,14 @@ describe('ConnectMenu', () => {
 })
 
 describe('ConnectMenu, signing in to a Wildflower server', () => {
-  it("spells the hosted address out to the server's origin", () => {
-    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
-
-    expect(within(hostedForm()).getByText('.wildflowerhealth.io')).toBeDefined()
-  })
-
-  it('signs in to the local server’s origin', async () => {
+  it('signs in to a relay name’s origin', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    const local = within(screen.getByRole('region', { name: 'Local Wildflower Server' }))
-    expect(local.getByText(LOCAL_ORIGIN)).toBeDefined()
-    await user.click(local.getByRole('button', { name: 'Connect' }))
+    await connectToRelayName(user, 'ruth')
 
-    expect(connectMock).toHaveBeenCalledTimes(1)
-    expect(connectMock).toHaveBeenCalledWith(LOCAL_ORIGIN)
+    expect(connectMock).toHaveBeenCalledWith('https://ruth.relay.wildflowerhealth.io')
     expect(startStandaloneLaunchMock).not.toHaveBeenCalled()
-  })
-
-  it('signs in to a hosted subdomain’s origin', async () => {
-    const user = userEvent.setup()
-    render(<ConnectMenu {...WILDFLOWER_PROPS} />)
-
-    await connectToSubdomain(user, 'ruth')
-
-    expect(connectMock).toHaveBeenCalledWith('https://ruth.wildflowerhealth.io')
   })
 
   it('signs in to the demo server at its FHIR base, under its notice', async () => {
@@ -310,7 +293,7 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
       )
     ).toBeDefined()
 
-    const [picked] = serverPresetGroupsFor('wildflower', LOCAL_ORIGIN)[1]?.presets ?? []
+    const [picked] = serverPresetGroupsFor('wildflower')[0]?.presets ?? []
     if (picked === undefined) throw new Error('expected a demo server preset to click')
     await user.click(within(demo).getByRole('button', { name: picked.label }))
 
@@ -340,29 +323,29 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     expect(connectMock).not.toHaveBeenCalled()
   })
 
-  it('does not sign in to an invalid subdomain', async () => {
+  it('does not sign in to an invalid relay name', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await connectToSubdomain(user, 'ruth/evil.example')
+    await connectToRelayName(user, 'ruth/evil.example')
 
-    expect(within(hostedForm()).getByText(/Enter your server's subdomain/)).toBeDefined()
+    expect(within(relayForm()).getByText(/Enter your server's relay name/)).toBeDefined()
     expect(connectMock).not.toHaveBeenCalled()
   })
 
-  it('clears a subdomain’s validation message once a valid one connects', async () => {
+  it('clears a relay name’s validation message once a valid one connects', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await connectToSubdomain(user, '-ruth')
-    expect(within(hostedForm()).queryByText(/Enter your server's subdomain/)).not.toBeNull()
+    await connectToRelayName(user, '-ruth')
+    expect(within(relayForm()).queryByText(/Enter your server's relay name/)).not.toBeNull()
 
-    await user.clear(within(hostedForm()).getByLabelText('Subdomain of wildflowerhealth.io'))
-    await connectToSubdomain(user, 'ruth')
+    await user.clear(within(relayForm()).getByLabelText(RELAY_NAME_LABEL))
+    await connectToRelayName(user, 'ruth')
 
-    expect(within(hostedForm()).queryByText(/Enter your server's subdomain/)).toBeNull()
+    expect(within(relayForm()).queryByText(/Enter your server's relay name/)).toBeNull()
     expect(connectMock).toHaveBeenCalledTimes(1)
-    expect(connectMock).toHaveBeenCalledWith('https://ruth.wildflowerhealth.io')
+    expect(connectMock).toHaveBeenCalledWith('https://ruth.relay.wildflowerhealth.io')
   })
 
   it('shows the problem the sign-in reports, with the menu re-enabled for a retry', async () => {
@@ -370,12 +353,12 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await user.click(demoPresetButton())
 
     await waitFor(() => {
       expect(screen.getByText('This server does not allow sign-in from this page.')).toBeDefined()
     })
-    expect(localConnectButton().hasAttribute('disabled')).toBe(false)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 
   it('shows the message of a sign-in that throws instead of rejecting, re-enabled for a retry', async () => {
@@ -385,12 +368,12 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await user.click(demoPresetButton())
 
     await waitFor(() => {
       expect(screen.getByText('connect threw')).toBeDefined()
     })
-    expect(localConnectButton().hasAttribute('disabled')).toBe(false)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 
   it('shows a rejected sign-in’s message', async () => {
@@ -398,7 +381,7 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await user.click(demoPresetButton())
 
     await waitFor(() => {
       expect(screen.getByText('discovery failed')).toBeDefined()
@@ -409,20 +392,20 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await user.click(demoPresetButton())
     // Let the sign-in settle, and the menu handle its `undefined`, before looking.
     await act(async () => {
       await connectMock.mock.results[0]?.value
     })
 
-    expect(localConnectButton().hasAttribute('disabled')).toBe(true)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(true)
     expect(connectMock).toHaveBeenCalledTimes(1)
   })
 
   it('comes back usable when the browser restores the page from its back-forward cache', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
-    await user.click(localConnectButton())
+    await user.click(demoPresetButton())
     await act(async () => {
       await connectMock.mock.results[0]?.value
     })
@@ -431,17 +414,17 @@ describe('ConnectMenu, signing in to a Wildflower server', () => {
     act(() => {
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }))
     })
-    expect(localConnectButton().hasAttribute('disabled')).toBe(true)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(true)
 
     act(() => {
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
     })
-    expect(localConnectButton().hasAttribute('disabled')).toBe(false)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 })
 
 describe('ConnectMenu, what the page arrived with', () => {
-  const CHOSEN = { url: 'https://ruth.wildflowerhealth.io' }
+  const CHOSEN = { url: 'https://ruth.relay.wildflowerhealth.io' }
 
   /** The chosen server's "Sign in to …" button, whatever it reads right now. */
   const chosenServerButton = (): HTMLElement =>
@@ -453,7 +436,7 @@ describe('ConnectMenu, what the page arrived with', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('Failed to fetch')
 
-    await user.click(localConnectButtonFor('Launch'))
+    await user.click(demoPresetButton())
 
     expect(screen.queryByText(/Failed to fetch/)).toBeNull()
   })
@@ -464,7 +447,7 @@ describe('ConnectMenu, what the page arrived with', () => {
 
     expect(screen.getByText('The token request was rejected.')).toBeDefined()
 
-    await user.click(localConnectButton())
+    await user.click(demoPresetButton())
 
     expect(screen.queryByText('The token request was rejected.')).toBeNull()
   })
@@ -504,7 +487,7 @@ describe('ConnectMenu, what the page arrived with', () => {
     // Beside the row: the first thing after the heading, ahead of every group.
     const [firstAlert] = screen.getAllByRole('alert')
     expect(
-      firstAlert?.compareDocumentPosition(localConnectButton()) & Node.DOCUMENT_POSITION_FOLLOWING
+      firstAlert?.compareDocumentPosition(demoPresetButton()) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
     expect(chosenServerButton().hasAttribute('disabled')).toBe(false)
   })
@@ -513,7 +496,7 @@ describe('ConnectMenu, what the page arrived with', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} chosenServer={CHOSEN} />)
 
-    await user.click(localConnectButton())
+    await user.click(demoPresetButton())
 
     expect(chosenServerButton().hasAttribute('disabled')).toBe(true)
     // The row names its own server: the connect in flight is the pick's.
@@ -531,7 +514,7 @@ describe('ConnectMenu, what the page arrived with', () => {
       expect(connectMock).toHaveBeenCalledTimes(1)
     })
     expect(connectMock).toHaveBeenCalledWith(CHOSEN.url)
-    expect(localConnectButton().hasAttribute('disabled')).toBe(true)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(true)
   })
 
   it('does not connect on a later render that names another server', async () => {
@@ -552,7 +535,7 @@ describe('ConnectMenu, what the page arrived with', () => {
     })
     // Leaving for the authorization server: everything is disabled.
     expect(chosenServerButton().hasAttribute('disabled')).toBe(true)
-    expect(localConnectButton().hasAttribute('disabled')).toBe(true)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(true)
 
     act(() => {
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
@@ -560,7 +543,7 @@ describe('ConnectMenu, what the page arrived with', () => {
 
     expect(chosenServerButton().hasAttribute('disabled')).toBe(false)
     expect(chosenServerButton().textContent).toBe(`Sign in to ${CHOSEN.url}`)
-    expect(localConnectButton().hasAttribute('disabled')).toBe(false)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 })
 
@@ -580,34 +563,34 @@ describe('ConnectMenu, the Local Network Access hint', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    await user.click(screen.getByRole('button', { name: 'Launch' }))
+    await enterFreeUrl(user, 'Another FHIR R4 server', 'FHIR base URL', LOOPBACK_ORIGIN)
 
     await waitFor(() => {
-      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080/)).toBeDefined()
+      expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8123/)).toBeDefined()
     })
     expect(screen.getByText(/Local Network Access/)).toBeDefined()
   })
 
-  it('follows the problem a Wildflower sign-in reports for the local server on the published site', async () => {
+  it('follows the problem a Wildflower sign-in reports for a loopback server on the published site', async () => {
     onPublishedSite()
     connectMock.mockResolvedValue('Could not reach the server.')
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await connectToLoopback(user)
 
     await waitFor(() => {
       expect(screen.getByText(/Could not reach the server\. .*Local Network Access/)).toBeDefined()
     })
   })
 
-  it('follows a rejected Wildflower sign-in’s message for the local server on the published site', async () => {
+  it('follows a rejected Wildflower sign-in’s message for a loopback server on the published site', async () => {
     onPublishedSite()
     connectMock.mockRejectedValue(new Error('discovery failed'))
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await connectToLoopback(user)
 
     await waitFor(() => {
       expect(screen.getByText(/discovery failed .*Local Network Access/)).toBeDefined()
@@ -620,7 +603,7 @@ describe('ConnectMenu, the Local Network Access hint', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await connectToSubdomain(user, 'ruth')
+    await connectToRelayName(user, 'ruth')
 
     await waitFor(() => {
       expect(screen.getByText('Could not reach the server.')).toBeDefined()
@@ -633,7 +616,7 @@ describe('ConnectMenu, the Local Network Access hint', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await connectToLoopback(user)
 
     await waitFor(() => {
       expect(screen.getByText('Could not reach the server.')).toBeDefined()
@@ -647,18 +630,6 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
     vi.unstubAllGlobals()
   })
 
-  /** Submit `url` through the free entry `formName`, whose field is `fieldLabel`. */
-  const enterFreeUrl = async (
-    user: ReturnType<typeof userEvent.setup>,
-    formName: string,
-    fieldLabel: string,
-    url: string
-  ): Promise<void> => {
-    const freeEntry = within(screen.getByRole('form', { name: formName }))
-    await user.type(freeEntry.getByLabelText(fieldLabel), url)
-    await user.click(freeEntry.getByRole('button', { name: 'Connect' }))
-  }
-
   it('refuses a SMART launch against it, saying why, on the published site', async () => {
     vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications/'))
     const user = userEvent.setup()
@@ -669,7 +640,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
     expect(screen.getByText(/served over https.*http:\/\/fhir\.example\/r4/)).toBeDefined()
     expect(startStandaloneLaunchMock).not.toHaveBeenCalled()
     // Refused, not launching: the menu is ready for another pick.
-    expect(localConnectButtonFor('Launch').hasAttribute('disabled')).toBe(false)
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 
   it('refuses a Wildflower sign-in to it, saying why, on the published site', async () => {
@@ -693,9 +664,9 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
-    await user.click(localConnectButton())
+    await connectToLoopback(user)
 
-    expect(connectMock).toHaveBeenCalledWith(LOCAL_ORIGIN)
+    expect(connectMock).toHaveBeenCalledWith(LOOPBACK_ORIGIN)
   })
 
   it('connects to it from a plain-http page, which is not blocked', async () => {

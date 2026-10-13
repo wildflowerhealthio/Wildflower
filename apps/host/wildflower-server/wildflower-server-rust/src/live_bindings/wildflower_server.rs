@@ -9,12 +9,13 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use axum::Router;
+use helios_auth::SessionStore;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_gatekeeper::{
     gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
     GatekeeperConfig, HostConsentDecider,
@@ -33,6 +34,9 @@ use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
+use crate::http::middleware::ui_session_bearer::{
+    present_ui_session_bearer, UiSessionBearerConfig,
+};
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::http::{not_found, root_fallback};
@@ -45,6 +49,12 @@ use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 // these names — `databases-rust` has no built-in knowledge of them.
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
+/// The folder, beside the health data, that the FHIR API's bulk `$export`
+/// stages each job's files in until they're downloaded and expire.
+const FHIR_EXPORTS_DIR: &str = "fhir-exports";
+/// The `client_id` of the FHIR server's web UI (`helios-ui`): gatekeeper seeds
+/// the client under it and `fhir-r4-rust` signs the UI's users in as it.
+const FHIR_UI_CLIENT_ID: &str = "5ea43272eba5e825c50de39032f96bf0";
 
 /// How many visitor streams the tunnel may hand over before the tunnel
 /// listener takes them. Past this, the tunnel waits.
@@ -82,6 +92,9 @@ pub struct WildflowerServer {
     device_certificate: DeviceCertificate,
     /// How the host's Owner decides the server's pending consents.
     consent_decider_for_host: HostConsentDecider,
+    /// Runs the FHIR API's bulk `$export` jobs and deletes expired ones, for
+    /// as long as the server serves.
+    bulk_export_worker: BulkExportWorker,
 }
 
 impl WildflowerServer {
@@ -111,9 +124,10 @@ impl WildflowerServer {
     }
 
     /// Serve the composed API on the bound loopback port and the tunnel
-    /// listener until `shutdown` is cancelled. Cancelling stops both accepting
-    /// connections, and the call returns `Ok` once the open ones on both
-    /// close. The tunnel, the reachability monitor and the certificate's
+    /// listener, and run the FHIR API's bulk-export jobs, until `shutdown` is
+    /// cancelled. Cancelling stops both accepting connections and hands a
+    /// running export job back, and the call returns `Ok` once the open
+    /// connections on both close and the export worker stops. The tunnel, the reachability monitor and the certificate's
     /// ordering and renewal stop when the call returns.
     ///
     /// # Errors
@@ -128,6 +142,7 @@ impl WildflowerServer {
             tunnel_daemon,
             reachability_monitor,
             device_certificate,
+            bulk_export_worker,
             // The launch context minter, the host's consent decider, and the
             // `test-support` feature's
             // `tunnel_stream_tx`.
@@ -142,8 +157,12 @@ impl WildflowerServer {
             tunnel_listener,
             tunnel_router.into_make_service_with_connect_info::<TunnelVisitor>(),
         )
-        .with_graceful_shutdown(shutdown.cancelled_owned());
-        tokio::try_join!(loopback.into_future(), tunnel.into_future())?;
+        .with_graceful_shutdown(shutdown.clone().cancelled_owned());
+        let bulk_export = async {
+            bulk_export_worker.run(shutdown).await;
+            Ok(())
+        };
+        tokio::try_join!(loopback.into_future(), tunnel.into_future(), bulk_export)?;
         drop(reachability_monitor);
         drop(tunnel_daemon);
         drop(device_certificate);
@@ -222,6 +241,7 @@ pub async fn set_up(
     let fhir_r4_config = FhirR4Config {
         log_level: "debug".to_string(),
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
+        bulk_export_dir: runtime.server_dir.join(FHIR_EXPORTS_DIR),
         // HFS-enforced auth: every FHIR request must carry a Bearer JWT
         // signed by a gatekeeper-issued key whose `iss` and `aud` are the
         // server's origin — set by gatekeeper at mint, checked by both
@@ -235,6 +255,7 @@ pub async fn set_up(
         server_origin: public_origin.clone(),
         host_owner_scopes,
         first_party_client_id,
+        fhir_ui_client_id: FHIR_UI_CLIENT_ID.to_string(),
         launcher_base: launcher_base.clone(),
     };
 
@@ -265,9 +286,13 @@ pub async fn set_up(
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
 
-    let fhir_routers = setup_fhir_r4(&runtime, &fhir_r4_config, revocation_store.clone())
-        .context("failed to set up FHIR R4 router")?;
-    let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
+    // The FHIR web UI's signed-in sessions, shared by HFS (its login and
+    // REST auth) and the middleware in front of the bearer gate.
+    let ui_sessions = Arc::new(SessionStore::new(ui_login_config(
+        &public_origin,
+        &loopback_base_url,
+        FHIR_UI_CLIENT_ID,
+    )));
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
@@ -309,7 +334,7 @@ pub async fn set_up(
     // them to the webview.
     let gatekeeper = setup_gatekeeper(
         diesel_pool.clone(),
-        revocation_store,
+        revocation_store.clone(),
         &gatekeeper_config,
         &host.host_owner_token_tx,
         host.active_pending_consent_tx,
@@ -318,14 +343,37 @@ pub async fn set_up(
     .context("failed to set up gatekeeper")?;
     let consent_decider_for_host = HostConsentDecider::new(gatekeeper.state.clone());
 
-    // The FHIR router carries discovery docs (metadata, SMART well-known) that a
+    // The FHIR API carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
-    // the bearer gate; every other FHIR path still requires a token. It serves
+    // the bearer gate; every other FHIR path still requires a token. The web
+    // UI's pages sit outside the gate (see `setup_fhir_r4`). The router serves
     // at the root through the fallback below, not as merged routes.
-    let gated_fhir_r4 = fhir_r4_router.layer(gatekeeper_auth_middleware(
-        gatekeeper.state.clone(),
-        wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
-    ));
+    let fhir_routers = setup_fhir_r4(
+        &runtime,
+        &fhir_r4_config,
+        revocation_store,
+        ui_sessions.clone(),
+        gatekeeper_auth_middleware(
+            gatekeeper.state.clone(),
+            wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
+        ),
+    )
+    .context("failed to set up FHIR R4 router")?;
+
+    // A signed-in browser's FHIR calls carry only the UI's session cookie, so
+    // the session's bearer is presented for them ahead of the gate; a write
+    // carrying the cookie from another origin is refused, before the UI's
+    // routes too (`ui_session_bearer`).
+    let gated_fhir_r4 =
+        fhir_routers
+            .augmented_fhir_r4_router
+            .layer(axum::middleware::from_fn_with_state(
+                Arc::new(UiSessionBearerConfig {
+                    ui_sessions,
+                    loopback_base_url: loopback_base_url.clone(),
+                }),
+                present_ui_session_bearer,
+            ));
 
     let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
 
@@ -578,5 +626,6 @@ pub async fn set_up(
         launch_context_minter: gatekeeper.launch_context_minter,
         device_certificate,
         consent_decider_for_host,
+        bulk_export_worker: fhir_routers.bulk_export_worker,
     })
 }

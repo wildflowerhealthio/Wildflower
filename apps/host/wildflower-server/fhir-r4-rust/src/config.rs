@@ -17,6 +17,11 @@ pub struct FhirR4Config {
     /// because an absent bundle silently degrades every search to the ~9-param
     /// minimal fallback. See this crate's `docs/Capability Statement.md`.
     pub search_parameter_data_dir: PathBuf,
+    /// Directory bulk `$export` writes each job's NDJSON files under, as
+    /// `{tenant}/{job_id}/`. They are staging only: a client downloads them
+    /// through HFS's `/export-file` route, and they are deleted with their job
+    /// once its output expires. Created on the first export.
+    pub bulk_export_dir: PathBuf,
     /// JWKS endpoint HFS fetches signing keys from to validate inbound
     /// Bearer JWTs. `Some(url)` enables HFS auth (every FHIR request must
     /// carry a token, scopes enforced); `None` leaves HFS open and relies

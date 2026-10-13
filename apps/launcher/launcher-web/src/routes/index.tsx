@@ -23,7 +23,7 @@ import {
   type SignInStep,
   type UnsentEhrLaunch,
 } from '../sign-in.ts'
-import { apiServerUrl, chosenServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
+import { chosenServerUrl } from '../web-entry.ts'
 
 /**
  * Record `serverUrl` as this page's target without reloading.
@@ -188,16 +188,11 @@ function Landing({
 
   if (authed) return <></>
 
-  // The server this page is pointed at — the same resolution `web-entry.ts`
-  // gives the transport, so the token is asked of whichever server the requests
-  // will go to.
-  const serverUrl = apiServerUrl(window.location.search, window.sessionStorage)
+  // The server this page is pointed at, if any — the same resolution
+  // `main-web` gives the transport, so the token is asked of whichever server
+  // the requests will go to.
+  const serverUrl = chosenServerUrl(window.location.search, window.sessionStorage)
   const pageIsSecure = window.location.protocol === 'https:'
-
-  // Said up front, while the reader is still looking at the address they
-  // entered, rather than later as a discovery failure: an https page cannot
-  // reach a plaintext server unless it is loopback.
-  const blockedReason = insecureTargetReason(serverUrl, { pageIsSecure })
 
   /**
    * `problem`'s reason, followed by the Local Network Access hint when the
@@ -210,12 +205,14 @@ function Landing({
       : withLocalNetworkAccessHint(problem.reason, problem.serverUrl, { pageIsSecure })
 
   // Keyed on a server the page can actually use, not on a `?server=`'s bare
-  // presence: a junk value falls back to the loopback default, and offering
-  // "Sign in to http://127.0.0.1:8080" to a reader whose address bar says
-  // something else names the wrong server on the one control that hands out a
-  // token.
-  const hasChosenServer =
-    chosenServerUrl(window.location.search, window.sessionStorage) !== undefined
+  // presence: a junk value names no server, and the reader picks one. The
+  // reason it is blocked is said up front, while the reader is still looking at
+  // the address they entered, rather than later as a discovery failure: an
+  // https page cannot reach a plaintext server unless it is loopback.
+  const chosenServer =
+    serverUrl === undefined
+      ? undefined
+      : { url: serverUrl, blockedReason: insecureTargetReason(serverUrl, { pageIsSecure }) }
 
   /**
    * The menu's `connect`, for a pick and for the chosen server alike: point the
@@ -249,7 +246,6 @@ function Landing({
     <AppLandingPage app="launcher">
       <ConnectMenu
         target="wildflower"
-        localOrigin={DEFAULT_SERVER_URL}
         connect={connect}
         // The boot failure was about the server that sign-in was to, which
         // `main-web`'s boot points `?server=` back at, so it is the chosen
@@ -263,12 +259,12 @@ function Landing({
         // this is the way back in when that couldn't run or failed.
         // Picking a server signs in on its own, so this would be a dead
         // second step otherwise.
-        chosenServer={hasChosenServer ? { url: serverUrl, blockedReason } : undefined}
+        chosenServer={chosenServer}
         // Read once, when the menu mounts: a pick's `?server=` must not
         // make this page look newly arrived and start a second sign-in.
         autoConnect={shouldSignInOnArrival({
-          hasChosenServer,
-          blockedReason,
+          hasChosenServer: chosenServer !== undefined,
+          blockedReason: chosenServer?.blockedReason,
           bootSignInProblem: bootSignInProblem?.reason,
         })}
       />

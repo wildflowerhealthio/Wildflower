@@ -9,8 +9,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { PENDING_AUTHORIZATION_KEY } from './sign-in.ts'
 import {
-  apiServerUrl,
-  DEFAULT_SERVER_URL,
+  chosenServerUrl,
   ehrLaunchIn,
   makeWebEntryOptions,
   rememberSignedInServer,
@@ -19,7 +18,7 @@ import {
   type SignedInServerStore,
 } from './web-entry.ts'
 
-describe('apiServerUrl', () => {
+describe('chosenServerUrl', () => {
   it('should point a load past sign-in at the server the tab remembered', () => {
     // Arrange — the settled URL names no server; the tab remembered the one
     // the sign-in was redeemed against.
@@ -27,10 +26,10 @@ describe('apiServerUrl', () => {
     rememberSignedInServer(store, RUTH_SERVER_URL)
 
     // Act
-    const apiBaseUrl = apiServerUrl('?tab=logs', store)
+    const serverUrl = chosenServerUrl('?tab=logs', store)
 
     // Assert
-    expect(apiBaseUrl).toBe(RUTH_SERVER_URL)
+    expect(serverUrl).toBe(RUTH_SERVER_URL)
   })
 
   it('should point a load at the server ?server= names', () => {
@@ -38,18 +37,18 @@ describe('apiServerUrl', () => {
     const search = `?server=${encodeURIComponent(RUTH_SERVER_URL)}`
 
     // Act
-    const apiBaseUrl = apiServerUrl(search, memoryStore())
+    const serverUrl = chosenServerUrl(search, memoryStore())
 
     // Assert
-    expect(apiBaseUrl).toBe(RUTH_SERVER_URL)
+    expect(serverUrl).toBe(RUTH_SERVER_URL)
   })
 
-  it('should fall back to the loopback server when neither names one', () => {
+  it('should name no server when neither names one', () => {
     // Arrange / Act
-    const apiBaseUrl = apiServerUrl('', memoryStore())
+    const serverUrl = chosenServerUrl('', memoryStore())
 
-    // Assert
-    expect(apiBaseUrl).toBe(DEFAULT_SERVER_URL)
+    // Assert — there is no default server; the reader picks one.
+    expect(serverUrl).toBeUndefined()
   })
 
   it('should prefer a usable ?server= over the remembered server', () => {
@@ -61,13 +60,11 @@ describe('apiServerUrl', () => {
         const search = `?server=${encodeURIComponent(searchServerUrl)}`
 
         // Act
-        const apiBaseUrl = apiServerUrl(search, store)
+        const serverUrl = chosenServerUrl(search, store)
 
         // Assert
-        expect(apiBaseUrl).toBe(
-          normalizeServerUrl(searchServerUrl) ??
-            normalizeServerUrl(rememberedServerUrl) ??
-            DEFAULT_SERVER_URL
+        expect(serverUrl).toBe(
+          normalizeServerUrl(searchServerUrl) ?? normalizeServerUrl(rememberedServerUrl)
         )
       }),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -136,15 +133,24 @@ describe('makeWebEntryOptions', () => {
     const page = stubPage()
 
     // Act
-    const options = makeWebEntryOptions(page, '/launcher/', DEFAULT_SERVER_URL)
+    const options = makeWebEntryOptions(page, '/launcher/', RUTH_SERVER_URL)
 
     // Assert
-    expect(options.apiBaseUrl).toBe(DEFAULT_SERVER_URL)
+    expect(options.apiBaseUrl).toBe(RUTH_SERVER_URL)
+  })
+
+  it('should offer no logout before a server is chosen, as there is none to revoke at', () => {
+    // Arrange / Act
+    const options = makeWebEntryOptions(stubPage(), '/launcher/', undefined)
+
+    // Assert
+    expect(options.apiBaseUrl).toBeUndefined()
+    expect(options.platformSettingsItems).toEqual([])
   })
 
   it('should render no platform banner, since no host runs a server for the page', () => {
     // Arrange / Act
-    const options = makeWebEntryOptions(stubPage(), '/launcher/', DEFAULT_SERVER_URL)
+    const options = makeWebEntryOptions(stubPage(), '/launcher/', RUTH_SERVER_URL)
 
     // Assert
     expect(options.platformBanner).toBeNull()
@@ -179,7 +185,7 @@ describe('makeWebEntryOptions', () => {
 
 // Helpers
 
-const RUTH_SERVER_URL = 'https://ruth.wildflowerhealth.io'
+const RUTH_SERVER_URL = 'https://ruth.relay.wildflowerhealth.io'
 const PAGE_ORIGIN = 'https://wildflowerhealthio.github.io'
 
 /** A `sessionStorage` stand-in with no browser behind it. */

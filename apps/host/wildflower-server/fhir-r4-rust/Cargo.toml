@@ -21,18 +21,25 @@ url = { version = "2" }
 # partial-scope token still gets the resources it can read. Already in the tree
 # via helios/tower; pinned here as a direct dep for the `warn!` macro.
 tracing = "0.1"
-# HFS (HeliosSoftware/hfs) crates, exact-pinned to one release. Move all four
+# HFS (HeliosSoftware/hfs) crates, exact-pinned to one release. Move them all
 # together — they depend on each other at `^` of the same version, and a
 # Dependabot group can bump only some of them. wildflowerhealthio-fhir-r4 embeds:
 #   helios-rest        — Axum router + handlers serving the FHIR REST surface
 helios-rest = { version = "=0.2.4", default-features = false, features = ["R4", "sqlite"] }
 #   helios-persistence — sqlite-backed storage backend
 helios-persistence = { version = "=0.2.4", default-features = false, features = ["R4", "sqlite"] }
-#   helios-auth        — JWT/JWKS bearer auth + SMART v2 scope policy
+#   helios-auth        — JWT/JWKS bearer auth + SMART v2 scope policy, and the
+#                        web UI's login sessions
 helios-auth = "=0.2.4"
+#   helios-fhir        — the FHIR version the web UI is mounted for
+helios-fhir = "=0.2.4"
+#   helios-ui          — the web UI, at `/ui`
+helios-ui = "=0.2.4"
 #   helios-audit       — audit sink trait (we use the null sink today)
 helios-audit = { version = "=0.2.4", default-features = false, features = ["R4"] }
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["served-origin"] }
+# Typed SMART scopes: the web UI's sign-in asks for `user/*.cruds`.
+wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 # The shared token-revocation store. wildflowerhealthio-fhir-r4 owns the HFS-side enforcement
 # point: a custom `helios_auth::JtiCache` that reads the per-jti denylist (helios
 # hands it only `(jti, expires_at)`; the epoch half needs `sub`/`iat`, which the
@@ -46,6 +53,9 @@ async-trait = "0.1"
 # The `JtiCache::check_and_store` signature is in `chrono::DateTime<Utc>`; already
 # in the tree via helios, pinned here as a direct dep for the type reference.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Runs bulk `$export`'s worker and cleanup until the server shuts down.
+tokio = { workspace = true, features = ["macros", "time"] }
+tokio-util = "0.7"
 
 [dev-dependencies]
 base64.workspace = true
@@ -60,6 +70,8 @@ wildflowerhealthio-ohif-server = { path = "../../../../slices/ohif-server-rust" 
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+# The export folder the bulk-export worker's tests write to.
+tempfile = "3"
 
 [lints]
 workspace = true

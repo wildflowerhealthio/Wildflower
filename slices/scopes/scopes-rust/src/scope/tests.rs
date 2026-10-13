@@ -25,6 +25,10 @@ fn typed_builders_render_to_the_expected_strings() {
         Scope::fhir_system_all(Permission::DELETE).to_string(),
         "system/*.d",
     );
+    assert_eq!(
+        Scope::fhir_user_all(Permission::ALL).to_string(),
+        "user/*.cruds",
+    );
 }
 
 #[test]
@@ -37,6 +41,10 @@ fn typed_builders_agree_with_string_parsing() {
     assert_eq!(
         Scope::fhir_system_all(Permission::DELETE),
         Scope::from("system/*.d"),
+    );
+    assert_eq!(
+        Scope::fhir_user_all(Permission::ALL),
+        Scope::from("user/*.cruds")
     );
     assert_eq!(
         Scope::wildflower_all(Permission::READ),

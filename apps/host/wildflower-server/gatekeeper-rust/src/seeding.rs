@@ -15,6 +15,8 @@ use anyhow::Context;
 use chrono::{Duration, Utc};
 use wildflowerhealthio_persistence::DieselPool;
 
+use wildflowerhealthio_scopes::{Permission, Scope};
+
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::authority::{HostOwnerEntitlement, TokenEntitlement};
 use crate::domain::capabilities::writers::AccessTokenMinter;
@@ -29,7 +31,8 @@ use crate::domain::GatekeeperStore as _;
 /// Wrap the host-owned connection `pool` in a gatekeeper store (applying
 /// migrations, which includes the SQL seed of the SMART sample-app clients)
 /// and run the runtime-derived first-boot seeding steps — the signing key and
-/// the first-party host client. Safe to call on every boot.
+/// the first-party host client, and the FHIR server UI's client. Safe to call
+/// on every boot.
 ///
 /// # Errors
 ///
@@ -39,12 +42,48 @@ pub fn open_and_seed_store(
     pool: DieselPool,
     host_owner_scopes: &[String],
     first_party_client_id: &str,
+    fhir_ui_client_id: &str,
+    server_origin: &url::Url,
 ) -> anyhow::Result<SqliteGatekeeperStore> {
     let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store, host_owner_scopes, first_party_client_id)
         .context("failed to seed first-party client")?;
+    ensure_fhir_ui_client(&store, fhir_ui_client_id, server_origin)
+        .context("failed to seed the FHIR server UI client")?;
     Ok(store)
+}
+
+/// The FHIR server UI's client: a public client (PKCE, no secret) whose one
+/// redirect URI is `{server_origin}/ui/callback`, where `helios-ui` completes
+/// its sign-in, allowed `user/*.cruds` — the UI acts as the signed-in user
+/// across every resource type. Upserted on every boot, like
+/// [`ensure_first_party_client`], so it follows the server's origin.
+fn ensure_fhir_ui_client(
+    store: &SqliteGatekeeperStore,
+    fhir_ui_client_id: &str,
+    server_origin: &url::Url,
+) -> anyhow::Result<()> {
+    let client = Client {
+        client_id: fhir_ui_client_id.to_string(),
+        name: "FHIR server UI".to_string(),
+        kind: ClientKind::Public,
+        redirect_uris: vec![server_origin
+            .join("/ui/callback")
+            .context("build the UI's redirect URI")?],
+        allowed_scopes: vec![Scope::fhir_user_all(Permission::ALL).to_string()],
+        allowed_grant_types: vec![
+            AllowedGrantType::AuthorizationCode,
+            AllowedGrantType::RefreshToken,
+        ],
+        secret_hash: None,
+        registered_at: Utc::now(),
+        disabled_at: None,
+    };
+    store
+        .upsert_client(&client)
+        .context("seed the FHIR server UI client")?;
+    Ok(())
 }
 
 /// Generate and insert an active signing key if the table is empty;
@@ -665,7 +704,14 @@ mod tests {
             "system/*.cruds".to_string(),
             "wildflower/*.cruds".to_string(),
         ];
-        let store = open_and_seed_store(pool, &scopes, "custom-host-client").expect("seed store");
+        let store = open_and_seed_store(
+            pool,
+            &scopes,
+            "custom-host-client",
+            "fhir-ui-client",
+            &url::Url::parse("https://ruth.relay.example").expect("origin"),
+        )
+        .expect("seed store");
 
         let seeded = store
             .client_by_id("custom-host-client")
@@ -682,6 +728,46 @@ mod tests {
                 .expect("query fallback id")
                 .is_none(),
             "seeding must use the configured id, not the hardcoded fallback",
+        );
+    }
+
+    /// The UI's client is seeded under the configured id as a public client
+    /// that may only return to this server's `/ui/callback` and only ask for
+    /// `user/*.cruds`.
+    #[test]
+    fn seeds_the_fhir_ui_client_for_this_servers_origin() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let origin = url::Url::parse("https://ruth.relay.example").expect("origin");
+        let store = open_and_seed_store(
+            pool,
+            &[
+                "system/*.cruds".to_string(),
+                "wildflower/*.cruds".to_string(),
+            ],
+            "host-client",
+            "fhir-ui-client",
+            &origin,
+        )
+        .expect("seed store");
+
+        let seeded = store
+            .client_by_id("fhir-ui-client")
+            .expect("query client")
+            .expect("the UI client is seeded under the configured id");
+        assert_eq!(
+            (
+                seeded.kind,
+                seeded.redirect_uris,
+                seeded.allowed_scopes,
+                seeded.secret_hash
+            ),
+            (
+                ClientKind::Public,
+                vec![url::Url::parse("https://ruth.relay.example/ui/callback").expect("url")],
+                vec!["user/*.cruds".to_string()],
+                None
+            )
         );
     }
 }

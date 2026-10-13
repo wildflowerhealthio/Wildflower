@@ -8,9 +8,10 @@
 //! `{ "error": "RouteNotFound", … }` — the shape each slice's `*NotFound`
 //! responses take (`error` tag, camelCase fields).
 //!
-//! The launcher's entry routes ([`APP_ENTRY_PATHS`]) are the exception: a browser
-//! `GET` of one is plainly someone opening the app, so it is sent straight there
-//! with a `303` rather than shown a page to click through.
+//! The launcher's entry route ([`APP_ENTRY_PATHS`]) is the exception: a browser
+//! `GET` of it is plainly someone opening the app, so it is sent straight there
+//! with a `303` rather than shown a page to click through. (A browser opening
+//! the root goes to the FHIR web UI instead; see `root_fallback.rs`.)
 
 use std::sync::Arc;
 
@@ -21,10 +22,10 @@ use url::Url;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
-/// Launcher routes a browser opening this server most likely wants: the root and
-/// the home screen. A browser `GET` of one redirects to the same route on the
-/// hosted launcher, pointed at this server.
-const APP_ENTRY_PATHS: [&str; 2] = ["/", "/home"];
+/// Launcher routes a browser opening this server most likely wants: the home
+/// screen. A browser `GET` of one redirects to the same route on the hosted
+/// launcher, pointed at this server.
+const APP_ENTRY_PATHS: [&str; 1] = ["/home"];
 
 /// What the fallback needs to point a lost browser at the hosted launcher.
 pub(crate) struct NotFoundConfig {
@@ -101,7 +102,7 @@ fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &
 
 /// Whether the caller will render HTML — a browser navigation sends
 /// `Accept: text/html,…`; `fetch` and API clients don't ask for it.
-fn accepts_html(headers: &HeaderMap) -> bool {
+pub(crate) fn accepts_html(headers: &HeaderMap) -> bool {
     headers
         .get_all(header::ACCEPT)
         .iter()
@@ -285,27 +286,19 @@ mod tests {
     }
 
     #[test]
-    fn a_browser_opening_the_root_or_home_is_sent_to_the_app() {
-        for (path, expected) in [
-            (
-                "/",
-                "https://launcher.test/launcher/?server=http%3A%2F%2F127.0.0.1%3A8080",
-            ),
-            (
-                "/home",
-                "https://launcher.test/launcher/home?server=http%3A%2F%2F127.0.0.1%3A8080",
-            ),
-        ] {
-            let uri: Uri = path.parse().expect("uri");
-            let response = respond(
-                &config(),
-                &Method::GET,
-                &headers(&[("accept", BROWSER_ACCEPT)]),
-                &uri,
-            );
-            assert_eq!(response.status(), StatusCode::SEE_OTHER, "{path}");
-            assert_eq!(location(&response), expected, "{path}");
-        }
+    fn a_browser_opening_home_is_sent_to_the_app() {
+        let uri: Uri = "/home".parse().expect("uri");
+        let response = respond(
+            &config(),
+            &Method::GET,
+            &headers(&[("accept", BROWSER_ACCEPT)]),
+            &uri,
+        );
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            location(&response),
+            "https://launcher.test/launcher/home?server=http%3A%2F%2F127.0.0.1%3A8080"
+        );
     }
 
     #[test]

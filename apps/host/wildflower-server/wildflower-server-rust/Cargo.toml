@@ -24,6 +24,10 @@ anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
 tower-http.workspace = true
+# The FHIR web UI's login sessions, which the host builds and shares between
+# fhir-r4-rust and the middleware that presents a session's bearer to the gate.
+# Exact-pinned with the other HFS crates (see fhir-r4-rust's Cargo.toml).
+helios-auth = "=0.2.4"
 # `net` binds the loopback listener; `sync` carries the host's owner-token,
 # pending-consent, server-health and certificate `watch` channels and the
 # tunnel's visitor streams; `time` and `macros` pace and bound the reachability
@@ -118,6 +122,8 @@ wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-setti
 wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust" }
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
+# Reads the FHIR web UI's settings back out of the health data's sqlite file.
+rusqlite.workspace = true
 # The self-signed certificates the tests put in the certificate cache.
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"] }
 # `test-util` drives the reachability monitor on virtual time.

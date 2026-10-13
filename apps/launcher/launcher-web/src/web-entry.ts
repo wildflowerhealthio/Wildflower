@@ -12,32 +12,10 @@ import {
   type BearerAuthStateStore,
 } from '@wildflowerhealthio/gatekeeper-react'
 import { Option } from 'effect'
-// Named imports, not the whole document: only these two fields concern this
-// entry, and importing them individually keeps the rest of the host's
-// configuration out of a published bundle. The same read
-// `apps/server-docs-web/src/host-defaults.ts` does, and the same one
-// `apps/host/host-app/vite.config.ts` injects `WILDFLOWER_LOOPBACK_ORIGIN`
-// from.
-import {
-  loopback_hostname as loopbackHostname,
-  loopback_port as loopbackPort,
-} from '../../../host/host-app/tauri-shared-config.json'
 
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
 import type { EhrLaunch } from './sign-in.ts'
-
-/**
- * The API origin assumed when the URL carries no usable `?server=`: the loopback
- * origin a locally-running Wildflower server binds, read from the same
- * `tauri-shared-config.json` the Rust host and the Tauri webview derive theirs
- * from, so this page cannot carry a stale copy of it.
- *
- * Exported because the landing page's "local server" button and its sign-in both
- * need the same value the transport resolves — a second literal there would let
- * the page sign in to one server and send its requests to another.
- */
-const DEFAULT_SERVER_URL = `http://${loopbackHostname}:${loopbackPort}`
 
 /**
  * The `sessionStorage` key holding the server this tab last signed in to.
@@ -62,7 +40,8 @@ const rememberSignedInServer = (store: SignedInServerStore, serverUrl: string): 
 /**
  * The server this page load is pointed at without asking the reader: the one
  * `search`'s `?server=` names, else the one this tab last signed in to.
- * `undefined` when neither names a server this page would accept.
+ * `undefined` when neither names a server this page would accept: there is no
+ * default server, so the reader picks one on the landing page.
  */
 const chosenServerUrl = (search: string, store: SignedInServerStore): string | undefined => {
   const fromSearch = serverUrlFromSearch(search)
@@ -70,14 +49,6 @@ const chosenServerUrl = (search: string, store: SignedInServerStore): string | u
   const stored = store.getItem(SIGNED_IN_SERVER_KEY)
   return stored === null ? undefined : normalizeServerUrl(stored)
 }
-
-/**
- * The API origin a page load targets: the {@link chosenServerUrl}, falling back
- * to {@link DEFAULT_SERVER_URL} — the same shape
- * `apps/server-docs-web/src/server-target.ts` gives the console.
- */
-const apiServerUrl = (search: string, store: SignedInServerStore): string =>
-  chosenServerUrl(search, store) ?? DEFAULT_SERVER_URL
 
 /**
  * The {@link EhrLaunch} a page load arriving on `search` was opened with: the
@@ -146,8 +117,10 @@ const underBasepath = (basepath: string, route: string): string =>
  *   page (`/`) instead of device-login, because this entry has no API server
  *   until the reader picks one — the picker and the sign-in live at the root.
  * - `apiBaseUrl`: the caller's `apiBaseUrl`, which `main-web` resolves with
- *   {@link apiServerUrl}. Past sign-in the address bar no longer names the
- *   server; the tab's remembered one does.
+ *   {@link chosenServerUrl}. Past sign-in the address bar no longer names the
+ *   server; the tab's remembered one does. `undefined` when no server is
+ *   chosen yet: the page is then unauthed, and only its landing, which sends
+ *   no API request, is reachable.
  * - `externalLinkRoot`: the page's own origin, which is an address another
  *   device can open.
  * - `readBearer`: wired to the store's `bearer()` reader, so
@@ -158,7 +131,8 @@ const underBasepath = (basepath: string, route: string): string =>
  *   tab's `sessionStorage` (the signed-in server included), and reloads the
  *   bare landing page at `basepath`.
  *   Nothing then names a server, so the reader picks one rather than being
- *   signed straight back in.
+ *   signed straight back in. None without an `apiBaseUrl`: there is no
+ *   server to revoke at, and a page with none is never signed in.
  * - `platformBanner`: none — no host runs a server for this page, so there is
  *   no server status to show.
  * - `redirectToDeviceLoginOnUnauthorized`: true — a 401 that outlives the
@@ -176,7 +150,7 @@ const makeWebEntryOptions = (
     readonly sessionStorage: SignedInServerStore
   },
   basepath: string,
-  apiBaseUrl: string
+  apiBaseUrl: string | undefined
 ): Pick<
   RenderAppOptions,
   | 'tokenStore'
@@ -199,28 +173,29 @@ const makeWebEntryOptions = (
     apiBaseUrl,
     externalLinkRoot: () => page.location.origin,
     readBearer: bearerStore.bearer,
-    platformSettingsItems: [
-      gatekeeperLogoutSettingsItem({
-        apiBaseUrl,
-        bearerStore,
-        fetch: (input, init) => page.fetch(input, init),
-        leave: () => {
-          // Everything this tab kept for the origin: the signed-in server and
-          // any half-finished sign-in's pending record.
-          page.sessionStorage.clear()
-          page.location.assign(underBasepath(basepath, '/'))
-        },
-      }),
-    ],
+    platformSettingsItems:
+      apiBaseUrl === undefined
+        ? []
+        : [
+            gatekeeperLogoutSettingsItem({
+              apiBaseUrl,
+              bearerStore,
+              fetch: (input, init) => page.fetch(input, init),
+              leave: () => {
+                // Everything this tab kept for the origin: the signed-in server and
+                // any half-finished sign-in's pending record.
+                page.sessionStorage.clear()
+                page.location.assign(underBasepath(basepath, '/'))
+              },
+            }),
+          ],
     platformBanner: null,
     redirectToDeviceLoginOnUnauthorized: true,
   }
 }
 
 export {
-  apiServerUrl,
   chosenServerUrl,
-  DEFAULT_SERVER_URL,
   ehrLaunchIn,
   makeWebEntryOptions,
   rememberSignedInServer,

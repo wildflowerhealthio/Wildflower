@@ -7,7 +7,7 @@ use anyhow::Context;
 use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 #[tokio::main]
@@ -22,6 +22,7 @@ async fn main() -> anyhow::Result<()> {
     let config = FhirR4Config {
         log_level: "info".to_string(),
         db_file_path: tmp.join("health-data.sqlite"),
+        bulk_export_dir: tmp.join("fhir-exports"),
         // Dev binary: HFS auth off. Discovery + /metadata still served;
         // anything that would normally require auth (Patient, etc.) is open.
         jwks_url: None,
@@ -37,7 +38,20 @@ async fn main() -> anyhow::Result<()> {
     // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is
     // never consulted — the always-allow double satisfies the signature.
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
-    let routers = setup_fhir_r4(&runtime, &config, revocation_store)?;
+    let routers = setup_fhir_r4(
+        &runtime,
+        &config,
+        revocation_store,
+        ui_sessions(&runtime, &config),
+        // No host gate in front: these drive HFS and the UI directly.
+        tower::layer::util::Identity::new(),
+    )?;
+    // Runs `$export`'s jobs for as long as the dev server runs.
+    tokio::spawn(
+        routers
+            .bulk_export_worker
+            .run(tokio_util::sync::CancellationToken::new()),
+    );
     let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(
         wildflowerhealthio_ohif_server::setup_ohif_server(routers.raw_hfs_router),
     );
@@ -52,4 +66,16 @@ async fn main() -> anyhow::Result<()> {
     eprintln!("fhir-r4-rust serve (dev): http://{addr}");
     axum::serve(listener, router).await?;
     Ok(())
+}
+
+/// The web UI's session store `setup_fhir_r4` takes, as the host builds it.
+fn ui_sessions(
+    runtime: &ServerRuntimeConfig,
+    config: &FhirR4Config,
+) -> std::sync::Arc<helios_auth::SessionStore> {
+    std::sync::Arc::new(helios_auth::SessionStore::new(ui_login_config(
+        &config.public_origin,
+        runtime.loopback_base_url_ref(),
+        "fhir-ui-client",
+    )))
 }

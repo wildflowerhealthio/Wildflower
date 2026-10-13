@@ -1,27 +1,11 @@
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  DEFAULT_SERVER_PRESET_GROUPS,
-  hostedServerUrlFor,
-  serverPresetGroupsFor,
-} from './server-presets.ts'
-
-const LOCAL_ORIGIN = 'http://127.0.0.1:8123'
+import { relayServerUrlFor, serverPresetGroupsFor } from './server-presets.ts'
 
 describe('serverPresetGroupsFor', () => {
-  it('launches a SMART app against, and signs the launcher in to, the local server’s origin', () => {
-    const [fhirLocal] = serverPresetGroupsFor('fhir-r4', LOCAL_ORIGIN)
-    const [wildflowerLocal] = serverPresetGroupsFor('wildflower', LOCAL_ORIGIN)
-
-    expect(fhirLocal?.address).toBe(LOCAL_ORIGIN)
-    expect(fhirLocal?.presets.map((preset) => preset.url)).toEqual([LOCAL_ORIGIN])
-    expect(wildflowerLocal?.address).toBe(LOCAL_ORIGIN)
-    expect(wildflowerLocal?.presets.map((preset) => preset.url)).toEqual([LOCAL_ORIGIN])
-  })
-
   it('launches the demo server at the same URLs for both targets, with a notice only for the launcher', () => {
-    const fhirDemo = serverPresetGroupsFor('fhir-r4', LOCAL_ORIGIN)[1]
-    const wildflowerDemo = serverPresetGroupsFor('wildflower', LOCAL_ORIGIN)[1]
+    const [fhirDemo] = serverPresetGroupsFor('fhir-r4')
+    const [wildflowerDemo] = serverPresetGroupsFor('wildflower')
 
     expect(wildflowerDemo?.presets).toEqual(fhirDemo?.presets)
     expect(fhirDemo?.notice).toBeUndefined()
@@ -30,25 +14,23 @@ describe('serverPresetGroupsFor', () => {
     )
   })
 
-  it('labels the local server’s button for what each target does there', () => {
-    expect(serverPresetGroupsFor('fhir-r4', LOCAL_ORIGIN)[0]?.presets[0]?.label).toBe('Launch')
-    expect(serverPresetGroupsFor('wildflower', LOCAL_ORIGIN)[0]?.presets[0]?.label).toBe('Connect')
-  })
+  it('offers no loopback server to either target', () => {
+    const urls = [...serverPresetGroupsFor('fhir-r4'), ...serverPresetGroupsFor('wildflower')]
+      .flatMap((group) => group.presets)
+      .map((preset) => new URL(preset.url).hostname)
 
-  it('launches every SMART app against the desktop host’s loopback FHIR base by default', () => {
-    expect(DEFAULT_SERVER_PRESET_GROUPS[0]?.presets[0]?.url).toBe('http://127.0.0.1:8080')
+    expect(urls).not.toContain('127.0.0.1')
+    expect(urls).not.toContain('localhost')
   })
 })
 
-describe('hostedServerUrlFor', () => {
-  it('builds a hosted server’s origin, its FHIR base', () => {
-    expect(hostedServerUrlFor('ruth')).toBe('https://ruth.wildflowerhealth.io')
+describe('relayServerUrlFor', () => {
+  it('builds a relayed server’s origin, its FHIR base', () => {
+    expect(relayServerUrlFor('ruth')).toBe('https://ruth.relay.wildflowerhealth.io')
   })
 
-  it('accepts a nested subdomain, trimmed and lower-cased', () => {
-    expect(hostedServerUrlFor(' Medication.Ruth ')).toBe(
-      'https://medication.ruth.wildflowerhealth.io'
-    )
+  it('accepts a hyphenated name, trimmed and lower-cased', () => {
+    expect(relayServerUrlFor(' Ruth-Lab ')).toBe('https://ruth-lab.relay.wildflowerhealth.io')
   })
 
   it.each([
@@ -58,12 +40,12 @@ describe('hostedServerUrlFor', () => {
     'ruth-',
     '.ruth',
     'ruth.',
-    'ru..th',
+    'medication.ruth',
     'ru_th',
     'ruth/x',
     'a@ruth',
     'ruth:1',
-  ])('rejects %j', (subdomain) => {
-    expect(hostedServerUrlFor(subdomain)).toBeUndefined()
+  ])('rejects %j', (relayName) => {
+    expect(relayServerUrlFor(relayName)).toBeUndefined()
   })
 })

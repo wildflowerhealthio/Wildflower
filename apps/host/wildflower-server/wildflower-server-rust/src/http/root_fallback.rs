@@ -1,20 +1,27 @@
 //! The API router's fallback: a request no slice route claims reaches the FHIR
 //! router when [`is_fhir_r4_route`](wildflowerhealthio_fhir_r4::is_fhir_r4_route)
-//! says it is FHIR's, and the [`not_found`](super::not_found) page otherwise.
+//! says it is FHIR's, and the [`not_found`](super::not_found) page otherwise. A
+//! browser opening the root is sent to the FHIR web UI, at `/ui`.
 //! See "Served at the root, on FHIR paths only" in `fhir-r4-rust`'s
 //! `docs/Capability Statement.md`.
 
 use std::sync::Arc;
 
 use axum::extract::Request;
+use axum::http::Method;
 use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Redirect};
 use axum::Router;
 use wildflowerhealthio_fhir_r4::is_fhir_r4_route;
 
 use super::not_found::{self, NotFoundConfig};
 
+/// The path a browser opening the server's root is sent to: the FHIR web UI.
+const ROOT_PAGE: &str = "/ui";
+
 /// Build the fallback service: `fhir_r4` (already behind its bearer gate) for a
-/// FHIR request, else the `404` over `not_found_config`. The choice is a layer
+/// FHIR request, a redirect to [`ROOT_PAGE`] for a browser opening the root,
+/// else the `404` over `not_found_config`. The choice is a layer
 /// outside `fhir_r4`'s own, so a path that isn't FHIR's never reaches its gate
 /// and is answered `404`, not `401`.
 pub(crate) fn fallback(fhir_r4: Router, not_found_config: Arc<NotFoundConfig>) -> Router {
@@ -22,7 +29,9 @@ pub(crate) fn fallback(fhir_r4: Router, not_found_config: Arc<NotFoundConfig>) -
     fhir_r4.layer(middleware::from_fn(move |request: Request, next: Next| {
         let not_found = not_found.clone();
         async move {
-            if is_fhir_r4_route(request.method(), request.uri().path()) {
+            if is_browser_opening_the_root(&request) {
+                Redirect::to(ROOT_PAGE).into_response()
+            } else if is_fhir_r4_route(request.method(), request.uri().path()) {
                 next.run(request).await
             } else {
                 let (parts, _body) = request.into_parts();
@@ -30,6 +39,14 @@ pub(crate) fn fallback(fhir_r4: Router, not_found_config: Arc<NotFoundConfig>) -
             }
         }
     }))
+}
+
+/// Whether `request` is a browser navigating to the server's root: a `GET` or
+/// `HEAD` of `/` asking for HTML.
+fn is_browser_opening_the_root(request: &Request) -> bool {
+    matches!(*request.method(), Method::GET | Method::HEAD)
+        && request.uri().path() == "/"
+        && not_found::accepts_html(request.headers())
 }
 
 #[cfg(test)]
@@ -60,16 +77,39 @@ mod tests {
     }
 
     async fn status_of(method: &str, path: &str) -> StatusCode {
-        let request = Request::builder()
-            .method(method)
-            .uri(path)
-            .body(Body::empty())
-            .expect("request");
+        response_to(method, path, None).await.status()
+    }
+
+    async fn response_to(
+        method: &str,
+        path: &str,
+        accept: Option<&str>,
+    ) -> axum::response::Response {
+        let mut request = Request::builder().method(method).uri(path);
+        if let Some(accept) = accept {
+            request = request.header("accept", accept);
+        }
         router()
-            .oneshot(request)
+            .oneshot(request.body(Body::empty()).expect("request"))
             .await
             .expect("infallible")
-            .status()
+    }
+
+    /// A browser opening the server lands on the FHIR web UI; an API client
+    /// asking for `/` still gets the `404`, and `POST /` is still FHIR's.
+    #[tokio::test]
+    async fn a_browser_opening_the_root_is_sent_to_the_ui() {
+        let response = response_to("GET", "/", Some("text/html,*/*;q=0.8")).await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("/ui")
+        );
+        assert_eq!(status_of("GET", "/").await, StatusCode::NOT_FOUND);
+        assert_eq!(status_of("POST", "/").await, StatusCode::IM_A_TEAPOT);
     }
 
     #[tokio::test]

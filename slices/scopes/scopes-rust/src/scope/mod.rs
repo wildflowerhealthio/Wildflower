@@ -91,6 +91,18 @@ impl Scope {
         })
     }
 
+    /// Build a `user/*.<perm>` FHIR scope — every FHIR resource type at the
+    /// `user` access level (what an interactively signed-in user acts as) and
+    /// this permission.
+    #[must_use]
+    pub fn fhir_user_all(permission: Permission) -> Scope {
+        Scope::FhirResource(FhirResourceScope {
+            context: ContextLevel::User,
+            resource: ResourceType::Wildcard,
+            permission,
+        })
+    }
+
     /// Build the `wildflower/launch` known scope — the umbrella app-launch
     /// capability ([`KnownScope::AnyScopedAppLaunch`]). The typed way to name the
     /// launch gate so the apps slice's `AppLauncher` and any grantable-scope list

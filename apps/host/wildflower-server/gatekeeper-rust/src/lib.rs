@@ -287,6 +287,8 @@ pub fn setup_gatekeeper(
         pool,
         &config.host_owner_scopes,
         &config.first_party_client_id,
+        &config.fhir_ui_client_id,
+        &config.server_origin,
     )?;
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
