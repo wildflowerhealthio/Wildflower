@@ -9,9 +9,9 @@ import {
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
-  hostedServerUrlFor,
+  RELAY_DOMAIN,
+  relayServerUrlFor,
   serverPresetGroupsFor,
-  WILDFLOWER_DOMAIN,
   type ConnectTarget,
   type ServerPresetGroup,
 } from './server-presets.ts'
@@ -21,10 +21,6 @@ import styles from './connect-menu.module.css'
 /**
  * Props for a {@link ConnectMenu} that launches a SMART app: it connects by
  * Standalone SMART App Launch against a FHIR R4 base.
- *
- * @remarks
- * No `localOrigin`: a SMART app's local server is the desktop host's, at the
- * loopback origin {@link DEFAULT_SERVER_PRESET_GROUPS} is built for.
  */
 interface FhirR4ConnectMenuProps {
   readonly target: 'fhir-r4'
@@ -57,8 +53,8 @@ interface WildflowerConnectMenuProps {
   readonly target: 'wildflower'
   /**
    * Sign in to the server at `url`, a FHIR base in `normalizeServerUrl`'s
-   * canonical form: the server's origin for the local and hosted picks (a
-   * Wildflower server serves FHIR at its root), whatever the reader typed for
+   * canonical form: the server's origin for the relay pick (a Wildflower
+   * server serves FHIR at its root), whatever the reader typed for
    * the free entry, and the FHIR base for the demo server. The sign-in's
    * discovery reads which kind of server it is.
    * Resolves to a problem to show in the menu's error banner, or `undefined`
@@ -66,11 +62,6 @@ interface WildflowerConnectMenuProps {
    * shown as its message.
    */
   readonly connect: (url: string) => Promise<string | undefined>
-  /**
-   * The local Wildflower server's origin, e.g. `http://127.0.0.1:8080` — read
-   * from the caller's config rather than assumed here.
-   */
-  readonly localOrigin: string
   /**
    * Why a sign-in failed before the page loaded (the redemption the page ran
    * at boot). Shown at the top of the menu until the reader starts another
@@ -138,28 +129,20 @@ const MENU_COPY = {
   },
 } as const satisfies Record<ConnectTarget, Record<string, string>>
 
-/** The heading (and form name) of the group that connects to a hosted subdomain. */
-const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
+/** The heading (and form name) of the group that connects by relay name. */
+const RELAY_GROUP_NAME = 'Official Wildflower Relay'
+
+/** The relay name field's label. */
+const RELAY_NAME_LABEL = 'Official Wildflower Relay Name'
+
+/** The line under the relay name field, saying where the named server is found. */
+const RELAY_NAME_DESCRIPTION = `This server is found at https://[Name]${RELAY_DOMAIN}`
 
 /**
- * The subdomain field's label, naming the domain it is a subdomain of: the
- * `https://` and domain either side of the field are only visual, so the
- * label alone has to say what the field is to a screen reader.
- */
-const HOSTED_SUBDOMAIN_LABEL = `Subdomain of ${WILDFLOWER_DOMAIN.slice(1)}`
-
-/**
- * Where the hosted group sits among the preset groups: after the first, which
- * in the default groups is the local Wildflower server, so the two ways to
- * reach your own server come before any other kind.
- */
-const HOSTED_GROUP_INDEX = 1
-
-/**
- * The standalone connect menu: buttons grouped under each known server's name
- * and address, with a subdomain entry for a Wildflower-hosted server slotted
- * in after the first group (the local server), then, last, a free-entry URL for
- * any other server. What picking one does is the `target`'s: a Standalone SMART
+ * The standalone connect menu: first a relay name entry for a server reached
+ * through the official Wildflower relay, then buttons grouped under each known
+ * server's name and address, then, last, a free-entry URL for any other
+ * server. What picking one does is the `target`'s: a Standalone SMART
  * App Launch against a FHIR base for `fhir-r4`, the caller's sign-in to the
  * picked URL for `wildflower` (a server's API base, or the demo server's FHIR
  * base).
@@ -200,9 +183,9 @@ const HOSTED_GROUP_INDEX = 1
  */
 const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
   const [state, setState] = useState<ConnectState>({ kind: 'idle' })
-  const [hostedSubdomain, setHostedSubdomain] = useState('')
+  const [relayName, setRelayName] = useState('')
   const [freeEntryUrl, setFreeEntryUrl] = useState('')
-  const [hostedProblem, setHostedProblem] = useState<string | undefined>(undefined)
+  const [relayProblem, setRelayProblem] = useState<string | undefined>(undefined)
   const [freeEntryProblem, setFreeEntryProblem] = useState<string | undefined>(undefined)
   const [arrivalProblemShown, setArrivalProblemShown] = useState(true)
   const autoConnected = useRef(false)
@@ -226,7 +209,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
   const presetGroups =
     props.target === 'fhir-r4'
       ? (props.presetGroups ?? DEFAULT_SERVER_PRESET_GROUPS)
-      : serverPresetGroupsFor('wildflower', props.localOrigin)
+      : serverPresetGroupsFor('wildflower')
 
   /**
    * Connect to `serverUrl` the target's way, resolving to a problem to show or
@@ -250,7 +233,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   const connectTo = (serverUrl: string, from: ConnectOrigin = 'pick'): void => {
     setArrivalProblemShown(false)
-    setHostedProblem(undefined)
+    setRelayProblem(undefined)
     setFreeEntryProblem(undefined)
     // Read when the pick is made, not at import: whether this page is the
     // published (https) one decides whether a plain-http server is reachable
@@ -300,16 +283,16 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
   const problemFrom = (from: ConnectOrigin): string | undefined =>
     state.kind === 'error' && state.from === from ? state.message : undefined
 
-  const onHostedSubmit = (event: SubmitEvent<HTMLFormElement>): void => {
+  const onRelaySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const hostedUrl = hostedServerUrlFor(hostedSubdomain)
-    if (hostedUrl === undefined) {
-      setHostedProblem(
-        "Enter your server's subdomain: letters, digits and hyphens, with dots between parts, e.g. my-server."
+    const relayUrl = relayServerUrlFor(relayName)
+    if (relayUrl === undefined) {
+      setRelayProblem(
+        "Enter your server's relay name: letters, digits and hyphens, e.g. my-server."
       )
       return
     }
-    connectTo(hostedUrl)
+    connectTo(relayUrl)
   }
 
   const onFreeEntrySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
@@ -373,27 +356,19 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         </div>
       )}
 
-      {presetGroups.slice(0, HOSTED_GROUP_INDEX).map(presetGroup)}
-
-      <form className={styles['group']} onSubmit={onHostedSubmit} aria-label={HOSTED_GROUP_NAME}>
-        <h3 className={styles['group__name']}>{HOSTED_GROUP_NAME}</h3>
-        <div className={styles['hosted']}>
-          <span className={styles['hosted__scheme']}>https://</span>
-          <div className={styles['hosted__subdomain']}>
-            <TextField
-              label={HOSTED_SUBDOMAIN_LABEL}
-              type="text"
-              inputMode="url"
-              value={hostedSubdomain}
-              onChange={setHostedSubdomain}
-              placeholder="my-server"
-              disabled={launching}
-              className={styles['hosted__input']}
-            />
-          </div>
-          <span className={styles['hosted__domain']}>{WILDFLOWER_DOMAIN}</span>
-        </div>
-        <ErrorBanner error={hostedProblem} />
+      <form className={styles['group']} onSubmit={onRelaySubmit} aria-label={RELAY_GROUP_NAME}>
+        <h3 className={styles['group__name']}>{RELAY_GROUP_NAME}</h3>
+        <TextField
+          label={RELAY_NAME_LABEL}
+          type="text"
+          inputMode="url"
+          value={relayName}
+          onChange={setRelayName}
+          placeholder="my-server"
+          disabled={launching}
+          description={RELAY_NAME_DESCRIPTION}
+        />
+        <ErrorBanner error={relayProblem} />
         <div className={styles['actions']}>
           <button type="submit" className="button-2" disabled={launching}>
             Connect
@@ -401,7 +376,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
         </div>
       </form>
 
-      {presetGroups.slice(HOSTED_GROUP_INDEX).map(presetGroup)}
+      {presetGroups.map(presetGroup)}
 
       <form
         className={styles['group']}

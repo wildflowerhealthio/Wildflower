@@ -9,10 +9,10 @@ import { normalizeServerUrl } from '@wildflowerhealthio/fhir-r4-react/smart'
 type ConnectTarget = 'fhir-r4' | 'wildflower'
 
 /**
- * The domain every Wildflower-hosted server is a subdomain of, with its leading
- * dot, so `https://${subdomain}${WILDFLOWER_DOMAIN}` is a hosted server's origin.
+ * The domain every official Wildflower relay name sits under, with its leading
+ * dot, so `https://${name}${RELAY_DOMAIN}` is a relayed server's origin.
  */
-const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
+const RELAY_DOMAIN = '.relay.wildflowerhealth.io'
 
 /**
  * A one-click FHIR server choice on the connect menu: the button's label and
@@ -35,27 +35,26 @@ interface ServerPresetGroup {
 }
 
 /**
- * One or more dot-separated DNS labels: letters, digits and hyphens, no label
- * starting or ending with a hyphen — so `ruth` and `medication.ruth` pass, and
- * `-ruth`, `ruth.` and `ru..th` do not.
+ * One DNS label: letters, digits and hyphens, not starting or ending with a
+ * hyphen — so `ruth` and `ruth-lab` pass, and `-ruth`, `ruth-` and
+ * `medication.ruth` do not.
  */
-const HOSTED_SUBDOMAIN = /^[a-z\d](?:[a-z\d-]*[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]*[a-z\d])?)*$/i
+const RELAY_NAME = /^[a-z\d](?:[a-z\d-]*[a-z\d])?$/i
 
 /**
- * The origin of the Wildflower-hosted server at `subdomain` of
- * {@link WILDFLOWER_DOMAIN}, its FHIR base, in `normalizeServerUrl`'s canonical
- * form (the host lower-cased), or `undefined` when the trimmed `subdomain` is
- * not one.
+ * The origin of the server relayed at `relayName` under {@link RELAY_DOMAIN},
+ * its FHIR base, in `normalizeServerUrl`'s canonical form (the host
+ * lower-cased), or `undefined` when the trimmed `relayName` is not one.
  *
  * @remarks
- * The subdomain is checked before it is spliced into the URL: the URL parser
- * would otherwise read a `/`, `@` or `:` in it as the start of a path,
- * userinfo or port, and connect somewhere other than a Wildflower subdomain.
+ * The name is checked before it is spliced into the URL: the URL parser would
+ * otherwise read a `/`, `@` or `:` in it as the start of a path, userinfo or
+ * port, and connect somewhere other than a Wildflower relay.
  */
-const hostedServerUrlFor = (subdomain: string): string | undefined => {
-  const trimmedSubdomain = subdomain.trim()
-  if (!HOSTED_SUBDOMAIN.test(trimmedSubdomain)) return undefined
-  return normalizeServerUrl(`https://${trimmedSubdomain}${WILDFLOWER_DOMAIN}`)
+const relayServerUrlFor = (relayName: string): string | undefined => {
+  const trimmedRelayName = relayName.trim()
+  if (!RELAY_NAME.test(trimmedRelayName)) return undefined
+  return normalizeServerUrl(`https://${trimmedRelayName}${RELAY_DOMAIN}`)
 }
 
 /**
@@ -83,51 +82,26 @@ const SMART_HEALTH_IT_WILDFLOWER_NOTICE =
 
 /**
  * The server groups a `target`'s connect menu shows (a SMART app may pass its
- * own instead): the Wildflower server at `localOrigin` first (it serves a
- * `.well-known/smart-configuration`, so a SMART app takes the full OAuth
- * path), then the public SmartHealthIT R4 demo server.
+ * own instead): the public SmartHealthIT R4 demo server.
  *
- * @param target - What the menu connects, which picks the local server's
- *   button label and whether the demo server carries its notice.
- * @param localOrigin - The local Wildflower server's origin, e.g.
- *   `http://127.0.0.1:8080`, with no path.
+ * @param target - What the menu connects, which decides whether the demo
+ *   server carries its notice.
  */
-const serverPresetGroupsFor = (
-  target: ConnectTarget,
-  localOrigin: string
-): readonly ServerPresetGroup[] => {
+const serverPresetGroupsFor = (target: ConnectTarget): readonly ServerPresetGroup[] => {
   const smartHealthIt: ServerPresetGroup = {
     name: 'Smart Health IT Demo Server',
     address: 'https://launch.smarthealthit.org',
     presets: SMART_HEALTH_IT_PRESETS,
   }
   return [
-    {
-      name: 'Local Wildflower Server',
-      address: localOrigin,
-      presets: [
-        {
-          // The launcher signs in rather than launching an app.
-          label: target === 'fhir-r4' ? 'Launch' : 'Connect',
-          url: localOrigin,
-        },
-      ],
-    },
     target === 'wildflower'
       ? { ...smartHealthIt, notice: SMART_HEALTH_IT_WILDFLOWER_NOTICE }
       : smartHealthIt,
   ]
 }
 
-/**
- * The server groups every SMART app shows unless it passes its own: the
- * `fhir-r4` groups for the desktop host's embedded server at its default
- * loopback origin.
- */
-const DEFAULT_SERVER_PRESET_GROUPS: readonly ServerPresetGroup[] = serverPresetGroupsFor(
-  'fhir-r4',
-  'http://127.0.0.1:8080'
-)
+/** The server groups every SMART app shows unless it passes its own: the `fhir-r4` groups. */
+const DEFAULT_SERVER_PRESET_GROUPS: readonly ServerPresetGroup[] = serverPresetGroupsFor('fhir-r4')
 
 /** Every default preset, in menu order, for callers that need the flat list. */
 const DEFAULT_SERVER_PRESETS: readonly ServerPreset[] = DEFAULT_SERVER_PRESET_GROUPS.flatMap(
@@ -137,8 +111,8 @@ const DEFAULT_SERVER_PRESETS: readonly ServerPreset[] = DEFAULT_SERVER_PRESET_GR
 export {
   DEFAULT_SERVER_PRESET_GROUPS,
   DEFAULT_SERVER_PRESETS,
-  hostedServerUrlFor,
+  RELAY_DOMAIN,
+  relayServerUrlFor,
   serverPresetGroupsFor,
-  WILDFLOWER_DOMAIN,
 }
 export type { ConnectTarget, ServerPreset, ServerPresetGroup }

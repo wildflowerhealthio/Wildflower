@@ -33,7 +33,7 @@ import {
   unsentEhrLaunch,
 } from './sign-in.ts'
 import {
-  apiServerUrl,
+  chosenServerUrl,
   ehrLaunchIn,
   makeWebEntryOptions,
   rememberSignedInServer,
@@ -148,7 +148,7 @@ const bootApp = async (): Promise<JSX.Element> => {
   const { bearerStore, ...entryOptions } = makeWebEntryOptions(
     window,
     basepath,
-    apiServerUrl(window.location.search, window.sessionStorage)
+    chosenServerUrl(window.location.search, window.sessionStorage)
   )
 
   if (session !== undefined) {

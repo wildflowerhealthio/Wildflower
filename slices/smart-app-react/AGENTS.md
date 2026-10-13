@@ -145,18 +145,19 @@ import `branding-react/styles.css` itself.
   `ConnectMenu` as its `arrivalProblem`; the contract is `fhir-r4-react/smart`'s
   `launch-error.ts`.
 - **`ConnectMenu` probes before it connects, and `unreachable` ≠ `open`.** It
-  renders inside `AppLanding` on the standalone branch: launch buttons grouped
-  under each known server's name and address (`server-presets.ts`'s
-  `serverPresetGroupsFor`) as hairline-separated blocks in the landing page's
-  vocabulary, with a Wildflower-hosted group — `https://` [subdomain]
-  `.wildflowerhealth.io` — after the first group (the local server in the
-  default groups), then a free-URL form. Every URL is a FHIR base, the same
+  renders inside `AppLanding` on the standalone branch: first an "Official
+  Wildflower Relay" entry, whose relay name field is subtitled with where the
+  server is found (`https://[Name].relay.wildflowerhealth.io`), then launch
+  buttons grouped under each known server's name and address
+  (`server-presets.ts`'s `serverPresetGroupsFor`; the demo server, with no
+  local server) as hairline-separated blocks in the landing page's
+  vocabulary, then a free-URL form. Every URL is a FHIR base, the same
   under either `target`: a Wildflower server's origin (it serves FHIR at its
   root), and the demo server's own base. The `wildflower` caller's `connect`
   gets only the URL; `gatekeeper-core`'s discovery reads which kind of server
   answers there (a Wildflower server lists the `wildflower-server`
   capability). The
-  subdomain is checked as dot-separated DNS labels before it is spliced into a
+  relay name is checked as a single DNS label before it is spliced into a
   URL, and it and the free entry are validated with `normalizeServerUrl` in
   plain `type="text"` inputs, never `type="url"` — HTML5 constraint validation
   would block the submit handler and mask the message. An entry's validation

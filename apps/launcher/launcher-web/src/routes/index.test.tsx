@@ -25,7 +25,7 @@ import {
   type SignInStep,
   type UnsentEhrLaunch,
 } from '../sign-in.ts'
-import { DEFAULT_SERVER_URL, rememberSignedInServer } from '../web-entry.ts'
+import { rememberSignedInServer } from '../web-entry.ts'
 import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 
 /**
@@ -55,7 +55,7 @@ describe('Landing', () => {
     // Assert — signing in needs a target, so nothing starts and the call to
     // action is absent.
     await waitFor(() => {
-      expect(localServerButton()).toBeDefined()
+      expect(demoServerButton()).toBeDefined()
     })
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull()
     expect(signIn.started).toEqual([])
@@ -82,7 +82,7 @@ describe('Landing', () => {
   test('signs in straight away to the server this tab last signed in to', async () => {
     // Arrange — a reload, or the expiry bounce: the settled URL names no server,
     // but the tab remembered the one its last sign-in was redeemed against.
-    rememberSignedInServer(window.sessionStorage, 'https://ruth.wildflowerhealth.io')
+    rememberSignedInServer(window.sessionStorage, 'https://ruth.relay.wildflowerhealth.io')
     const signIn = recordingSignIn(pendingStart)
 
     // Act
@@ -90,7 +90,7 @@ describe('Landing', () => {
 
     // Assert
     await waitFor(() => {
-      expect(signIn.started).toEqual(['https://ruth.wildflowerhealth.io'])
+      expect(signIn.started).toEqual(['https://ruth.relay.wildflowerhealth.io'])
     })
   })
 
@@ -192,19 +192,16 @@ describe('Landing', () => {
     expect(hintCount()).toBe(1)
   })
 
-  test('names the Local Network Access prompt once for a failed pick of the local server', async () => {
+  test('names the Local Network Access prompt once for a failed pick of a loopback server', async () => {
     // Arrange — the menu adds the hint to the problems it shows, so the page's
     // `connect` must hand it the bare reason.
     const signIn = recordingSignIn(() =>
       Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
     )
     await mountLanding('/', { signIn: signIn.stub, secure: true })
-    await waitFor(() => {
-      expect(localServerButton()).toBeDefined()
-    })
 
     // Act
-    fireEvent.click(localServerButton())
+    await pickFreeEntry('http://127.0.0.1:8080')
 
     // Assert
     await waitFor(() => {
@@ -272,45 +269,40 @@ describe('Landing', () => {
     const appBase = '/staging/pr-719/launcher/'
     await mountLanding(appBase, { basepath: appBase, signIn: recordingSignIn(pendingStart).stub })
 
-    // Act — picking the local server records `?server=` in the address bar,
-    // before the sign-in starts, so before the redirect leaves.
-    await waitFor(() => {
-      expect(localServerButton()).toBeDefined()
-    })
-    fireEvent.click(localServerButton())
+    // Act — picking a server records `?server=` in the address bar, before
+    // the sign-in starts, so before the redirect leaves.
+    await pickRelayName('ruth')
 
     // Assert — the reader stays on the app's own subpath (not moved to `/`), and
     // `?server=` is now set there. A root path would point the parameter at a
     // page that is not this app.
     await waitFor(() => {
-      expect(serverUrlFromSearch(window.location.search)).toBe(DEFAULT_SERVER_URL)
+      expect(serverUrlFromSearch(window.location.search)).toBe(RUTH_SERVER_URL)
     })
     expect(window.location.pathname).toBe(appBase)
   })
 
-  test('signs in to a hosted subdomain’s origin, as a Wildflower server', async () => {
+  test('signs in to a relay name’s origin, as a Wildflower server', async () => {
     // Arrange
     const discovery = discoveringStart()
     const signIn = recordingSignIn(discovery.start)
     await mountLanding('/', { signIn: signIn.stub })
-    const hosted = within(await screen.findByRole('form', { name: HOSTED_GROUP_NAME }))
 
     // Act
-    fireEvent.change(hosted.getByLabelText('Subdomain of wildflowerhealth.io'), {
-      target: { value: 'ruth' },
-    })
-    fireEvent.click(hosted.getByRole('button', { name: 'Connect' }))
+    await pickRelayName('ruth')
 
     // Assert — an origin, its FHIR base, so its sign-in discovers there.
     await waitFor(() => {
-      expect(signIn.started).toEqual(['https://ruth.wildflowerhealth.io'])
+      expect(signIn.started).toEqual(['https://ruth.relay.wildflowerhealth.io'])
     })
     await waitFor(() => {
       expect(discovery.requested).toEqual([
-        'https://ruth.wildflowerhealth.io/.well-known/smart-configuration',
+        'https://ruth.relay.wildflowerhealth.io/.well-known/smart-configuration',
       ])
     })
-    expect(serverUrlFromSearch(window.location.search)).toBe('https://ruth.wildflowerhealth.io')
+    expect(serverUrlFromSearch(window.location.search)).toBe(
+      'https://ruth.relay.wildflowerhealth.io'
+    )
   })
 
   test('signs in to the demo server at its FHIR base, under its notice', async () => {
@@ -366,17 +358,17 @@ describe('Landing', () => {
     )
     await mountLanding('/', { signIn: signIn.stub })
     await waitFor(() => {
-      expect(localServerButton()).toBeDefined()
+      expect(demoServerButton()).toBeDefined()
     })
 
     // Act
-    fireEvent.click(localServerButton())
+    fireEvent.click(demoServerButton())
 
     // Assert — one banner, not the menu's and the page's both.
     await waitFor(() => {
       expect(screen.getAllByText(/Could not reach the server\./)).toHaveLength(1)
     })
-    expect(localServerButton().hasAttribute('disabled')).toBe(false)
+    expect(demoServerButton().hasAttribute('disabled')).toBe(false)
   })
 
   test('shows a retried sign-in’s failure once, in place of the one on arrival', async () => {
@@ -418,7 +410,7 @@ describe('Landing', () => {
     })
 
     // Act
-    fireEvent.click(localServerButton())
+    fireEvent.click(demoServerButton())
 
     // Assert
     expect(screen.queryByText(/invalid_grant/)).toBeNull()
@@ -448,7 +440,7 @@ describe('Landing', () => {
         .getByRole('button', { name: /sign in to http:\/\/127\.0\.0\.1:8080/i })
         .hasAttribute('disabled')
     ).toBe(false)
-    expect(localServerButton().hasAttribute('disabled')).toBe(false)
+    expect(demoServerButton().hasAttribute('disabled')).toBe(false)
   })
 
   test('signs in on arrival with the EHR launch the page was opened with, once', async () => {
@@ -545,12 +537,12 @@ describe('Landing', () => {
     })
     expect(signIn.started).toEqual([])
 
-    // Act — the reader picks the local server instead.
-    fireEvent.click(localServerButton())
+    // Act — the reader picks the relay server instead.
+    await pickRelayName('ruth')
 
     // Assert — that sign-in is a standalone one.
     await waitFor(() => {
-      expect(signIn.started).toEqual([DEFAULT_SERVER_URL])
+      expect(signIn.started).toEqual([RUTH_SERVER_URL])
     })
     expect(signIn.launches).toEqual([undefined])
   })
@@ -586,7 +578,7 @@ describe('Landing', () => {
     await waitFor(() => {
       expect(signIn.started).toEqual(['http://127.0.0.1:8080'])
     })
-    expect(localServerButton().hasAttribute('disabled')).toBe(true)
+    expect(demoServerButton().hasAttribute('disabled')).toBe(true)
   })
 })
 
@@ -698,12 +690,11 @@ const mountLanding = async (
   return { pathname: () => router.state.location.pathname }
 }
 
-/** A hosted Wildflower server's origin. */
-const RUTH_SERVER_URL = 'https://ruth.wildflowerhealth.io'
+/** A relayed Wildflower server's origin. */
+const RUTH_SERVER_URL = 'https://ruth.relay.wildflowerhealth.io'
 
 /** The menu's group names this page is driven through (`smart-app-react`'s presets). */
-const LOCAL_GROUP_NAME = 'Local Wildflower Server'
-const HOSTED_GROUP_NAME = 'Wildflower Health hosted server'
+const RELAY_GROUP_NAME = 'Official Wildflower Relay'
 const DEMO_GROUP_NAME = 'Smart Health IT Demo Server'
 
 /** A SmartHealthIT demo FHIR base, the shape the demo group's presets have. */
@@ -716,11 +707,27 @@ const DEMO_FHIR_BASE = 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiJd/fhir'
 const hintCount = (): number =>
   (document.body.textContent ?? '').match(/Local Network Access/g)?.length ?? 0
 
-/** The menu's one-click sign-in to the local Wildflower server. */
-const localServerButton = (): HTMLElement =>
-  within(screen.getByRole('region', { name: LOCAL_GROUP_NAME })).getByRole('button', {
-    name: 'Connect',
+/** The menu's one-click sign-in to the demo server: the pick these tests make when any will do. */
+const demoServerButton = (): HTMLElement =>
+  within(screen.getByRole('region', { name: DEMO_GROUP_NAME })).getByRole('button', {
+    name: 'Launch as logged in patient',
   })
+
+/** Pick the server named `relayName` through the menu's relay entry. */
+const pickRelayName = async (relayName: string): Promise<void> => {
+  const relay = within(await screen.findByRole('form', { name: RELAY_GROUP_NAME }))
+  fireEvent.change(relay.getByLabelText('Official Wildflower Relay Name'), {
+    target: { value: relayName },
+  })
+  fireEvent.click(relay.getByRole('button', { name: 'Connect' }))
+}
+
+/** Pick the server at `serverUrl` through the menu's free entry. */
+const pickFreeEntry = async (serverUrl: string): Promise<void> => {
+  const freeEntry = within(await screen.findByRole('form', { name: 'Another Wildflower server' }))
+  fireEvent.change(freeEntry.getByLabelText('Server URL'), { target: { value: serverUrl } })
+  fireEvent.click(freeEntry.getByRole('button', { name: 'Connect' }))
+}
 
 /** A sign-in start that never settles — the page stays "taking you to sign in". */
 const pendingStart = (): Promise<SignInStep<string>> => new Promise(() => {})
