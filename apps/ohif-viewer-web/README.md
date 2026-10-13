@@ -83,7 +83,7 @@ The Wildflower server seeds what the viewer needs:
 
 - apps migration `0007_seed_ohif_viewer_app` registers the `ohif-viewer`
   app row whose launch URL is the worklist launch above;
-- gatekeeper migration `0009_seed_ohif_viewer_client` registers the
+- The authorization server migration `0009_seed_ohif_viewer_client` registers the
   viewer's public PKCE client with `https://wildflowerhealth.io/ohif-viewer/` as its
   redirect URI and the read-only scopes the viewer requests;
   `0010_ohif_viewer_client_fhir_viewer_redirect` repoints that redirect at the
@@ -96,14 +96,14 @@ The Wildflower server seeds what the viewer needs:
 
 `app-config.js` sends that client ID as `smartClientId` and a `smartScope` that
 must stay equal, element for element, to that client's `allowed_scopes` (and to
-the dev client's in `gatekeeper-rust/src/seeding.rs`). `?client_id=` on the
+the dev client's in `authorization-server-rust/src/seeding.rs`). `?client_id=` on the
 launch URL or a value saved from the SMART Preferences panel still overrides
 the client ID, for launching from another FHIR server.
 
 ### Dev row
 
 A debug build of the host also seeds an `ohif-viewer-dev` row and client
-(`apps-rust/src/dev_seed.rs`, `gatekeeper-rust/src/seeding.rs`) on the port
+(`apps-rust/src/dev_seed.rs`, `authorization-server-rust/src/seeding.rs`) on the port
 `dev-app-ports.json` names. `vp run -F @wildflowerhealthio/ohif-viewer-web dev` previews
 `dist/` on that port, and `app-config.js` sends the dev client's ID
 (`f9866f7b1d0d8505dc65ef4f749664b5`) when served from a loopback origin.

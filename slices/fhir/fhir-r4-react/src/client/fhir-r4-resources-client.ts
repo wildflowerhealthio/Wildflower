@@ -17,7 +17,7 @@ type FhirR4ResourcesClientRequirements = HttpClient.HttpClient | FhirR4Resources
  * provider's `HttpClient` layer decides how requests authenticate. This
  * builder just re-exposes that layer under a
  * `buildXClientLayer()` name matching the other slices (e.g.
- * `gatekeeper-react`'s `buildGatekeeperClientLayer`).
+ * `authorization-react`'s `buildAuthorizationServerClientLayer`).
  *
  * The client emits **base-relative** FHIR paths (`/Patient`), so it can
  * address any FHIR server. Naming the base is the **provider's** job, not this

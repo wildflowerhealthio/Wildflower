@@ -143,10 +143,10 @@ pinned to `PhoneSettings.Settings`, so the two can't change apart, and
 `patient/` because the page picks the patient after the grant, so there is no
 patient context for a `patient/` scope to reach (the same reasoning the other
 first-party clients document). That string MUST equal the `allowed_scopes` of the production client
-(gatekeeper migration `0017_seed_fhir_sync_pebble_client`, widened by `0018`, re-keyed by
+(the authorization server migration `0017_seed_fhir_sync_pebble_client`, widened by `0018`, re-keyed by
 `0030_rekey_fhir_sync_pebble_clients`), element for element. Nothing spans the TS/Rust boundary to check it; the mirrors are the
 doc comment in `config.ts`, the migration's header, the vector asserted in
-`gatekeeper-rust`'s `db/clients.rs`, and the dev client in
+`authorization-server-rust`'s `db/clients.rs`, and the dev client in
 `seeding.rs`'s `seed_dev_app_clients`. Change one, change all four.
 
 ## Development

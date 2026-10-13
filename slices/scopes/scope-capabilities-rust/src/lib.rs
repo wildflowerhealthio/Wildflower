@@ -1,7 +1,7 @@
 //! Scope-gated capability extractors — the reusable core of the **default-safe**
 //! authorization pattern, and the enforcement half of the scope system (the
 //! grammar half is `scopes-rust`, this crate's sibling in the scopes slice). The
-//! pattern originated on gatekeeper's `/access` surface; the copy-this-pattern
+//! pattern originated on the authorization server's `/access` surface; the copy-this-pattern
 //! recipe is `docs/Authorization/Scope-Gated Endpoints How-To.md`.
 //!
 //! The shape a slice adopts:
@@ -58,7 +58,7 @@ use wildflowerhealthio_shared_structures::http_errors::InternalError;
 /// Parse a token's space-separated `scope` claim into a coverage-checkable
 /// [`Grant`]. A missing claim yields an empty grant (covers nothing) — the one
 /// fail-closed reading of a raw scope claim, shared by every [`GrantedScopes`]
-/// implementor so gatekeeper's gate and a downstream slice's gate can't disagree
+/// implementor so the authorization server's gate and a downstream slice's gate can't disagree
 /// on how a claim string becomes authority.
 #[must_use]
 pub fn grant_from_scope_claim(scope: Option<&str>) -> Grant {
@@ -67,7 +67,7 @@ pub fn grant_from_scope_claim(scope: Option<&str>) -> Grant {
 
 /// The caller's granted scopes, read from whatever claims value a slice's authN
 /// middleware stashed in the request extensions. Implemented by the slice's own
-/// verified-claims type (gatekeeper's `VerifiedClaims`) or by the ready-made
+/// verified-claims type (the authorization server's `VerifiedClaims`) or by the ready-made
 /// [`ScopeClaims`] for slices that only need the scope string.
 pub trait GrantedScopes: Clone + Send + Sync + 'static {
     /// Parse the caller's authority into a coverage-checkable [`Grant`]. A
@@ -78,9 +78,9 @@ pub trait GrantedScopes: Clone + Send + Sync + 'static {
 
 /// The minimal, framework-agnostic claims value a slice can insert into the
 /// request extensions when it only needs the caller's scopes (not a full JWT
-/// claim set). The gatekeeper bearer gate inserts one of these for every
+/// claim set). The authorization server bearer gate inserts one of these for every
 /// downstream slice router, so a slice can scope-gate without depending on
-/// gatekeeper's domain claims type.
+/// the authorization server's domain claims type.
 #[derive(Debug, Clone)]
 pub struct ScopeClaims {
     scope: Option<String>,
@@ -130,7 +130,7 @@ impl MissingScopes {
 /// scope depends on the target resource, and then store `granted` for the
 /// methods to re-check per call.
 pub trait Capability: Sized {
-    /// The slice's router state (e.g. `Arc<GatekeeperState>`) — the same type the
+    /// The slice's router state (e.g. `Arc<AuthorizationServerState>`) — the same type the
     /// router is built over, so `Scoped<Self>` is a valid extractor for it.
     type State: Clone + Send + Sync + 'static;
 

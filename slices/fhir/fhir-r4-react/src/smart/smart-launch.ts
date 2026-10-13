@@ -1,7 +1,7 @@
 import {
   arrivingSmartLaunchFrom,
   type ArrivingSmartLaunch,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import type Client from 'fhirclient/lib/Client'
 import type { fhirclient } from 'fhirclient/lib/types'
 
@@ -124,7 +124,7 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
  * same on the way out and on the callback whatever query the page carries.
  *
  * Derived from the page URL rather than configured, so the bundle works at
- * whatever origin and path it is served from. It is not `gatekeeper-core`'s
+ * whatever origin and path it is served from. It is not `authorization-core`'s
  * `redirectUriForPage`: there is no plaintext screen, because the registered
  * client's redirect URIs decide where a launch may return, and any userinfo the
  * page URL carries is kept.
@@ -134,10 +134,10 @@ const appRootRedirectUri = (href: string): string => new URL('.', href).href
 export {
   appRootRedirectUri,
   /**
-   * Re-exported from `gatekeeper-core/smart-client`, like `normalizeServerUrl`:
+   * Re-exported from `authorization-core/smart-client`, like `normalizeServerUrl`:
    * the launch a page's URL asks it to start, which the app root reads to
    * authorize a launch rather than show the connect menu. The pages that sign
-   * in with `gatekeeper-core` read launches the same way without depending on
+   * in with `authorization-core` read launches the same way without depending on
    * this package.
    */
   arrivingSmartLaunchFrom,

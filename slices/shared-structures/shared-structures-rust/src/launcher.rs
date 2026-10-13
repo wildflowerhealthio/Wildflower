@@ -3,7 +3,7 @@
 //! The launcher (`apps/launcher/launcher-web`'s `main-web` build) is published at a
 //! fixed address — `https://wildflowerhealth.io/launcher/` — and runs **cross-origin**
 //! to whichever Wildflower server its `?server=` query parameter names. Apart
-//! from the gatekeeper's `/authorize` wait page, a server serves no UI of its
+//! from the authorization server's `/authorize` wait page, a server serves no UI of its
 //! own, so every other browser-facing page it hands out (the device-flow
 //! `verification_uri`, logout's landing, the link on an unmatched route's `404`)
 //! is a URL on that hosted UI carrying `server=<the request's served origin>`.
@@ -15,7 +15,7 @@
 use url::Url;
 
 /// The query parameter the launcher reads its API server from —
-/// `gatekeeper-core/smart-client`'s `SERVER_QUERY_PARAM`. Held equal to it by
+/// `authorization-core/smart-client`'s `SERVER_QUERY_PARAM`. Held equal to it by
 /// `apps/launcher/launcher-web/src/launcher-address.test.ts`, which reads this file.
 const SERVER_PARAM: &str = "server";
 
@@ -27,7 +27,7 @@ const RETURN_TO_PARAM: &str = "returnTo";
 /// The root URL of the hosted launcher, e.g. `https://wildflowerhealth.io/launcher/`.
 ///
 /// Always stored with a trailing slash, so a launcher route resolves *under*
-/// the base (`…/launcher/` + `gatekeeper/devices`) rather than replacing its last
+/// the base (`…/launcher/` + `authorization/devices`) rather than replacing its last
 /// segment, which is what [`Url::join`] does to a base without one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LauncherBase(Url);
@@ -57,7 +57,7 @@ impl LauncherBase {
 
     /// The launcher page at `route`, pointed at `server_origin`.
     ///
-    /// `route` is an origin-relative launcher path (`/gatekeeper/devices`) whose
+    /// `route` is an origin-relative launcher path (`/authorization/devices`) whose
     /// segments are already percent-encoded; it is resolved under the base.
     /// `server` comes first in the query, then `extra_query` in order.
     #[must_use]
@@ -118,13 +118,13 @@ mod tests {
     #[test]
     fn route_url_resolves_under_the_base_with_server_first() {
         let url = base("https://wildflowerhealth.io/launcher").route_url(
-            "/gatekeeper/devices",
+            "/authorization/devices",
             SERVER,
             &[("user_code", "ABCD-EFGH")],
         );
         assert_eq!(
             url.as_str(),
-            "https://wildflowerhealth.io/launcher/gatekeeper/devices\
+            "https://wildflowerhealth.io/launcher/authorization/devices\
              ?server=http%3A%2F%2F127.0.0.1%3A8080&user_code=ABCD-EFGH"
         );
     }
@@ -132,11 +132,11 @@ mod tests {
     #[test]
     fn route_url_keeps_percent_encoded_segments() {
         let url = base("https://wildflowerhealth.io/launcher/").route_url(
-            "/gatekeeper/devices/a%20b",
+            "/authorization/devices/a%20b",
             SERVER,
             &[],
         );
-        assert_eq!(url.path(), "/launcher/gatekeeper/devices/a%20b");
+        assert_eq!(url.path(), "/launcher/authorization/devices/a%20b");
         assert_eq!(
             url.path_segments().and_then(|mut s| s.next_back()),
             Some("a%20b")

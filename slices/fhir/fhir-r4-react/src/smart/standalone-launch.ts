@@ -1,8 +1,8 @@
-import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   insecureTargetReason,
   normalizeServerUrl,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
+import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 
 import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
 
@@ -126,16 +126,16 @@ const startStandaloneLaunch = async (
 export {
   detectSmartSupport,
   /**
-   * Re-exported from `gatekeeper-core/smart-client`, like `normalizeServerUrl`:
+   * Re-exported from `authorization-core/smart-client`, like `normalizeServerUrl`:
    * why an https page cannot reach a plain-http, non-loopback server, which
    * `connect-menu.tsx` checks a pick against before it connects.
    */
   insecureTargetReason,
   /**
-   * Re-exported from `gatekeeper-core/smart-client`, which owns the one
+   * Re-exported from `authorization-core/smart-client`, which owns the one
    * implementation. This module used to carry a byte-identical copy, because the
    * original lived in `apps/server-docs-web` and a slice cannot import
-   * from an app. Moving it into `gatekeeper-core` removed that obstacle, so the
+   * from an app. Moving it into `authorization-core` removed that obstacle, so the
    * copy is gone and `connect-menu.tsx` and the apps now canonicalise a picked
    * FHIR server base exactly as the docs console canonicalises `?server=`.
    */

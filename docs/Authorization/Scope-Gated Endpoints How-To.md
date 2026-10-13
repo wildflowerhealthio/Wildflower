@@ -2,7 +2,7 @@
 
 How to put a slice's HTTP endpoints behind **per-resource scope checks** using
 the shared `scope-capabilities-rust` machinery, so a forgotten permission check
-can't compile a data-touching handler. The pattern originated on gatekeeper's
+can't compile a data-touching handler. The pattern originated on the authorization server's
 `/access` surface and now lives in the scopes slice for every slice to copy. For
 _why_ it is shaped this way, read the
 [Scope-Gated Endpoints Explanation](./Scope-Gated%20Endpoints%20Explanation.md).
@@ -60,11 +60,11 @@ must run first and insert them. This is one half of a **pair** of claims-inserti
 middlewares (see the Explanation):
 
 - A router the host layers with
-  `wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware` is already covered —
+  `wildflowerhealthio_authorization_server::authorization_server_auth_middleware` is already covered —
   `require_valid_bearer_token` inserts a `ScopeClaims` after verifying the token,
-  so downstream slices read scopes **without depending on gatekeeper's domain
+  so downstream slices read scopes **without depending on the authorization server's domain
   claims type**.
-- Gatekeeper's own `/access` uses `require_valid_session`, which inserts the rich
+- The authorization server's own `/access` uses `require_valid_session`, which inserts the rich
   `VerifiedClaims` (implementing `GrantedScopes`).
 
 A slice that mounts its own authN layer inserts its own claims value the same way.
@@ -138,7 +138,7 @@ not the `read` word). This bites anywhere scopes are compared across the two
 grammars, and the fix is always to widen to the alternate canonical form first:
 the token minter widens every granted scope to both forms in bulk with
 `wildflowerhealthio_scopes::with_alternate_canonical_forms` before it mints, so a token covers
-regardless of the grammar the required scope is spelled in; and gatekeeper's
+regardless of the grammar the required scope is spelled in; and the authorization server's
 owner-approval clamp (`ensure_approver_covers`, enforcing "an owner can't delegate
 more than they hold") widens each scope per-scope with
 `Scope::as_alternate_canonical_form` before its coverage check — clamping **only**
@@ -146,10 +146,10 @@ resource scopes (`FhirResource` / `WildflowerResource`) so identity/session
 markers (`openid`, `offline_access`, `launch`) pass through unclamped rather than
 blocking a legitimate approval.
 
-**Register each capability** in the slice's grantable-scope list (gatekeeper's
+**Register each capability** in the slice's grantable-scope list (the authorization server's
 `grantable_admin_scopes`) if it keeps one: an enforced scope that never appears in
 the grantable vocabulary is a scope no client can ever be granted — a silent
-lock-out. Gatekeeper's registry-completeness test counts `impl` lines against the
+lock-out. The authorization server's registry-completeness test counts `impl` lines against the
 registry so a new capability that isn't registered fails the build. That registry
 function must be `pub fn`, not `pub(crate)` — a `pub use` re-export can't promote a
 `pub(crate)` item (E0364), and making it `pub` also silences the dead-code lint it
@@ -171,7 +171,7 @@ sees `State<…>` or the store — that's the point.
 ### 5. Guard it with a source test
 
 Copy the source-guard test (see
-`gatekeeper-rust/src/domain/capabilities/mod.rs` or
+`authorization-server-rust/src/domain/capabilities/mod.rs` or
 `databases-rust/src/domain/capabilities.rs`): it enumerates the routes directory at
 test time and asserts each handler's source never contains `State<` or a direct
 store accessor, so a NEW handler file is guarded by default and must be
@@ -204,12 +204,12 @@ decodes the body (and the web UI can name the missing scopes via `scopes-react`'
 `AuthorizationFailure` surface):
 import `InsufficientScopeSchema` from `shared-structures-core/http-api-definition`
 and attach it with `.addError(InsufficientScopeSchema, { status: 403 })` — at the
-`HttpApiGroup` level when the whole group is scope-gated (e.g. gatekeeper's
+`HttpApiGroup` level when the whole group is scope-gated (e.g. the authorization server's
 `/access`), or per endpoint when a group mixes gated and ungated endpoints (e.g.
 databases' `DeleteDatabase`, since `ListDatabases` is authenticated-only). Keep
 the Rust-documented set and the TS-declared set the same, or the per-slice
 OpenAPI drift snapshot test fails. A surface with no `utoipa` documentation (e.g.
-gatekeeper's `/access`, which isn't in any committed spec) still returns the 403
+The authorization server's `/access`, which isn't in any committed spec) still returns the 403
 at runtime through the extractor's rejection — only the TS declaration is needed
 there.
 
@@ -255,7 +255,7 @@ step-up path dead-ends for that endpoint.
 
 ## Three flavours of gate
 
-- **Fixed capability** (gatekeeper's `/access`): the scope is constant, so
+- **Fixed capability** (the authorization server's `/access`): the scope is constant, so
   implement `FixedScopeCapability` — `required_scopes()` returns it and `build`
   takes only `state`. The `Scoped` extractor is the whole gate.
 - **Data-dependent** (databases' per-database scope): the required scope depends
@@ -268,7 +268,7 @@ step-up path dead-ends for that endpoint.
   whether the resource exists on disk. (Catalogue membership — which ids the host
   declares — is separately public to any authenticated caller, so a `404` for an
   uncatalogued id is not a leak.)
-- **Authenticated-only** (gatekeeper's logout and `GET /access/session`): the
+- **Authenticated-only** (the authorization server's logout and `GET /access/session`): the
   caller acts on their _own_ session and no scope applies — a scope gate would
   lock out exactly the under-scoped callers who need to log out or read their own
   scopes. Implement `AuthenticatedCapability` (`build(state, claims)` receives the
@@ -277,11 +277,11 @@ step-up path dead-ends for that endpoint.
 
 ## Authority proofs: gating the write, not just the read
 
-Scope gates answer "may this caller reach this data?". Gatekeeper additionally
+Scope gates answer "may this caller reach this data?". The authorization server additionally
 answers "on what authority is this row being written?" for every privileged
 write (approving a request, issuing a code, recording or widening a grant or a
 registration, minting a token, issuing a refresh token). Each such write lives
-in exactly one **writer** (`gatekeeper-rust/src/domain/capabilities/writers/`),
+in exactly one **writer** (`authorization-server-rust/src/domain/capabilities/writers/`),
 and each writer method takes a **proof** from `domain/authority/` — a type with
 private fields and a single constructor, which is the one function that checks
 the rule the proof stands for:
@@ -311,13 +311,13 @@ name to the writers, the other pins the `HostOwnerEntitlement` constructor to
 seeding.
 The audit is then the proof constructors plus the writers, not every flow.
 Capabilities that no principal unlocks (the pre-auth `/oauth` front door, the
-token verifier) are acquired through gatekeeper's `Live<F>` extractor, so a
+token verifier) are acquired through the authorization server's `Live<F>` extractor, so a
 handler never names the router state; the handler-file guard forbids `State<…>`
 and every state field outright.
 
 ## Canonical layout
 
-Copy gatekeeper's layout so the third slice doesn't invent a fourth shape.
+Copy the authorization server's layout so the third slice doesn't invent a fourth shape.
 Capabilities live in **`domain/`**, not `http/` — a capability owns its slice's
 operation, so it belongs beside the store port, and keeping it out of `http/`
 lets a guard test assert `domain/` never imports `crate::http`.
@@ -339,24 +339,24 @@ lets a guard test assert `domain/` never imports `crate::http`.
 
 ## Worked examples
 
-- **Fixed:** `apps/host/wildflower-server/gatekeeper-rust/src/domain/capabilities/` — the
+- **Fixed:** `apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/` — the
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
-  `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
-  concrete store in `gatekeeper-rust/src/live_bindings/`. Their privileged writes
+  `ConsentDecider`, `TokenRevoker`), generic over `GrantStore`, bound to the
+  concrete store in `authorization-server-rust/src/live_bindings/`. Their privileged writes
   go through the writers under an authority proof (see the section above).
 - **Data-dependent:** `apps/host/wildflower-server/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
   the `DatabaseFiles` port (stubbed with an in-memory fake in the unit tests).
-- **Authenticated-only:** `gatekeeper-rust/src/live_bindings/session.rs` —
+- **Authenticated-only:** `authorization-server-rust/src/live_bindings/session.rs` —
   `LiveSessionEnder` / `LiveSessionReader`, built from the caller's
   `VerifiedClaims` and acquired through `Authenticated<…>`.
-- **Authority proofs and writers:** `gatekeeper-rust/src/domain/authority/` and
-  `gatekeeper-rust/src/domain/capabilities/writers/`; the flows that obtain a
+- **Authority proofs and writers:** `authorization-server-rust/src/domain/authority/` and
+  `authorization-server-rust/src/domain/capabilities/writers/`; the flows that obtain a
   proof and hand it to a writer are `domain/capabilities/oauth/` (the pre-auth
   front door) and `domain/capabilities/access/consents/` (the Owner's approvals).
 - **The authN-pair contract:**
-  `gatekeeper-rust/tests/integration/smoke.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
+  `authorization-server-rust/tests/integration/smoke.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
   drives the real bearer gate into the real databases capability.
 
 ## References

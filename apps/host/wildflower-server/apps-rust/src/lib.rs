@@ -34,7 +34,7 @@
 //! additionally requires the caller's grant to cover its client scopes). Every
 //! launch resolves `{origin}` to the server's public origin from [`AppsConfig`];
 //! the slice knows nothing about the tunnel itself. A SMART app's `{launch}` is
-//! a launch context the gatekeeper mints for its OAuth client, through the
+//! a launch context the authorization server mints for its OAuth client, through the
 //! [`LaunchContextMinter`](ports::LaunchContextMinter) port.
 
 pub mod config;
@@ -51,7 +51,7 @@ mod id_utils;
 // The shared runtime state lives at the crate root (not under `http`) so the
 // scope-gated `domain/` capabilities can be built from it (via the per-capability
 // `FixedScopeCapability` bindings that live beside the state) without `domain/`
-// depending on `crate::http`. Mirrors gatekeeper's / request-log's
+// depending on `crate::http`. Mirrors the authorization server's / request-log's
 // `crate::live_bindings` layout.
 pub(crate) mod live_bindings;
 
@@ -99,11 +99,11 @@ pub struct Apps {
 ///
 /// `launch_scopes` is the host seam resolving a SMART app's required launch scopes
 /// for the per-app launch check (see [`AppLaunchScopes`]). The Tauri host passes a
-/// gatekeeper-backed adapter; others pass [`NoAppLaunchScopes`](ports::NoAppLaunchScopes).
+/// authorization-server-backed adapter; others pass [`NoAppLaunchScopes`](ports::NoAppLaunchScopes).
 ///
 /// `launch_context_minter` is the host seam minting the SMART `launch` value a
 /// SMART app's launch URL carries (see [`LaunchContextMinter`]). The host passes
-/// a gatekeeper-backed adapter, so the gatekeeper can consume it at the app's
+/// an authorization-server-backed adapter, so the authorization server can consume it at the app's
 /// `/oauth/authorize`.
 ///
 /// # Errors

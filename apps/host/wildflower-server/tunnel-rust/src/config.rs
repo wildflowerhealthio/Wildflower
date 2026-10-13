@@ -1,5 +1,5 @@
 //! Open-time configuration for the tunnel, mirroring
-//! `gatekeeper-rust`'s `GatekeeperConfig`.
+//! `authorization-server-rust`'s `AuthorizationServerConfig`.
 
 use tokio::sync::mpsc;
 

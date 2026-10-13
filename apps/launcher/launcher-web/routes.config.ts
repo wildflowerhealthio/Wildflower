@@ -15,18 +15,18 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
  *   - `_auth/`    → mounted under the pathless `_auth` layout  → `/_auth/…`
  *   - `_open/`    → mounted under the pathless `_open` layout  → `/_open/…`
  *
- * Section sub-layouts (`_auth/home.tsx`, `_auth/gatekeeper.tsx`,
- * `_open/gatekeeper.tsx`) live in the app's own `src/routes` directory.
+ * Section sub-layouts (`_auth/home.tsx`, `_auth/authorization.tsx`,
+ * `_open/authorization.tsx`) live in the app's own `src/routes` directory.
  * Each wraps its slice mount in the shared `pageLayoutStyles['page']`
  * shell so the leaves render content only. They cannot live in their
  * source slice because `physical()` mounts compute the generated
  * route-variable name from the in-mount path: with a slice-level
- * `_auth/gatekeeper.tsx` AND `_open/gatekeeper.tsx`, both reduce to
- * `Gatekeeper` and the launcher-web `routeTree.gen.ts` ends up with a
- * duplicate `const GatekeeperRoute = …`. Owning the section layout at the
+ * `_auth/authorization.tsx` AND `_open/authorization.tsx`, both reduce to
+ * `Authorization` and the launcher-web `routeTree.gen.ts` ends up with a
+ * duplicate `const AuthorizationRoute = …`. Owning the section layout at the
  * app level keeps the `/_auth/` / `/_open/` prefix in scope for the
- * generator so it disambiguates as `AuthGatekeeperRoute` /
- * `OpenGatekeeperRoute`.
+ * generator so it disambiguates as `AuthAuthorizationRoute` /
+ * `OpenAuthorizationRoute`.
  *
  * Because `/settings` is a sibling of `_auth` (not a child), it is not
  * auth-gated by the `_auth` layout's `beforeLoad`. The `/settings`
@@ -60,7 +60,7 @@ export const routes = rootRoute('__root.tsx', [
   route('/settings', 'settings.tsx', [
     index('settings/index.tsx'),
     physical('', launcherRoutesDir('request-log/request-log-react', 'settings')),
-    physical('', sliceRoutesDir('gatekeeper', 'settings')),
+    physical('', sliceRoutesDir('authorization', 'settings')),
     physical('', launcherRoutesDir('databases/databases-react', 'settings')),
     physical('', launcherRoutesDir('apps-react', 'settings')),
   ]),
@@ -68,13 +68,13 @@ export const routes = rootRoute('__root.tsx', [
   route('/fhir-home', 'fhir-home.tsx'),
   layout('_auth', '_auth.tsx', [
     route('/home', '_auth/home.tsx', [physical('', launcherRoutesDir('apps-react', '_auth/home'))]),
-    route('/gatekeeper', '_auth/gatekeeper.tsx', [
-      physical('', sliceRoutesDir('gatekeeper', '_auth/gatekeeper')),
+    route('/authorization', '_auth/authorization.tsx', [
+      physical('', sliceRoutesDir('authorization', '_auth/authorization')),
     ]),
   ]),
   layout('_open', '_open.tsx', [
-    route('/gatekeeper', '_open/gatekeeper.tsx', [
-      physical('', sliceRoutesDir('gatekeeper', '_open/gatekeeper')),
+    route('/authorization', '_open/authorization.tsx', [
+      physical('', sliceRoutesDir('authorization', '_open/authorization')),
     ]),
   ]),
 ])

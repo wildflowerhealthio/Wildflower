@@ -19,7 +19,7 @@ file the macro sits in, so moving _either_ file breaks it — silently, because
 
 **Grep for `include_str!` before moving any file**, and repoint every hit. When
 `consents.rs` splits into `consents/{mod,oauth,device,delegation}.rs`, the guard
-in `gatekeeper-rust/src/domain/capabilities/mod.rs` that counts
+in `authorization-server-rust/src/domain/capabilities/mod.rs` that counts
 `_scopes() -> Vec<Scope>` occurrences must repoint its
 `include_str!("consents.rs")` to `include_str!("consents/mod.rs")` (the split
 kept both `*_scopes()` fns in `mod.rs`).
@@ -34,7 +34,7 @@ into a subdirectory under such a tree:
   non-exempt handler `admin.rs` into `admin/*.rs` means every new submodule is
   now scanned — if the submodules legitimately hold `State<…>` or a store
   accessor, the guard trips. Exempt them consciously; don't loosen the needle.
-- **Path-prefix exemptions must still cover the split.** The gatekeeper guard
+- **Path-prefix exemptions must still cover the split.** The authorization server guard
   `access_handlers_reach_the_store_only_through_capabilities` exempts by
   `EXEMPT_DIR_PREFIXES = ["oauth/"]` and `EXEMPT_FILES = ["mod.rs", …]`, so
   splitting `oauth/token_exchange.rs` into `oauth/token_exchange/*.rs` (whose
@@ -42,7 +42,7 @@ into a subdirectory under such a tree:
   guard skips `mod.rs` and `tests.rs`, so extracting an inline test module to
   `routes/tests.rs` needs `tests.rs` on the skip list.
 
-The forbidden-token needle set is per slice (gatekeeper uses accessor shapes
+The forbidden-token needle set is per slice (the authorization server uses accessor shapes
 `State<` / `.store`; databases uses `State<` plus module paths and a store type
 name) — match whatever names the store-reaching shapes in _that_ crate, and
 remember the guard is textual, so a mention of a needle in a doc comment counts.
@@ -52,7 +52,7 @@ remember the guard is textual, so a mention of a needle in a doc comment counts.
 You cannot split a single trait across files: a supertrait's methods need the
 defining trait in scope at every call site, and every `impl` block would have to
 fragment to match. So a file holding two traits
-(`gatekeeper_store.rs` → `gatekeeper_store/{mod,tx,store}.rs`, one trait each)
+(`grant_store.rs` → `grant_store/{mod,tx,store}.rs`, one trait each)
 splits cleanly, but decomposing one trait into per-resource sub-traits is a large
 churn with real regression risk — not worth it for a size cleanup.
 

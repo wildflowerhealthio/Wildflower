@@ -2,7 +2,7 @@
  * The web entry's OAuth client registration, and both halves of its sign-in.
  *
  * `main-web` signs in with the **SMART standalone launch** in
- * `gatekeeper-core/smart-client` — the same PKCE redirect flow the server-docs
+ * `authorization-core/smart-client` — the same PKCE redirect flow the server-docs
  * console runs (`apps/server-docs-web/src/main.ts`), against whichever
  * server `?server=` names. Opened with a SMART launch instead (`?iss=`, with
  * the EHR's `launch` when there is one, as the base opens a server's
@@ -11,7 +11,7 @@
  * reason it fits the console: the page is cross-origin to its API server, so it
  * holds a bearer in memory, and the
  * reader is already looking at the browser that must approve the grant. The
- * device-code flow at `/gatekeeper/device-login` remains for the second-screen
+ * device-code flow at `/authorization/device-login` remains for the second-screen
  * case (and as the 401 fallback), but it is no longer how the landing page
  * signs in.
  *
@@ -31,7 +31,7 @@
  *
  * The access token is never written anywhere by this module. It goes into the
  * in-memory `BearerAuthStateStore` and dies with the tab, the policy
- * `slices/gatekeeper/docs/Auth Token Storage Explanation.md` sets for a bearer a
+ * `slices/authorization/docs/Auth Token Storage Explanation.md` sets for a bearer a
  * public page holds. The only thing that reaches `sessionStorage` is the pending
  * record, which carries no credential — and which is also how the auth gate's
  * `?returnTo=` survives the round trip (see {@link returnToOnPage}).
@@ -49,7 +49,7 @@ import {
   type SignInEnvironment,
   type SignInError,
   type SignInPage,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   AuthedUntil,
   type AuthState,
@@ -62,7 +62,7 @@ import { ServerKind } from './session/server-kind.ts'
 
 /**
  * The `client_id` the web entry authorizes as: a random id
- * (`openssl rand -hex 16`), seeded by gatekeeper migration
+ * (`openssl rand -hex 16`), seeded by the authorization server migration
  * `0012_seed_wildflower_react_client` and re-keyed by
  * `0026_rekey_launcher_client`. The migrations are the authority and this is
  * the browser-side reading of them: a
@@ -193,7 +193,7 @@ const startSignIn = (
  * server's launcher at `?iss=…&launch=…` — and the server its `iss` names, in
  * the canonical form `?server=` holds. `main-web`'s boot reads it
  * (`web-entry.ts`'s `ehrLaunchIn`) into an {@link UnsentEhrLaunch}, and the
- * landing signs in to `serverUrl` with `launch` on arrival. Gatekeeper accepts
+ * landing signs in to `serverUrl` with `launch` on arrival. The authorization server accepts
  * a launch once and only for a few minutes, so it rides one sign-in and no
  * more.
  */
@@ -206,7 +206,7 @@ interface EhrLaunch {
  * The page load's {@link EhrLaunch} until a sign-in takes it. `main-web`'s
  * boot makes one per page load, with {@link unsentEhrLaunch}, and the landing
  * takes the launch from it, so the launch goes out on the first sign-in to its
- * server and on no later one, however often the landing remounts: gatekeeper
+ * server and on no later one, however often the landing remounts: the authorization server
  * accepts a launch once.
  */
 interface UnsentEhrLaunch {
@@ -288,7 +288,7 @@ const finishSignIn = async (
  *
  * A reported lifetime becomes `AuthedUntil`, so `isFreshlyAuthed` can tell a
  * lapsed session from a live one. A response that reports none (RFC 6749 leaves
- * `expires_in` optional; gatekeeper always sends it) becomes `HostAuthed` — the
+ * `expires_in` optional; the authorization server always sends it) becomes `HostAuthed` — the
  * signal for "authed, with no expiry the page knows" — rather than an
  * `AuthedUntil` carrying an invented `exp`, which would claim a freshness
  * nothing established.

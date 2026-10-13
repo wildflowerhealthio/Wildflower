@@ -74,7 +74,7 @@
 //!  - `live_bindings` — [`ServerUnit`], a server bound to
 //!    `wildflower-server-rust` as a unit `UnitRunner` runs, and
 //!    [`ServerConsentDecider`] and [`ServerLaunchMinter`], a run's consents
-//!    and launches bound to `gatekeeper-rust`.
+//!    and launches bound to `authorization-server-rust`.
 
 pub mod domain;
 

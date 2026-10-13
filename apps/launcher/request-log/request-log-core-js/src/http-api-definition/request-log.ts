@@ -15,7 +15,7 @@ const RequestRefusalSchema = Schema.Literal('missingToken', 'tokenRejected', 're
  * `None` for the requests no bearer gate verified, `address` when the trusted
  * front recorded no visitor address, and `lastRefusal` when no bearer gate
  * refused the newest request. Resolve a client's display name through
- * gatekeeper's client list. `refusedCount` counts a bearer gate's `401`s and
+ * the authorization server's client list. `refusedCount` counts a bearer gate's `401`s and
  * scope `403`s.
  */
 const CallerSummarySchema = Schema.Struct({
@@ -95,7 +95,7 @@ const ListRequestsUrlParamsSchema = Schema.Struct({
 
 /**
  * The request log's endpoints. The group carries no middleware — auth is
- * applied by the host: the Rust server serves `/requests` behind the gatekeeper
+ * applied by the host: the Rust server serves `/requests` behind the authorization server
  * bearer gate, and the TS client layer leaves the credential to the host app's
  * `HttpClient` (see `request-log-react/src/client/request-log-client.ts`).
  *

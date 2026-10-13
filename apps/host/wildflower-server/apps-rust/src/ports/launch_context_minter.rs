@@ -1,8 +1,8 @@
 //! [`LaunchContextMinter`] — the host seam that mints the SMART App Launch
-//! `launch` value a **SMART** app's launch URL carries. The gatekeeper owns
+//! `launch` value a **SMART** app's launch URL carries. The authorization server owns
 //! launch contexts: it records each one against the app's OAuth `client_id` and
 //! consumes it, single-use, at the app's `/oauth/authorize`. The host wires a
-//! gatekeeper-backed adapter, so apps-rust never touches the gatekeeper's
+//! authorization-server-backed adapter, so apps-rust never touches the authorization server's
 //! store.
 
 use crate::domain::AppsError;

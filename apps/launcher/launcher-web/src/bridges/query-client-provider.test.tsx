@@ -1,7 +1,7 @@
 import { QueryClient, useQueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
-import type * as GatekeeperReact from '@wildflowerhealthio/gatekeeper-react'
+import type * as AuthorizationReact from '@wildflowerhealthio/authorization-react'
 import { type AuthState, Unauthed } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import type { JSX, ReactNode } from 'react'
@@ -25,16 +25,16 @@ const { Passthrough } = vi.hoisted(() => ({
   Passthrough: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
 }))
 
-// The gatekeeper-react surface this test pokes is the
-// `GatekeeperRouterContext.sliceRuntimeLayer` (consumed by
+// The authorization-react surface this test pokes is the
+// `AuthorizationRouterContext.sliceRuntimeLayer` (consumed by
 // `router-context.ts`'s layer composition) and the logout row
 // `buildAppTree` builds. The bearer store the test renders with is
 // constructed inline in the test body below.
-vi.mock('@wildflowerhealthio/gatekeeper-react', async (importOriginal) => {
-  const actual = await importOriginal<typeof GatekeeperReact>()
+vi.mock('@wildflowerhealthio/authorization-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof AuthorizationReact>()
   return {
-    GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
-    gatekeeperLogoutSettingsItem: actual.gatekeeperLogoutSettingsItem,
+    AuthorizationRouterContext: { sliceRuntimeLayer: Layer.empty },
+    authorizationLogoutSettingsItem: actual.authorizationLogoutSettingsItem,
     TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
   }
 })

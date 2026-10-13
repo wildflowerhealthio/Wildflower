@@ -6,7 +6,7 @@
 //! scopes (the `AppLauncher` filters the returned set to FHIR / Wildflower resource
 //! scopes; the OIDC / launch-context scopes are the app's own OAuth concern).
 //! This port resolves that per-app requirement, keeping apps-rust decoupled from
-//! gatekeeper: the host wires a gatekeeper-backed adapter that maps a
+//! the authorization server: the host wires an authorization-server-backed adapter that maps a
 //! `client_id` to its client's `allowed_scopes`; a host with no SMART client
 //! directory wires [`NoAppLaunchScopes`].
 //!

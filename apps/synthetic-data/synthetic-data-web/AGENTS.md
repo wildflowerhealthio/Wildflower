@@ -62,13 +62,13 @@ The production `synthetic-data` registry row (apps migration
 `0019_rekey_site_apps`) launches
 `https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}`
 with `requires_tunnel` set, and its public OAuth client,
-`225ba6af034a3acec6be7ff8010df67f` (gatekeeper migration
+`225ba6af034a3acec6be7ff8010df67f` (the authorization server migration
 `0028_rekey_site_app_clients`), redirects to
 `https://wildflowerhealth.io/synthetic-data/` and allows exactly
 `SYNTHETIC_DATA_SCOPE`. In development, debug builds of the host seed a
 `synthetic-data-dev` row on the port
 `dev-app-ports.json` pins (5198) and its OAuth client
-(`apps-rust`'s `seed_dev_apps`, `gatekeeper-rust`'s `seed_dev_app_clients`),
+(`apps-rust`'s `seed_dev_apps`, `authorization-server-rust`'s `seed_dev_app_clients`),
 so the homescreen carries a "Synthetic Data (Dev)" tile that launches whatever
 is serving that port. The dev client's scopes are
 `SYNTHETIC_DATA_DEV_SCOPES`; a `seeding.rs` test reads `config.ts` and fails

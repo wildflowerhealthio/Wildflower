@@ -2,7 +2,7 @@
 //! slices.
 //!
 //! These are the generic, slice-agnostic pieces lifted out of
-//! `gatekeeper-rust`'s `db_utils`. The Tauri app opens one shared [`Connection`]
+//! `authorization-server-rust`'s `db_utils`. The Tauri app opens one shared [`Connection`]
 //! and passes it to each slice; each slice runs its own append-only migrations
 //! under its own `namespace` (see [`run_migrations`]) on that shared database.
 //!

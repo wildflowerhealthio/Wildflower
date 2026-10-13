@@ -58,7 +58,7 @@ pub enum Scope {
 impl Scope {
     /// Build a `wildflower/<Resource>.<perm>` scope on one of the app's own
     /// resources — the typed way to name a Wildflower scope, so consumers
-    /// (gatekeeper's admin gate, host config) don't hand-spell scope strings or
+    /// (the authorization server's admin gate, host config) don't hand-spell scope strings or
     /// re-declare a local constructor.
     #[must_use]
     pub fn wildflower(resource: WildflowerResource, permission: Permission) -> Scope {

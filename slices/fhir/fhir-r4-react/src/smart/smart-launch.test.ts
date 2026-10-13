@@ -1,4 +1,4 @@
-import { arrivingSmartLaunchFrom as sharedArrivingSmartLaunchFrom } from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { arrivingSmartLaunchFrom as sharedArrivingSmartLaunchFrom } from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import type Client from 'fhirclient/lib/Client'
@@ -185,10 +185,10 @@ describe('shouldCompleteSmartLaunch', () => {
 })
 
 // `arrivingSmartLaunchFrom`'s own behaviour is covered where it lives, in
-// `gatekeeper-core/smart-client`'s `arriving-launch.test.ts`; re-exporting is
+// `authorization-core/smart-client`'s `arriving-launch.test.ts`; re-exporting is
 // only worth anything if it is genuinely the same function.
 describe('arrivingSmartLaunchFrom', () => {
-  it('is the one implementation gatekeeper-core owns, not a local copy', () => {
+  it('is the one implementation authorization-core owns, not a local copy', () => {
     expect(arrivingSmartLaunchFrom).toBe(sharedArrivingSmartLaunchFrom)
   })
 })

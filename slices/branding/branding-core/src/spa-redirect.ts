@@ -116,8 +116,8 @@ const restoredUrl = (location: RestorableLocation): string | undefined => {
  *
  * @example
  * ```ts
- * redirectedUrl({ pathname: '/app/gatekeeper/devices', search: '?server=x', hash: '' }, '/app/')
- * // → '/app/?server=x&redirect=%2Fapp%2Fgatekeeper%2Fdevices'
+ * redirectedUrl({ pathname: '/app/authorization/devices', search: '?server=x', hash: '' }, '/app/')
+ * // → '/app/?server=x&redirect=%2Fapp%2Fauthorization%2Fdevices'
  * ```
  */
 const redirectedUrl = (location: RestorableLocation, basename: string): string | undefined => {

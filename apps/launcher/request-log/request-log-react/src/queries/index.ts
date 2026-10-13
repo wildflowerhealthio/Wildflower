@@ -4,7 +4,7 @@
  *
  *   - {@link file://./callers.ts}       — the log grouped by caller (`ListCallers`)
  *   - {@link file://./requests.ts}      — the log's pages (`ListRequests`) and export
- *   - {@link file://./client-names.ts}  — gatekeeper's client display names, by `clientId`
+ *   - {@link file://./client-names.ts}  — the authorization server's client display names, by `clientId`
  *   - {@link file://./refresh.ts}       — the manual re-read of every request-log query
  *
  * Shared scaffolding lives in {@link file://./keys.ts} (the query-key roots)

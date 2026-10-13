@@ -26,7 +26,7 @@ pub struct FhirR4Config {
     /// Bearer JWTs. `Some(url)` enables HFS auth (every FHIR request must
     /// carry a token, scopes enforced); `None` leaves HFS open and relies
     /// on whatever middleware wraps this router from outside (e.g. the
-    /// Tauri host's gatekeeper gating layer). HFS validates each token's `iss`
+    /// Tauri host's authorization server gating layer). HFS validates each token's `iss`
     /// and `aud` against [`Self::public_origin`]; see
     /// `docs/Origins/Explanation.md`.
     pub jwks_url: Option<String>,

@@ -49,7 +49,7 @@ pub struct AppRegistration {
     #[diesel(serialize_as = AppUrlColumn, deserialize_as = AppUrlColumn)]
     #[schema(value_type = String)]
     pub url: AppUrl,
-    /// Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART
+    /// Soft reference to an authorization server `clients.client_id`; `None` for non-SMART
     /// apps. Never leaves the host: the wire carries the derived `isSmart` boolean.
     #[serde(rename = "isSmart", serialize_with = "serialize_client_id_as_is_smart")]
     #[schema(rename = "isSmart", value_type = bool)]

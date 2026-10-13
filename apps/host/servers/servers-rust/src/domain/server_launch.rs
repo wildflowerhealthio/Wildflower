@@ -4,7 +4,7 @@
 //!
 //! A SMART EHR launch hands the launcher two query parameters, and they are
 //! the only credentials the launched app gets: `iss`, the server's FHIR base,
-//! and `launch`, a value the server's gatekeeper minted for any client. The
+//! and `launch`, a value the server's authorization server minted for any client. The
 //! app's `/oauth/authorize` presents the `launch` and parks a consent the
 //! base's consent sheet answers.
 

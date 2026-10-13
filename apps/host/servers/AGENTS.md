@@ -44,7 +44,7 @@ changing how servers run or what the host notifies about them.
     `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
-    `ServerConsentDecider`, bound to `gatekeeper-rust`'s `HostConsentDecider`;
+    `ServerConsentDecider`, bound to `authorization-server-rust`'s `HostConsentDecider`;
     and `ServerLaunchMinter`, bound to its `LaunchContextMinter`.
     `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.
@@ -399,7 +399,7 @@ changing how servers run or what the host notifies about them.
   A run's health, tunnel state and certificate state go out through
   `ctx.set_detail`, and `UnitRunner` clears them.
 - **Consents are decided in-process.** A run puts a `ServerConsentDecider`
-  over its gatekeeper's `HostConsentDecider` in every `ServerDetail` it sets,
+  over its authorization server's `HostConsentDecider` in every `ServerDetail` it sets,
   and `UnitRunner` clears the detail when the run ends, so the consent
   commands, which look the decider up in `statuses()`, reach only a running
   server and answer `serverNotRunning` otherwise. They call the capabilities behind `/access/devices/{userCode}`
@@ -407,7 +407,7 @@ changing how servers run or what the host notifies about them.
   blocking thread: no HTTP, and no owner bearer in the webview. An approval
   is remembered as a standing grant, as one in the launcher is. Errors are
   `{kind, message}`: `serverNotRunning`, `notPending`,
-  `registrationNotAcknowledged` or `gatekeeper`.
+  `registrationNotAcknowledged` or `authorizationServer`.
 - **Launching opens the launcher with a launch for any client.**
   `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
   once unless `ensure_launchable` passes for the server's status, the one
@@ -433,10 +433,10 @@ changing how servers run or what the host notifies about them.
   (`KeptAlive`, `launch_view_kept_alive`). It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
   `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from
-  Let's Encrypt's staging CA), `gatekeeper`, `openingLauncher`, or the registry's
+  Let's Encrypt's staging CA), `authorizationServer`, `openingLauncher`, or the registry's
   `notRegistered` or `registry`. The golden file pins the refusals the base
   shows and which CAs browsers trust.
-- **One `pending-consent` per change.** A run's gatekeeper publishes its
+- **One `pending-consent` per change.** A run's authorization server publishes its
   queue's head on the run's own channel; the run sets it as
   `ServerDetail::pending_consent`. `PendingConsentTracker` picks the servers
   whose head changed from `UnitRunner`'s statuses, and the host emits

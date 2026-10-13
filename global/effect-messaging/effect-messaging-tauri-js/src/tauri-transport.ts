@@ -81,7 +81,7 @@ interface TauriTransport<Bridges extends ReadonlyArray<Bridge.AnyBridge>> {
  *
  * Readiness: once the listener has attached, a `__Ready`-tagged payload
  * is emitted — only then may the host respond, so its first message
- * (e.g. the gatekeeper token) cannot race listener setup and vanish
+ * (e.g. the authorization server token) cannot race listener setup and vanish
  * (Tauri events are not buffered). The host re-receives `__Ready` on
  * every page load, so reloads re-trigger its boot-state push. The
  * resolved Promise therefore means the host has been told the page is

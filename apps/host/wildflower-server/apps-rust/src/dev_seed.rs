@@ -23,8 +23,8 @@
 //! `apps/host/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`,
 //! so a release build contains no code that could write these ids.
 //!
-//! Each app's dev gatekeeper client (`seed_dev_app_clients` in
-//! gatekeeper-rust) registers an absolute `http://localhost:{port}` redirect
+//! Each app's dev authorization server client (`seed_dev_app_clients` in
+//! authorization-server-rust) registers an absolute `http://localhost:{port}` redirect
 //! URI that the OAuth authorize flow matches directly — the row is a launch URL
 //! and nothing else.
 
@@ -36,7 +36,7 @@ use wildflowerhealthio_persistence::DieselPool;
 use crate::db::SqliteAppsStore;
 
 /// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
-/// tile ids. gatekeeper-rust's `seed_dev_app_clients` registers each (but
+/// tile ids. authorization-server-rust's `seed_dev_app_clients` registers each (but
 /// Server Docs', whose console signs in as its production client), and each
 /// app's `src/config.ts` (the OHIF viewer's `config/app-config.js` and launch
 /// URL) launches as its own under the dev server.
@@ -53,7 +53,7 @@ const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 struct DevApp {
     /// The row id.
     id: &'static str,
-    /// The row's `client_id`: its dev gatekeeper client, which
+    /// The row's `client_id`: its dev authorization server client, which
     /// `seed_dev_app_clients` registers under the same id.
     client_id: &'static str,
     /// Homescreen title, suffixed "(Dev)" so it can't be confused with the

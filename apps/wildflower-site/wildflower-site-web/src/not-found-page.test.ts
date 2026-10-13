@@ -13,13 +13,13 @@ describe('404.html redirect', () => {
     // Act
     const landed = await followNotFound(
       site,
-      'https://example.test/launcher/gatekeeper/devices?x=1'
+      'https://example.test/launcher/authorization/devices?x=1'
     )
 
     // Assert
     expect(landed).toEqual({
       _tag: 'Redirected',
-      to: '/launcher/?x=1&redirect=%2Flauncher%2Fgatekeeper%2Fdevices',
+      to: '/launcher/?x=1&redirect=%2Flauncher%2Fauthorization%2Fdevices',
     })
   })
 
@@ -30,11 +30,11 @@ describe('404.html redirect', () => {
     // Act
     const landed = await followNotFound(
       site,
-      'https://example.test/staging/pr-745/launcher/gatekeeper/devices/ABCD?server=s'
+      'https://example.test/staging/pr-745/launcher/authorization/devices/ABCD?server=s'
     )
 
     // Assert
-    expect(restoreAt(landed)).toBe('/staging/pr-745/launcher/gatekeeper/devices/ABCD?server=s')
+    expect(restoreAt(landed)).toBe('/staging/pr-745/launcher/authorization/devices/ABCD?server=s')
   })
 
   it('should show a not-found page when a closed preview has no ancestor to redirect to', async () => {

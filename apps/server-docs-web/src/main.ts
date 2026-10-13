@@ -19,7 +19,7 @@ import {
   type Session,
   type SignInEnvironment,
   type SignInError,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 
 import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'
@@ -77,7 +77,7 @@ let reference: ReturnType<typeof createApiReference> | undefined
  * The signed-in session, or `undefined`. **In memory only, deliberately**: the
  * token this holds can be admin-capable and the console is a public page, so it
  * is never written to `localStorage`, `sessionStorage` or a cookie, and it dies
- * with the tab (`slices/gatekeeper/docs/Auth Token Storage Explanation.md`).
+ * with the tab (`slices/authorization/docs/Auth Token Storage Explanation.md`).
  */
 let session: Session | undefined
 
@@ -91,7 +91,7 @@ const redirectUri = redirectUriForPage(window.location.href) ?? REGISTERED_REDIR
 
 /**
  * The impure edges the sign-in flow runs against in the browser, wired by
- * `gatekeeper-core/smart-client` so this console and the `launcher-web`
+ * `authorization-core/smart-client` so this console and the `launcher-web`
  * page share one reading of `window` rather than a copy each.
  */
 const signInEnvironment: SignInEnvironment = browserSignInEnvironment(window, {

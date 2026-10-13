@@ -1,6 +1,6 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
-import type { BearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
+import type { BearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
 import type { Layer } from 'effect'
 
 import { buildQueryClient } from '../query-client.ts'

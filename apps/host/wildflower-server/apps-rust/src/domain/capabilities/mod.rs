@@ -1,6 +1,6 @@
 //! Scope-gated capabilities for the `/apps` **admin** surface — the apps slice's
 //! copy of the default-safe authorization pattern (the generic machinery lives in
-//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on gatekeeper's `/access`
+//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on the authorization server's `/access`
 //! surface, recipe in `docs/Authorization/Scope-Gated Endpoints How-To.md`). They
 //! live in `domain/` beside the [`AppsStore`] port they operate through — never
 //! importing `crate::http` — so a forgotten permission check can't compile a
@@ -51,7 +51,7 @@ pub(crate) use apps_reader::{apps_reader_scopes, AppsReader};
 /// (`Apps.{r,c,u,d}`) and the launch umbrella (`wildflower/launch`). Because it
 /// reads the very `*_scopes()` functions the capability bindings enforce, what a
 /// token can be *granted* and what it is *checked against* come from one source.
-/// The intended grantable vocabulary for the consent surfaces (mirrors gatekeeper's
+/// The intended grantable vocabulary for the consent surfaces (mirrors the authorization server's
 /// `grantable_admin_scopes`); nothing consumes it yet — the tests below pin it.
 #[must_use]
 pub fn grantable_apps_scopes() -> Vec<Scope> {
@@ -144,7 +144,7 @@ mod tests {
     /// `State<Arc<AppsState>>` or a direct `state.store` access. Bypassing the
     /// capability would need one of these tokens, and this test fails if one
     /// appears, so a forgotten scope check can't ship silently. (Mirrors
-    /// gatekeeper's `access_handlers_reach_the_store_only_through_capabilities`
+    /// the authorization server's `access_handlers_reach_the_store_only_through_capabilities`
     /// and databases' `database_handlers_reach_the_store_only_through_capabilities`.)
     ///
     /// The routes tree is enumerated at test time, so a NEW handler file is

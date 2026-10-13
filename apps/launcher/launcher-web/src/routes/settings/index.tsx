@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { appsSettingsItemsFragment } from '@wildflowerhealthio/apps-react'
+import { authorizationSettingsItemsFragment } from '@wildflowerhealthio/authorization-react'
 import { POLICY_IDS, POLICY_LABELS, policyUrl } from '@wildflowerhealthio/branding-core'
 import { databasesSettingsItemsFragment } from '@wildflowerhealthio/databases-react'
-import { gatekeeperSettingsItemsFragment } from '@wildflowerhealthio/gatekeeper-react'
 import { ItemList, PageHeader } from '@wildflowerhealthio/react-tundraish'
 import { requestLogSettingsItemsFragment } from '@wildflowerhealthio/request-log-react'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
@@ -21,7 +21,7 @@ import { useTelemetrySettingsItems } from '../../session/telemetry-settings-item
  */
 const sliceSettingsItems: readonly SettingsItem[] = [
   ...requestLogSettingsItemsFragment,
-  ...gatekeeperSettingsItemsFragment,
+  ...authorizationSettingsItemsFragment,
   ...databasesSettingsItemsFragment,
   ...appsSettingsItemsFragment,
 ]

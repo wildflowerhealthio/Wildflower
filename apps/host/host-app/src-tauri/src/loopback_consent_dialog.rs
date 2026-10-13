@@ -1,8 +1,8 @@
-//! The Tauri host's [`wildflowerhealthio_gatekeeper::LoopbackConsentPrompt`]: a native
+//! The Tauri host's [`wildflowerhealthio_authorization_server::LoopbackConsentPrompt`]: a native
 //! Approve / Reject dialog for a direct-loopback login by the hosted launcher
 //! (`launcher-web` on its public origin, pointed at this machine's server).
 //!
-//! Gatekeeper decides *when* to ask — only a non-forwarded `/authorize` for that
+//! The authorization server decides *when* to ask — only a non-forwarded `/authorize` for that
 //! `client_id` — and applies the answer; this adapter only shows the question.
 //! The slice owns the trait; the dialog plugin is a host dependency; so the
 //! adapter lives here, like the native webview handle.
@@ -10,7 +10,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use wildflowerhealthio_gatekeeper::{
+use wildflowerhealthio_authorization_server::{
     LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
 };
 
@@ -59,7 +59,7 @@ impl Drop for DialogSlot<'_> {
 }
 
 impl LoopbackConsentPrompt for TauriLoopbackConsentPrompt {
-    /// Blocks on the native dialog (gatekeeper calls this on a blocking worker,
+    /// Blocks on the native dialog (the authorization server calls this on a blocking worker,
     /// never the async runtime). Closing the dialog is a reject. While another
     /// dialog is still on screen it abstains, leaving the login to the launcher.
     fn ask(&self, request: &LoopbackConsentRequest) -> LoopbackConsentAnswer {
@@ -127,7 +127,7 @@ fn capitalized(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wildflowerhealthio_gatekeeper::LoopbackRegistrationNotice;
+    use wildflowerhealthio_authorization_server::LoopbackRegistrationNotice;
 
     fn owned(scopes: &[&str]) -> Vec<String> {
         scopes.iter().map(|scope| (*scope).to_owned()).collect()

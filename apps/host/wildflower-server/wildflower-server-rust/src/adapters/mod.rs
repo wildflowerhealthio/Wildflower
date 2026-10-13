@@ -1,6 +1,6 @@
 //! Other slices' ports implemented against concrete stores and clients: the
 //! server is the one crate that depends on both sides, so each adapter lives
-//! here rather than in either slice. Mirrors `gatekeeper-rust`'s `adapters/`.
+//! here rather than in either slice. Mirrors `authorization-server-rust`'s `adapters/`.
 //! The server's own certificate, over rustls-acme, is here too.
 //!
 //! - [`acme_certificate`] — the tunnel listener's device certificate, ordered
@@ -8,11 +8,11 @@
 //!   and a stopped server's cache holds.
 //! - [`certificate_history`] — each server's history of the certificates its
 //!   runs deployed, a JSON file beside its certificate cache.
-//! - [`app_launch_scopes`] — apps' `AppLaunchScopes`, from gatekeeper's OAuth
+//! - [`app_launch_scopes`] — apps' `AppLaunchScopes`, from the authorization server's OAuth
 //!   clients.
 //! - [`health_probe`] — the reachability monitor's `HealthProbe`, over
 //!   `reqwest`.
-//! - [`launch_context_minter`] — apps' `LaunchContextMinter`, from gatekeeper's
+//! - [`launch_context_minter`] — apps' `LaunchContextMinter`, from the authorization server's
 //!   launch contexts.
 
 pub(crate) mod acme_certificate;

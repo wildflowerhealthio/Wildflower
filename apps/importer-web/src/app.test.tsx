@@ -37,7 +37,7 @@ import { ImporterApp } from './app.tsx'
  *   prefixing and the `Authorization` header only ever go on the wire here;
  * - **the write scopes in `config.ts` are the ones the flow actually needs** —
  *   the recorded write log names exactly the resource types that string (and the
- *   gatekeeper seed beside it) allows.
+ *   authorization server seed beside it) allows.
  *
  * The opt-in seam itself — zero writes to reach a preview, source file before
  * resources, `meta.source` on each write — is `importer-react`'s
@@ -128,7 +128,7 @@ describe('ImporterApp', () => {
   })
 
   // `src/config.ts` asks for `DocumentReference`, `Patient` and `Observation`
-  // writes and nothing else, and the gatekeeper seed allows exactly that set. A
+  // writes and nothing else, and the authorization server seed allows exactly that set. A
   // flow that wrote a fourth resource type would be refused the scope at
   // authorize time on a real device; here it surfaces as a resource type the
   // requested set does not name.

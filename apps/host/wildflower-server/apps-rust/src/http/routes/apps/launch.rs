@@ -17,7 +17,7 @@
 //!      umbrella.
 //!   4. Resolve the launch target from the stored template: `{origin}` is the
 //!      public origin, and `{launch}` is, for a SMART app, a launch context the
-//!      gatekeeper mints for the app's OAuth client (through the
+//!      authorization server mints for the app's OAuth client (through the
 //!      [`LaunchContextMinter`](crate::ports::LaunchContextMinter) port) and
 //!      consumes at its `/oauth/authorize`. A non-SMART app has no client to
 //!      bind a launch to, so its `{launch}` is empty.

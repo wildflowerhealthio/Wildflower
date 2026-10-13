@@ -14,7 +14,7 @@ import { Data } from 'effect'
  *
  * Decided at boot (`RenderAppOptions.serverKind`), not read off the
  * server: `main-web` derives it from the redeemed SMART session's
- * `gatekeeper-core` `SmartServer` (`sign-in.ts`'s `serverKindForSession`).
+ * `authorization-core` `SmartServer` (`sign-in.ts`'s `serverKindForSession`).
  * That type says what discovery found; this one says what the shell offers,
  * which is why it carries the session's patient and not a Wildflower FHIR base.
  */

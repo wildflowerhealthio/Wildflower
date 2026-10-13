@@ -53,7 +53,7 @@ tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
 # The system's in-app browser as a native page, reporting its close to Rust
 # (iOS, Android; the default browser on desktop). Registered in `run()`.
 tauri-plugin-native-page-browser = { path = "../../tauri-plugin-native-page-browser" }
-wildflowerhealthio-gatekeeper = { path = "../../wildflower-server/gatekeeper-rust" }
+wildflowerhealthio-authorization-server = { path = "../../wildflower-server/authorization-server-rust" }
 # `ServerRuntimeConfig` and `LauncherBase` for the server config.
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
 # The `RelaySettings` the host builds from the server's record for its tunnel.

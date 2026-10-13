@@ -7,7 +7,7 @@
 //! policy turns it off, it stops with the detail cleared. Turned back on, the
 //! next run binds the same port, so the previous run's runtime is gone, and
 //! serves again. Its detail holds the run's launch minter, and a server whose
-//! health is unknown isn't launchable. A consent its gatekeeper parks is the run's
+//! health is unknown isn't launchable. A consent its authorization server parks is the run's
 //! detail, and is read and decided through the `ServerConsentDecider` the
 //! run's detail holds until the run ends.
 
@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use tokio::sync::mpsc;
 use url::Url;
-use wildflowerhealthio_gatekeeper::{NoLoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_authorization_server::{NoLoopbackConsentPrompt, PendingConsentHead};
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_servers::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
@@ -50,11 +50,12 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         )),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),
-        host_owner_scopes: wildflowerhealthio_gatekeeper::WILDFLOWER_WIDEST_SCOPES
+        host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)
             .collect(),
-        first_party_client_id: wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID.to_owned(),
+        first_party_client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
+            .to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // reachability monitor finds the server unreachable.
@@ -203,7 +204,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         "a tunnel that isn't connected is never probed"
     );
     // The run's detail holds its launch minter, which mints through the
-    // run's gatekeeper; a server whose health is unknown isn't launchable,
+    // run's authorization server; a server whose health is unknown isn't launchable,
     // and a tunnel that is dialing again doesn't change why.
     let launch_minter = unit_runner.statuses()[&UnitId::from(DOMAIN)]
         .detail
@@ -276,7 +277,7 @@ async fn start_device_authorization(loopback_base_url: &Url) -> String {
         .header("content-type", "application/x-www-form-urlencoded")
         .body(format!(
             "client_id={}&scope=system%2F*.cruds",
-            wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID
+            wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
         ))
         .send()
         .await
@@ -329,7 +330,7 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     assert_eq!(user_code, user_codes[0]);
     assert_eq!(
         client_id,
-        wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID
+        wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
     );
     assert_eq!(requested_scopes, ["system/*.cruds"]);
 

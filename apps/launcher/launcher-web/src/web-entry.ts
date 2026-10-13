@@ -4,11 +4,11 @@ import {
   searchWithoutAuthorizationResponse,
   searchWithServerUrl,
   serverUrlFromSearch,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   type BearerAuthStateStore,
-  gatekeeperLogoutSettingsItem,
-} from '@wildflowerhealthio/gatekeeper-react'
+  authorizationLogoutSettingsItem,
+} from '@wildflowerhealthio/authorization-react'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Option } from 'effect'
 
@@ -97,7 +97,7 @@ const underBasepath = (basepath: string, route: string): string =>
   `${basepath.replace(/\/$/, '')}${route}`
 
 /**
- * The settings screen's Logout row: gatekeeper's, over `bearerStore`. It
+ * The settings screen's Logout row: the authorization server's, over `bearerStore`. It
  * forgets the bearer, revokes it at the session's server's `/access/logout`,
  * clears the tab's `sessionStorage` (the session's server and any
  * half-finished sign-in's pending record), and reloads the bare landing page
@@ -116,7 +116,7 @@ const logoutSettingsItem = (
   basepath: string,
   bearerStore: BearerAuthStateStore
 ): SettingsItem =>
-  gatekeeperLogoutSettingsItem({
+  authorizationLogoutSettingsItem({
     bearerStore,
     fetch: (input, init) => page.fetch(input, init),
     leave: () => {

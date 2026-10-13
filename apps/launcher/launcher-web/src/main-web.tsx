@@ -5,16 +5,16 @@ import '@wildflowerhealthio/react-tundraish/styles'
 // itself; naming it here too (one module, so one copy) puts it ahead of this
 // app's own `global.css`, after the design system it builds on.
 import '@wildflowerhealthio/branding-react/styles.css'
-import { basenameOf, restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import {
   isAuthorizationResponse,
   searchAfterArrivingLaunch,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   makeAwaitLandingAuthReady,
   makeBearerAuthStateStore,
   sanitizeReturnTo,
-} from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-react'
+import { basenameOf, restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { consentedTelemetryLayer } from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
@@ -136,7 +136,7 @@ const bootApp = async (): Promise<JSX.Element> => {
   // A load opened with a SMART launch (`?iss=`, and `launch` for an EHR
   // launch — the base opening this server's launcher) is pointed at the server
   // `iss` names, and the launch leaves the URL, read once: a reload must not
-  // offer gatekeeper a launch it has already spent. The landing signs in to
+  // offer the authorization server a launch it has already spent. The landing signs in to
   // that server on arrival, with the EHR launch. A return leg is never a
   // launch too, so this leaves its settled URL as it is.
   const arrivalSearch = window.location.search

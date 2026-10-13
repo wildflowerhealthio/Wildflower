@@ -7,7 +7,7 @@
 //! scope-gated [`capabilities`](crate::domain::capabilities) in `domain/` are
 //! built from it through the per-capability bindings in the parent
 //! [`live_bindings`](super) module, and `domain/` must not depend on
-//! `crate::http` (gatekeeper/databases style; see
+//! `crate::http` (authorization-server/databases style; see
 //! `docs/Authorization/Scope-Gated Endpoints How-To.md`).
 
 use std::sync::Arc;
@@ -22,7 +22,7 @@ use crate::ports::{AppLaunchScopes, LaunchContextMinter};
 /// abstraction is the [`crate::domain::AppsStore`] trait the capabilities are
 /// generic over, so the state and axum wiring stay monomorphic. Held in an `Arc` and extracted via
 /// `State<Arc<AppsState>>` (launch glue) or lifted into a `Scoped<…>` capability
-/// (every data-touching admin handler) per the tunnel-rust / gatekeeper pattern.
+/// (every data-touching admin handler) per the tunnel-rust / authorization-server-rust pattern.
 pub struct AppsState {
     /// The apps store — serves the `app_registrations` registry.
     pub(crate) store: SqliteAppsStore,
@@ -31,10 +31,10 @@ pub struct AppsState {
     pub(crate) public_origin: Url,
     /// Resolves a **SMART** app's required launch scopes (its OAuth client's
     /// allowed scopes) for the per-app launch check (see [`AppLaunchScopes`]). The
-    /// host wires a gatekeeper-backed adapter; tests use a fake / no-op.
+    /// host wires an authorization-server-backed adapter; tests use a fake / no-op.
     pub(crate) launch_scopes: Arc<dyn AppLaunchScopes>,
     /// Mints the SMART `launch` value a SMART app's launch URL carries (see
-    /// [`LaunchContextMinter`]). The host wires a gatekeeper-backed adapter;
+    /// [`LaunchContextMinter`]). The host wires an authorization-server-backed adapter;
     /// tests use a fake.
     pub(crate) launch_context_minter: Arc<dyn LaunchContextMinter>,
 }

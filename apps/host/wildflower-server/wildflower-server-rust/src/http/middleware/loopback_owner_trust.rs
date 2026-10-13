@@ -7,18 +7,18 @@
 
 use std::net::SocketAddr;
 
-use wildflowerhealthio_gatekeeper::{ensure_bearer_header, is_pre_auth_public_path};
+use wildflowerhealthio_authorization_server::{ensure_bearer_header, is_pre_auth_public_path};
 
 /// Desktop loopback-owner trust: presents the host's owner `Authorization:
 /// Bearer` header on behalf of a direct-local caller. Holds a `watch::Receiver`
 /// for the minted host owner token; each request reads the current token off
 /// the channel and builds the header inline. The token only changes when
-/// `setup_gatekeeper` re-mints, and loopback owner traffic is low-volume, so
+/// `setup_authorization_server` re-mints, and loopback owner traffic is low-volume, so
 /// rebuilding the short header string per request is negligible — not worth
 /// caching behind a lock.
 #[derive(Clone)]
 pub(crate) struct LoopbackOwnerTrust {
-    /// The channel `setup_gatekeeper` publishes the minted host owner token on.
+    /// The channel `setup_authorization_server` publishes the minted host owner token on.
     pub(crate) token_rx: tokio::sync::watch::Receiver<Option<String>>,
 }
 
@@ -26,7 +26,7 @@ pub(crate) struct LoopbackOwnerTrust {
 /// one that reached the loopback API over a loopback socket peer AND without a
 /// `Forwarded` header (a remote caller a front relayed carries one). The desktop
 /// webview holds no credential of its own, so it authenticates on *connection
-/// provenance*: the server attaches the host's owner bearer, and the gatekeeper
+/// provenance*: the server attaches the host's owner bearer, and the authorization server
 /// gate and fhir-r4-rust's own JWKS bearer check both validate it normally — no
 /// slice-side special-casing.
 ///
@@ -34,7 +34,7 @@ pub(crate) struct LoopbackOwnerTrust {
 /// webview — any local process on the machine reaches the same surface. That is
 /// the desktop single-user trust model (a local process running as the user can
 /// already read the app's data on disk). It stays gated on `!forwarded` so it
-/// never extends to remote callers a front relayed, and skips gatekeeper's
+/// never extends to remote callers a front relayed, and skips the authorization server's
 /// pre-auth public surface ([`is_pre_auth_public_path`]) where a stray owner
 /// bearer could confuse client authentication. A request that already presents
 /// its own bearer is left untouched (via the shared [`ensure_bearer_header`]).

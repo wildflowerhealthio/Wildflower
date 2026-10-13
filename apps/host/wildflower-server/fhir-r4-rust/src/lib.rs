@@ -2,9 +2,9 @@
 //! as the FHIR R4 backend. It opens a sqlite store, serves HFS's Axum router
 //! at the server's root (FHIR base = origin), overrides the SMART discovery doc with a
 //! SMART-App-Launch-shaped one, adds the `$everything` operation HFS lacks,
-//! mounts HFS's web UI at `/ui` with its sign-in against gatekeeper, and
+//! mounts HFS's web UI at `/ui` with its sign-in against the authorization server, and
 //! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy against
-//! gatekeeper's JWKS.
+//! the authorization server's JWKS.
 
 mod auth;
 mod bulk_export;
@@ -119,7 +119,7 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 ///
 /// The router serves HFS at the root with two overrides mounted ahead of it:
 /// - `/.well-known/smart-configuration` is handled locally so we can
-///   advertise the SMART App Launch grant + gatekeeper's authorize/token URLs,
+///   advertise the SMART App Launch grant + the authorization server's authorize/token URLs,
 ///   which HFS's built-in (Backend-Services-shaped) discovery doc doesn't.
 /// - `/Patient/{id}/$everything` implements the FHIR `$everything`
 ///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
@@ -144,9 +144,9 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// as the session's bearer.
 ///
 /// `revocation_store` is the shared token-revocation store the host wires into
-/// both this and gatekeeper; when auth is enabled, HFS consults it per validated
+/// both this and the authorization server; when auth is enabled, HFS consults it per validated
 /// token through a revocation-checking [`AuthProvider`](helios_auth::AuthProvider)
-/// wrapper (per-`jti` denylist — defense-in-depth behind gatekeeper's gate). See
+/// wrapper (per-`jti` denylist — defense-in-depth behind the authorization server's gate). See
 /// [`crate::auth`].
 ///
 /// HFS's `base_url`, the prefix of every URL it emits (Bundle links,
@@ -254,7 +254,7 @@ where
         auth_config.clone(),
         auth_state,
         // Audit middleware: we don't write FHIR audit events from inside
-        // fhir-r4-rust today; the gatekeeper gating layer above us handles
+        // fhir-r4-rust today; the authorization server gating layer above us handles
         // owner/admin access auditing separately.
         None,
         Some(bulk_export_bundle(sqlite_backend, export_output_store)),
@@ -374,15 +374,15 @@ fn mount_ui(
 const MAX_UI_BODY_BYTES: usize = 30 * 1024 * 1024;
 
 /// The web UI's sign-in, as `helios-auth`'s [`LoginConfig`]: the
-/// authorization-code flow with PKCE against this server's gatekeeper, as the
-/// public client `ui_client_id` (which gatekeeper seeds with
+/// authorization-code flow with PKCE against this server's authorization server, as the
+/// public client `ui_client_id` (which the authorization server seeds with
 /// `{public_origin}/ui/callback` as its redirect URI), asking for
 /// `user/*.cruds`.
 ///
 /// The browser is sent to the authorize endpoint on `public_origin`, where it
 /// reaches the server. HFS redeems the code server-side at the token endpoint on
-/// `loopback_base_url`: gatekeeper's `/oauth/*` routes take no host owner token
-/// on loopback, and the call stays on the device. Gatekeeper has no OpenID
+/// `loopback_base_url`: the authorization server's `/oauth/*` routes take no host owner token
+/// on loopback, and the call stays on the device. The authorization server has no OpenID
 /// Connect, so there is no ID token and no end-session endpoint: the session's
 /// identity is its access token's `sub`.
 #[must_use]
@@ -485,7 +485,7 @@ mod tests {
     }
 
     /// The UI signs in through the browser at the public origin, redeems the
-    /// code on loopback, comes back to the redirect URI gatekeeper seeds, and
+    /// code on loopback, comes back to the redirect URI the authorization server seeds, and
     /// asks for `user/*.cruds` as a public client; its cookie is `Secure` on an
     /// https origin.
     #[test]

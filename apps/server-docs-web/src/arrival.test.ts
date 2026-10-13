@@ -1,7 +1,7 @@
 import {
   arrivingSmartLaunchFrom,
   isAuthorizationResponse,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'

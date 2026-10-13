@@ -1418,12 +1418,12 @@ importers:
       '@wildflowerhealthio/fhir-r4-react':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4-react
-      '@wildflowerhealthio/gatekeeper-core':
+      '@wildflowerhealthio/authorization-core':
         specifier: workspace:*
-        version: link:../../../slices/gatekeeper/gatekeeper-core
-      '@wildflowerhealthio/gatekeeper-react':
+        version: link:../../../slices/authorization/authorization-core
+      '@wildflowerhealthio/authorization-react':
         specifier: workspace:*
-        version: link:../../../slices/gatekeeper/gatekeeper-react
+        version: link:../../../slices/authorization/authorization-react
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -1566,9 +1566,9 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.3.0(@types/react@19.3.0)
-      '@wildflowerhealthio/gatekeeper-react':
+      '@wildflowerhealthio/authorization-react':
         specifier: workspace:*
-        version: link:../../../../slices/gatekeeper/gatekeeper-react
+        version: link:../../../../slices/authorization/authorization-react
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../../global/kitchen-sink
@@ -2320,9 +2320,9 @@ importers:
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../slices/branding/branding-core
-      '@wildflowerhealthio/gatekeeper-core':
+      '@wildflowerhealthio/authorization-core':
         specifier: workspace:*
-        version: link:../../slices/gatekeeper/gatekeeper-core
+        version: link:../../slices/authorization/authorization-core
       effect:
         specifier: 'catalog:'
         version: 3.22.2
@@ -3658,6 +3658,144 @@ importers:
         specifier: 'catalog:'
         version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.3(vitest@5.0.3))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.2)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
+  slices/authorization/authorization-core:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@wildflowerhealthio/kitchen-sink':
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      '@wildflowerhealthio/shared-structures-core':
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-core
+      bumpp:
+        specifier: 'catalog:'
+        version: 12.3.0
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.10
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.2
+      openapi-to-effect:
+        specifier: ^0.9.3
+        version: 0.9.3(openapi-types@12.1.3)
+      prettier:
+        specifier: ^3.9.9
+        version: 3.9.9
+      prettier-plugin-jsdoc:
+        specifier: ^1.3.0
+        version: 1.8.1(prettier@3.9.9)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.3(vitest@5.0.3))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.2)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+      why-is-node-running:
+        specifier: 'catalog:'
+        version: 3.2.2
+
+  slices/authorization/authorization-react:
+    devDependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.97.2(effect@3.22.2)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.104.1(react@19.3.0)
+      '@tanstack/react-router':
+        specifier: 'catalog:'
+        version: 1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/router-plugin':
+        specifier: 'catalog:'
+        version: 1.168.43(@tanstack/react-router@1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      '@wildflowerhealthio/fhir-r4':
+        specifier: workspace:*
+        version: link:../../fhir/fhir-r4
+      '@wildflowerhealthio/fhir-r4-react':
+        specifier: workspace:*
+        version: link:../../fhir/fhir-r4-react
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../authorization-core
+      '@wildflowerhealthio/kitchen-sink':
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      '@wildflowerhealthio/react-kitchen-sink':
+        specifier: workspace:*
+        version: link:../../../global/react-kitchen-sink
+      '@wildflowerhealthio/react-tundraish':
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../../scopes/scopes-core
+      '@wildflowerhealthio/scopes-react':
+        specifier: workspace:*
+        version: link:../../scopes/scopes-react
+      '@wildflowerhealthio/shared-structures-react':
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-react
+      '@wildflowerhealthio/telemetry-react':
+        specifier: workspace:*
+        version: link:../../telemetry/telemetry-react
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.1.2
+      react:
+        specifier: 'catalog:'
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.3(vitest@5.0.3))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.2)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
   slices/branding/branding-core:
     devDependencies:
       '@types/node':
@@ -3910,9 +4048,9 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../fhir-r4
-      '@wildflowerhealthio/gatekeeper-core':
+      '@wildflowerhealthio/authorization-core':
         specifier: workspace:*
-        version: link:../../gatekeeper/gatekeeper-core
+        version: link:../../authorization/authorization-core
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -4176,144 +4314,6 @@ importers:
       typescript-7:
         specifier: 'catalog:'
         version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.3(vitest@5.0.3))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.2)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-
-  slices/gatekeeper/gatekeeper-core:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@types/node':
-        specifier: ^26
-        version: 26.1.0
-      '@wildflowerhealthio/kitchen-sink':
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      '@wildflowerhealthio/shared-structures-core':
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-core
-      bumpp:
-        specifier: 'catalog:'
-        version: 12.3.0
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      jose:
-        specifier: 'catalog:'
-        version: 6.2.10
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.2
-      openapi-to-effect:
-        specifier: ^0.9.3
-        version: 0.9.3(openapi-types@12.1.3)
-      prettier:
-        specifier: ^3.9.9
-        version: 3.9.9
-      prettier-plugin-jsdoc:
-        specifier: ^1.3.0
-        version: 1.8.1(prettier@3.9.9)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      typescript-7:
-        specifier: 'catalog:'
-        version: typescript@7.0.2
-      vite:
-        specifier: 'catalog:'
-        version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.3(vitest@5.0.3))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.2)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
-      why-is-node-running:
-        specifier: 'catalog:'
-        version: 3.2.2
-
-  slices/gatekeeper/gatekeeper-react:
-    devDependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.97.2(effect@3.22.2)
-      '@tanstack/react-query':
-        specifier: 'catalog:'
-        version: 5.104.1(react@19.3.0)
-      '@tanstack/react-router':
-        specifier: 'catalog:'
-        version: 1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-plugin':
-        specifier: 'catalog:'
-        version: 1.168.43(@tanstack/react-router@1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.12)(rollup@4.62.2)
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.2
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.7(@testing-library/dom@10.4.2)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.3.0(@types/react@19.3.0)
-      '@wildflowerhealthio/fhir-r4':
-        specifier: workspace:*
-        version: link:../../fhir/fhir-r4
-      '@wildflowerhealthio/fhir-r4-react':
-        specifier: workspace:*
-        version: link:../../fhir/fhir-r4-react
-      '@wildflowerhealthio/gatekeeper-core':
-        specifier: workspace:*
-        version: link:../gatekeeper-core
-      '@wildflowerhealthio/kitchen-sink':
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      '@wildflowerhealthio/react-kitchen-sink':
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      '@wildflowerhealthio/react-tundraish':
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
-      '@wildflowerhealthio/scopes-core':
-        specifier: workspace:*
-        version: link:../../scopes/scopes-core
-      '@wildflowerhealthio/scopes-react':
-        specifier: workspace:*
-        version: link:../../scopes/scopes-react
-      '@wildflowerhealthio/shared-structures-react':
-        specifier: workspace:*
-        version: link:../../shared-structures/shared-structures-react
-      '@wildflowerhealthio/telemetry-react':
-        specifier: workspace:*
-        version: link:../../telemetry/telemetry-react
-      effect:
-        specifier: 'catalog:'
-        version: 3.22.2
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      jsdom:
-        specifier: 'catalog:'
-        version: 30.1.2
-      react:
-        specifier: 'catalog:'
-        version: 19.3.0
-      react-dom:
-        specifier: 19.3.0
-        version: 19.3.0(react@19.3.0)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'

@@ -49,7 +49,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/importer-web dev`, on the port
  *   `dev-app-ports.json` pins) is launched through the debug-only
  *   `importer-dev` row (`apps-rust`'s `seed_dev_apps`) and its client,
- *   `57268ff88aea38d6a22de56ae53e2c28` (`gatekeeper-rust`'s
+ *   `57268ff88aea38d6a22de56ae53e2c28` (`authorization-server-rust`'s
  *   `seed_dev_app_clients`), which registers the
  *   dev server's loopback root (`http://localhost:{port}/`) as its redirect.
  *
@@ -59,7 +59,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * redirect against that client's registered URIs.
  *
  * The scope string MUST equal the `allowed_scopes` JSON array the
- * `gatekeeper-rust` migrations seed for the Importer's client — originally
+ * `authorization-server-rust` migrations seed for the Importer's client — originally
  * `0008_seed_wildflower_importer_client`, widened by
  * `0009_widen_importer_client_write_scopes` (broadens every type to `.cruds` and
  * adds `Practitioner`, `DiagnosticReport`, `Medication`, `MedicationRequest`,
@@ -69,10 +69,10 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * for element: a scope the app requests but the client is not allowed fails the
  * authorize step. Nothing enforces that across the TS/Rust boundary, so the
  * pairing is pinned here, in the migration's own comment, and in
- * [AGENTS.md](../AGENTS.md); the Rust assertion in `gatekeeper-rust`'s
+ * [AGENTS.md](../AGENTS.md); the Rust assertion in `authorization-server-rust`'s
  * `clients.rs` mirrors it on the other side. A **dev** build authorizes against
  * the `importer-dev` tile's client instead (the `clientId` selected above), whose
- * `allowed_scopes` live in `gatekeeper-rust`'s `seed_dev_app_clients` and carry
+ * `allowed_scopes` live in `authorization-server-rust`'s `seed_dev_app_clients` and carry
  * this same set — widen that copy in step too, or `/authorize` fails only under
  * `vp run -F @wildflowerhealthio/importer-web dev`.
  *

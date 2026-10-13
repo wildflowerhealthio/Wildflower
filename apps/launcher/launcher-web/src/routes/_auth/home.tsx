@@ -8,7 +8,7 @@ import type { JSX } from 'react'
  * only.
  *
  * Owned at the app level (not in the slice) for symmetry with the two
- * `gatekeeper.tsx` layouts: the router-plugin's `physical()` mounts
+ * `authorization.tsx` layouts: the router-plugin's `physical()` mounts
  * compute generated-variable names from the in-mount path only, so
  * keeping slice-level layouts requires us to avoid sibling collisions
  * across the `_auth/` and `_open/` buckets. Owning every section layout

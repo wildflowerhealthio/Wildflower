@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@scalar/api-reference": "catalog:",
+    "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/branding-core": "workspace:*",
-    "@wildflowerhealthio/gatekeeper-core": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

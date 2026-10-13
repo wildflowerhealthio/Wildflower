@@ -24,7 +24,7 @@ http-errors = ["dep:axum", "dep:tracing"]
 # `served_base_url_for`) — the single source of truth for the `Forwarded` header
 # (RFC 7239) the trusted front sets on relayed requests. Gated so non-HTTP
 # crates don't pull `axum`; the slices that resolve a request's served origin
-# (wildflowerhealthio-gatekeeper, wildflowerhealthio-apps) enable it.
+# (wildflowerhealthio-authorization-server, wildflowerhealthio-apps) enable it.
 served-origin = ["dep:axum"]
 # Opt-in: the diesel `JsonText` SQLite mapping (a `serde_json::Value` field
 # stored in a JSON TEXT column), shared by the diesel-backed slices. Gated so
@@ -40,7 +40,7 @@ diesel-json-text = ["dep:diesel", "dep:serde_json"]
 serde = { workspace = true }
 # `url` is non-optional: the always-on `ServerRuntimeConfig::loopback_origin`
 # returns a `Url` — the single typed source the host threads into every slice's
-# config (apps / gatekeeper / fhir-r4), so the loopback origin is parsed
+# config (apps / the authorization server / fhir-r4), so the loopback origin is parsed
 # once here rather than rebuilt from a string downstream.
 url = { version = "2" }
 utoipa = { workspace = true, optional = true }

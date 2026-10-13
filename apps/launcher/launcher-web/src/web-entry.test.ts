@@ -1,8 +1,8 @@
 import {
   arrivingSmartLaunchFrom,
   normalizeServerUrl,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
-import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-core/smart-client'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
@@ -91,7 +91,7 @@ describe('ehrLaunchIn', () => {
 
 describe('searchAfterReturnLeg', () => {
   it('should point a failed return leg back at the server it was signing in to', () => {
-    // Arrange — gatekeeper refused the launch and redirected back.
+    // Arrange — the authorization server refused the launch and redirected back.
     const returnSearch = '?error=invalid_request&error_description=Invalid+launch&state=s'
 
     // Act

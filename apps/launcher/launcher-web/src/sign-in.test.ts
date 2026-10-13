@@ -1,4 +1,3 @@
-import { sectionUrl } from '@wildflowerhealthio/branding-core'
 import {
   STANDALONE_LAUNCH_SCOPES,
   standaloneLaunchScopeParameter,
@@ -8,8 +7,9 @@ import {
   PlainSmartServer,
   WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
-import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-core/smart-client'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
+import { sectionUrl } from '@wildflowerhealthio/branding-core'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   AuthedUntil,
@@ -47,7 +47,7 @@ describe('signInEnvironment', () => {
     // three different values here and only one could be the registered entry.
     const fromRoot = signInEnvironment(pageAt('https://wildflowerhealth.io/'))
     const fromSection = signInEnvironment(pageAt('https://wildflowerhealth.io/settings/requests'))
-    const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/gatekeeper/grants'))
+    const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/authorization/grants'))
 
     // Assert
     expect(fromRoot.redirectUri).toBe('https://wildflowerhealth.io/')
@@ -90,7 +90,7 @@ describe('signInEnvironment', () => {
   it('names the published app root', () => {
     // `/oauth/authorize` matches the seeded row's entry by exact string
     // equality. This holds the constant to the published section address;
-    // gatekeeper-rust's `clients.rs` holds the seeded row to the same value.
+    // authorization-server-rust's `clients.rs` holds the seeded row to the same value.
     expect(REGISTERED_REDIRECT_URI).toBe(`${sectionUrl('launcher')}/`)
   })
 
@@ -101,7 +101,7 @@ describe('signInEnvironment', () => {
     // Assert — the wire form is the space-delimited list, in order.
     expect(environment.scope).toBe(STANDALONE_LAUNCH_SCOPES.join(' '))
     expect(environment.scope).toBe(standaloneLaunchScopeParameter())
-    // The id gatekeeper migration `0026_rekey_launcher_client` seeds.
+    // The id the authorization server migration `0026_rekey_launcher_client` seeds.
     expect(environment.clientId).toBe('03a513940b52f8c2649a5366d1a26d19')
   })
 
@@ -347,7 +347,7 @@ describe('authStateForSession', () => {
   })
 
   it('publishes a response with no reported lifetime as authed with no known expiry', () => {
-    // `expires_in` is optional in RFC 6749 (gatekeeper always sends it). An
+    // `expires_in` is optional in RFC 6749 (the authorization server always sends it). An
     // invented `exp` would claim a freshness nothing established, so the signal
     // says "authed, expiry unknown" instead.
     fc.assert(

@@ -19,12 +19,12 @@ import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-c
  *   `statusOrElse` (an *undeclared* status) or a raw `filterStatusOk` produce;
  *   and
  * - a typed `HttpApiError.Unauthorized` — what an endpoint that *declares* 401
- *   via `RequireAuthMiddleware` (gatekeeper's `/access` surface — grants,
+ *   via `RequireAuthMiddleware` (the authorization server's `/access` surface — grants,
  *   devices, consents) decodes its 401 into. `HttpApiClient` never surfaces
  *   these as a `ResponseError`.
  *
  * Matching only the `ResponseError` shape left the boot-race retry and the
- * device-login redirect silently blind to gatekeeper's own 401s. The status (or
+ * device-login redirect silently blind to the authorization server's own 401s. The status (or
  * the typed error), not the reason, is the reliable 401 signal.
  */
 const isUnauthorizedError = (error: unknown): boolean =>

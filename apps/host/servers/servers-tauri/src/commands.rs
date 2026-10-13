@@ -363,7 +363,7 @@ mod tests {
     use serde::Deserialize;
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
-    use wildflowerhealthio_gatekeeper::NoLoopbackConsentPrompt;
+    use wildflowerhealthio_authorization_server::NoLoopbackConsentPrompt;
     use wildflowerhealthio_rathole_settings::{
         ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
     };

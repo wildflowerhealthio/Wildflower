@@ -19,7 +19,7 @@
 //! header.
 //!
 //! A SMART app's launch carries a `launch` the apps slice mints through
-//! gatekeeper, which the app's `/oauth/authorize` consumes once.
+//! the authorization server, which the app's `/oauth/authorize` consumes once.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,9 +36,9 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
-use wildflowerhealthio_gatekeeper::{
-    GatekeeperStore, NoLoopbackConsentPrompt, SqliteGatekeeperStore,
+use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
+use wildflowerhealthio_authorization_server::{
+    GrantStore, NoLoopbackConsentPrompt, SqliteGrantStore,
 };
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_shared_structures::health_check::{
@@ -87,12 +87,13 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         )),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),
-        // The owner-defining scopes gatekeeper requires the host owner token to cover.
-        host_owner_scopes: wildflowerhealthio_gatekeeper::WILDFLOWER_WIDEST_SCOPES
+        // The owner-defining scopes the authorization server requires the host owner token to cover.
+        host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)
             .collect(),
-        first_party_client_id: wildflowerhealthio_gatekeeper::FIRST_PARTY_CLIENT_ID.to_owned(),
+        first_party_client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
+            .to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // domain below never answers.
@@ -316,14 +317,14 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
 }
 
 /// A client token issued by and for `server_origin`, granting `scopes`, signed
-/// with the key gatekeeper keeps in the server's database under `app_data_dir`.
+/// with the key the authorization server keeps in the server's database under `app_data_dir`.
 fn client_token(app_data_dir: &Path, server_origin: &str, scopes: &[String]) -> String {
     // The server's shared database (`WILDFLOWER_DB` in `set_up`); a wrong name
     // opens an empty one, with no signing key to find.
     let pool = wildflowerhealthio_persistence::open_pool(&app_data_dir.join("wildflower.sqlite"))
         .expect("open the server's database");
-    let signing_key = SqliteGatekeeperStore::new(pool)
-        .expect("gatekeeper store")
+    let signing_key = SqliteGrantStore::new(pool)
+        .expect("grant store")
         .active_signing_key()
         .expect("signing-key query")
         .expect("an active signing key");
@@ -401,7 +402,7 @@ async fn request_log_holds_forwarded_metadata(loopback_base_url: &Url, bearer_to
 }
 
 /// The composition root's request-log wiring: the forwarded-request layer feeds
-/// the request log's writer, and `/requests` sits behind the gatekeeper bearer
+/// the request log's writer, and `/requests` sits behind the authorization server bearer
 /// gate, which hands the request log's scope check the caller's scopes.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_request_log_records_forwarded_requests_behind_its_scope() {
@@ -892,7 +893,7 @@ async fn authorize_health_viewer_launch(
 }
 
 /// The composition root's launch wiring: `POST /apps/{id}` for a SMART app
-/// answers its launch URL with the FHIR base as `iss` and a `launch` gatekeeper
+/// answers its launch URL with the FHIR base as `iss` and a `launch` the authorization server
 /// minted for the app's client, and that `launch` parks one authorization
 /// request at `/oauth/authorize`, then is refused.
 #[tokio::test(flavor = "multi_thread")]
@@ -1021,7 +1022,6 @@ fn on_loopback(loopback_base_url: &Url, url: &str) -> Url {
 struct UiServer {
     app_data_dir: tempfile::TempDir,
     loopback_base_url: Url,
-    host_owner_token_rx: watch::Receiver<Option<String>>,
     browser: reqwest::Client,
     shutdown: CancellationToken,
     serving: JoinHandle<anyhow::Result<()>>,
@@ -1034,14 +1034,8 @@ impl UiServer {
         let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
         let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
             .expect("loopback base URL");
-        let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
-        let (active_pending_consent_tx, _active_pending_consent_rx) =
-            watch::channel::<Option<PendingConsentHead>>(None);
         let host_ports = HostPorts {
             loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-            on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-            host_owner_token_tx,
-            active_pending_consent_tx,
         };
         let (server_health_tx, _server_health_rx) = watch::channel(None);
         let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
@@ -1049,6 +1043,7 @@ impl UiServer {
             server_health_tx,
             tunnel_state_tx: watch::channel(None).0,
             certificate_tx: watch::channel(None).0,
+            pending_consent_tx: watch::channel(None).0,
             forwarded_request_tx,
         };
         let shutdown = CancellationToken::new();
@@ -1070,7 +1065,6 @@ impl UiServer {
         Self {
             app_data_dir,
             loopback_base_url,
-            host_owner_token_rx,
             browser,
             shutdown,
             serving,
@@ -1079,7 +1073,7 @@ impl UiServer {
 
     /// Sign in to the UI as its seeded client, the Owner approving, and return
     /// the session cookie (`name=value`) the UI's callback sets: `/ui/login`
-    /// sends the browser to gatekeeper's authorize endpoint, gatekeeper parks
+    /// sends the browser to the authorization server's authorize endpoint, the authorization server parks
     /// the request for the Owner, and the UI redeems the approved code.
     async fn sign_in(&self) -> String {
         let login = self
@@ -1092,7 +1086,7 @@ impl UiServer {
         let authorize_url = location_of(&login);
         assert!(
             authorize_url.starts_with(&format!("{SERVER_ORIGIN}/oauth/authorize?")),
-            "sent to gatekeeper's authorize endpoint, got {authorize_url}"
+            "sent to the authorization server's authorize endpoint, got {authorize_url}"
         );
         let pending_cookies = cookies_set_by(&login).join("; ");
 
@@ -1108,11 +1102,12 @@ impl UiServer {
             .strip_prefix("authorize/")
             .and_then(|rest| rest.strip_suffix("/wait"))
             .unwrap_or_else(|| panic!("parked for the Owner, got {wait_page}"));
-        let owner_token = self
-            .host_owner_token_rx
-            .borrow()
-            .clone()
-            .expect("the host owner token is minted at set-up");
+        let owner_scopes: Vec<String> =
+            wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+        let owner_token = client_token(self.app_data_dir.path(), SERVER_ORIGIN, &owner_scopes);
         let approved: Value = self
             .browser
             .post(
@@ -1189,12 +1184,12 @@ impl UiServer {
 
 /// The FHIR web UI's sign-in, end to end through the composed server: its
 /// assets are served without a session, the UI sends the browser to
-/// gatekeeper's authorize endpoint as its seeded client, the Owner approves
+/// the authorization server's authorize endpoint as its seeded client, the Owner approves
 /// it, the UI redeems the code on its callback and sets its session cookie,
 /// and a FHIR read carrying only that cookie is served, while the same read
 /// without it is refused at the gate.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_fhir_ui_signs_in_through_gatekeeper_and_reads_fhir_on_its_session() {
+async fn the_fhir_ui_signs_in_through_authorization_server_and_reads_fhir_on_its_session() {
     let server = UiServer::start().await;
 
     // The UI's assets are served before sign-in, past the gate; a `/ui` path

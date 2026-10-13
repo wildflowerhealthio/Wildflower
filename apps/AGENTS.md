@@ -53,8 +53,8 @@ depends on its Rust half.
 - **Only a slice's Rust crates** fold in when the host is their only consumer
   but other products share the slice's TypeScript packages. The crates move to
   `apps/host/wildflower-server/`, with the docs about them; the slice keeps its
-  TypeScript packages, its AGENTS.md and the shared docs: `gatekeeper-rust` and
-  `token-revocation-rust` left `slices/gatekeeper`, and `fhir-r4-rust` left
+  TypeScript packages, its AGENTS.md and the shared docs: `authorization-server-rust` and
+  `token-revocation-rust` left `slices/authorization`, and `fhir-r4-rust` left
   `slices/fhir`. A crate another product also uses stays behind, as
   `rathole-settings-rust`, which the relay shares, stayed when `tunnel-rust`
   moved.
@@ -64,7 +64,7 @@ depends on its Rust half.
   reading `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`.
 - **Shared packages never fold in.** Anything two products use stays in
   `slices/` or `global/` (`branding`, `telemetry`, `smart-app-react`,
-  `gatekeeper-core`, `global/pebble`); a file every app reads sits at the repo
+  `authorization-core`, `global/pebble`); a file every app reads sits at the repo
   root (`dev-app-ports.json`).
 
 ### Names
@@ -122,7 +122,7 @@ Ids that predate this are tracked in
    product is not a slice.
 4. Re-key what installs already hold with new migrations, never edits to
    shipped ones: an apps-rust migration for the tile and dev tile
-   (`0017_rekey_lifting_app`) and a gatekeeper-rust migration for the clients
+   (`0017_rekey_lifting_app`) and a authorization-server-rust migration for the clients
    and every table that names them (`0025_rekey_lifting_app_clients`).
 
 ## Dev-server ports
