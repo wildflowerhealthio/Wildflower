@@ -28,7 +28,7 @@ The system, Patient and Group `$export` operations are served, with HFS's defaul
 
 `GET /.well-known/smart-configuration` is handled locally (`src/smart_configuration.rs`), mounted ahead of HFS with HFS's router as the fallback.
 
-HFS's built-in discovery doc is shaped for **SMART Backend Services** — it advertises `client_credentials` with `token_endpoint_auth_methods_supported: ["private_key_jwt"]` only. Public **SMART App Launch** clients (e.g. the SMART growth-chart sample) need the `authorization_code` grant and an `authorization_endpoint`. Our override advertises the gatekeeper authorize/token URLs that already exist at the host root, so a SMART app fetches discovery here and follows the links straight to gatekeeper for the authorize/token exchange. Its `capabilities` also list `wildflower-server`, which is how a client (`gatekeeper-core`'s discovery) tells a Wildflower server from a plain SMART server answering at the same kind of URL.
+HFS's built-in discovery doc is shaped for **SMART Backend Services** — it advertises `client_credentials` with `token_endpoint_auth_methods_supported: ["private_key_jwt"]` only. Public **SMART App Launch** clients (e.g. the SMART growth-chart sample) need the `authorization_code` grant and an `authorization_endpoint`. Our override advertises the gatekeeper authorize/token URLs that already exist at the host root, so a SMART app fetches discovery here and follows the links straight to gatekeeper for the authorize/token exchange. Its `capabilities` also list `wildflower-server`, which is how a client (`authorization-core`'s discovery) tells a Wildflower server from a plain SMART server answering at the same kind of URL.
 
 ## `$everything` operation (added; Patient only)
 

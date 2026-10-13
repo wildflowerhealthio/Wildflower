@@ -154,7 +154,7 @@ import `branding-react/styles.css` itself.
   vocabulary, then a free-URL form. Every URL is a FHIR base, the same
   under either `target`: a Wildflower server's origin (it serves FHIR at its
   root), and the demo server's own base. The `wildflower` caller's `connect`
-  gets only the URL; `gatekeeper-core`'s discovery reads which kind of server
+  gets only the URL; `authorization-core`'s discovery reads which kind of server
   answers there (a Wildflower server lists the `wildflower-server`
   capability). The
   relay name is checked as a single DNS label before it is spliced into a

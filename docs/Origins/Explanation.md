@@ -200,7 +200,7 @@ the server on the same machine, gatekeeper parks the `/oauth/authorize` request
 as usual and also asks the host to show a native Approve / Reject dialog. The
 dialog names the app, the origin the login returns to, and whether the app or
 that address is new. See the gatekeeper
-[Jargon](../../slices/gatekeeper/docs/Jargon%20Explanation.md#loopback-owner-dialog)
+[Jargon](../../slices/authorization/docs/Jargon%20Explanation.md#loopback-owner-dialog)
 for how the answer is applied.
 
 "Direct loopback" is the same test as everywhere else in this doc: the request
@@ -228,7 +228,7 @@ restate the grammar.
 
 - [Apps Explanation](../Apps/Explanation.md) — launch provenance and the
   apps-side auth posture.
-- [Gatekeeper Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)
+- [Gatekeeper Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)
   — `iss` / `aud` / Owner / Client / SMART terms.
 - [Relay Explanation](../Relay/Explanation.md) — the relay between a visitor
   and the tunnel listener, and what its operator is trusted with.

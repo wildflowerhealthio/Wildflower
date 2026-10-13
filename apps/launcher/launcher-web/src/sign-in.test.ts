@@ -1,4 +1,3 @@
-import { sectionUrl } from '@wildflowerhealthio/branding-core'
 import {
   STANDALONE_LAUNCH_SCOPES,
   standaloneLaunchScopeParameter,
@@ -8,8 +7,9 @@ import {
   PlainSmartServer,
   WILDFLOWER_SERVER_CAPABILITY,
   WildflowerServer,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
-import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-core/smart-client'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
+import { sectionUrl } from '@wildflowerhealthio/branding-core'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   AuthedUntil,

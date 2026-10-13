@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   clientsQueryOptions,
-  useRunAuthed as useGatekeeperRunAuthed,
-} from '@wildflowerhealthio/gatekeeper-react'
+  useRunAuthed as useAuthorizationRunAuthed,
+} from '@wildflowerhealthio/authorization-react'
 import { useMemo } from 'react'
 
 /**
@@ -11,7 +11,7 @@ import { useMemo } from 'react'
  * client list loads or when it can't be read, and callers fall back to the id.
  */
 const useClientNames = (): ReadonlyMap<string, string> => {
-  const { data } = useQuery(clientsQueryOptions(useGatekeeperRunAuthed()))
+  const { data } = useQuery(clientsQueryOptions(useAuthorizationRunAuthed()))
   return useMemo(
     () => new Map((data ?? []).map((client) => [client.clientId, client.name] as const)),
     [data]

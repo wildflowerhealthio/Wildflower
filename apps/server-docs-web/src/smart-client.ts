@@ -14,7 +14,7 @@
  * (the same arrangement `apps/importer-web/src/config.ts` uses).
  *
  * The **redirect URI is not written down here** — it is derived from where the
- * page is served, by `gatekeeper-core/smart-client`'s `redirectUriForPage`.
+ * page is served, by `authorization-core/smart-client`'s `redirectUriForPage`.
  *
  * Neither are the **requested scopes**: they are the standalone-launch
  * vocabulary `STANDALONE_LAUNCH_SCOPES` shares with the `launcher-web`
@@ -35,7 +35,7 @@ const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/server-docs/'
 /**
  * The `sessionStorage` key this console's pending-authorization record lives at,
  * namespaced because the console shares both the flow in
- * `gatekeeper-core/smart-client` and the `wildflowerhealth.io` origin with the
+ * `authorization-core/smart-client` and the `wildflowerhealth.io` origin with the
  * hosted launcher.
  */
 const PENDING_AUTHORIZATION_KEY = 'server-docs-web.pending-authorization'

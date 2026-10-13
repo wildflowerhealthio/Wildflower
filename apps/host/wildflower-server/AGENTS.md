@@ -4,7 +4,7 @@ The **Wildflower server** and the Rust crates of the server features only the
 host composes. [`wildflower-server-rust`](./wildflower-server-rust/AGENTS.md)
 is the server itself; the other crates here are the server halves of features
 whose TypeScript halves live with the launcher, in `apps/launcher/`, or stay
-in a slice because more than one product uses them (`slices/gatekeeper`,
+in a slice because more than one product uses them (`slices/authorization`,
 `slices/fhir`).
 
 ## Packages
@@ -15,7 +15,7 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
 - **`authorization-server-rust`** — the OAuth 2.0 / SMART authorization server: clients,
   grants, tokens, the bearer gate every other surface sits behind, and the
   `/access` admin routes. Its TypeScript half,
-  [`slices/gatekeeper`](../../../slices/gatekeeper/AGENTS.md), is shared by
+  [`slices/authorization`](../../../slices/authorization/AGENTS.md), is shared by
   every app that signs in.
 - **`token-revocation-rust`** — the per-token denylist and per-subject epoch
   both enforcement points read: `authorization-server-rust`'s gate and
@@ -54,8 +54,8 @@ in a slice because more than one product uses them (`slices/gatekeeper`,
 - **The TypeScript half reads across folders.** Each OpenAPI snapshot is
   committed beside its crate (`<crate>/openapi/`) and read by relative path:
   `databases-core-js`'s, `request-log-core-js`'s and
-  `apps-core-js`'s drift tests in `apps/launcher/`, `gatekeeper-core`'s drift
-  test and schema codegen in `slices/gatekeeper`, and `apps/server-docs-web`.
+  `apps-core-js`'s drift tests in `apps/launcher/`, `authorization-core`'s drift
+  test and schema codegen in `slices/authorization`, and `apps/server-docs-web`.
   The FHIR R4 snapshot is the exception: HFS emits no spec, so `fhir-r4`
   generates it from its `HttpApi` and commits it in
   `slices/fhir/fhir-r4/openapi/`. Regenerate a

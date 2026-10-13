@@ -26,7 +26,7 @@ the base opens a server's launcher.
   (`session/telemetry-settings-items.ts`) reads the answer by the gate's copy
   and reopens the dialog. The module-level colour-scheme listener is not
   telemetry, and runs before an answer.
-- **The session is the server and its bearer, together.** gatekeeper-react's
+- **The session is the server and its bearer, together.** authorization-react's
   `makeBearerAuthStateStore`, over the tab's `sessionStorage`, holds it: a
   sign-in writes both with `writeSession` (the redirect flow in `bootApp`, the
   device flow through `buildAppTree`'s `TokenResponseHandler`). The bearer
@@ -40,12 +40,12 @@ the base opens a server's launcher.
   (`web-entry.ts`'s `logoutSettingsItem`) revokes the bearer at the session's
   server and clears the tab's `sessionStorage`. A 401 that outlives the
   boot-race retry sends the reader to device login. Tests:
-  `gatekeeper-react`'s `bearer-auth-state-store.test.ts`,
+  `authorization-react`'s `bearer-auth-state-store.test.ts`,
   `bridges/app-query-runtime.test.ts`, `web-entry.test.ts`.
 - **`main-web` takes a SMART launch at its root, with its own sign-in.**
   Like everything `bootApp` does, the launch waits for the consent answer, as
   it does in the SMART apps. `bootApp` reads `?iss=` (and the EHR's `launch`)
-  with `gatekeeper-core/smart-client`'s `searchAfterArrivingLaunch`, over
+  with `authorization-core/smart-client`'s `searchAfterArrivingLaunch`, over
   `arrivingSmartLaunchFrom`, the reader the SMART apps share: it takes both
   out of the URL and points `?server=` at the server `iss` names
   (`normalizeServerUrl`), over any `?server=` already there. The landing then

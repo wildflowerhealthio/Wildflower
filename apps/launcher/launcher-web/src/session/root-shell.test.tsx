@@ -1,6 +1,6 @@
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
-import type * as GatekeeperReact from '@wildflowerhealthio/gatekeeper-react'
+import type * as AuthorizationReact from '@wildflowerhealthio/authorization-react'
 import { type AuthState, Unauthed } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
@@ -68,11 +68,11 @@ vi.mock('@wildflowerhealthio/react-kitchen-sink', () => ({
 // The `RootShell` lifecycle test only consumes the slice runtime
 // layer and the logout row; the `AuthStateStore` itself is constructed
 // inline in the test body below.
-vi.mock('@wildflowerhealthio/gatekeeper-react', async (importOriginal) => {
-  const actual = await importOriginal<typeof GatekeeperReact>()
+vi.mock('@wildflowerhealthio/authorization-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof AuthorizationReact>()
   return {
-    GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
-    gatekeeperLogoutSettingsItem: actual.gatekeeperLogoutSettingsItem,
+    AuthorizationRouterContext: { sliceRuntimeLayer: Layer.empty },
+    authorizationLogoutSettingsItem: actual.authorizationLogoutSettingsItem,
     TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
   }
 })

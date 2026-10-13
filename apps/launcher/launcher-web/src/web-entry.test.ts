@@ -1,8 +1,8 @@
 import {
   arrivingSmartLaunchFrom,
   normalizeServerUrl,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
-import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-core/smart-client'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'

@@ -60,7 +60,7 @@ export const routes = rootRoute('__root.tsx', [
   route('/settings', 'settings.tsx', [
     index('settings/index.tsx'),
     physical('', launcherRoutesDir('request-log/request-log-react', 'settings')),
-    physical('', sliceRoutesDir('gatekeeper', 'settings')),
+    physical('', sliceRoutesDir('authorization', 'settings')),
     physical('', launcherRoutesDir('databases/databases-react', 'settings')),
     physical('', launcherRoutesDir('apps-react', 'settings')),
   ]),
@@ -69,12 +69,12 @@ export const routes = rootRoute('__root.tsx', [
   layout('_auth', '_auth.tsx', [
     route('/home', '_auth/home.tsx', [physical('', launcherRoutesDir('apps-react', '_auth/home'))]),
     route('/gatekeeper', '_auth/gatekeeper.tsx', [
-      physical('', sliceRoutesDir('gatekeeper', '_auth/gatekeeper')),
+      physical('', sliceRoutesDir('authorization', '_auth/gatekeeper')),
     ]),
   ]),
   layout('_open', '_open.tsx', [
     route('/gatekeeper', '_open/gatekeeper.tsx', [
-      physical('', sliceRoutesDir('gatekeeper', '_open/gatekeeper')),
+      physical('', sliceRoutesDir('authorization', '_open/gatekeeper')),
     ]),
   ]),
 ])

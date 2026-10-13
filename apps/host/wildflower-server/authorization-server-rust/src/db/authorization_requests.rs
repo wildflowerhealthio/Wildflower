@@ -183,7 +183,7 @@ pub(super) fn pending_authorization_request_by_user_code(
 
 /// Return the [`PendingConsentHead`] of the oldest pending, non-expired
 /// authorization request across **both** grant flows, or `None` when none
-/// exists. See `slices/gatekeeper/docs/Jargon Explanation.md`
+/// exists. See `slices/authorization/docs/Jargon Explanation.md`
 /// ("Pending-consent queue") for what drives this and who consumes it.
 ///
 /// The `user_code IS NOT NULL` guard is scoped to the **device** branch, not

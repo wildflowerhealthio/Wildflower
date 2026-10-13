@@ -73,7 +73,7 @@ A SMART app's launch carries a SMART App Launch `launch` value in place of
 `{launch}`. The launch endpoint mints it through the gatekeeper, which records
 it as a launch context for the app's `client_id`. The app's `/oauth/authorize`
 must present it within five minutes, as that client, and it works once (see the
-gatekeeper's [Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)).
+gatekeeper's [Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)).
 A non-SMART app has no OAuth client to bind a launch to, so its `{launch}` is
 empty.
 

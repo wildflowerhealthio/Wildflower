@@ -1,7 +1,7 @@
 import type { AppsRouterContext } from '@wildflowerhealthio/apps-react'
+import type { AuthorizationRouterContext } from '@wildflowerhealthio/authorization-react'
 import type { DatabasesRouterContext } from '@wildflowerhealthio/databases-react'
 import type { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
-import type { GatekeeperRouterContext } from '@wildflowerhealthio/gatekeeper-react'
 import type { RequestLogRouterContext } from '@wildflowerhealthio/request-log-react'
 import type { BaseRouterContext } from '@wildflowerhealthio/shared-structures-react'
 import type { Layer } from 'effect'
@@ -20,7 +20,7 @@ import type { SignInProblem, UnsentEhrLaunch } from './sign-in.ts'
 
 type SliceServices =
   | Layer.Layer.Success<AppsRouterContext.RuntimeLayer>
-  | Layer.Layer.Success<GatekeeperRouterContext.RuntimeLayer>
+  | Layer.Layer.Success<AuthorizationRouterContext.RuntimeLayer>
   | Layer.Layer.Success<FhirR4ResourcesRouterContext.RuntimeLayer>
   | Layer.Layer.Success<DatabasesRouterContext.RuntimeLayer>
   | Layer.Layer.Success<RequestLogRouterContext.RuntimeLayer>

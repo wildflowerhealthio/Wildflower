@@ -10,7 +10,7 @@ import type { JSX } from 'react'
  * See `_auth/gatekeeper.tsx` for why this layout lives at the app level
  * rather than inside the slice.
  */
-function GatekeeperOpenLayout(): JSX.Element {
+function AuthorizationOpenLayout(): JSX.Element {
   return (
     <div className={pageLayoutStyles['page']}>
       <Outlet />
@@ -19,5 +19,5 @@ function GatekeeperOpenLayout(): JSX.Element {
 }
 
 export const Route = createFileRoute('/_open/gatekeeper')({
-  component: GatekeeperOpenLayout,
+  component: AuthorizationOpenLayout,
 })

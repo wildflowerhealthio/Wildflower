@@ -48,5 +48,5 @@ Treat that delete as a guard on the index invariant, not as a load-bearing step:
 
 ## Related
 
-- [Jargon Explanation](../../../../../slices/gatekeeper/docs/Jargon%20Explanation.md) — families, lineage, rotation, reuse detection
+- [Jargon Explanation](../../../../../slices/authorization/docs/Jargon%20Explanation.md) — families, lineage, rotation, reuse detection
 - `authorization-server-rust/src/domain/refresh_token.rs` — `REFRESH_TOKEN_FAMILY_TTL` and the rotation semantics the 90-day window mirrors

@@ -14,7 +14,7 @@ import {
   DEVICE_LOGIN_ROUTE,
   parseDeviceLoginSearch,
   parseRequestScopes,
-} from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-react'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 

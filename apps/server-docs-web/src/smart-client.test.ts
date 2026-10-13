@@ -1,7 +1,7 @@
 import {
   redirectUriForPage,
   STANDALONE_LAUNCH_SCOPES,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { CLIENT_ID, PENDING_AUTHORIZATION_KEY, REGISTERED_REDIRECT_URI } from './smart-client.ts'
@@ -40,7 +40,7 @@ describe('the seeded client registration', () => {
 
 describe('PENDING_AUTHORIZATION_KEY', () => {
   it('is namespaced to this console, not to the shared flow', () => {
-    // `gatekeeper-core/smart-client` takes the key as a parameter precisely so
+    // `authorization-core/smart-client` takes the key as a parameter precisely so
     // two Wildflower pages on `wildflowerhealth.io` cannot read each other's
     // pending record. A key that dropped the app prefix would undo that. The
     // prefix is the package's name, as the launcher's is: the client id is

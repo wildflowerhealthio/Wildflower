@@ -385,7 +385,7 @@ mod tests {
 
     /// A launch-bound patient mismatch is a `409` carrying the
     /// `LaunchPatientMismatch` tag and the consent id — the shape
-    /// `gatekeeper-core`'s `LaunchPatientMismatchSchema` decodes.
+    /// `authorization-core`'s `LaunchPatientMismatchSchema` decodes.
     #[tokio::test]
     async fn launch_patient_mismatch_maps_to_a_tagged_409() {
         let response = AuthorizationServerError::LaunchPatientMismatch {

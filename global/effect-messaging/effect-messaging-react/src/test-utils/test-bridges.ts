@@ -29,8 +29,8 @@ const AuthTokenIssued = Schema.parseJson(
 )
 
 /** Fixture bridge: one-way host→web auth token announcement. */
-const GatekeeperBridge = Bridge.make({
-  name: 'Gatekeeper',
+const AuthorizationBridge = Bridge.make({
+  name: 'Authorization',
   hostToWeb: [['AuthTokenIssued', AuthTokenIssued]] as const,
   webToHost: [] as const,
 })
@@ -44,22 +44,22 @@ const SiblingBridge = Bridge.make({
   webToHost: [] as const,
 })
 
-type TestBridges = readonly [typeof NavigationBridge, typeof GatekeeperBridge]
-const testBridges: TestBridges = [NavigationBridge, GatekeeperBridge] as const
+type TestBridges = readonly [typeof NavigationBridge, typeof AuthorizationBridge]
+const testBridges: TestBridges = [NavigationBridge, AuthorizationBridge] as const
 
 type TestBridgesWithSibling = readonly [
   typeof NavigationBridge,
-  typeof GatekeeperBridge,
+  typeof AuthorizationBridge,
   typeof SiblingBridge,
 ]
 const testBridgesWithSibling: TestBridgesWithSibling = [
   NavigationBridge,
-  GatekeeperBridge,
+  AuthorizationBridge,
   SiblingBridge,
 ] as const
 
 export {
-  GatekeeperBridge,
+  AuthorizationBridge,
   NavigationBridge,
   SiblingBridge,
   testBridges,

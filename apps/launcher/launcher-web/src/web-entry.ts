@@ -4,11 +4,11 @@ import {
   searchWithoutAuthorizationResponse,
   searchWithServerUrl,
   serverUrlFromSearch,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   type BearerAuthStateStore,
-  gatekeeperLogoutSettingsItem,
-} from '@wildflowerhealthio/gatekeeper-react'
+  authorizationLogoutSettingsItem,
+} from '@wildflowerhealthio/authorization-react'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Option } from 'effect'
 
@@ -116,7 +116,7 @@ const logoutSettingsItem = (
   basepath: string,
   bearerStore: BearerAuthStateStore
 ): SettingsItem =>
-  gatekeeperLogoutSettingsItem({
+  authorizationLogoutSettingsItem({
     bearerStore,
     fetch: (input, init) => page.fetch(input, init),
     leave: () => {

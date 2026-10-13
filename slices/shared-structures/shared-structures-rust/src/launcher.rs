@@ -15,7 +15,7 @@
 use url::Url;
 
 /// The query parameter the launcher reads its API server from —
-/// `gatekeeper-core/smart-client`'s `SERVER_QUERY_PARAM`. Held equal to it by
+/// `authorization-core/smart-client`'s `SERVER_QUERY_PARAM`. Held equal to it by
 /// `apps/launcher/launcher-web/src/launcher-address.test.ts`, which reads this file.
 const SERVER_PARAM: &str = "server";
 

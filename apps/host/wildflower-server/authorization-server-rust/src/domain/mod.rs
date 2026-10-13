@@ -59,7 +59,7 @@ pub mod oauth_error_code;
 pub mod oauth_error_kind;
 // URL/path builders for the gatekeeper's user-facing `/gatekeeper/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
-// drift-tested against `gatekeeper-core/src/page-paths.ts`.
+// drift-tested against `authorization-core/src/page-paths.ts`.
 pub mod page_paths;
 // The head of the single pending-consent queue the host popup surfaces —
 // device-code and authorization-code requests share one FIFO slot, so the head

@@ -10,7 +10,7 @@ import {
   isAuthorizationResponse,
   searchAfterArrivingLaunch,
   searchWithoutAuthorizationResponse,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 
 /**
  * The query string a load arriving with `arrivalSearch` settles on, once what

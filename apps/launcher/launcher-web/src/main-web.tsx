@@ -5,16 +5,16 @@ import '@wildflowerhealthio/react-tundraish/styles'
 // itself; naming it here too (one module, so one copy) puts it ahead of this
 // app's own `global.css`, after the design system it builds on.
 import '@wildflowerhealthio/branding-react/styles.css'
-import { basenameOf, restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import {
   isAuthorizationResponse,
   searchAfterArrivingLaunch,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   makeAwaitLandingAuthReady,
   makeBearerAuthStateStore,
   sanitizeReturnTo,
-} from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-react'
+import { basenameOf, restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { consentedTelemetryLayer } from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'

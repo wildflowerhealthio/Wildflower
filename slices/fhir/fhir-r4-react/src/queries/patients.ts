@@ -23,7 +23,7 @@ type PatientResource = Schema.Schema.Type<typeof Patient.Schema>
 /**
  * Fetches the patient list (FHIR `Patient` search) and flattens the
  * bundle to the resource rows. Shared by call sites that read the patient
- * picker (`gatekeeper-react`'s `usePatientOptions`).
+ * picker (`authorization-react`'s `usePatientOptions`).
  *
  * `useQuery`-shaped (not `useSuspenseQuery`): the only consumer gates the
  * read on a runtime `enabled` flag (the picker only matters when the

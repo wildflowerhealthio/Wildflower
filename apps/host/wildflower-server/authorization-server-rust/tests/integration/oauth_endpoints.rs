@@ -699,7 +699,7 @@ async fn token_exchange_rejects_non_form_content_type() {
 /// form-urlencoded parse decodes it into the right enum variant (a
 /// `Malformed payload` here would mean the parse, not the lookup,
 /// failed; the TS client's wire format is pinned by
-/// gatekeeper-core's oauth.test.ts).
+/// authorization-core's oauth.test.ts).
 #[tokio::test]
 async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
     let (g, _host_owner_token, _db) = spin_up();

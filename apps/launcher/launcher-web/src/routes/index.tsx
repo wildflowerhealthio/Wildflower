@@ -1,11 +1,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { basenameOf } from '@wildflowerhealthio/branding-core'
-import { AppLandingPage } from '@wildflowerhealthio/branding-react'
-import { withLocalNetworkAccessHint } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   insecureTargetReason,
   searchWithServerUrl,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
+import { basenameOf } from '@wildflowerhealthio/branding-core'
+import { AppLandingPage } from '@wildflowerhealthio/branding-react'
+import { withLocalNetworkAccessHint } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   isAuthed,
   useSubscribable,

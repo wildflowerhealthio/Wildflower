@@ -91,7 +91,7 @@ pub use ports::{
 /// This is the standalone/test fallback: the live Tauri app sources the id from
 /// `tauri-shared-config.json` and threads it via
 /// [`AuthorizationServerConfig::first_party_client_id`], the single source shared with the
-/// TS shell (`gatekeeper-core`'s `FIRST_PARTY_CLIENT_ID` is the matching TS
+/// TS shell (`authorization-core`'s `FIRST_PARTY_CLIENT_ID` is the matching TS
 /// fallback), so the id can't drift across the boundary. Rendered by
 /// [`default_first_party_client_id`].
 pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";

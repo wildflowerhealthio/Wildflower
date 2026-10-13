@@ -6,11 +6,11 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { serverUrlFromSearch } from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { serverUrlFromSearch } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   makeBearerAuthStateStore,
   type BearerAuthStateStore,
-} from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { AuthedUntil, AuthStateProvider } from '@wildflowerhealthio/react-kitchen-sink'
 import * as fc from 'fast-check'

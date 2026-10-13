@@ -78,5 +78,5 @@ mocking the other.
 
 - [Scope-Gated Endpoints How-To](./Scope-Gated%20Endpoints%20How-To.md) — applying
   the pattern in a new slice.
-- [gatekeeper Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)
+- [gatekeeper Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)
   — the scope grammar (SMART v1/v2, resources, permissions) the gates check.

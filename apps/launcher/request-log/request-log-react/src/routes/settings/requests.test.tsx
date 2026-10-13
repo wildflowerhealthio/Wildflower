@@ -2,7 +2,7 @@ import { HttpClient, HttpClientResponse, UrlParams } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { GatekeeperRouterContext } from '@wildflowerhealthio/gatekeeper-react'
+import { AuthorizationRouterContext } from '@wildflowerhealthio/authorization-react'
 import { Effect, Layer, pipe } from 'effect'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -218,7 +218,7 @@ const runAuthedAgainst =
       effect.pipe(
         Effect.provide(
           pipe(
-            Layer.merge(sliceRuntimeLayer, GatekeeperRouterContext.sliceRuntimeLayer),
+            Layer.merge(sliceRuntimeLayer, AuthorizationRouterContext.sliceRuntimeLayer),
             Layer.provideMerge(stubServerLayer(log))
           )
         ),

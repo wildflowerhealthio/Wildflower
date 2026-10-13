@@ -263,7 +263,7 @@ the file's existing marker (the gatekeeper docs use underscores).
 so a change to a consent body (e.g. the `registration` verdict, the approve
 body's `acknowledgedRegistration`) never shows up in the snapshot and
 `UPDATE_OPENAPI=1` regenerates only the `/oauth` prose. The TS mirror in
-`gatekeeper-core/src/http-api-definition/*.ts` plus a wire round-trip test is
+`authorization-core/src/http-api-definition/*.ts` plus a wire round-trip test is
 the only drift guard for those shapes today.
 
 ## `upsert_client` cannot disable a client

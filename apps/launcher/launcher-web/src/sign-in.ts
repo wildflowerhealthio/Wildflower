@@ -2,7 +2,7 @@
  * The web entry's OAuth client registration, and both halves of its sign-in.
  *
  * `main-web` signs in with the **SMART standalone launch** in
- * `gatekeeper-core/smart-client` — the same PKCE redirect flow the server-docs
+ * `authorization-core/smart-client` — the same PKCE redirect flow the server-docs
  * console runs (`apps/server-docs-web/src/main.ts`), against whichever
  * server `?server=` names. Opened with a SMART launch instead (`?iss=`, with
  * the EHR's `launch` when there is one, as the base opens a server's
@@ -31,7 +31,7 @@
  *
  * The access token is never written anywhere by this module. It goes into the
  * in-memory `BearerAuthStateStore` and dies with the tab, the policy
- * `slices/gatekeeper/docs/Auth Token Storage Explanation.md` sets for a bearer a
+ * `slices/authorization/docs/Auth Token Storage Explanation.md` sets for a bearer a
  * public page holds. The only thing that reaches `sessionStorage` is the pending
  * record, which carries no credential — and which is also how the auth gate's
  * `?returnTo=` survives the round trip (see {@link returnToOnPage}).
@@ -49,7 +49,7 @@ import {
   type SignInEnvironment,
   type SignInError,
   type SignInPage,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   AuthedUntil,
   type AuthState,

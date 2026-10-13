@@ -3,7 +3,7 @@
 //! browser reached it at, so the only address a sign-in ever leaves the
 //! gatekeeper for is the one the status poll hands back — a redirect built from
 //! the client's allowlisted (or just-approved) `redirect_uri`. The concept is the
-//! "Wait page" entry of `slices/gatekeeper/docs/Jargon Explanation.md`.
+//! "Wait page" entry of `slices/authorization/docs/Jargon Explanation.md`.
 //!
 //! The three files under `wait_page/` are embedded verbatim, with nothing
 //! interpolated: `wait.js` reads the request id from its own path, so a

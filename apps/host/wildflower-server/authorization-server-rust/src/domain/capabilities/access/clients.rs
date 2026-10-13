@@ -1,7 +1,7 @@
 //! Client capabilities — the `wildflower/Client.*` capabilities behind
 //! `/access/clients[/{clientId}]`: list every registered client and set one's
 //! `disabled_at`. What disabling does (and leaves
-//! alone) is described under "Client" in `slices/gatekeeper/docs/Jargon
+//! alone) is described under "Client" in `slices/authorization/docs/Jargon
 //! Explanation.md`.
 
 use std::sync::Arc;

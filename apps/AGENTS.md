@@ -54,7 +54,7 @@ depends on its Rust half.
   but other products share the slice's TypeScript packages. The crates move to
   `apps/host/wildflower-server/`, with the docs about them; the slice keeps its
   TypeScript packages, its AGENTS.md and the shared docs: `authorization-server-rust` and
-  `token-revocation-rust` left `slices/gatekeeper`, and `fhir-r4-rust` left
+  `token-revocation-rust` left `slices/authorization`, and `fhir-r4-rust` left
   `slices/fhir`. A crate another product also uses stays behind, as
   `rathole-settings-rust`, which the relay shares, stayed when `tunnel-rust`
   moved.
@@ -64,7 +64,7 @@ depends on its Rust half.
   reading `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`.
 - **Shared packages never fold in.** Anything two products use stays in
   `slices/` or `global/` (`branding`, `telemetry`, `smart-app-react`,
-  `gatekeeper-core`, `global/pebble`); a file every app reads sits at the repo
+  `authorization-core`, `global/pebble`); a file every app reads sits at the repo
   root (`dev-app-ports.json`).
 
 ### Names

@@ -5,7 +5,7 @@
 //!
 //! Unlike the rest of `/access`, these routes are **documented**: they're built
 //! as an `OpenApiRouter` so the committed OpenAPI snapshot (and the TS drift
-//! test against `gatekeeper-core`) cover them. [`crate::http`] splits it — the
+//! test against `authorization-core`) cover them. [`crate::http`] splits it — the
 //! axum half is mounted under `/access` behind the session gate, the spec half
 //! is nested under `/access` in the documented surface.
 

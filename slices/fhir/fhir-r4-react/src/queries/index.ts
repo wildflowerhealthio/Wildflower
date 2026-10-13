@@ -2,7 +2,7 @@
  * The FHIR R4 resources TanStack-Query surface.
  *
  *   - {@link file://./patients.ts} — the `Patient` search read (the consenting
- *     owner's patient picker, consumed by `gatekeeper-react`).
+ *     owner's patient picker, consumed by `authorization-react`).
  *
  * Shared scaffolding lives in {@link file://./keys.ts} (the query-key roots) and
  * {@link file://./use-run-authed.ts} (the authed-runner hook each `queryFn`

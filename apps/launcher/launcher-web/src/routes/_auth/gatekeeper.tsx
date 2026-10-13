@@ -17,7 +17,7 @@ import type { JSX } from 'react'
  * layout at the app level keeps the `/_auth/` and `/_open/` prefixes in
  * scope so the generator can disambiguate.
  */
-function GatekeeperAuthLayout(): JSX.Element {
+function AuthorizationAuthLayout(): JSX.Element {
   return (
     <div className={pageLayoutStyles['page']}>
       <Outlet />
@@ -26,5 +26,5 @@ function GatekeeperAuthLayout(): JSX.Element {
 }
 
 export const Route = createFileRoute('/_auth/gatekeeper')({
-  component: GatekeeperAuthLayout,
+  component: AuthorizationAuthLayout,
 })
