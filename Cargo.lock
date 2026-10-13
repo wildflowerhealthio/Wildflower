@@ -10035,6 +10035,7 @@ dependencies = [
  "proptest",
  "rcgen 0.13.2",
  "reqwest 0.12.28",
+ "rusqlite",
  "rustls",
  "rustls-acme",
  "serde",

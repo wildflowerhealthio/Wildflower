@@ -18,6 +18,8 @@ HFS's web UI (`helios-ui`) is mounted at `/ui`, with its interactive login insta
 
 The UI's pages pass the host's bearer gate; HFS itself sends a visitor without a session to `/ui/login`. The pages' FHIR calls carry only the cookie, so `wildflower-server-rust`'s `ui_session_bearer` middleware presents the session's access token as `Authorization: Bearer` ahead of the gate, for a same-site request with no `Authorization` of its own, and the gate and HFS check it like any other token. The UI's conformance pages call the FHIR API on the public origin, never loopback, so they never run on the host owner's loopback trust. A browser opening the server's root (`GET /` asking for HTML) is sent to `/ui`.
 
+The UI's per-user settings (`/_user/settings`: theme, saved and recent queries, …) are stored in the health data's own sqlite file, in HFS's `user_settings` table, so they survive a restart and go wherever the health data goes. HFS keys them by the caller's token `iss` and `sub`. Since a session's `sub` is the UI's client id, everyone who signs in to one server's UI shares one settings document.
+
 ## SMART App Launch discovery override
 
 `GET /.well-known/smart-configuration` is handled locally (`src/smart_configuration.rs`), mounted ahead of HFS with HFS's router as the fallback.

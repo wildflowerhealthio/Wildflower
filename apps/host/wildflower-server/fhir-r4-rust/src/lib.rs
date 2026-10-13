@@ -22,8 +22,9 @@ use axum::response::IntoResponse;
 use axum::routing::{get, Route, Router};
 use helios_auth::{LoginConfig, SessionStore};
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
+use helios_persistence::core::SettingsStore;
 use helios_rest::fhir_types::is_valid_resource_type;
-use helios_rest::{create_app_with_auth, ServerConfig};
+use helios_rest::{create_app_with_auth_bulk_and_settings, ServerConfig};
 use tower::{Layer, Service};
 use wildflowerhealthio_scopes::{Permission, Scope};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
@@ -224,7 +225,11 @@ where
         &server_origin,
         ui_sessions.clone(),
     );
-    let hfs_router = create_app_with_auth(
+    // The web UI's per-user settings (`/_user/settings`) live in the health
+    // data's own sqlite file, in HFS's `user_settings` table.
+    let sqlite_backend = Arc::new(sqlite_backend);
+    let ui_settings_store: Arc<dyn SettingsStore> = sqlite_backend.clone();
+    let hfs_router = create_app_with_auth_bulk_and_settings(
         sqlite_backend,
         server_config,
         auth_config.clone(),
@@ -233,6 +238,10 @@ where
         // fhir-r4-rust today; the gatekeeper gating layer above us handles
         // owner/admin access auditing separately.
         None,
+        // Neither bulk export nor bulk submit is wired.
+        None,
+        None,
+        Some(ui_settings_store),
     );
 
     // Specific routes win over fallback: our SMART App Launch discovery doc and

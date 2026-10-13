@@ -122,6 +122,8 @@ wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-setti
 wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust" }
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
+# Reads the FHIR web UI's settings back out of the health data's sqlite file.
+rusqlite.workspace = true
 # The self-signed certificates the tests put in the certificate cache.
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"] }
 # `test-util` drives the reachability monitor on virtual time.
