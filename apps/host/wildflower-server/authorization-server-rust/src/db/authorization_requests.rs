@@ -135,7 +135,9 @@ pub(super) fn authorization_request_by_id(
         .select(Row::as_select())
         .first(conn)
         .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("authorization_request_by_id failed", e))
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("authorization_request_by_id failed", e)
+        })
         .map(|row| row.map(AuthorizationRequest::from))
 }
 
@@ -176,7 +178,10 @@ pub(super) fn pending_authorization_request_by_user_code(
         .first(conn)
         .optional()
         .map_err(|e| {
-            AuthorizationServerError::infrastructure("pending_authorization_request_by_user_code failed", e)
+            AuthorizationServerError::infrastructure(
+                "pending_authorization_request_by_user_code failed",
+                e,
+            )
         })
         .map(|row| row.map(AuthorizationRequest::from))
 }
@@ -211,7 +216,9 @@ pub(super) fn oldest_pending_consent_head(
         ))
         .first::<(GrantType, String, Option<String>)>(conn)
         .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("oldest_pending_consent_head failed", e))
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("oldest_pending_consent_head failed", e)
+        })
         .map(|row| row.and_then(head_from_row))
 }
 
@@ -293,7 +300,9 @@ pub(super) fn approve_authorization_request(
         authorization_requests::device_name.eq(device_name),
     ))
     .execute(conn)
-    .map_err(|e| AuthorizationServerError::infrastructure("approve_authorization_request failed", e))?;
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure("approve_authorization_request failed", e)
+    })?;
     Ok(affected == 1)
 }
 
@@ -313,7 +322,9 @@ pub(super) fn deny_authorization_request(
     )
     .set(authorization_requests::status.eq(RequestStatus::Denied))
     .execute(conn)
-    .map_err(|e| AuthorizationServerError::infrastructure("deny_authorization_request failed", e))?;
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure("deny_authorization_request failed", e)
+    })?;
     Ok(affected == 1)
 }
 
@@ -372,7 +383,10 @@ pub(super) fn delete_authorization_requests_expired_before(
     )
     .execute(conn)
     .map_err(|e| {
-        AuthorizationServerError::infrastructure("delete_authorization_requests_expired_before failed", e)
+        AuthorizationServerError::infrastructure(
+            "delete_authorization_requests_expired_before failed",
+            e,
+        )
     })
 }
 

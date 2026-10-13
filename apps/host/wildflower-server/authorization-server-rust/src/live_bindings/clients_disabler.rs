@@ -9,9 +9,9 @@ use wildflowerhealthio_scopes::Scope;
 
 use super::state::AuthorizationServerState;
 use crate::db::SqliteGrantStore;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::clients::clients_disabler_scopes;
 use crate::domain::capabilities::{ClientsDisabler, FixedScopeCapability};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::token::VerifiedClaims;
 
 /// Disable or re-enable a registered client (never the first-party host).

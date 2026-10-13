@@ -1,6 +1,6 @@
 //! [`LaunchContexts`] — the SMART App Launch contexts this server hands out:
 //! minted in-process when an app is launched, consumed single-use by the
-//! `/oauth/authorize` request that presents the `launch` value. The gatekeeper
+//! `/oauth/authorize` request that presents the `launch` value. The authorization server
 //! owns the `launch_contexts` table; every other slice reaches it through the
 //! public mint-only [`LaunchContextMinter`](crate::LaunchContextMinter) binding.
 

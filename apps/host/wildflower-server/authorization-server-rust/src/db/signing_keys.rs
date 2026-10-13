@@ -53,7 +53,9 @@ pub(super) fn active_signing_key(
 /// Whether an active signing key exists, without loading its (private) key
 /// material — a cheap presence probe for callers that only need to know a
 /// token *can* be minted (the mint path loads the key itself).
-pub(super) fn has_active_signing_key(conn: &mut SqliteConnection) -> Result<bool, AuthorizationServerError> {
+pub(super) fn has_active_signing_key(
+    conn: &mut SqliteConnection,
+) -> Result<bool, AuthorizationServerError> {
     diesel::select(diesel::dsl::exists(
         signing_keys::table.filter(signing_keys::is_active.eq(true)),
     ))

@@ -79,7 +79,9 @@ pub(super) fn refresh_token_with_family_by_hash(
         .select((RefreshToken::as_select(), RefreshTokenFamily::as_select()))
         .first(conn)
         .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("refresh_token_with_family_by_hash failed", e))
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("refresh_token_with_family_by_hash failed", e)
+        })
 }
 
 /// Stamp the live token `token_hash` consumed at `now`, returning `true` iff a
@@ -180,7 +182,10 @@ pub(super) fn expire_refresh_token_families_for_client(
         Ok(())
     })
     .map_err(|e: diesel::result::Error| {
-        AuthorizationServerError::infrastructure("expire_refresh_token_families_for_client failed", e)
+        AuthorizationServerError::infrastructure(
+            "expire_refresh_token_families_for_client failed",
+            e,
+        )
     })
 }
 
@@ -260,7 +265,10 @@ pub(super) fn delete_refresh_token_families_expired_before(
         .execute(conn)
     })
     .map_err(|e: diesel::result::Error| {
-        AuthorizationServerError::infrastructure("delete_refresh_token_families_expired_before failed", e)
+        AuthorizationServerError::infrastructure(
+            "delete_refresh_token_families_expired_before failed",
+            e,
+        )
     })
 }
 

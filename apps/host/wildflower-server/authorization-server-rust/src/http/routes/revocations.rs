@@ -30,8 +30,8 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::domain::capabilities::Scoped;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveTokenRevoker;
 

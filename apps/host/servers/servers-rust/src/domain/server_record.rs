@@ -85,7 +85,7 @@ impl ServerRecord {
 
     /// The server's public origin, `https://<domain>`, as
     /// [`wildflowerhealthio_tunnel::public_origin_url`] builds it: the origin its run
-    /// serves, which its gatekeeper's tokens name as `iss` and `aud`.
+    /// serves, which its authorization server's tokens name as `iss` and `aud`.
     ///
     /// # Panics
     ///

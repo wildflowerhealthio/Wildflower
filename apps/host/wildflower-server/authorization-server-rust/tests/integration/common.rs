@@ -5,7 +5,8 @@ pub use axum::extract::ConnectInfo;
 pub use axum::http::{Request, StatusCode};
 pub use tokio::sync::watch;
 pub use wildflowerhealthio_authorization_server::{
-    setup_authorization_server, AuthorizationServer, AuthorizationServerConfig, WILDFLOWER_LOCAL_GRANTED_SCOPES,
+    setup_authorization_server, AuthorizationServer, AuthorizationServerConfig,
+    WILDFLOWER_LOCAL_GRANTED_SCOPES,
 };
 
 pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
@@ -14,7 +15,7 @@ pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
 /// only ones its bearer gates accept.
 pub const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
-/// The hosted launcher the gatekeeper's browser-facing pages resolve on in
+/// The hosted launcher the authorization server's browser-facing pages resolve on in
 /// these tests — deliberately not the production address, so an assertion
 /// can't pass by accident against a hard-coded one.
 pub const LAUNCHER_BASE: &str = "https://launcher.test/launcher/";
@@ -30,8 +31,12 @@ pub use wildflowerhealthio_authorization_server::domain::authorization_code::Iss
 pub use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
-pub use wildflowerhealthio_authorization_server::domain::client::{AllowedGrantType, Client, ClientKind};
-pub use wildflowerhealthio_authorization_server::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
+pub use wildflowerhealthio_authorization_server::domain::client::{
+    AllowedGrantType, Client, ClientKind,
+};
+pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
+    RefreshToken, RefreshTokenFamily,
+};
 pub use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 pub use wildflowerhealthio_authorization_server::{
     GrantStore, PendingConsentHead, SqliteGrantStore,
@@ -80,7 +85,9 @@ pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
 /// spawns, and shared-cache `SQLite` fails such an overlap with "database table
 /// is locked" instead of waiting on `busy_timeout` as a file database does.
 pub fn spin_up_with_loopback_prompt(
-    loopback_prompt: std::sync::Arc<dyn wildflowerhealthio_authorization_server::LoopbackConsentPrompt>,
+    loopback_prompt: std::sync::Arc<
+        dyn wildflowerhealthio_authorization_server::LoopbackConsentPrompt,
+    >,
 ) -> (AuthorizationServer, String, TestDb) {
     let database_dir = tempfile::tempdir().expect("temp database dir");
     let pool =
@@ -92,13 +99,16 @@ pub fn spin_up_with_loopback_prompt(
 fn spin_up_on(
     pool: DieselPool,
     database_dir: Option<tempfile::TempDir>,
-    loopback_prompt: std::sync::Arc<dyn wildflowerhealthio_authorization_server::LoopbackConsentPrompt>,
+    loopback_prompt: std::sync::Arc<
+        dyn wildflowerhealthio_authorization_server::LoopbackConsentPrompt,
+    >,
 ) -> (AuthorizationServer, String, TestDb) {
     let config = AuthorizationServerConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_owner_scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
-        first_party_client_id: wildflowerhealthio_authorization_server::default_first_party_client_id(),
+        first_party_client_id:
+            wildflowerhealthio_authorization_server::default_first_party_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
     };
@@ -106,7 +116,7 @@ fn spin_up_on(
     let (pending_consent_tx, pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
     // The shared revocation store lives on the rusqlite connection the host
-    // wires into both gatekeeper and the FHIR server (#269). A second handle on
+    // wires into both the authorization server and the FHIR server (#269). A second handle on
     // the same connection (see `revocation_store_handle`) lets tests
     // plant/observe rows.
     let revocation_conn = Connection::open_in_memory().expect("open revocation db");
@@ -390,7 +400,7 @@ pub fn location_of(res: &axum::response::Response) -> String {
         .to_string()
 }
 
-/// Assert `res` is a 302 to the gatekeeper's wait page and return the pending
+/// Assert `res` is a 302 to the authorization server's wait page and return the pending
 /// request id it names — the shape every parked `/authorize` request takes.
 /// How the relative `Location` resolves is pinned in `wait_page.rs`.
 pub fn parked_request_id(res: &axum::response::Response) -> String {
@@ -416,7 +426,11 @@ pub fn polling_request_id(wait_page_location: &str) -> String {
 }
 
 /// Load the Owner-facing consent prompt for `request_id` as JSON.
-pub async fn get_oauth_consent(g: &AuthorizationServer, host_owner_token: &str, request_id: &str) -> Value {
+pub async fn get_oauth_consent(
+    g: &AuthorizationServer,
+    host_owner_token: &str,
+    request_id: &str,
+) -> Value {
     let res = g
         .router
         .clone()
@@ -596,7 +610,7 @@ pub fn basic_authorization(client_id: &str, client_secret: &str) -> String {
 pub const CONFIDENTIAL_CLIENT_ID: &str = "conf-app";
 pub const CONFIDENTIAL_CLIENT_SECRET: &str = "shhh-integration-secret";
 
-/// Spin up a gatekeeper with a seeded confidential client and a live planted
+/// Spin up an authorization server with a seeded confidential client and a live planted
 /// refresh token — the cheapest real grant to exercise client auth against.
 pub fn spin_up_with_confidential_client() -> (AuthorizationServer, TestDb) {
     let (g, _host_owner_token, db) = spin_up();
@@ -638,7 +652,7 @@ pub fn set_cookie_values(res: &axum::response::Response) -> Vec<String> {
 
 /// A second `RevocationStore` handle on the running router's shared connection,
 /// so a test can plant/observe revocations the way `store_handle` does for the
-/// gatekeeper store.
+/// grant store.
 pub fn revocation_store_handle(
     db: &TestDb,
 ) -> wildflowerhealthio_token_revocation::RevocationStore {
@@ -647,7 +661,7 @@ pub fn revocation_store_handle(
 }
 
 /// Pull the `jti` out of a minted token's payload (the base64url middle
-/// segment). Uses gatekeeper's own base64 helper — the bare `base64` name is
+/// segment). Uses the authorization server's own base64 helper — the bare `base64` name is
 /// shadowed in this file by the `crypto_util::base64` module import at the top.
 pub fn jti_of(token: &str) -> String {
     let payload_b64 = token.split('.').nth(1).expect("jwt has a payload segment");

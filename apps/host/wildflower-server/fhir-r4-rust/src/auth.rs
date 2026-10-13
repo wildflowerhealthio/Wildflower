@@ -15,9 +15,9 @@ use wildflowerhealthio_token_revocation::RevocationStore;
 
 /// The FHIR-side revocation enforcement point: wraps helios's JWKS validator
 /// and rejects a validated token iff its `jti` is on the shared denylist. It
-/// never stores, so a multi-use gatekeeper bearer passes on every call. Only the
+/// never stores, so a multi-use authorization server bearer passes on every call. Only the
 /// per-`jti` half — `Principal` has no `iat`, so the epoch half stays with
-/// gatekeeper's `BearerGate`, which runs first. See "Token revocation on the
+/// the authorization server's `BearerGate`, which runs first. See "Token revocation on the
 /// FHIR path" in `docs/Capability Statement.md`.
 struct RevocationCheckingProvider<P> {
     inner: P,
@@ -54,15 +54,15 @@ impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
 /// `expected_issuer` and `expected_audience` are both `server_origin`, the bare
 /// origin every token this server mints names as its `iss` and `aud`: HFS
 /// checks both (helios-auth matches `aud` exactly when set), so a token another
-/// server minted is refused here as well as at gatekeeper's gate. See
+/// server minted is refused here as well as at the authorization server's gate. See
 /// `docs/Origins/Explanation.md`.
-/// The JWKS cache is *not* initial-fetched: gatekeeper's HTTP listener isn't
+/// The JWKS cache is *not* initial-fetched: the authorization server's HTTP listener isn't
 /// bound yet when this runs, so a blocking fetch would deadlock. HFS's
 /// `JwksCache` supports lazy fetching — the first request that needs a signing
 /// key triggers a fetch then.
 ///
 /// `revocation_store` is the shared denylist the host wires into both this and
-/// gatekeeper; the returned provider consults it per validated token (see
+/// the authorization server; the returned provider consults it per validated token (see
 /// [`RevocationCheckingProvider`]).
 ///
 /// `ui_sessions` is the web UI's session store: HFS treats a same-site request
@@ -217,7 +217,7 @@ mod tests {
         state.expect("auth is on with a JWKS URL").provider.clone()
     }
 
-    /// A gatekeeper token signed by `key` naming `issuer` and `audience`.
+    /// An authorization server token signed by `key` naming `issuer` and `audience`.
     fn bearer(key: &SigningKey, issuer: &str, audience: &str) -> String {
         let token = mint_access_token(
             key,

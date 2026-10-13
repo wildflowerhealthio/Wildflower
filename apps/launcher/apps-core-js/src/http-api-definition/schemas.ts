@@ -113,7 +113,7 @@ const InvalidHomeScreenSchema = Schema.Struct({
  * `missingScopes` names the scopes they must additionally hold) — is imported from
  * `shared-structures-core` and re-exported below, so apps' HttpApi definitions keep
  * sourcing every schema from this one module while the shape stays single-sourced
- * with the other slices (databases, gatekeeper) and the Rust `InsufficientScopeBody`.
+ * with the other slices (databases, authorization) and the Rust `InsufficientScopeBody`.
  */
 
 /**

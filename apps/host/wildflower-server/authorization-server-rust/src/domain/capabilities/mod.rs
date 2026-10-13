@@ -1,4 +1,4 @@
-//! The gatekeeper's capabilities — the narrow, purpose-built doors through which
+//! The authorization server's capabilities — the narrow, purpose-built doors through which
 //! the HTTP layer reaches the store, split by **what unlocks them**:
 //!
 //!  - [`access`] — the `/access/*` Owner surface, gated on the caller's

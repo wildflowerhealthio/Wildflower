@@ -60,7 +60,9 @@ pub(crate) fn grant_by_client_and_redirect(
         .select(AuthorizationCodeGrant::as_select())
         .first(conn)
         .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("grant_by_client_and_redirect failed", e))
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("grant_by_client_and_redirect failed", e)
+        })
 }
 
 /// Overwrite the mutable fields (`scopes`, `granted_at`, `patient`) of the

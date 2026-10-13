@@ -31,7 +31,7 @@ pub struct LoopbackConsentRequest {
     /// The requested scopes, in request order.
     pub requested_scopes: Vec<String>,
     /// When the parked request expires. An answer after this is ignored, and
-    /// gatekeeper stops waiting for one (treating the silence as a reject).
+    /// the authorization server stops waiting for one (treating the silence as a reject).
     pub expires_at: DateTime<Utc>,
 }
 
@@ -73,7 +73,7 @@ pub enum LoopbackConsentAnswer {
 }
 
 /// Put a loopback login in front of the Owner. `ask` blocks until the Owner
-/// answers; gatekeeper calls it on a blocking worker, and stops waiting at the
+/// answers; the authorization server calls it on a blocking worker, and stops waiting at the
 /// request's [`expires_at`](LoopbackConsentRequest::expires_at).
 pub trait LoopbackConsentPrompt: Send + Sync {
     /// Show the dialog for `request` and return the Owner's answer.

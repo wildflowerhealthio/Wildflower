@@ -11,9 +11,9 @@ use wildflowerhealthio_scopes::{Grant, Scope};
 
 use super::state::AuthorizationServerState;
 use crate::db::SqliteGrantStore;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::consent_decider_scopes;
 use crate::domain::capabilities::{Capability, ConsentDecider};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::token::VerifiedClaims;
 use crate::ports::OwnerApproval;
 

@@ -106,7 +106,7 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('aggregates one row per participating slice (databases, gatekeeper)', async () => {
+  test('aggregates one row per participating slice (databases, authorization)', async () => {
     renderSettingsScreen()
     await waitFor(() => {
       expect(screen.getAllByText('Your data').length).toBeGreaterThanOrEqual(1)

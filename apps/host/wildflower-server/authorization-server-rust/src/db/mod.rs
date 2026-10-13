@@ -1,8 +1,8 @@
-//! `SQLite` persistence for the gatekeeper — the `SqliteGrantStore`
+//! `SQLite` persistence for the authorization server — the `SqliteGrantStore`
 //! adapter (the `SQLite` implementation of the
 //! [`GrantStore`](crate::domain::GrantStore) port: it holds the
 //! app-wide diesel r2d2 pool, `wildflowerhealthio_persistence::DieselPool`, and applies the
-//! gatekeeper migrations onto it under a per-slice namespace, mirroring
+//! authorization server migrations onto it under a per-slice namespace, mirroring
 //! apps' `SqliteAppsStore`) plus one
 //! file per concern holding that concern's `table!` definition, row/column
 //! mappings, and single-statement query-body free functions (taking a

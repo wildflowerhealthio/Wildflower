@@ -31,7 +31,7 @@ fn with_owner_claims(mut req: Request<Body>) -> Request<Body> {
 }
 
 /// A [`LaunchContextMinter`] answering `launch-for-{client_id}`, standing in
-/// for the host's gatekeeper-backed one.
+/// for the host's authorization-server-backed one.
 struct NamedLaunchContextMinter;
 
 impl LaunchContextMinter for NamedLaunchContextMinter {

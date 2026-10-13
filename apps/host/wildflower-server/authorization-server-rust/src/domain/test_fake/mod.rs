@@ -18,8 +18,8 @@ use std::collections::HashMap;
 
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant};
 use crate::domain::launch_context::LaunchContext;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};

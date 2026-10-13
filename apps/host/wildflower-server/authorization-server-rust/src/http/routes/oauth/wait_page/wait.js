@@ -1,7 +1,7 @@
-// The gatekeeper's wait page (`../wait_page.rs`). Polls this request's status
+// The authorization server's wait page (`../wait_page.rs`). Polls this request's status
 // at the sibling `/oauth/authorize/{id}` until the Owner decides, then leaves
-// for the redirect the gatekeeper built from the client's allowlisted
-// `redirect_uri`. See "Wait page" in the gatekeeper Jargon Explanation.
+// for the redirect the authorization server built from the client's allowlisted
+// `redirect_uri`. See "Wait page" in the Wildflower Authorization Jargon Explanation.
 //
 // Loaded as a module script, so its names stay out of the page's globals.
 
@@ -50,7 +50,7 @@ const followableUrl = (redirect) => {
 }
 
 /**
- * Leave for `redirect`, the client callback the status carried. The gatekeeper
+ * Leave for `redirect`, the client callback the status carried. The authorization server
  * builds it from an allowlisted `redirect_uri`; only an `http:`/`https:` URL is
  * followed all the same, so a malformed status can never run script here.
  *

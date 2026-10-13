@@ -221,7 +221,7 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  * Because the flow is now user-gated (a button click), nothing fires on mount —
  * so the old mount-time debounce that guarded against a transient render burning
  * a device code is gone. The forked flow still interrupts on unmount so a
- * navigation mid-poll leaves no orphan device code on the gatekeeper server.
+ * navigation mid-poll leaves no orphan device code on the authorization server.
  */
 const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'form' })
@@ -235,7 +235,7 @@ const NeedsAuthMessage = (): JSX.Element => {
   // not a one-shot query.
   const layer = useAuthorizationRuntimeLayer()
   // The first-party client's full `allowed_scopes` set, threaded from the Tauri
-  // shell's `tauri-shared-config.json` (the single source gatekeeper also reads
+  // shell's `tauri-shared-config.json` (the single source the authorization server also reads
   // to seed those `allowed_scopes`), so the two can't drift. It is the picker's
   // *expansion envelope* here: the user can request anything within it, so the
   // built request always passes the device_authorization coverage check. The

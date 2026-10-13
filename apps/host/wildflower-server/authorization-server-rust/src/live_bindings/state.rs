@@ -1,4 +1,4 @@
-//! The shared gatekeeper runtime state — the router state every handler is built
+//! The shared authorization server runtime state — the router state every handler is built
 //! over, and the composition point that wires the concrete adapters
 //! ([`SqliteGrantStore`], [`RevocationStore`]) to the domain ports. It lives
 //! at the crate root (not under [`crate::http`]) deliberately: the scope-gated
@@ -22,7 +22,7 @@ use wildflowerhealthio_token_revocation::RevocationStore;
 use crate::db::SqliteGrantStore;
 use crate::domain::pending_consent::PendingConsentHead;
 
-/// Shared state threaded through every gatekeeper handler and lifted into the
+/// Shared state threaded through every authorization server handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
 /// receives one (inside an [`Arc`]) from [`crate::setup_authorization_server`] and passes
 /// it back into [`crate::authorization_server_auth_middleware`] without

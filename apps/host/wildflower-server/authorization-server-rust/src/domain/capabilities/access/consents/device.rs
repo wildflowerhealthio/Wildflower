@@ -12,8 +12,8 @@ use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{
     device_grant_name, AuthorizationRequest, GrantType, RequestStatus,
 };
-use crate::domain::capabilities::writers::{GrantRecorder, RequestApprover};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::writers::{GrantRecorder, RequestApprover};
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 
@@ -65,8 +65,13 @@ pub(super) fn approve_device_consent(
         &ApprovableScopes::for_device(&client),
     )?
     else {
-        return deny_consent(store, owner_approval, &device_request.id, make_consent_not_found)
-            .map(|()| ConsentOutcome::Denied);
+        return deny_consent(
+            store,
+            owner_approval,
+            &device_request.id,
+            make_consent_not_found,
+        )
+        .map(|()| ConsentOutcome::Denied);
     };
 
     let request_device_name = input

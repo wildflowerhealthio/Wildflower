@@ -103,7 +103,7 @@ const FirstPartyClientLockedSchema = Schema.Struct({
 })
 
 /**
- * `HttpRequest`: a record of an inbound FHIR request that the gatekeeper
+ * `HttpRequest`: a record of an inbound FHIR request that the authorization server
  * has parked for the Owner to approve or deny. The wire shape mirrors
  * the server's `httpRequests` storage row 1:1.
  *

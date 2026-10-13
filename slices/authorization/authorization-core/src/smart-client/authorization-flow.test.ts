@@ -151,7 +151,7 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
 })
 
 describe('authorizationRequestUrl', () => {
-  it('builds a PKCE authorization-code request the gatekeeper endpoint accepts', () => {
+  it('builds a PKCE authorization-code request the authorization server endpoint accepts', () => {
     // Act
     const url = new URL(
       authorizationRequestUrl('https://ruth.wildflowerhealth.io/oauth/authorize', {
@@ -455,7 +455,7 @@ describe('tokenRequestBody', () => {
 })
 
 describe('parseTokenResponse', () => {
-  it('reads a gatekeeper token response as a grant', () => {
+  it('reads an authorization server token response as a grant', () => {
     // Act
     const result = parseTokenResponse({
       access_token: 'header.payload.signature',

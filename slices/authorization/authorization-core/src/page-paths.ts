@@ -1,6 +1,6 @@
 // oxlint-disable import/group-exports -- Exports are already namespaced
 /**
- * Single source of truth for the launcher routes of the gatekeeper's
+ * Single source of truth for the launcher routes of the authorization server's
  * browser-facing pages. The SPA router in `authorization-react` declares matching
  * `<Route path>` values; a drift test asserts they agree.
  *

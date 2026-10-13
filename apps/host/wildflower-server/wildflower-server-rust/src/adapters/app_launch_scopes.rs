@@ -1,4 +1,4 @@
-//! The host's [`wildflowerhealthio_apps::ports::AppLaunchScopes`], backed by gatekeeper's
+//! The host's [`wildflowerhealthio_apps::ports::AppLaunchScopes`], backed by the authorization server's
 //! OAuth clients.
 
 use wildflowerhealthio_apps::ports::AppLaunchScopes;
@@ -12,7 +12,8 @@ use wildflowerhealthio_authorization_server::client_allowed_scopes;
 /// scopes — only the `wildflower/launch` umbrella.
 #[derive(Clone)]
 pub(crate) struct AuthorizationServerAppLaunchScopes {
-    pub(crate) state: std::sync::Arc<wildflowerhealthio_authorization_server::AuthorizationServerState>,
+    pub(crate) state:
+        std::sync::Arc<wildflowerhealthio_authorization_server::AuthorizationServerState>,
 }
 
 impl AppLaunchScopes for AuthorizationServerAppLaunchScopes {

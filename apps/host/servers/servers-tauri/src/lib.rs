@@ -56,13 +56,13 @@
 //! - [`server_consent_get`], [`server_consent_approve`] and
 //!   [`server_consent_deny`], invoked with the server's `domain` and a
 //!   consent's key or approval, read a waiting consent and decide it as the
-//!   host's Owner, through the running server's gatekeeper in-process (see
+//!   host's Owner, through the running server's authorization server in-process (see
 //!   [`wildflowerhealthio_servers::ServerConsentDecider`]); a server that isn't running
 //!   answers `serverNotRunning`.
 //! - [`server_launch`], invoked as `invoke('server_launch', { domain })`,
 //!   opens the server's launcher in the in-app browser (on iOS replacing the
 //!   view an earlier launch opened; on Android joining it while it opens), at its
-//!   launcher URL with `iss` and a `launch` its running gatekeeper minted for
+//!   launcher URL with `iss` and a `launch` its running authorization server minted for
 //!   any client (see [`wildflowerhealthio_servers::ServerLaunchMinter`]); a server that
 //!   isn't running, reachable through its relay and holding a valid
 //!   certificate answers why at once. It never changes the run policy.

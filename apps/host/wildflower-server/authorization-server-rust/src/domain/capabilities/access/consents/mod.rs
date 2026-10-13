@@ -16,10 +16,10 @@ use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_request::AuthorizationRequest;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client_registration::{
     classify_registration, ClientRegistrationVerdict, PresentedClientRegistration,
 };
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 
@@ -148,7 +148,10 @@ impl<S: GrantStore> ConsentReader<S> {
     /// Load a pending authorization-code consent prompt for the launcher, with
     /// the client's display name and its registration verdict resolved against
     /// the current row.
-    pub(crate) fn oauth_consent(&self, id: &str) -> Result<OAuthConsentView, AuthorizationServerError> {
+    pub(crate) fn oauth_consent(
+        &self,
+        id: &str,
+    ) -> Result<OAuthConsentView, AuthorizationServerError> {
         let pending_request = load_pending_code_request(&self.store, id)?;
         let requested_redirect_uri = pending_request.redirect_uri().clone();
         let request = pending_request.into_request();
@@ -480,7 +483,7 @@ mod tests {
         );
     }
 
-    /// A client this gatekeeper has never seen reaches consent (nothing is
+    /// A client this authorization server has never seen reaches consent (nothing is
     /// registered at `/authorize`), and approving it **without** the Owner's
     /// acknowledgement writes nothing at all: no client row, no grant, no code,
     /// and the prompt stays pending so they can decide again.

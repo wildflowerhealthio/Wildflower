@@ -1,4 +1,4 @@
-//! [`ServerLaunchMinter`]: a run's gatekeeper as the host mints the launches
+//! [`ServerLaunchMinter`]: a run's authorization server as the host mints the launches
 //! it opens a server's launcher with.
 
 use std::fmt;
@@ -8,21 +8,21 @@ use crate::domain::{ensure_launchable, LaunchError, ServerStatus};
 use wildflowerhealthio_authorization_server::LaunchContextMinter;
 
 /// Mints SMART App Launch `launch` values on one run of a server, through the
-/// run's gatekeeper. Each is for any OAuth client, since a server's launcher
+/// run's authorization server. Each is for any OAuth client, since a server's launcher
 /// can be any app.
 ///
 /// A run puts it in each [`ServerDetail`](crate::ServerDetail) it sets, and `UnitRunner` clears the
 /// detail when the run ends, so [`Self::of_launchable_server`] finds one only
-/// while the server's run is up. Clones share the run's gatekeeper, and two
+/// while the server's run is up. Clones share the run's authorization server, and two
 /// are equal when they are the same run's.
 ///
-/// [`Self::mint`] is a synchronous gatekeeper transaction: run it on a
+/// [`Self::mint`] is a synchronous authorization server transaction: run it on a
 /// blocking thread.
 #[derive(Clone)]
 pub struct ServerLaunchMinter(Arc<LaunchContextMinter>);
 
 impl ServerLaunchMinter {
-    /// The minter over a run's gatekeeper, through its `launch_context_minter`.
+    /// The minter over a run's authorization server, through its `launch_context_minter`.
     #[must_use]
     pub fn new(launch_context_minter: LaunchContextMinter) -> Self {
         Self(Arc::new(launch_context_minter))
@@ -48,7 +48,7 @@ impl ServerLaunchMinter {
     ///
     /// # Errors
     ///
-    /// [`LaunchError::AuthorizationServer`] when the gatekeeper couldn't record it.
+    /// [`LaunchError::AuthorizationServer`] when the authorization server couldn't record it.
     pub fn mint(&self) -> Result<String, LaunchError> {
         Ok(self.0.mint_for_any_client()?)
     }

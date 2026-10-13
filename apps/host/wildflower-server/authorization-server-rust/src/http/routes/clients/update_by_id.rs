@@ -5,8 +5,8 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 use super::list_all::ClientBody;
-use crate::domain::capabilities::Scoped;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::Scoped;
 use crate::http::errors::{ClientNotFoundBody, FirstPartyClientLockedBody};
 use crate::live_bindings::LiveClientsDisabler;
 

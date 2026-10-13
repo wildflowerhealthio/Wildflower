@@ -47,7 +47,11 @@ const GrantDetailBody = ({ grant }: { readonly grant: Grant }): JSX.Element => {
     )),
     Match.when({ grantType: 'device_code' }, (deviceGrant) => (
       <>
-        <PageHeader title="Authorized Device" backHref="/settings/authorization" backLabel="Access" />
+        <PageHeader
+          title="Authorized Device"
+          backHref="/settings/authorization"
+          backLabel="Access"
+        />
         <div className={pageLayout['section']}>
           <GrantField label="Device" value={deviceGrant.deviceName} />
           <GrantField label="Client" value={deviceGrant.clientId} />

@@ -1,6 +1,6 @@
 //! Scope-gated capabilities for the `/databases` surface — the databases slice's
 //! copy of the default-safe authorization pattern (the generic machinery lives in
-//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on gatekeeper's `/access`
+//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on the authorization server's `/access`
 //! surface). They live in `domain/` and depend only on the
 //! [`DatabaseFiles`](crate::ports::DatabaseFiles) port + a catalogue and [`Grant`]
 //! handed to their constructors — never on `crate::http`, `std::fs`, `rusqlite`,
@@ -9,7 +9,7 @@
 //! `DatabasesState` (and construct the concrete adapter) live one layer out in
 //! [`crate::live_bindings`].
 //!
-//! Unlike gatekeeper's fixed-scope capabilities, the scope a database requires
+//! Unlike the authorization server's fixed-scope capabilities, the scope a database requires
 //! depends on **which** database — the host declares every
 //! [`DatabaseDescriptor`]'s `read_scope` / `delete_scope`. So both capabilities
 //! here are the **data-dependent** flavour: their static required-scope gate is
@@ -360,7 +360,7 @@ mod tests {
     /// **only** through a `Scoped<…>` capability — never a raw router `State<…>`
     /// or the filesystem adapter directly. Bypassing the capability would need one
     /// of these tokens, and this test fails if one appears, so a forgotten
-    /// per-database scope check can't ship silently. (Mirrors gatekeeper's
+    /// per-database scope check can't ship silently. (Mirrors the authorization server's
     /// `access_handlers_reach_the_store_only_through_capabilities`.)
     ///
     /// The routes tree is enumerated at test time, so a NEW handler file is

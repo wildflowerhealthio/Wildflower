@@ -24,7 +24,7 @@ wildflowerhealthio-servers = { path = "../servers-rust" }
 # The config and host ports each server's run reads, and a stopped server's
 # certificate state, read from its cache.
 wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflower-server-rust" }
-# The gatekeeper's failure a consent or launch command that couldn't run
+# The authorization server's failure a consent or launch command that couldn't run
 # answers with.
 wildflowerhealthio-authorization-server = { path = "../../wildflower-server/authorization-server-rust" }
 # `ForwardedRequest`, which the servers report and the request notifications
@@ -51,7 +51,7 @@ workspace = true
 
 [dev-dependencies]
 async-trait = "0.1"
-# A gatekeeper over a temporary database, whose consents the consent commands'
+# An authorization server over a temporary database, whose consents the consent commands'
 # tests decide.
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 wildflowerhealthio-token-revocation = { path = "../../wildflower-server/token-revocation-rust" }

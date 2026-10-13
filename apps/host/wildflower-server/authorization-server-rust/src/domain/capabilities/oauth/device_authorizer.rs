@@ -65,7 +65,10 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
     /// Build the authorizer over the store and the popup republish port, both
     /// lifted from the state.
     pub(crate) fn new(store: S, owner_approval: Arc<dyn OwnerApproval>) -> Self {
-        DeviceAuthorizer { store, owner_approval }
+        DeviceAuthorizer {
+            store,
+            owner_approval,
+        }
     }
 
     /// Check the requested scopes against the client's allowlist (coverage-

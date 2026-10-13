@@ -6,7 +6,7 @@ pub use require_loopback_peer::{require_loopback_peer_middleware, RequireLoopbac
 pub mod require_auth;
 pub use require_auth::require_valid_session;
 pub use require_valid_bearer_token::{
-    ensure_bearer_header, authorization_server_auth_middleware, AuthorizationServerAuthMiddleware,
+    authorization_server_auth_middleware, ensure_bearer_header, AuthorizationServerAuthMiddleware,
 };
 
 /// Boxed so the `from_fn` handlers' layer types are nameable.

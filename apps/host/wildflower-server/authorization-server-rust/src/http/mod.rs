@@ -1,4 +1,4 @@
-//! The gatekeeper's HTTP layer — everything axum-shaped lives under this
+//! The authorization server's HTTP layer — everything axum-shaped lives under this
 //! module. The only crate-facing surface is [`router`], the two layerable gates
 //! ([`authorization_server_auth_middleware`], [`require_loopback_peer_middleware`]), and
 //! [`AuthorizationServerState`]; the handler and middleware files are private
@@ -20,8 +20,8 @@ pub use middleware::ensure_bearer_header;
 // The two layerable gates the host composes its routers from. Each lives beside
 // the handler it wraps, in `middleware/`.
 pub use middleware::{
-    authorization_server_auth_middleware, require_loopback_peer_middleware, AuthorizationServerAuthMiddleware,
-    RequireLoopbackPeerMiddleware,
+    authorization_server_auth_middleware, require_loopback_peer_middleware,
+    AuthorizationServerAuthMiddleware, RequireLoopbackPeerMiddleware,
 };
 pub use state::AuthorizationServerState;
 
@@ -59,7 +59,7 @@ fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
     documented_public_router().nest("/access", routes::clients::openapi_router())
 }
 
-/// Build the gatekeeper's public HTTP surface. Routes live at
+/// Build the authorization server's public HTTP surface. Routes live at
 /// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (authenticated
 /// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
 /// `.merge()`s. This router carries **no** loopback-peer gate of its own, so
@@ -92,7 +92,7 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         .with_state(state)
 }
 
-/// Whether `path` is on the gatekeeper's **pre-auth public surface** — the
+/// Whether `path` is on the authorization server's **pre-auth public surface** — the
 /// discovery + OAuth routes a client reaches before it holds a token
 /// (`/.well-known/*` incl. `jwks.json`, and `/oauth/*`). The `/access/*` admin
 /// surface is authenticated + scope-gated and NOT public.
@@ -129,7 +129,7 @@ pub fn client_allowed_scopes(
     Ok(reader.registered_client_scopes(client_id)?)
 }
 
-/// The gatekeeper OAuth + discovery + client-management `OpenAPI` document, collected from the very
+/// The authorization server OAuth + discovery + client-management `OpenAPI` document, collected from the very
 /// routes that serve traffic. `info` is set explicitly so the committed snapshot
 /// doesn't churn with the crate version. It generates the committed snapshot the
 /// TS spec-drift test guards and the published server-docs console renders.

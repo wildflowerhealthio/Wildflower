@@ -2,7 +2,7 @@
  * Client id of the host's first-party Owner client — the standalone/web
  * fallback.
  *
- * The server-side gatekeeper (token minting, signing-key/first-party-client
+ * The server-side authorization server (token minting, signing-key/first-party-client
  * seeding, OAuth consent decisions, expiry cleanup) lives in `authorization-server-rust`.
  * On the live Tauri app the id is sourced from `tauri-shared-config.json` and
  * threaded through router context (`useAuthorizationFirstPartyClientId`), the single

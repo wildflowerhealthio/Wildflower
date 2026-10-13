@@ -29,7 +29,10 @@ fn bearer_gated_router(g: &AuthorizationServer) -> axum::Router {
     axum::Router::new()
         .route("/metadata", get(|| async { "ok" }))
         .route("/Patient", get(|| async { "ok" }))
-        .layer(authorization_server_auth_middleware(g.state.clone(), &["/metadata"]))
+        .layer(authorization_server_auth_middleware(
+            g.state.clone(),
+            &["/metadata"],
+        ))
 }
 
 fn get_with_bearer(path: &str, token: Option<&str>) -> Request<Body> {

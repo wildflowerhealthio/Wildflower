@@ -11,8 +11,8 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
 use crate::db::shared::{json_text_column, text_enum_column};
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 
 diesel::table! {
     clients (client_id) {
@@ -59,7 +59,9 @@ pub(super) fn client_by_id(
 }
 
 /// Every registered client, ordered by `client_id`.
-pub(super) fn list_clients(conn: &mut SqliteConnection) -> Result<Vec<Client>, AuthorizationServerError> {
+pub(super) fn list_clients(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<Client>, AuthorizationServerError> {
     clients::table
         .order(clients::client_id.asc())
         .select(Client::as_select())

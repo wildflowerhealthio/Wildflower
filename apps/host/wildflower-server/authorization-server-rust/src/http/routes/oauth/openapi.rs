@@ -1,4 +1,4 @@
-//! Request-body and 404 schema types for the gatekeeper OAuth OpenAPI spec.
+//! Request-body and 404 schema types for the authorization server OAuth OpenAPI spec.
 //!
 //! These exist because the real handler payload types
 //! (`super::token_exchange::TokenPayload`,

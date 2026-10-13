@@ -139,7 +139,7 @@ const shouldSignInOnArrival = (arrival: {
  *   attempt starts.
  * @param ehrLaunch - The SMART EHR launch the page load was opened with, until
  *   a sign-in takes it. The first sign-in to its server takes it, and no other
- *   carries it: gatekeeper spends a launch on the authorization request, so a
+ *   carries it: the authorization server spends a launch on the authorization request, so a
  *   second attempt (a retry, a landing mounted again, or Back from the
  *   authorization server) signs in without it rather than offering a spent
  *   one. `main-web` makes it once per page load, so mounting the landing again

@@ -12,7 +12,7 @@
 //!   in `http` calls it, so a handler never names the state itself.
 //! - [`LaunchContextMinter`] is the mint-only face of the launch-context
 //!   capability, handed out by [`crate::setup_authorization_server`] to the in-process
-//!   launchers outside the gatekeeper.
+//!   launchers outside the authorization server.
 //! - [`HostConsentDecider`] is the consent capabilities bound to the host
 //!   Owner's grant, for the host to decide consents in-process.
 //! - The remaining modules hold one binding each (the `/access` ones implement

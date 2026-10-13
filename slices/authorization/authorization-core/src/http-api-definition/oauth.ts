@@ -102,7 +102,7 @@ const AuthorizationStatusNotFoundSchema = Schema.Struct({
 // per member (a union may mix content types), so a wrapper-level
 // annotation is honored by the server's decoder but silently ignored
 // by the client — which then sends JSON that strict form-only servers
-// (the Rust gatekeeper) reject as a malformed payload. Pinned by
+// (the Rust authorization server) reject as a malformed payload. Pinned by
 // oauth.test.ts. The `withEncoding` calls are written out per member
 // (not hoisted into a shared const) because the helper is generic per
 // schema — a hoisted const pins its type parameters to `unknown`,
@@ -136,7 +136,7 @@ const DeviceCodePayload = Schema.Struct({
   })
 )
 
-// Refresh-token grant (RFC 6749 §6) — the gatekeeper's `/token` handler
+// Refresh-token grant (RFC 6749 §6) — the authorization server's `/token` handler
 // dispatches it (`token_exchange.rs::TokenPayload::RefreshToken`), so the
 // client contract must be able to express it. Same per-member form encoding as
 // the other grants.

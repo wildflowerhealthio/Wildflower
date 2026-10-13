@@ -1,4 +1,4 @@
-//! Request/response wire shapes shared across the gatekeeper's route trees —
+//! Request/response wire shapes shared across the authorization server's route trees —
 //! the JSON bodies the OAuth surface and the launcher post and read. Routes and
 //! loaders import their DTOs from here instead of a sibling `internal.rs`, so a
 //! shape shared by two surfaces (e.g. [`ConsentResult`] across both consent

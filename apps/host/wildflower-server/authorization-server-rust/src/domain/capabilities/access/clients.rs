@@ -10,8 +10,8 @@ use chrono::{DateTime, Utc};
 
 use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
-use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::Client;
 use crate::domain::{GrantStore, GrantTx};
 
 /// The scope gating [`ClientsReader`] — `wildflower/Client.r`. Shared by the

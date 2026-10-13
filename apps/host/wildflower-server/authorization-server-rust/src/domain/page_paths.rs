@@ -1,4 +1,4 @@
-//! URL/path builders for the gatekeeper's user-facing pages (the
+//! URL/path builders for the authorization server's user-facing pages (the
 //! `/authorization/*` routes of the hosted launcher). The `*_path` helpers return
 //! the launcher-relative route; the `*_url` helpers resolve it on the hosted
 //! launcher ([`LauncherBase`]) pointed at `served_origin` — typically the

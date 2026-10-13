@@ -5,8 +5,8 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
-use crate::domain::capabilities::{DeviceConsentView, Scoped};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::{DeviceConsentView, Scoped};
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveConsentReader;
 

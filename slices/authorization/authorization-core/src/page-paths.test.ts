@@ -36,7 +36,9 @@ test('deviceEntryUrlOn refuses a verification URI that is not absolute', () => {
 
 test('oauthConsentPath percent-encodes the request id', () => {
   expect(AuthorizationServerPaths.oauthConsentPath('abc')).toBe('/authorization/oauth-consent/abc')
-  expect(AuthorizationServerPaths.oauthConsentPath('?bad')).toBe('/authorization/oauth-consent/%3Fbad')
+  expect(AuthorizationServerPaths.oauthConsentPath('?bad')).toBe(
+    '/authorization/oauth-consent/%3Fbad'
+  )
 })
 
 test('deviceConsentPath percent-encodes the user code', () => {

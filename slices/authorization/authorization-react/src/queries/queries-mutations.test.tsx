@@ -26,7 +26,7 @@ import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
 import { useDecideRequestMutation } from './requests.ts'
 
 /**
- * Pins each gatekeeper mutation's `onSuccess` invalidation keys — the
+ * Pins each authorization server mutation's `onSuccess` invalidation keys — the
  * whole point of the TanStack migration is that refetches ride
  * `invalidateQueries` rather than the old `refreshKey`, so a wrong key
  * (e.g. invalidating the wrong root, or a dead self-invalidate that a

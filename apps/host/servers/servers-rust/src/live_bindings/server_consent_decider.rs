@@ -1,4 +1,4 @@
-//! [`ServerConsentDecider`]: a run's gatekeeper as the host reads, approves
+//! [`ServerConsentDecider`]: a run's authorization server as the host reads, approves
 //! and denies its consents, in the wire shapes the base's commands answer in.
 
 use std::fmt;
@@ -15,21 +15,21 @@ use crate::domain::{
 };
 
 /// Reads, approves and denies the consents waiting on one run of a server, as
-/// the host's Owner, through the run's gatekeeper.
+/// the host's Owner, through the run's authorization server.
 ///
 /// A run puts it in each [`ServerDetail`] it sets, and `UnitRunner` clears the
 /// detail when the run ends, so [`Self::of_running_server`] finds one only
-/// while the server's run is up. Clones share the run's gatekeeper, and two
+/// while the server's run is up. Clones share the run's authorization server, and two
 /// are equal when they are the same run's.
 ///
 /// [`Self::read`], [`Self::approve`] and [`Self::deny`] are each a
-/// synchronous gatekeeper transaction: run them on a blocking thread. One that
-/// started before the run ended finishes on that run's gatekeeper.
+/// synchronous authorization server transaction: run them on a blocking thread. One that
+/// started before the run ended finishes on that run's authorization server.
 #[derive(Clone)]
 pub struct ServerConsentDecider(Arc<HostConsentDecider>);
 
 impl ServerConsentDecider {
-    /// The decider over a run's gatekeeper, through its `decider`.
+    /// The decider over a run's authorization server, through its `decider`.
     #[must_use]
     pub fn new(decider: HostConsentDecider) -> Self {
         Self(Arc::new(decider))
@@ -59,7 +59,7 @@ impl ServerConsentDecider {
     /// # Errors
     ///
     /// [`ConsentError::NotPending`] when it has been answered or has expired,
-    /// or the gatekeeper's failure.
+    /// or the authorization server's failure.
     pub fn read(&self, consent: &ConsentKey) -> Result<ConsentDetails, ConsentError> {
         Ok(match consent {
             ConsentKey::Device { user_code } => {
@@ -75,7 +75,7 @@ impl ServerConsentDecider {
     ///
     /// [`ConsentError::NotPending`],
     /// [`ConsentError::RegistrationNotAcknowledged`] for a new or widened app
-    /// the approval doesn't acknowledge, or the gatekeeper's failure.
+    /// the approval doesn't acknowledge, or the authorization server's failure.
     pub fn approve(
         &self,
         approval: ConsentApproval,
@@ -120,7 +120,7 @@ impl ServerConsentDecider {
     ///
     /// # Errors
     ///
-    /// [`ConsentError::NotPending`], or the gatekeeper's failure.
+    /// [`ConsentError::NotPending`], or the authorization server's failure.
     pub fn deny(&self, consent: &ConsentKey) -> Result<(), ConsentError> {
         match consent {
             ConsentKey::Device { user_code } => self.0.deny_device(user_code)?,

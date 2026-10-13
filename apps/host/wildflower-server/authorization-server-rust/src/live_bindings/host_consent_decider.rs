@@ -14,11 +14,11 @@ use chrono::{DateTime, Utc};
 use super::state::AuthorizationServerState;
 use super::{LiveConsentDecider, LiveConsentReader};
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentDecider, ConsentOutcome,
     ConsentReader, DeviceConsentView, OAuthConsentView,
 };
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::ports::OwnerApproval;
 
 /// Lets the host read and approve or deny this server's waiting consents as
@@ -36,7 +36,7 @@ pub struct HostConsentDecider {
 }
 
 impl HostConsentDecider {
-    /// The decider over the consents of the gatekeeper `state` belongs to.
+    /// The decider over the consents of the authorization server `state` belongs to.
     #[must_use]
     pub fn new(state: Arc<AuthorizationServerState>) -> Self {
         Self { state }
@@ -63,7 +63,10 @@ impl HostConsentDecider {
     ///
     /// [`AuthorizationServerError::DeviceConsentNotFound`] when no pending, unexpired
     /// device consent has that code; a store failure otherwise.
-    pub fn device_consent(&self, user_code: &str) -> Result<DeviceConsentView, AuthorizationServerError> {
+    pub fn device_consent(
+        &self,
+        user_code: &str,
+    ) -> Result<DeviceConsentView, AuthorizationServerError> {
         self.reader().device_consent(user_code)
     }
 

@@ -19,7 +19,7 @@ import { TokenResponseHandlerContext } from '../client/token-response-handler.ts
  * Pins the `NeedsAuthMessage` stream/fiber consumer: the screen first shows a
  * setup form (device name + scope picker), and only on "Request access" runs the
  * RFC 8628 device-authorization flow against the composed runtime layer, walking
- * the `DeviceFlowState` machine as the gatekeeper client resolves. A regression
+ * the `DeviceFlowState` machine as the authorization server client resolves. A regression
  * in how the screen gates, forks the flow, reads the `DeviceAuthorization`
  * response, or maps a thrown error to a terminal state would otherwise go
  * uncaught.

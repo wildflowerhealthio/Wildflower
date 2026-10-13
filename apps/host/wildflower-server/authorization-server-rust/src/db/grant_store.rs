@@ -1,11 +1,11 @@
 //! The `SqliteGrantStore` adapter — the `SQLite` implementation of the
 //! [`GrantStore`](crate::domain::GrantStore) port. Holds the app-wide
 //! r2d2 pool of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`) onto
-//! the shared database file, applies the embedded gatekeeper migrations once on
+//! the shared database file, applies the embedded authorization server migrations once on
 //! construction (under this slice's [`MIGRATION_NAMESPACE`]), and implements the
 //! port by checking a connection out of the pool and delegating to the
 //! per-concern query bodies in the sibling `db/*` modules. Mirrors
-//! `apps-rust`'s `SqliteAppsStore`, scaled to the gatekeeper's six persistence
+//! `apps-rust`'s `SqliteAppsStore`, scaled to the authorization server's six persistence
 //! concerns.
 
 use anyhow::Context;
@@ -22,8 +22,8 @@ use crate::db::{
 };
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
@@ -33,13 +33,15 @@ use crate::domain::{GrantStore, GrantTx};
 
 /// This slice's migration namespace in the shared database. Applied versions are
 /// bookkept per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], so
-/// gatekeeper's `0001` and another diesel slice's `0001` never collide — the
+/// the authorization server's `0001` and another diesel slice's `0001` never collide — the
 /// stock diesel harness records versions in a single un-namespaced
 /// `__diesel_schema_migrations` table, where a second diesel slice's `0001`
 /// would silently mask the first.
+///
+/// Still `gatekeeper`: existing databases record their migrations under it.
 const MIGRATION_NAMESPACE: &str = "gatekeeper";
 
-/// The gatekeeper migrations, embedded from the crate's `migrations/` tree at
+/// The authorization server migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
 /// Applied once per database in [`SqliteGrantStore::new`] via
 /// [`wildflowerhealthio_persistence::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
@@ -67,7 +69,7 @@ pub struct SqliteGrantStore {
 }
 
 impl SqliteGrantStore {
-    /// Wrap the host-owned connection `pool` and apply pending gatekeeper
+    /// Wrap the host-owned connection `pool` and apply pending authorization server
     /// migrations once, on a single checked-out connection, under
     /// [`MIGRATION_NAMESPACE`]. The host builds the app-wide pool (via
     /// `wildflowerhealthio_persistence::open_pool`) on the same file its rusqlite connection
@@ -80,13 +82,13 @@ impl SqliteGrantStore {
     pub fn new(pool: DieselPool) -> anyhow::Result<Self> {
         let mut conn = pool
             .get()
-            .context("failed to check out a connection to run gatekeeper migrations")?;
+            .context("failed to check out a connection to run authorization server migrations")?;
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
             MIGRATIONS,
         )
-        .context("failed to apply gatekeeper migrations")?;
+        .context("failed to apply authorization server migrations")?;
         drop(conn);
         Ok(Self { pool })
     }
@@ -111,9 +113,9 @@ impl SqliteGrantStore {
     /// API is `&mut`, so the store hands out a fresh connection rather than
     /// sharing one.
     fn connection(&self) -> Result<PooledDieselConnection, AuthorizationServerError> {
-        self.pool
-            .get()
-            .map_err(|e| AuthorizationServerError::infrastructure("failed to check out a connection", e))
+        self.pool.get().map_err(|e| {
+            AuthorizationServerError::infrastructure("failed to check out a connection", e)
+        })
     }
 
     /// The pool, for tests that tamper with stored rows via raw SQL to prove the
@@ -147,7 +149,10 @@ pub struct SqliteGrantTx<'a> {
 impl GrantTx for SqliteGrantTx<'_> {
     // ----- clients -------------------------------------------------------
 
-    fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, AuthorizationServerError> {
+    fn client_by_id(
+        &mut self,
+        client_id: &str,
+    ) -> Result<Option<Client>, AuthorizationServerError> {
         clients::client_by_id(self.conn, client_id)
     }
 
@@ -281,7 +286,10 @@ impl GrantTx for SqliteGrantTx<'_> {
 
     // ----- launch contexts ------------------------------------------------
 
-    fn insert_launch_context(&mut self, context: &LaunchContext) -> Result<(), AuthorizationServerError> {
+    fn insert_launch_context(
+        &mut self,
+        context: &LaunchContext,
+    ) -> Result<(), AuthorizationServerError> {
         launch_contexts::insert_launch_context(self.conn, context)
     }
 
@@ -333,7 +341,10 @@ impl GrantTx for SqliteGrantTx<'_> {
         refresh_tokens::insert_refresh_token_family_row(self.conn, family)
     }
 
-    fn insert_refresh_token(&mut self, token: &RefreshToken) -> Result<(), AuthorizationServerError> {
+    fn insert_refresh_token(
+        &mut self,
+        token: &RefreshToken,
+    ) -> Result<(), AuthorizationServerError> {
         refresh_tokens::insert_refresh_token(self.conn, token)
     }
 
@@ -432,7 +443,10 @@ impl GrantTx for SqliteGrantTx<'_> {
         grants::update_device_grant(self.conn, grant)
     }
 
-    fn delete_authorization_code_grant(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
+    fn delete_authorization_code_grant(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
         grants::delete_authorization_code_grant(self.conn, id)
     }
 
@@ -500,7 +514,7 @@ impl GrantStore for SqliteGrantStore {
 // diesel error. Kept in the `db` layer so `domain::authorization_server_error` stays diesel-free.
 impl From<diesel::result::Error> for AuthorizationServerError {
     fn from(error: diesel::result::Error) -> Self {
-        AuthorizationServerError::infrastructure("gatekeeper store transaction failed", error)
+        AuthorizationServerError::infrastructure("grant store transaction failed", error)
     }
 }
 

@@ -4,9 +4,9 @@ use serde::Serialize;
 use url::Url;
 use utoipa::ToSchema;
 
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{ClientView, Scoped};
 use crate::domain::client::{AllowedGrantType, ClientKind};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::live_bindings::LiveClientsReader;
 
 /// A registered OAuth client as the Owner's "Trusted apps" list reads it. Every

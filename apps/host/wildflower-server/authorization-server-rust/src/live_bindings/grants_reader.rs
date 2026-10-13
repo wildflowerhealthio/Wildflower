@@ -9,9 +9,9 @@ use wildflowerhealthio_scopes::Scope;
 
 use super::state::AuthorizationServerState;
 use crate::db::SqliteGrantStore;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::grants::grants_reader_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, GrantsReader};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::token::VerifiedClaims;
 
 /// Read standing grants — `Scoped<LiveGrantsReader>` in the handler.

@@ -11,9 +11,9 @@ use wildflowerhealthio_scopes::Scope;
 
 use super::state::AuthorizationServerState;
 use crate::db::SqliteGrantStore;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::consent_reader_scopes;
 use crate::domain::capabilities::{ConsentReader, FixedScopeCapability};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::token::VerifiedClaims;
 
 /// Read pending consent prompts.

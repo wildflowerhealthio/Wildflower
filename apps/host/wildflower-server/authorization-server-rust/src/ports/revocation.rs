@@ -36,7 +36,7 @@ pub(crate) trait Revocation: Send + Sync + 'static {
 /// [`Revocation`]'s.
 ///
 /// This is one of two enforcement points over the shared store. The token
-/// verifier behind gatekeeper's bearer gate runs the full check here (the
+/// verifier behind the authorization server's bearer gate runs the full check here (the
 /// per-`jti` denylist and the per-subject epoch). `fhir-r4-rust`'s
 /// `RevocationCheckingProvider` re-checks the `jti` denylist alone inside HFS,
 /// because helios's `Principal` carries no `iat`; the gate runs first on every

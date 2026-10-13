@@ -52,10 +52,10 @@ impl Unit for ServerUnit {
     /// Set the server up, announce it running, and serve it until
     /// `UnitRunner` stops the run. Its health, its tunnel's state, its
     /// certificate's state, the head of its pending-consent queue, and the
-    /// [`ServerConsentDecider`] and [`ServerLaunchMinter`] over its gatekeeper
+    /// [`ServerConsentDecider`] and [`ServerLaunchMinter`] over its authorization server
     /// go out as the run's [`ServerDetail`].
     ///
-    /// The run's gatekeeper publishes its queue's head on a channel of the
+    /// The run's authorization server publishes its queue's head on a channel of the
     /// run's own, so each server's head is its own.
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
         let (server_health_tx, server_health_rx) = watch::channel(None);
@@ -116,7 +116,7 @@ struct DetailChannels {
     tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
     /// The run's certificate's state.
     certificate_rx: watch::Receiver<Option<CertificateState>>,
-    /// The head of the run's gatekeeper's pending-consent queue.
+    /// The head of the run's authorization server's pending-consent queue.
     pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     health_open: bool,
     tunnel_open: bool,
@@ -166,7 +166,7 @@ impl DetailChannels {
 
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
 /// run's health, its tunnel's state, its certificate's state, the head of its
-/// gatekeeper's pending-consent queue, its consent decider and its launch
+/// authorization server's pending-consent queue, its consent decider and its launch
 /// minter into the detail, now and each time the health, the tunnel state, the
 /// certificate state or the head changes. The task dies with the run's
 /// runtime, and `UnitRunner` clears the detail when the run ends.

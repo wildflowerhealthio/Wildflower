@@ -65,7 +65,7 @@ The iOS privacy manifest, `src-tauri/gen/apple/PrivacyInfo.xcprivacy`, declares 
 | ---------------------------------------------------------------- | -------------------------------- | -------------------------------------- |
 | TLS (`rustls` + `ring`, vendored OpenSSL, `native-tls`), `rcgen` | HTTP clients, ACME, certificates | HTTPS and the device's TLS certificate |
 | Noise (`snow`: X25519, ChaCha20-Poly1305, BLAKE2)                | rathole's `noise` feature        | Tunnel transport to the relay          |
-| Ed25519, RSA, P-256 signatures; Argon2id hashing                 | gatekeeper                       | Token signing, client-secret hashing   |
+| Ed25519, RSA, P-256 signatures; Argon2id hashing                 | the authorization server         | Token signing, client-secret hashing   |
 | AES-GCM                                                          | `helios-rest`                    | Library-internal                       |
 
 The answers the questionnaire would otherwise take:

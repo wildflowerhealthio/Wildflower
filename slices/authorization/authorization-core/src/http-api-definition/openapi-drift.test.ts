@@ -1,5 +1,5 @@
 /**
- * Spec-drift contract test — gatekeeper OAuth + discovery surface, plus the
+ * Spec-drift contract test — the authorization server OAuth + discovery surface, plus the
  * documented slice of `/access` (client management).
  *
  * Diffs the Rust/axum server's OpenAPI spec (emitted by `utoipa`, committed at
@@ -7,7 +7,7 @@
  * client's spec (`OpenApi.fromApi(AuthorizationServerApi)`). The generic wire-shape
  * comparison + the parse/dereference/assert harness live in
  * `shared-structures-core/openapi-drift`; this file owns only the
- * gatekeeper-specific scope and accepted differences.
+ * authorization-server-specific scope and accepted differences.
  *
  * Regenerate the committed server spec after a wire-type change with:
  *   UPDATE_OPENAPI=1 cargo test -p wildflowerhealthio-authorization-server openapi_spec_snapshot_is_up_to_date
@@ -17,7 +17,7 @@ import { defineSpecDriftTest } from '@wildflowerhealthio/shared-structures-core/
 import { AuthorizationServerApi } from './index.ts'
 
 defineSpecDriftTest({
-  name: 'gatekeeper OAuth',
+  name: 'authorization server OAuth',
   serverSpec: new URL(
     '../../../../../apps/host/wildflower-server/authorization-server-rust/openapi/authorization-server-oauth.openapi.json',
     import.meta.url

@@ -47,6 +47,8 @@ impl TokenRevoker {
     pub(crate) fn revoke_subject(&self, subject: &str) -> Result<(), AuthorizationServerError> {
         self.revocation
             .revoke_subject_as_of_now(subject)
-            .map_err(|e| AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e))
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e)
+            })
     }
 }

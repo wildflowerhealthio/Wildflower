@@ -17,7 +17,7 @@ interface PatientOptionsState {
  * `AuthorizationServerHttpApiClient`, so the read lives in `fhir-r4-react`'s
  * {@link usePatientsQuery} — a TanStack Query keyed off the slice's
  * `runAuthed` (post-migration; the old `useFhirR4ResourcesEffectAction`
- * runner is gone). This hook keeps only the gatekeeper-specific
+ * runner is gone). This hook keeps only the authorization-server-specific
  * presentation mapping (the `PatientOption` shape, and its display name:
  * `fhir-r4`'s {@link HumanName.displayName}, else the resource id) and the
  * `loading` flag the form needs.

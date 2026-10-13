@@ -7,8 +7,8 @@ use url::Url;
 use super::FakeGrantTx;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
@@ -17,7 +17,10 @@ use crate::domain::signing_key::SigningKey;
 use crate::domain::GrantTx;
 
 impl GrantTx for FakeGrantTx<'_> {
-    fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, AuthorizationServerError> {
+    fn client_by_id(
+        &mut self,
+        client_id: &str,
+    ) -> Result<Option<Client>, AuthorizationServerError> {
         Ok(self.store.clients.borrow().get(client_id).cloned())
     }
 
@@ -245,7 +248,10 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(before - requests.len())
     }
 
-    fn insert_launch_context(&mut self, context: &LaunchContext) -> Result<(), AuthorizationServerError> {
+    fn insert_launch_context(
+        &mut self,
+        context: &LaunchContext,
+    ) -> Result<(), AuthorizationServerError> {
         self.store
             .launch_contexts
             .borrow_mut()
@@ -328,7 +334,10 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(())
     }
 
-    fn insert_refresh_token(&mut self, token: &RefreshToken) -> Result<(), AuthorizationServerError> {
+    fn insert_refresh_token(
+        &mut self,
+        token: &RefreshToken,
+    ) -> Result<(), AuthorizationServerError> {
         self.store
             .tokens
             .borrow_mut()
@@ -523,7 +532,10 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(())
     }
 
-    fn delete_authorization_code_grant(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
+    fn delete_authorization_code_grant(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
         Ok(self.store.code_grants.borrow_mut().remove(id).is_some())
     }
 

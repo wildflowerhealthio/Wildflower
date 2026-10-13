@@ -68,7 +68,7 @@ describe('ScopeConfiguration.effectiveCell — coverage + lock (§3)', () => {
 
   test('the system context covers + locks a lower one (system ⊇ patient), matching scopes-rust', () => {
     // `system/*.r` covers `patient/Observation.r` — the context coverage the
-    // gatekeeper's `FhirResourceScope::covers` applies (`self.context.covers(other.context)`);
+    // authorization server's `FhirResourceScope::covers` applies (`self.context.covers(other.context)`);
     // the `*` resource marks the cell wildcard-locked.
     expect(
       Scope.ResourceScopeConfiguration.scopesGrantInteraction(

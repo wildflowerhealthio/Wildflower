@@ -56,24 +56,24 @@ release databases too.
 
 A dev tile launches whatever is serving the port — the vite (or preview) server
 when it is up, nothing when it is down. Each SMART dev row has its own OAuth
-client (gatekeeper's `seed_dev_app_clients`) whose id equals the dev app id and
+client (the authorization server's `seed_dev_app_clients`) whose id equals the dev app id and
 whose redirect URI, `http://localhost:{port}` plus the app's callback path, is
 what `/authorize` matches.
 
 ## SMART apps
 
 An app is a **SMART app** iff it carries a `client_id` that references a row in
-the gatekeeper `clients` table. SMART-ness is derived from that relation to a
+the authorization server `clients` table. SMART-ness is derived from that relation to a
 registered OAuth client, which is more direct (and can't drift) than inferring it
 from a `{launch}` placeholder in a URL template. The SMART client type —
 **public** or **confidential** — is carried by the linked `clients` row; it is
 documented here, not separately badged.
 
 A SMART app's launch carries a SMART App Launch `launch` value in place of
-`{launch}`. The launch endpoint mints it through the gatekeeper, which records
+`{launch}`. The launch endpoint mints it through the authorization server, which records
 it as a launch context for the app's `client_id`. The app's `/oauth/authorize`
 must present it within five minutes, as that client, and it works once (see the
-gatekeeper's [Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)).
+authorization server's [Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)).
 A non-SMART app has no OAuth client to bind a launch to, so its `{launch}` is
 empty.
 
@@ -122,13 +122,13 @@ unknown id is a `404`. Both answer with the stored registration.
 
 The `app_registrations.client_id` column references `clients.client_id` but is
 **not** an enforced SQL foreign key. The `clients` table is owned by the
-gatekeeper slice; an enforced cross-slice FK would couple the apps migrations to
-gatekeeper's schema and impose a migration ordering across slice boundaries,
+authorization server; an enforced cross-slice FK would couple the apps migrations to
+the authorization server's schema and impose a migration ordering across slice boundaries,
 violating the slice layering. So the column is a plain reference: the apps slice
 derives `isSmart` from its presence alone and never reads the `clients` table. The
-invariant — every seeded `client_id` corresponds to a seeded gatekeeper client —
+invariant — every seeded `client_id` corresponds to a seeded authorization server client —
 is held by keeping the two slices' seeds in lockstep (the seeded apps'
-`client_id`s in the apps migrations, the matching clients in the gatekeeper
+`client_id`s in the apps migrations, the matching clients in the authorization server
 ones), each guarded by its own seed test, rather than by the database.
 
 A client's redirect URIs are absolute URLs, matched by exact equality at
@@ -140,7 +140,7 @@ sibling registers `http://localhost:{port}` plus the same path.
 ## Auth posture and the remote trust boundary
 
 The whole `/apps` API is reached through the host's loopback-peer gate, and every
-route is behind the **gatekeeper bearer gate** (which inserts the caller's scope
+route is behind the **authorization server bearer gate** (which inserts the caller's scope
 claims). On top of that each route is **scope-gated** through the shared
 default-safe capability pattern (`scope-capabilities-rust`; see
 [Scope-Gated Endpoints How-To](../Authorization/Scope-Gated%20Endpoints%20How-To.md)),

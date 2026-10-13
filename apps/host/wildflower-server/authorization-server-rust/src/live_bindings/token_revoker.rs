@@ -8,9 +8,9 @@ use std::sync::Arc;
 use wildflowerhealthio_scopes::Scope;
 
 use super::state::AuthorizationServerState;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::tokens::token_revoker_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, TokenRevoker};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::token::VerifiedClaims;
 
 /// Revoke issued tokens.

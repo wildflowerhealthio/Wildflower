@@ -43,7 +43,7 @@ fn found_redirect(location: &str) -> Response {
 pub(super) enum AuthorizeError {
     /// A failure on a request whose `redirect_uri` is not trusted — a disabled
     /// client, a malformed or non-http(s) URI, an unregistered redirect for the
-    /// first-party client, or (because the client is new to this gatekeeper or
+    /// first-party client, or (because the client is new to this authorization server or
     /// the redirect is not on its registration) any later validation failure.
     /// Renders a local HTML page — redirecting to an unvouched-for URI would be
     /// an open redirect (RFC 6749 §4.1.2.1).
@@ -140,7 +140,7 @@ pub struct AuthorizeParams {
 /// The authorization endpoint (RFC 6749 §3.1), the public front door of the
 /// OAuth flow. Validates the request, then either auto-issues an authorization
 /// code (when an existing grant pre-approves every requested scope) or parks
-/// the user-agent on the gatekeeper's wait page while the Owner decides.
+/// the user-agent on the authorization server's wait page while the Owner decides.
 ///
 /// Nothing in-process calls this route. Registered clients (e.g.
 /// SMART-on-FHIR apps) discover it via the FHIR server's
@@ -154,7 +154,7 @@ pub struct AuthorizeParams {
 /// 2. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue (raising the host webview's popup) and the browser is 302'd to the
-///    wait page at `/oauth/authorize/{id}/wait`, served by this gatekeeper on
+///    wait page at `/oauth/authorize/{id}/wait`, served by this authorization server on
 ///    the origin the browser used, which polls `GET /oauth/authorize/{id}` (a
 ///    custom extension, not part of any RFC) until the Owner decides — in the
 ///    popup, in a signed-in launcher, or in the host's native dialog. RFC 6749
@@ -180,7 +180,7 @@ pub struct AuthorizeParams {
     path = "/authorize",
     params(AuthorizeParams),
     responses(
-        (status = 302, description = "Redirect to the client redirect_uri or the gatekeeper's wait page"),
+        (status = 302, description = "Redirect to the client redirect_uri or the authorization server's wait page"),
         (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 503, description = "No active signing key")
     )
@@ -221,7 +221,7 @@ pub(super) async fn handle_authorize_request(
             &code,
             &client_state,
         )),
-        // Otherwise this gatekeeper's wait page, which waits for whichever
+        // Otherwise this authorization server's wait page, which waits for whichever
         // surface — the host popup, a signed-in launcher's consent list, or (for
         // the hosted launcher over direct loopback) the host's native dialog —
         // decides first.

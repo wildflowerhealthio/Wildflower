@@ -10,7 +10,7 @@ const sliceClient = defineSliceHttpClient({
 /**
  * Effect Service providing the resolved `RequestLogApi` HttpApi client —
  * `ListCallers` + `ListRequests`. The host authenticates the `/requests`
- * surface behind the gatekeeper bearer gate, then authorizes it by
+ * surface behind the authorization server bearer gate, then authorizes it by
  * `wildflower/RequestLog.r`. The client itself sets no `Authorization` header —
  * the host app's `HttpClient` layer carries the credential. Adapter layers
  * (`request-log-react`) provide `.layer`; call sites consume Effect-natively.

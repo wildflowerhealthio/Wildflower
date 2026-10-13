@@ -5,7 +5,7 @@
 //! to the request-log slice; a `/health` check goes to the request log only.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
-//! bearer gate's `401` off its [`RequestRefusal`] one; the gatekeeper bearer
+//! bearer gate's `401` off its [`RequestRefusal`] one; the authorization server bearer
 //! gates stamp both (see `wildflowerhealthio_shared_structures::request_caller`). The host
 //! turns the reports into "this app is using your server" notifications.
 

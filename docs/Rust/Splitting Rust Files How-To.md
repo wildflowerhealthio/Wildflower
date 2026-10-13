@@ -34,7 +34,7 @@ into a subdirectory under such a tree:
   non-exempt handler `admin.rs` into `admin/*.rs` means every new submodule is
   now scanned — if the submodules legitimately hold `State<…>` or a store
   accessor, the guard trips. Exempt them consciously; don't loosen the needle.
-- **Path-prefix exemptions must still cover the split.** The gatekeeper guard
+- **Path-prefix exemptions must still cover the split.** The authorization server guard
   `access_handlers_reach_the_store_only_through_capabilities` exempts by
   `EXEMPT_DIR_PREFIXES = ["oauth/"]` and `EXEMPT_FILES = ["mod.rs", …]`, so
   splitting `oauth/token_exchange.rs` into `oauth/token_exchange/*.rs` (whose
@@ -42,7 +42,7 @@ into a subdirectory under such a tree:
   guard skips `mod.rs` and `tests.rs`, so extracting an inline test module to
   `routes/tests.rs` needs `tests.rs` on the skip list.
 
-The forbidden-token needle set is per slice (gatekeeper uses accessor shapes
+The forbidden-token needle set is per slice (the authorization server uses accessor shapes
 `State<` / `.store`; databases uses `State<` plus module paths and a store type
 name) — match whatever names the store-reaching shapes in _that_ crate, and
 remember the guard is textual, so a mention of a needle in a doc comment counts.

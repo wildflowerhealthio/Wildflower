@@ -136,7 +136,7 @@ const bootApp = async (): Promise<JSX.Element> => {
   // A load opened with a SMART launch (`?iss=`, and `launch` for an EHR
   // launch — the base opening this server's launcher) is pointed at the server
   // `iss` names, and the launch leaves the URL, read once: a reload must not
-  // offer gatekeeper a launch it has already spent. The landing signs in to
+  // offer the authorization server a launch it has already spent. The landing signs in to
   // that server on arrival, with the EHR launch. A return leg is never a
   // launch too, so this leaves its settled URL as it is.
   const arrivalSearch = window.location.search

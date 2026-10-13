@@ -1,7 +1,7 @@
 //! The **wait page**: the page `/oauth/authorize` parks a browser on while the
-//! Owner decides. Served by the gatekeeper itself, on whichever origin the
+//! Owner decides. Served by the authorization server itself, on whichever origin the
 //! browser reached it at, so the only address a sign-in ever leaves the
-//! gatekeeper for is the one the status poll hands back — a redirect built from
+//! authorization server for is the one the status poll hands back — a redirect built from
 //! the client's allowlisted (or just-approved) `redirect_uri`. The concept is the
 //! "Wait page" entry of `slices/authorization/docs/Jargon Explanation.md`.
 //!
@@ -34,7 +34,7 @@ const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; \
 
 /// The wait page's routes, relative to the `/oauth` mount. The page references
 /// its assets as `../wait.js` and `../wait.css`, which resolve to these two
-/// siblings whatever prefix the gatekeeper is mounted under.
+/// siblings whatever prefix the authorization server is mounted under.
 pub(crate) fn router() -> Router<Arc<AuthorizationServerState>> {
     Router::new()
         .route("/authorize/{id}/wait", get(|| async { wait_page() }))
@@ -68,7 +68,7 @@ fn wait_page_stylesheet() -> Response {
 }
 
 /// One of the page's files, with the page's security headers. Cache-suppressed
-/// like the status poll it drives, so a gatekeeper update never leaves a stale
+/// like the status poll it drives, so an authorization server update never leaves a stale
 /// script polling a changed endpoint.
 fn page_file(content_type: &'static str, body: &'static str) -> Response {
     CacheSuppressed((

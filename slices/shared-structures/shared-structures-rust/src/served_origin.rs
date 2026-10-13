@@ -1,7 +1,7 @@
 //! Forwarding-header provenance — `request_provenance` and the typed
 //! [`served_base_url_for`], the single source of truth for a request's served
 //! base URL (loopback vs. the forwarded public base URL). Consumers —
-//! gatekeeper's token/discovery URLs and apps-rust's launch redirect — resolve
+//! The authorization server's token/discovery URLs and apps-rust's launch redirect — resolve
 //! through it so they can't drift. See `docs/Origins/Explanation.md` for the
 //! model; this module owns the parsing contract and validation below.
 //!

@@ -3,7 +3,7 @@ import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
 
 /**
- * Public gatekeeper layout. Wraps the slice's unauthenticated RFC 8628
+ * Public authorization layout. Wraps the slice's unauthenticated RFC 8628
  * screens in the shared `pageLayoutStyles['page']` shell so each leaf
  * renders content only.
  *

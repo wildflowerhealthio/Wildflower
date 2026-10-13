@@ -44,7 +44,10 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
         .route("/metadata", get(|| async { "ok" }))
         .route("/metadata-x", get(|| async { "ok" }))
         .route("/Patient", get(|| async { "ok" }));
-    let gated = inner.layer(authorization_server_auth_middleware(g.state.clone(), &["/metadata"]));
+    let gated = inner.layer(authorization_server_auth_middleware(
+        g.state.clone(),
+        &["/metadata"],
+    ));
 
     let status = |path: &'static str| {
         let gated = gated.clone();
@@ -132,7 +135,8 @@ async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: b
 #[tokio::test]
 async fn a_token_for_this_server_passes_over_loopback_and_the_tunnel() {
     let (g, _host_owner_token, db) = spin_up();
-    let owner_scopes: Vec<String> = wildflowerhealthio_authorization_server::default_local_granted_scopes();
+    let owner_scopes: Vec<String> =
+        wildflowerhealthio_authorization_server::default_local_granted_scopes();
     let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
     let token = mint_scoped_token(&db, &owner_scopes);
     for forwarded in [false, true] {
@@ -153,7 +157,8 @@ async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
     let (g, _host_owner_token, db) = spin_up();
     let other_server = "https://lab.relay.example";
     let path_under_origin = format!("{SERVER_ORIGIN}/fhir-r4");
-    let owner_scopes: Vec<String> = wildflowerhealthio_authorization_server::default_local_granted_scopes();
+    let owner_scopes: Vec<String> =
+        wildflowerhealthio_authorization_server::default_local_granted_scopes();
     let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
     for (issuer, audience) in [
         (other_server, other_server),

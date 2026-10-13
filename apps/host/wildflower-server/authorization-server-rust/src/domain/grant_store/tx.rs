@@ -3,8 +3,8 @@ use url::Url;
 
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
@@ -32,7 +32,8 @@ pub trait GrantTx {
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the read fails or a returned row
     /// cannot be mapped to a [`Client`].
-    fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, AuthorizationServerError>;
+    fn client_by_id(&mut self, client_id: &str)
+        -> Result<Option<Client>, AuthorizationServerError>;
 
     /// Insert a client, or update its policy fields if one with the same
     /// `client_id` already exists (`ON CONFLICT … DO UPDATE`) — used by
@@ -207,8 +208,10 @@ pub trait GrantTx {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn consume_approved_authorization_request(&mut self, id: &str)
-        -> Result<bool, AuthorizationServerError>;
+    fn consume_approved_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError>;
 
     /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
     /// rate-limited.
@@ -268,7 +271,10 @@ pub trait GrantTx {
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the insert fails (including a
     /// duplicate `nonce`).
-    fn insert_launch_context(&mut self, context: &LaunchContext) -> Result<(), AuthorizationServerError>;
+    fn insert_launch_context(
+        &mut self,
+        context: &LaunchContext,
+    ) -> Result<(), AuthorizationServerError>;
 
     /// Stamp the launch `nonce` consumed at `now` and return it, iff it was
     /// minted for `client_id` or for any client, is unconsumed, and is
@@ -365,7 +371,10 @@ pub trait GrantTx {
     /// [`AuthorizationServerError::Infrastructure`] if the insert fails (for example a
     /// unique-constraint violation on the token hash, or a foreign-key violation
     /// for an unknown family).
-    fn insert_refresh_token(&mut self, token: &RefreshToken) -> Result<(), AuthorizationServerError>;
+    fn insert_refresh_token(
+        &mut self,
+        token: &RefreshToken,
+    ) -> Result<(), AuthorizationServerError>;
 
     /// Resolve a presented token hash to its row plus the owning family in one
     /// JOIN (consumed tokens resolve too — the caller distinguishes live from
@@ -552,7 +561,10 @@ pub trait GrantTx {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
-    fn delete_authorization_code_grant(&mut self, id: &str) -> Result<bool, AuthorizationServerError>;
+    fn delete_authorization_code_grant(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError>;
 
     /// Delete the **device** grant `id`, returning `true` iff a row was removed.
     ///

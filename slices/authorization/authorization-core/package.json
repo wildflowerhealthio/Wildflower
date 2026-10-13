@@ -1,7 +1,7 @@
 {
   "name": "@wildflowerhealthio/authorization-core",
   "version": "0.0.0",
-  "description": "OAuth domain package: HTTP API definitions, generated clients, and page paths for the gatekeeper slice (served by authorization-server-rust).",
+  "description": "OAuth domain package: HTTP API definitions, generated clients, and page paths for the authorization slice (served by authorization-server-rust).",
   "license": "MIT",
   "repository": {
     "type": "git",

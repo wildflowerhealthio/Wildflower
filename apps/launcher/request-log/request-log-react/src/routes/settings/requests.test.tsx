@@ -14,7 +14,7 @@ import { routeTree } from '../../routeTree.gen.ts'
  * Drives `/settings/requests` through a real router and the real query →
  * client → `HttpClient` path, against a stub server: one holding a
  * four-request log in two pages, the other a burst of refused requests for the
- * activity card; each with its caller summary, and gatekeeper's client list.
+ * activity card; each with its caller summary, and the authorization server's client list.
  */
 
 const loggedRequest = (
@@ -210,7 +210,7 @@ const stubServerLayer = (log: StubLog): Layer.Layer<HttpClient.HttpClient> =>
   )
 
 // The app's composed runner serves every slice's client; this one serves the
-// two the screen reads through — the request log and gatekeeper's client names.
+// two the screen reads through — the request log and the authorization server's client names.
 const runAuthedAgainst =
   (log: StubLog): RunAuthed =>
   (effect) =>
@@ -396,7 +396,7 @@ describe('/settings/requests activity card', () => {
     return card
   }
 
-  test('lists the callers from the request log, named by gatekeeper or their id', async () => {
+  test('lists the callers from the request log, named by the authorization server or their id', async () => {
     renderRequests('', REFUSED_BURST_LOG)
 
     const card = await activityCard()

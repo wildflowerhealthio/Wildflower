@@ -4,7 +4,7 @@ import { RadioGroup } from '@wildflowerhealthio/react-tundraish'
 /**
  * A named group via `legend` — the canonical use. The `radiogroup` the group
  * renders is named by the legend, so no outer Field/FieldGroup wrapper is
- * needed (gatekeeper oauth-consent patient picker).
+ * needed (the authorization server oauth-consent patient picker).
  */
 export const PatientContext = () => {
   const [value, setValue] = useState('')

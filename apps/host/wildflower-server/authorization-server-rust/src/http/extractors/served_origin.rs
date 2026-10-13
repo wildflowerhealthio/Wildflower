@@ -1,7 +1,7 @@
-//! Gatekeeper's served-origin axum extractor — wraps the shared
+//! The authorization server's served-origin axum extractor — wraps the shared
 //! [`served_base_url_for`] resolver (the single source of truth in
 //! `shared-structures-rust`; see `docs/Origins/Explanation.md`). The extractor
-//! stays here because it reaches into gatekeeper's [`AuthorizationServerState`] for the
+//! stays here because it reaches into the authorization server's [`AuthorizationServerState`] for the
 //! `loopback_base_url` fallback, so it can't move to a state-agnostic crate
 //! without parameterizing.
 

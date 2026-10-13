@@ -10,9 +10,9 @@ use uuid::Uuid;
 use wildflowerhealthio_scopes::widened_scopes;
 
 use crate::domain::authority::DelegatedScopes;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_registration::ClientRegistrationVerdict;
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::{GrantStore, GrantTx};
 

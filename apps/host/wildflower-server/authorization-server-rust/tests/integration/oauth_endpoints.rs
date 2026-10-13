@@ -1,6 +1,6 @@
 use crate::common::*;
 
-/// Trust on first use: a `client_id` this gatekeeper has never seen is no longer
+/// Trust on first use: a `client_id` this authorization server has never seen is no longer
 /// rejected at the door. Its request is parked like any other and the browser is
 /// sent to the Owner's prompt — and **nothing** is written to the `clients`
 /// table, so a request nobody approves leaves no trace of the app.

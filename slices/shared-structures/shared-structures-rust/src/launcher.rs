@@ -3,7 +3,7 @@
 //! The launcher (`apps/launcher/launcher-web`'s `main-web` build) is published at a
 //! fixed address — `https://wildflowerhealth.io/launcher/` — and runs **cross-origin**
 //! to whichever Wildflower server its `?server=` query parameter names. Apart
-//! from the gatekeeper's `/authorize` wait page, a server serves no UI of its
+//! from the authorization server's `/authorize` wait page, a server serves no UI of its
 //! own, so every other browser-facing page it hands out (the device-flow
 //! `verification_uri`, logout's landing, the link on an unmatched route's `404`)
 //! is a URL on that hosted UI carrying `server=<the request's served origin>`.

@@ -1,4 +1,4 @@
-//! [`AuthorizationServerError`] — the gatekeeper domain's failure vocabulary, shaped like
+//! [`AuthorizationServerError`] — the authorization server domain's failure vocabulary, shaped like
 //! apps' `AppsError`: a small set of **semantic**, client-facing
 //! outcomes plus one opaque infrastructure variant. The HTTP layer
 //! ([`crate::http::errors`]) renders each to a status and wire body; nothing
@@ -10,7 +10,7 @@
 
 use wildflowerhealthio_scope_capabilities::MissingScopes;
 
-/// The ways a gatekeeper domain operation can fail. The `*NotFound` variants
+/// The ways an authorization server domain operation can fail. The `*NotFound` variants
 /// are semantic, client-facing outcomes that are part of the wire contract
 /// (each renders as a structured JSON 404 keyed by the resource's identifying
 /// field); [`Infrastructure`](AuthorizationServerError::Infrastructure) is an opaque
@@ -52,7 +52,7 @@ pub enum AuthorizationServerError {
         approver_missing_scopes: Vec<String>,
     },
     /// The Owner approved an authorization-code consent whose client is new to
-    /// this gatekeeper (or whose redirect / scopes step outside its
+    /// this authorization server (or whose redirect / scopes step outside its
     /// registration) without acknowledging that warning — the consent approve
     /// surface's **409**. Semantic and client-facing: the launcher must show the
     /// registration warning and send

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ConfirmDialog } from '@wildflowerhealthio/react-tundraish'
 
 /**
- * The destructive confirm (gatekeeper "Disable App"), open on mount — the
+ * The destructive confirm (the authorization server "Disable App"), open on mount — the
  * dialog is a native `<dialog>` shown via `showModal()`, so the cell holds
  * `open` true. `destructive` paints the confirm button red.
  */

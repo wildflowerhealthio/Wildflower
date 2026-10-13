@@ -6,7 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::signing_key::{KeyMaterialError, SigningKey};
 
-/// Lifetime of access tokens minted by the gatekeeper. The consent UI's
+/// Lifetime of access tokens minted by the authorization server. The consent UI's
 /// `offline_access` copy ("Access your data after 15 minutes") states this
 /// value — keep the two in step.
 pub const ACCESS_TOKEN_TTL: Duration = Duration::minutes(15);
@@ -30,7 +30,7 @@ where
     }
 }
 
-/// Claims encoded in an access token minted by the gatekeeper.
+/// Claims encoded in an access token minted by the authorization server.
 ///
 /// Field names are expanded for readability; serde renames them back to the
 /// RFC 7519 short forms on the wire.
@@ -147,9 +147,9 @@ pub struct VerifiedClaims {
     pub subject: String,
     /// Unique JWT ID (`jti`), if the token carries one. `Option` — and
     /// `#[serde(default)]` — because verification stays tolerant of legacy
-    /// tokens minted before gatekeeper wrote a `jti`: they verify fine, they
+    /// tokens minted before the authorization server wrote a `jti`: they verify fine, they
     /// just can't be denylisted individually (the per-subject epoch still
-    /// covers them). Every token gatekeeper mints today carries one.
+    /// covers them). Every token the authorization server mints today carries one.
     #[serde(default)]
     pub jti: Option<String>,
     /// Audience(s) the token is intended for (`aud`). Normalized at parse time —
@@ -204,7 +204,9 @@ pub enum VerifyError {
     /// Wraps the domain [`AuthorizationServerError`](crate::domain::authorization_server_error::AuthorizationServerError)
     /// the store surfaced, so no database error type appears here.
     #[error("signing-key store unavailable")]
-    KeyStoreUnavailable(#[source] crate::domain::authorization_server_error::AuthorizationServerError),
+    KeyStoreUnavailable(
+        #[source] crate::domain::authorization_server_error::AuthorizationServerError,
+    ),
     /// A configured signing key's material could not be turned into a
     /// `DecodingKey`.
     #[error("signing key material could not be loaded")]

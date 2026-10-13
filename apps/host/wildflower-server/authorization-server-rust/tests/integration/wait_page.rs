@@ -22,7 +22,7 @@ fn header<'a>(res: &'a axum::response::Response, name: &str) -> &'a str {
 
 /// A parked request is sent to the wait page beside the endpoint it asked,
 /// named relatively, so the browser stays on whichever origin it reached the
-/// gatekeeper at — loopback, or a forwarded public one — and no launcher
+/// authorization server at — loopback, or a forwarded public one — and no launcher
 /// address is involved.
 #[tokio::test]
 async fn a_parked_request_waits_beside_the_authorize_endpoint_on_the_origin_it_used() {

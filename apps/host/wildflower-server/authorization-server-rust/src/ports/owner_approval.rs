@@ -1,5 +1,6 @@
-//! [`OwnerApproval`] — the seam a consent-queue transition calls to
-//! republish the active popup head after it changes the pending queue.
+//! [`OwnerApproval`] — asking the Owner: the seam a consent-queue transition
+//! calls to republish the request awaiting the Owner's approval after it
+//! changes the pending queue.
 
 /// Republish the head of the pending-consent queue to the host.
 ///

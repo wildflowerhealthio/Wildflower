@@ -175,7 +175,7 @@ const decodeSmartConfiguration = Schema.decodeUnknownEither(SmartConfiguration)
  *
  * `code_challenge_methods_supported` is checked for `S256` when present,
  * because a server that cannot do S256 cannot complete this client's flow (the
- * gatekeeper authorize endpoint mandates it) and failing here says so plainly;
+ * authorization server authorize endpoint mandates it) and failing here says so plainly;
  * a document that omits the field is given the benefit of the doubt rather than
  * blocked on a hint.
  */

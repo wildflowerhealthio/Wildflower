@@ -101,7 +101,7 @@ describe('signInEnvironment', () => {
     // Assert — the wire form is the space-delimited list, in order.
     expect(environment.scope).toBe(STANDALONE_LAUNCH_SCOPES.join(' '))
     expect(environment.scope).toBe(standaloneLaunchScopeParameter())
-    // The id gatekeeper migration `0026_rekey_launcher_client` seeds.
+    // The id the authorization server migration `0026_rekey_launcher_client` seeds.
     expect(environment.clientId).toBe('03a513940b52f8c2649a5366d1a26d19')
   })
 
@@ -347,7 +347,7 @@ describe('authStateForSession', () => {
   })
 
   it('publishes a response with no reported lifetime as authed with no known expiry', () => {
-    // `expires_in` is optional in RFC 6749 (gatekeeper always sends it). An
+    // `expires_in` is optional in RFC 6749 (the authorization server always sends it). An
     // invented `exp` would claim a freshness nothing established, so the signal
     // says "authed, expiry unknown" instead.
     fc.assert(

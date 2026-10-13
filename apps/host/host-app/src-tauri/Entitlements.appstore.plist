@@ -11,7 +11,7 @@
   <true/>
 
   <!-- The host binds a loopback TCP listener (src/lib.rs) to serve the FHIR,
-       OHIF, apps and gatekeeper routes. Under the sandbox, accepting any
+       OHIF, apps and the authorization server routes. Under the sandbox, accepting any
        connection needs this — loopback is not exempt. -->
   <key>com.apple.security.network.server</key>
   <true/>

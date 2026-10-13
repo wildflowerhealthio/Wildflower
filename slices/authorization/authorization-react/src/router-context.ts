@@ -13,7 +13,7 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<AuthorizationServerHttpApiClien
  * narrowed to this slice's client, plus the host-threaded
  * `localGrantedScopes`, `firstPartyClientId` and `externalLinkRoot`. `awaitAuthReady` is inherited
  * only to keep this structural context a faithful subset of the host app's
- * `RouterContext`; gatekeeper loaders don't read it — the gate guarantees the
+ * `RouterContext`; the authorization server loaders don't read it — the gate guarantees the
  * token before the loader runs.
  */
 type RouterContext = BaseRouterContext.RouterContextWith<AuthorizationServerHttpApiClient> & {
@@ -45,7 +45,7 @@ type RouterContext = BaseRouterContext.RouterContextWith<AuthorizationServerHttp
 }
 
 /**
- * The gatekeeper slice's client layer, ready for the app to merge into
+ * The authorization server slice's client layer, ready for the app to merge into
  * its composed `runtimeLayer` over `BaseRouterContext.RuntimeLayer`
  * (`HttpClient`). Tokenless — see {@link buildAuthorizationServerClientLayer}.
  */
@@ -56,11 +56,11 @@ const sliceRuntimeLayer: Layer.Layer<
 > = buildAuthorizationServerClientLayer()
 
 /**
- * The fully-composed `runtimeLayer` from router context, for the gatekeeper
+ * The fully-composed `runtimeLayer` from router context, for the authorization server
  * call site that isn't a one-shot Promise and so can't go through
  * `runAuthed`/`useSuspenseQuery`: `NeedsAuthMessage`, whose RFC 8628 device
  * flow runs a long-lived fiber with retry + interrupt-on-unmount. It
- * `Effect.provide`s this layer onto a gatekeeper Effect and runs it
+ * `Effect.provide`s this layer onto an authorization server Effect and runs it
  * imperatively (via `Effect.runFork`). The annotated `select` re-narrows
  * the result when the slice's router isn't registered (standalone build),
  * where `useRouteContext()` would otherwise widen to `any` — no cast.
@@ -84,7 +84,7 @@ const useAuthorizationLocalGrantedScopes = (): string | undefined =>
 /**
  * The host's first-party OAuth `client_id` from router context (see
  * {@link RouterContext.firstPartyClientId}). `NeedsAuthMessage` identifies its
- * device-login request with this so it matches the id gatekeeper seeds the
+ * device-login request with this so it matches the id the authorization server seeds the
  * first-party client under. `undefined` on standalone/web builds where the host
  * context doesn't carry it — the caller falls back to authorization-core's
  * `FIRST_PARTY_CLIENT_ID`.

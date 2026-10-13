@@ -22,11 +22,11 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
  * source slice because `physical()` mounts compute the generated
  * route-variable name from the in-mount path: with a slice-level
  * `_auth/authorization.tsx` AND `_open/authorization.tsx`, both reduce to
- * `Gatekeeper` and the launcher-web `routeTree.gen.ts` ends up with a
- * duplicate `const GatekeeperRoute = …`. Owning the section layout at the
+ * `Authorization` and the launcher-web `routeTree.gen.ts` ends up with a
+ * duplicate `const AuthorizationRoute = …`. Owning the section layout at the
  * app level keeps the `/_auth/` / `/_open/` prefix in scope for the
- * generator so it disambiguates as `AuthGatekeeperRoute` /
- * `OpenGatekeeperRoute`.
+ * generator so it disambiguates as `AuthAuthorizationRoute` /
+ * `OpenAuthorizationRoute`.
  *
  * Because `/settings` is a sibling of `_auth` (not a child), it is not
  * auth-gated by the `_auth` layout's `beforeLoad`. The `/settings`

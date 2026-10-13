@@ -6,7 +6,7 @@ import {
 import { useMemo } from 'react'
 
 /**
- * Display names of the OAuth clients gatekeeper knows, by `clientId`. The log
+ * Display names of the OAuth clients the authorization server knows, by `clientId`. The log
  * stores only the id; the name is decoration, so the map is empty while the
  * client list loads or when it can't be read, and callers fall back to the id.
  */

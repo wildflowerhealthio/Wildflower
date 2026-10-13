@@ -202,7 +202,13 @@ const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.
     void queryClient.invalidateQueries({ queryKey: grantsQueryOptions(runAuthed).queryKey })
     reset()
   }
-  return <AsyncErrorView error={error} retry={retry} title="Error Loading Gatekeeper Settings" />
+  return (
+    <AsyncErrorView
+      error={error}
+      retry={retry}
+      title="Error Loading Wildflower Authorization Settings"
+    />
+  )
 }
 
 /**

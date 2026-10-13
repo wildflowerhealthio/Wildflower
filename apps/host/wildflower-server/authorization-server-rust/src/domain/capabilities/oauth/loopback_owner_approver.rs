@@ -27,6 +27,7 @@ use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;
 
 use crate::domain::authority::within_approver_grant;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
     approve_oauth_consent, deny_oauth_consent, load_pending_code_request, ApprovalContext,
     ApprovalMemory, ApproveOAuthConsentInput, ConsentOutcome,
@@ -34,7 +35,6 @@ use crate::domain::capabilities::access::consents::{
 use crate::domain::client_registration::{
     classify_registration, ClientRegistrationVerdict, PresentedClientRegistration,
 };
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::GrantStore;
 use crate::ports::{
     LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,

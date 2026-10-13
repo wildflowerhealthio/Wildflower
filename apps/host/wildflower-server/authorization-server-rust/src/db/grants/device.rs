@@ -58,7 +58,10 @@ pub(crate) fn device_grant_by_client_and_device_name(
         .first(conn)
         .optional()
         .map_err(|e| {
-            AuthorizationServerError::infrastructure("device_grant_by_client_and_device_name failed", e)
+            AuthorizationServerError::infrastructure(
+                "device_grant_by_client_and_device_name failed",
+                e,
+            )
         })
 }
 

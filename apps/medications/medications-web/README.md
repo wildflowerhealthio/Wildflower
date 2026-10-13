@@ -123,7 +123,7 @@ launch openid fhirUser system/MedicationRequest.rs system/Medication.rs system/P
 `system/` scopes only, with no `launch/patient`: the patient is picked in the
 app, so the authorization server binds none to the token. `system/Patient.rs`
 reads the patients the picker lists and the one named under the H1. The
-production client (its scopes as gatekeeper migration
+production client (its scopes as the authorization server migration
 `0020_first_party_apps_pick_the_patient` left them) and the debug-only
 `medications-dev` tile's client (`seed_dev_app_clients` in
 `authorization-server-rust/src/seeding.rs`) allow exactly this set; a test there reads

@@ -39,7 +39,7 @@ use wildflowerhealthio_token_revocation::RevocationStore;
 pub use config::AuthorizationServerConfig;
 pub use db::SqliteGrantStore;
 // Debug builds only: the OAuth clients for the first-party apps' vite dev servers
-// (the gatekeeper half of `wildflowerhealthio_apps::seed_dev_apps`). Gated so a release build
+// (the authorization server half of `wildflowerhealthio_apps::seed_dev_apps`). Gated so a release build
 // contains no code that could write them.
 #[cfg(debug_assertions)]
 pub use seeding::seed_dev_app_clients;
@@ -71,7 +71,7 @@ pub use live_bindings::HostConsentDecider;
 /// tests pin the set until then. See [`domain::capabilities`].
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
-    client_allowed_scopes, ensure_bearer_header, authorization_server_auth_middleware,
+    authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
     is_pre_auth_public_path, require_loopback_peer_middleware, AuthorizationServerAuthMiddleware,
     AuthorizationServerState, RequireLoopbackPeerMiddleware,
 };
@@ -180,7 +180,7 @@ const OWNER_TOKEN_REMINT_INTERVAL: std::time::Duration = std::time::Duration::fr
 /// rejected by expiry validation regardless, so this only reclaims space.
 const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// How often the background sweep reclaims gatekeeper rows past their retention
+/// How often the background sweep reclaims the authorization server rows past their retention
 /// window (see [`domain::retention`]). Same cadence as
 /// [`REVOCATION_PURGE_INTERVAL`], and far finer than the coarsest window it
 /// enforces (90 days), so a row is never retained much longer than the policy
@@ -318,7 +318,7 @@ pub fn setup_authorization_server(
     // the row does.
     ports::OwnerApproval::republish_active(state.as_ref());
     spawn_device_consent_reaper(state.clone());
-    // Reclaim gatekeeper rows past their retention window: once at startup, then
+    // Reclaim the authorization server rows past their retention window: once at startup, then
     // daily. Spawned before the re-minter, which consumes `store`.
     spawn_retention_sweep(store.clone());
     // Keep the webview's owner-session token fresh: re-mint + republish inside
@@ -411,7 +411,7 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
     });
 }
 
-/// Spawn the background sweep that deletes gatekeeper rows past their retention
+/// Spawn the background sweep that deletes the authorization server rows past their retention
 /// window — once at startup (the interval's immediate first tick), then every
 /// [`RETENTION_SWEEP_INTERVAL`]. The windows and their rationale live in
 /// [`domain::retention`].
@@ -444,11 +444,15 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
                     refresh_token_families = purged.refresh_token_families,
                     authorization_requests = purged.authorization_requests,
                     authorization_codes = purged.authorization_codes,
-                    "swept gatekeeper rows past their retention window",
+                    "swept the authorization server rows past their retention window",
                 ),
                 Ok(Ok(_)) => {}
-                Ok(Err(error)) => tracing::warn!(%error, "gatekeeper retention sweep failed"),
-                Err(error) => tracing::warn!(%error, "gatekeeper retention sweep task failed"),
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "the authorization server retention sweep failed")
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "the authorization server retention sweep task failed")
+                }
             }
         }
     });

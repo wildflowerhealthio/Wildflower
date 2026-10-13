@@ -1,8 +1,8 @@
-//! The hosted launcher's gatekeeper pages, as an axum extractor. A handler that
+//! The hosted launcher's authorization server pages, as an axum extractor. A handler that
 //! sends a browser to one (the device-flow `verification_uri`, logout's landing)
 //! takes `pages: LauncherPages` rather than reaching into the state for the
 //! configured base. The `/authorize` wait page is not one of them: the
-//! gatekeeper serves it itself.
+//! authorization server serves it itself.
 
 use std::sync::Arc;
 

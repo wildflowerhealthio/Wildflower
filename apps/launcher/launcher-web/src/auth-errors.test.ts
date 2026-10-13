@@ -22,7 +22,7 @@ describe('isUnauthorizedError', () => {
   })
 
   it('is true for a typed HttpApiError.Unauthorized (a declared 401)', () => {
-    // Gatekeeper's `/access` endpoints declare 401 via `RequireAuthMiddleware`,
+    // The authorization server's `/access` endpoints declare 401 via `RequireAuthMiddleware`,
     // so `HttpApiClient` decodes their 401s into this typed error, never a
     // `ResponseError`. The detector must catch it or the redirect/retry miss it.
     expect(isUnauthorizedError(new HttpApiError.Unauthorized())).toBe(true)

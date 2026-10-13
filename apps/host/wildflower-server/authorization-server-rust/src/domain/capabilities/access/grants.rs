@@ -118,11 +118,17 @@ impl<S: GrantStore> GrantsRevoker<S> {
     /// first and the operation is idempotent on retry. Runs under this
     /// capability's own `Grant.d` gate; the token-kill is part of revoking a
     /// grant, so it does not additionally require `Token.d`.
-    pub(crate) fn revoke(&self, id: &str, now: DateTime<Utc>) -> Result<(), AuthorizationServerError> {
+    pub(crate) fn revoke(
+        &self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
         let grant = get_grant(&self.store, id)?;
         self.revocation
             .revoke_subject_as_of_now(grant.client_id())
-            .map_err(|e| AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e))?;
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e)
+            })?;
         revoke_grant(&self.store, id, grant.client_id(), now)
     }
 }

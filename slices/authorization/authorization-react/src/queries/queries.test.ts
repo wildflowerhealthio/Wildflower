@@ -16,8 +16,8 @@ import {
 } from './index.ts'
 
 /**
- * Drives the gatekeeper `queryOptions` over the real
- * runner → gatekeeper-layer → HttpClient path, with a stub HttpClient
+ * Drives the authorization server `queryOptions` over the real
+ * runner → authorization-server-layer → HttpClient path, with a stub HttpClient
  * that returns canned access-management bodies.
  */
 

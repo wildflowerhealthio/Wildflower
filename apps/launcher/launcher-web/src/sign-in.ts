@@ -62,7 +62,7 @@ import { ServerKind } from './session/server-kind.ts'
 
 /**
  * The `client_id` the web entry authorizes as: a random id
- * (`openssl rand -hex 16`), seeded by gatekeeper migration
+ * (`openssl rand -hex 16`), seeded by the authorization server migration
  * `0012_seed_wildflower_react_client` and re-keyed by
  * `0026_rekey_launcher_client`. The migrations are the authority and this is
  * the browser-side reading of them: a
@@ -193,7 +193,7 @@ const startSignIn = (
  * server's launcher at `?iss=…&launch=…` — and the server its `iss` names, in
  * the canonical form `?server=` holds. `main-web`'s boot reads it
  * (`web-entry.ts`'s `ehrLaunchIn`) into an {@link UnsentEhrLaunch}, and the
- * landing signs in to `serverUrl` with `launch` on arrival. Gatekeeper accepts
+ * landing signs in to `serverUrl` with `launch` on arrival. The authorization server accepts
  * a launch once and only for a few minutes, so it rides one sign-in and no
  * more.
  */
@@ -206,7 +206,7 @@ interface EhrLaunch {
  * The page load's {@link EhrLaunch} until a sign-in takes it. `main-web`'s
  * boot makes one per page load, with {@link unsentEhrLaunch}, and the landing
  * takes the launch from it, so the launch goes out on the first sign-in to its
- * server and on no later one, however often the landing remounts: gatekeeper
+ * server and on no later one, however often the landing remounts: the authorization server
  * accepts a launch once.
  */
 interface UnsentEhrLaunch {
@@ -288,7 +288,7 @@ const finishSignIn = async (
  *
  * A reported lifetime becomes `AuthedUntil`, so `isFreshlyAuthed` can tell a
  * lapsed session from a live one. A response that reports none (RFC 6749 leaves
- * `expires_in` optional; gatekeeper always sends it) becomes `HostAuthed` — the
+ * `expires_in` optional; the authorization server always sends it) becomes `HostAuthed` — the
  * signal for "authed, with no expiry the page knows" — rather than an
  * `AuthedUntil` carrying an invented `exp`, which would claim a freshness
  * nothing established.

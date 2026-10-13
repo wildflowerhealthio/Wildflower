@@ -1,4 +1,4 @@
-//! The gatekeeper's domain vocabulary — pure types and business rules
+//! The authorization server's domain vocabulary — pure types and business rules
 //! shared by every other layer. No `crate::http` dependency runs here — the
 //! domain types carry diesel derives that name their [`crate::db`] `table!` for
 //! the bind/read mapping, but no transport code lives in this layer: the
@@ -57,7 +57,7 @@ pub mod oauth_error_code;
 // The `/oauth/authorize` failures rendered as a local page rather than a
 // redirect; the HTML lives in `http::errors`.
 pub mod oauth_error_kind;
-// URL/path builders for the gatekeeper's user-facing `/authorization/*` webview
+// URL/path builders for the authorization server's user-facing `/authorization/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
 // drift-tested against `authorization-core/src/page-paths.ts`.
 pub mod page_paths;

@@ -1,4 +1,4 @@
-//! [`TestAuthorizationServer`]: a server's gatekeeper over a temporary database, for
+//! [`TestAuthorizationServer`]: a server's authorization server over a temporary database, for
 //! the commands' tests to read, decide and mint through.
 
 use std::sync::Arc;
@@ -11,10 +11,10 @@ use wildflowerhealthio_authorization_server::{
 };
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
-/// The domain of the server the gatekeeper is for.
+/// The domain of the server the authorization server is for.
 pub(crate) const DOMAIN: &str = "ruth.relay.example.com";
 
-/// A gatekeeper over a temporary database, the way a server's run sets one
+/// An authorization server over a temporary database, the way a server's run sets one
 /// up, with what the test reads it through.
 pub(crate) struct TestAuthorizationServer {
     pub(crate) consent_decider: HostConsentDecider,
@@ -26,7 +26,7 @@ pub(crate) struct TestAuthorizationServer {
 }
 
 impl TestAuthorizationServer {
-    /// How many launches the gatekeeper has minted.
+    /// How many launches the authorization server has minted.
     pub(crate) fn minted_launches(&self) -> i64 {
         wildflowerhealthio_persistence::Connection::open(
             &self.database_dir.path().join(DATABASE_FILE),
@@ -38,7 +38,7 @@ impl TestAuthorizationServer {
     }
 }
 
-/// The gatekeeper's database in its temporary folder.
+/// The authorization server's database in its temporary folder.
 const DATABASE_FILE: &str = "wildflower.sqlite";
 
 pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
@@ -51,14 +51,16 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
     .unwrap();
     let (owner_token_tx, owner_token_rx) = watch::channel(None);
     let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
-    let gatekeeper = setup_authorization_server(
+    let authorization_server = setup_authorization_server(
         pool.clone(),
         revocation_store,
         &AuthorizationServerConfig {
             loopback_base_url: Url::parse("http://127.0.0.1:8080/").unwrap(),
             server_origin: Url::parse(&format!("https://{DOMAIN}")).unwrap(),
-            host_owner_scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
-            first_party_client_id: wildflowerhealthio_authorization_server::default_first_party_client_id(),
+            host_owner_scopes:
+                wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+            first_party_client_id:
+                wildflowerhealthio_authorization_server::default_first_party_client_id(),
             fhir_ui_client_id: "fhir-ui-client".to_string(),
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/").unwrap(),
         },
@@ -68,8 +70,8 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
     )
     .unwrap();
     TestAuthorizationServer {
-        consent_decider: HostConsentDecider::new(gatekeeper.state),
-        launch_context_minter: gatekeeper.launch_context_minter,
+        consent_decider: HostConsentDecider::new(authorization_server.state),
+        launch_context_minter: authorization_server.launch_context_minter,
         store: SqliteGrantStore::new(pool).unwrap(),
         _pending_consent_rx: pending_consent_rx,
         _owner_token_rx: owner_token_rx,

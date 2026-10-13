@@ -63,7 +63,7 @@ apps/host/tauri-plugin-*/**/Package.resolved
 # wf-data Docker volume. Never committed; regenerated on container start.
 .cargo/
 
-# Effect schemas generated from the gatekeeper OpenAPI spec (trial;
+# Effect schemas generated from the authorization server OpenAPI spec (trial;
 # `openapi-to-effect`). Reference-only — the hand-written HttpApi in
 # `http-api-definition/` stays the source of truth. Regenerate with:
 #   vp run -C slices/authorization/authorization-core generate:openapi-schemas

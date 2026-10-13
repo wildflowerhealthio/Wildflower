@@ -173,7 +173,7 @@ const deviceFlowTokenResponseHandler = (
  * this, a stale-token failure pins until the user navigates away —
  * the cache is keyed on the query, not on the bearer.
  *
- * The settings screen's Logout row is gatekeeper's, over `tokenStore`: it
+ * The settings screen's Logout row is the authorization server's, over `tokenStore`: it
  * revokes the bearer at the session's server, clears the tab's
  * `sessionStorage` (the session's server included) and reloads the bare
  * landing page at `basepath`, so the reader picks a server rather than being

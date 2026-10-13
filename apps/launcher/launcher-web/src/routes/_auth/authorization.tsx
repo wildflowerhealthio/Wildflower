@@ -3,7 +3,7 @@ import { pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
 
 /**
- * Owner-facing gatekeeper layout. Wraps the slice's authed gatekeeper
+ * Owner-facing authorization layout. Wraps the slice's authed authorization
  * screens (device consent, OAuth consent) in the shared
  * `pageLayoutStyles['page']` shell — mirrors `home.tsx` — so each
  * leaf renders content only.

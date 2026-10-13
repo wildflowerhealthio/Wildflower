@@ -15,7 +15,7 @@ const SCOPE_EXPLANATIONS: Readonly<Record<KnownScope.Name, string>> = {
   openid: 'Confirm who you are',
   profile: 'Your basic profile details',
   fhirUser: 'Link to your patient record',
-  // States the gatekeeper's `ACCESS_TOKEN_TTL`: without offline_access there is no refresh
+  // States the authorization server's `ACCESS_TOKEN_TTL`: without offline_access there is no refresh
   // token, so access ends when the short-lived token expires. The minute figure is computed
   // from the single `AccessToken.ttlMinutes` source (kept in step with the Rust constant).
   offline_access: accessAfterExpiryCopy(),

@@ -442,7 +442,7 @@
           },
           "isSmart": {
             "type": "boolean",
-            "description": "Soft reference to a gatekeeper `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `isSmart` boolean."
+            "description": "Soft reference to an authorization server `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `isSmart` boolean."
           },
           "requiresTunnel": {
             "type": "boolean",

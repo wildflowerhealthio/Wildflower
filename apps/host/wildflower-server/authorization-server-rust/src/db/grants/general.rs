@@ -97,7 +97,9 @@ impl TryFrom<GrantViewRow> for Grant {
 /// All grants in `granted_at` order — backs the launcher's access index
 /// (Approved Apps + Authorized Devices). Reads the cross-kind `grants`
 /// view.
-pub(crate) fn all_grants(conn: &mut SqliteConnection) -> Result<Vec<Grant>, AuthorizationServerError> {
+pub(crate) fn all_grants(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<Grant>, AuthorizationServerError> {
     grants::table
         .order(grants::granted_at)
         .load::<GrantViewRow>(conn)

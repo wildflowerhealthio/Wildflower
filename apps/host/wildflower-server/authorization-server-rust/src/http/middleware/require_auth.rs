@@ -27,7 +27,7 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 ///
 /// This is one of the **pair** of claims-inserting authN gates (see
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`, "Wiring the claims"):
-/// this one guards gatekeeper's own `/access` router and inserts the domain
+/// this one guards the authorization server's own `/access` router and inserts the domain
 /// [`VerifiedClaims`]; its sibling
 /// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
 /// wraps the host's downstream slice routers and inserts the framework-neutral

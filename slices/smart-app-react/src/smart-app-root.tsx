@@ -175,7 +175,7 @@ const replaceWindowLocation = (url: string): void => {
  * the page is the dialog alone: no launch is authorized, neither the connect
  * menu nor the app mounts, and no query runs. A stored answer skips the
  * dialog, so a returning visitor's launch starts at once. A launch waits for
- * a first visitor's answer: gatekeeper refuses one older than 5 minutes, and
+ * a first visitor's answer: the authorization server refuses one older than 5 minutes, and
  * that failure comes back here as `?launchError` and lands on the connect
  * menu. A ref guards the authorize, so StrictMode's second effect run cannot
  * spend the launch twice. A page restored from the back-forward cache after

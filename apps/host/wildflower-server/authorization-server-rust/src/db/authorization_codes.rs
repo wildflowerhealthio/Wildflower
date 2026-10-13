@@ -39,7 +39,9 @@ pub(super) fn redeem_authorization_code(
         .returning(IssuedAuthorizationCode::as_returning())
         .get_result(conn)
         .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("redeem_authorization_code failed", e))
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("redeem_authorization_code failed", e)
+        })
 }
 
 /// Look up the code that was issued for a given `request_id`, used by the
@@ -53,7 +55,9 @@ pub(super) fn authorization_code_by_request_id(
         .select(IssuedAuthorizationCode::as_select())
         .first(conn)
         .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("authorization_code_by_request_id failed", e))
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("authorization_code_by_request_id failed", e)
+        })
 }
 
 /// Persist a freshly-minted authorization code.
@@ -64,7 +68,9 @@ pub(super) fn issue_authorization_code(
     diesel::insert_into(authorization_codes::table)
         .values(code.clone())
         .execute(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("issue_authorization_code failed", e))?;
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("issue_authorization_code failed", e)
+        })?;
     Ok(())
 }
 
@@ -81,7 +87,10 @@ pub(super) fn delete_authorization_codes_expired_before(
     diesel::delete(authorization_codes::table.filter(authorization_codes::expires_at.lt(cutoff)))
         .execute(conn)
         .map_err(|e| {
-            AuthorizationServerError::infrastructure("delete_authorization_codes_expired_before failed", e)
+            AuthorizationServerError::infrastructure(
+                "delete_authorization_codes_expired_before failed",
+                e,
+            )
         })
 }
 

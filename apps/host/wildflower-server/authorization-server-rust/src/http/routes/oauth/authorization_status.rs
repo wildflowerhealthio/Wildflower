@@ -7,9 +7,9 @@ use utoipa::ToSchema;
 
 use super::internal::OAuthErrorResponse;
 use super::openapi::AuthorizationRequestNotFound;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::{AuthorizationStatusError, AuthorizationStatusView};
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::extractors::Live;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};

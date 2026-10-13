@@ -8,13 +8,13 @@ pointed at whichever running server the reader chooses.
 It documents five slices, one sidebar group each, from the **committed OpenAPI
 snapshots**:
 
-| Sidebar group | Snapshot                                                                                      |
-| ------------- | --------------------------------------------------------------------------------------------- |
-| Gatekeeper    | `apps/host/wildflower-server/authorization-server-rust/openapi/authorization-server-oauth.openapi.json` |
-| Apps          | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                             |
-| Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`                   |
-| Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`               |
-| FHIR R4       | `slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json`                                            |
+| Sidebar group            | Snapshot                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Wildflower Authorization | `apps/host/wildflower-server/authorization-server-rust/openapi/authorization-server-oauth.openapi.json` |
+| Apps                     | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                                       |
+| Databases                | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`                             |
+| Request log              | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`                         |
+| FHIR R4                  | `slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json`                                                      |
 
 Those snapshots are the same files the per-slice Rust snapshot tests and the
 `api-sync.yml` drift guard hold to the live routes, so publishing from them
@@ -96,7 +96,7 @@ in by hand.
    a FHIR base, is the SMART `iss`. A Wildflower server serves FHIR at its root
    and answers that path from `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
    (unauthenticated, exempt from the bearer gate), pointing it at its own
-   gatekeeper and listing the `wildflower-server` capability, whether it is
+   authorization server and listing the `wildflower-server` capability, whether it is
    served at an origin or behind a path prefix. A target that is unreachable,
    answers 404 or with something else fails here, and the reason is shown in
    the header bar.

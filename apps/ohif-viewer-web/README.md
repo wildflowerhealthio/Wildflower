@@ -83,7 +83,7 @@ The Wildflower server seeds what the viewer needs:
 
 - apps migration `0007_seed_ohif_viewer_app` registers the `ohif-viewer`
   app row whose launch URL is the worklist launch above;
-- gatekeeper migration `0009_seed_ohif_viewer_client` registers the
+- The authorization server migration `0009_seed_ohif_viewer_client` registers the
   viewer's public PKCE client with `https://wildflowerhealth.io/ohif-viewer/` as its
   redirect URI and the read-only scopes the viewer requests;
   `0010_ohif_viewer_client_fhir_viewer_redirect` repoints that redirect at the

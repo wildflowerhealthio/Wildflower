@@ -1,7 +1,7 @@
 //! The consent commands: the base reads the consents waiting on the running
-//! servers and approves or denies them through each run's gatekeeper
+//! servers and approves or denies them through each run's authorization server
 //! in-process (the [`ServerConsentDecider`] in the run's detail), with no HTTP
-//! and no token in the webview. Each gatekeeper call runs on a blocking
+//! and no token in the webview. Each authorization server call runs on a blocking
 //! thread, and its outcome is logged by domain.
 //!
 //! A server that isn't running answers [`ConsentError::ServerNotRunning`];
@@ -80,7 +80,7 @@ pub async fn server_consent_deny(
 }
 
 /// Run `operation` on a blocking thread, on the decider of the server
-/// `domain`'s run as `statuses` hold it: each is a synchronous gatekeeper
+/// `domain`'s run as `statuses` hold it: each is a synchronous authorization server
 /// transaction.
 async fn on_decider<T: Send + 'static>(
     statuses: &UnitStatuses<ServerDetail>,
@@ -148,19 +148,22 @@ mod tests {
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
     use super::*;
-    use crate::test_authorization_server::{test_authorization_server, TestAuthorizationServer, DOMAIN};
+    use crate::test_authorization_server::{
+        test_authorization_server, TestAuthorizationServer, DOMAIN,
+    };
 
-    /// Park a pending request on the gatekeeper's store, as its `/oauth/*`
+    /// Park a pending request on the authorization server's store, as its `/oauth/*`
     /// routes do.
-    fn park(gatekeeper: &TestAuthorizationServer, id: &str, grant_type: GrantType) {
+    fn park(authorization_server: &TestAuthorizationServer, id: &str, grant_type: GrantType) {
         let now = chrono::Utc::now();
         let is_device = grant_type == GrantType::DeviceCode;
-        gatekeeper
+        authorization_server
             .store
             .insert_authorization_request(&AuthorizationRequest {
                 id: id.to_owned(),
                 grant_type,
-                client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID.to_owned(),
+                client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
+                    .to_owned(),
                 requested_scopes: vec!["system/*.cruds".to_owned()],
                 code_challenge: (!is_device).then(|| "challenge".to_owned()),
                 code_challenge_method: (!is_device).then(|| "S256".to_owned()),
@@ -181,15 +184,15 @@ mod tests {
             .unwrap();
     }
 
-    /// The servers' statuses with the server's run up over `gatekeeper`.
-    fn running(gatekeeper: &TestAuthorizationServer) -> UnitStatuses<ServerDetail> {
+    /// The servers' statuses with the server's run up over `authorization_server`.
+    fn running(authorization_server: &TestAuthorizationServer) -> UnitStatuses<ServerDetail> {
         let detail = ServerDetail {
             health: None,
             tunnel: None,
             certificate: None,
             pending_consent: None,
             consent_decider: Some(ServerConsentDecider::new(
-                gatekeeper.consent_decider.clone(),
+                authorization_server.consent_decider.clone(),
             )),
             launch_minter: None,
         };
@@ -203,9 +206,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_device_request_is_read_and_approved_through_the_commands() {
-        let gatekeeper = test_authorization_server();
-        park(&gatekeeper, "device-1", GrantType::DeviceCode);
-        let statuses = running(&gatekeeper);
+        let authorization_server = test_authorization_server();
+        park(&authorization_server, "device-1", GrantType::DeviceCode);
+        let statuses = running(&authorization_server);
         let key = ConsentKey::Device {
             user_code: "CODE-device-1".to_owned(),
         };
@@ -230,7 +233,7 @@ mod tests {
 
         assert_eq!(outcome, Ok(ApprovalOutcome::Approved));
         assert_eq!(
-            gatekeeper
+            authorization_server
                 .store
                 .authorization_request_by_id("device-1")
                 .unwrap()
@@ -246,9 +249,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn an_authorization_request_is_denied_through_the_commands() {
-        let gatekeeper = test_authorization_server();
-        park(&gatekeeper, "req-1", GrantType::AuthorizationCode);
-        let statuses = running(&gatekeeper);
+        let authorization_server = test_authorization_server();
+        park(&authorization_server, "req-1", GrantType::AuthorizationCode);
+        let statuses = running(&authorization_server);
         let key = ConsentKey::OAuth {
             id: "req-1".to_owned(),
         };
@@ -257,7 +260,7 @@ mod tests {
 
         assert_eq!(denied, Ok(()));
         assert_eq!(
-            gatekeeper
+            authorization_server
                 .store
                 .authorization_request_by_id("req-1")
                 .unwrap()

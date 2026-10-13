@@ -32,7 +32,7 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
   /**
    * Where a link meant for another device points: this launcher's address as
    * seen from outside the page, with no trailing slash, to which the router's
-   * basepath is appended. Read by the gatekeeper slice's `NeedsAuthMessage` for
+   * basepath is appended. Read by the authorization slice's `NeedsAuthMessage` for
    * its device-flow pairing link. `main-web` passes its own origin.
    */
   readonly externalLinkRoot: () => string

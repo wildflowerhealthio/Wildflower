@@ -26,14 +26,14 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
 
 // The host's granted-scope string, also sourced from
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`).
-// gatekeeper seeds its first-party client's
+// The authorization server seeds its first-party client's
 // `allowed_scopes` and mints the host owner token from this set (asserting it
 // covers `WILDFLOWER_WIDEST_SCOPES`).
 const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 
 // The host's first-party OAuth `client_id`, sourced from the same
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`):
-// the id gatekeeper seeds the first-party client and mints the owner token under.
+// the id the authorization server seeds the first-party client and mints the owner token under.
 const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
 
 // The hosted launcher (see `wildflowerhealthio_shared_structures::launcher`), sourced from the
@@ -221,7 +221,7 @@ fn server_config(
 /// server shares.
 fn host_ports(app_handle: &tauri::AppHandle) -> HostPorts {
     HostPorts {
-        // The native Approve / Reject dialog gatekeeper raises when the hosted
+        // The native Approve / Reject dialog the authorization server raises when the hosted
         // launcher logs in over direct loopback (see `loopback_consent_dialog`).
         loopback_consent_prompt: Arc::new(
             loopback_consent_dialog::TauriLoopbackConsentPrompt::new(

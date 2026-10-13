@@ -10,10 +10,10 @@ use super::{ApproveOAuthConsentInput, ConsentOutcome};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{CodeAuthority, GrantRecorder, RequestApprover};
 use crate::domain::client_redirect::build_client_redirect_url;
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 use wildflowerhealthio_scopes::Grant;
@@ -59,7 +59,8 @@ pub(crate) fn load_pending_code_request(
     store: &impl GrantStore,
     id: &str,
 ) -> Result<PendingCodeRequest, AuthorizationServerError> {
-    let make_consent_not_found = || AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() };
+    let make_consent_not_found =
+        || AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() };
     match store.authorization_request_by_id(id)? {
         Some(request)
             if request.status == RequestStatus::Pending
@@ -97,7 +98,8 @@ pub(crate) fn approve_oauth_consent(
     ctx: &ApprovalContext<'_>,
 ) -> Result<ConsentOutcome, AuthorizationServerError> {
     let now = ctx.now;
-    let make_consent_not_found = || AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() };
+    let make_consent_not_found =
+        || AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() };
     let pending_request = load_pending_code_request(store, id)?;
     let request = pending_request.request();
     let requested_redirect_uri = pending_request.redirect_uri();

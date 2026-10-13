@@ -71,7 +71,9 @@ pub(super) fn delete_launch_contexts_expired_by(
 ) -> Result<usize, AuthorizationServerError> {
     diesel::delete(launch_contexts::table.filter(launch_contexts::expires_at.le(now)))
         .execute(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("delete_launch_contexts_expired_by failed", e))
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("delete_launch_contexts_expired_by failed", e)
+        })
 }
 
 #[cfg(test)]

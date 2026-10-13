@@ -1,4 +1,4 @@
-//! Retention policy for the gatekeeper's three accumulating tables — the
+//! Retention policy for the authorization server's three accumulating tables — the
 //! windows themselves plus `purge_expired`, the sweep that applies them.
 //!
 //! Each window is measured **past the row's own `expires_at`**, so nothing live

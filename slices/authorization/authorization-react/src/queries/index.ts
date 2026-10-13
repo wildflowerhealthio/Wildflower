@@ -1,5 +1,5 @@
 /**
- * The gatekeeper TanStack-Query surface, split by the resource each module
+ * The authorization server TanStack-Query surface, split by the resource each module
  * deals with:
  *
  *   - {@link file://./grants.ts}          — access-management grants (list + detail + revoke)

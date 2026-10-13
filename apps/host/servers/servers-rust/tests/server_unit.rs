@@ -7,7 +7,7 @@
 //! policy turns it off, it stops with the detail cleared. Turned back on, the
 //! next run binds the same port, so the previous run's runtime is gone, and
 //! serves again. Its detail holds the run's launch minter, and a server whose
-//! health is unknown isn't launchable. A consent its gatekeeper parks is the run's
+//! health is unknown isn't launchable. A consent its authorization server parks is the run's
 //! detail, and is read and decided through the `ServerConsentDecider` the
 //! run's detail holds until the run ends.
 
@@ -54,7 +54,8 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             .iter()
             .map(ToString::to_string)
             .collect(),
-        first_party_client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID.to_owned(),
+        first_party_client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
+            .to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // reachability monitor finds the server unreachable.
@@ -203,7 +204,7 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         "a tunnel that isn't connected is never probed"
     );
     // The run's detail holds its launch minter, which mints through the
-    // run's gatekeeper; a server whose health is unknown isn't launchable,
+    // run's authorization server; a server whose health is unknown isn't launchable,
     // and a tunnel that is dialing again doesn't change why.
     let launch_minter = unit_runner.statuses()[&UnitId::from(DOMAIN)]
         .detail

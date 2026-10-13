@@ -19,8 +19,8 @@ pub enum ConsentError {
     /// and the approval didn't acknowledge it.
     #[error("the app is new or asks for more than it registered, so approving it needs that acknowledged")]
     RegistrationNotAcknowledged,
-    /// Any other failure of the server's gatekeeper.
-    #[error("the server's gatekeeper failed: {0}")]
+    /// Any other failure of the server's authorization server.
+    #[error("the server's authorization server failed: {0}")]
     AuthorizationServer(AuthorizationServerError),
 }
 
@@ -85,7 +85,10 @@ mod tests {
                 "registrationNotAcknowledged",
             ),
             (
-                AuthorizationServerError::infrastructure("reading a consent", "the database is locked"),
+                AuthorizationServerError::infrastructure(
+                    "reading a consent",
+                    "the database is locked",
+                ),
                 "authorizationServer",
             ),
         ];

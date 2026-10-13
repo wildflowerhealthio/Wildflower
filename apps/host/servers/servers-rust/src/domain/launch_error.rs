@@ -43,8 +43,8 @@ pub enum LaunchError {
         domain: String,
         issuer: CertificateAuthority,
     },
-    /// The server's gatekeeper couldn't mint the launch.
-    #[error("the server's gatekeeper failed: {0}")]
+    /// The server's authorization server couldn't mint the launch.
+    #[error("the server's authorization server failed: {0}")]
     AuthorizationServer(#[from] AuthorizationServerError),
     /// The launcher's window couldn't be opened.
     #[error("the launcher couldn't be opened: {reason}")]

@@ -68,7 +68,7 @@ wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-struc
 # deny a running server's consents in-process. Tauri-free.
 wildflowerhealthio-authorization-server = { path = "../../wildflower-server/authorization-server-rust" }
 # `public_origin_url`, a server's `https://<domain>` origin, the one its run
-# serves and its gatekeeper issues tokens for, which a launch names as `iss`;
+# serves and its authorization server issues tokens for, which a launch names as `iss`;
 # the `TunnelState` a run's detail carries; and, in `tests/server_unit.rs`,
 # the relay settings a real server's config names.
 wildflowerhealthio-tunnel = { path = "../../wildflower-server/tunnel-rust" }

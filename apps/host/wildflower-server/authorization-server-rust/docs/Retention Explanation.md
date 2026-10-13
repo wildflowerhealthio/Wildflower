@@ -1,12 +1,12 @@
 # Retention Explanation
 
-Why the gatekeeper deletes rows on a timer, why the windows are 90 days and 7 days, and why they are measured past `expires_at` rather than from `now`.
+Why the authorization server deletes rows on a timer, why the windows are 90 days and 7 days, and why they are measured past `expires_at` rather than from `now`.
 
 The policy lives in `authorization-server-rust/src/domain/retention.rs`; the timer that applies it is `spawn_retention_sweep` in that crate's `lib.rs`.
 
 ## The problem: three tables that only grow
 
-Most of the gatekeeper's tables are self-limiting — a grant is deleted when it is revoked, an authorization code is deleted the moment it is redeemed. Three are not:
+Most of the authorization server's tables are self-limiting — a grant is deleted when it is revoked, an authorization code is deleted the moment it is redeemed. Three are not:
 
 - **`refresh_token_families` / `refresh_tokens`.** Rotation appends one token row per generation, and revocation deliberately does **not** delete: it pulls the family's `expires_at` back to the revocation instant and stamps the live token consumed. Keeping the rows is what lets a replayed token still resolve to its (now dead) family, which is how reuse detection knows to revoke a lineage rather than shrug at an unknown hash. Soft revocation is correct — it just has no end.
 - **`authorization_requests`.** Nothing transitions a request the user simply walked away from. The flows write terminal statuses on approve, deny, and redemption; an abandoned `pending` row stays `pending` forever.

@@ -6,9 +6,9 @@ use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{OAuthConsentView, Scoped};
 use crate::domain::client_registration::ClientRegistrationVerdict;
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveConsentReader;
 
@@ -39,7 +39,7 @@ pub(crate) struct OAuthConsent {
 /// [`ClientRegistrationVerdict`] verdict, `status`-tagged.
 ///
 /// `{"status":"registered"}` for a request that matches the registration,
-/// `{"status":"new"}` for a client this gatekeeper has never seen, and
+/// `{"status":"new"}` for a client this authorization server has never seen, and
 /// `{"status":"changed","redirectUriIsNew":…,"newScopes":[…]}` when a known
 /// client steps outside its registration.
 #[derive(Debug, Serialize, ToSchema)]

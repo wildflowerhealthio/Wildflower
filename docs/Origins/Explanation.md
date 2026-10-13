@@ -5,7 +5,7 @@ request, where that decision shows up (redirects, discovery documents, the links
 HFS emits), and why a token's `iss` and `aud` are the one origin that doesn't
 depend on it. The mechanics live in `shared-structures-rust` ([`origin_string`],
 [`served_origin`]); this is the narrative those modules and their consumers
-(gatekeeper, FHIR R4, apps, tunnel) point back to instead of each re-deriving it.
+(the authorization server, FHIR R4, apps, tunnel) point back to instead of each re-deriving it.
 
 ## Two listeners
 
@@ -40,7 +40,7 @@ A request can arrive having been addressed two different ways:
 - **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
   webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
   parsed once at boot and threaded into the configs of the slices that render
-  it (gatekeeper, FHIR R4) so nothing reassembles it from a string.
+  it (the authorization server, FHIR R4) so nothing reassembles it from a string.
 - **Served origin** — the origin the client _actually_ reached. For a direct
   loopback caller it is the loopback origin. For a request through the tunnel,
   or one relayed by a front, it is the public `{scheme}://{host}` the browser
@@ -94,16 +94,16 @@ the header itself:
   `for` is the visitor's address from the PROXY header, and is left out when
   the connection had none; the `host` is the domain, normalized.
 
-Every reader of the served origin (gatekeeper, FHIR R4, apps, the `404`, the
+Every reader of the served origin (the authorization server, FHIR R4, apps, the `404`, the
 request log) then sees a tunnel request exactly as it sees one a front
 relayed, served at the public origin.
 
 ## `iss` and `aud` are the server's origin
 
-Every JWT gatekeeper mints, whether through the OAuth flows or as the host owner
+Every JWT the authorization server mints, whether through the OAuth flows or as the host owner
 token, names one origin in both its origin-shaped claims: **`iss` = `aud` =
 `https://<domain>`, the server's origin**. It is the public origin the server
-builds from its domain at startup (`wildflower_server.rs`), handed to gatekeeper
+builds from its domain at startup (`wildflower_server.rs`), handed to the authorization server
 as [`AuthorizationServerConfig::server_origin`] and to fhir-r4-rust as
 [`FhirR4Config`]`.public_origin`, and spelled as a bare origin (no trailing slash,
 no path) by [`origin_string`].
@@ -111,13 +111,13 @@ no path) by [`origin_string`].
 The claims say which server the token is for, not which origin a request was
 served on, so they are checked against configuration, never against the request:
 
-- **Gatekeeper's bearer gates** (the `/access` session gate and the bearer gate
+- **The authorization server's bearer gates** (the `/access` session gate and the bearer gate
   in front of the FHIR server and the other slices) run the `TokenVerifier`,
   which accepts a token only when its `iss` and its `aud` are both the
   configured server origin.
 - **HFS** checks the same pair itself: fhir-r4-rust sets HFS's `expected_issuer` and
   `expected_audience` to the server's origin, and HFS matches `aud` exactly. A
-  FHIR request is checked by gatekeeper's gate and again by HFS.
+  FHIR request is checked by the authorization server's gate and again by HFS.
 
 Two things follow. A token for this server is accepted whichever way the request
 arrived, over loopback or relayed through the tunnel, so the host owner token
@@ -130,7 +130,7 @@ its endpoint URLs are rendered from the served origin so the SMART app can
 reach them from where it is.
 
 A SMART app may also declare, as `aud` on `/oauth/authorize`, the FHIR server
-it means to call. Gatekeeper checks that against the same configured origin:
+it means to call. The authorization server checks that against the same configured origin:
 it accepts `https://<domain>`, which is also the FHIR base (the `iss` every
 launch hands the app), and refuses anything else with `invalid_request`. The
 token's `aud` claim is the server's origin.
@@ -196,10 +196,10 @@ A direct-loopback caller is the one caller the host can put a question to in
 person: nothing relayed it, so whoever started it is at this machine. The
 desktop host uses that for one login. When the hosted launcher
 (`launcher-web`, served from `https://wildflowerhealth.io/launcher/`) signs in to
-the server on the same machine, gatekeeper parks the `/oauth/authorize` request
+the server on the same machine, the authorization server parks the `/oauth/authorize` request
 as usual and also asks the host to show a native Approve / Reject dialog. The
 dialog names the app, the origin the login returns to, and whether the app or
-that address is new. See the gatekeeper
+that address is new. See the authorization server
 [Jargon](../../slices/authorization/docs/Jargon%20Explanation.md#loopback-owner-dialog)
 for how the answer is applied.
 
@@ -228,7 +228,7 @@ restate the grammar.
 
 - [Apps Explanation](../Apps/Explanation.md) — launch provenance and the
   apps-side auth posture.
-- [Gatekeeper Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)
+- [Wildflower Authorization Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)
   — `iss` / `aud` / Owner / Client / SMART terms.
 - [Relay Explanation](../Relay/Explanation.md) — the relay between a visitor
   and the tunnel listener, and what its operator is trusted with.

@@ -337,7 +337,7 @@ async fn under_scoped_download_is_403_before_the_existence_check() {
 
     // The scope gate runs before the existence check, so an under-scoped
     // caller gets 403 whether or not the file is present — no existence leak,
-    // mirroring gatekeeper's "gate rejects before the handler".
+    // mirroring the authorization server's "gate rejects before the handler".
     let (status, body) = send_json(
         &st,
         get_as("/databases/health-data.sqlite", "wildflower/*.r"),

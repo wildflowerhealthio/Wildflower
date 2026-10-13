@@ -46,7 +46,7 @@ pub enum ConsentDetails {
 }
 
 impl ConsentDetails {
-    /// The device request `user_code`, as the gatekeeper loaded it by that
+    /// The device request `user_code`, as the authorization server loaded it by that
     /// code.
     pub(crate) fn of_device(user_code: String, view: DeviceConsentView) -> Self {
         let DeviceConsentView {

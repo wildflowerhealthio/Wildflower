@@ -4,8 +4,8 @@ use axum::extract::Path;
 use axum::routing::{post, MethodRouter};
 use axum::Json;
 
-use crate::domain::capabilities::Scoped;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::ConsentResult;
 use crate::live_bindings::LiveConsentDecider;

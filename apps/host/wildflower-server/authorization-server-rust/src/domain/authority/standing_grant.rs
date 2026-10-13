@@ -10,8 +10,8 @@
 
 use url::Url;
 
-use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::GrantStore;
 
 /// How far a standing grant covers a request. Only [`Full`](Self::Full) is a

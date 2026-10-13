@@ -6,8 +6,8 @@ use std::collections::HashSet;
 
 use wildflowerhealthio_scopes::{grantable_scopes, Grant, Scope};
 
-use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::Client;
 
 /// The scopes one consent prompt may grant at most, decided by its flow. An
 /// Owner-approved scope must be covered by a scope of the request **and** by a

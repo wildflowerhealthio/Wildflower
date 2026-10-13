@@ -1,4 +1,4 @@
-//! base64 encoding/decoding for the gatekeeper, in the two RFC 4648 flavours
+//! base64 encoding/decoding for the authorization server, in the two RFC 4648 flavours
 //! the crate needs — kept in one place so the alphabet/padding choice is never
 //! made ad hoc at a call site.
 //!

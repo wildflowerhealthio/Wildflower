@@ -82,12 +82,12 @@ describe('AuthorizationServerPaths ↔ Route.fullPath drift', () => {
   })
 })
 
-describe('gatekeeper settings bucket', () => {
+describe('authorization settings bucket', () => {
   test('every settings route is under /settings/authorization', () => {
     for (const path of fullPaths(settings)) {
-      expect(path === '/settings/authorization/' || path.startsWith('/settings/authorization/')).toBe(
-        true
-      )
+      expect(
+        path === '/settings/authorization/' || path.startsWith('/settings/authorization/')
+      ).toBe(true)
     }
   })
 
@@ -109,8 +109,8 @@ describe('gatekeeper settings bucket', () => {
   })
 })
 
-describe('gatekeeper route tree', () => {
-  test('the generated tree exposes exactly the gatekeeper routes', () => {
+describe('authorization route tree', () => {
+  test('the generated tree exposes exactly the authorization routes', () => {
     const ids = routes()
       .map((route): string => route.id)
       .toSorted()

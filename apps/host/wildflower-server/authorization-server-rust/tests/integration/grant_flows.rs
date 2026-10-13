@@ -750,7 +750,7 @@ async fn auth_code_replay_revokes_issued_refresh_family() {
 }
 
 // ---------------------------------------------------------------------------
-// Trust on first use: an app the gatekeeper has never seen (or one whose
+// Trust on first use: an app the authorization server has never seen (or one whose
 // request steps outside its registration) reaches the Owner's prompt with a
 // warning, and the `clients` row is created or widened only on approval.
 // ---------------------------------------------------------------------------

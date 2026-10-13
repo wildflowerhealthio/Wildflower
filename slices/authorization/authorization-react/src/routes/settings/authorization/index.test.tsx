@@ -172,12 +172,16 @@ describe('AccessIndexBody revoke', () => {
 
   test('closes the dialog on a failed revoke and surfaces the failure in the banner', async () => {
     await renderBodyWithSettledClients([decodeGrant(appGrantBody)])
-    runAuthedStub.mockImplementationOnce(() => Promise.reject(new Error('Gatekeeper unavailable')))
+    runAuthedStub.mockImplementationOnce(() =>
+      Promise.reject(new Error('Authorization server unavailable'))
+    )
     chooseRevoke('client-a')
 
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Revoke' }))
 
-    expect((await screen.findAllByText(/Gatekeeper unavailable/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/Authorization server unavailable/)).length).toBeGreaterThan(
+      0
+    )
     expect(document.querySelector('dialog')?.hasAttribute('open')).toBe(false)
   })
 })

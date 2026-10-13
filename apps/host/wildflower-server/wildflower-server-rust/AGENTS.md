@@ -8,7 +8,7 @@ only it composes. Rust-only, no `-core`.
 ## Package roles
 
 - **`wildflower-server-rust`** — `set_up(config, host, observers)` opens the
-  host's databases, sets up every server slice (gatekeeper, FHIR R4, OHIF,
+  host's databases, sets up every server slice (the authorization server, FHIR R4, OHIF,
   request log, apps, databases), gates them into one inner router, starts the
   tunnel and the reachability monitor, and binds the loopback port;
   `WildflowerServer::serve(shutdown)` serves both listeners until `shutdown` is
@@ -138,7 +138,7 @@ only it composes. Rust-only, no `-core`.
     `ObservedCertificate` a run derives it from, and
     `CertificateHistoryEntry`;
     `adapters/` ports implemented here (apps' `AppLaunchScopes` and
-    `LaunchContextMinter` from gatekeeper, the monitor's `HealthProbe` over
+    `LaunchContextMinter` from the authorization server, the monitor's `HealthProbe` over
     reqwest), the device certificate over rustls-acme with its state, and
     the certificate history file; `http/` the
     server's own middleware (CORS, the loopback owner trust, the
@@ -153,7 +153,7 @@ only it composes. Rust-only, no `-core`.
     CA every test that runs a server orders from. Only dev-dependencies
     enable it: the crate's own and `servers-rust`'s.
   - `tests/scope_claims.rs` pins a seam between two slices this crate
-    composes: gatekeeper's bearer gate inserts the `ScopeClaims` databases'
+    composes: the authorization server's bearer gate inserts the `ScopeClaims` databases'
     `Scoped<…>` capabilities read. It drives both real crates together, since
     each slice's own tests fabricate the extension.
 
@@ -177,14 +177,14 @@ only it composes. Rust-only, no `-core`.
   as long as the server runs, on a channel the host makes for each run; the
   server's `CertificateState`, published by the device certificate for as
   long as the server runs, on a channel the host makes for each run; the
-  head of gatekeeper's pending-consent queue, published as the run starts and
+  head of the authorization server's pending-consent queue, published as the run starts and
   after each change to the queue, on a channel the host makes for each run;
   and each forwarded request (every request through the tunnel,
   and each one a front run on this machine relayed), on a channel the host
   shares across runs, reported by the forwarded-request layer as a
   `ForwardedRequest` record: the
   visitor's address, the path reduced to its route, the status, and the
-  `RequestCaller` or `RequestRefusal` the gatekeeper bearer gates stamped on the
+  `RequestCaller` or `RequestRefusal` the authorization server bearer gates stamped on the
   response. The layer sends the same record to the request-log slice.
   A full report channel drops the report; it never delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived

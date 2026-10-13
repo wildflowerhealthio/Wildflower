@@ -10,7 +10,7 @@ import { AuthorizationServerApi } from './index.ts'
 
 describe('TokenExchange wire format', () => {
   // RFC 6749 §3.2: token endpoint requests are
-  // `application/x-www-form-urlencoded`. The Rust gatekeeper enforces
+  // `application/x-www-form-urlencoded`. The Rust authorization server enforces
   // that (`serde_urlencoded` only); the TS server is lenient. This
   // pins the *client* side: an encoding annotation on the payload
   // union wrapper (instead of on each member) is silently ignored by

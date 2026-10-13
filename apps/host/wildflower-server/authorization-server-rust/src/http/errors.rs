@@ -1,4 +1,4 @@
-//! Error **wire-representations** for the gatekeeper's routes and middleware —
+//! Error **wire-representations** for the authorization server's routes and middleware —
 //! how failures render onto the wire, and nothing else. The failure
 //! *vocabulary* is domain ([`crate::domain::authorization_server_error::AuthorizationServerError`]); this
 //! file only renders it — a semantic status + JSON body for the `*NotFound`
@@ -89,7 +89,7 @@ pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
 /// [`InsufficientApproverScope`](AuthorizationServerError::InsufficientApproverScope),
 /// when an approver tries to delegate scopes beyond their own grant. This is the
 /// authorization (not authentication) failure path the resource-scope epic
-/// introduces — the first 403 the gatekeeper's `/access` surface can return.
+/// introduces — the first 403 the authorization server's `/access` surface can return.
 /// The wire shape and this constructor live in `scope-capabilities-rust` (the
 /// reusable capability layer), re-exported here so call sites keep importing it
 /// from `errors`.

@@ -27,7 +27,7 @@ pub enum ConsentApproval {
 }
 
 /// What an approval came to, `{"status": "approved" | "denied"}`: `denied`
-/// when none of the approved scopes could be granted, which the gatekeeper
+/// when none of the approved scopes could be granted, which the authorization server
 /// records as a denial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]

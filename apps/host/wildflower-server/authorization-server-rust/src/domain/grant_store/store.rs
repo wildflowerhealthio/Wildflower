@@ -4,8 +4,8 @@ use url::Url;
 use super::GrantTx;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
@@ -206,7 +206,9 @@ pub trait GrantStore {
     /// # Errors
     ///
     /// Propagates [`GrantTx::oldest_pending_consent_head`]'s error.
-    fn oldest_pending_consent_head(&self) -> Result<Option<PendingConsentHead>, AuthorizationServerError> {
+    fn oldest_pending_consent_head(
+        &self,
+    ) -> Result<Option<PendingConsentHead>, AuthorizationServerError> {
         self.with_connection(|tx| tx.oldest_pending_consent_head())
     }
 
@@ -254,7 +256,10 @@ pub trait GrantStore {
     ///
     /// Propagates [`GrantTx::consume_approved_authorization_request`]'s
     /// error.
-    fn consume_approved_authorization_request(&self, id: &str) -> Result<bool, AuthorizationServerError> {
+    fn consume_approved_authorization_request(
+        &self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
         self.with_connection(|tx| tx.consume_approved_authorization_request(id))
     }
 

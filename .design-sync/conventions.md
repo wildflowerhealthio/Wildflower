@@ -2,7 +2,7 @@
 
 React DOM component primitives styled with **tundra-css** (utility classes +
 design tokens). These are the building blocks the Wildflower apps
-(gatekeeper, databases, tunnel, apps) share. Compose primitives; reach for a
+(authorization, databases, tunnel, apps) share. Compose primitives; reach for a
 raw element only when no primitive fits.
 
 ## Styling vocabulary

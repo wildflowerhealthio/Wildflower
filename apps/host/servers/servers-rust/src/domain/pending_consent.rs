@@ -3,7 +3,7 @@
 //! [`PendingConsentTracker`], which picks the servers whose waiting consent
 //! changed out of `UnitRunner`'s statuses.
 //!
-//! A server's gatekeeper keeps one queue of the consents waiting for the
+//! A server's authorization server keeps one queue of the consents waiting for the
 //! Owner, device-code and authorization-code requests together, oldest
 //! first; its head is the run's [`ServerDetail::pending_consent`]. On the
 //! wire, camelCase, the head left out when nothing waits:

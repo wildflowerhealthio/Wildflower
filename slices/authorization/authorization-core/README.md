@@ -1,6 +1,6 @@
 # authorization-core
 
-The Gatekeeper system allows an authorized **Owner** on one device to issue
+Wildflower Authorization allows an authorized **Owner** on one device to issue
 **Grants** to OAuth Clients (registered in the `clients` table) who request
 access on a separate device, allowing them to access data in a system. The
 host browser bootstraps onto a fresh deployment via the RFC 8628 device
@@ -37,7 +37,7 @@ because the wire schemas in this package mirror their rows.
   [Jargon Explanation](../docs/Jargon%20Explanation.md#launchcontext).
 - `authorizationCodeGrants` / `deviceGrants` — standing consents, **one
   table per concrete kind** (`authorization_code_grants`, `device_grants`;
-  gatekeeper migration `0001_gatekeeper_schema`), each carrying all of its
+  the authorization server migration `0001_gatekeeper_schema`), each carrying all of its
   columns with its own payload `NOT NULL`: authorization-code grants (keyed
   `(clientId, redirectUri)`, driving the auto-approve fast path) and device
   grants (keyed `(clientId, deviceName)`, the durable record of a paired
@@ -71,10 +71,10 @@ and 90 days respectively). See the
   registration are carried to the consent prompt as a registration verdict
   rather than rejected (`wildflower-host` excepted). A request no standing
   grant covers redirects to the wait page below, relative to itself, so the
-  browser stays on whichever origin it reached the gatekeeper at.
+  browser stays on whichever origin it reached the authorization server at.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
-- `/oauth/authorize/:id/wait` — the **wait page**, served by the gatekeeper
+- `/oauth/authorize/:id/wait` — the **wait page**, served by the authorization server
   itself: static HTML, CSS and JS (`authorization-server-rust`'s
   `http/routes/oauth/wait_page/`) that polls `/oauth/authorize/:id` and, once
   the Owner decides, leaves for the redirect the status carries. See "Wait
@@ -240,7 +240,7 @@ hand-rolled and Effect-native, and the one there delegates to `fhirclient`.
 
 ## SPA page paths
 
-The gatekeeper API redirects to URLs under `/authorization/`, which the host app
+The authorization server API redirects to URLs under `/authorization/`, which the host app
 serves with a single-page app. The redirect targets are typed in
 [`authorization-core/page-paths`](./src/page-paths.ts) (`AuthorizationServerPaths`); the
 SPA's file-based route tree in [`authorization-react`](../authorization-react/src/routes/)

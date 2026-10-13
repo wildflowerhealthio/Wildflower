@@ -1,8 +1,8 @@
-//! The gatekeeper persistence **port**, split into two pure traits the domain
+//! The authorization server persistence **port**, split into two pure traits the domain
 //! depends on:
 //!
 //! - [`GrantTx`] is the primitive contract — every single-statement CRUD
-//!   operation the domain needs, over the gatekeeper's domain types, taking
+//!   operation the domain needs, over the authorization server's domain types, taking
 //!   `&mut self` so a batch of them can run against one connection. It signals
 //!   absence/conflict through return types (`Option` / `bool`) rather than
 //!   semantic errors, raising only the opaque
@@ -31,7 +31,7 @@
 //! `SqliteGrantTx` implements [`GrantTx`]); the in-memory
 //! `FakeGrantStore` in `domain::capabilities` substitutes for it in the
 //! semantic-mapping unit tests. Mirrors `apps-rust`'s `AppsStore`, scaled up to
-//! the gatekeeper's six persistence concerns — plus the transaction seam that
+//! the authorization server's six persistence concerns — plus the transaction seam that
 //! simpler store doesn't need.
 
 mod store;

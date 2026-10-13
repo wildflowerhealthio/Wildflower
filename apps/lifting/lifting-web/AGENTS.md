@@ -79,11 +79,11 @@ they cover.
 - **Scopes match the clients.** `LIFTING_SCOPE` is the one string both
   launches request — `system/` only, no `launch/patient`; the `lifting` and
   `lifting-dev` tiles' OAuth clients' `allowed_scopes` must equal it
-  (gatekeeper migrations `0019_seed_lifting_app_client`,
+  (authorization server migrations `0019_seed_lifting_app_client`,
   `0020_first_party_apps_pick_the_patient` and
   `0025_rekey_lifting_app_clients`, and `LIFTING_DEV_SCOPES` in
   `authorization-server-rust/src/seeding.rs`, whose test reads `src/config.ts`). A
-  change here is a new gatekeeper migration and a dev-scope edit too.
+  change here is a new authorization server migration and a dev-scope edit too.
 
 ## Testing
 

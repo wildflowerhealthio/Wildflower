@@ -13,7 +13,7 @@ migration primitives live in `persistence-rust`
 (`open_pool` / `open_in_memory_pool` / `DieselPool` in
 `persistence-rust/src/diesel_pool.rs`, `run_diesel_migrations` in
 `persistence-rust/src/namespaced_migrations.rs`); `apps` and
-`gatekeeper` are the worked examples.
+`authorization-server` are the worked examples.
 
 ## Which diesel
 
@@ -23,7 +23,7 @@ diesel 2.3 ships native SQLite `Json` support, the convention here maps JSON
 columns through a `Text` newtype (below) rather than the native type — the stored
 representation is compact JSON in a STRICT `TEXT` column, and a slice opts into
 the shared mapping through a feature rather than every slice re-deriving it. The
-`chrono` feature is enabled per-slice (only `gatekeeper` needs it today).
+`chrono` feature is enabled per-slice (only `authorization-server` needs it today).
 
 ## JSON columns: map a `serde_json::Value` through a `Text` newtype
 
@@ -94,7 +94,7 @@ Don't fight it per-field. Give that one table a **private** `#[derive(Queryable,
 Selectable, Insertable)]` row struct in `db/` whose fields **are** the wrapper
 types (`Option<UrlText>`, `Option<JsonStrings>` — the blanket `Option<T: ToSql /
 FromSql>` impls cover `Nullable`), and convert to/from the domain type with
-`From` at the query boundary. In gatekeeper only `authorization_requests` needs
+`From` at the query boundary. In the authorization server only `authorization_requests` needs
 this (`authorization-server-rust/src/db/authorization_requests.rs`, the private `Row`
 struct + its two `From` impls); every other table maps its domain struct
 directly.
@@ -179,7 +179,7 @@ multi-statement operations that must be atomic (read-merge-write, delete-both-
 then-expire, a three-state consume) and you don't want that business logic
 trapped inside the SQLite adapter and re-implemented in the in-memory fake.
 
-Gatekeeper is the worked example
+The authorization server is the worked example
 (`authorization-server-rust/src/domain/grant_store/{mod,store,tx}.rs`). Split the port
 into two traits:
 
@@ -199,7 +199,7 @@ Load-bearing details:
 - **`immediate_transaction` (BEGIN IMMEDIATE) takes the write lock at read
   time.** A read-merge-write (scope-union grant upsert) must use it, or a
   concurrent writer can lose the union; a plain `transaction` is deferred and
-  regresses silently. Gatekeeper's consent upserts call `immediate_transaction`
+  regresses silently. The authorization server's consent upserts call `immediate_transaction`
   (`domain/capabilities/consents/{oauth,device}.rs`); the revoke path uses
   `transaction` (`domain/capabilities/grants.rs`).
 - **diesel's `transaction`/`immediate_transaction` require `E: From<diesel::result::Error>`**

@@ -7,9 +7,9 @@
 //! secret was never checked.
 
 use crate::crypto_util::client_secret::verify_client_secret;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::GrantStore;
 
 /// A client whose credentials have been verified. It answers the questions a

@@ -51,7 +51,7 @@ const logOutBearerSession = async (deps: BearerLogoutDeps): Promise<void> => {
 }
 
 /**
- * Gatekeeper's "Logout" settings row, for a page that holds a bearer (the
+ * The authorization server's "Logout" settings row, for a page that holds a bearer (the
  * launcher). An action row (`onClick`): logging out purges the page's
  * in-memory bearer and invalidates it server-side (`POST /access/logout`
  * revokes its `jti`) — see {@link logOutBearerSession}.

@@ -1,4 +1,4 @@
-//! The closed set of OAuth error codes the gatekeeper's error surfaces are
+//! The closed set of OAuth error codes the authorization server's error surfaces are
 //! allowed to emit — RFC 6749 §5.2, plus the §4.1.2.1 authorization-endpoint
 //! redirect codes (`access_denied`, `unsupported_response_type`) and the
 //! RFC 8628 §3.5 device-flow polling codes. Modeled as an enum so a code can't
@@ -15,7 +15,7 @@
 
 use strum::{AsRefStr, Display};
 
-/// A code from the closed set of OAuth error codes the gatekeeper's JSON error
+/// A code from the closed set of OAuth error codes the authorization server's JSON error
 /// surface may emit. Its [`AsRef<str>`]/[`Display`] impls (derived by `strum`
 /// from the `snake_case` variant names) yield the exact RFC wire value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display)]

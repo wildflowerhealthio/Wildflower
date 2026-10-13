@@ -181,7 +181,9 @@ describe('TrustedAppsList', () => {
 
   it('should close the dialog on a failed disable and surface the failure in the banner', async () => {
     // Arrange
-    runAuthedStub.mockImplementationOnce(() => Promise.reject(new Error('Gatekeeper unavailable')))
+    runAuthedStub.mockImplementationOnce(() =>
+      Promise.reject(new Error('Authorization server unavailable'))
+    )
     renderList([ohifViewer])
     chooseAction('OHIF Viewer', 'Disable')
 
@@ -189,20 +191,26 @@ describe('TrustedAppsList', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Disable' }))
 
     // Assert
-    expect((await screen.findAllByText(/Gatekeeper unavailable/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/Authorization server unavailable/)).length).toBeGreaterThan(
+      0
+    )
     expect(isDialogOpen()).toBe(false)
   })
 
   it('should surface a failed enable in the error banner', async () => {
     // Arrange
-    runAuthedStub.mockImplementationOnce(() => Promise.reject(new Error('Gatekeeper unavailable')))
+    runAuthedStub.mockImplementationOnce(() =>
+      Promise.reject(new Error('Authorization server unavailable'))
+    )
     renderList([disabledImporter])
 
     // Act
     chooseAction('Importer', 'Enable')
 
     // Assert
-    expect((await screen.findAllByText(/Gatekeeper unavailable/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/Authorization server unavailable/)).length).toBeGreaterThan(
+      0
+    )
   })
 
   it('should re-enable a disabled app straight away', async () => {

@@ -413,7 +413,7 @@ describe('completeSignIn', () => {
     // The console is a public page and the token can be admin-capable, so it
     // exists only in the caller's memory.
     await fc.assert(
-      // JWT-shaped tokens: what a gatekeeper issues, and free of the JSON
+      // JWT-shaped tokens: what an authorization server issues, and free of the JSON
       // punctuation that would make the substring check trivially true.
       fc.asyncProperty(
         fc.uuid().map((id) => `header.${id}.signature`),

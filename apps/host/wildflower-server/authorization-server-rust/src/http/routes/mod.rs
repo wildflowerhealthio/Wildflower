@@ -1,4 +1,4 @@
-//! The gatekeeper's HTTP routes, one module per URL segment. The folder tree
+//! The authorization server's HTTP routes, one module per URL segment. The folder tree
 //! mirrors the URL tree: single-route paths are a flat file named by their
 //! operation (`well_known_jwks`, `logout`, `revocations`), multi-route segments
 //! are a folder carrying its own `mod.rs` route table (`oauth`,

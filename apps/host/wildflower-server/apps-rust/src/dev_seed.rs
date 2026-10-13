@@ -23,7 +23,7 @@
 //! `apps/host/wildflower-server/wildflower-server-rust/src/live_bindings/wildflower_server.rs`,
 //! so a release build contains no code that could write these ids.
 //!
-//! Each app's dev gatekeeper client (`seed_dev_app_clients` in
+//! Each app's dev authorization server client (`seed_dev_app_clients` in
 //! authorization-server-rust) registers an absolute `http://localhost:{port}` redirect
 //! URI that the OAuth authorize flow matches directly — the row is a launch URL
 //! and nothing else.
@@ -53,7 +53,7 @@ const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 struct DevApp {
     /// The row id.
     id: &'static str,
-    /// The row's `client_id`: its dev gatekeeper client, which
+    /// The row's `client_id`: its dev authorization server client, which
     /// `seed_dev_app_clients` registers under the same id.
     client_id: &'static str,
     /// Homescreen title, suffixed "(Dev)" so it can't be confused with the

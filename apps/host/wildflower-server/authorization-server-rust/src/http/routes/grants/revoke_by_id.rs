@@ -5,8 +5,8 @@ use axum::http::StatusCode;
 use axum::routing::{delete, MethodRouter};
 use chrono::Utc;
 
-use crate::domain::capabilities::Scoped;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveGrantsRevoker;
 

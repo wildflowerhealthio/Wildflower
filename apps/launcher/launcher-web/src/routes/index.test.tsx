@@ -484,7 +484,7 @@ describe('Landing', () => {
     fireEvent.click(retry)
 
     // Assert — the retry is a standalone launch rather than a second offer of
-    // a launch gatekeeper may already have spent.
+    // a launch the authorization server may already have spent.
     await waitFor(() => {
       expect(signIn.launches).toEqual(['nonce-1', undefined])
     })
@@ -551,7 +551,7 @@ describe('Landing', () => {
   })
 
   test('shows a rejected launch on the landing, with its server still offered', async () => {
-    // Arrange / Act — gatekeeper refused the launch and redirected back, and
+    // Arrange / Act — the authorization server refused the launch and redirected back, and
     // `main-web`'s boot pointed `?server=` back at the server it was to.
     const signIn = recordingSignIn(pendingStart)
     await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {

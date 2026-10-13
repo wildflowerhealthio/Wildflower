@@ -1,7 +1,7 @@
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 
 /**
- * Menu entries the unified `/settings` screen renders for gatekeeper.
+ * Menu entries the unified `/settings` screen renders for the authorization server.
  *
  * `apps/launcher/launcher-web/src/routes/settings/index.tsx`
  * concatenates this with every other slice's

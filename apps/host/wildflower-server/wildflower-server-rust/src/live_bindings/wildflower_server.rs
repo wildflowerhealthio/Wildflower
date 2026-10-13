@@ -15,11 +15,11 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_authorization_server::{
-    authorization_server_auth_middleware, require_loopback_peer_middleware, setup_authorization_server,
-    AuthorizationServerConfig, HostConsentDecider,
+    authorization_server_auth_middleware, require_loopback_peer_middleware,
+    setup_authorization_server, AuthorizationServerConfig, HostConsentDecider,
 };
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
 use crate::adapters::acme_certificate::DeviceCertificate;
@@ -52,7 +52,7 @@ const WILDFLOWER_DB: &str = "wildflower.sqlite";
 /// The folder, beside the health data, that the FHIR API's bulk `$export`
 /// stages each job's files in until they're downloaded and expire.
 const FHIR_EXPORTS_DIR: &str = "fhir-exports";
-/// The `client_id` of the FHIR server's web UI (`helios-ui`): gatekeeper seeds
+/// The `client_id` of the FHIR server's web UI (`helios-ui`): the authorization server seeds
 /// the client under it and `fhir-r4-rust` signs the UI's users in as it.
 const FHIR_UI_CLIENT_ID: &str = "5ea43272eba5e825c50de39032f96bf0";
 
@@ -103,7 +103,9 @@ impl WildflowerServer {
     /// before [`serve`](Self::serve); it mints for as long as the server's
     /// database is open.
     #[must_use]
-    pub fn launch_context_minter(&self) -> wildflowerhealthio_authorization_server::LaunchContextMinter {
+    pub fn launch_context_minter(
+        &self,
+    ) -> wildflowerhealthio_authorization_server::LaunchContextMinter {
         self.launch_context_minter.clone()
     }
 
@@ -188,7 +190,7 @@ impl WildflowerServer {
 /// # Remarks
 ///
 /// Slices spawn background tasks (the tunnel supervisor, the reachability
-/// monitor, the certificate's ordering and renewal, gatekeeper's re-mint and
+/// monitor, the certificate's ordering and renewal, the authorization server's re-mint and
 /// sweeps) onto the runtime that runs this future. They are not tied to the
 /// shutdown token: the tunnel supervisor, the reachability monitor and the
 /// certificate stop when the returned [`WildflowerServer`] is
@@ -234,7 +236,7 @@ pub async fn set_up(
 
     let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
     // The typed loopback base URL is the single source threaded into every
-    // slice's config that renders it (gatekeeper / fhir-r4). `loopback_origin` is its
+    // slice's config that renders it (the authorization server / fhir-r4). `loopback_origin` is its
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
     let loopback_origin = wildflowerhealthio_shared_structures::origin_string(&loopback_base_url);
@@ -243,9 +245,9 @@ pub async fn set_up(
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
         bulk_export_dir: runtime.server_dir.join(FHIR_EXPORTS_DIR),
         // HFS-enforced auth: every FHIR request must carry a Bearer JWT
-        // signed by a gatekeeper-issued key whose `iss` and `aud` are the
-        // server's origin — set by gatekeeper at mint, checked by both
-        // gatekeeper's gate and HFS.
+        // signed by an authorization-server-issued key whose `iss` and `aud` are the
+        // server's origin — set by the authorization server at mint, checked by both
+        // the authorization server's gate and HFS.
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
         search_parameter_data_dir,
         public_origin: public_origin.clone(),
@@ -267,7 +269,7 @@ pub async fn set_up(
         .context("failed to open shared database")?;
 
     // One shared token-revocation store on that same connection, built BEFORE
-    // both setups and threaded into each: gatekeeper's auth gate runs the full
+    // both setups and threaded into each: the authorization server's auth gate runs the full
     // revocation check (denylist + subject epoch) through it, and HFS reads the
     // per-jti denylist through it (defense-in-depth behind the gate). One store,
     // two enforcement points. See #269.
@@ -295,7 +297,7 @@ pub async fn set_up(
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
-    // every diesel-backed slice — the gatekeeper OAuth surface, the apps
+    // every diesel-backed slice — the authorization server OAuth surface, the apps
     // surface and the request log's `/requests` surface all run over it rather
     // than each opening their own. Its connections are NOT
     // synchronized with the `Arc<Mutex<rusqlite::Connection>>` the other slices
@@ -303,7 +305,7 @@ pub async fn set_up(
     // ridden out by a shared `busy_timeout`. This is where that trade-off is
     // accepted — see docs/Persistence/Shared Diesel Pool Explanation.md.
     //
-    // Built BEFORE `setup_authorization_server` because the gatekeeper store now rides
+    // Built BEFORE `setup_authorization_server` because the grant store now rides
     // this pool too (its diesel migrations run when the store is constructed).
     let diesel_pool = wildflowerhealthio_persistence::open_pool(&db_path)
         .context("failed to open diesel db pool")?;
@@ -322,7 +324,8 @@ pub async fn set_up(
         if let Err(error) = wildflowerhealthio_apps::seed_dev_apps(diesel_pool.clone()) {
             tracing::warn!("failed to seed dev app rows: {error:#}");
         }
-        if let Err(error) = wildflowerhealthio_authorization_server::seed_dev_app_clients(diesel_pool.clone())
+        if let Err(error) =
+            wildflowerhealthio_authorization_server::seed_dev_app_clients(diesel_pool.clone())
         {
             tracing::warn!("failed to seed dev app OAuth clients: {error:#}");
         }
@@ -333,7 +336,7 @@ pub async fn set_up(
     // receiver must be alive by then), and the head of its pending-consent
     // queue on the host's channel.
     let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
-    let gatekeeper = setup_authorization_server(
+    let authorization_server = setup_authorization_server(
         diesel_pool.clone(),
         revocation_store.clone(),
         &authorization_server_config,
@@ -341,8 +344,8 @@ pub async fn set_up(
         observers.pending_consent_tx,
         host.loopback_consent_prompt,
     )
-    .context("failed to set up gatekeeper")?;
-    let consent_decider_for_host = HostConsentDecider::new(gatekeeper.state.clone());
+    .context("failed to set up the authorization server")?;
+    let consent_decider_for_host = HostConsentDecider::new(authorization_server.state.clone());
 
     // The FHIR API carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
@@ -355,7 +358,7 @@ pub async fn set_up(
         revocation_store,
         ui_sessions.clone(),
         authorization_server_auth_middleware(
-            gatekeeper.state.clone(),
+            authorization_server.state.clone(),
             wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
         ),
     )
@@ -376,7 +379,8 @@ pub async fn set_up(
                 present_ui_session_bearer,
             ));
 
-    let authorization_server_auth_layer = authorization_server_auth_middleware(gatekeeper.state.clone(), &[]);
+    let authorization_server_auth_layer =
+        authorization_server_auth_middleware(authorization_server.state.clone(), &[]);
 
     let gated_ohif_server =
         wildflowerhealthio_ohif_server::setup_ohif_server(fhir_routers.raw_hfs_router)
@@ -428,9 +432,11 @@ pub async fn set_up(
     // `wildflower/RequestLog.r` behind the bearer gate.
     let request_log = wildflowerhealthio_request_log::setup_request_log(diesel_pool.clone())
         .context("failed to set up the request log")?;
-    let gated_request_log = request_log.router.layer(authorization_server_auth_layer.clone());
+    let gated_request_log = request_log
+        .router
+        .layer(authorization_server_auth_layer.clone());
 
-    // The apps surface, behind the gatekeeper bearer gate (`gated_apps`, below).
+    // The apps surface, behind the authorization server bearer gate (`gated_apps`, below).
     // `GET /apps` (list), the admin surface (`POST /apps`,
     // `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are scope-gated on
     // `wildflower/Apps.*`. The launch route `POST /apps/{id}` is scope-gated on the
@@ -445,14 +451,14 @@ pub async fn set_up(
     // The launch umbrella (`wildflower/launch`) is enforced separately by the
     // bearer gate + `Scoped<AppLauncher>` on the launch route (below).
     let launch_scopes: Arc<dyn AppLaunchScopes> = Arc::new(AuthorizationServerAppLaunchScopes {
-        state: gatekeeper.state.clone(),
+        state: authorization_server.state.clone(),
     });
 
     // A SMART app's launch URL carries a `launch` value minted through
-    // gatekeeper, which its `/oauth/authorize` then consumes.
+    // the authorization server, which its `/oauth/authorize` then consumes.
     let launch_context_minter: Arc<dyn LaunchContextMinter> =
         Arc::new(AuthorizationServerLaunchContextMinter {
-            launch_context_minter: gatekeeper.launch_context_minter.clone(),
+            launch_context_minter: authorization_server.launch_context_minter.clone(),
         });
 
     let apps = setup_apps(
@@ -479,7 +485,7 @@ pub async fn set_up(
     // folder the databases above live in — so the server passes the
     // directory plus the catalogue (the slice has no built-in knowledge of which
     // databases exist; the user-facing strings live here). Authenticated behind
-    // the gatekeeper bearer gate, then authorized per database (NOT a blanket
+    // the authorization server bearer gate, then authorized per database (NOT a blanket
     // owner gate):
     // Each database's export/delete is gated by the scope matching the *kind* of
     // data it holds (server policy — the slice enforces whatever scope we name
@@ -517,7 +523,7 @@ pub async fn set_up(
     // Every slice's routes, gated per slice, composed once: the routes each
     // listener serves. The listener-specific layers go on top of this, below.
     let inner_router = Router::new()
-        .merge(gatekeeper.router)
+        .merge(authorization_server.router)
         .merge(gated_ohif_server)
         .merge(gated_request_log)
         // `/health`: the draft-06 health report of the server's checks,
@@ -577,7 +583,7 @@ pub async fn set_up(
         // `POST /apps/{id}` (which can open a native popup on the owner's
         // device) can't be driven by a non-loopback client. See
         // `require_loopback_peer_middleware` for how forwarded callers pass and
-        // why re-gating the gatekeeper's already-gated routes is harmless.
+        // why re-gating the authorization server's already-gated routes is harmless.
         .layer(require_loopback_peer_middleware())
         // The webview page is NOT served from this origin — it loads from
         // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
@@ -621,7 +627,7 @@ pub async fn set_up(
         tunnel_stream_tx,
         tunnel_daemon,
         reachability_monitor,
-        launch_context_minter: gatekeeper.launch_context_minter,
+        launch_context_minter: authorization_server.launch_context_minter,
         device_certificate,
         consent_decider_for_host,
         bulk_export_worker: fhir_routers.bulk_export_worker,

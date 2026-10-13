@@ -27,7 +27,7 @@ pub struct ServerDetail {
     /// starts.
     pub certificate: Option<CertificateState>,
     /// The oldest consent waiting for the Owner's answer on this server, as
-    /// its gatekeeper publishes it; `None` when nothing waits.
+    /// its authorization server publishes it; `None` when nothing waits.
     pub pending_consent: Option<PendingConsentHead>,
     /// How the host decides the consents waiting on this run. A run always
     /// sets it; it is `None` only in a detail built without a server, as the

@@ -1,15 +1,15 @@
 //! The [`LaunchContextMinter`] binding — the mint half of the
 //! [`LaunchContexts`] capability over the concrete `SqliteGrantStore`, for
-//! in-process callers outside the gatekeeper: the apps slice's launch route and
-//! the base's launch. Consuming a launch stays inside the gatekeeper, at
+//! in-process callers outside the authorization server: the apps slice's launch route and
+//! the base's launch. Consuming a launch stays inside the authorization server, at
 //! `/oauth/authorize`.
 
 use chrono::Utc;
 
 use crate::crypto_util::random_token::generate_launch_nonce;
 use crate::db::SqliteGrantStore;
-use crate::domain::capabilities::oauth::LaunchContexts;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::oauth::LaunchContexts;
 
 /// Mint SMART App Launch contexts. Cheap to clone (the store wraps a pool).
 /// [`crate::setup_authorization_server`] hands one out on
@@ -20,7 +20,7 @@ pub struct LaunchContextMinter {
 }
 
 impl LaunchContextMinter {
-    /// A minter over the gatekeeper's store.
+    /// A minter over the authorization server's store.
     pub(crate) fn new(store: SqliteGrantStore) -> Self {
         LaunchContextMinter { store }
     }

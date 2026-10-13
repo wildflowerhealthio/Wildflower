@@ -1,4 +1,4 @@
-//! Host/HTTP-seam **dependency-inversion** traits the gatekeeper domain actions
+//! Host/HTTP-seam **dependency-inversion** traits the authorization server domain actions
 //! call out through — so the store-and-HTTP-free
 //! `actions` can still trigger the runtime side-effects
 //! a consent or logout flow needs without the domain learning axum, the head's
@@ -6,7 +6,7 @@
 //! [`AuthorizationServerState`](crate::http::AuthorizationServerState) wires the real implementations (see
 //! `http::state`); tests wire in-memory fakes. Mirrors `apps-rust`'s `ports/`.
 //!
-//!  - [`OwnerApproval`] — republish the active pending-consent head
+//!  - [`OwnerApproval`] — ask the Owner: republish the active pending-consent head
 //!    to the host after any transition that may change it (an
 //!    `/authorize` or `/device_authorization` insert, an approve/deny on
 //!    either consent surface);

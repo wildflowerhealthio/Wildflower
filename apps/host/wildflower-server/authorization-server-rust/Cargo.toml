@@ -25,11 +25,11 @@ diesel_migrations.workspace = true
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 rusqlite.workspace = true
 # The shared token-revocation store (per-jti denylist + per-subject epoch).
-# gatekeeper owns the *policy*: it runs the full revocation check in the auth
+# The authorization server owns the *policy*: it runs the full revocation check in the auth
 # gate and exposes the revoke control surface (`/access/revocations`, logout).
 wildflowerhealthio-token-revocation = { path = "../token-revocation-rust" }
 # OAuth 2.0 / SMART on FHIR scope primitives (the v1↔v2 grammar and the
-# canonical scope strings) — gatekeeper is the canonical consumer; the crate
+# canonical scope strings) — the authorization server is the canonical consumer; the crate
 # was extracted out of here so other slices (wildflowerhealthio-fhir-r4) can share one grammar.
 wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 # The shared forwarding-header provenance helpers (`served_base_url_for`,
@@ -40,7 +40,7 @@ wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["served-origin", "http-errors"] }
 # The scope-gated capability extractors (`Scoped<F>`, `Capability`,
 # `FixedScopeCapability`, `ScopeClaims`) — the enforcement half of the scopes
-# slice; gatekeeper's `/access` surface is the pattern's original adopter and
+# slice; the authorization server's `/access` surface is the pattern's original adopter and
 # its bearer gate inserts the `ScopeClaims` downstream slices gate on.
 wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust", features = ["openapi"] }
 parking_lot = "0.12"

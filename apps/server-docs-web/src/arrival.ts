@@ -20,7 +20,7 @@ import {
  * including the `iss` an authorization server adds beside it (RFC 9207): left
  * in the URL, the code or error would travel on in history, the referrer and
  * a copied link, and the `iss` would read as a SMART launch on reload. A SMART
- * launch becomes the `?server=` its `iss` names, so a reload offers gatekeeper
+ * launch becomes the `?server=` its `iss` names, so a reload offers the authorization server
  * no launch it has already spent. Any other load settles on what it arrived
  * with.
  */

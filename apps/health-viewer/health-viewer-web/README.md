@@ -124,7 +124,7 @@ clients to it.
   `0019_rekey_site_apps`) launching
   `https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}`
   with `requires_tunnel` set, as every first-party row has. Its public OAuth
-  client (gatekeeper migration `0022_seed_health_viewer_app_client`, re-keyed by
+  client (the authorization server migration `0022_seed_health_viewer_app_client`, re-keyed by
   `0028_rekey_site_app_clients`) redirects to
   `https://wildflowerhealth.io/health-viewer/`.
 - **`health-viewer-dev`** is seeded in debug builds only, at runtime rather

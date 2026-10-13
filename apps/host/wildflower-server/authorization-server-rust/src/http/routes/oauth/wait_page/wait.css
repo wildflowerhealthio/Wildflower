@@ -1,5 +1,5 @@
 /*
- * The gatekeeper's wait page (`../wait_page.rs`). It loads nothing from
+ * The authorization server's wait page (`../wait_page.rs`). It loads nothing from
  * react-tundraish, so the few colours it paints are copied from that palette
  * (`global/react-tundraish/src/colors-custom.css`) under the same names. Nothing
  * checks the copies, so update them by hand when the palette changes. One light

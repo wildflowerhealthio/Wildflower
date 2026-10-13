@@ -1,5 +1,5 @@
 /**
- * The gatekeeper access-token lifetime, and the consent copy computed from it. There is no
+ * The authorization server access-token lifetime, and the consent copy computed from it. There is no
  * shared TS ⇄ Rust constant for it, so {@link ttlMinutes} is kept in step with
  * `authorization-server-rust`'s `ACCESS_TOKEN_TTL` (`http/handlers/oauth/internal.rs`) by convention —
  * change both together.

@@ -107,7 +107,7 @@ impl LoopbackConsentPrompt for ScriptedDialog {
     }
 }
 
-/// A gatekeeper whose loopback dialog is `dialog`.
+/// An authorization server whose loopback dialog is `dialog`.
 fn spin_up_with(dialog: &Arc<ScriptedDialog>) -> (AuthorizationServer, String, TestDb) {
     let prompt: Arc<dyn LoopbackConsentPrompt> = dialog.clone();
     spin_up_with_loopback_prompt(prompt)

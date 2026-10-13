@@ -8,7 +8,7 @@
 //! Each row is a [`ForwardedRequest`] the server's forwarded-request layer
 //! reported. The record holds no record identifiers (its path is reduced to the
 //! route), and the client's display name is not stored: readers resolve it from
-//! the `client_id` through gatekeeper.
+//! the `client_id` through the authorization server.
 
 use chrono::{DateTime, Utc};
 use wildflowerhealthio_shared_structures::request_caller::{

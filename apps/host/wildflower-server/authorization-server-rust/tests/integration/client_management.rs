@@ -76,7 +76,11 @@ async fn disable_client(
 }
 
 /// Re-enable `client_id` (`disabledAt: null`).
-async fn enable_client(g: &AuthorizationServer, token: &str, client_id: &str) -> axum::response::Response {
+async fn enable_client(
+    g: &AuthorizationServer,
+    token: &str,
+    client_id: &str,
+) -> axum::response::Response {
     patch_client(
         g,
         token,

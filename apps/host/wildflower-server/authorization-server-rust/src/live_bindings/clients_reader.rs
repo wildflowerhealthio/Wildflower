@@ -9,9 +9,9 @@ use wildflowerhealthio_scopes::Scope;
 
 use super::state::AuthorizationServerState;
 use crate::db::SqliteGrantStore;
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::clients::clients_reader_scopes;
 use crate::domain::capabilities::{ClientsReader, FixedScopeCapability};
-use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::token::VerifiedClaims;
 
 /// List registered clients — `Scoped<LiveClientsReader>` in the handler.

@@ -10,8 +10,8 @@
 //! Rather than patching helios-auth upstream, we mount this handler at
 //! `/.well-known/smart-configuration` and put HFS's router behind it as a
 //! fallback (see [`lib.rs`](crate)). The advertised endpoints are the
-//! gatekeeper URLs on the same origin, so the SMART app fetches discovery
-//! here, then follows links straight to gatekeeper for the authorize/token
+//! authorization server URLs on the same origin, so the SMART app fetches discovery
+//! here, then follows links straight to the authorization server for the authorize/token
 //! dance.
 //!
 //! This is the sole discovery implementation; the former TypeScript twin in the

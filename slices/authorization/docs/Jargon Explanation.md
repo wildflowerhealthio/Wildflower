@@ -1,7 +1,7 @@
-# Gatekeeper Jargon Explanation
+# Wildflower Authorization Jargon Explanation
 
 This doc fixes the meaning of every domain term that appears in the
-`gatekeeper` slice — internal vocabulary first, then the OAuth 2.0 / OIDC
+`authorization` slice — internal vocabulary first, then the OAuth 2.0 / OIDC
 spec terms that show up in the code. The goal is to surface concepts that
 overlap so a future round can decide whether to merge or rename them.
 
@@ -9,9 +9,9 @@ Everything here is **descriptive of the code as it stands today**. Open
 questions about whether two concepts should collapse are flagged with
 **Open question:** callouts.
 
-## What gatekeeper is for
+## What the authorization server is for
 
-The Gatekeeper system allows an authorized **Owner** on one device to
+Wildflower Authorization allows an authorized **Owner** on one device to
 issue **Grants** to OAuth Clients (registered in the
 [`clients`](#client) table) requesting access on a separate device,
 allowing them to access data in a system. The host browser bootstraps
@@ -24,16 +24,16 @@ host-minted token (see [bootstrap URL](#bootstrap-url)).
 Three distinct human/machine roles whose names collide easily — get these
 straight first.
 
-| Role               | Who they are                                                                                                  | Where they show up                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **OAuth client**   | Remote app requesting access (the SMART-on-FHIR caller, or `wildflower-host` itself).                         | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table  |
-| **Owner**          | Human with absolute control over the data this gatekeeper protects. Approves consent, gates inbound requests. | `/access/...` endpoints, `RequireAuthMiddleware`, Bearer tokens with `'owner'` scope |
-| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                        | OAuth spec only; we say "Owner"                                                      |
+| Role               | Who they are                                                                                                            | Where they show up                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **OAuth client**   | Remote app requesting access (the SMART-on-FHIR caller, or `wildflower-host` itself).                                   | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table  |
+| **Owner**          | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests. | `/access/...` endpoints, `RequireAuthMiddleware`, Bearer tokens with `'owner'` scope |
+| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                                  | OAuth spec only; we say "Owner"                                                      |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
 > HTTP-client instances in the codebase — the word is overloaded. The
 > spec name wins for `client_id`, but we should never use bare "client"
-> in Gatekeeper prose without a qualifier.
+> in Wildflower Authorization prose without a qualifier.
 
 ## Slice-internal terms
 
@@ -191,10 +191,10 @@ Device-flow rows leave those columns null.
 
 One SMART App Launch `launch` value this server handed out, and what it
 binds. An in-process launcher (the apps slice's `POST /apps/{id}`, the base's
-Launch) mints it through gatekeeper's `LaunchContextMinter` and puts it in the
+Launch) mints it through the authorization server's `LaunchContextMinter` and puts it in the
 app's launch URL; the app forwards it to `/oauth/authorize`.
 
-- **Table:** `launch_contexts`, owned by gatekeeper. No other slice touches it.
+- **Table:** `launch_contexts`, owned by the authorization server. No other slice touches it.
 - **Identifier:** `nonce`, the opaque `launch` value (32 CSPRNG bytes,
   base64url).
 - **Binds:** the app's `client_id`, or no client (the base's launch: a
@@ -266,7 +266,7 @@ Display name lives on [`Client`](#client)`.name`, not on `Grant`.
 
 ### SigningKey
 
-An RSA 2048-bit JWK used to sign and verify gatekeeper-issued JWTs.
+An RSA 2048-bit JWK used to sign and verify authorization-server-issued JWTs.
 Public components are published at `/.well-known/jwks.json`.
 
 - **Table:** `signingKeys`
@@ -293,7 +293,7 @@ The authorization wall on every Owner-facing JSON endpoint
    third-party SMART client's token (with `patient/*.read` scope)
    verifies fine but doesn't pass this gate.
 
-HTML pages in the `gatekeeper-pages` group do **not** carry this
+HTML pages in the `authorization-server-pages` group do **not** carry this
 middleware; they're public. The middleware reads the access token from the
 `Authorization: Bearer` header only — the server issues and accepts no
 cookies. The launcher attaches its in-memory bearer; a direct-loopback
@@ -397,15 +397,15 @@ keeps waiting (on the [wait page](#wait-page) for a code request).
 ### Wait page
 
 The page `/oauth/authorize` parks a browser on while the Owner decides:
-`/oauth/authorize/{id}/wait`, served by the gatekeeper itself on whichever
+`/oauth/authorize/{id}/wait`, served by the authorization server itself on whichever
 origin the browser reached it at (loopback, a tunnel, a forwarded front). The
 `Location` is relative to `/oauth/authorize`, so no launcher address is
 involved. The page is static HTML, CSS and JS
 (`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
 `GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
-redirect the status carries, which the gatekeeper built from the client's
+redirect the status carries, which the authorization server built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
-address a sign-in ever leaves the gatekeeper for, and no request parameter can
+address a sign-in ever leaves the authorization server for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers in
 the host's consent sheet, a signed-in launcher, or the
 [loopback owner dialog](#loopback-owner-dialog).
@@ -494,7 +494,7 @@ SMART (or the device flow) and holds the resulting bearer in memory. A
 direct-loopback caller never holds the host-minted token at all — the host
 presents it on the caller's requests.
 
-### `gatekeeper-pages` group
+### `authorization-server-pages` group
 
 The HttpApi group whose endpoints serve **HTML** to humans
 (`OAuthConsentPage`, `DeviceEntryPage`, `DeviceConsentPage`). Core ships definitions only; consumer slices
@@ -510,7 +510,7 @@ The HttpApi group fronting the **Owner-facing** JSON endpoints under
 
 ### HTTP request gating (`httpRequests` table + `/access/requests`)
 
-A separate, Gatekeeper-as-proxy concern: inbound HTTP requests are logged
+A separate, authorization-server-as-proxy concern: inbound HTTP requests are logged
 to `httpRequests` and pause until the Owner approves or denies them.
 **Not currently wired** — the `/access/requests` endpoints are defined
 but no producer pushes rows yet.
@@ -556,7 +556,7 @@ rejected with `invalid_scope`). Stored on
 ### `state`
 
 Opaque CSRF token chosen by the OAuth client. Echoed verbatim in the
-final redirect. Not used by gatekeeper logic; persisted in the
+final redirect. Not used by the authorization server logic; persisted in the
 `AuthorizationRequest.clientState` column so it survives the polling
 round-trip.
 
@@ -582,7 +582,7 @@ holds.
 
 JWT claims (RFC 7519 §4.1.1, §4.1.3) — _who_ minted this token and _for
 whom_ it's intended. Both are the server's origin, `https://<domain>` (no
-path suffix), on every token gatekeeper mints — OAuth and host owner alike. See
+path suffix), on every token the authorization server mints — OAuth and host owner alike. See
 [Origins Explanation](../../../docs/Origins/Explanation.md).
 
 A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
@@ -600,7 +600,7 @@ to pass them and can't silently accept any iss/aud.
 JWT claim — _whom_ the token is about. Required to be a string; required
 to resolve to a registered, enabled [`Client`](#client) row. The
 [`clients`](#client) lookup is the authoritative gate that distinguishes
-"valid token issued by this gatekeeper" from "valid signature but
+"valid token issued by this authorization server" from "valid signature but
 not-our-issuer".
 
 ### `exp`, `iat`
@@ -708,7 +708,7 @@ also need `/.well-known/smart-configuration` and probably
 ### SMART-on-FHIR
 
 The SMART App Launch profile of OAuth 2.0 used by FHIR servers
-([HL7 spec](https://hl7.org/fhir/smart-app-launch/)). What gatekeeper is
+([HL7 spec](https://hl7.org/fhir/smart-app-launch/)). What the authorization server is
 imitating. Concretely it adds:
 
 - `patient` launch context (carried on `AuthorizationCode.patient` and

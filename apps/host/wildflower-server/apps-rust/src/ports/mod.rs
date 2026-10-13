@@ -3,13 +3,13 @@
 //! [`AppsState`](crate::live_bindings::state::AppsState):
 //!
 //!  - [`app_launch_scopes::AppLaunchScopes`] — resolves a SMART app's per-app
-//!    launch scopes (its OAuth client's allowed scopes, gatekeeper-backed
+//!    launch scopes (its OAuth client's allowed scopes, authorization-server-backed
 //!    host-side) for the per-app launch check;
 //!  - [`launch_context_minter::LaunchContextMinter`] — mints the SMART `launch`
-//!    value a SMART app's launch URL carries (gatekeeper-backed host-side).
+//!    value a SMART app's launch URL carries (authorization-server-backed host-side).
 //!
 //! Keeping them here (rather than beside the routes) marks them as seams: pure
-//! traits with no apps-slice logic, so apps-rust never learns the gatekeeper
+//! traits with no apps-slice logic, so apps-rust never learns the authorization server
 //! token format.
 
 pub mod app_launch_scopes;

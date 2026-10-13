@@ -1,4 +1,4 @@
-//! First-boot seeding for the gatekeeper store: the signing key and the
+//! First-boot seeding for the grant store: the signing key and the
 //! first-party host client. Safe to call on every boot — the signing key is
 //! inserted only when none exists (never rotated), and the first-party client is
 //! *ensured* (re-applied as an upsert) so its definition always matches the
@@ -28,7 +28,7 @@ use crate::domain::token::TokenIssuanceError;
 // the concrete `SqliteGrantStore` this boot code holds directly.
 use crate::domain::GrantStore as _;
 
-/// Wrap the host-owned connection `pool` in a gatekeeper store (applying
+/// Wrap the host-owned connection `pool` in a grant store (applying
 /// migrations, which includes the SQL seed of the SMART sample-app clients)
 /// and run the runtime-derived first-boot seeding steps — the signing key and
 /// the first-party host client, and the FHIR server UI's client. Safe to call
@@ -45,7 +45,7 @@ pub fn open_and_seed_store(
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
 ) -> anyhow::Result<SqliteGrantStore> {
-    let store = SqliteGrantStore::new(pool).context("failed to open gatekeeper store")?;
+    let store = SqliteGrantStore::new(pool).context("failed to open grant store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store, host_owner_scopes, first_party_client_id)
         .context("failed to seed first-party client")?;
@@ -190,7 +190,7 @@ const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
 /// The Health Viewer dev client's scopes: exactly the scope string in
 /// `apps/health-viewer/health-viewer-web/src/config.ts`, which requests the same set for an EHR
 /// launch and a standalone connect, and the same set the production
-/// Health Viewer client allows (gatekeeper migration
+/// Health Viewer client allows (the authorization server migration
 /// `0022_seed_health_viewer_app_client`, re-keyed by `0028_rekey_site_app_clients`). A test below reads that file and pins
 /// all three together, so a scope added on one side alone fails the test rather
 /// than `/authorize` on a real device.
@@ -207,7 +207,7 @@ const HEALTH_VIEWER_DEV_SCOPES: &[&str] = &[
 /// The Synthetic Data Loader dev client's scopes: exactly the scope string in
 /// `apps/synthetic-data/synthetic-data-web/src/config.ts`, which requests the same set for an
 /// EHR launch and a standalone connect, and the same set the production client
-/// allows (gatekeeper migration `0028_rekey_site_app_clients`). A test below
+/// allows (the authorization server migration `0028_rekey_site_app_clients`). A test below
 /// reads that file and pins all three together.
 #[cfg(debug_assertions)]
 const SYNTHETIC_DATA_DEV_SCOPES: &[&str] = &[
@@ -229,7 +229,7 @@ const SYNTHETIC_DATA_DEV_SCOPES: &[&str] = &[
 /// The Medications dev client's scopes: exactly `MEDICATIONS_SCOPE` in
 /// `apps/medications/medications-web/src/config.ts`, which requests the same set for an
 /// EHR launch and a standalone connect, and the same set the production
-/// Medications client allows (gatekeeper migration
+/// Medications client allows (the authorization server migration
 /// `0020_first_party_apps_pick_the_patient`, re-keyed by `0028_rekey_site_app_clients`). A test below reads that file and
 /// pins all three together.
 #[cfg(debug_assertions)]
@@ -245,7 +245,7 @@ const MEDICATIONS_DEV_SCOPES: &[&str] = &[
 /// The Lifting dev client's scopes: exactly `LIFTING_SCOPE` in
 /// `apps/lifting/lifting-web/src/config.ts`, which requests the same set for an
 /// EHR launch and a standalone connect, and the same set the production Lifting
-/// client allows (gatekeeper migrations `0019_seed_lifting_app_client` and
+/// client allows (authorization server migrations `0019_seed_lifting_app_client` and
 /// `0020_first_party_apps_pick_the_patient`, re-keyed by
 /// `0025_rekey_lifting_app_clients`).
 /// A test below reads that file and pins all three together. Writes are
@@ -269,7 +269,7 @@ const LIFTING_DEV_SCOPES: &[&str] = &[
 const DEV_ROOT_REDIRECT_PATH: &str = "/";
 
 /// The debug-only OAuth clients for the first-party apps' vite dev servers — the
-/// gatekeeper half of `wildflowerhealthio_apps::seed_dev_apps`.
+/// authorization server half of `wildflowerhealthio_apps::seed_dev_apps`.
 ///
 /// The first-party SMART apps (Medications, Importer, the OHIF
 /// imaging viewer, Lifting) ship as rows served from
@@ -304,7 +304,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// Returns an error if the store cannot be opened/migrated or an upsert fails.
 #[cfg(debug_assertions)]
 pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
-    let store = SqliteGrantStore::new(pool).context("failed to open gatekeeper store")?;
+    let store = SqliteGrantStore::new(pool).context("failed to open grant store")?;
     // Ports come from the shared dev-port file, not literals — see
     // [`DEV_APP_PORTS_JSON`].
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
@@ -323,7 +323,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             IMPORTER_DEV_CLIENT_ID,
             "Importer (Dev)",
             // Mirrors the production Importer client's write-carrying set
-            // (`apps/importer-web/src/config.ts`, as widened by gatekeeper
+            // (`apps/importer-web/src/config.ts`, as widened by the authorization server
             // migration `0009_widen_importer_client_write_scopes`, re-applied by
             // `0015` on an install that skipped it) — a dev build
             // requests the same scopes, and unlike the medications viewer above the
@@ -473,7 +473,7 @@ pub(crate) fn mint_host_owner_token(
     // The host owner token carries the host's granted scopes (by default the FHIR
     // and Wildflower full-access wildcards): it gates HFS's FHIR surface, and —
     // because those wildcards cover every per-resource scope the `Scoped<…>`
-    // extractors require — it passes every gate on gatekeeper's `/access/*` admin
+    // extractors require — it passes every gate on the authorization server's `/access/*` admin
     // surface too. `setup_authorization_server` asserts the granted set covers
     // `WILDFLOWER_WIDEST_SCOPES` before we reach here.
     //
@@ -491,7 +491,7 @@ mod tests {
 
     /// The health viewer's dev client is seeded on its dev server's loopback
     /// root with exactly the scopes the app requests, and the production client
-    /// (gatekeeper migration `0022`, re-keyed by `0028`) allows the same set.
+    /// (the authorization server migration `0022`, re-keyed by `0028`) allows the same set.
     /// The app's scope string and both client ids are read out of `config.ts`
     /// itself, the one place the app writes them, so neither client can drift
     /// from it unnoticed.
@@ -518,7 +518,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
             .client_by_id(HEALTH_VIEWER_DEV_CLIENT_ID)
             .expect("query client")
@@ -543,7 +543,7 @@ mod tests {
 
     /// The synthetic data loader's dev client is seeded on its dev server's
     /// loopback root with exactly the scopes the app requests, and the
-    /// production client (gatekeeper migration `0028`) allows the same set, read
+    /// production client (the authorization server migration `0028`) allows the same set, read
     /// out of `config.ts` itself with both client ids, as the health viewer's are.
     #[test]
     fn seeds_the_synthetic_data_dev_client_with_the_apps_own_scopes() {
@@ -568,7 +568,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
             .client_by_id(SYNTHETIC_DATA_DEV_CLIENT_ID)
             .expect("query client")
@@ -587,7 +587,7 @@ mod tests {
 
     /// The Medications dev client is seeded on its dev server's loopback root
     /// with exactly the scopes the app requests, and the production client
-    /// (gatekeeper migrations `0004` / `0011`, then `0020`, re-keyed by `0028`)
+    /// (authorization server migrations `0004` / `0011`, then `0020`, re-keyed by `0028`)
     /// allows the same set. The app's `MEDICATIONS_SCOPE` and both client ids are
     /// read out of `config.ts` itself, the one place the app writes them, so
     /// neither client can drift from it unnoticed.
@@ -614,7 +614,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
             .client_by_id(MEDICATIONS_DEV_CLIENT_ID)
             .expect("query client")
@@ -639,7 +639,7 @@ mod tests {
 
     /// The Lifting dev client is seeded on its dev server's loopback root with
     /// exactly the scopes the app requests, and the production Lifting client
-    /// (gatekeeper migrations `0019`, `0020` and `0025`) allows the same set. The
+    /// (authorization server migrations `0019`, `0020` and `0025`) allows the same set. The
     /// app's `LIFTING_SCOPE` and both client ids are read out of `config.ts`
     /// itself, the one place the app writes them, so neither client can drift
     /// from it unnoticed.
@@ -666,7 +666,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
             .client_by_id(LIFTING_DEV_CLIENT_ID)
             .expect("query client")

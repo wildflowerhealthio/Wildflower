@@ -3,7 +3,7 @@ import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
 import type { RouterContext } from '../router-context.ts'
 
 /**
- * Standalone root for the gatekeeper slice's own file-based route tree.
+ * Standalone root for the authorization slice's own file-based route tree.
  * The generator needs a `__root` to anchor `routeTree.gen.ts` so the
  * slice type-checks in isolation. In `apps/launcher/launcher-web` the slice's
  * bucket directories are mounted under the app's own layouts via

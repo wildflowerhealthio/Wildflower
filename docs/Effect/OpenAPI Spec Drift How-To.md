@@ -21,7 +21,7 @@ server?", not a full diff). The shared test harnesses are
 [`shared-structures-core/openapi-drift/testing`](../../slices/shared-structures/shared-structures-core/src/openapi-drift/testing.ts)
 (`defineSpecDriftTest`) and
 [`shared-structures-rust`'s `openapi_snapshot`](../../slices/shared-structures/shared-structures-rust/src/openapi_snapshot.rs)
-(`assert_up_to_date`). `gatekeeper` and `request-log` are the worked examples.
+(`assert_up_to_date`). `authorization-server` and `request-log` are the worked examples.
 
 The `api-sync` CI workflow runs **both** halves whenever either side changes, so
 a one-sided change can't slip drift past the per-language `Rust` /

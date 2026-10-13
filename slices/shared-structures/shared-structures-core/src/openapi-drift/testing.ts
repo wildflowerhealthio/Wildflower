@@ -29,7 +29,7 @@ interface SpecDriftTestConfig<
   E,
   R,
 > extends SpecDriftOptions {
-  /** Test name — describes the surface under comparison (e.g. `'gatekeeper OAuth'`). */
+  /** Test name — describes the surface under comparison (e.g. `'authorization server OAuth'`). */
   readonly name: string
   /**
    * The committed server OpenAPI snapshot (the `utoipa` output), as a file `URL`
