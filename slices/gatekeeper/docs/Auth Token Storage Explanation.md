@@ -1,68 +1,51 @@
 # Auth Token Storage Explanation
 
-Why the launcher's two entries hold their auth state in different stores, and
-why neither store is a cookie.
+Where the launcher holds its session, and why the store is not a cookie.
 
 The server authenticates by the `Authorization: Bearer` header alone: it issues
-no cookies and reads none. Each `main-*` entrypoint, which knows which
-environment it is in, picks an `AuthStateStore` factory and threads the store
-through `buildAppTree`. Every store has the same shape (a read-side
-`subscribable` plus a `setAuthState` writer), so `AuthStateProvider`, the
-page-bridge `AuthTokenIssued` handler, and the `auth-ready` gates are all
-environment-blind. The `subscribable` carries a typed
+no cookies and reads none. The launcher's entry (`main-web`) builds a
+`makeBearerAuthStateStore` and threads it through `buildAppTree`. The store has
+the shape every consumer reads (a read-side `subscribable` plus a
+`setAuthState` writer), so `AuthStateProvider` and the `auth-ready` gate are
+unaware of how the credential travels. The `subscribable` carries a typed
 [`AuthState`](../../../global/react-kitchen-sink/src/auth-state/auth-state.ts)
 (`Unauthed | AuthedUntil(exp) | HostAuthed`) — the auth-readiness _signal_
-feeding `AuthStateProvider`, the `auth-ready` gates, and the token-rotation
+feeding `AuthStateProvider`, the `auth-ready` gate, and the token-rotation
 cache invalidator.
 
-## `makeBearerAuthStateStore` — the hosted web entry (`main-web`)
+## `makeBearerAuthStateStore` — the launcher's session
 
-`main-web` is the build the site publishes at `/launcher/`. It runs
-cross-origin to the server named by `?server=`. It signs in through SMART (or
-the device flow) and holds the bearer **in memory only** — never
-`localStorage`, `sessionStorage` or a cookie — so it dies with the tab. The
-store publishes `AuthedUntil(exp)` for the held bearer, and the entry's
-`attachBearer` stamps `Authorization: Bearer` on its API requests. Logout
-forgets the bearer, then asks the server to revoke it (`POST /access/logout`).
+The launcher is the build the site publishes at `/launcher/`. It runs
+cross-origin to its API server. It signs in through SMART (or the device flow)
+and holds the session — the server it signed in to and the bearer that server
+issued — written together by `writeSession`.
 
-## `makeEmbeddedAuthStateStore` — the Tauri entry (`main-tauri`)
+- **The bearer is in memory only** — never `localStorage`, `sessionStorage` or
+  a cookie — so it dies with the tab, and `setAuthState(Unauthed())` drops it.
+  The store publishes `AuthedUntil(exp)` for the held bearer (`HostAuthed`
+  when the token response reported no lifetime).
+- **The server is in the tab's `sessionStorage`.** It is no credential, and a
+  reload or the expiry bounce back to the landing signs back in to it.
 
-`main-tauri` is the launcher's wiring for a Tauri webview the host
-authenticates. No app mounts it: the Tauri host (`apps/host/host-app`) mounts
-the servers base (`apps/host/servers/servers-react`) in its webview instead.
-
-The store is seeded `Unauthed`, with no `localStorage` read, no persistence
-subscriber and no cross-tab listener. The page holds **no credential**: the
-host keeps its minted owner token host-side and presents it on the page's
-direct-loopback API requests (loopback-provenance owner trust). The host's
-`AuthTokenIssued` bridge handler is the sole writer — it publishes
-`HostAuthed` (authed, no page-known expiry) and carries no secret.
-
-The embedded store must **never** surface a `localStorage` value because a
-Tauri webview's storage outlives the page's JS context: a reload, and
-depending on the platform webview even a force-kill, leaves the previous
-session's state in storage. The host mints a fresh token and re-notifies on
-every boot, so a cached value can only ever be stale and racing the host's
-fresh push. A stale value surfacing as the store's initial signal would
-resolve the auth-ready gate early and pin TanStack Query loaders on cached
-401s.
+The launcher's transport reads both on every request: it addresses the
+request to the session's server and stamps `Authorization: Bearer` on it.
+Logout forgets the bearer, asks the session's server to revoke it
+(`POST /access/logout`), and clears the tab's `sessionStorage`.
 
 ## Why authed loaders gate on `beforeLoad`, not a component or a loader
 
-On Tauri the host's owner token does not exist at first paint — the host binds
-its loopback listener before it mints the token, and the page learns the token
-exists via the `AuthTokenIssued` bridge notify. A TanStack `loader` runs during
-routing, so an authed loader that fired on first paint would `401` before the
-token was minted.
+A TanStack `loader` runs during routing, so an authed loader that fired before
+a sign-in would `401`.
 
 The gate is therefore a **`beforeLoad`** on the pathless `_auth` /
 `/settings` layouts and the `/fhir-home` route (`apps/launcher/launcher-web`'s
 `session/auth-gated-route-options.ts`),
-which `await`s `context.awaitAuthReady(href)`. Because `beforeLoad` resolves
-before the route's `loader` and children render, every authed loader beneath
-the gate runs once auth is ready; the slice loaders are plain
-`ensureQueryData` with no `isTokenReady` reader. A bounded **boot-race retry**
-(`unauthorizedRetrySchedule` in `apps/launcher/launcher-web/src/retry-policy.ts`)
-covers the residual window between gate-pass and the host's owner token being
-live, and latches off once any authed request succeeds so a genuine expiry
-redirects to sign-in without delay.
+which `await`s `context.awaitAuthReady(href)`: with no session it redirects to
+the landing page. Because `beforeLoad` resolves before the route's `loader`
+and children render, every authed loader beneath the gate runs once auth is
+ready; the slice loaders are plain `ensureQueryData` with no `isTokenReady`
+reader. A bounded **boot-race retry** (`unauthorizedRetrySchedule` in
+`apps/launcher/launcher-web/src/retry-policy.ts`) re-sends a `401` that
+arrives in the first moments after the gate passes, and latches off once any
+authed request succeeds so a genuine expiry redirects to sign-in without
+delay.

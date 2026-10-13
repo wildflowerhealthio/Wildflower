@@ -38,7 +38,7 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 use wildflowerhealthio_gatekeeper::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_gatekeeper::{
-    GatekeeperStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
+    GatekeeperStore, NoLoopbackConsentPrompt, SqliteGatekeeperStore,
 };
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_shared_structures::health_check::{
@@ -46,7 +46,7 @@ use wildflowerhealthio_shared_structures::health_check::{
 };
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
-use wildflowerhealthio_shared_structures::{OnDeviceWebviewHandle, ServerRuntimeConfig};
+use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_tunnel::{TunnelState, TunnelStream};
 use wildflowerhealthio_wildflower_server::{
     set_up, CertificateAuthority, DeviceCertificateConfig, HostPorts, ServerObservers,
@@ -78,13 +78,6 @@ const TEST_CA: CertificateAuthority = CertificateAuthority::UnreachableForTests;
 /// rather than hangs. Startup indexes the FHIR SearchParameter bundle, which is
 /// the slow part.
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(120);
-
-/// An on-device webview handle with no popup: the test never launches an app.
-struct NoOnDeviceWebview;
-
-impl OnDeviceWebviewHandle for NoOnDeviceWebview {
-    fn open(&self, _app_id: String, _title: String, _url: String) {}
-}
 
 fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServerConfig {
     WildflowerServerConfig {
@@ -176,16 +169,8 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
 
-    // Host-owned channels, shared by both runs as the host's bridge shares them.
-    // The receivers stand in for the bridge's.
-    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
-    let (active_pending_consent_tx, _active_pending_consent_rx) =
-        watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_tx,
-        active_pending_consent_tx,
     };
     let (server_health_tx, server_health_rx) = watch::channel(None);
     let (tunnel_state_tx, mut tunnel_state_rx) = watch::channel(None);
@@ -194,6 +179,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
         server_health_tx,
         tunnel_state_tx,
         certificate_tx: watch::channel(None).0,
+        pending_consent_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let config = server_config(server_dir.clone(), loopback_base_url.clone());
@@ -422,15 +408,8 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    // The receivers stand in for the host bridge's, held for the whole run.
-    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
-    let (active_pending_consent_tx, _active_pending_consent_rx) =
-        watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_tx,
-        active_pending_consent_tx,
     };
     let (server_health_tx, _server_health_rx) = watch::channel(None);
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
@@ -438,6 +417,7 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         server_health_tx,
         tunnel_state_tx: watch::channel(None).0,
         certificate_tx: watch::channel(None).0,
+        pending_consent_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let shutdown = CancellationToken::new();
@@ -678,15 +658,8 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     let certificate = cache_self_signed_certificate(&certificate_dir(server_dir.path())).await;
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    // The receivers stand in for the host bridge's, held for the whole run.
-    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
-    let (active_pending_consent_tx, _active_pending_consent_rx) =
-        watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_tx,
-        active_pending_consent_tx,
     };
     let (server_health_tx, _server_health_rx) = watch::channel(None);
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
@@ -694,6 +667,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         server_health_tx,
         tunnel_state_tx: watch::channel(None).0,
         certificate_tx: watch::channel(None).0,
+        pending_consent_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let server = tokio::time::timeout(
@@ -926,15 +900,8 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    // The receivers stand in for the host bridge's, held for the whole run.
-    let (host_owner_token_tx, _host_owner_token_rx) = watch::channel(None);
-    let (active_pending_consent_tx, _active_pending_consent_rx) =
-        watch::channel::<Option<PendingConsentHead>>(None);
     let host_ports = HostPorts {
         loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-        host_owner_token_tx,
-        active_pending_consent_tx,
     };
     let (server_health_tx, _server_health_rx) = watch::channel(None);
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
@@ -942,6 +909,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
         server_health_tx,
         tunnel_state_tx: watch::channel(None).0,
         certificate_tx: watch::channel(None).0,
+        pending_consent_tx: watch::channel(None).0,
         forwarded_request_tx,
     };
     let shutdown = CancellationToken::new();

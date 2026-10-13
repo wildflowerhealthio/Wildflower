@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the apps slice. Exercises the single
 //! `/apps` router through `tower::ServiceExt::oneshot` so a regression in the
-//! wire contract — status codes, JSON shapes, and the launch target a loopback
-//! `204` routes to the on-device webview handle — fails the test rather than
+//! wire contract — status codes, JSON shapes, and the launch target a launch's
+//! `200` names — fails the test rather than
 //! relying on unit-level handler coverage.
 
 use std::sync::Arc;
@@ -16,7 +16,6 @@ use wildflowerhealthio_apps::ports::{LaunchContextMinter, NoAppLaunchScopes};
 use wildflowerhealthio_apps::{setup_apps, Apps, AppsConfig};
 
 use wildflowerhealthio_scope_capabilities::ScopeClaims;
-use wildflowerhealthio_shared_structures::test_utils::RecordingStubWebviewHandle;
 
 /// Insert the owner `ScopeClaims` the host's bearer gate places in the request
 /// extensions before a scope-gated `/apps` handler reads them — `wildflower/*.cruds`
@@ -41,31 +40,21 @@ impl LaunchContextMinter for NamedLaunchContextMinter {
     }
 }
 
-/// Spin up the slice plus the recording on-device webview handle, so a launch
-/// test can assert the URL a loopback launch routes to it.
-///
-/// No per-app SMART launch scopes ([`NoAppLaunchScopes`]); launches are minted
-/// by [`NamedLaunchContextMinter`].
-fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
+/// Spin up the slice, with no per-app SMART launch scopes
+/// ([`NoAppLaunchScopes`]); launches are minted by [`NamedLaunchContextMinter`].
+fn spin_up() -> Apps {
     let pool =
         wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
         public_origin: Url::parse("https://dev1.example.com").expect("valid public origin"),
     };
-    let handle = Arc::new(RecordingStubWebviewHandle::default());
-    let apps = setup_apps(
+    setup_apps(
         pool,
         &config,
-        handle.clone(),
         Arc::new(NoAppLaunchScopes),
         Arc::new(NamedLaunchContextMinter),
     )
-    .expect("setup_apps");
-    (apps, handle)
-}
-
-fn spin_up() -> Apps {
-    spin_up_with_handle().0
+    .expect("setup_apps")
 }
 
 async fn body_json(body: Body) -> Value {
@@ -147,25 +136,22 @@ async fn fresh_install_lists_the_default_set() {
     );
 }
 
-/// A loopback launch of a seeded SMART app hands the on-device webview its
-/// template with the public origin and a launch minted for its OAuth client.
+/// A launch of a seeded SMART app answers its template with the public origin
+/// and a launch minted for its OAuth client.
 #[tokio::test]
 async fn a_smart_app_launch_carries_a_launch_minted_for_its_client() {
-    let (apps, handle) = spin_up_with_handle();
+    let apps = spin_up();
     let launch_res = apps
         .router
         .clone()
         .oneshot(launch("/apps/growth-chart"))
         .await
         .expect("oneshot");
-    assert_eq!(launch_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(launch_res.status(), StatusCode::OK);
     assert_eq!(
-        handle.0.lock().expect("handle mutex").clone(),
-        vec![
-            "https://examples.smarthealthit.org/growth-chart-app/launch.html\
-             ?iss=https://dev1.example.com&launch=launch-for-growth_chart"
-                .to_string()
-        ],
+        body_json(launch_res.into_body()).await["url"],
+        "https://examples.smarthealthit.org/growth-chart-app/launch.html\
+         ?iss=https://dev1.example.com&launch=launch-for-growth_chart",
     );
 }
 
@@ -173,8 +159,7 @@ async fn a_smart_app_launch_carries_a_launch_minted_for_its_client() {
 /// list (one shared state) and round-trips through launch + delete.
 #[tokio::test]
 async fn app_round_trip() {
-    let (apps, handle) = spin_up_with_handle();
-    let router = apps.router.clone();
+    let router = spin_up().router;
     let create_res = router
         .clone()
         .oneshot(post_create(
@@ -205,11 +190,10 @@ async fn app_round_trip() {
         .oneshot(launch(&format!("/apps/{id}")))
         .await
         .expect("oneshot");
-    assert_eq!(launch_res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(launch_res.status(), StatusCode::OK);
     assert_eq!(
-        handle.0.lock().expect("handle mutex").clone(),
-        vec!["https://example.com/launch".to_string()],
-        "a loopback launch routes the resolved URL to the on-device webview handle",
+        body_json(launch_res.into_body()).await["url"],
+        "https://example.com/launch",
     );
 
     let delete_res = router

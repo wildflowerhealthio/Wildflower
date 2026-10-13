@@ -6,14 +6,12 @@ The slice is the TypeScript half every signing-in app shares: `gatekeeper-core` 
 
 ## Guardrails
 
-- **Tokens never ride the bridge.** `AuthTokenIssued` is a contentless notify; the bearer is pulled out-of-band via a capability-gated Tauri command. Keep it that way for anything secret.
 - **Page paths are duplicated TS ⇄ Rust by design**: `gatekeeper-core/src/page-paths.ts` ⇄ `gatekeeper-rust/src/domain/page_paths.rs`, drift-tested by `gatekeeper-react/src/routes.test.tsx`. Changing a route means changing all three together — the drift test fails otherwise.
-- **Bridge wire shapes are byte-pinned.** `gatekeeper-rust/src/bridge.rs` carries golden `*_serializes_to_pinned_wire_format` tests against the TS schemas in `gatekeeper-core/src/bridge.ts`. Follow the [Wire Pinning How-To](../../docs/Messaging/Wire%20Pinning%20How-To.md) when adding or changing a message.
 
 ## Traps
 
 - The bootstrap-URL / `?token=` minting path is **dev-only** (NODE_ENV-gated) — not a shipping pattern to extend.
-- There are two `AuthTokenStore` factories with different storage policies — see the [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) before picking one.
+- The bearer store keeps its token in page memory only — see the [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) before changing where it lives.
 - `gatekeeper-rust` has a committed OpenAPI snapshot, which `gatekeeper-core`'s drift test and `generate:openapi-schemas` read across folders; regenerate a stale one per the [OpenAPI Spec Drift How-To](../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
 
 ## References

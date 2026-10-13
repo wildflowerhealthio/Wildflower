@@ -7,8 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import { TokenTimeout } from '@wildflowerhealthio/gatekeeper-react'
-import { Effect, Layer } from 'effect'
+import { Layer } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -24,9 +23,8 @@ import { ServerKind } from './server-kind.ts'
  * same error, so the screen drives `router.invalidate()` instead.
  *
  * The test wires a real `Router` with the real `_auth.beforeLoad` and
- * an `awaitAuthReady` spy that rejects with `TokenTimeout`. After the
- * gate's first call lands the error component, the test clicks Retry
- * and waits for a second call.
+ * an `awaitAuthReady` spy that rejects. After the gate's first call lands
+ * the error component, the test clicks Retry and waits for a second call.
  */
 
 afterEach(() => {
@@ -47,11 +45,6 @@ const renderGate = (
     runAuthed: () => Promise.reject(new Error('runAuthed not used')),
     runtimeLayer: Layer.die('runtimeLayer not used'),
     awaitAuthReady,
-    transport: Promise.resolve({
-      sendMessage: () => Effect.void,
-      coordinator: { register: () => Effect.void, unregister: () => Effect.void },
-    }),
-    entry: 'main-web',
     externalLinkRoot: () => 'https://example.test',
     serverKind: ServerKind.Wildflower(),
   }
@@ -69,52 +62,26 @@ const renderGate = (
   }
 }
 
-describe('TokenTimeoutRetry', () => {
-  test('clicking Retry re-fires the auth gate (router.invalidate path)', async () => {
-    const awaitAuthReady = vi.fn(() => Promise.reject(new TokenTimeout({})))
-
-    const { findRetryButton } = renderGate(awaitAuthReady)
-
-    await waitFor(() => {
-      expect(awaitAuthReady).toHaveBeenCalledTimes(1)
-    })
-
-    const button = await findRetryButton()
-    await act(async () => {
-      button.click()
-    })
-
-    // The second call is what pins the difference between `reset` (which
-    // wouldn't re-run `beforeLoad`) and `router.invalidate()` (which
-    // does). Without the switch, this would stay at 1 forever.
-    await waitFor(() => {
-      expect(awaitAuthReady).toHaveBeenCalledTimes(2)
-    })
-  })
-
-  test('renders the generic-error branch for non-TokenTimeout failures and retry still re-fires the gate', async () => {
-    // The component's contract: "Reaching here for any other thrown
-    // error still surfaces a generic retry rather than a blank page."
-    // Drives a plain Error so `isTimeout === false` and the branch
-    // pins both halves: the "Something went wrong" heading + the raw
-    // `error.message` body, plus the Retry click still invalidating
-    // the router (so the fallback isn't a dead-end).
+describe('AuthGatedErrorComponent', () => {
+  test('shows the failure, and Retry re-fires the auth gate (router.invalidate path)', async () => {
+    // Arrange
     const awaitAuthReady = vi.fn(() => Promise.reject(new Error('database is down')))
-
     const { findRetryButton } = renderGate(awaitAuthReady)
-
     await waitFor(() => {
       expect(awaitAuthReady).toHaveBeenCalledTimes(1)
     })
-
     expect(await screen.findByText('Something went wrong')).toBeDefined()
     expect(await screen.findByText('database is down')).toBeDefined()
 
+    // Act
     const button = await findRetryButton()
     await act(async () => {
       button.click()
     })
 
+    // Assert — the second call is what pins the difference between `reset`
+    // (which wouldn't re-run `beforeLoad`) and `router.invalidate()` (which
+    // does). Without the switch, this would stay at 1 forever.
     await waitFor(() => {
       expect(awaitAuthReady).toHaveBeenCalledTimes(2)
     })

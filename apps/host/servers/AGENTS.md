@@ -438,8 +438,7 @@ changing how servers run or what the host notifies about them.
   shows and which CAs browsers trust.
 - **One `pending-consent` per change.** A run's gatekeeper publishes its
   queue's head on the run's own channel; the run sets it as
-  `ServerDetail::pending_consent` (and forwards it to the host's shared
-  `active_pending_consent_tx`). `PendingConsentTracker` picks the servers
+  `ServerDetail::pending_consent`. `PendingConsentTracker` picks the servers
   whose head changed from `UnitRunner`'s statuses, and the host emits
   `{domain, head?}` to the `main` webview, `head` left out once nothing waits,
   as when the run ends; on the desktop it brings the window forward when a

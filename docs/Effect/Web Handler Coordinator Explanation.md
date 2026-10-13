@@ -1,12 +1,12 @@
 # Web Handler Coordinator Explanation
 
-The page-side bridge transport is built **once at boot**, outside React: the host's entry (`apps/host/host-app/src/main.tsx`) calls `makeTauriTransport` over `RecorderBridge` for its Recorder tab, the launcher's Tauri wiring calls it from its `makeTransport` factory, and the standalone web entry uses `stubTransport`. But each slice's real inbound handlers only exist once its React subtree mounts (a recording begins). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
+The page-side bridge transport is built **once at boot**, outside React: the host's entry (`apps/host/host-app/src/main.tsx`) calls `makeTauriTransport` over `RecorderBridge` for its Recorder tab. But each slice's real inbound handlers only exist once its React subtree mounts (a recording begins). This document explains how the web bridges that lifecycle gap with a **handler coordinator** instead of per-slice module-level forwarder cells.
 
 ## The mechanism
 
 The transport exposes a `HandlerCoordinator` (the contract lives in `effect-messaging-core`) that holds one inbound handler record per bridge **name**. `effect-messaging-core`'s `PageDispatcher.make` implements it over a name-keyed map that its dispatch reads **at dispatch time**, and `makeTauriTransport` hands that coordinator out, so a `register` or `unregister` takes effect on the next inbound message without re-listening.
 
-A React context (`HandlerCoordinatorContext`, provided in the launcher's `AppRootTree` and the host shell's Recorder tab) surfaces the coordinator. Each slice binds a typed accessor for its own bridge with `makeUseSliceRegister(bridge)` and `Effect.runFork`s its `register` / `unregister` Effects from its own lifecycle:
+A React context (`HandlerCoordinatorContext`, provided in the host shell's Recorder tab) surfaces the coordinator. Each slice binds a typed accessor for its own bridge with `makeUseSliceRegister(bridge)` and `Effect.runFork`s its `register` / `unregister` Effects from its own lifecycle:
 
 - **recorder** (`useRecorder`, in the host's Recorder tab) registers its record in the `Recorder` slot for as long as the Recorder page is mounted, so the host's answer to a save still reaches it after the sniffer window has closed.
 
@@ -18,15 +18,11 @@ A bridge with nothing registered has no record, and every inbound tag for it is 
 
 `unregister(bridge, record)` only relinquishes the slot if it still holds that exact `record`. A successor mount (StrictMode double-mount, rapid remount) may already have taken the slot; unregistering unconditionally would drop the fresher handler. The set-if-equal check makes stale cleanups no-ops, which is why a slice builds its record once and reuses that same object.
 
-## The boot-stable exceptions
-
-Gatekeeper does **not** register on mount. It has a boot-stable record, seeded through `makeTauriTransport`'s `initial` option, that writes into stores built outside React: `makeGatekeeperWebHandlers` writes into the entry's `AuthStateStore` and the in-app `ActivePendingConsentStore`. The host pushes `AuthTokenIssued` in response to the page's `__Ready`, _before_ the `_auth` gate renders, so the handler has to be in place from the start, and React **subscribes** to the stores rather than being a mounted handler.
-
 ## Page lifetime and boot ordering
 
 The page-side transport is intentionally never torn down: its `BRIDGE_EVENT` listener stays attached for the page's lifetime, and page teardown drops it with the document.
 
-`makeTauriTransport` emits `__Ready` only once its listener has attached, so the host's first push cannot race listener setup. The Tauri entry installs the console interceptor after the transport resolves; `console.*` output from before that point stays local.
+`makeTauriTransport` emits `__Ready` only once its listener has attached, so the host's first push cannot race listener setup.
 
 ## See also
 

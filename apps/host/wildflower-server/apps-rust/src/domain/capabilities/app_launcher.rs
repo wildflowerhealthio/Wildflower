@@ -53,8 +53,7 @@ impl AppLauncher {
     /// `launch/patient`, …) — are filtered out first: they are negotiated in the
     /// app's own OAuth flow, and no Wildflower owner grant carries them, so
     /// requiring them would `403`-lock every launch of a standard SMART app. The
-    /// handler renders a non-empty result as a `403 InsufficientScope` (JSON for the
-    /// loopback/SPA arm, a browser-appropriate response for a forwarded navigation).
+    /// handler renders a non-empty result as a `403 InsufficientScope` JSON body.
     pub(crate) fn missing_launch_scopes(
         &self,
         registration: &AppRegistration,

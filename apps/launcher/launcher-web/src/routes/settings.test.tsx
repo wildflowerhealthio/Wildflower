@@ -16,9 +16,11 @@ import {
 } from '@wildflowerhealthio/gatekeeper-react'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { TelemetryConsentGate } from '@wildflowerhealthio/telemetry-react'
+import { Option } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
+import { LogoutSettingsItemContext } from '../session/logout-settings-item-context.ts'
 import {
   openDialog,
   restoreDialogModality,
@@ -43,12 +45,12 @@ import { SettingsIndex, SettingsIndexRoute } from './settings/index.tsx'
  * so the macro tree's two screens render together. The router only
  * exists for link rendering — no navigation is exercised here.
  */
-const renderSettingsScreen = (platformSettingsItems: readonly SettingsItem[] = []): void => {
+const renderSettingsScreen = (appSettingsItems: readonly SettingsItem[] = []): void => {
   const rootRoute = createRootRoute({ component: SettingsLayout })
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: () => <SettingsIndex entrySettingsItems={platformSettingsItems} />,
+    component: () => <SettingsIndex appSettingsItems={appSettingsItems} />,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute]),
@@ -70,6 +72,17 @@ const sliceRowLinks = (): readonly HTMLAnchorElement[] =>
       (link): link is HTMLAnchorElement =>
         link.closest('li') !== null && !(link.getAttribute('href') ?? '').startsWith('https://')
     )
+
+/** An in-memory stand-in for the tab's `sessionStorage`. */
+const sessionStorageStub = (): Pick<Storage, 'getItem' | 'setItem'> => {
+  const entries = new Map<string, string>()
+  return {
+    getItem: (key) => entries.get(key) ?? null,
+    setItem: (key, value) => {
+      entries.set(key, value)
+    },
+  }
+}
 
 /** Wait for the index to render, by its single "Settings" heading. */
 const findSettingsHeading = (): Promise<HTMLElement> =>
@@ -150,16 +163,15 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('renders main-web’s logout row as a button that logs the session out', async () => {
-    // `main-web` threads its bearer logout row into `platformSettingsItems`.
-    // It is an action row: the page holds its bearer in memory, so logging
-    // out means forgetting it and revoking it with an authenticated request.
-    const store = makeBearerAuthStateStore()
-    store.writeBearer('eyJ.owner.token')
+  test('renders the logout row as a button that logs the session out', async () => {
+    // The logout row is an action row: the page holds its bearer in memory, so
+    // logging out means forgetting it and revoking it with an authenticated
+    // request.
+    const store = makeBearerAuthStateStore(sessionStorageStub(), 'test.signed-in-server')
+    store.writeSession({ serverUrl: 'https://abc.tunnel.example', bearer: 'eyJ.owner.token' })
     const left = Promise.withResolvers<undefined>()
     renderSettingsScreen([
       gatekeeperLogoutSettingsItem({
-        apiBaseUrl: 'https://abc.tunnel.example',
         bearerStore: store,
         fetch: () => Promise.resolve(new Response(null, { status: 204 })),
         leave: () => left.resolve(undefined),
@@ -171,20 +183,39 @@ describe('SettingsScreen', () => {
     await left.promise
     expect(store.bearer()).toBeUndefined()
   })
+})
 
-  test('omits the logout row when the entry contributes no platform items', async () => {
-    // `main-tauri` passes `platformSettingsItems: []` — the host authenticates
-    // the webview by connection provenance, so there is nothing to log out of.
-    renderSettingsScreen([])
-    await findSettingsHeading()
-    expect(screen.queryByRole('button', { name: /Logout/ })).toBeNull()
+describe('the settings route’s Logout row', () => {
+  test('is the row the app provides', async () => {
+    // Arrange
+    const logout: SettingsItem = { id: 'logout', title: 'Logout', onClick: () => {} }
+    const rootRoute = createRootRoute({ component: SettingsLayout })
+    const indexRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/',
+      component: SettingsIndexRoute,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([indexRoute]),
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    })
+
+    // Act
+    render(
+      <LogoutSettingsItemContext value={Option.some(logout)}>
+        <RouterProvider router={router} />
+      </LogoutSettingsItemContext>
+    )
+
+    // Assert
+    expect(await screen.findByRole('button', { name: /Logout/ })).toBeDefined()
   })
 })
 
 describe('the settings route’s Telemetry row', () => {
   /**
    * Mount the `/settings` layout over the real route binding, which reads the
-   * entry's rows, optionally inside the consent gate both entries mount.
+   * app's rows, optionally inside the consent gate `main-web` mounts.
    */
   const renderSettingsRoute = (wrap: (screenTree: JSX.Element) => JSX.Element): void => {
     const rootRoute = createRootRoute({ component: SettingsLayout })

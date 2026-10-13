@@ -10,9 +10,6 @@
     "./web-entry": {
       "source": "./src/web-entry.ts"
     },
-    "./bridges": {
-      "source": "./src/bridges/bridges.ts"
-    },
     "./consented-entry-root": {
       "source": "./src/session/consented-entry-root.tsx"
     },
@@ -42,15 +39,11 @@
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/branding-react": "workspace:*",
     "@wildflowerhealthio/databases-react": "workspace:*",
-    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
-    "@wildflowerhealthio/effect-messaging-react": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
     "@wildflowerhealthio/gatekeeper-core": "workspace:*",
     "@wildflowerhealthio/gatekeeper-react": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
-    "@wildflowerhealthio/navigation-core": "workspace:*",
-    "@wildflowerhealthio/navigation-react": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/request-log-react": "workspace:*",

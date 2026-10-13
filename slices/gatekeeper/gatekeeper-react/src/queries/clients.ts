@@ -32,7 +32,7 @@ const clientsQueryOptions = (
         Effect.flatMap(GatekeeperHttpApiClient, (c) => c['access-management'].ListClients())
       ),
     // Approving an unknown app (trust on first use) creates a client row from
-    // the consent popup, outside this React tree — refetch on mount so it shows
+    // the host's consent sheet, outside this React tree — refetch on mount so it shows
     // up, for the same reason the grants list does.
     refetchOnMount: 'always',
   })

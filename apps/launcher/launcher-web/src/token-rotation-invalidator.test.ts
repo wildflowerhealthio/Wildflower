@@ -30,10 +30,8 @@ import { forkTokenRotationInvalidator } from './app-root.tsx'
  */
 
 /**
- * Build an in-memory {@link AuthStateStore} matching
- * `gatekeeper-react`'s `makeEmbeddedAuthStateStore` shape: a
- * `SubscriptionRef<AuthState>` seeded `Unauthed` plus a synchronous setter
- * that writes through it. The invalidator is forked against
+ * Build an in-memory {@link AuthStateStore}: a `SubscriptionRef<AuthState>`
+ * seeded `Unauthed` plus a synchronous setter that writes through it. The invalidator is forked against
  * `store.subscribable` — the same read surface the production wiring
  * (`buildAppTree`) passes in.
  */

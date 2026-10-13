@@ -16,11 +16,11 @@ expectTypeOf<RouterContext['awaitAuthReady']>().toEqualTypeOf<BaseRouterContext.
 
 describe('RouterContext assembly', () => {
   // Type-level: a `satisfies` guard so dropping a field fails compile.
-  // `awaitAuthReady` and `transport` are injected per entry (not built
-  // by `buildRunAuthed`); the test supplies trivial resolvers to
-  // complete the structural context, so this pins that `buildRunAuthed`'s
-  // and `buildQueryClient`'s outputs together satisfy `RouterContext`.
-  it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady, transport', () => {
+  // `awaitAuthReady` is injected (not built by `buildRunAuthed`); the test
+  // supplies a trivial resolver to complete the structural context, so this
+  // pins that `buildRunAuthed`'s and `buildQueryClient`'s outputs together
+  // satisfy `RouterContext`.
+  it('should type RouterContext with queryClient, runAuthed, runtimeLayer, awaitAuthReady', () => {
     // Arrange / Act
     const { runAuthed, runtimeLayer } = buildRunAuthed(stubHttpClientLayer(), Layer.empty)
     const context = {
@@ -28,11 +28,6 @@ describe('RouterContext assembly', () => {
       runAuthed,
       runtimeLayer,
       awaitAuthReady: () => Promise.resolve(),
-      transport: Promise.resolve({
-        sendMessage: () => Effect.void,
-        coordinator: { register: () => Effect.void, unregister: () => Effect.void },
-      }),
-      entry: 'main-web',
       externalLinkRoot: () => 'https://example.test',
       serverKind: ServerKind.Wildflower(),
     } satisfies RouterContext
@@ -40,7 +35,6 @@ describe('RouterContext assembly', () => {
     // Assert
     expect(typeof context.runAuthed).toBe('function')
     expect(typeof context.awaitAuthReady).toBe('function')
-    expect(context.transport).toBeInstanceOf(Promise)
     expect(context.queryClient).toBeDefined()
   })
 })

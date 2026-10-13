@@ -5,16 +5,16 @@ import '@wildflowerhealthio/react-tundraish/styles'
 // itself; naming it here too (one module, so one copy) puts it ahead of this
 // app's own `global.css`, after the design system it builds on.
 import '@wildflowerhealthio/branding-react/styles.css'
-import {
-  basenameOf,
-  restoreRedirectedUrl,
-  TELEMETRY_CONSENT_COPY,
-} from '@wildflowerhealthio/branding-core'
+import { basenameOf, restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import {
   isAuthorizationResponse,
   searchAfterArrivingLaunch,
 } from '@wildflowerhealthio/gatekeeper-core/smart-client'
-import { sanitizeReturnTo, type TokenResponseHandler } from '@wildflowerhealthio/gatekeeper-react'
+import {
+  makeAwaitLandingAuthReady,
+  makeBearerAuthStateStore,
+  sanitizeReturnTo,
+} from '@wildflowerhealthio/gatekeeper-react'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { consentedTelemetryLayer } from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
@@ -32,14 +32,7 @@ import {
   signInEnvironment,
   unsentEhrLaunch,
 } from './sign-in.ts'
-import {
-  chosenServerUrl,
-  ehrLaunchIn,
-  makeWebEntryOptions,
-  rememberSignedInServer,
-  searchAfterReturnLeg,
-  underBasepath,
-} from './web-entry.ts'
+import { ehrLaunchIn, searchAfterReturnLeg, SIGNED_IN_SERVER_KEY } from './web-entry.ts'
 
 addOsColorSchemeListener()
 
@@ -79,8 +72,8 @@ const replaceSearch = (search: string): void => {
  * is rebuilt from it rather than from the address the browser arrived on, which
  * drops the callback's single-use `?code=`/`?state=`. Left in the URL, they
  * would sit in history and in anything the reader copies out of the bar. The
- * settled URL names no server: `boot` remembers the session's server in the
- * tab's `sessionStorage` instead (see `postSignInUrl`).
+ * settled URL names no server: the bearer store keeps the session's server in
+ * the tab's `sessionStorage` instead (see `postSignInUrl`).
  */
 const settleUrlAfterSignIn = (returnTo: string): void => {
   window.history.replaceState(null, '', postSignInUrl(returnTo, window.location.origin))
@@ -108,12 +101,21 @@ const bootApp = async (): Promise<JSX.Element> => {
   // `redirect_uri` the outbound leg sent from the app root — see `sign-in.ts`.
   const completed = await finishSignIn(returnSearch, signInEnvironment(window, basepath))
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
+  // The page's session: the server a sign-in signed in to, kept in the tab's
+  // `sessionStorage` for a reload or the expiry bounce back to the landing,
+  // and the bearer it issued, in page memory only.
+  const bearerStore = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
 
   if (session !== undefined) {
-    // The settled URL names no server, so the tab remembers the one that issued
-    // the token: for the transport below, and for a reload or the expiry
-    // bounce back to the landing.
-    rememberSignedInServer(window.sessionStorage, session.serverUrl)
+    // The server and the bearer are held together first and the signal set
+    // second: the store publishes nothing on a write, because a token response
+    // that reported no lifetime has no honest `exp`. See
+    // `authStateForSession`.
+    bearerStore.writeSession({ serverUrl: session.serverUrl, bearer: session.accessToken })
+    bearerStore.setAuthState(authStateForSession(session, Math.floor(Date.now() / 1000)))
+    // Drop the session back to `Unauthed` when the reported lifetime lapses, so
+    // the next authed request redirects to the landing rather than 401-looping.
+    scheduleExpiry(bearerStore.setAuthState, session.expiresInSeconds)
     // Honour the gate's `?returnTo=`, carried across the redirect in the
     // pending record, sanitised — same rules as `NeedsAuthMessage`'s
     // device-flow return leg.
@@ -142,48 +144,18 @@ const bootApp = async (): Promise<JSX.Element> => {
   if (settledSearch !== arrivalSearch) replaceSearch(settledSearch)
   const arrivingEhrLaunch = ehrLaunchIn(arrivalSearch)
 
-  // Resolved after the rewrites above: a redeemed sign-in has just remembered
-  // its server, and the settled URL has no `?server=` to outrank it; a failed
-  // return leg or a launch has just named its server in `?server=`.
-  const { bearerStore, ...entryOptions } = makeWebEntryOptions(
-    window,
-    basepath,
-    chosenServerUrl(window.location.search, window.sessionStorage)
-  )
-
-  if (session !== undefined) {
-    // The bearer is held first and the signal set second: the store publishes
-    // nothing on a write, because a token response that reported no lifetime
-    // has no honest `exp`. See `authStateForSession`.
-    bearerStore.writeBearer(session.accessToken)
-    bearerStore.setAuthState(authStateForSession(session, Math.floor(Date.now() / 1000)))
-    // Drop the session back to `Unauthed` when the reported lifetime lapses, so
-    // the next authed request redirects to the landing rather than 401-looping.
-    scheduleExpiry(bearerStore.setAuthState, session.expiresInSeconds)
-  }
-
-  const history = createBrowserHistory()
-
-  const tokenResponseHandler: TokenResponseHandler = {
-    writeBearer: bearerStore.writeBearer,
-    navigateAfterAuth: (returnTo) => {
-      // `history.push` writes the address bar directly and does not apply the
-      // router basepath (that is `router.navigate`'s job), so the served base
-      // is prefixed here — otherwise the device-login return lands at
-      // `<origin>/home`, off the app, on a subpath deploy.
-      history.push(underBasepath(basepath, returnTo))
-    },
-  }
-
   return buildAppTree({
-    history,
-    entry: 'main-web',
+    history: createBrowserHistory(),
     basepath,
-    ...entryOptions,
-    // Empty until the visitor's answer turns performance on: this entry never
+    tokenStore: bearerStore,
+    // An unauthed reader goes to the landing page at `/`, not to device login:
+    // the reader picks the server there before any sign-in can name one.
+    awaitAuthReady: makeAwaitLandingAuthReady(bearerStore.subscribable),
+    // The page's own origin, an address another device can open.
+    externalLinkRoot: () => window.location.origin,
+    // Empty until the visitor's answer turns performance on: this page never
     // starts telemetry from the build's env.
     effectTelemetryLayer: consentedTelemetryLayer,
-    tokenResponseHandler,
     // What the sign-in redeemed on this load found. With none, the shell is
     // reached only through the device-code flow, which only a Wildflower
     // server serves. A reload drops the bearer, and the landing signs back in
@@ -198,4 +170,4 @@ const bootApp = async (): Promise<JSX.Element> => {
 }
 
 // The consent dialog first; the answer starts telemetry and then boots the app.
-mountAtRoot(<ConsentedEntryRoot entry="main-web" copy={TELEMETRY_CONSENT_COPY} bootApp={bootApp} />)
+mountAtRoot(<ConsentedEntryRoot bootApp={bootApp} />)

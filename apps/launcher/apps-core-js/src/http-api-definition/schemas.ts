@@ -117,9 +117,8 @@ const InvalidHomeScreenSchema = Schema.Struct({
  */
 
 /**
- * A forwarded launch's `200` body: the resolved launch URL for the calling page to
- * navigate to (mirrors the Rust `LaunchTargetBody`). A loopback launch answers
- * `204` instead — the host opened the app itself.
+ * A launch's `200` body: the resolved launch URL for the calling page to
+ * navigate to (mirrors the Rust `LaunchTargetBody`).
  */
 const LaunchTargetSchema = Schema.Struct({ url: Schema.String })
 

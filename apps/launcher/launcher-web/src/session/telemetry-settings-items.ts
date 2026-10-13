@@ -10,8 +10,8 @@ import { useContext } from 'react'
  * of the gate's copy, as its subtitle, and pressing it reopens the consent
  * dialog, whose Continue replaces the answer.
  *
- * @returns The one row inside a `TelemetryConsentGate`, which both entries
- *   mount (`ConsentedEntryRoot`); none outside one
+ * @returns The one row inside a `TelemetryConsentGate`, which `main-web`
+ *   mounts (`ConsentedEntryRoot`); none outside one
  */
 const useTelemetrySettingsItems = (): readonly SettingsItem[] => {
   const consentControls = useContext(TelemetryConsentContext)

@@ -1,5 +1,6 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import type { QueryClient } from '@tanstack/react-query'
+import type { BearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
 import type { Layer } from 'effect'
 
 import { buildQueryClient } from '../query-client.ts'
@@ -9,56 +10,51 @@ import { attachBearer } from './attach-bearer.ts'
 import { prependApiBaseUrl } from './prepend-api-base-url.ts'
 
 /**
+ * What the transport reads off the page's session, per request: the server
+ * the page signed in to, which every request goes to, and the bearer that
+ * server issued, which every request carries.
+ */
+type ApiSession = Pick<BearerAuthStateStore, 'serverUrl' | 'bearer'>
+
+/**
  * The API server's transport over `transport`.
  *
  * @param transport - The underlying `HttpClient` layer (the real one is
  *   `FetchHttpClient.layer`; tests pass a stub).
- * @param apiBaseUrl - Absolute API origin for entries whose page isn't
- *   served by the API server. Omitted, requests stay relative to the page
- *   origin.
- * @param readBearer - Lazy bearer reader; when given, every relative request
- *   carries `Authorization: Bearer <token>`.
+ * @param session - The page's session, read lazily on every request: each
+ *   relative request goes to `serverUrl` and carries
+ *   `Authorization: Bearer <bearer>` while a bearer is held.
  *
  * @remarks
- * The bearer wrapper is the inner one for the same reason: it must see a
- * still-relative URL, or its absolute-URL guard drops the `Authorization`
- * header from every request (pinned in `attach-bearer.test.ts`).
+ * The bearer wrapper is the inner one: `HttpClient.mapRequest` runs the
+ * wrapped client's rewrite first, so it must see a still-relative URL, or its
+ * absolute-URL guard drops the `Authorization` header from every request
+ * (pinned in `attach-bearer.test.ts`).
  */
 const apiTransport = (
   transport: Layer.Layer<HttpClient.HttpClient>,
-  apiBaseUrl: string | undefined,
-  readBearer: (() => string | undefined) | undefined
-): Layer.Layer<HttpClient.HttpClient> => {
-  const authenticated = readBearer === undefined ? transport : attachBearer(transport, readBearer)
-  return apiBaseUrl === undefined ? authenticated : prependApiBaseUrl(authenticated, apiBaseUrl)
-}
+  session: ApiSession
+): Layer.Layer<HttpClient.HttpClient> =>
+  prependApiBaseUrl(attachBearer(transport, session.bearer), session.serverUrl)
 
 /**
  * Build the shared `QueryClient` + authed runner threaded into the
- * router context. Page-lifetime; one HTTP layer for every entry (the
- * host bridge carries only messages, not HTTP). Clients are tokenless;
- * the entry decides how a request authenticates — `main-web` supplies
- * `readBearer`, and `main-tauri` supplies none because the host stamps
- * its owner bearer onto direct-loopback requests by connection
- * provenance.
+ * router context. Page-lifetime; one HTTP layer for every request.
+ * Clients are tokenless; the transport addresses each request to the
+ * session's server and authenticates it with the session's bearer.
  *
- * @param apiBaseUrl - Absolute API origin for entries whose page isn't
- *   served by the API server (see {@link prependApiBaseUrl}). Omitted,
- *   requests stay relative to the page origin.
+ * @param session - The page's session, read lazily on every request (see
+ *   {@link apiTransport}).
  * @param onUnauthorized - Invoked by the `QueryClient`'s cache when an
  *   authed query/mutation ends in a 401 that survived the boot-race
- *   retry — the entry uses it to send the user to device login.
- * @param effectTelemetryLayer - The entry's Effect telemetry layer, which
- *   every authed request runs under (see `buildRunAuthed`).
- * @param readBearer - Lazy bearer reader for the hosted entry. When
- *   provided, every relative request carries `Authorization: Bearer
- *   <token>`. Omitted for `main-tauri`, which the host authenticates.
+ *   retry — the app uses it to send the user to device login.
+ * @param effectTelemetryLayer - The Effect telemetry layer every authed
+ *   request runs under (see `buildRunAuthed`).
  */
 const buildAppQueryRuntime = (
-  apiBaseUrl: string | undefined,
+  session: ApiSession,
   onUnauthorized: () => void,
-  effectTelemetryLayer: Layer.Layer<never>,
-  readBearer?: () => string | undefined
+  effectTelemetryLayer: Layer.Layer<never>
 ): {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
@@ -66,10 +62,11 @@ const buildAppQueryRuntime = (
 } => {
   const queryClient = buildQueryClient(onUnauthorized)
   const { runAuthed, runtimeLayer } = buildRunAuthed(
-    apiTransport(FetchHttpClient.layer, apiBaseUrl, readBearer),
+    apiTransport(FetchHttpClient.layer, session),
     effectTelemetryLayer
   )
   return { queryClient, runAuthed, runtimeLayer }
 }
 
 export { apiTransport, buildAppQueryRuntime }
+export type { ApiSession }

@@ -361,7 +361,7 @@ mod tests {
     use std::time::Duration;
 
     use serde::Deserialize;
-    use tokio::sync::{mpsc, watch};
+    use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
     use wildflowerhealthio_gatekeeper::NoLoopbackConsentPrompt;
     use wildflowerhealthio_rathole_settings::{
@@ -370,7 +370,6 @@ mod tests {
     use wildflowerhealthio_servers::{
         JsonServerRegistry, RelayKind, ServerDetail, ServerRecord, SERVERS_FILE_NAME,
     };
-    use wildflowerhealthio_shared_structures::OnDeviceWebviewHandle;
     use wildflowerhealthio_tauri_unit_runner::{
         BackgroundServiceStartConfig, BackgroundSessionLength, RunContext, RunState, RunStop,
         StopReason, TauriUnitRunner, Unit, UnitId, UnitStatus,
@@ -479,20 +478,11 @@ mod tests {
         panic!("built a relay client for {relay_base}")
     }
 
-    /// An on-device webview handle with no popup: no server runs here.
-    struct NoOnDeviceWebview;
-
-    impl OnDeviceWebviewHandle for NoOnDeviceWebview {
-        fn open(&self, _app_id: String, _title: String, _url: String) {}
-    }
-
     /// The commands' state over a registry in a fresh data root, pushing to
     /// `runner`. The app is never present here, so a `whileOpen` server never
     /// runs, and no run builds a config.
     fn servers_on(runner: &TauriUnitRunner<ServerDetail>) -> (tempfile::TempDir, ServersState) {
         let data_root = tempfile::tempdir().unwrap();
-        let (host_owner_token_tx, _) = watch::channel(None);
-        let (active_pending_consent_tx, _) = watch::channel(None);
         let (forwarded_request_tx, _) = mpsc::channel(1);
         let server_units = ServerUnits::new(
             runner.clone(),
@@ -501,9 +491,6 @@ mod tests {
             }),
             HostPorts {
                 loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-                on_device_webview_handle: Arc::new(NoOnDeviceWebview),
-                host_owner_token_tx,
-                active_pending_consent_tx,
             },
             forwarded_request_tx,
         );

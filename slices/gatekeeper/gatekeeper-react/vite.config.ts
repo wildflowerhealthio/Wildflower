@@ -23,7 +23,6 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
-      'web-bridge': 'src/web-bridge.ts',
     },
   },
   test: {

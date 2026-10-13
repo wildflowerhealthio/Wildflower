@@ -260,10 +260,7 @@ access to the signing key and can mint an owner access token directly.
 
 The web SPA has no client-side URL-token consumption: it holds only the
 bearer its own sign-in (SMART redirect or device flow) obtains, in page
-memory. The Tauri webview holds no token at all — the host stamps its
-minted owner token onto the webview's direct-loopback requests by
-connection provenance, and only a contentless "authed" notify crosses the
-gatekeeper bridge (see the Auth Token Storage Explanation).
+memory (see the Auth Token Storage Explanation).
 
 **The minting helpers are a dev convenience, not a shipping pattern**, and
 the long-term story for first-Owner onboarding (native shell, fresh

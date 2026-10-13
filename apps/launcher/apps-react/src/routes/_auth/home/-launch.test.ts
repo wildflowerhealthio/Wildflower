@@ -24,13 +24,13 @@ interface RunAuthedStub {
 // A resolving generic `RunAuthed` can't be expressed without a cast: its return
 // `Promise<A>` is inhabited for *all* `A` only by `Promise<never>` (reject). Isolate
 // the cast here so the rest of the file stays cast-free — the documented test-file
-// exception. `value` stands in for what `LaunchApp` decodes: `undefined` for the
-// host's `204`, `{ url }` for a forwarded launch's `200`.
-const untypedResolve = (value: { readonly url: string } | undefined): RunAuthed =>
+// exception. `value` stands in for what `LaunchApp` decodes: the `{ url }` of
+// the launch's `200`.
+const untypedResolve = (value: { readonly url: string }): RunAuthed =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- resolving generic RunAuthed is inherently untypeable
   (() => Promise.resolve(value)) as RunAuthed
 
-const resolvingRunAuthed = (value?: { readonly url: string }): RunAuthedStub => {
+const resolvingRunAuthed = (value: { readonly url: string }): RunAuthedStub => {
   const calls: { readonly effect: unknown }[] = []
   const resolve = untypedResolve(value)
   return { calls, runAuthed: (effect) => (calls.push({ effect }), resolve(effect)) }
@@ -42,26 +42,16 @@ const rejectingRunAuthed = (error: unknown): RunAuthedStub => {
 }
 
 describe('launchApp', () => {
-  test('launches through the authed client and stays put when the host opened the app', async () => {
-    const stub = resolvingRunAuthed()
-    const nav = recordingNavigate()
-
-    const result = await launchApp({ runAuthed: stub.runAuthed, navigate: nav.navigate }, app.id)
-
-    // The launch rides `runAuthed` (not a raw `fetch`), so the owner bearer is
-    // attached; a `204` means the host opened the app, so the tab doesn't move.
-    expect(result).toEqual(Either.right('openedOnHost'))
-    expect(stub.calls).toHaveLength(1)
-    expect(nav.seen).toEqual([])
-  })
-
-  test('navigates to the launch URL a forwarded launch answers with', async () => {
+  test('launches through the authed client and navigates to the launch URL it answers with', async () => {
     const stub = resolvingRunAuthed({ url: 'https://medications.demo.example.com/' })
     const nav = recordingNavigate()
 
     const result = await launchApp({ runAuthed: stub.runAuthed, navigate: nav.navigate }, app.id)
 
-    expect(result).toEqual(Either.right('navigated'))
+    // The launch rides `runAuthed` (not a raw `fetch`), so the owner bearer is
+    // attached.
+    expect(result).toEqual(Either.void)
+    expect(stub.calls).toHaveLength(1)
     expect(nav.seen).toEqual(['https://medications.demo.example.com/'])
   })
 

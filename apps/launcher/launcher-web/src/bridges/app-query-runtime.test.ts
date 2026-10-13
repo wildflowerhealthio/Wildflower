@@ -1,12 +1,13 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { buildRunAuthed } from '../runtime-layer.ts'
-import { apiTransport } from './app-query-runtime.ts'
+import { apiTransport, type ApiSession } from './app-query-runtime.ts'
 
 /**
  * Where the launcher's requests land. Only the transport is a stub: the real
@@ -38,21 +39,57 @@ describe('apiTransport', () => {
     expect(recorded.map((request) => request.url)).toEqual(['http://127.0.0.1:8080/access/clients'])
   })
 
-  it('should keep every request page-relative when the page is served by the API server', async () => {
+  it('should send nothing while no server is signed in to', async () => {
     // Arrange
     const { runAuthed, recorded } = runnerOver(undefined, undefined)
 
     // Act
-    await runAuthed(searchPatients)
-    await runAuthed(getFromRoot('/access/clients'))
+    const outcome = await runAuthed(getFromRoot('/access/clients')).then(
+      () => 'sent',
+      () => 'refused'
+    )
 
     // Assert
-    expect(recorded.map((request) => request.url)).toEqual(['/Patient', '/access/clients'])
+    expect(outcome).toBe('refused')
+    expect(recorded).toEqual([])
+  })
+
+  it("should send a request to the session's server with the session's bearer", async () => {
+    // Arrange — a sign-in writes the server and the bearer together.
+    const session = makeBearerAuthStateStore(memoryStorage(), 'test.signed-in-server')
+    session.writeSession({ serverUrl: 'https://ruth.relay.example', bearer: 'owner-token' })
+    const { runAuthed, recorded } = runnerOverSession(session)
+
+    // Act
+    await runAuthed(getFromRoot('/apps'))
+
+    // Assert
+    expect(recorded).toEqual([
+      { url: 'https://ruth.relay.example/apps', authorization: 'Bearer owner-token' },
+    ])
+  })
+
+  it('should follow the session to the server a later sign-in names', async () => {
+    // Arrange
+    const session = makeBearerAuthStateStore(memoryStorage(), 'test.signed-in-server')
+    const { runAuthed, recorded } = runnerOverSession(session)
+    session.writeSession({ serverUrl: 'https://first.relay.example', bearer: 'first-token' })
+    await runAuthed(getFromRoot('/apps'))
+
+    // Act
+    session.writeSession({ serverUrl: 'https://second.relay.example', bearer: 'second-token' })
+    await runAuthed(getFromRoot('/apps'))
+
+    // Assert
+    expect(recorded).toEqual([
+      { url: 'https://first.relay.example/apps', authorization: 'Bearer first-token' },
+      { url: 'https://second.relay.example/apps', authorization: 'Bearer second-token' },
+    ])
   })
 
   it('should carry the bearer on FHIR reads as well as on root requests', async () => {
     // Arrange
-    const { runAuthed, recorded } = runnerOver('http://127.0.0.1:8080', () => 'owner-token')
+    const { runAuthed, recorded } = runnerOver('http://127.0.0.1:8080', 'owner-token')
 
     // Act
     await runAuthed(searchPatients)
@@ -89,10 +126,30 @@ interface RecordedRequest {
   readonly authorization: string | undefined
 }
 
-/** A runner over a stub transport that records each request and answers an empty searchset. */
+/** An in-memory stand-in for the tab's `sessionStorage`. */
+const memoryStorage = (): Pick<Storage, 'getItem' | 'setItem'> => {
+  const entries = new Map<string, string>()
+  return {
+    getItem: (key) => entries.get(key) ?? null,
+    setItem: (key, value) => {
+      entries.set(key, value)
+    },
+  }
+}
+
+/** A runner over a session that holds `serverUrl` and `bearer` as they are. */
 const runnerOver = (
-  apiBaseUrl: string | undefined,
-  readBearer: (() => string | undefined) | undefined
+  serverUrl: string | undefined,
+  bearer: string | undefined
+): ReturnType<typeof runnerOverSession> =>
+  runnerOverSession({ serverUrl: () => serverUrl, bearer: () => bearer })
+
+/**
+ * A runner over `session`, through a stub transport that records each request
+ * and answers an empty searchset.
+ */
+const runnerOverSession = (
+  session: ApiSession
 ): {
   readonly runAuthed: ReturnType<typeof buildRunAuthed>['runAuthed']
   readonly recorded: RecordedRequest[]
@@ -113,7 +170,7 @@ const runnerOver = (
       )
     })
   )
-  const { runAuthed } = buildRunAuthed(apiTransport(transport, apiBaseUrl, readBearer), Layer.empty)
+  const { runAuthed } = buildRunAuthed(apiTransport(transport, session), Layer.empty)
   return { runAuthed, recorded }
 }
 

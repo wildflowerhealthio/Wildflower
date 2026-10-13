@@ -1,7 +1,7 @@
-//! [`PendingConsentHead`] — which pending authorization request the host
-//! webview is currently asking the Owner to decide. One FIFO spans both grant
+//! [`PendingConsentHead`] — which pending authorization request the host is
+//! currently asking the Owner to decide. One FIFO spans both grant
 //! flows; see `slices/gatekeeper/docs/Jargon Explanation.md` ("Pending-consent
-//! queue") for the queue, its bridge delivery, and the popup it drives.
+//! queue") for the queue and how the host learns of its head.
 
 /// The head of the pending-consent queue, or absent when nothing is pending.
 ///

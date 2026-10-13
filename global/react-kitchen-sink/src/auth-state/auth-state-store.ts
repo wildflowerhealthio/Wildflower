@@ -13,11 +13,11 @@ import type { AuthState } from './auth-state.ts'
  *    is the narrowest shape that supports both — anything wider (a
  *    `SubscriptionRef`, the underlying store internals) leaks Effect
  *    plumbing into every consumer without any of them needing it.
- *  - `setAuthState` is the *write* side: every sign-in, host push, or
- *    re-derive dispatches through this single seam. It carries an
+ *  - `setAuthState` is the *write* side: every sign-in or re-derive
+ *    dispatches through this single seam. It carries an
  *    {@link AuthState}, not a bearer token — the signal never carries the
  *    credential (a bearer-holding page keeps its token in a separate store
- *    reader; the embedded path's stays host-side).
+ *    reader).
  *
  * Apps construct an environment-specific store and pass it in; the
  * concrete storage policies live with the app's store factories.

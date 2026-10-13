@@ -1,6 +1,4 @@
-mod bridge;
 mod loopback_consent_dialog;
-mod native_webview_handle;
 
 use anyhow::Context;
 use std::path::{Path, PathBuf};
@@ -219,15 +217,9 @@ fn server_config(
     })
 }
 
-/// Wraps the host's native adapters and bridge publishers as the
-/// [`HostPorts`] every run of every server shares.
-///
-/// The owner-token and pending-consent channels are the host's, so several
-/// servers running at once publish onto the same two channels; the latest
-/// publish wins. Each run's gatekeeper publishes its pending-consent head on
-/// a channel of the run's own, which the run forwards to this one (see
-/// `wildflowerhealthio_servers::ServerUnit`).
-fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublishers) -> HostPorts {
+/// Wraps the host's native adapters as the [`HostPorts`] every run of every
+/// server shares.
+fn host_ports(app_handle: &tauri::AppHandle) -> HostPorts {
     HostPorts {
         // The native Approve / Reject dialog gatekeeper raises when the hosted
         // launcher logs in over direct loopback (see `loopback_consent_dialog`).
@@ -237,17 +229,6 @@ fn host_ports(app_handle: &tauri::AppHandle, publishers: bridge::BridgePublisher
                 host_owner_scopes(),
             ),
         ),
-        // A loopback launch hands this the resolved URL to open in a native popup
-        // (the server 204s). See `native_webview_handle`.
-        on_device_webview_handle: Arc::new(native_webview_handle::NativeWebviewHandle::new(
-            app_handle.clone(),
-        )),
-        // The server publishes the host owner token and pending-consent heads
-        // here; `bridge::attach_bridge` documents how the resident task delivers
-        // them to the webview. The senders outlive every server run, so a
-        // restarted server publishes to the same webview.
-        host_owner_token_tx: publishers.host_owner_token_tx,
-        active_pending_consent_tx: publishers.active_pending_consent_tx,
     }
 }
 
@@ -316,9 +297,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 // Stdout only — no Webview target, so host logs never
-                // re-enter the webview. Keeps the log flow one-way:
-                // webview console → `bridge:Log` → here (a Webview
-                // target would loop those right back out).
+                // re-enter a webview.
                 .targets([tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::Stdout,
                 )])
@@ -382,13 +361,6 @@ pub fn run() {
             let data_root = resolve_data_dir(app.handle())?;
             std::fs::create_dir_all(&data_root)?;
 
-            // Attach the bridge before any server starts: `listen` registers
-            // synchronously, so the webview's `__Ready` (which fires much
-            // later, once the bundle runs) can't be missed even if a server
-            // is slow to boot. The bridge owns its channel plumbing; the
-            // servers get the publishers.
-            let publishers = bridge::attach_bridge(app.handle());
-
             // Wire the `Open` / `SniffingComplete` listeners that manage the
             // sniffer child webview lifecycle (open / navigate / close) for
             // the Recorder. Sniffer-emitted data-plane events
@@ -419,7 +391,7 @@ pub fn run() {
                 &data_root,
                 default_launcher_url,
                 &runner,
-                host_ports(app.handle(), publishers),
+                host_ports(app.handle()),
                 move |server| server_config(server, &config_data_root, &config_app_handle),
             );
             Ok(())

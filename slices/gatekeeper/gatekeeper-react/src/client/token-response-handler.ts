@@ -1,17 +1,12 @@
 /**
- * Optional post-token-exchange hook for entries that hold the bearer
- * in page memory (the hosted entry). `NeedsAuthMessage` checks this
- * context after a successful device-flow token exchange; when provided,
- * it writes the bearer and does a client-side navigation instead of a
- * full-page reload.
- *
- * The Tauri entry holds no credential (the host authenticates its
- * direct-loopback requests by connection provenance), so it does not
- * wrap the tree in this provider; the context reads `undefined` and
- * `NeedsAuthMessage` falls back to a full-page `window.location.assign`.
+ * The post-token-exchange hook `NeedsAuthMessage` calls after a successful
+ * device-flow token exchange: the page holds its bearer in page memory, so
+ * the hook writes it and navigates client-side, where a full-page reload
+ * would lose it. The launcher provides it around its whole tree.
  */
 
-import { createContext, useContext } from 'react'
+import { useContextOrThrow } from '@wildflowerhealthio/react-kitchen-sink'
+import { createContext } from 'react'
 
 interface TokenResponseHandler {
   /**
@@ -27,10 +22,16 @@ interface TokenResponseHandler {
   readonly navigateAfterAuth: (returnTo: string) => void
 }
 
-const TokenResponseHandlerContext = createContext<TokenResponseHandler | undefined>(undefined)
+const TokenResponseHandlerContext = createContext<TokenResponseHandler | null>(null)
+TokenResponseHandlerContext.displayName = 'TokenResponseHandlerContext'
 
-const useTokenResponseHandler = (): TokenResponseHandler | undefined =>
-  useContext(TokenResponseHandlerContext)
+/**
+ * The page's {@link TokenResponseHandler}.
+ *
+ * @throws `NoContextException` if no `<TokenResponseHandlerContext>` mounts above.
+ */
+const useTokenResponseHandler = (): TokenResponseHandler =>
+  useContextOrThrow(TokenResponseHandlerContext)
 
 export { TokenResponseHandlerContext, useTokenResponseHandler }
 export type { TokenResponseHandler }

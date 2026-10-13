@@ -168,8 +168,7 @@ only it composes. Rust-only, no `-core`.
   domain, and the `DeviceCertificateConfig` its
   `ServerRecord::device_certificate_config` builds: the CA, the server's
   certificate folder and the install's ACME account folder). `HostPorts` carries its native adapters as trait
-  objects (`LoopbackConsentPrompt`, `OnDeviceWebviewHandle`) and the `watch`
-  senders its bridge reads. The server reads none of the host's build-time
+  objects (`LoopbackConsentPrompt`). The server reads none of the host's build-time
   configuration or platform paths itself.
 - **The host watches the server through `ServerObservers`.** Host-owned
   senders: the server's `ServerHealth` through its public origin, published by
@@ -177,7 +176,10 @@ only it composes. Rust-only, no `-core`.
   for each run; the tunnel's `TunnelState`, published by the tunnel daemon for
   as long as the server runs, on a channel the host makes for each run; the
   server's `CertificateState`, published by the device certificate for as
-  long as the server runs, on a channel the host makes for each run; and each forwarded request (every request through the tunnel,
+  long as the server runs, on a channel the host makes for each run; the
+  head of gatekeeper's pending-consent queue, published as the run starts and
+  after each change to the queue, on a channel the host makes for each run;
+  and each forwarded request (every request through the tunnel,
   and each one a front run on this machine relayed), on a channel the host
   shares across runs, reported by the forwarded-request layer as a
   `ForwardedRequest` record: the

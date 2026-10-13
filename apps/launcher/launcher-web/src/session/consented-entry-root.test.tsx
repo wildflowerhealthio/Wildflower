@@ -1,14 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import {
-  TELEMETRY_CONSENT_COPY,
-  WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
-} from '@wildflowerhealthio/branding-core'
+import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { ItemList } from '@wildflowerhealthio/react-tundraish'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { StrictMode, type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { ConsentedEntryRoot, type ConsentedEntryRootProps } from './consented-entry-root.tsx'
+import { ConsentedEntryRoot } from './consented-entry-root.tsx'
 import {
   answerDialog,
   openDialog,
@@ -40,14 +37,6 @@ vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
 
 const LAUNCHER_DSN = 'https://key@sentry.example/11'
 
-/** What an entry hands the root besides its boot. */
-type EntryWiring = Pick<ConsentedEntryRootProps, 'entry' | 'copy'>
-
-const MAIN_WEB: EntryWiring = { entry: 'main-web', copy: TELEMETRY_CONSENT_COPY }
-const MAIN_TAURI: EntryWiring = {
-  entry: 'main-tauri',
-  copy: WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
-}
 const SETTINGS_ROW_NAME = /^Telemetry/
 
 /** Matches the Telemetry settings row's accessible name when it reads `summary`. */
@@ -69,7 +58,7 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-describe('ConsentedEntryRoot on main-web', () => {
+describe('ConsentedEntryRoot', () => {
   it('should show only the consent dialog, boot nothing and start nothing, until the visitor answers', async () => {
     // Arrange
     const bootApp = vi.fn(bootsTo(<div data-testid="app" />))
@@ -99,7 +88,7 @@ describe('ConsentedEntryRoot on main-web', () => {
     expect(consent).toMatchObject({ crashReports: true, performance: true })
     expect(config.sentry.dsn).toBe(LAUNCHER_DSN)
     expect(config.otel.serviceName).toBe('launcher-web')
-    expect(tags).toStrictEqual({ app: 'launcher-web', entry: 'main-web' })
+    expect(tags).toStrictEqual({ app: 'launcher-web' })
     expect(bootApp).toHaveBeenCalledTimes(1)
     expect(initConsentedTelemetryMock.mock.invocationCallOrder[0]).toBeLessThan(
       bootApp.mock.invocationCallOrder[0]
@@ -204,59 +193,17 @@ describe('ConsentedEntryRoot on main-web', () => {
   })
 })
 
-describe('ConsentedEntryRoot on main-tauri', () => {
-  it('should show only the host’s consent dialog, boot nothing and start nothing, until the user answers', async () => {
-    // Arrange
-    const bootApp = vi.fn(bootsTo(<div data-testid="app" />))
-
-    // Act
-    await renderRoot(bootApp, MAIN_TAURI)
-
-    // Assert — the host's words, and no transport, router or Sentry
-    expect(openDialog()).not.toBeNull()
-    expect(screen.getByText(WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY.changeLater)).toBeDefined()
-    expect(screen.queryByText(TELEMETRY_CONSENT_COPY.changeLater)).toBeNull()
-    expect(bootApp).not.toHaveBeenCalled()
-    expect(initConsentedTelemetryMock).not.toHaveBeenCalled()
-    expect(screen.queryByTestId('app')).toBeNull()
-  })
-
-  it('should start telemetry with the launcher’s DSN and the main-tauri tags, then boot the app, once the user answers', async () => {
-    // Arrange
-    const bootApp = vi.fn(bootsTo(<div data-testid="app" />))
-    await renderRoot(bootApp, MAIN_TAURI)
-
-    // Act
-    await answerDialogAndSettle({ crashReports: true, performance: false })
-
-    // Assert
-    expect(await screen.findByTestId('app')).toBeDefined()
-    expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
-    const [{ consent, config, tags }] = initConsentedTelemetryMock.mock.calls[0]
-    expect(consent).toMatchObject({ crashReports: true, performance: false })
-    expect(config.sentry.dsn).toBe(LAUNCHER_DSN)
-    expect(tags).toStrictEqual({ app: 'launcher-web', entry: 'main-tauri' })
-    expect(bootApp).toHaveBeenCalledTimes(1)
-    expect(initConsentedTelemetryMock.mock.invocationCallOrder[0]).toBeLessThan(
-      bootApp.mock.invocationCallOrder[0]
-    )
-  })
-})
-
 // Helpers
 
 /**
- * Render the root for `entry` under StrictMode, as both entries'
- * `mountAtRoot` does, letting a boot that starts settle.
+ * Render the root under StrictMode, as `main-web`'s `mountAtRoot` does,
+ * letting a boot that starts settle.
  */
-async function renderRoot(
-  bootApp: () => Promise<ReactNode>,
-  entry: EntryWiring = MAIN_WEB
-): Promise<void> {
+async function renderRoot(bootApp: () => Promise<ReactNode>): Promise<void> {
   await act(async () => {
     render(
       <StrictMode>
-        <ConsentedEntryRoot entry={entry.entry} copy={entry.copy} bootApp={bootApp} />
+        <ConsentedEntryRoot bootApp={bootApp} />
       </StrictMode>
     )
   })

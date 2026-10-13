@@ -15,9 +15,9 @@ The Gatekeeper system allows an authorized **Owner** on one device to
 issue **Grants** to OAuth Clients (registered in the
 [`clients`](#client) table) requesting access on a separate device,
 allowing them to access data in a system. The host browser bootstraps
-onto a fresh deployment via the RFC 8628 device authorization flow; an
-on-device shell (embedded/Tauri) instead receives a host-minted token
-directly (see [bootstrap URL](#bootstrap-url)).
+onto a fresh deployment via the RFC 8628 device authorization flow; a
+direct-loopback caller on the host's own machine is instead presented with a
+host-minted token (see [bootstrap URL](#bootstrap-url)).
 
 ## Roles
 
@@ -296,9 +296,10 @@ The authorization wall on every Owner-facing JSON endpoint
 HTML pages in the `gatekeeper-pages` group do **not** carry this
 middleware; they're public. The middleware reads the access token from the
 `Authorization: Bearer` header only — the server issues and accepts no
-cookies. The hosted web SPA attaches its in-memory bearer; the Tauri SPA
-attaches nothing and is authenticated by the host's loopback-provenance
-owner trust, which presents the host-minted token on its behalf.
+cookies. The launcher attaches its in-memory bearer; a direct-loopback
+caller attaches nothing and is authenticated by the host's
+loopback-provenance owner trust, which presents the host-minted token on its
+behalf.
 
 ### Device flow (RFC 8628)
 
@@ -323,8 +324,8 @@ client. Flow:
    so a pairing started on a PR preview or a dev server is approved there.
 2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
-   device — or answers the popup the request raised there through the
-   [pending-consent queue](#pending-consent-queue), which needs no code entry.
+   device — or answers it in the host's consent sheet, which the
+   [pending-consent queue](#pending-consent-queue) raises with no code entry.
 3. Owner reviews the request (device name + requested scopes) and approves via
    `POST /access/devices/:userCode/approve`. The Owner may add scopes beyond
    what the device requested (up to the client's `allowedScopes`) or prune them
@@ -362,8 +363,8 @@ Optional on the wire; auth-code requests carry no device name.
 
 The single FIFO of authorization requests waiting on the Owner, spanning **both**
 grant flows: a device-code request parked by `/oauth/device_authorization` and an
-authorization-code request parked by `/oauth/authorize` compete for one popup
-slot, oldest `requestedAt` first.
+authorization-code request parked by `/oauth/authorize` share one queue,
+oldest `requestedAt` first.
 
 The head of that queue is a `PendingConsentHead`, discriminated because the two
 flows have no shared lookup key:
@@ -382,9 +383,6 @@ commands that read and decide a request in-process through
 `HostConsentDecider`, the same consent capabilities with the host Owner's grant
 (see `apps/host/servers`'s
 [Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
-The host also forwards each change as `bridge:PendingConsentRequested`, on
-which the SPA's `PendingConsentModalHost` branches on `kind` to mount the
-matching consent form.
 
 A request that the [grant](#grant) fast path fully pre-approves never enters the
 queue: `/oauth/authorize` approves it in the same handler, so it never sits
@@ -392,10 +390,9 @@ queue: `/oauth/authorize` approves it in the same handler, so it never sits
 background reaper re-runs the query so an idle host doesn't stay stuck on a head
 whose TTL lapsed.
 
-The popup is dismissable (× / ESC / backdrop) and dismissing decides nothing:
-the request stays pending and answerable from Settings until it expires, while
-the requesting browser keeps waiting (on the [wait page](#wait-page) for a code
-request).
+Closing the host's consent sheet decides nothing: the request stays pending
+and answerable from Settings until it expires, while the requesting browser
+keeps waiting (on the [wait page](#wait-page) for a code request).
 
 ### Wait page
 
@@ -410,7 +407,7 @@ redirect the status carries, which the gatekeeper built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the gatekeeper for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers in
-the host popup, a signed-in launcher, or the
+the host's consent sheet, a signed-in launcher, or the
 [loopback owner dialog](#loopback-owner-dialog).
 
 It interpolates nothing (the script reads the request id from its own path),
@@ -493,9 +490,9 @@ because `wildflower-host` is a registered [`Client`](#client) and
 `'owner' ∈ scope` — no new endpoint, no redemption table.
 
 The web SPA has no client-side URL-token consumption: it signs in through
-SMART (or the device flow) and holds the resulting bearer in memory. The
-Tauri path never holds the host-minted token at all — the host presents it
-on the page's direct-loopback requests.
+SMART (or the device flow) and holds the resulting bearer in memory. A
+direct-loopback caller never holds the host-minted token at all — the host
+presents it on the caller's requests.
 
 ### `gatekeeper-pages` group
 
@@ -634,8 +631,8 @@ mints a JWT.
 Unless an existing [grant](#grant) pre-approves every requested scope, the
 request is parked for the Owner: the browser lands on the
 [wait page](#wait-page), and the request joins the
-[pending-consent queue](#pending-consent-queue) so the host app raises its
-popup and a signed-in launcher lists it. Whichever surface decides it, the wait
+[pending-consent queue](#pending-consent-queue) so the host app's consent
+sheet asks about it and a signed-in launcher lists it. Whichever surface decides it, the wait
 page redirects the client once its poll observes the outcome. The browser that
 started the flow is usually not signed in — a SMART app launched from another
 device, one reaching the tunnel origin, or the launcher signing in to begin

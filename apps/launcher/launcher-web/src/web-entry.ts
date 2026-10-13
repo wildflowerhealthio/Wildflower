@@ -6,15 +6,12 @@ import {
   serverUrlFromSearch,
 } from '@wildflowerhealthio/gatekeeper-core/smart-client'
 import {
-  gatekeeperLogoutSettingsItem,
-  makeAwaitLandingAuthReady,
-  makeBearerAuthStateStore,
   type BearerAuthStateStore,
+  gatekeeperLogoutSettingsItem,
 } from '@wildflowerhealthio/gatekeeper-react'
+import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Option } from 'effect'
 
-import type { RenderAppOptions } from './app-root.tsx'
-import { stubTransport } from './bridges/transport-context.ts'
 import type { EhrLaunch } from './sign-in.ts'
 
 /**
@@ -22,23 +19,18 @@ import type { EhrLaunch } from './sign-in.ts'
  *
  * The settled URL after a sign-in names no server (see `postSignInUrl`), so a
  * reload, or the expiry bounce back to the landing, would otherwise have
- * forgotten which server the tab was using. `main-web`'s boot writes it when a
- * sign-in is redeemed and logout clears it. It holds no credential, and is
- * namespaced like the pending record because the server-docs console shares
- * this origin.
+ * forgotten which server the tab was using. A sign-in writes it with the
+ * bearer (`BearerAuthStateStore.writeSession`) and logout clears it. It holds
+ * no credential, and is namespaced like the pending record because the
+ * server-docs console shares this origin.
  */
 const SIGNED_IN_SERVER_KEY = 'launcher-web.signed-in-server'
 
-/** Where the signed-in server is kept: `window.sessionStorage` in the browser. */
-type SignedInServerStore = Pick<Storage, 'getItem' | 'setItem' | 'clear'>
-
-/** Record `serverUrl` as the server this tab is signed in to. */
-const rememberSignedInServer = (store: SignedInServerStore, serverUrl: string): void => {
-  store.setItem(SIGNED_IN_SERVER_KEY, serverUrl)
-}
+/** Where the session's server is kept: `window.sessionStorage` in the browser. */
+type SignedInServerStore = Pick<Storage, 'getItem'>
 
 /**
- * The server this page load is pointed at without asking the reader: the one
+ * The server the landing page signs in to without asking the reader: the one
  * `search`'s `?server=` names, else the one this tab last signed in to.
  * `undefined` when neither names a server this page would accept: there is no
  * default server, so the reader picks one on the landing page.
@@ -105,100 +97,38 @@ const underBasepath = (basepath: string, route: string): string =>
   `${basepath.replace(/\/$/, '')}${route}`
 
 /**
- * `buildAppTree` wiring for `main-web` — the build served from static hosting,
- * which runs **cross-origin** to whichever API server `?server=` names.
+ * The settings screen's Logout row: gatekeeper's, over `bearerStore`. It
+ * forgets the bearer, revokes it at the session's server's `/access/logout`,
+ * clears the tab's `sessionStorage` (the session's server and any
+ * half-finished sign-in's pending record), and reloads the bare landing page
+ * at `basepath`. Nothing then names a server, so the reader picks one rather
+ * than being signed straight back in.
  *
- * Cross-origin means no host authenticates on this page's behalf, so this entry
- * holds a bearer in page memory and attaches it itself.
- *
- * - `tokenStore`: in-memory bearer via `makeBearerAuthStateStore()`.
- *   A page reload returns to `Unauthed` (the bearer is in memory only).
- * - `awaitAuthReady`: redirects unauthed users to the root landing
- *   page (`/`) instead of device-login, because this entry has no API server
- *   until the reader picks one — the picker and the sign-in live at the root.
- * - `apiBaseUrl`: the caller's `apiBaseUrl`, which `main-web` resolves with
- *   {@link chosenServerUrl}. Past sign-in the address bar no longer names the
- *   server; the tab's remembered one does. `undefined` when no server is
- *   chosen yet: the page is then unauthed, and only its landing, which sends
- *   no API request, is reachable.
- * - `externalLinkRoot`: the page's own origin, which is an address another
- *   device can open.
- * - `readBearer`: wired to the store's `bearer()` reader, so
- *   every relative request gets an `Authorization` header.
- * - `makeTransport`: pre-resolved stub (no host bridge).
- * - `platformSettingsItems`: gatekeeper's logout row (`gatekeeperLogoutSettingsItem`) —
- *   forgets the bearer, revokes it at `{server}/access/logout`, clears the
- *   tab's `sessionStorage` (the signed-in server included), and reloads the
- *   bare landing page at `basepath`.
- *   Nothing then names a server, so the reader picks one rather than being
- *   signed straight back in. None without an `apiBaseUrl`: there is no
- *   server to revoke at, and a page with none is never signed in.
- * - `platformBanner`: none — no host runs a server for this page, so there is
- *   no server status to show.
- * - `redirectToDeviceLoginOnUnauthorized`: true — a 401 that outlives the
- *   boot-race retry still falls back to the device-code screen. The landing
- *   page signs in by SMART redirect instead (`sign-in.ts`), so that route is
- *   reached only from this fallback and from a step-up, not from the picker.
- *
- * `page` is the slice of `window` this wiring navigates; a real
- * `Window` satisfies it, and a test passes a stub.
+ * `page` is the slice of `window` the row navigates; a real `Window`
+ * satisfies it, and a test passes a stub.
  */
-const makeWebEntryOptions = (
+const logoutSettingsItem = (
   page: {
     readonly fetch: typeof globalThis.fetch
-    readonly location: Pick<Location, 'assign' | 'origin'>
-    readonly sessionStorage: SignedInServerStore
+    readonly location: Pick<Location, 'assign'>
+    readonly sessionStorage: Pick<Storage, 'clear'>
   },
   basepath: string,
-  apiBaseUrl: string | undefined
-): Pick<
-  RenderAppOptions,
-  | 'tokenStore'
-  | 'awaitAuthReady'
-  | 'makeTransport'
-  | 'apiBaseUrl'
-  | 'externalLinkRoot'
-  | 'readBearer'
-  | 'platformSettingsItems'
-  | 'platformBanner'
-  | 'redirectToDeviceLoginOnUnauthorized'
-> & { readonly bearerStore: BearerAuthStateStore } => {
-  const bearerStore = makeBearerAuthStateStore()
-
-  return {
+  bearerStore: BearerAuthStateStore
+): SettingsItem =>
+  gatekeeperLogoutSettingsItem({
     bearerStore,
-    tokenStore: bearerStore,
-    awaitAuthReady: () => makeAwaitLandingAuthReady(bearerStore.subscribable),
-    makeTransport: () => Promise.resolve(stubTransport),
-    apiBaseUrl,
-    externalLinkRoot: () => page.location.origin,
-    readBearer: bearerStore.bearer,
-    platformSettingsItems:
-      apiBaseUrl === undefined
-        ? []
-        : [
-            gatekeeperLogoutSettingsItem({
-              apiBaseUrl,
-              bearerStore,
-              fetch: (input, init) => page.fetch(input, init),
-              leave: () => {
-                // Everything this tab kept for the origin: the signed-in server and
-                // any half-finished sign-in's pending record.
-                page.sessionStorage.clear()
-                page.location.assign(underBasepath(basepath, '/'))
-              },
-            }),
-          ],
-    platformBanner: null,
-    redirectToDeviceLoginOnUnauthorized: true,
-  }
-}
+    fetch: (input, init) => page.fetch(input, init),
+    leave: () => {
+      page.sessionStorage.clear()
+      page.location.assign(underBasepath(basepath, '/'))
+    },
+  })
 
 export {
   chosenServerUrl,
   ehrLaunchIn,
-  makeWebEntryOptions,
-  rememberSignedInServer,
+  logoutSettingsItem,
   searchAfterReturnLeg,
   SIGNED_IN_SERVER_KEY,
   underBasepath,

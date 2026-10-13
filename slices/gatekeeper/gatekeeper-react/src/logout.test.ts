@@ -13,7 +13,6 @@ describe('logOutBearerSession', () => {
 
     // Act
     await logOutBearerSession({
-      apiBaseUrl: 'https://abc.tunnel.example',
       bearerStore: store,
       fetch: requests.fetch,
       leave: () => {},
@@ -37,7 +36,6 @@ describe('logOutBearerSession', () => {
 
     // Act
     await logOutBearerSession({
-      apiBaseUrl: 'https://abc.tunnel.example',
       bearerStore: store,
       fetch: recordingFetch().fetch,
       leave: () => {
@@ -57,7 +55,6 @@ describe('logOutBearerSession', () => {
 
     // Act
     await logOutBearerSession({
-      apiBaseUrl: 'https://abc.tunnel.example',
       bearerStore: store,
       fetch: () => {
         bearerWhileRevoking = store.bearer()
@@ -77,7 +74,6 @@ describe('logOutBearerSession', () => {
 
     // Act
     await logOutBearerSession({
-      apiBaseUrl: 'https://abc.tunnel.example',
       bearerStore: store,
       fetch: () => Promise.reject(new TypeError('Failed to fetch')),
       leave: () => {
@@ -92,12 +88,11 @@ describe('logOutBearerSession', () => {
 
   it('should not call the server when no bearer is held', async () => {
     // Arrange
-    const store = makeBearerAuthStateStore()
+    const store = makeBearerAuthStateStore(memoryStorage(), SERVER_URL_KEY)
     const requests = recordingFetch()
 
     // Act
     await logOutBearerSession({
-      apiBaseUrl: 'https://abc.tunnel.example',
       bearerStore: store,
       fetch: requests.fetch,
       leave: () => {},
@@ -121,8 +116,7 @@ describe('logOutBearerSession', () => {
 
           // Act
           await logOutBearerSession({
-            apiBaseUrl: `${origin}${'/'.repeat(trailingSlashes)}`,
-            bearerStore: signedInStore(token),
+            bearerStore: signedInStore(token, `${origin}${'/'.repeat(trailingSlashes)}`),
             fetch: requests.fetch,
             leave: () => {},
           })
@@ -142,7 +136,6 @@ describe('gatekeeperLogoutSettingsItem', () => {
     const store = signedInStore('eyJ.owner.token')
     const left = Promise.withResolvers<undefined>()
     const item = gatekeeperLogoutSettingsItem({
-      apiBaseUrl: 'https://abc.tunnel.example',
       bearerStore: store,
       fetch: recordingFetch().fetch,
       leave: () => left.resolve(undefined),
@@ -184,10 +177,27 @@ const recordingFetch = (): { readonly fetch: typeof fetch; readonly seen: SeenRe
   return { fetch: stub, seen }
 }
 
-/** A bearer store holding `token`, signed in until 2100. */
-const signedInStore = (token: string): ReturnType<typeof makeBearerAuthStateStore> => {
-  const store = makeBearerAuthStateStore()
-  store.writeBearer(token)
+/** The key the test stores keep their server under. */
+const SERVER_URL_KEY = 'test.signed-in-server'
+
+/** An in-memory stand-in for the tab's `sessionStorage`. */
+const memoryStorage = (): Pick<Storage, 'getItem' | 'setItem'> => {
+  const entries = new Map<string, string>()
+  return {
+    getItem: (key) => entries.get(key) ?? null,
+    setItem: (key, value) => {
+      entries.set(key, value)
+    },
+  }
+}
+
+/** A bearer store holding `token` from `serverUrl`, signed in until 2100. */
+const signedInStore = (
+  token: string,
+  serverUrl = 'https://abc.tunnel.example'
+): ReturnType<typeof makeBearerAuthStateStore> => {
+  const store = makeBearerAuthStateStore(memoryStorage(), SERVER_URL_KEY)
+  store.writeSession({ serverUrl, bearer: token })
   store.setAuthState(AuthedUntil({ exp: 4_102_444_800 }))
   return store
 }

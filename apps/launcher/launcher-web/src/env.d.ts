@@ -2,8 +2,8 @@
 
 interface ImportMetaEnv {
   /**
-   * The DSN of the launcher's Sentry project, read by both entries
-   * (`session/consented-entry-root.tsx`); unset, the entry reports nothing
+   * The DSN of the launcher's Sentry project, read by
+   * `session/consented-entry-root.tsx`; unset, the launcher reports nothing
    * whatever the user answers.
    */
   readonly VITE_SENTRY_DSN_LAUNCHER_WEB?: string

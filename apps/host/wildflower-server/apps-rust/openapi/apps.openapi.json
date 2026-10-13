@@ -213,7 +213,7 @@
         "tags": [
           "Launch"
         ],
-        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). Every launcher\ndrives this through the typed client so the owner bearer rides along.\nScope-gated on the `wildflower/launch` umbrella through\n[`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant\nto cover its OAuth client's scopes (checked here). See the module docs for the\nresolve-then-dispatch flow and the auth posture.",
+        "summary": "`POST /apps/{id}` — launch an app (`404` if no app has this id). Every launcher\ndrives this through the typed client so the owner bearer rides along.\nScope-gated on the `wildflower/launch` umbrella through\n[`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant\nto cover its OAuth client's scopes (checked here). See the module docs for the\nflow and the auth posture.",
         "operationId": "handle_launch_app",
         "parameters": [
           {
@@ -228,7 +228,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The resolved launch URL, for a forwarded caller's page to navigate to",
+            "description": "The resolved launch URL, for the caller's page to navigate to",
             "content": {
               "application/json": {
                 "schema": {
@@ -236,9 +236,6 @@
                 }
               }
             }
-          },
-          "204": {
-            "description": "Host sink opened the launch URL for a loopback caller"
           },
           "403": {
             "description": "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes",
@@ -524,7 +521,7 @@
       },
       "LaunchTargetBody": {
         "type": "object",
-        "description": "Wire shape of a forwarded launch's `200`: the resolved launch URL, for the\ncaller's page to navigate to.",
+        "description": "Wire shape of a launch's `200`: the resolved launch URL, for the\ncaller's page to navigate to.",
         "required": [
           "url"
         ],
