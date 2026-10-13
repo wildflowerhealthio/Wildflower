@@ -30,6 +30,13 @@ The system, Patient and Group `$export` operations are served, with HFS's defaul
 
 HFS's built-in discovery doc is shaped for **SMART Backend Services** — it advertises `client_credentials` with `token_endpoint_auth_methods_supported: ["private_key_jwt"]` only. Public **SMART App Launch** clients (e.g. the SMART growth-chart sample) need the `authorization_code` grant and an `authorization_endpoint`. Our override advertises the authorization server authorize/token URLs that already exist at the host root, so a SMART app fetches discovery here and follows the links straight to the authorization server for the authorize/token exchange. Its `capabilities` also list `wildflower-server`, which is how a client (`authorization-core`'s discovery) tells a Wildflower server from a plain SMART server answering at the same kind of URL.
 
+The document advertises only what is served. Every endpoint URL in it is a route on the origin it was served on (`wildflower-server-rust`'s `every_endpoint_smart_discovery_advertises_is_routed` walks them), except `management_endpoint`:
+
+- **`management_endpoint`** is the hosted Wildflower Authorization app, pointed at this server: `<AuthorizationAppBase>?iss=<issuer>`. The host sets the base (`authorization_app_base_url` in `tauri-shared-config.json`, `https://wildflowerhealth.io/authorization/`).
+- **`wildflower_authorization_api`**, a Wildflower extension field, is the authorization server's JSON API base, `<origin>/authorization/`. The app reads it, so it never hardcodes a server path.
+- **`grant_types_supported`** and **`token_endpoint_auth_methods_supported`** are what `/oauth/token` accepts: the `authorization_code`, `refresh_token` and device-code grants; a client secret in a Basic header or the form body, or `none` for a public client.
+- There is no `registration_endpoint`, `revocation_endpoint` or `introspection_endpoint`: none is served. `/authorization/revocations` takes `{jti, expiresAt}` or `{subject}`, not RFC 7009's `token`, so it isn't advertised as one.
+
 ## `$everything` operation (added; Patient only)
 
 `GET /Patient/{id}/$everything` is implemented locally (`src/patient_everything.rs`), mounted ahead of HFS — **HFS ships no `$everything`**. It delegates data-fetching back into HFS's own handlers in-process (a `read` for the Patient, then an indexed `subject=` search per related type), re-driving a clone of HFS's router with sub-requests that carry the caller's `Authorization` header, so HFS's SMART v2 scope enforcement stays in the path exactly as for a direct `GET /Patient/{id}`.

@@ -50,6 +50,11 @@ fn build_routers() -> (FhirR4Routers, TempDb) {
         jwks_url: None,
         search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
         public_origin: PUBLIC_ORIGIN.parse().expect("parse public origin"),
+        authorization_app_base:
+            wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase::parse(
+                "https://wildflowerhealth.io/authorization/",
+            )
+            .expect("parse the authorization app base"),
     };
 
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
