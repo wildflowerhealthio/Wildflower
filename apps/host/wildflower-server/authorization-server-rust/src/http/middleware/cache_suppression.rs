@@ -1,8 +1,8 @@
-//! Blanket cache-suppression for the Owner `/access/*` surface. Every response
+//! Blanket cache-suppression for the Owner `/authorization/*` surface. Every response
 //! there carries privileged data — pending consent prompts, device prompts,
 //! standing grants, the session, approve/deny outcomes — that a shared or
 //! browser cache must never retain. Applying it in one layer (rather than per
-//! handler) makes the guarantee comprehensive: a new `/access` route, a 404, and
+//! handler) makes the guarantee comprehensive: a new `/authorization` route, a 404, and
 //! the session gate's 401 all inherit it without a call site having to
 //! remember.
 //!

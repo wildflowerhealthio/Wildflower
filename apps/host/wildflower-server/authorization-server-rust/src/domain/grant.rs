@@ -143,7 +143,7 @@ fn union_scopes_into(standing_ref: &mut Vec<String>, additional: &[String]) {
 }
 
 /// The wire/list seam over the two concrete grant kinds — what cross-kind
-/// reads (`all_grants`, `grant_by_id`) return and what the `/access/grants`
+/// reads (`all_grants`, `grant_by_id`) return and what the `/authorization/grants`
 /// endpoints serialize. Internally-tagged on `grantType` with the snake_case
 /// kind names, so each variant serializes as its struct's camelCase fields
 /// with the tag alongside — the exact `grantType`-tagged union the TS

@@ -35,7 +35,7 @@ fn found_redirect(location: &str) -> Response {
 /// renders one of the endpoint's three distinct failure shapes through
 /// `IntoResponse`, so a fallible step bails with `?` instead of a `match` +
 /// `return` at every call site — the authorization-endpoint analogue of
-/// [`TokenError`](super::internal::TokenError) (and, on the Owner `/access`
+/// [`TokenError`](super::internal::TokenError) (and, on the Owner `/authorization`
 /// surface, [`AuthorizationServerError`](crate::domain::authorization_server_error::AuthorizationServerError)).
 /// Kept small (no embedded
 /// `Response`) so `Result<_, AuthorizeError>` doesn't trip

@@ -10,7 +10,7 @@ use crate::ports::Revocation;
 /// Denylist the logged-out session token's `jti` until `expires_at`, so a leaked
 /// copy of the token can't be replayed after logout.
 ///
-/// **Best-effort by design:** the `/access` gate already verified the request's
+/// **Best-effort by design:** the `/authorization` gate already verified the request's
 /// token, so this only recovers the trusted `jti` + `exp` to denylist; any store
 /// hiccup (already revoked, transient failure) must never fail the logout — the
 /// client has already forgotten the token — so a failure is logged and

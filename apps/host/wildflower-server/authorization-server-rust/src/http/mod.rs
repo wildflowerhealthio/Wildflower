@@ -36,7 +36,7 @@ use crate::domain::capabilities::oauth::ClientScopesReader;
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 /// The shared `InsufficientScopeBody` is registered here so the
 /// [`InsufficientScopeResponses`](wildflowerhealthio_scope_capabilities::InsufficientScopeResponses)
-/// addon in `openapi_spec` can `$ref` it on the scope-gated `/access` paths.
+/// addon in `openapi_spec` can `$ref` it on the scope-gated `/authorization` paths.
 #[derive(OpenApi)]
 #[openapi(components(schemas(wildflowerhealthio_scope_capabilities::InsufficientScopeBody)))]
 struct ApiDoc;
@@ -51,21 +51,21 @@ fn documented_public_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
 }
 
 /// The spec-only view of the whole documented surface: the pre-auth routes
-/// plus the documented slice of `/access` (the `/clients` routes; the rest of
+/// plus the documented slice of `/authorization` (the `/clients` routes; the rest of
 /// the admin surface is not documented yet). Never served as-is — [`router`]
-/// mounts the `/access` half behind the session gate.
+/// mounts the `/authorization` half behind the session gate.
 #[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
-    documented_public_router().nest("/access", routes::clients::openapi_router())
+    documented_public_router().nest("/authorization", routes::clients::openapi_router())
 }
 
 /// Build the authorization server's public HTTP surface. Routes live at
-/// `/.well-known/jwks.json`, `/oauth/*`, and `/access/*` (authenticated
+/// `/.well-known/jwks.json`, `/oauth/*`, and `/authorization/*` (authenticated
 /// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
 /// `.merge()`s. This router carries **no** loopback-peer gate of its own, so
 /// the host decides per listener: its loopback listener wraps the whole merged
 /// surface in [`require_loopback_peer_middleware`], and its tunnel listener
-/// serves `/oauth/*` and `/access/*` to remote visitors, behind the same
+/// serves `/oauth/*` and `/authorization/*` to remote visitors, behind the same
 /// bearer and session gates.
 pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     let (documented, _spec) = documented_public_router().split_for_parts();
@@ -88,13 +88,13 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     Router::new()
         .merge(documented)
         .nest("/oauth", routes::oauth::page_router())
-        .nest("/access", access)
+        .nest("/authorization", access)
         .with_state(state)
 }
 
 /// Whether `path` is on the authorization server's **pre-auth public surface** — the
 /// discovery + OAuth routes a client reaches before it holds a token
-/// (`/.well-known/*` incl. `jwks.json`, and `/oauth/*`). The `/access/*` admin
+/// (`/.well-known/*` incl. `jwks.json`, and `/oauth/*`). The `/authorization/*` admin
 /// surface is authenticated + scope-gated and NOT public.
 ///
 /// Owned here, beside [`router`] (which mounts these paths), so a consumer that
@@ -139,14 +139,14 @@ fn openapi_spec() -> utoipa::openapi::OpenApi {
 
     let (_router, mut spec) = documented_router().split_for_parts();
     spec.info = utoipa::openapi::Info::new("Wildflower Authorization OAuth API", "0.0.0");
-    // Every documented `/access` operation is scope-gated (the ungated
-    // `/access/session` isn't documented), so the gated paths are read off the
+    // Every documented `/authorization` operation is scope-gated (the ungated
+    // `/authorization/session` isn't documented), so the gated paths are read off the
     // spec rather than listed by hand.
     let gated_paths: Vec<String> = spec
         .paths
         .paths
         .keys()
-        .filter(|path| path.starts_with("/access/"))
+        .filter(|path| path.starts_with("/authorization/"))
         .cloned()
         .collect();
     wildflowerhealthio_scope_capabilities::InsufficientScopeResponses::for_paths(gated_paths)

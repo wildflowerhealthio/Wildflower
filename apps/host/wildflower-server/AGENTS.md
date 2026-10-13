@@ -14,7 +14,7 @@ in a slice because more than one product uses them (`slices/authorization`,
   `WildflowerServer::serve` serves it.
 - **`authorization-server-rust`** — the OAuth 2.0 / SMART authorization server: clients,
   grants, tokens, the bearer gate every other surface sits behind, and the
-  `/access` admin routes. Its TypeScript half,
+  `/authorization` admin routes. Its TypeScript half,
   [`slices/authorization`](../../../slices/authorization/AGENTS.md), is shared by
   every app that signs in.
 - **`token-revocation-rust`** — the per-token denylist and per-subject epoch

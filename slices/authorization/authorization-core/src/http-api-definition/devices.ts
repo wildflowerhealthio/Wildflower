@@ -57,7 +57,7 @@ const httpApiGroup = HttpApiGroup.make('devices', { topLevel: false })
       .addError(DeviceConsentNotFoundSchema, { status: 404 })
   )
   .middleware(RequireAuthMiddleware)
-  .prefix('/access')
+  .prefix('/authorization')
 
 export {
   httpApiGroup,

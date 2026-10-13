@@ -1,5 +1,5 @@
 //! Client capabilities — the `wildflower/Client.*` capabilities behind
-//! `/access/clients[/{clientId}]`: list every registered client and set one's
+//! `/authorization/clients[/{clientId}]`: list every registered client and set one's
 //! `disabled_at`. What disabling does (and leaves
 //! alone) is described under "Client" in `slices/authorization/docs/Jargon
 //! Explanation.md`.
@@ -43,7 +43,7 @@ pub(crate) struct ClientView {
     pub(crate) first_party: bool,
 }
 
-/// Read access to registered clients — `GET /access/clients`.
+/// Read access to registered clients — `GET /authorization/clients`.
 pub(crate) struct ClientsReader<S: GrantStore> {
     store: S,
     first_party_client_id: Arc<str>,
@@ -74,7 +74,7 @@ impl<S: GrantStore> ClientsReader<S> {
 }
 
 /// Disable or re-enable a client by writing its `disabled_at` —
-/// `PATCH /access/clients/{clientId}`. Idempotent: repeating a request leaves
+/// `PATCH /authorization/clients/{clientId}`. Idempotent: repeating a request leaves
 /// the row as the first one left it (a repeated disable keeps the original
 /// `disabled_at`).
 pub(crate) struct ClientsDisabler<S: GrantStore> {

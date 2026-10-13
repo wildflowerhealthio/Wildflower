@@ -26,12 +26,12 @@
         }
       }
     },
-    "/access/clients": {
+    "/authorization/clients": {
       "get": {
         "tags": [
           "Access management"
         ],
-        "summary": "`GET /access/clients` — every registered OAuth client (seeded or trusted on first\nuse), disabled ones included, ordered by `clientId`. Acquired through\n[`LiveClientsReader`] (scope `wildflower/Client.r`).",
+        "summary": "`GET /authorization/clients` — every registered OAuth client (seeded or trusted on first\nuse), disabled ones included, ordered by `clientId`. Acquired through\n[`LiveClientsReader`] (scope `wildflower/Client.r`).",
         "operationId": "handle_list_clients",
         "responses": {
           "200": {
@@ -60,12 +60,12 @@
         }
       }
     },
-    "/access/clients/{clientId}": {
+    "/authorization/clients/{clientId}": {
       "patch": {
         "tags": [
           "Access management"
         ],
-        "summary": "`PATCH /access/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
+        "summary": "`PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
         "operationId": "handle_update_client",
         "parameters": [
           {
@@ -886,7 +886,7 @@
       },
       "UpdateClientBody": {
         "type": "object",
-        "description": "Body of `PATCH /access/clients/{clientId}` — the one client field the Owner\ncan edit.",
+        "description": "Body of `PATCH /authorization/clients/{clientId}` — the one client field the Owner\ncan edit.",
         "required": [
           "disabledAt"
         ],

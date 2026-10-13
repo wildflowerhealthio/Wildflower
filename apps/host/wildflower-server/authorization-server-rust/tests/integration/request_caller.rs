@@ -153,7 +153,7 @@ async fn the_bearer_gate_stamps_why_it_refused_each_401() {
 async fn the_session_gate_stamps_why_it_refused_each_401() {
     let (g, host_owner_token, db) = spin_up();
     let no_token = loopback_request(
-        Request::get("/access/grants").header("host", "127.0.0.1"),
+        Request::get("/authorization/grants").header("host", "127.0.0.1"),
         Body::empty(),
     );
     let missing = g.router.clone().oneshot(no_token).await.expect("oneshot");

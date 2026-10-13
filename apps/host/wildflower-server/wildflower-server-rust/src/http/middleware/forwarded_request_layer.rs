@@ -143,7 +143,7 @@ mod tests {
 
     /// A router wrapped in the layer, whose routes answer the way the gated
     /// slices do: `/Patient/{id}` a `200` to the `lifting` client,
-    /// `/access/grants` a scope `403` to it, `/refused/{refusal}` each bearer
+    /// `/authorization/grants` a scope `403` to it, `/refused/{refusal}` each bearer
     /// gate `401`, and `/anonymous` an ungated `200`.
     fn reporting_router(forwarded_request_senders: ForwardedRequestSenders) -> Router {
         Router::new()
@@ -152,7 +152,7 @@ mod tests {
                 get(|| async { stamped(StatusCode::OK, Some(lifting()), None) }),
             )
             .route(
-                "/access/grants",
+                "/authorization/grants",
                 get(|| async { stamped(StatusCode::FORBIDDEN, Some(lifting()), None) }),
             )
             .route(
@@ -274,12 +274,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_scope_failure_reports_the_caller_and_the_403() {
-        let forwarded_request = reported(forwarded_get("/access/grants")).await;
+        let forwarded_request = reported(forwarded_get("/authorization/grants")).await;
 
         assert_eq!(forwarded_request.status, 403);
         assert_eq!(forwarded_request.caller, Some(lifting()));
         assert_eq!(forwarded_request.refusal, None);
-        assert_eq!(forwarded_request.reduced_path, "/access");
+        assert_eq!(forwarded_request.reduced_path, "/authorization");
     }
 
     #[tokio::test]

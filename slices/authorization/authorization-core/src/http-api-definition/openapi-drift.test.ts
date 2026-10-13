@@ -1,6 +1,6 @@
 /**
  * Spec-drift contract test — the authorization server OAuth + discovery surface, plus the
- * documented slice of `/access` (client management).
+ * documented slice of `/authorization` (client management).
  *
  * Diffs the Rust/axum server's OpenAPI spec (emitted by `utoipa`, committed at
  * `authorization-server-rust/openapi/authorization-server-oauth.openapi.json`) against the TypeScript
@@ -30,8 +30,8 @@ defineSpecDriftTest({
     ['/oauth/authorize/{id}', 'get'],
     ['/oauth/token', 'post'],
     ['/oauth/device_authorization', 'post'],
-    ['/access/clients', 'get'],
-    ['/access/clients/{clientId}', 'patch'],
+    ['/authorization/clients', 'get'],
+    ['/authorization/clients/{clientId}', 'patch'],
   ],
   /**
    * `get /oauth/authorize` is a browser front door: success is a 302 redirect and

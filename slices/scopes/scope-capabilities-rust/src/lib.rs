@@ -1,7 +1,7 @@
 //! Scope-gated capability extractors — the reusable core of the **default-safe**
 //! authorization pattern, and the enforcement half of the scope system (the
 //! grammar half is `scopes-rust`, this crate's sibling in the scopes slice). The
-//! pattern originated on the authorization server's `/access` surface; the copy-this-pattern
+//! pattern originated on the authorization server's `/authorization` surface; the copy-this-pattern
 //! recipe is `docs/Authorization/Scope-Gated Endpoints How-To.md`.
 //!
 //! The shape a slice adopts:

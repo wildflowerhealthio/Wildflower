@@ -23,7 +23,7 @@ pub struct AuthorizationServerConfig {
     /// single source shared with the TS shell); standalone/test builds use
     /// [`crate::default_local_granted_scopes`]. Must cover every
     /// [`crate::WILDFLOWER_WIDEST_SCOPES`] entry or the host token can't pass the
-    /// `/access/*` owner gate (asserted in [`crate::setup_authorization_server`]).
+    /// `/authorization/*` owner gate (asserted in [`crate::setup_authorization_server`]).
     pub host_owner_scopes: Vec<String>,
 
     /// The `client_id` of the host's first-party OAuth client — seeded as the

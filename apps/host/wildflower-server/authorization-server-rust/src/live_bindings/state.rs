@@ -36,7 +36,7 @@ pub struct AuthorizationServerState {
     /// The shared token-revocation store. The auth gate (through the
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier))
     /// runs the full `is_revoked` check (denylist + subject epoch) through it,
-    /// and the revoke control surface (logout, `/access/revocations`, grant
+    /// and the revoke control surface (logout, `/authorization/revocations`, grant
     /// revoke) writes to it through the [`Revocation`](crate::ports::Revocation)
     /// port. Cheap to clone — it wraps the same shared connection every other
     /// slice holds. The host builds one and threads it into both

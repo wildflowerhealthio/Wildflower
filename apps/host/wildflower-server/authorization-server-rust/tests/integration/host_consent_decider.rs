@@ -1,6 +1,6 @@
 //! `HostConsentDecider`: the host reads and decides a server's pending consents
 //! in-process, with no token, through the capabilities behind
-//! `/access/oauth-consents/*` and `/access/devices/*`. A decision moves the
+//! `/authorization/oauth-consents/*` and `/authorization/devices/*`. A decision moves the
 //! consent head as one made over HTTP does.
 
 use wildflowerhealthio_authorization_server::{

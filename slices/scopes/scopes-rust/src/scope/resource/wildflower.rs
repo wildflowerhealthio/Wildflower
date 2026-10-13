@@ -37,7 +37,7 @@ pub enum WildflowerResource {
     Grant,
     Client,
     /// An issued token (access **or** refresh) as a revocation target — the
-    /// resource behind `POST /access/revocations`, which denylists a `jti` or
+    /// resource behind `POST /authorization/revocations`, which denylists a `jti` or
     /// bumps a subject's epoch and so kills *both* token kinds.
     Token,
     /// The apps catalogue + home-screen surface (`/apps`, `/home-screen`): read

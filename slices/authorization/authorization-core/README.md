@@ -85,19 +85,19 @@ and 90 days respectively). See the
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
-- `/access/oauth-consents/:id` (+ `/approve`, `/deny`) — Owner actions
+- `/authorization/oauth-consents/:id` (+ `/approve`, `/deny`) — Owner actions
   on a pending OAuth code-flow request. The consent carries a `registration`
   verdict (`registered` / `new` / `changed`); approving a `new` or `changed`
   one requires `acknowledgedRegistration: true`.
-- `/access/devices/:userCode` (+ `/approve`, `/deny`) — Owner actions
+- `/authorization/devices/:userCode` (+ `/approve`, `/deny`) — Owner actions
   on a pending device-flow request.
-- `/access/grants`, `/access/grants/:id` — list / inspect / revoke
+- `/authorization/grants`, `/authorization/grants/:id` — list / inspect / revoke
   standing grants.
-- `/access/clients`, `/access/clients/:clientId` — list every registered
+- `/authorization/clients`, `/authorization/clients/:clientId` — list every registered
   client, and `PATCH` one's `disabledAt` to take trust back (a UTC time) or
   restore it (`null`); the first-party host can't be disabled
   (`409 FirstPartyClientLocked`).
-- `/access/requests`, `/access/requests/:id` (+ `/approve`, `/deny`) —
+- `/authorization/requests`, `/authorization/requests/:id` (+ `/approve`, `/deny`) —
   gate decisions on inbound HTTP requests.
 
 ## The SMART sign-in client

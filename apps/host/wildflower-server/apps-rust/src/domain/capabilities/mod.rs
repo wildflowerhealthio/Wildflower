@@ -1,6 +1,6 @@
 //! Scope-gated capabilities for the `/apps` **admin** surface — the apps slice's
 //! copy of the default-safe authorization pattern (the generic machinery lives in
-//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on the authorization server's `/access`
+//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on the authorization server's `/authorization`
 //! surface, recipe in `docs/Authorization/Scope-Gated Endpoints How-To.md`). They
 //! live in `domain/` beside the [`AppsStore`] port they operate through — never
 //! importing `crate::http` — so a forgotten permission check can't compile a

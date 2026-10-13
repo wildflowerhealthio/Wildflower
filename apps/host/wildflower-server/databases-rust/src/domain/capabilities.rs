@@ -1,6 +1,6 @@
 //! Scope-gated capabilities for the `/databases` surface — the databases slice's
 //! copy of the default-safe authorization pattern (the generic machinery lives in
-//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on the authorization server's `/access`
+//! [`wildflowerhealthio_scope_capabilities`]; the pattern originated on the authorization server's `/authorization`
 //! surface). They live in `domain/` and depend only on the
 //! [`DatabaseFiles`](crate::ports::DatabaseFiles) port + a catalogue and [`Grant`]
 //! handed to their constructors — never on `crate::http`, `std::fs`, `rusqlite`,

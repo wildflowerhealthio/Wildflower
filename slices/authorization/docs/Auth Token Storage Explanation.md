@@ -30,7 +30,7 @@ issued — written together by `writeSession`.
 The launcher's transport reads both on every request: it addresses the
 request to the session's server and stamps `Authorization: Bearer` on it.
 Logout forgets the bearer, asks the session's server to revoke it
-(`POST /access/logout`), and clears the tab's `sessionStorage`.
+(`POST /authorization/logout`), and clears the tab's `sessionStorage`.
 
 ## Why authed loaders gate on `beforeLoad`, not a component or a loader
 

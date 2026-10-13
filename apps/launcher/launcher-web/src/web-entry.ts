@@ -98,7 +98,7 @@ const underBasepath = (basepath: string, route: string): string =>
 
 /**
  * The settings screen's Logout row: the authorization server's, over `bearerStore`. It
- * forgets the bearer, revokes it at the session's server's `/access/logout`,
+ * forgets the bearer, revokes it at the session's server's `/authorization/logout`,
  * clears the tab's `sessionStorage` (the session's server and any
  * half-finished sign-in's pending record), and reloads the bare landing page
  * at `basepath`. Nothing then names a server, so the reader picks one rather

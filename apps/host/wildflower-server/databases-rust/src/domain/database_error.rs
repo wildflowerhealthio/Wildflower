@@ -20,7 +20,7 @@ pub enum DatabaseError {
     /// The caller authenticated, but their token doesn't cover the scope this
     /// database requires for the attempted operation (its `read_scope` for a
     /// download, `delete_scope` for a delete). Rendered as a `403` naming the
-    /// missing scope(s) — the same shape the authorization server's `/access` surface returns.
+    /// missing scope(s) — the same shape the authorization server's `/authorization` surface returns.
     /// Raised by the capabilities' per-database check. Their static gates are
     /// empty, so the [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor never
     /// rejects them, but its rejection maps here too (`From<MissingScopes>`).

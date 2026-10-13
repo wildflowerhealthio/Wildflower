@@ -1112,7 +1112,9 @@ impl UiServer {
             .browser
             .post(
                 self.loopback_base_url
-                    .join(&format!("access/oauth-consents/{request_id}/approve"))
+                    .join(&format!(
+                        "authorization/oauth-consents/{request_id}/approve"
+                    ))
                     .expect("approve URL"),
             )
             .bearer_auth(owner_token)

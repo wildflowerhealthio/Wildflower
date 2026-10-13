@@ -15,7 +15,7 @@
 //!   launchers outside the authorization server.
 //! - [`HostConsentDecider`] is the consent capabilities bound to the host
 //!   Owner's grant, for the host to decide consents in-process.
-//! - The remaining modules hold one binding each (the `/access` ones implement
+//! - The remaining modules hold one binding each (the `/authorization` ones implement
 //!   `FixedScopeCapability`/`Capability`, the session ones
 //!   `AuthenticatedCapability`); each lifts the store + port handles out of the
 //!   state (never the whole state), so `domain/` stays free of both

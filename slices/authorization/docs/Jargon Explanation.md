@@ -24,11 +24,11 @@ host-minted token (see [bootstrap URL](#bootstrap-url)).
 Three distinct human/machine roles whose names collide easily — get these
 straight first.
 
-| Role               | Who they are                                                                                                            | Where they show up                                                                   |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **OAuth client**   | Remote app requesting access (the SMART-on-FHIR caller, or `wildflower-host` itself).                                   | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table  |
-| **Owner**          | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests. | `/access/...` endpoints, `RequireAuthMiddleware`, Bearer tokens with `'owner'` scope |
-| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                                  | OAuth spec only; we say "Owner"                                                      |
+| Role               | Who they are                                                                                                            | Where they show up                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **OAuth client**   | Remote app requesting access (the SMART-on-FHIR caller, or `wildflower-host` itself).                                   | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table         |
+| **Owner**          | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests. | `/authorization/...` endpoints, `RequireAuthMiddleware`, Bearer tokens with `'owner'` scope |
+| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                                  | OAuth spec only; we say "Owner"                                                             |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
 > HTTP-client instances in the codebase — the word is overloaded. The
@@ -72,8 +72,8 @@ the row is created or widened only when the Owner approves — see
   authentication at `/oauth/token` and `/oauth/device_authorization` fails
   with `invalid_client`. Re-enabling clears the stamp and the client works
   again exactly as registered.
-- **Owner management:** `GET /access/clients` lists every row (never the
-  secret hash) with a `firstParty` flag. `PATCH /access/clients/:clientId`
+- **Owner management:** `GET /authorization/clients` lists every row (never the
+  secret hash) with a `firstParty` flag. `PATCH /authorization/clients/:clientId`
   with `{ "disabledAt": … }` answers with the updated row and sets the stamp
   as follows:
   - any UTC time disables the client now, stamped with the server's own
@@ -95,7 +95,7 @@ auto-seeded by the server at startup, with
 `kind: 'public'`, empty `redirectUris` (it gets its token via the device
 flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
 redirects), and `allowedScopes: ['owner']`. It can't be disabled: the Owner reaches
-`/access/clients` through it, so a `PATCH /access/clients/wildflower-host` that
+`/authorization/clients` through it, so a `PATCH /authorization/clients/wildflower-host` that
 sets a `disabledAt` is refused with a `409 FirstPartyClientLocked`.
 
 ### Trust on first use
@@ -116,7 +116,7 @@ the current [`clients`](#client) row, and computes a **registration verdict**
   fall outside `allowedScopes`, so approving would widen the row.
 
 The verdict is computed at read time (both at `/authorize` and on
-`GET /access/oauth-consents/:id`, which returns it as `registration`), never
+`GET /authorization/oauth-consents/:id`, which returns it as `registration`), never
 stored, so two prompts for the same app agree with whatever the row says
 now. Nothing is persisted for a `new` client until approval; a denied or
 expired prompt leaves no trace of it.
@@ -282,8 +282,8 @@ Public components are published at `/.well-known/jwks.json`.
 ### Owner auth middleware (`RequireAuthMiddleware`)
 
 The authorization wall on every Owner-facing JSON endpoint
-(`/access/oauth-consents/*`, `/access/devices/*`, `/access/grants/*`,
-`/access/requests/*`). Two-stage check:
+(`/authorization/oauth-consents/*`, `/authorization/devices/*`, `/authorization/grants/*`,
+`/authorization/requests/*`). Two-stage check:
 
 1. `internal/jwt.ts:verifyJwt` validates the Bearer token (signature,
    `iss`, `aud`, `exp` — all enforced by `jose.jwtVerify`'s options),
@@ -327,7 +327,7 @@ client. Flow:
    device — or answers it in the host's consent sheet, which the
    [pending-consent queue](#pending-consent-queue) raises with no code entry.
 3. Owner reviews the request (device name + requested scopes) and approves via
-   `POST /access/devices/:userCode/approve`. The Owner may add scopes beyond
+   `POST /authorization/devices/:userCode/approve`. The Owner may add scopes beyond
    what the device requested (up to the client's `allowedScopes`) or prune them
    — see [Expandable consent](#expandable-consent) — and, from the settings
    surface, adjust the device name.
@@ -369,10 +369,10 @@ oldest `requestedAt` first.
 The head of that queue is a `PendingConsentHead`, discriminated because the two
 flows have no shared lookup key:
 
-| Flow               | Head                           | Hydrated by                      |
-| ------------------ | ------------------------------ | -------------------------------- |
-| Device (RFC 8628)  | `{ kind: 'device', userCode }` | `GET /access/devices/:userCode`  |
-| Authorization code | `{ kind: 'oauth', id }`        | `GET /access/oauth-consents/:id` |
+| Flow               | Head                           | Hydrated by                             |
+| ------------------ | ------------------------------ | --------------------------------------- |
+| Device (RFC 8628)  | `{ kind: 'device', userCode }` | `GET /authorization/devices/:userCode`  |
+| Authorization code | `{ kind: 'oauth', id }`        | `GET /authorization/oauth-consents/:id` |
 
 The Rust side recomputes the head (`oldest_pending_consent_head`) after every
 transition that could move it — either flow's insert, approve, or deny — and
@@ -505,14 +505,14 @@ page is public; auth is JS-driven on the JSON endpoints behind them.
 ### `access-management`
 
 The HttpApi group fronting the **Owner-facing** JSON endpoints under
-`/access/...` — list/inspect/revoke `Grant`s, list/update
+`/authorization/...` — list/inspect/revoke `Grant`s, list/update
 [`Client`](#client)s, list/decide pending HTTP requests. These all go through `RequireAuthMiddleware`.
 
-### HTTP request gating (`httpRequests` table + `/access/requests`)
+### HTTP request gating (`httpRequests` table + `/authorization/requests`)
 
 A separate, authorization-server-as-proxy concern: inbound HTTP requests are logged
 to `httpRequests` and pause until the Owner approves or denies them.
-**Not currently wired** — the `/access/requests` endpoints are defined
+**Not currently wired** — the `/authorization/requests` endpoints are defined
 but no producer pushes rows yet.
 
 > **Open question:** The HTTP-request gating flow shares the
@@ -661,7 +661,7 @@ semantics. Issued at `/oauth/token` only when the granted scopes include
   (`REFRESH_TOKEN_FAMILY_TTL`) measured from the original authorization;
   rotation never extends it.
 - **Revocation:** soft — killing a family (replay detection, or
-  `DELETE /access/grants/{id}` revoking the client's standing consent)
+  `DELETE /authorization/grants/{id}` revoking the client's standing consent)
   pulls the family's `expires_at` back to the revocation instant and
   stamps its live token consumed. Rows are never deleted, so the lineage
   stays auditable.
@@ -676,10 +676,10 @@ of the one multi-use bearer is untouched. The shared store (`token-revocation-ru
 its own `token_revocation` migration namespace on the same database) holds two
 levers:
 
-- **`revoked_jtis`** — a per-token denylist. `POST /access/revocations` with a
+- **`revoked_jtis`** — a per-token denylist. `POST /authorization/revocations` with a
   `jti`, and logout of the presented token, add rows here.
 - **`revocation_epochs`** — a per-subject `not_before`. Bumping it (via
-  `POST /access/revocations` with a `subject`, or a grant revoke) invalidates
+  `POST /authorization/revocations` with a `subject`, or a grant revoke) invalidates
   every token that subject holds whose `iat` predates the bump — cheap bulk
   revocation with no per-issued-`jti` registry. `subject` is the `sub` claim
   (today the `client_id`), so revocation is per-client; per-device needs a

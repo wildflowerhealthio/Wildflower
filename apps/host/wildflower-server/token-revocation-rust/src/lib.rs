@@ -227,7 +227,7 @@ impl RevocationStore {
     /// (one small row per subject; must outlive any token they revoke).
     ///
     /// The `revoked_at + max_token_ttl` floor is the load-bearing half.
-    /// `expires_at` is caller-supplied on the `POST /access/revocations` path, so
+    /// `expires_at` is caller-supplied on the `POST /authorization/revocations` path, so
     /// a too-early value could otherwise let the sweep drop a row while the token
     /// is still live — silently un-revoking it. But a token revoked at
     /// `revoked_at` was minted no later than then (`iat ≤ revoked_at`), so its
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn purge_keeps_a_recently_revoked_row_despite_a_too_early_expires_at() {
         // The core hardening: a too-early `expires_at` (e.g. a bad value on
-        // `POST /access/revocations`) must not let the sweep drop the row while
+        // `POST /authorization/revocations`) must not let the sweep drop the row while
         // the token could still be live. The `revoked_at + max_token_ttl` floor
         // holds it.
         let store = store();

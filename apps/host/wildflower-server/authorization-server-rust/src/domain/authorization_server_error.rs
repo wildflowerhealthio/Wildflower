@@ -18,18 +18,18 @@ use wildflowerhealthio_scope_capabilities::MissingScopes;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthorizationServerError {
     /// No pending, unexpired authorization-code consent has this id — the
-    /// Owner-facing `/access/oauth-consents/{id}` surface's 404.
+    /// Owner-facing `/authorization/oauth-consents/{id}` surface's 404.
     OAuthConsentNotFound { id: String },
     /// No pending, unexpired device-code consent has this user code — the
-    /// Owner-facing `/access/devices/{userCode}` surface's 404.
+    /// Owner-facing `/authorization/devices/{userCode}` surface's 404.
     DeviceConsentNotFound { user_code: String },
-    /// No standing grant has this id — the `/access/grants/{id}` 404.
+    /// No standing grant has this id — the `/authorization/grants/{id}` 404.
     GrantNotFound { id: String },
     /// No registered client has this `client_id` — the
-    /// `PATCH /access/clients/{clientId}` 404.
+    /// `PATCH /authorization/clients/{clientId}` 404.
     ClientNotFound { client_id: String },
     /// The Owner tried to disable the first-party host client — the
-    /// `PATCH /access/clients/{clientId}` **409**. The host client is how the
+    /// `PATCH /authorization/clients/{clientId}` **409**. The host client is how the
     /// Owner reaches this surface at all, so disabling it would lock them out;
     /// its registration is locked (like its consent registration is never
     /// trusted on first use). Nothing is written when it is raised.
@@ -38,7 +38,7 @@ pub enum AuthorizationServerError {
     /// polling endpoint's 404.
     AuthorizationRequestNotFound { id: String },
     /// The caller authenticated, but their token doesn't cover the scope(s) the
-    /// `/access` operation requires — the surface's **403**. `missing_scopes`
+    /// `/authorization` operation requires — the surface's **403**. `missing_scopes`
     /// are the rendered scopes the caller must additionally hold. Raised when the
     /// [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor rejects (via
     /// `From<MissingScopes>`).

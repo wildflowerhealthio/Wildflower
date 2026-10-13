@@ -1,5 +1,5 @@
 //! Token capability — the `wildflower/Token.d` capability behind
-//! `POST /access/revocations`. It touches no store, only the [`Revocation`] port,
+//! `POST /authorization/revocations`. It touches no store, only the [`Revocation`] port,
 //! so it isn't generic; it holds the port handle lifted from the state.
 
 use std::sync::Arc;
@@ -21,7 +21,7 @@ pub(crate) fn token_revoker_scopes() -> Vec<Scope> {
     )]
 }
 
-/// Revoke issued tokens — `POST /access/revocations`.
+/// Revoke issued tokens — `POST /authorization/revocations`.
 pub(crate) struct TokenRevoker {
     revocation: Arc<dyn Revocation>,
 }

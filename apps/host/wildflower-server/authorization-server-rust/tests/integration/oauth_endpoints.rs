@@ -249,10 +249,12 @@ async fn deciding_an_oauth_consent_clears_the_consent_head() {
             .router
             .clone()
             .oneshot(loopback_request(
-                Request::post(format!("/access/oauth-consents/{request_id}/{decision}"))
-                    .header("host", "127.0.0.1")
-                    .header("authorization", format!("Bearer {host_owner_token}"))
-                    .header("content-type", "application/json"),
+                Request::post(format!(
+                    "/authorization/oauth-consents/{request_id}/{decision}"
+                ))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}"))
+                .header("content-type", "application/json"),
                 Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
             ))
             .await

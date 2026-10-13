@@ -1,4 +1,4 @@
-//! The `/access` surface's capabilities — the **scope-gated** group, unlocked
+//! The `/authorization` surface's capabilities — the **scope-gated** group, unlocked
 //! by the caller's scopes. The generic machinery (the [`Scoped`] extractor and
 //! the [`Capability`]/[`FixedScopeCapability`] traits) lives in
 //! [`wildflowerhealthio_scope_capabilities`]; this module supplies one capability per
@@ -30,7 +30,7 @@ use std::collections::HashSet;
 
 use wildflowerhealthio_scopes::Scope;
 
-/// The admin scopes the `/access` surface enforces, deduplicated in declaration
+/// The admin scopes the `/authorization` surface enforces, deduplicated in declaration
 /// order — the registry mapping *capability → required scope*. Because it reads
 /// the very `*_scopes()` functions the `Capability` bindings enforce, what a
 /// token can be *granted* and what it is *checked against* come from one source.
