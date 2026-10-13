@@ -5,7 +5,7 @@
 //! multi-statement flows that used to live here — the scope-union upserts and the
 //! delete-both-then-expire revoke — moved to `domain::capabilities`, which
 //! composes these primitives inside a
-//! [`GatekeeperStore`](crate::domain::GatekeeperStore) transaction.
+//! [`GrantStore`](crate::domain::GrantStore) transaction.
 //!
 //!  - [`authorization_code`] — the `authorization_code_grants` `table!` + its keyed
 //!    lookup, insert, and update (`/authorize`'s standing consent per `redirect_uri`);

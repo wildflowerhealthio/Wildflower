@@ -4,15 +4,15 @@
 
 use crate::crypto_util::public_jwk::PublicJwk;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// Read the public signing keys. Generic over the store port; the binding
-/// instantiates it over the concrete `SqliteGatekeeperStore`.
-pub(crate) struct PublicKeysReader<S: GatekeeperStore> {
+/// instantiates it over the concrete `SqliteGrantStore`.
+pub(crate) struct PublicKeysReader<S: GrantStore> {
     store: S,
 }
 
-impl<S: GatekeeperStore> PublicKeysReader<S> {
+impl<S: GrantStore> PublicKeysReader<S> {
     /// Build the reader over a store handle lifted from the state.
     pub(crate) fn new(store: S) -> Self {
         PublicKeysReader { store }

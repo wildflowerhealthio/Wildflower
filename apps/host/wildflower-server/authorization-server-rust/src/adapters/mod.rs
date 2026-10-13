@@ -3,5 +3,5 @@
 //! so `ports/` stays a set of bare contracts the domain can name without
 //! learning what implements them.
 
-pub(crate) mod pending_consent_publisher;
+pub(crate) mod owner_approval;
 pub(crate) mod revocation_store;

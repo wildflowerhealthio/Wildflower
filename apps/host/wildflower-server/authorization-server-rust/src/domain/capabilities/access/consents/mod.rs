@@ -1,6 +1,6 @@
 //! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
 //! behind `/access/oauth-consents/*` and `/access/devices/*`. The flows
-//! (load-and-validate, approve, deny) are `&impl GatekeeperStore` functions in
+//! (load-and-validate, approve, deny) are `&impl GrantStore` functions in
 //! the submodules; an approval's privileged writes go through the
 //! [`writers`](crate::domain::capabilities::writers) under the
 //! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof it
@@ -20,8 +20,8 @@ use crate::domain::client_registration::{
     classify_registration, ClientRegistrationVerdict, PresentedClientRegistration,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
-use crate::ports::PendingConsentPublisher;
+use crate::domain::GrantStore;
+use crate::ports::OwnerApproval;
 
 mod delegation;
 mod device;
@@ -135,11 +135,11 @@ pub struct ApproveDeviceConsentInput {
 
 /// Read access to pending consent prompts — the `GET` sides of
 /// `/access/oauth-consents/{id}` and `/access/devices/{userCode}`.
-pub(crate) struct ConsentReader<S: GatekeeperStore> {
+pub(crate) struct ConsentReader<S: GrantStore> {
     store: S,
 }
 
-impl<S: GatekeeperStore> ConsentReader<S> {
+impl<S: GrantStore> ConsentReader<S> {
     /// Build the reader over a store handle lifted from the state.
     pub(crate) fn new(store: S) -> Self {
         ConsentReader { store }
@@ -196,15 +196,15 @@ impl<S: GatekeeperStore> ConsentReader<S> {
 /// both consent surfaces. Statically gated by `AuthorizationRequest.u`, and it
 /// additionally holds the caller's own [`Grant`] (the approve paths reject any
 /// delegation beyond the approver's authority) plus the
-/// [`PendingConsentPublisher`] port — both lifted from the state.
-pub(crate) struct ConsentDecider<S: GatekeeperStore> {
+/// [`OwnerApproval`] port — both lifted from the state.
+pub(crate) struct ConsentDecider<S: GrantStore> {
     store: S,
-    publisher: Arc<dyn PendingConsentPublisher>,
+    owner_approval: Arc<dyn OwnerApproval>,
     approver_grant: Grant,
     first_party_client_id: Arc<str>,
 }
 
-impl<S: GatekeeperStore> ConsentDecider<S> {
+impl<S: GrantStore> ConsentDecider<S> {
     /// Build the decider over a store handle, the republish port, the approver's
     /// own granted scopes, and the first-party `client_id` — all lifted from the
     /// state + claims. The last decides which client's registration is locked
@@ -212,13 +212,13 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     /// [registration verdict](ClientRegistrationVerdict).
     pub(crate) fn new(
         store: S,
-        publisher: Arc<dyn PendingConsentPublisher>,
+        owner_approval: Arc<dyn OwnerApproval>,
         approver_grant: Grant,
         first_party_client_id: Arc<str>,
     ) -> Self {
         ConsentDecider {
             store,
-            publisher,
+            owner_approval,
             approver_grant,
             first_party_client_id,
         }
@@ -238,7 +238,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         approve_oauth_consent(
             &self.store,
-            self.publisher.as_ref(),
+            self.owner_approval.as_ref(),
             id,
             input,
             generate_code,
@@ -253,7 +253,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
 
     /// Deny an authorization-code consent.
     pub(crate) fn deny_oauth(&self, id: &str) -> Result<(), AuthorizationServerError> {
-        deny_oauth_consent(&self.store, self.publisher.as_ref(), id)
+        deny_oauth_consent(&self.store, self.owner_approval.as_ref(), id)
     }
 
     /// Approve a device-code consent; a resource scope beyond the approver's own
@@ -266,7 +266,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         approve_device_consent(
             &self.store,
-            self.publisher.as_ref(),
+            self.owner_approval.as_ref(),
             user_code,
             input,
             &self.approver_grant,
@@ -276,7 +276,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
 
     /// Deny a device-code consent.
     pub(crate) fn deny_device(&self, user_code: &str) -> Result<(), AuthorizationServerError> {
-        deny_device_consent(&self.store, self.publisher.as_ref(), user_code)
+        deny_device_consent(&self.store, self.owner_approval.as_ref(), user_code)
     }
 }
 
@@ -288,15 +288,15 @@ mod tests {
     use super::*;
     use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
     use crate::domain::test_fake::{
-        client, code_request, device_request, FakeGatekeeperStore, RecordingPublisher,
+        client, code_request, device_request, FakeGrantStore, RecordingOwnerApproval,
     };
 
     /// Approve a code-flow consent with the real
     /// first-party id — which the `client` fixture never uses, so the fixture
     /// client always takes the trust-on-first-use path.
     fn approve_code(
-        store: &FakeGatekeeperStore,
-        publisher: &RecordingPublisher,
+        store: &FakeGrantStore,
+        owner_approval: &RecordingOwnerApproval,
         id: &str,
         input: ApproveOAuthConsentInput,
         approver_grant: &Grant,
@@ -304,7 +304,7 @@ mod tests {
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         approve_oauth_consent(
             store,
-            publisher,
+            owner_approval,
             id,
             input,
             generate_code,
@@ -331,8 +331,8 @@ mod tests {
         Grant::parse(["wildflower/*.cruds", "system/*.cruds"])
     }
 
-    fn live_code_store() -> (FakeGatekeeperStore, RecordingPublisher) {
-        let store = FakeGatekeeperStore::default();
+    fn live_code_store() -> (FakeGrantStore, RecordingOwnerApproval) {
+        let store = FakeGrantStore::default();
         store.upsert_client(&client("client", &["read"])).unwrap();
         store
             .insert_authorization_request(&code_request(
@@ -341,15 +341,15 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        (store, RecordingPublisher::default())
+        (store, RecordingOwnerApproval::default())
     }
 
     #[test]
     fn approve_oauth_consent_mints_a_code_and_returns_the_redirect() {
-        let (store, publisher) = live_code_store();
+        let (store, owner_approval) = live_code_store();
         let outcome = approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             approved(&["read"]),
             &owner_grant(),
@@ -376,15 +376,15 @@ mod tests {
         // The approval moved this request out of `pending`, so the popup head
         // has to be recomputed — the queue spans both grant flows, so a
         // code-flow approval is as much a head transition as a device one.
-        assert_eq!(publisher.count(), 1);
+        assert_eq!(owner_approval.count(), 1);
     }
 
     #[test]
     fn approve_oauth_consent_with_nothing_granted_is_a_deny() {
-        let (store, publisher) = live_code_store();
+        let (store, owner_approval) = live_code_store();
         let outcome = approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             approved(&["write"]),
             &owner_grant(),
@@ -400,7 +400,7 @@ mod tests {
                 .status,
             RequestStatus::Denied,
         );
-        assert_eq!(publisher.count(), 1);
+        assert_eq!(owner_approval.count(), 1);
     }
 
     /// A request whose SMART launch bound a patient is approved only for that
@@ -409,7 +409,7 @@ mod tests {
     /// and is bound to the code.
     #[test]
     fn approve_oauth_consent_requires_the_launch_bound_patient() {
-        let (store, publisher) = live_code_store();
+        let (store, owner_approval) = live_code_store();
         store
             .insert_authorization_request(&AuthorizationRequest {
                 launch: Some("launch-1".to_owned()),
@@ -424,7 +424,7 @@ mod tests {
         for patient in [Some("pat-2"), None] {
             let result = approve_code(
                 &store,
-                &publisher,
+                &owner_approval,
                 "req-1",
                 ApproveOAuthConsentInput {
                     patient: patient.map(str::to_owned),
@@ -459,7 +459,7 @@ mod tests {
 
         approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             ApproveOAuthConsentInput {
                 patient: Some("pat-1".to_owned()),
@@ -486,8 +486,8 @@ mod tests {
     /// and the prompt stays pending so they can decide again.
     #[test]
     fn approve_oauth_consent_rejects_an_unacknowledged_new_client() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         store
             .insert_authorization_request(&code_request(
                 "req-1",
@@ -497,7 +497,7 @@ mod tests {
             .unwrap();
         let result = approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             ApproveOAuthConsentInput {
                 owner_approved_scopes: vec!["read".to_owned()],
@@ -536,8 +536,8 @@ mod tests {
     /// exactly the granted scopes.
     #[test]
     fn approve_oauth_consent_registers_an_acknowledged_new_client() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         store
             .insert_authorization_request(&code_request(
                 "req-1",
@@ -547,7 +547,7 @@ mod tests {
             .unwrap();
         approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             approved(&["read"]),
             &owner_grant(),
@@ -576,8 +576,8 @@ mod tests {
     /// the row's name and `registered_at` survive.
     #[test]
     fn approve_oauth_consent_widens_a_changed_registration() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         let elsewhere = url::Url::parse("https://other.example/cb").unwrap();
         let registered_at = Utc::now() - Duration::days(30);
         let mut existing = client("client", &["read"]);
@@ -594,7 +594,7 @@ mod tests {
 
         approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             approved(&["read"]),
             &owner_grant(),
@@ -622,8 +622,8 @@ mod tests {
     /// identical request is `Registered`.
     #[test]
     fn approve_oauth_consent_may_grant_a_scope_outside_the_registration() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         store.upsert_client(&client("client", &["read"])).unwrap();
         let mut request = code_request(
             "req-1",
@@ -635,7 +635,7 @@ mod tests {
 
         approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             approved(&["write"]),
             &owner_grant(),
@@ -670,8 +670,8 @@ mod tests {
     /// grant the approval lands as a deny, leaving its row untouched.
     #[test]
     fn approve_oauth_consent_clamps_the_first_party_client_to_its_registration() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         let host = client(crate::FIRST_PARTY_CLIENT_ID, &["read"]);
         store.upsert_client(&host).unwrap();
         let mut request = code_request(
@@ -685,7 +685,7 @@ mod tests {
 
         let outcome = approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             approved(&["write"]),
             &owner_grant(),
@@ -705,12 +705,12 @@ mod tests {
 
     #[test]
     fn approve_oauth_consent_maps_a_missing_request_to_not_found() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         assert_eq!(
             approve_code(
                 &store,
-                &publisher,
+                &owner_approval,
                 "ghost",
                 approved(&["read"]),
                 &owner_grant(),
@@ -724,8 +724,8 @@ mod tests {
 
     #[test]
     fn approve_device_consent_expands_to_client_allowed_and_republishes() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         store
             .upsert_client(&client("client", &["openid", "read"]))
             .unwrap();
@@ -734,7 +734,7 @@ mod tests {
             .unwrap();
         let outcome = approve_device_consent(
             &store,
-            &publisher,
+            &owner_approval,
             "UC-1",
             ApproveDeviceConsentInput {
                 owner_approved_scopes: vec!["read".to_owned()],
@@ -751,17 +751,17 @@ mod tests {
             .unwrap()
             .expect("device grant");
         assert_eq!(grant.scopes, vec!["read".to_owned()]);
-        assert_eq!(publisher.count(), 1);
+        assert_eq!(owner_approval.count(), 1);
     }
 
     #[test]
     fn deny_device_consent_marks_denied_and_republishes() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
-        deny_device_consent(&store, &publisher, "UC-1").unwrap();
+        deny_device_consent(&store, &owner_approval, "UC-1").unwrap();
         assert_eq!(
             store
                 .authorization_request_by_id("dev-1")
@@ -770,17 +770,17 @@ mod tests {
                 .status,
             RequestStatus::Denied,
         );
-        assert_eq!(publisher.count(), 1);
+        assert_eq!(owner_approval.count(), 1);
         assert_eq!(
-            deny_device_consent(&store, &publisher, "UNKNOWN"),
+            deny_device_consent(&store, &owner_approval, "UNKNOWN"),
             Err(AuthorizationServerError::DeviceConsentNotFound {
                 user_code: "UNKNOWN".to_owned()
             }),
         );
     }
 
-    fn resource_scope_code_store(scope: &str) -> (FakeGatekeeperStore, RecordingPublisher) {
-        let store = FakeGatekeeperStore::default();
+    fn resource_scope_code_store(scope: &str) -> (FakeGrantStore, RecordingOwnerApproval) {
+        let store = FakeGrantStore::default();
         store.upsert_client(&client("client", &[scope])).unwrap();
         let mut request = code_request(
             "req-1",
@@ -789,16 +789,16 @@ mod tests {
         );
         request.requested_scopes = vec![scope.to_owned()];
         store.insert_authorization_request(&request).unwrap();
-        (store, RecordingPublisher::default())
+        (store, RecordingOwnerApproval::default())
     }
 
     #[test]
     fn approve_oauth_consent_rejects_a_resource_scope_the_approver_cannot_delegate() {
-        let (store, publisher) = resource_scope_code_store("system/Patient.r");
+        let (store, owner_approval) = resource_scope_code_store("system/Patient.r");
         let approver_grant = Grant::parse(["system/Observation.r"]);
         let result = approve_code(
             &store,
-            &publisher,
+            &owner_approval,
             "req-1",
             approved(&["system/Patient.r"]),
             &approver_grant,
@@ -818,13 +818,13 @@ mod tests {
                 .status,
             RequestStatus::Pending,
         );
-        assert_eq!(publisher.count(), 0);
+        assert_eq!(owner_approval.count(), 0);
     }
 
     #[test]
     fn approve_device_consent_rejects_a_resource_scope_the_approver_cannot_delegate() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         store
             .upsert_client(&client("client", &["system/Patient.r"]))
             .unwrap();
@@ -834,7 +834,7 @@ mod tests {
         let approver_grant = Grant::parse(["system/Observation.r"]);
         let result = approve_device_consent(
             &store,
-            &publisher,
+            &owner_approval,
             "UC-1",
             ApproveDeviceConsentInput {
                 owner_approved_scopes: vec!["system/Patient.r".to_owned()],
@@ -850,13 +850,13 @@ mod tests {
                 approver_missing_scopes: vec!["system/Patient.r".to_owned()],
             }),
         );
-        assert_eq!(publisher.count(), 0);
+        assert_eq!(owner_approval.count(), 0);
     }
 
     #[test]
     fn approve_device_consent_allows_a_resource_scope_the_approver_holds() {
-        let store = FakeGatekeeperStore::default();
-        let publisher = RecordingPublisher::default();
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
         store
             .upsert_client(&client("client", &["system/Patient.r"]))
             .unwrap();
@@ -866,7 +866,7 @@ mod tests {
         let approver_grant = Grant::parse(["system/*.cruds"]);
         let outcome = approve_device_consent(
             &store,
-            &publisher,
+            &owner_approval,
             "UC-1",
             ApproveDeviceConsentInput {
                 owner_approved_scopes: vec!["system/Patient.r".to_owned()],
@@ -882,7 +882,7 @@ mod tests {
 
     #[test]
     fn load_pending_code_request_accepts_a_live_request_and_refuses_the_rest() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .insert_authorization_request(&code_request(
                 "req-1",
@@ -913,7 +913,7 @@ mod tests {
 
     #[test]
     fn consent_reader_oauth_consent_resolves_the_client_name() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store.upsert_client(&client("client", &["read"])).unwrap();
         store
             .insert_authorization_request(&code_request(
@@ -935,10 +935,10 @@ mod tests {
     /// rendering as an unknown (`New`) client, on both consent surfaces.
     #[test]
     fn consent_reader_surfaces_a_client_read_failure() {
-        use crate::db::SqliteGatekeeperStore;
+        use crate::db::SqliteGrantStore;
         use diesel::RunQueryDsl;
 
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store.upsert_client(&client("client", &["read"])).unwrap();
         store
             .insert_authorization_request(&code_request(

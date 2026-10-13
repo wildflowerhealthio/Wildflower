@@ -1,5 +1,5 @@
-//! The `SqliteGatekeeperStore` adapter — the `SQLite` implementation of the
-//! [`GatekeeperStore`](crate::domain::GatekeeperStore) port. Holds the app-wide
+//! The `SqliteGrantStore` adapter — the `SQLite` implementation of the
+//! [`GrantStore`](crate::domain::GrantStore) port. Holds the app-wide
 //! r2d2 pool of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`) onto
 //! the shared database file, applies the embedded gatekeeper migrations once on
 //! construction (under this slice's [`MIGRATION_NAMESPACE`]), and implements the
@@ -29,7 +29,7 @@ use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 
 /// This slice's migration namespace in the shared database. Applied versions are
 /// bookkept per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], so
@@ -41,7 +41,7 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 
 /// The gatekeeper migrations, embedded from the crate's `migrations/` tree at
 /// compile time (diesel layout: `<version>_<name>/up.sql` + `down.sql`).
-/// Applied once per database in [`SqliteGatekeeperStore::new`] via
+/// Applied once per database in [`SqliteGrantStore::new`] via
 /// [`wildflowerhealthio_persistence::run_diesel_migrations`] under [`MIGRATION_NAMESPACE`]
 /// (see that runner for why the stock diesel harness can't be shared across
 /// slices). Each migration's header says what it changes and why (see
@@ -49,10 +49,10 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-/// The `SQLite` adapter for the [`GatekeeperStore`] port. Cheap to clone (the
+/// The `SQLite` adapter for the [`GrantStore`] port. Cheap to clone (the
 /// pool is an `Arc` inside), so it drops straight into the axum state.
 #[derive(Clone)]
-pub struct SqliteGatekeeperStore {
+pub struct SqliteGrantStore {
     // The app-wide r2d2 pool onto the shared database file, built and owned by
     // the host (`wildflowerhealthio_persistence::open_pool`) — the same pool the other
     // diesel-backed slices' stores ride. Diesel's connection API is `&mut`, so
@@ -66,7 +66,7 @@ pub struct SqliteGatekeeperStore {
     pool: DieselPool,
 }
 
-impl SqliteGatekeeperStore {
+impl SqliteGrantStore {
     /// Wrap the host-owned connection `pool` and apply pending gatekeeper
     /// migrations once, on a single checked-out connection, under
     /// [`MIGRATION_NAMESPACE`]. The host builds the app-wide pool (via
@@ -125,26 +125,26 @@ impl SqliteGatekeeperStore {
     }
 }
 
-/// A [`GatekeeperTx`] over one checked-out diesel connection — the `SQLite`
-/// primitive handle [`SqliteGatekeeperStore`] hands to a closure. Each method
+/// A [`GrantTx`] over one checked-out diesel connection — the `SQLite`
+/// primitive handle [`SqliteGrantStore`] hands to a closure. Each method
 /// delegates to the matching query body in the sibling `db/*` modules, passing
 /// the wrapped `&mut SqliteConnection`; the bodies live there so the query SQL
 /// stays next to the row type it maps and this file stays the migration + pool
 /// handle plus the transaction runners. When the closure runs inside
-/// [`GatekeeperStore::transaction`] / [`immediate_transaction`] the connection is
+/// [`GrantStore::transaction`] / [`immediate_transaction`] the connection is
 /// already in a transaction, so the self-contained `expire_*` bodies open
 /// savepoints rather than nested `BEGIN`s.
 ///
-/// `pub` only because it is the `SQLite` adapter's [`GatekeeperStore::Tx`]
+/// `pub` only because it is the `SQLite` adapter's [`GrantStore::Tx`]
 /// associated type (a public trait's associated type is part of the public
 /// interface); the field and every method are crate-internal, so out-of-crate
 /// callers can name the type but do nothing with it except through
-/// [`GatekeeperTx`].
-pub struct SqliteGatekeeperTx<'a> {
+/// [`GrantTx`].
+pub struct SqliteGrantTx<'a> {
     conn: &'a mut SqliteConnection,
 }
 
-impl GatekeeperTx for SqliteGatekeeperTx<'_> {
+impl GrantTx for SqliteGrantTx<'_> {
     // ----- clients -------------------------------------------------------
 
     fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, AuthorizationServerError> {
@@ -442,26 +442,26 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
 }
 
 /// The `SQLite` implementation of the transaction seam. [`with_connection`] hands
-/// a [`SqliteGatekeeperTx`] over a checked-out connection in autocommit;
+/// a [`SqliteGrantTx`] over a checked-out connection in autocommit;
 /// [`transaction`] / [`immediate_transaction`] wrap that same handle in a diesel
 /// `BEGIN` / `BEGIN IMMEDIATE`, committing on `Ok` and rolling back on `Err`. The
-/// standalone-convenience default methods (inherited from [`GatekeeperStore`])
+/// standalone-convenience default methods (inherited from [`GrantStore`])
 /// all route through [`with_connection`], so a lone read never takes a write lock;
 /// the composed domain actions pick [`transaction`] or [`immediate_transaction`]
 /// per their atomicity needs.
 ///
-/// [`with_connection`]: GatekeeperStore::with_connection
-/// [`transaction`]: GatekeeperStore::transaction
-/// [`immediate_transaction`]: GatekeeperStore::immediate_transaction
-impl GatekeeperStore for SqliteGatekeeperStore {
-    type Tx<'a> = SqliteGatekeeperTx<'a>;
+/// [`with_connection`]: GrantStore::with_connection
+/// [`transaction`]: GrantStore::transaction
+/// [`immediate_transaction`]: GrantStore::immediate_transaction
+impl GrantStore for SqliteGrantStore {
+    type Tx<'a> = SqliteGrantTx<'a>;
 
     fn with_connection<T>(
         &self,
         f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
     ) -> Result<T, AuthorizationServerError> {
         let mut conn = self.connection()?;
-        let mut tx = SqliteGatekeeperTx { conn: &mut conn };
+        let mut tx = SqliteGrantTx { conn: &mut conn };
         f(&mut tx)
     }
 
@@ -475,7 +475,7 @@ impl GatekeeperStore for SqliteGatekeeperStore {
         // `db/*` query bodies expect.
         let sqlite: &mut SqliteConnection = &mut conn;
         sqlite.transaction(|conn| {
-            let mut tx = SqliteGatekeeperTx { conn };
+            let mut tx = SqliteGrantTx { conn };
             f(&mut tx)
         })
     }
@@ -487,13 +487,13 @@ impl GatekeeperStore for SqliteGatekeeperStore {
         let mut conn = self.connection()?;
         let sqlite: &mut SqliteConnection = &mut conn;
         sqlite.immediate_transaction(|conn| {
-            let mut tx = SqliteGatekeeperTx { conn };
+            let mut tx = SqliteGrantTx { conn };
             f(&mut tx)
         })
     }
 }
 
-// Lets [`GatekeeperStore::transaction`] / [`immediate_transaction`] use
+// Lets [`GrantStore::transaction`] / [`immediate_transaction`] use
 // `AuthorizationServerError` as the diesel transaction error type: diesel requires
 // `E: From<diesel::result::Error>` even though `f`'s body maps its own query
 // errors, because a `BEGIN` / `COMMIT` / `ROLLBACK` failure surfaces as a raw
@@ -511,8 +511,8 @@ mod tests {
     use diesel::sqlite::{Sqlite, SqliteConnection};
 
     use super::{MIGRATIONS, MIGRATION_NAMESPACE};
-    use crate::db::SqliteGatekeeperStore;
-    use crate::domain::GatekeeperStore as _;
+    use crate::db::SqliteGrantStore;
+    use crate::domain::GrantStore as _;
 
     #[derive(QueryableByName)]
     struct Name {
@@ -1493,8 +1493,8 @@ mod tests {
     /// call — the isolation every store test relies on.
     #[test]
     fn open_in_memory_stores_are_independent() {
-        let a = SqliteGatekeeperStore::open_in_memory().expect("store a");
-        let b = SqliteGatekeeperStore::open_in_memory().expect("store b");
+        let a = SqliteGrantStore::open_in_memory().expect("store a");
+        let b = SqliteGrantStore::open_in_memory().expect("store b");
         let key = crate::domain::signing_key::SigningKey::generate().expect("generate key");
         a.insert_signing_key(&key).expect("insert into a");
         assert_eq!(a.all_signing_keys().expect("read a").len(), 1);

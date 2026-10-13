@@ -1,6 +1,6 @@
 //! The shared gatekeeper runtime state — the router state every handler is built
 //! over, and the composition point that wires the concrete adapters
-//! ([`SqliteGatekeeperStore`], [`RevocationStore`]) to the domain ports. It lives
+//! ([`SqliteGrantStore`], [`RevocationStore`]) to the domain ports. It lives
 //! at the crate root (not under [`crate::http`]) deliberately: the scope-gated
 //! [`capabilities`](crate::domain::capabilities) in `domain/` are built from it,
 //! and `domain/` must not depend on `crate::http`. The struct itself is
@@ -8,7 +8,7 @@
 //!
 //! The port trait impls that adapt this state to the domain seams live in
 //! [`crate::adapters`], and the bindings that name the concrete
-//! `SqliteGatekeeperStore` live in the sibling [`crate::live_bindings`]
+//! `SqliteGrantStore` live in the sibling [`crate::live_bindings`]
 //! modules — so the generic, store-agnostic capabilities in `domain/` never
 //! mention a concrete adapter.
 
@@ -19,7 +19,7 @@ use tokio::sync::watch;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
-use crate::db::SqliteGatekeeperStore;
+use crate::db::SqliteGrantStore;
 use crate::domain::pending_consent::PendingConsentHead;
 
 /// Shared state threaded through every gatekeeper handler and lifted into the
@@ -28,11 +28,11 @@ use crate::domain::pending_consent::PendingConsentHead;
 /// it back into [`crate::authorization_server_auth_middleware`] without
 /// looking inside.
 pub struct AuthorizationServerState {
-    /// The **concrete** `SQLite` adapter (not `Arc<dyn GatekeeperStore>` or a
-    /// generic): the store port is generic (`&impl GatekeeperStore`), and the
+    /// The **concrete** `SQLite` adapter (not `Arc<dyn GrantStore>` or a
+    /// generic): the store port is generic (`&impl GrantStore`), and the
     /// capabilities are generic over it, so the router state and axum wiring stay
     /// monomorphic — as in the apps and request-log slices.
-    pub(crate) store: SqliteGatekeeperStore,
+    pub(crate) store: SqliteGrantStore,
     /// The shared token-revocation store. The auth gate (through the
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier))
     /// runs the full `is_revoked` check (denylist + subject epoch) through it,
@@ -73,9 +73,9 @@ pub struct AuthorizationServerState {
     pub(crate) launcher_base: LauncherBase,
     /// Watch sender publishing the [`PendingConsentHead`] the host webview
     /// surfaces in its popup. Handlers whose write may change the head call the
-    /// [`PendingConsentPublisher::republish_active`](crate::ports::PendingConsentPublisher::republish_active)
+    /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
-    pub(crate) active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
+    pub(crate) owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
     /// The host's native loopback dialog (see
     /// [`LoopbackConsentPrompt`](crate::ports::LoopbackConsentPrompt)):
     /// `/authorize` puts a direct-loopback login by the hosted launcher to it. A

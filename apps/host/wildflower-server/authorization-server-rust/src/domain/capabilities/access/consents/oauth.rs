@@ -14,8 +14,8 @@ use crate::domain::capabilities::writers::{CodeAuthority, GrantRecorder, Request
 use crate::domain::client_redirect::build_client_redirect_url;
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
-use crate::ports::PendingConsentPublisher;
+use crate::domain::GrantStore;
+use crate::ports::OwnerApproval;
 use wildflowerhealthio_scopes::Grant;
 
 /// Everything an approval needs beyond the prompt itself: who is approving,
@@ -56,7 +56,7 @@ pub(crate) enum ApprovalMemory {
 /// returned [`PendingCodeRequest`]. A request whose `expires_at` has passed is
 /// treated as not found — the deadline is enforced here at read time.
 pub(crate) fn load_pending_code_request(
-    store: &impl GatekeeperStore,
+    store: &impl GrantStore,
     id: &str,
 ) -> Result<PendingCodeRequest, AuthorizationServerError> {
     let make_consent_not_found = || AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() };
@@ -89,8 +89,8 @@ pub(crate) fn load_pending_code_request(
 /// [`LaunchPatientMismatch`](AuthorizationServerError::LaunchPatientMismatch) and nothing
 /// is written.
 pub(crate) fn approve_oauth_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn PendingConsentPublisher,
+    store: &impl GrantStore,
+    owner_approval: &dyn OwnerApproval,
     id: &str,
     input: ApproveOAuthConsentInput,
     generate_code: impl FnOnce() -> String,
@@ -133,7 +133,7 @@ pub(crate) fn approve_oauth_consent(
         ),
     )?
     else {
-        return deny_consent(store, publisher, id, make_consent_not_found)
+        return deny_consent(store, owner_approval, id, make_consent_not_found)
             .map(|()| ConsentOutcome::Denied);
     };
 
@@ -175,7 +175,7 @@ pub(crate) fn approve_oauth_consent(
     // This request was the popup head (or queued behind one) until the approval
     // above flipped it out of `pending`, so the head has to be recomputed — the
     // popup must close, or advance to whatever was queued behind it.
-    publisher.republish_active();
+    owner_approval.republish_active();
 
     let client_callback_url = request.client_state.as_deref().map(|client_state| {
         build_client_redirect_url(requested_redirect_uri, &issued_code.code, client_state)
@@ -189,12 +189,12 @@ pub(crate) fn approve_oauth_consent(
 /// code-flow prompt first (so a stale/unknown id is the structured 404), then
 /// marks it denied and republishes the popup head.
 pub(crate) fn deny_oauth_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn PendingConsentPublisher,
+    store: &impl GrantStore,
+    owner_approval: &dyn OwnerApproval,
     id: &str,
 ) -> Result<(), AuthorizationServerError> {
     load_pending_code_request(store, id)?;
-    deny_consent(store, publisher, id, || {
+    deny_consent(store, owner_approval, id, || {
         AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() }
     })
 }

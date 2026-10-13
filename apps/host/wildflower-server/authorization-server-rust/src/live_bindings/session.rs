@@ -9,13 +9,13 @@ use wildflowerhealthio_scope_capabilities::AuthenticatedCapability;
 
 use super::state::AuthorizationServerState;
 use super::FromState;
-use crate::db::SqliteGatekeeperStore;
+use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::session::{SessionEnder, SessionReader, TokenVerifier};
 use crate::domain::token::VerifiedClaims;
 use crate::ports::{Revocation, RevocationCheck};
 
 /// Verify presented access tokens — built by the two authN gates.
-pub(crate) type LiveTokenVerifier = TokenVerifier<SqliteGatekeeperStore>;
+pub(crate) type LiveTokenVerifier = TokenVerifier<SqliteGrantStore>;
 
 impl FromState for LiveTokenVerifier {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {

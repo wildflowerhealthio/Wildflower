@@ -23,8 +23,8 @@ use crate::domain::client_registration::{classify_registration, PresentedClientR
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::oauth_error_kind::OAuthErrorKind;
-use crate::domain::GatekeeperStore;
-use crate::ports::PendingConsentPublisher;
+use crate::domain::GrantStore;
+use crate::ports::OwnerApproval;
 
 /// Lifetime of a pending authorization request waiting for Owner approval.
 pub(crate) const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
@@ -102,29 +102,29 @@ impl From<AuthorizationServerError> for AuthorizationStartError {
 /// Start authorization-code flows. Public (no principal: the caller is the
 /// user's browser), so its only power is this one operation. Generic over the
 /// store port so it's unit-testable against the fake; the binding instantiates
-/// it over the concrete `SqliteGatekeeperStore`.
-pub(crate) struct CodeAuthorizationStarter<S: GatekeeperStore> {
+/// it over the concrete `SqliteGrantStore`.
+pub(crate) struct CodeAuthorizationStarter<S: GrantStore> {
     store: S,
-    publisher: Arc<dyn PendingConsentPublisher>,
+    owner_approval: Arc<dyn OwnerApproval>,
     first_party_client_id: Arc<str>,
     /// The server's bare origin, `https://<domain>`, also its FHIR base: an
     /// `aud` must name it.
     server_origin: Arc<str>,
 }
 
-impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
+impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// Build the starter over the store, the popup republish port, the
     /// first-party `client_id`, and the server's origin — all lifted from the
     /// state.
     pub(crate) fn new(
         store: S,
-        publisher: Arc<dyn PendingConsentPublisher>,
+        owner_approval: Arc<dyn OwnerApproval>,
         first_party_client_id: Arc<str>,
         server_origin: Arc<str>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
-            publisher,
+            owner_approval,
             first_party_client_id,
             server_origin,
         }
@@ -279,7 +279,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
 
         // This request needs a human: raise the host popup (after the fast-path
         // return above, so a pre-approved request never flickers into it).
-        self.publisher.republish_active();
+        self.owner_approval.republish_active();
         Ok(AuthorizeNextStep::AwaitOwner {
             request_id: ids.request_id,
         })
@@ -304,7 +304,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             code,
             now,
         )?;
-        self.publisher.republish_active();
+        self.owner_approval.republish_active();
         let Some(issued_code) = issued_code else {
             return Err(AuthorizationStartError::RequestNotPending);
         };
@@ -443,10 +443,10 @@ mod tests {
     use crate::domain::client::ClientKind;
     use crate::domain::grant::AuthorizationCodeGrant;
     use crate::domain::launch_context::{LaunchContext, LAUNCH_CONTEXT_TTL};
-    use crate::domain::GatekeeperTx as _;
+    use crate::domain::GrantTx as _;
 
     use crate::domain::test_fake::{
-        client, code_grant, seed_active_signing_key, FakeGatekeeperStore, RecordingPublisher,
+        client, code_grant, seed_active_signing_key, FakeGrantStore, RecordingOwnerApproval,
     };
 
     const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
@@ -474,20 +474,20 @@ mod tests {
     }
 
     fn starter(
-        store: FakeGatekeeperStore,
+        store: FakeGrantStore,
     ) -> (
-        CodeAuthorizationStarter<FakeGatekeeperStore>,
-        Arc<RecordingPublisher>,
+        CodeAuthorizationStarter<FakeGrantStore>,
+        Arc<RecordingOwnerApproval>,
     ) {
         seed_active_signing_key(&store);
-        let publisher = Arc::new(RecordingPublisher::default());
+        let owner_approval = Arc::new(RecordingOwnerApproval::default());
         let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
-            publisher.clone(),
+            owner_approval.clone(),
             "host".into(),
             SERVER_ORIGIN.into(),
         );
-        (code_authorization_starter, publisher)
+        (code_authorization_starter, owner_approval)
     }
 
     /// A registered client with a standing grant covering every requested
@@ -496,7 +496,7 @@ mod tests {
     /// head is recomputed.
     #[test]
     fn a_fully_covered_registered_request_is_issued_a_code_without_a_human() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .upsert_client(&client("app", &["patient/Patient.r", "openid"]))
             .unwrap();
@@ -507,7 +507,7 @@ mod tests {
                 ..code_grant("g1", "app")
             })
             .unwrap();
-        let (code_authorization_starter, publisher) = starter(store);
+        let (code_authorization_starter, owner_approval) = starter(store);
         let outcome = code_authorization_starter
             .start(
                 &request("app", "patient/Patient.r openid"),
@@ -530,7 +530,7 @@ mod tests {
             .expect("parked_request");
         assert_eq!(parked_request.status, RequestStatus::Approved);
         assert_eq!(parked_request.patient.as_deref(), Some("pat-1"));
-        assert_eq!(publisher.count(), 1);
+        assert_eq!(owner_approval.count(), 1);
     }
 
     /// A request outside the registration (a scope the client never
@@ -538,7 +538,7 @@ mod tests {
     /// cover it — the Owner has not seen this combination.
     #[test]
     fn a_request_outside_the_registration_waits_for_the_owner() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store.upsert_client(&client("app", &["openid"])).unwrap();
         store
             .create_authorization_code_grant(&AuthorizationCodeGrant {
@@ -546,7 +546,7 @@ mod tests {
                 ..code_grant("g1", "app")
             })
             .unwrap();
-        let (code_authorization_starter, publisher) = starter(store);
+        let (code_authorization_starter, owner_approval) = starter(store);
         let outcome = code_authorization_starter
             .start(
                 &request("app", "patient/Patient.r openid"),
@@ -567,7 +567,7 @@ mod tests {
             .expect("parked_request");
         assert_eq!(parked_request.status, RequestStatus::Pending);
         assert!(parked_request.pre_approved_scopes.is_empty());
-        assert_eq!(publisher.count(), 1);
+        assert_eq!(owner_approval.count(), 1);
     }
 
     /// Trust on first use: an unknown non-first-party client is parked_request for the
@@ -576,7 +576,7 @@ mod tests {
     /// redirect is refused outright.
     #[test]
     fn unknown_clients_park_and_untrusted_redirects_fail_locally() {
-        let (code_authorization_starter, _) = starter(FakeGatekeeperStore::default());
+        let (code_authorization_starter, _) = starter(FakeGrantStore::default());
         let outcome = code_authorization_starter
             .start(&request("newcomer", "openid"), ids(), Utc::now())
             .expect("parked_request for the owner");
@@ -603,7 +603,7 @@ mod tests {
     /// and the first-party host is held to its scope allowlist.
     #[test]
     fn trusted_redirects_get_redirectable_errors_and_the_host_is_clamped() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .upsert_client(&Client {
                 kind: ClientKind::Public,
@@ -637,10 +637,10 @@ mod tests {
     /// Without a signing key nothing is parked_request: the endpoint refuses up front.
     #[test]
     fn no_signing_key_refuses_before_parking() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
-            Arc::new(RecordingPublisher::default()),
+            Arc::new(RecordingOwnerApproval::default()),
             "host".into(),
             SERVER_ORIGIN.into(),
         );
@@ -657,15 +657,15 @@ mod tests {
 
     /// The starter's store, for planting and reading launch contexts.
     fn launch_contexts_of(
-        code_authorization_starter: &CodeAuthorizationStarter<FakeGatekeeperStore>,
-    ) -> LaunchContexts<'_, FakeGatekeeperStore> {
+        code_authorization_starter: &CodeAuthorizationStarter<FakeGrantStore>,
+    ) -> LaunchContexts<'_, FakeGrantStore> {
         LaunchContexts::over(&code_authorization_starter.store)
     }
 
     /// A registered client "app" with no standing grant, so every valid
     /// request parks for the Owner.
-    fn registered_app_starter() -> CodeAuthorizationStarter<FakeGatekeeperStore> {
-        let store = FakeGatekeeperStore::default();
+    fn registered_app_starter() -> CodeAuthorizationStarter<FakeGrantStore> {
+        let store = FakeGrantStore::default();
         store.upsert_client(&client("app", &["openid"])).unwrap();
         starter(store).0
     }
@@ -848,7 +848,7 @@ mod tests {
     /// carries the launch's patient.
     #[test]
     fn a_launch_bound_patient_the_grant_does_not_name_waits_for_the_owner() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store.upsert_client(&client("app", &["openid"])).unwrap();
         store
             .create_authorization_code_grant(&AuthorizationCodeGrant {

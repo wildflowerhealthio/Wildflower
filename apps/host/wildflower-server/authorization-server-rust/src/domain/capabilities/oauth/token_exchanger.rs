@@ -17,7 +17,7 @@ use crate::domain::capabilities::writers::{AccessTokenMinter, RefreshFamilyWrite
 use crate::domain::client::AllowedGrantType;
 use crate::domain::token::ACCESS_TOKEN_TTL;
 use crate::domain::token_exchange_error::TokenExchangeError;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// The tokens a successful exchange issued: what the RFC 6749 §5.1 token
 /// response carries.
@@ -33,14 +33,14 @@ pub(crate) struct IssuedTokens {
 
 /// Exchange grants for tokens on behalf of an [`AuthenticatedClient`]. Generic
 /// over the store port so it's unit-testable against the fake; the binding
-/// instantiates it over the concrete `SqliteGatekeeperStore`.
-pub(crate) struct TokenExchanger<S: GatekeeperStore> {
+/// instantiates it over the concrete `SqliteGrantStore`.
+pub(crate) struct TokenExchanger<S: GrantStore> {
     store: S,
     /// The server's bare origin, every minted token's `iss` and `aud`.
     server_origin: Arc<str>,
 }
 
-impl<S: GatekeeperStore> TokenExchanger<S> {
+impl<S: GrantStore> TokenExchanger<S> {
     /// Build the exchanger over a store handle and the server's origin, both
     /// lifted from the state.
     pub(crate) fn new(store: S, server_origin: Arc<str>) -> Self {
@@ -185,20 +185,20 @@ mod tests {
     use crate::domain::token::{verify_jwt, VerifyOptions};
 
     use crate::domain::test_fake::{
-        authenticated_public_client, client, seed_active_signing_key, FakeGatekeeperStore,
+        authenticated_public_client, client, seed_active_signing_key, FakeGrantStore,
     };
 
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
-    fn exchanger() -> TokenExchanger<FakeGatekeeperStore> {
-        let store = FakeGatekeeperStore::default();
+    fn exchanger() -> TokenExchanger<FakeGrantStore> {
+        let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
         TokenExchanger::new(store, SERVER_ORIGIN.into())
     }
 
     fn authenticated(
-        store: &FakeGatekeeperStore,
+        store: &FakeGrantStore,
         client_id: &str,
         grant_types: &[AllowedGrantType],
     ) -> AuthenticatedClient {
@@ -211,7 +211,7 @@ mod tests {
         )
     }
 
-    fn issue_code(store: &FakeGatekeeperStore, client_id: &str, scopes: &[&str]) -> String {
+    fn issue_code(store: &FakeGrantStore, client_id: &str, scopes: &[&str]) -> String {
         let code = generate_authorization_code();
         let now = Utc::now();
         store

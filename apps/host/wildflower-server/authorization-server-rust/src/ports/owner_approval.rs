@@ -1,4 +1,4 @@
-//! [`PendingConsentPublisher`] — the seam a consent-queue transition calls to
+//! [`OwnerApproval`] — the seam a consent-queue transition calls to
 //! republish the active popup head after it changes the pending queue.
 
 /// Republish the head of the pending-consent queue to the host.
@@ -10,7 +10,7 @@
 /// ([`AuthorizationServerState`](crate::http::AuthorizationServerState)) recomputes the head from
 /// the store and publishes it on the head's watch channel; a test fake just
 /// records that it was asked to.
-pub(crate) trait PendingConsentPublisher: Send + Sync + 'static {
+pub(crate) trait OwnerApproval: Send + Sync + 'static {
     /// Recompute and republish the active pending-consent head.
     fn republish_active(&self);
 }

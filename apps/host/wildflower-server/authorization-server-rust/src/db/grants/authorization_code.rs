@@ -95,16 +95,16 @@ mod tests {
     use url::Url;
     use uuid::Uuid;
 
-    use crate::db::SqliteGatekeeperStore;
+    use crate::db::SqliteGrantStore;
     use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent};
-    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+    use crate::domain::{GrantStore as _, GrantTx as _};
 
     /// The create-or-union upsert transaction, inlined here so the db test drives
     /// the real adapter's grant primitives directly instead of reaching up into a
     /// domain capability. Mirrors
     /// `domain::capabilities::writers::GrantRecorder::record_code_grant`.
     fn upsert_code_grant(
-        store: &SqliteGatekeeperStore,
+        store: &SqliteGrantStore,
         client_id: &str,
         redirect: &Url,
         scopes: &[String],
@@ -146,7 +146,7 @@ mod tests {
     /// the same script lands correctly through diesel.
     #[test]
     fn upsert_action_inserts_then_unions_scopes_over_sqlite() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
 

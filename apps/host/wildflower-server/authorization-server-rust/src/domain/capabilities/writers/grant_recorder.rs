@@ -14,15 +14,15 @@ use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 
 /// Record standing grants. A borrowed view over the store; the gate is the
 /// [`DelegatedScopes`] each method takes.
-pub(crate) struct GrantRecorder<'a, S: GatekeeperStore> {
+pub(crate) struct GrantRecorder<'a, S: GrantStore> {
     store: &'a S,
 }
 
-impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
+impl<'a, S: GrantStore> GrantRecorder<'a, S> {
     /// A writer over `store`.
     pub(crate) fn over(store: &'a S) -> Self {
         GrantRecorder { store }
@@ -165,7 +165,7 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
 /// Create the `clients` row for `client_id`, or widen the existing one, by the
 /// `delegated` scopes and (when the verdict found it new) the redirect — inside
 /// the caller's transaction, after reading the row under its write lock.
-fn write_registration<T: GatekeeperTx>(
+fn write_registration<T: GrantTx>(
     tx: &mut T,
     client_id: &str,
     redirect_uri: &Url,
@@ -249,7 +249,7 @@ mod tests {
 
     use super::*;
     use crate::domain::client_registration::uncovered_scopes;
-    use crate::domain::test_fake::{client, delegated_scopes, FakeGatekeeperStore};
+    use crate::domain::test_fake::{client, delegated_scopes, FakeGrantStore};
 
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").expect("a valid redirect")
@@ -260,7 +260,7 @@ mod tests {
     /// latest patient — never a duplicate.
     #[test]
     fn record_code_grant_inserts_then_unions_scopes() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let recorder = GrantRecorder::over(&store);
         recorder
             .record_code_grant(
@@ -307,7 +307,7 @@ mod tests {
     /// first-party host is never registered by an approval.
     #[test]
     fn record_code_grant_without_widening_never_creates_a_client() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         GrantRecorder::over(&store)
             .record_code_grant(
                 "host",
@@ -325,7 +325,7 @@ mod tests {
     /// holding exactly the delegated scopes and the approved redirect.
     #[test]
     fn record_code_grant_widen_registers_a_new_client_with_the_delegated_scopes() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         GrantRecorder::over(&store)
             .record_code_grant(
                 "newcomer",
@@ -355,7 +355,7 @@ mod tests {
             (false, vec![redirect()]),
             (true, vec![redirect(), elsewhere.clone()]),
         ] {
-            let store = FakeGatekeeperStore::default();
+            let store = FakeGrantStore::default();
             store.upsert_client(&client("app", &["openid"])).unwrap();
             let verdict = ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new,
@@ -381,7 +381,7 @@ mod tests {
     /// device name.
     #[test]
     fn record_device_grant_inserts_then_unions_scopes() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let recorder = GrantRecorder::over(&store);
         recorder
             .record_device_grant(

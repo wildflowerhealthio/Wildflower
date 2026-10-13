@@ -35,7 +35,7 @@ the pool is built and the trade-off is accepted.
 
 ## The store holds the pool
 
-Each slice's SQLite store (`SqliteAppsStore`, `SqliteGatekeeperStore`,
+Each slice's SQLite store (`SqliteAppsStore`, `SqliteGrantStore`,
 `SqliteRequestLogStore`) holds the `DieselPool` — an `Arc`
 inside, so the store is cheap to clone into the axum state — and implements the
 slice's domain persistence port. Diesel's connection API is `&mut`, so each query
@@ -69,6 +69,6 @@ fresh one. A genuinely new table keeps plain `CREATE TABLE`.
   why the stock diesel harness collides.
 - The implementations: apps' `SqliteAppsStore`
   (`apps-rust/src/db/apps_store.rs`), gatekeeper's
-  `SqliteGatekeeperStore` (`authorization-server-rust/src/db/gatekeeper_store.rs`),
+  `SqliteGrantStore` (`authorization-server-rust/src/db/grant_store.rs`),
   and the request log's `SqliteRequestLogStore`
   (`request-log-rust/src/db/request_log_store.rs`).

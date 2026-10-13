@@ -31,7 +31,7 @@ use crate::domain::authorization_request::{
 };
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// The presented halves of an `authorization_code` grant request (RFC 6749
 /// §4.1.3), as the client sent them.
@@ -150,7 +150,7 @@ impl RedeemedAuthorizationCode {
     /// [`TokenExchangeError::InvalidGrant`] with the specific reason;
     /// [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn redeem(
-        store: &impl GatekeeperStore,
+        store: &impl GrantStore,
         authenticated_client: &AuthenticatedClient,
         presented: &PresentedAuthorizationCode<'_>,
         now: DateTime<Utc>,
@@ -273,7 +273,7 @@ impl ConsumedDeviceRequest {
     /// [`TokenExchangeError::InvalidGrant`] for an unknown or already-claimed
     /// request, [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn consume(
-        store: &impl GatekeeperStore,
+        store: &impl GrantStore,
         authenticated_client: &AuthenticatedClient,
         device_code: &str,
         now: DateTime<Utc>,
@@ -381,7 +381,7 @@ impl ValidatedRefreshToken {
     /// [`TokenExchangeError::InvalidGrant`] with the specific reason;
     /// [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn validate(
-        store: &impl GatekeeperStore,
+        store: &impl GrantStore,
         authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
         now: DateTime<Utc>,
@@ -465,10 +465,10 @@ mod tests {
 
     use crate::domain::refresh_token::RefreshToken;
     use crate::domain::test_fake::{
-        authenticated_public_client, client, device_request, FakeGatekeeperStore,
+        authenticated_public_client, client, device_request, FakeGrantStore,
     };
 
-    fn authenticated(store: &FakeGatekeeperStore, client_id: &str) -> AuthenticatedClient {
+    fn authenticated(store: &FakeGrantStore, client_id: &str) -> AuthenticatedClient {
         authenticated_public_client(store, client(client_id, &["openid"]))
     }
 
@@ -480,7 +480,7 @@ mod tests {
 
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
 
-    fn issued_code(store: &FakeGatekeeperStore, client_id: &str, now: DateTime<Utc>) -> String {
+    fn issued_code(store: &FakeGrantStore, client_id: &str, now: DateTime<Utc>) -> String {
         let code = generate_authorization_code();
         store
             .issue_authorization_code(&IssuedAuthorizationCode {
@@ -511,7 +511,7 @@ mod tests {
     /// verbatim for the response), and a second redemption is refused.
     #[test]
     fn a_code_redeems_once_with_its_recorded_claims() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let now = Utc::now();
         let client = authenticated(&store, "app");
         let code = issued_code(&store, "app", now);
@@ -550,7 +550,7 @@ mod tests {
     /// atomic and first), so none of them can be retried into a token.
     #[test]
     fn a_code_is_refused_for_each_broken_binding() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let now = Utc::now();
         let app = authenticated(&store, "app");
         let other = authenticated(&store, "other");
@@ -627,7 +627,7 @@ mod tests {
     /// request is unknown.
     #[test]
     fn a_device_request_reports_its_status_and_is_claimed_once() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let now = Utc::now();
         let client = authenticated(&store, "client");
         let stranger = authenticated(&store, "stranger");
@@ -667,7 +667,7 @@ mod tests {
         ));
     }
 
-    fn live_family(store: &FakeGatekeeperStore, client_id: &str, now: DateTime<Utc>) {
+    fn live_family(store: &FakeGrantStore, client_id: &str, now: DateTime<Utc>) {
         store
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 family_id: "fam".to_owned(),
@@ -695,7 +695,7 @@ mod tests {
     /// by another client, or past the family deadline.
     #[test]
     fn a_refresh_token_validates_for_its_client_while_the_family_lives() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let now = Utc::now();
         let client = authenticated(&store, "client");
         let stranger = authenticated(&store, "stranger");

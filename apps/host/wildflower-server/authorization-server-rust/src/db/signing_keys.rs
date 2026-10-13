@@ -1,6 +1,6 @@
 //! `signing_keys` query bodies — the RSA keys backing JWS signatures and the
 //! JWKS endpoint, loaded/stored as [`SigningKey`]. The `pub(super)` free
-//! functions the [`SqliteGatekeeperStore`](super::SqliteGatekeeperStore) port
+//! functions the [`SqliteGrantStore`](super::SqliteGrantStore) port
 //! impl delegates to, each running on a connection the store has already checked
 //! out of the pool.
 
@@ -76,9 +76,9 @@ pub(super) fn insert_signing_key(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::SqliteGatekeeperStore;
+    use crate::db::SqliteGrantStore;
     use crate::domain::signing_key::SigningKeyValues;
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::GrantStore as _;
     use proptest::prelude::*;
 
     /// The db layer treats `SigningKeyValues` as opaque JSON, so the
@@ -102,7 +102,7 @@ mod tests {
 
         #[test]
         fn insert_and_fetch_round_trip(key in arb_signing_key()) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             store.insert_signing_key(&key).expect("insert");
 
             // A freshly-opened store holds exactly this one key.
@@ -121,7 +121,7 @@ mod tests {
     /// panic — a corrupt key can't silently decode to garbage RSA material.
     #[test]
     fn corrupt_values_json_is_a_typed_read_error() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let key = SigningKey {
             kid: "k1".to_string(),
             kty: "RSA".to_string(),

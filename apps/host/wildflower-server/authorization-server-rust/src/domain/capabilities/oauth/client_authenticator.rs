@@ -4,16 +4,16 @@
 
 use crate::domain::authority::{AuthenticatedClient, ClientAuthenticationError};
 use crate::domain::client_credentials::ClientCredentials;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// Authenticate clients (RFC 6749 §2.3). Generic over the store port so it's
 /// unit-testable against the fake; the binding instantiates it over the concrete
-/// `SqliteGatekeeperStore`.
-pub(crate) struct ClientAuthenticator<S: GatekeeperStore> {
+/// `SqliteGrantStore`.
+pub(crate) struct ClientAuthenticator<S: GrantStore> {
     store: S,
 }
 
-impl<S: GatekeeperStore> ClientAuthenticator<S> {
+impl<S: GrantStore> ClientAuthenticator<S> {
     /// Build the authenticator over a store handle lifted from the state.
     pub(crate) fn new(store: S) -> Self {
         ClientAuthenticator { store }

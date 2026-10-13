@@ -34,14 +34,14 @@ pub use wildflowerhealthio_authorization_server::domain::client::{AllowedGrantTy
 pub use wildflowerhealthio_authorization_server::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 pub use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 pub use wildflowerhealthio_authorization_server::{
-    GatekeeperStore, PendingConsentHead, SqliteGatekeeperStore,
+    GrantStore, PendingConsentHead, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
 pub use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// The two database handles the running router uses, kept so tests can open
 /// second store handles onto the SAME databases: the diesel pool behind the
-/// `SqliteGatekeeperStore` and the rusqlite connection behind the shared
+/// `SqliteGrantStore` and the rusqlite connection behind the shared
 /// `RevocationStore` (which stays rusqlite-backed — it is a separate crate).
 pub struct TestDb {
     pool: DieselPool,
@@ -151,13 +151,13 @@ pub fn pending_consent_watch(db: &TestDb) -> watch::Receiver<Option<PendingConse
     db.pending_consent_rx.clone()
 }
 
-/// A second `SqliteGatekeeperStore` handle on the *same* shared pool the running
+/// A second `SqliteGrantStore` handle on the *same* shared pool the running
 /// router uses. Tests reach through this to seed clients and to plant rows
 /// (e.g. an already-expired authorization request) that the public HTTP
 /// surface can't construct directly — preferred over real-time sleeps so the
 /// expiry paths stay deterministic.
-pub fn store_handle(db: &TestDb) -> SqliteGatekeeperStore {
-    SqliteGatekeeperStore::new(db.pool.clone()).expect("store handle")
+pub fn store_handle(db: &TestDb) -> SqliteGrantStore {
+    SqliteGrantStore::new(db.pool.clone()).expect("store handle")
 }
 
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
@@ -263,7 +263,7 @@ pub async fn post_form(
 /// (shared by both rows) lets a caller force an already-expired code without
 /// sleeping. The challenge is the real S256 digest of [`CODE_VERIFIER`].
 pub fn plant_authorization_code(
-    store: &SqliteGatekeeperStore,
+    store: &SqliteGrantStore,
     client_id: &str,
     redirect_uri: &Url,
     scopes: &[&str],
@@ -316,7 +316,7 @@ pub fn plant_authorization_code(
 /// and `expires_at` are caller-controlled so the device state-machine tests can
 /// stand up Approved/expired rows the public surface can't mint on demand.
 pub fn plant_device_request(
-    store: &SqliteGatekeeperStore,
+    store: &SqliteGrantStore,
     client_id: &str,
     device_code: &str,
     scopes: &[&str],
@@ -508,7 +508,7 @@ pub const CHROME_MAC_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 
 /// Plant a refresh-token family with one live token directly in the store,
 /// with a caller-controlled family deadline so expiry tests don't sleep.
 pub fn plant_refresh_token(
-    store: &SqliteGatekeeperStore,
+    store: &SqliteGrantStore,
     plaintext: &str,
     client_id: &str,
     family_expires_at: chrono::DateTime<Utc>,

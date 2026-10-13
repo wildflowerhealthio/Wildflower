@@ -12,7 +12,7 @@ use url::Url;
 
 use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// How far a standing grant covers a request. Only [`Full`](Self::Full) is a
 /// proof; the other two carry what the consent prompt pre-ticks.
@@ -43,7 +43,7 @@ impl GrantCoverage {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn resolve(
-        store: &impl GatekeeperStore,
+        store: &impl GrantStore,
         registration_verdict: &ClientRegistrationVerdict,
         requested_client_id: &str,
         requested_redirect_uri: &Url,
@@ -119,14 +119,14 @@ impl StandingGrantCoverage {
 mod tests {
     use super::*;
     use crate::domain::grant::AuthorizationCodeGrant;
-    use crate::domain::test_fake::{code_grant, owned_scopes, FakeGatekeeperStore};
+    use crate::domain::test_fake::{code_grant, owned_scopes, FakeGrantStore};
 
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").unwrap()
     }
 
-    fn store_with_grant(scopes: &[&str], patient: Option<&str>) -> FakeGatekeeperStore {
-        let store = FakeGatekeeperStore::default();
+    fn store_with_grant(scopes: &[&str], patient: Option<&str>) -> FakeGrantStore {
+        let store = FakeGrantStore::default();
         store
             .create_authorization_code_grant(&AuthorizationCodeGrant {
                 scopes: owned_scopes(scopes),

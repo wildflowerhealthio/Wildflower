@@ -15,14 +15,14 @@ use crate::domain::signing_key::SigningKey;
 /// is a single logical statement over the domain types — absence as `Option`,
 /// an affected-row outcome as `bool` — raising only
 /// [`AuthorizationServerError::Infrastructure`]. `&mut self` (rather than `&self`) is what
-/// lets [`GatekeeperStore`](super::GatekeeperStore) hand a batch of these out inside one transaction; a
+/// lets [`GrantStore`](super::GrantStore) hand a batch of these out inside one transaction; a
 /// domain action composes several into an atomic operation without any
 /// per-operation transaction method on the store.
 ///
-/// The `SQLite` adapter's `SqliteGatekeeperTx` implements this over a
-/// checked-out diesel connection; the in-memory `FakeGatekeeperTx` implements it
+/// The `SQLite` adapter's `SqliteGrantTx` implements this over a
+/// checked-out diesel connection; the in-memory `FakeGrantTx` implements it
 /// over the fake's maps.
-pub trait GatekeeperTx {
+pub trait GrantTx {
     // ----- clients -------------------------------------------------------
 
     /// Look up a registered client by its `client_id`, or `None` when no client

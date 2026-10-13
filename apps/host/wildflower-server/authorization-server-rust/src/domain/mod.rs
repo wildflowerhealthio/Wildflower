@@ -2,8 +2,8 @@
 //! shared by every other layer. No `crate::http` dependency runs here — the
 //! domain types carry diesel derives that name their [`crate::db`] `table!` for
 //! the bind/read mapping, but no transport code lives in this layer: the
-//! [`GatekeeperStore`] port abstracts persistence ([`crate::db`]'s
-//! `SqliteGatekeeperStore` owns the SQL behind it); the store-touching logic
+//! [`GrantStore`] port abstracts persistence ([`crate::db`]'s
+//! `SqliteGrantStore` owns the SQL behind it); the store-touching logic
 //! lives with each entity module (the refresh-token rotation, the session
 //! revoke) or inside a [`capabilities`] capability (the scope-gated `/access`
 //! operations, generic over the store port); and everything fails with the
@@ -12,7 +12,7 @@
 //! the capabilities) in [`crate::live_bindings`].
 
 // The persistence port. Mirrors apps' `apps_store`.
-pub mod gatekeeper_store;
+pub mod grant_store;
 
 // The authority proofs every privileged write demands — the typed answer to "on
 // what authority is this row written?". Constructed only by the one function
@@ -26,7 +26,7 @@ pub(crate) mod authority;
 // `crate::live_bindings`.
 pub(crate) mod capabilities;
 
-// The in-memory `FakeGatekeeperStore` + fixtures the domain unit tests share.
+// The in-memory `FakeGrantStore` + fixtures the domain unit tests share.
 #[cfg(test)]
 pub(crate) mod test_fake;
 
@@ -80,7 +80,7 @@ pub mod token;
 pub(crate) mod token_exchange_error;
 
 pub use authorization_code::PendingCodeRequest;
-pub use gatekeeper_store::{GatekeeperStore, GatekeeperTx};
+pub use grant_store::{GrantStore, GrantTx};
 
 /// Shared helpers for the crate's **source-guard** tests — the advisory-strength
 /// tests that enumerate source files and assert a textual invariant (a handler

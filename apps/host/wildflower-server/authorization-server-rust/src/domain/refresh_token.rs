@@ -4,7 +4,7 @@ use diesel::prelude::{Insertable, Queryable, Selectable};
 use crate::db::refresh_tokens::{refresh_token_families, refresh_tokens};
 use crate::db::shared::JsonStrings;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 
 /// Absolute lifetime of a refresh-token family, measured from the original
 /// authorization. Rotation swaps generations but never extends this
@@ -71,7 +71,7 @@ pub struct RefreshToken {
 }
 
 /// Outcome of attempting to consume a refresh token — the primitive shape the
-/// [`GatekeeperStore`](crate::domain::GatekeeperStore) port returns, with the
+/// [`GrantStore`](crate::domain::GrantStore) port returns, with the
 /// theft-vs-miss decision left to the caller.
 ///
 /// `#[must_use]`: ignoring a `Replayed` outcome would skip the family
@@ -109,7 +109,7 @@ pub enum RefreshTokenConsumeOutcome {
 /// [`AuthorizationServerError::Infrastructure`] if the transaction, the stamp, or the
 /// existence probe fails.
 pub(crate) fn consume_refresh_token(
-    store: &impl GatekeeperStore,
+    store: &impl GrantStore,
     token_hash: &str,
     now: DateTime<Utc>,
 ) -> Result<RefreshTokenConsumeOutcome, AuthorizationServerError> {
@@ -127,9 +127,9 @@ pub(crate) fn consume_refresh_token(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::test_fake::FakeGatekeeperStore;
+    use crate::domain::test_fake::FakeGrantStore;
 
-    fn live_token(store: &FakeGatekeeperStore, token_hash: &str) {
+    fn live_token(store: &FakeGrantStore, token_hash: &str) {
         let now = Utc::now();
         store
             .insert_refresh_token_family_row(&RefreshTokenFamily {
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn consume_reports_consumed_then_replayed_then_not_found() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         live_token(&store, "live");
         let now = Utc::now();
 

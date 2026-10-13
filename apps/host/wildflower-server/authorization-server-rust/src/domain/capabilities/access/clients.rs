@@ -12,7 +12,7 @@ use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::client::Client;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 
 /// The scope gating [`ClientsReader`] — `wildflower/Client.r`. Shared by the
 /// capability's `FixedScopeCapability` binding and
@@ -44,12 +44,12 @@ pub(crate) struct ClientView {
 }
 
 /// Read access to registered clients — `GET /access/clients`.
-pub(crate) struct ClientsReader<S: GatekeeperStore> {
+pub(crate) struct ClientsReader<S: GrantStore> {
     store: S,
     first_party_client_id: Arc<str>,
 }
 
-impl<S: GatekeeperStore> ClientsReader<S> {
+impl<S: GrantStore> ClientsReader<S> {
     /// Build the reader over a store handle and the configured first-party
     /// `client_id`, both lifted from the state.
     pub(crate) fn new(store: S, first_party_client_id: Arc<str>) -> Self {
@@ -77,12 +77,12 @@ impl<S: GatekeeperStore> ClientsReader<S> {
 /// `PATCH /access/clients/{clientId}`. Idempotent: repeating a request leaves
 /// the row as the first one left it (a repeated disable keeps the original
 /// `disabled_at`).
-pub(crate) struct ClientsDisabler<S: GatekeeperStore> {
+pub(crate) struct ClientsDisabler<S: GrantStore> {
     store: S,
     first_party_client_id: Arc<str>,
 }
 
-impl<S: GatekeeperStore> ClientsDisabler<S> {
+impl<S: GrantStore> ClientsDisabler<S> {
     /// Build the disabler over a store handle and the configured first-party
     /// `client_id`, both lifted from the state.
     pub(crate) fn new(store: S, first_party_client_id: Arc<str>) -> Self {
@@ -151,14 +151,14 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::domain::test_fake::{client, FakeGatekeeperStore};
+    use crate::domain::test_fake::{client, FakeGrantStore};
 
     const HOST: &str = "wildflower-host";
 
     /// A disabler over a fresh fake seeded with `rows`; tests reach the fake
     /// through its `store` field to arrange and observe rows.
-    fn disabler_with(rows: &[Client]) -> ClientsDisabler<FakeGatekeeperStore> {
-        let store = FakeGatekeeperStore::default();
+    fn disabler_with(rows: &[Client]) -> ClientsDisabler<FakeGrantStore> {
+        let store = FakeGrantStore::default();
         for row in rows {
             store.upsert_client(row).unwrap();
         }
@@ -169,7 +169,7 @@ mod tests {
         DateTime::from_timestamp(seconds, 0).expect("in-range timestamp")
     }
 
-    fn stored(disabler: &ClientsDisabler<FakeGatekeeperStore>, client_id: &str) -> Client {
+    fn stored(disabler: &ClientsDisabler<FakeGrantStore>, client_id: &str) -> Client {
         disabler
             .store
             .client_by_id(client_id)
@@ -182,7 +182,7 @@ mod tests {
     const NOW: i64 = 5_000;
 
     fn disable(
-        disabler: &ClientsDisabler<FakeGatekeeperStore>,
+        disabler: &ClientsDisabler<FakeGrantStore>,
         client_id: &str,
         stamp: i64,
     ) -> Result<ClientView, AuthorizationServerError> {
@@ -190,7 +190,7 @@ mod tests {
     }
 
     fn enable(
-        disabler: &ClientsDisabler<FakeGatekeeperStore>,
+        disabler: &ClientsDisabler<FakeGrantStore>,
         client_id: &str,
     ) -> Result<ClientView, AuthorizationServerError> {
         disabler.set_disabled_at(client_id, None)
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn list_flags_only_the_first_party_client() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         for id in ["b-app", HOST, "a-app"] {
             store.upsert_client(&client(id, &["openid"])).unwrap();
         }

@@ -8,15 +8,15 @@ use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::launch_context::LaunchContext;
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 
 /// Mint and consume launch contexts. A borrowed view over the store, like the
 /// writers, so a flow capability holding the store can consume through it.
-pub(crate) struct LaunchContexts<'a, S: GatekeeperStore> {
+pub(crate) struct LaunchContexts<'a, S: GrantStore> {
     store: &'a S,
 }
 
-impl<'a, S: GatekeeperStore> LaunchContexts<'a, S> {
+impl<'a, S: GrantStore> LaunchContexts<'a, S> {
     /// The launch contexts in `store`.
     pub(crate) fn over(store: &'a S) -> Self {
         LaunchContexts { store }
@@ -96,13 +96,13 @@ mod tests {
 
     use super::*;
     use crate::domain::launch_context::LAUNCH_CONTEXT_TTL;
-    use crate::domain::test_fake::FakeGatekeeperStore;
+    use crate::domain::test_fake::FakeGrantStore;
 
     /// A minted context is unbound to any patient, expires after the TTL, and
     /// is consumed once by its own client.
     #[test]
     fn a_minted_context_is_consumed_once_by_its_client() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let launch_contexts = LaunchContexts::over(&store);
         let now = Utc::now();
         let minted = launch_contexts
@@ -135,7 +135,7 @@ mod tests {
     /// by whichever client presents it first.
     #[test]
     fn a_context_for_any_client_is_consumed_once_by_any_client() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let launch_contexts = LaunchContexts::over(&store);
         let now = Utc::now();
         let minted = launch_contexts
@@ -160,7 +160,7 @@ mod tests {
     /// Minting prunes the contexts already expired, and keeps live ones.
     #[test]
     fn minting_prunes_expired_contexts() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let launch_contexts = LaunchContexts::over(&store);
         let now = Utc::now();
         launch_contexts

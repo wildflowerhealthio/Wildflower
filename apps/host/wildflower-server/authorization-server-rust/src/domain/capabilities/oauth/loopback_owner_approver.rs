@@ -35,10 +35,10 @@ use crate::domain::client_registration::{
     classify_registration, ClientRegistrationVerdict, PresentedClientRegistration,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 use crate::ports::{
     LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
-    LoopbackRegistrationNotice, PendingConsentPublisher,
+    LoopbackRegistrationNotice, OwnerApproval,
 };
 
 /// The `client_id` the hosted launcher presents — the one client whose
@@ -76,29 +76,29 @@ pub(crate) enum LoopbackDecision {
 /// Public (no principal: the answer comes from the host's own UI), so its only
 /// powers are those two operations on the parked code-flow request. Generic over
 /// the store port so it's unit-testable against the fake; the binding
-/// instantiates it over the concrete `SqliteGatekeeperStore`.
-pub(crate) struct LoopbackOwnerApprover<S: GatekeeperStore> {
+/// instantiates it over the concrete `SqliteGrantStore`.
+pub(crate) struct LoopbackOwnerApprover<S: GrantStore> {
     store: S,
-    publisher: Arc<dyn PendingConsentPublisher>,
+    owner_approval: Arc<dyn OwnerApproval>,
     prompt: Arc<dyn LoopbackConsentPrompt>,
     host_owner_grant: Grant,
     first_party_client_id: Arc<str>,
 }
 
-impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
+impl<S: GrantStore> LoopbackOwnerApprover<S> {
     /// Build the approver over the store, the popup republish port, the host's
     /// dialog, the host Owner's grant (the approving authority), and the
     /// first-party `client_id` — all lifted from the state.
     pub(crate) fn new(
         store: S,
-        publisher: Arc<dyn PendingConsentPublisher>,
+        owner_approval: Arc<dyn OwnerApproval>,
         prompt: Arc<dyn LoopbackConsentPrompt>,
         host_owner_grant: Grant,
         first_party_client_id: Arc<str>,
     ) -> Self {
         LoopbackOwnerApprover {
             store,
-            publisher,
+            owner_approval,
             prompt,
             host_owner_grant,
             first_party_client_id,
@@ -170,7 +170,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
         let outcome = match answer {
             LoopbackConsentAnswer::Abstain => return Ok(LoopbackDecision::LeftForLauncher),
             LoopbackConsentAnswer::Reject => {
-                deny_oauth_consent(&self.store, self.publisher.as_ref(), request_id)
+                deny_oauth_consent(&self.store, self.owner_approval.as_ref(), request_id)
                     .map(|()| LoopbackDecision::Denied)
             }
             LoopbackConsentAnswer::Approve => self.approve(request_id, generate_code, now),
@@ -203,7 +203,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
         };
         let outcome = approve_oauth_consent(
             &self.store,
-            self.publisher.as_ref(),
+            self.owner_approval.as_ref(),
             request_id,
             input,
             generate_code,
@@ -221,7 +221,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
     }
 }
 
-impl<S: GatekeeperStore + Send + Sync + 'static> LoopbackOwnerApprover<S> {
+impl<S: GrantStore + Send + Sync + 'static> LoopbackOwnerApprover<S> {
     /// Put the parked request `request_id` to the dialog and apply the answer:
     /// the whole flow, which `/authorize` runs in the background after it has
     /// sent the browser to the wait page.
@@ -301,7 +301,7 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
-    use crate::domain::test_fake::{client, code_request, FakeGatekeeperStore, RecordingPublisher};
+    use crate::domain::test_fake::{client, code_request, FakeGrantStore, RecordingOwnerApproval};
 
     /// A dialog that always gives the same answer.
     struct FixedAnswer(LoopbackConsentAnswer);
@@ -330,26 +330,26 @@ mod tests {
     /// wildcard — narrower than the live host grant, so the tests can see an
     /// approval narrowed to it.
     fn approver(
-        store: FakeGatekeeperStore,
+        store: FakeGrantStore,
         answer: LoopbackConsentAnswer,
-    ) -> LoopbackOwnerApprover<FakeGatekeeperStore> {
+    ) -> LoopbackOwnerApprover<FakeGrantStore> {
         LoopbackOwnerApprover::new(
             store,
-            Arc::new(RecordingPublisher::default()),
+            Arc::new(RecordingOwnerApproval::default()),
             Arc::new(FixedAnswer(answer)),
             Grant::parse(["wildflower/*.cruds"]),
             crate::FIRST_PARTY_CLIENT_ID.into(),
         )
     }
 
-    fn store_with(request: &AuthorizationRequest) -> FakeGatekeeperStore {
-        let store = FakeGatekeeperStore::default();
+    fn store_with(request: &AuthorizationRequest) -> FakeGrantStore {
+        let store = FakeGrantStore::default();
         store.insert_authorization_request(request).unwrap();
         store
     }
 
     fn decide(
-        approver: &LoopbackOwnerApprover<FakeGatekeeperStore>,
+        approver: &LoopbackOwnerApprover<FakeGrantStore>,
         answer: LoopbackConsentAnswer,
     ) -> LoopbackDecision {
         approver
@@ -357,7 +357,7 @@ mod tests {
             .expect("decides")
     }
 
-    fn status_of(approver: &LoopbackOwnerApprover<FakeGatekeeperStore>) -> RequestStatus {
+    fn status_of(approver: &LoopbackOwnerApprover<FakeGrantStore>) -> RequestStatus {
         approver
             .store
             .authorization_request_by_id("req-1")

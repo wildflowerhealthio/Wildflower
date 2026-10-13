@@ -19,7 +19,7 @@ use crate::domain::capabilities::{
     ConsentReader, DeviceConsentView, OAuthConsentView,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::ports::PendingConsentPublisher;
+use crate::ports::OwnerApproval;
 
 /// Lets the host read and approve or deny this server's waiting consents as
 /// its Owner, in-process, without HTTP or a token: the in-process twin of the
@@ -47,10 +47,10 @@ impl HostConsentDecider {
     }
 
     fn decider(&self) -> LiveConsentDecider {
-        let publisher: Arc<dyn PendingConsentPublisher> = self.state.clone();
+        let owner_approval: Arc<dyn OwnerApproval> = self.state.clone();
         ConsentDecider::new(
             self.state.store.clone(),
-            publisher,
+            owner_approval,
             self.state.host_owner_grant.clone(),
             self.state.first_party_client_id.clone(),
         )

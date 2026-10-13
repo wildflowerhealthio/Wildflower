@@ -2,15 +2,15 @@
 //! [`AuthorizationServerState`]. See the [module docs](super) for the composition layer.
 
 use crate::live_bindings::state::AuthorizationServerState;
-use crate::ports::PendingConsentPublisher;
-use crate::GatekeeperStore;
+use crate::ports::OwnerApproval;
+use crate::GrantStore;
 
 /// The consent-head republish seam ([`crate::ports`]) the consent capability
 /// forwards to after a store write — delegates to the inherent
 /// recompute-and-publish. Implemented on the bare state so an
-/// `Arc<AuthorizationServerState>` coerces to an `Arc<dyn PendingConsentPublisher>` the
+/// `Arc<AuthorizationServerState>` coerces to an `Arc<dyn OwnerApproval>` the
 /// capability holds.
-impl PendingConsentPublisher for AuthorizationServerState {
+impl OwnerApproval for AuthorizationServerState {
     /// Recompute the head of the pending-consent queue from the store and
     /// publish it on the head's watch sender. Call after every transition
     /// that may change the head (`/oauth/device_authorization` insert,
@@ -39,7 +39,7 @@ impl PendingConsentPublisher for AuthorizationServerState {
     /// surviving pending row will republish on the next mutation or
     /// reaper tick.
     fn republish_active(&self) {
-        self.active_pending_consent_tx.send_if_modified(|current| {
+        self.owner_approval_tx.send_if_modified(|current| {
             let next = match self.store.oldest_pending_consent_head() {
                 Ok(next) => next,
                 Err(error) => {

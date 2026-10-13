@@ -15,15 +15,15 @@ use crate::domain::refresh_token::{
     REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// Issue and rotate refresh tokens. A borrowed view over the store; the gate is
 /// the redemption proof each method takes.
-pub(crate) struct RefreshFamilyWriter<'a, S: GatekeeperStore> {
+pub(crate) struct RefreshFamilyWriter<'a, S: GrantStore> {
     store: &'a S,
 }
 
-impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
+impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
     /// A writer over `store`.
     pub(crate) fn over(store: &'a S) -> Self {
         RefreshFamilyWriter { store }
@@ -125,13 +125,13 @@ mod tests {
     use super::*;
 
     use crate::domain::test_fake::{
-        authenticated_public_client, client, code_grant, redeemed_code, FakeGatekeeperStore,
+        authenticated_public_client, client, code_grant, redeemed_code, FakeGrantStore,
     };
 
     /// Only a grant carrying `offline_access` earns a refresh token.
     #[test]
     fn only_offline_access_earns_a_refresh_token() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let without = redeemed_code(&store, "a", &["openid"]);
         let with = redeemed_code(&store, "b", &["openid", "offline_access"]);
         assert!(!GrantRedemption::AuthorizationCode(&without).earns_refresh_token());
@@ -142,7 +142,7 @@ mod tests {
     /// grant, and the returned plaintext resolves to its first token.
     #[test]
     fn start_family_records_the_redemption() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .create_authorization_code_grant(&code_grant("grant-1", "client"))
             .unwrap();
@@ -167,7 +167,7 @@ mod tests {
         assert_eq!(family.expires_at, now + REFRESH_TOKEN_FAMILY_TTL);
     }
 
-    fn validated(store: &FakeGatekeeperStore, plaintext: &str) -> ValidatedRefreshToken {
+    fn validated(store: &FakeGrantStore, plaintext: &str) -> ValidatedRefreshToken {
         let client = authenticated_public_client(store, client("client", &["openid"]));
         ValidatedRefreshToken::validate(store, &client, plaintext, Utc::now()).unwrap()
     }
@@ -177,7 +177,7 @@ mod tests {
     /// expires the family, after which nothing in it validates.
     #[test]
     fn rotate_consumes_then_replay_expires_the_family() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let writer = RefreshFamilyWriter::over(&store);
         let now = Utc::now();
         let redeemed_code = redeemed_code(&store, "client", &["offline_access"]);

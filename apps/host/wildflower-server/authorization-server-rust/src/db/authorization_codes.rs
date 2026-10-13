@@ -1,7 +1,7 @@
 //! `authorization_codes` query bodies — issue, look up, and atomically redeem
 //! the single-use codes ([`IssuedAuthorizationCode`]) minted at `/authorize`. The
 //! `pub(super)` free functions the
-//! [`SqliteGatekeeperStore`](super::SqliteGatekeeperStore) port impl delegates
+//! [`SqliteGrantStore`](super::SqliteGrantStore) port impl delegates
 //! to, each running on a connection the store has already checked out of the
 //! pool.
 
@@ -89,8 +89,8 @@ pub(super) fn delete_authorization_codes_expired_before(
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_timestamp, arb_url};
-    use crate::db::SqliteGatekeeperStore;
-    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+    use crate::db::SqliteGrantStore;
+    use crate::domain::{GrantStore as _, GrantTx as _};
     use proptest::prelude::*;
 
     fn arb_authorization_code() -> impl Strategy<Value = IssuedAuthorizationCode> {
@@ -135,7 +135,7 @@ mod tests {
 
         #[test]
         fn issue_and_fetch_round_trip(code in arb_authorization_code()) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             store.issue_authorization_code(&code).expect("issue");
             let fetched = store
                 .authorization_code_by_request_id(&code.request_id)
@@ -149,7 +149,7 @@ mod tests {
     /// row, the second sees `None` (RFC 6749 §10.5).
     #[test]
     fn redeem_returns_the_row_exactly_once() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
         let code = IssuedAuthorizationCode {
             code: "the-code".to_string(),
@@ -183,7 +183,7 @@ mod tests {
     /// redemption deletes the row as it consumes it.
     #[test]
     fn delete_expired_codes_respects_the_cutoff() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
         let sample = |name: &str, expires_at| IssuedAuthorizationCode {
             code: name.to_string(),
@@ -230,7 +230,7 @@ mod tests {
     /// panic — a tampered redirect target can't decode to a valid-looking `Url`.
     #[test]
     fn corrupt_redirect_uri_is_a_typed_read_error() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
         let code = IssuedAuthorizationCode {
             code: "the-code".to_string(),

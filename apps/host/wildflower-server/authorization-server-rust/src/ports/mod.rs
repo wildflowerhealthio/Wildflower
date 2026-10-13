@@ -6,7 +6,7 @@
 //! [`AuthorizationServerState`](crate::http::AuthorizationServerState) wires the real implementations (see
 //! `http::state`); tests wire in-memory fakes. Mirrors `apps-rust`'s `ports/`.
 //!
-//!  - [`PendingConsentPublisher`] — republish the active pending-consent head
+//!  - [`OwnerApproval`] — republish the active pending-consent head
 //!    to the host after any transition that may change it (an
 //!    `/authorize` or `/device_authorization` insert, an approve/deny on
 //!    either consent surface);
@@ -18,10 +18,10 @@
 //!    since the host implements it with its dialog plugin).
 
 mod loopback_consent;
-mod pending_consent_publisher;
+mod owner_approval;
 mod revocation;
 
-pub(crate) use pending_consent_publisher::PendingConsentPublisher;
+pub(crate) use owner_approval::OwnerApproval;
 pub(crate) use revocation::{Revocation, RevocationCheck};
 // Public (not `pub(crate)`): the host implements this seam and names its
 // types when wiring `AuthorizationServerState`, so they are re-exported from the crate root.

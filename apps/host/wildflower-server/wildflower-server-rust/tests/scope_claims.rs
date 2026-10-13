@@ -17,8 +17,8 @@ use tower::ServiceExt;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
-    authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig, GatekeeperStore,
-    NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
+    authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig, GrantStore,
+    NoLoopbackConsentPrompt, PendingConsentHead, SqliteGrantStore,
 };
 use wildflowerhealthio_persistence::{Connection, DieselPool};
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -65,7 +65,7 @@ fn set_up_authorization_server(pool: &DieselPool) -> (wildflowerhealthio_authori
 /// A non-owner token carrying exactly `scopes`, signed by the gatekeeper's
 /// active key and naming [`SERVER_ORIGIN`] as `iss` and `aud`.
 fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
-    let key = SqliteGatekeeperStore::new(pool.clone())
+    let key = SqliteGrantStore::new(pool.clone())
         .expect("store handle")
         .active_signing_key()
         .expect("signing-key query")

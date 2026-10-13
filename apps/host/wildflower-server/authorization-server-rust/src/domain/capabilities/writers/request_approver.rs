@@ -12,7 +12,7 @@ use crate::domain::authorization_code::{
     IssuedAuthorizationCode, PendingCodeRequest, AUTHORIZATION_CODE_TTL,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 
 /// On whose authority a code-flow request is approved — the two proofs that
 /// may issue an authorization code. Listing them here is the point: a reader
@@ -40,11 +40,11 @@ impl CodeAuthority<'_> {
 
 /// Approve pending requests. A borrowed view over the store; the gate is the
 /// proof each method takes.
-pub(crate) struct RequestApprover<'a, S: GatekeeperStore> {
+pub(crate) struct RequestApprover<'a, S: GrantStore> {
     store: &'a S,
 }
 
-impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
+impl<'a, S: GrantStore> RequestApprover<'a, S> {
     /// A writer over `store`.
     pub(crate) fn over(store: &'a S) -> Self {
         RequestApprover { store }
@@ -128,12 +128,12 @@ mod tests {
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::test_fake::{
-        code_request, delegated_scopes, device_request, FakeGatekeeperStore,
+        code_request, delegated_scopes, device_request, FakeGrantStore,
     };
 
     /// The fixture code request `id`, in `status`, as the approver takes it.
     fn pending_request(
-        store: &FakeGatekeeperStore,
+        store: &FakeGrantStore,
         id: &str,
         status: RequestStatus,
     ) -> PendingCodeRequest {
@@ -147,7 +147,7 @@ mod tests {
     /// challenge with the same scopes.
     #[test]
     fn approve_for_code_records_the_proofs_scopes_on_request_and_code() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let pending_request = pending_request(&store, "req-1", RequestStatus::Pending);
         let now = Utc::now();
         let issued_code = RequestApprover::over(&store)
@@ -184,7 +184,7 @@ mod tests {
     /// maps to not-found — and leaves no code behind.
     #[test]
     fn approve_for_code_issues_nothing_when_the_request_is_not_pending() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let pending_request = pending_request(&store, "req-1", RequestStatus::Denied);
         let issued_code = RequestApprover::over(&store)
             .approve_for_code(
@@ -207,7 +207,7 @@ mod tests {
     /// `false`.
     #[test]
     fn approve_for_device_records_scopes_and_name_only_while_pending() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .insert_authorization_request(&device_request("dev-1", "CODE", RequestStatus::Pending))
             .unwrap();

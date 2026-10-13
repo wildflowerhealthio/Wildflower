@@ -1,12 +1,12 @@
-//! The in-memory [`FakeGatekeeperStore`] and the request/grant fixtures the
+//! The in-memory [`FakeGrantStore`] and the request/grant fixtures the
 //! per-entity action tests share. Modelling the primitive port semantics with no
 //! diesel and no database is enough to exercise the actions' semantic mapping (the
 //! `*NotFound` decisions, the consent-loader validation, and now the composed
 //! transaction scripts — grant upserts, the three-state consume, revoke). The
-//! primitives live on [`FakeGatekeeperTx`] (the fake's [`GatekeeperTx`](crate::domain::GatekeeperTx)); the
-//! [`GatekeeperStore`] seam hands one out and, for
-//! [`transaction`](GatekeeperStore::transaction) /
-//! [`immediate_transaction`](GatekeeperStore::immediate_transaction), snapshots
+//! primitives live on [`FakeGrantTx`] (the fake's [`GrantTx`](crate::domain::GrantTx)); the
+//! [`GrantStore`] seam hands one out and, for
+//! [`transaction`](GrantStore::transaction) /
+//! [`immediate_transaction`](GrantStore::immediate_transaction), snapshots
 //! the maps up front and restores them if the closure returns `Err`, so a failed
 //! composed action rolls back exactly as diesel would. The `SQLite` adapter's own
 //! SQL-level coverage (and its real lock semantics) live in `crate::db`, so the
@@ -24,21 +24,21 @@ use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant};
 use crate::domain::launch_context::LaunchContext;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 mod fixtures;
 mod tx;
 
 pub(crate) use fixtures::{
     authenticated_public_client, client, code_grant, code_request, delegated_scopes,
-    device_request, owned_scopes, redeemed_code, seed_active_signing_key, RecordingPublisher,
+    device_request, owned_scopes, redeemed_code, seed_active_signing_key, RecordingOwnerApproval,
 };
 
-/// An in-memory [`GatekeeperStore`] modelling the primitive port semantics with
+/// An in-memory [`GrantStore`] modelling the primitive port semantics with
 /// no diesel and no database — enough to exercise the actions' semantic mapping
 /// and their composed transaction scripts.
 #[derive(Default)]
-pub(crate) struct FakeGatekeeperStore {
+pub(crate) struct FakeGrantStore {
     clients: RefCell<HashMap<String, Client>>,
     signing_keys: RefCell<Vec<SigningKey>>,
     authorization_requests: RefCell<HashMap<String, AuthorizationRequest>>,
@@ -64,7 +64,7 @@ struct Snapshot {
     launch_contexts: HashMap<String, LaunchContext>,
 }
 
-impl FakeGatekeeperStore {
+impl FakeGrantStore {
     fn snapshot(&self) -> Snapshot {
         Snapshot {
             clients: self.clients.borrow().clone(),
@@ -92,14 +92,14 @@ impl FakeGatekeeperStore {
     }
 }
 
-impl GatekeeperStore for FakeGatekeeperStore {
-    type Tx<'a> = FakeGatekeeperTx<'a>;
+impl GrantStore for FakeGrantStore {
+    type Tx<'a> = FakeGrantTx<'a>;
 
     fn with_connection<T>(
         &self,
         f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
     ) -> Result<T, AuthorizationServerError> {
-        f(&mut FakeGatekeeperTx { store: self })
+        f(&mut FakeGrantTx { store: self })
     }
 
     fn transaction<T>(
@@ -110,7 +110,7 @@ impl GatekeeperStore for FakeGatekeeperStore {
         // one property the composed actions rely on — rollback on error — so a
         // partially-applied transaction never leaks into a later assertion.
         let snapshot = self.snapshot();
-        let result = f(&mut FakeGatekeeperTx { store: self });
+        let result = f(&mut FakeGrantTx { store: self });
         if result.is_err() {
             self.restore(snapshot);
         }
@@ -125,9 +125,9 @@ impl GatekeeperStore for FakeGatekeeperStore {
     }
 }
 
-/// The fake's [`GatekeeperTx`] — a borrow of the store's maps. Interior
+/// The fake's [`GrantTx`] — a borrow of the store's maps. Interior
 /// mutability (`RefCell`) does the real work; `&mut self` is only the trait's
 /// shape.
-pub(crate) struct FakeGatekeeperTx<'a> {
-    store: &'a FakeGatekeeperStore,
+pub(crate) struct FakeGrantTx<'a> {
+    store: &'a FakeGrantStore,
 }

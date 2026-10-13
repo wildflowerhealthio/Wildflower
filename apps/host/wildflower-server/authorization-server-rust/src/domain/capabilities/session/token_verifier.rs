@@ -6,20 +6,20 @@
 use std::sync::Arc;
 
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
 
 /// Verify presented access tokens. Generic over the store port so it's
 /// unit-testable against the fake; the binding instantiates it over the
-/// concrete `SqliteGatekeeperStore`.
-pub(crate) struct TokenVerifier<S: GatekeeperStore> {
+/// concrete `SqliteGrantStore`.
+pub(crate) struct TokenVerifier<S: GrantStore> {
     store: S,
     revocation: Arc<dyn RevocationCheck>,
     /// The server's bare origin: the one `iss` and the one `aud` accepted.
     server_origin: Arc<str>,
 }
 
-impl<S: GatekeeperStore> TokenVerifier<S> {
+impl<S: GrantStore> TokenVerifier<S> {
     /// Build the verifier over the store, the revocation-check port, and the
     /// server's origin, all lifted from the state.
     pub(crate) fn new(
@@ -84,7 +84,7 @@ mod tests {
 
     use super::*;
     use crate::domain::signing_key::SigningKey;
-    use crate::domain::test_fake::{seed_active_signing_key, FakeGatekeeperStore};
+    use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore};
     use crate::domain::token::{mint_access_token, NewJwtArgs};
 
     /// A revocation check that answers from a fixed set of revoked `jti`s and
@@ -116,13 +116,13 @@ mod tests {
     /// Another server's origin.
     const OTHER_ORIGIN: &str = "https://lab.relay.example";
 
-    fn store_with_key() -> (FakeGatekeeperStore, SigningKey) {
-        let store = FakeGatekeeperStore::default();
+    fn store_with_key() -> (FakeGrantStore, SigningKey) {
+        let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
         (store, key)
     }
 
-    fn verifier(store: FakeGatekeeperStore) -> TokenVerifier<FakeGatekeeperStore> {
+    fn verifier(store: FakeGrantStore) -> TokenVerifier<FakeGrantStore> {
         TokenVerifier::new(store, Arc::new(FakeRevocation::default()), ORIGIN.into())
     }
 
@@ -208,7 +208,7 @@ mod tests {
         .expect("minted tokens carry a jti");
 
         let revoked = TokenVerifier::new(
-            FakeGatekeeperStore::default(),
+            FakeGrantStore::default(),
             Arc::new(FakeRevocation {
                 revoked_jtis: vec![jti],
                 ..FakeRevocation::default()

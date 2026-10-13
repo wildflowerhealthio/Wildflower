@@ -8,7 +8,7 @@ use url::Url;
 
 use crate::domain::authorization_request::RequestStatus;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// Where a polled request stands.
 #[derive(Debug, PartialEq, Eq)]
@@ -49,12 +49,12 @@ impl From<AuthorizationServerError> for AuthorizationStatusError {
 
 /// Read authorization-request status. Generic over the store port so it's
 /// unit-testable against the fake; the binding instantiates it over the
-/// concrete `SqliteGatekeeperStore`.
-pub(crate) struct AuthorizationStatusReader<S: GatekeeperStore> {
+/// concrete `SqliteGrantStore`.
+pub(crate) struct AuthorizationStatusReader<S: GrantStore> {
     store: S,
 }
 
-impl<S: GatekeeperStore> AuthorizationStatusReader<S> {
+impl<S: GrantStore> AuthorizationStatusReader<S> {
     /// Build the reader over a store handle lifted from the state.
     pub(crate) fn new(store: S) -> Self {
         AuthorizationStatusReader { store }
@@ -112,13 +112,13 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
-    use crate::domain::test_fake::{code_request, FakeGatekeeperStore};
+    use crate::domain::test_fake::{code_request, FakeGrantStore};
 
     /// Each stored status maps to its view; a pending request past its TTL
     /// reads as expired; an unknown id is not found.
     #[test]
     fn status_reports_each_state_and_expires_stale_pending_requests() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let now = Utc::now();
         store
             .insert_authorization_request(&code_request(

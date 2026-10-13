@@ -1,12 +1,12 @@
-//! `SQLite` persistence for the gatekeeper — the `SqliteGatekeeperStore`
+//! `SQLite` persistence for the gatekeeper — the `SqliteGrantStore`
 //! adapter (the `SQLite` implementation of the
-//! [`GatekeeperStore`](crate::domain::GatekeeperStore) port: it holds the
+//! [`GrantStore`](crate::domain::GrantStore) port: it holds the
 //! app-wide diesel r2d2 pool, `wildflowerhealthio_persistence::DieselPool`, and applies the
 //! gatekeeper migrations onto it under a per-slice namespace, mirroring
 //! apps' `SqliteAppsStore`) plus one
 //! file per concern holding that concern's `table!` definition, row/column
 //! mappings, and single-statement query-body free functions (taking a
-//! `&mut SqliteConnection` — the adapter's `SqliteGatekeeperTx` unwraps it from a
+//! `&mut SqliteConnection` — the adapter's `SqliteGrantTx` unwraps it from a
 //! pooled connection or a transaction and threads it through) for its
 //! [`crate::domain`] type — mirroring the apps slice's distributed layout.
 //! [`shared`] holds the two
@@ -19,7 +19,7 @@
 pub(crate) mod authorization_codes;
 mod authorization_requests;
 pub(crate) mod clients;
-mod gatekeeper_store;
+mod grant_store;
 pub(crate) mod grants;
 pub(crate) mod launch_contexts;
 pub(crate) mod refresh_tokens;
@@ -28,4 +28,4 @@ pub(crate) mod signing_keys;
 #[cfg(test)]
 mod test_support;
 
-pub use gatekeeper_store::SqliteGatekeeperStore;
+pub use grant_store::SqliteGrantStore;

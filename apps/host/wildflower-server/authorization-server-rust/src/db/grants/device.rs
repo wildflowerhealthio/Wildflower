@@ -91,16 +91,16 @@ mod tests {
     use chrono::{DateTime, Utc};
     use uuid::Uuid;
 
-    use crate::db::SqliteGatekeeperStore;
+    use crate::db::SqliteGrantStore;
     use crate::domain::grant::{CumulativeConsent, DeviceGrant};
-    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+    use crate::domain::{GrantStore as _, GrantTx as _};
 
     /// The create-or-union device-grant upsert transaction, inlined here so the db
     /// test drives the real adapter's grant primitives directly instead of
     /// reaching up into a domain capability. Mirrors
     /// `domain::capabilities::writers::GrantRecorder::record_device_grant`.
     fn upsert_device_grant(
-        store: &SqliteGatekeeperStore,
+        store: &SqliteGrantStore,
         client_id: &str,
         device_name: &str,
         scopes: &[String],
@@ -135,7 +135,7 @@ mod tests {
     /// action's `BEGIN IMMEDIATE`. A different device name is a distinct grant.
     #[test]
     fn upsert_action_inserts_then_unions_scopes_over_sqlite() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
 
         upsert_device_grant(

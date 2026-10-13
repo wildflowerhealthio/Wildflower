@@ -1,10 +1,10 @@
-//! The fake's [`GatekeeperTx`] implementation — every primitive over the store's
+//! The fake's [`GrantTx`] implementation — every primitive over the store's
 //! in-memory maps.
 
 use chrono::{DateTime, Utc};
 use url::Url;
 
-use super::FakeGatekeeperTx;
+use super::FakeGrantTx;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::client::Client;
@@ -14,9 +14,9 @@ use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GatekeeperTx;
+use crate::domain::GrantTx;
 
-impl GatekeeperTx for FakeGatekeeperTx<'_> {
+impl GrantTx for FakeGrantTx<'_> {
     fn client_by_id(&mut self, client_id: &str) -> Result<Option<Client>, AuthorizationServerError> {
         Ok(self.store.clients.borrow().get(client_id).cloned())
     }

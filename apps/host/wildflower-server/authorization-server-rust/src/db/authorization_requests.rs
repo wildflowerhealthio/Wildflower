@@ -380,8 +380,8 @@ pub(super) fn delete_authorization_requests_expired_before(
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use crate::db::SqliteGatekeeperStore;
-    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+    use crate::db::SqliteGrantStore;
+    use crate::domain::{GrantStore as _, GrantTx as _};
     use proptest::prelude::*;
 
     fn arb_scopes() -> impl Strategy<Value = Vec<String>> {
@@ -454,7 +454,7 @@ mod tests {
 
         #[test]
         fn insert_and_fetch_round_trip(request in arb_authorization_request()) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             store
                 .insert_authorization_request(&request)
                 .expect("insert");
@@ -499,7 +499,7 @@ mod tests {
     // next insert, which made a retention window unenforceable.
     #[test]
     fn insert_leaves_unrelated_expired_requests_for_the_sweep() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut expired = device_request_with_status("expired-1", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
@@ -533,7 +533,7 @@ mod tests {
     // and it may be up to a sweep interval away from being reclaimed.
     #[test]
     fn insert_clears_an_expired_row_holding_the_same_user_code() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut expired = device_request("dev-stale", "SAME-CODE", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
@@ -560,7 +560,7 @@ mod tests {
     // stays a hard error, exactly as before.
     #[test]
     fn insert_never_drops_a_live_row_holding_the_same_user_code() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let live = device_request("dev-live", "SAME-CODE", RequestStatus::Pending);
         store
             .insert_authorization_request(&live)
@@ -583,7 +583,7 @@ mod tests {
     // 7-day retention window short for a row the sweep is supposed to own.
     #[test]
     fn insert_leaves_an_expired_terminal_row_holding_the_same_user_code() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         for (id, status) in [
             ("dev-denied", RequestStatus::Denied),
             ("dev-approved", RequestStatus::Approved),
@@ -620,7 +620,7 @@ mod tests {
     // rows past it go, rows inside it and live rows stay.
     #[test]
     fn delete_expired_requests_respects_the_cutoff() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut old = device_request("dev-old", "OLD-0000", RequestStatus::Pending);
         old.expires_at = Utc::now() - chrono::Duration::days(8);
         store
@@ -668,7 +668,7 @@ mod tests {
     // atomicity that stops two concurrent polls both minting tokens.
     #[test]
     fn consume_approved_authorization_request_is_single_use() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request_with_status(
                 "dev-1",
@@ -739,7 +739,7 @@ mod tests {
     // proves each filter pulls its weight.
     #[test]
     fn oldest_pending_consent_head_picks_the_fifo_head_across_both_flows() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
 
         // Empty → None.
         assert_eq!(
@@ -823,7 +823,7 @@ mod tests {
     // up in that window either.
     #[test]
     fn oldest_pending_consent_head_skips_expired_rows() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut expired_device = device_request("dev-expired", "EXP-000", RequestStatus::Pending);
         expired_device.expires_at = Utc::now() - chrono::Duration::minutes(1);
         let mut expired_code = code_request("code-expired", RequestStatus::Pending);
@@ -853,7 +853,7 @@ mod tests {
     // head keyed by `id`, which would send the popup to the wrong endpoint.
     #[test]
     fn oldest_pending_consent_head_skips_a_device_row_without_a_user_code() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
         let mut malformed = device_request("dev-malformed", "unused", RequestStatus::Pending);
         malformed.user_code = None;
@@ -880,7 +880,7 @@ mod tests {
     // flow is a decided request and must never re-raise the popup.
     #[test]
     fn oldest_pending_consent_head_ignores_decided_rows() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request(
                 "dev-approved",
@@ -898,7 +898,7 @@ mod tests {
     // — the guard transitions only `approved` → `expired`.
     #[test]
     fn consume_approved_authorization_request_ignores_non_approved() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request_with_status(
                 "dev-2",
@@ -923,7 +923,7 @@ mod tests {
     // that it did nothing.
     #[test]
     fn deny_authorization_request_transitions_only_a_pending_row() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         for (id, status) in [
             ("dev-pending", RequestStatus::Pending),
             ("dev-approved", RequestStatus::Approved),
@@ -957,7 +957,7 @@ mod tests {
     #[test]
     fn corrupt_enum_columns_are_typed_read_errors() {
         for column in ["status", "grant_type"] {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             store
                 .insert_authorization_request(&device_request_with_status(
                     "dev-1",

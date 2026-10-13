@@ -14,13 +14,13 @@ use crate::domain::authorization_request::{
 };
 use crate::domain::capabilities::writers::{GrantRecorder, RequestApprover};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
-use crate::ports::PendingConsentPublisher;
+use crate::domain::GrantStore;
+use crate::ports::OwnerApproval;
 
 /// Load the authorization request for `user_code` and verify it's a pending,
 /// unexpired device-code flow.
 pub(super) fn load_pending_device_request(
-    store: &impl GatekeeperStore,
+    store: &impl GrantStore,
     user_code: &str,
 ) -> Result<AuthorizationRequest, AuthorizationServerError> {
     match store.pending_authorization_request_by_user_code(user_code)? {
@@ -42,8 +42,8 @@ pub(super) fn load_pending_device_request(
 /// refresh) the standing device grant, and republish the popup head. An approval
 /// that grants nothing is applied as a **deny**.
 pub(super) fn approve_device_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn PendingConsentPublisher,
+    store: &impl GrantStore,
+    owner_approval: &dyn OwnerApproval,
     user_code: &str,
     input: ApproveDeviceConsentInput,
     approver_grant: &Grant,
@@ -65,7 +65,7 @@ pub(super) fn approve_device_consent(
         &ApprovableScopes::for_device(&client),
     )?
     else {
-        return deny_consent(store, publisher, &device_request.id, make_consent_not_found)
+        return deny_consent(store, owner_approval, &device_request.id, make_consent_not_found)
             .map(|()| ConsentOutcome::Denied);
     };
 
@@ -92,19 +92,19 @@ pub(super) fn approve_device_consent(
         now,
     )?;
 
-    publisher.republish_active();
+    owner_approval.republish_active();
     Ok(ConsentOutcome::Approved { redirect: None })
 }
 
 /// Deny the pending device-code request behind `user_code`. Validates it's a live
 /// device-flow prompt first, then marks it denied and republishes the popup head.
 pub(super) fn deny_device_consent(
-    store: &impl GatekeeperStore,
-    publisher: &dyn PendingConsentPublisher,
+    store: &impl GrantStore,
+    owner_approval: &dyn OwnerApproval,
     user_code: &str,
 ) -> Result<(), AuthorizationServerError> {
     let device_request = load_pending_device_request(store, user_code)?;
-    deny_consent(store, publisher, &device_request.id, || {
+    deny_consent(store, owner_approval, &device_request.id, || {
         AuthorizationServerError::DeviceConsentNotFound {
             user_code: user_code.to_owned(),
         }

@@ -1,8 +1,8 @@
 use super::*;
 use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
-use crate::db::SqliteGatekeeperStore;
+use crate::db::SqliteGrantStore;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+use crate::domain::{GrantStore as _, GrantTx as _};
 use proptest::prelude::*;
 
 fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
@@ -62,7 +62,7 @@ proptest! {
         token in arb_token_in_family("family-under-test"),
     ) {
         let family = RefreshTokenFamily { family_id: "family-under-test".to_string(), ..family };
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         seed_family_with_token(&store, &family, &token);
         let (fetched_token, fetched_family) = store
             .refresh_token_with_family_by_hash(&token.token_hash)
@@ -85,7 +85,7 @@ proptest! {
     ) {
         let family = RefreshTokenFamily { family_id: "family-under-test".to_string(), ..family };
         let live = RefreshToken { consumed_at: None, ..token };
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         seed_family_with_token(&store, &family, &live);
         let now = Utc::now();
         prop_assert!(store
@@ -102,7 +102,7 @@ proptest! {
 
 #[test]
 fn unknown_hash_neither_stamps_nor_exists() {
-    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     assert!(!store
         .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live("never-issued", Utc::now()))
         .expect("stamp"));
@@ -118,7 +118,7 @@ fn unknown_hash_neither_stamps_nor_exists() {
 // the opaque Backend whose text names the constraint.
 #[test]
 fn insert_refresh_token_rejects_orphan_without_family() {
-    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     let err = store
         .insert_refresh_token(&sample_token("orphan", "no-such-family"))
         .expect_err("orphan insert must violate the foreign key");
@@ -138,7 +138,7 @@ fn insert_refresh_token_rejects_orphan_without_family() {
 /// layer for setup. (Rotation's own consume-then-insert orchestration is
 /// tested against the action, in `domain::refresh_token`.)
 fn seed_family_with_token(
-    store: &SqliteGatekeeperStore,
+    store: &SqliteGrantStore,
     family: &RefreshTokenFamily,
     token: &RefreshToken,
 ) {
@@ -174,7 +174,7 @@ fn sample_token(token_hash: &str, family_id: &str) -> RefreshToken {
 
 #[test]
 fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
-    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     seed_family_with_token(
         &store,
         &sample_family("family-a", "client-1"),
@@ -228,7 +228,7 @@ fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
 /// silently defeat replay detection).
 #[test]
 fn delete_expired_families_takes_every_generation_with_them() {
-    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     let mut dead = sample_family("family-dead", "client-1");
     dead.expires_at = Utc::now() - chrono::Duration::days(91);
     seed_family_with_token(&store, &dead, &sample_token("dead-1", "family-dead"));
@@ -264,7 +264,7 @@ fn delete_expired_families_takes_every_generation_with_them() {
 /// guarantee from being quietly undone by the sweep.
 #[test]
 fn delete_expired_families_spares_the_recently_dead_and_the_live() {
-    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     let mut recently_revoked = sample_family("family-revoked", "client-1");
     recently_revoked.expires_at = Utc::now() - chrono::Duration::days(1);
     seed_family_with_token(
@@ -299,7 +299,7 @@ fn delete_expired_families_spares_the_recently_dead_and_the_live() {
 
 #[test]
 fn expire_for_client_spares_other_clients() {
-    let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+    let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     seed_family_with_token(
         &store,
         &sample_family("family-a", "client-1"),

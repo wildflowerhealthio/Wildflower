@@ -9,7 +9,7 @@
 use chrono::{DateTime, Duration, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 
 /// How long a refresh-token family (and its tokens) is kept past its absolute
 /// deadline. Deliberately equal to
@@ -59,7 +59,7 @@ impl PurgedCounts {
 /// [`AuthorizationServerError::Infrastructure`] if the transaction or any of the three
 /// deletes fails — rolled back, so a failure leaves the retained set as it was.
 pub(crate) fn purge_expired(
-    store: &impl GatekeeperStore,
+    store: &impl GrantStore,
     now: DateTime<Utc>,
 ) -> Result<PurgedCounts, AuthorizationServerError> {
     let family_cutoff = now - REFRESH_TOKEN_FAMILY_RETENTION;
@@ -82,7 +82,7 @@ mod tests {
     use crate::domain::authorization_code::IssuedAuthorizationCode;
     use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-    use crate::domain::test_fake::FakeGatekeeperStore;
+    use crate::domain::test_fake::FakeGrantStore;
 
     /// A fixed "now" so every fixture below can be placed relative to it
     /// without a clock read — the windows are the thing under test, not the
@@ -155,8 +155,8 @@ mod tests {
 
     /// Seed one row of each kind on each side of its window, plus a genuinely
     /// live refresh-token family, and return the store.
-    fn seeded() -> FakeGatekeeperStore {
-        let store = FakeGatekeeperStore::default();
+    fn seeded() -> FakeGrantStore {
+        let store = FakeGrantStore::default();
         // Past the 90-day window (its deadline is 91 days behind `now`).
         store
             .insert_refresh_token_family_row(&family("old", now() - Duration::days(91)))
@@ -298,7 +298,7 @@ mod tests {
     /// runs against exactly this.
     #[test]
     fn an_empty_database_reclaims_nothing() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         assert_eq!(
             purge_expired(&store, now()).expect("sweep"),
             PurgedCounts::default(),

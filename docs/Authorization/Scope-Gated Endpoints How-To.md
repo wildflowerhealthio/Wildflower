@@ -341,7 +341,7 @@ lets a guard test assert `domain/` never imports `crate::http`.
 
 - **Fixed:** `apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/` — the
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
-  `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
+  `ConsentDecider`, `TokenRevoker`), generic over `GrantStore`, bound to the
   concrete store in `authorization-server-rust/src/live_bindings/`. Their privileged writes
   go through the writers under an authority proof (see the section above).
 - **Data-dependent:** `apps/host/wildflower-server/databases-rust/src/domain/capabilities.rs` —

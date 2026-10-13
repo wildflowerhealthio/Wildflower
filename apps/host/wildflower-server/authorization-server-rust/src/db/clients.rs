@@ -1,5 +1,5 @@
 //! `clients` query bodies — the `pub(super)` free functions the
-//! [`SqliteGatekeeperStore`](super::SqliteGatekeeperStore) port impl delegates
+//! [`SqliteGrantStore`](super::SqliteGrantStore) port impl delegates
 //! to for [`Client`] lookup and registration/seeding upserts, each running on a
 //! connection the store has already checked out of the pool. They return the
 //! port's primitive shapes and raise only
@@ -115,9 +115,9 @@ pub(super) fn upsert_client(
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use crate::db::SqliteGatekeeperStore;
+    use crate::db::SqliteGrantStore;
     use crate::domain::client::{AllowedGrantType, ClientKind};
-    use crate::domain::GatekeeperStore as _;
+    use crate::domain::GrantStore as _;
     use proptest::prelude::*;
 
     fn arb_client() -> impl Strategy<Value = Client> {
@@ -160,7 +160,7 @@ mod tests {
 
         #[test]
         fn upsert_and_fetch_round_trip(client in arb_client()) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             store.upsert_client(&client).expect("upsert");
             let fetched = store
                 .client_by_id(&client.client_id)
@@ -172,7 +172,7 @@ mod tests {
 
     /// The migrations seed a fixed set of clients, so the list/disable
     /// properties run against the delta the test itself upserts.
-    fn seeded_client_ids(store: &SqliteGatekeeperStore) -> Vec<String> {
+    fn seeded_client_ids(store: &SqliteGrantStore) -> Vec<String> {
         store
             .list_clients()
             .expect("list seeded clients")
@@ -191,7 +191,7 @@ mod tests {
         fn list_clients_returns_every_row_sorted_by_id(
             upserted in prop::collection::vec(arb_client(), 0..6),
         ) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             let mut expected: std::collections::BTreeMap<String, Client> = store
                 .list_clients()
                 .expect("list seeds")
@@ -220,7 +220,7 @@ mod tests {
             client in arb_client(),
             stamp in arb_timestamp(),
         ) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             // A seeded id would keep the seed's policy on upsert; use a fresh one.
             prop_assume!(!seeded_client_ids(&store).contains(&client.client_id));
             store.upsert_client(&client).expect("upsert");
@@ -240,7 +240,7 @@ mod tests {
             client_id in "[a-zA-Z0-9_-]{1,32}",
             stamp in arb_opt_timestamp(),
         ) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             let before = seeded_client_ids(&store);
             prop_assume!(!before.contains(&client_id));
             prop_assert!(!store.set_client_disabled(&client_id, stamp).expect("update"));
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn upsert_updates_policy_but_preserves_registration_and_disable() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let registered_at = chrono::DateTime::from_timestamp(1_000, 0).unwrap();
         let disabled_at = chrono::DateTime::from_timestamp(1_500, 0).unwrap();
         let mut client = Client {
@@ -302,7 +302,7 @@ mod tests {
     /// not silently).
     #[test]
     fn migrations_seed_the_smart_app_clients() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         for client_id in [
             "growth_chart",
             "my_web_app",
@@ -688,7 +688,7 @@ mod tests {
             ("allowed_grant_types", "[\"totally_unknown\"]"), // JsonAllowedGrantTypes: unknown member
             ("kind", "bogus_kind"),                           // ClientKind: unknown discriminant
         ] {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             let mut conn = store.pool().get().expect("check out a connection");
             diesel::sql_query(format!(
                 "UPDATE clients SET {column} = '{bad_value}' WHERE client_id = 'growth_chart'"

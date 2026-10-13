@@ -37,7 +37,7 @@ use wildflowerhealthio_scopes::{
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 pub use config::AuthorizationServerConfig;
-pub use db::SqliteGatekeeperStore;
+pub use db::SqliteGrantStore;
 // Debug builds only: the OAuth clients for the first-party apps' vite dev servers
 // (the gatekeeper half of `wildflowerhealthio_apps::seed_dev_apps`). Gated so a release build
 // contains no code that could write them.
@@ -45,11 +45,11 @@ pub use db::SqliteGatekeeperStore;
 pub use seeding::seed_dev_app_clients;
 // The persistence port traits, re-exported so out-of-crate callers (e.g. the
 // integration test) can bring the store methods into scope on the concrete
-// `SqliteGatekeeperStore` adapter. `GatekeeperStore` is the transaction seam
-// (and carries the standalone-convenience default methods); `GatekeeperTx` is
+// `SqliteGrantStore` adapter. `GrantStore` is the transaction seam
+// (and carries the standalone-convenience default methods); `GrantTx` is
 // the primitive contract a composed transaction hands out.
 pub use domain::pending_consent::PendingConsentHead;
-pub use domain::{GatekeeperStore, GatekeeperTx};
+pub use domain::{GrantStore, GrantTx};
 
 // The pending consents as the host's Owner reads and decides them in-process
 // (`HostConsentDecider`, built from `AuthorizationServer::state`), and the shapes it
@@ -217,7 +217,7 @@ pub struct AuthorizationServer {
 ///    loopback owner trust) observe it the moment it exists;
 ///  - publishes the current head of the pending consent queue — device-code
 ///    and authorization-code requests share one FIFO slot — on
-///    `active_pending_consent_tx`. On the Tauri host, the server's run
+///    `owner_approval_tx`. On the Tauri host, the server's run
 ///    reports it as its detail, from which the host emits the base's
 ///    `pending-consent` event and brings the desktop window forward when
 ///    the server gets one. Seeding at boot means a request that was pending
@@ -259,7 +259,7 @@ pub fn setup_authorization_server(
     revocation_store: RevocationStore,
     config: &AuthorizationServerConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
-    active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
+    owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
     loopback_consent_prompt: Arc<dyn ports::LoopbackConsentPrompt>,
 ) -> anyhow::Result<AuthorizationServer> {
     // The host owner token is minted from `host_owner_scopes` (the live app sources
@@ -308,7 +308,7 @@ pub fn setup_authorization_server(
         server_origin: server_origin.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
-        active_pending_consent_tx,
+        owner_approval_tx,
         loopback_consent_prompt,
         host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),
     });
@@ -316,7 +316,7 @@ pub fn setup_authorization_server(
     // across an app restart still drives the modal on first webview
     // load — the `watch` value itself doesn't survive the process, but
     // the row does.
-    ports::PendingConsentPublisher::republish_active(state.as_ref());
+    ports::OwnerApproval::republish_active(state.as_ref());
     spawn_device_consent_reaper(state.clone());
     // Reclaim gatekeeper rows past their retention window: once at startup, then
     // daily. Spawned before the re-minter, which consumes `store`.
@@ -348,7 +348,7 @@ pub fn setup_authorization_server(
 /// it logs and retries next tick; when every receiver has dropped (app
 /// shutdown) it stops.
 fn spawn_owner_token_reminter(
-    store: SqliteGatekeeperStore,
+    store: SqliteGrantStore,
     server_origin: Arc<str>,
     host_owner_scopes: Vec<String>,
     first_party_client_id: String,
@@ -423,7 +423,7 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
 /// Runs on [`spawn_blocking`](tokio::task::spawn_blocking) rather than a runtime
 /// worker: `pool.get()` alone can park for r2d2's 30s connection timeout, and the
 /// sweep then holds one write transaction across three unindexed full scans.
-fn spawn_retention_sweep(store: SqliteGatekeeperStore) {
+fn spawn_retention_sweep(store: SqliteGrantStore) {
     tokio::spawn(async move {
         let mut ticks = interval(RETENTION_SWEEP_INTERVAL);
         // A long pause (suspend/resume) must not queue up catch-up sweeps —
@@ -475,7 +475,7 @@ fn spawn_device_consent_reaper(state: Arc<AuthorizationServerState>) {
         ticks.tick().await;
         loop {
             ticks.tick().await;
-            ports::PendingConsentPublisher::republish_active(state.as_ref());
+            ports::OwnerApproval::republish_active(state.as_ref());
         }
     });
 }

@@ -180,12 +180,12 @@ then-expire, a three-state consume) and you don't want that business logic
 trapped inside the SQLite adapter and re-implemented in the in-memory fake.
 
 Gatekeeper is the worked example
-(`authorization-server-rust/src/domain/gatekeeper_store/{mod,store,tx}.rs`). Split the port
+(`authorization-server-rust/src/domain/grant_store/{mod,store,tx}.rs`). Split the port
 into two traits:
 
-- **`GatekeeperTx`** — single-statement primitives taking `&mut self`
+- **`GrantTx`** — single-statement primitives taking `&mut self`
   (`tx.rs`).
-- **`GatekeeperStore`** — a seam with a GAT `type Tx<'a>: GatekeeperTx` plus
+- **`GrantStore`** — a seam with a GAT `type Tx<'a>: GrantTx` plus
   `with_connection` / `transaction` / `immediate_transaction`, each taking
   `impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>` (`store.rs`).
 
@@ -195,7 +195,7 @@ Load-bearing details:
 
 - **Pass closures, not fn-item paths.** The elided `&mut Self::Tx<'_>` bound is
   higher-ranked (`for<'a>`), so `|tx| tx.foo()` unifies where a bare
-  `GatekeeperTx::foo` does not.
+  `GrantTx::foo` does not.
 - **`immediate_transaction` (BEGIN IMMEDIATE) takes the write lock at read
   time.** A read-merge-write (scope-union grant upsert) must use it, or a
   concurrent writer can lose the union; a plain `transaction` is deferred and
@@ -205,9 +205,9 @@ Load-bearing details:
 - **diesel's `transaction`/`immediate_transaction` require `E: From<diesel::result::Error>`**
   (BEGIN/COMMIT can fail even when the closure maps its own query errors), so add
   `impl From<diesel::result::Error> for AuthorizationServerError` in the `db` layer
-  (`db/gatekeeper_store.rs`) to keep `domain::error` diesel-free.
+  (`db/grant_store.rs`) to keep `domain::error` diesel-free.
 - **The concrete `Tx` type is public interface.** `type Tx<'a>` on a `pub` trait
-  makes the SQLite adapter's `SqliteGatekeeperTx` a public type (E0446) — it must
+  makes the SQLite adapter's `SqliteGrantTx` a public type (E0446) — it must
   be `pub`.
 - **Keep the default methods** (each `self.with_connection(|tx| tx.op())`) so
   lone reads stay autocommit (no write lock) and existing single-statement call

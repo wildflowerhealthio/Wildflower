@@ -1,5 +1,5 @@
 //! The composition layer — where the generic, store-agnostic capabilities in
-//! [`crate::domain::capabilities`] meet the concrete [`SqliteGatekeeperStore`](crate::db::SqliteGatekeeperStore)
+//! [`crate::domain::capabilities`] meet the concrete [`SqliteGrantStore`](crate::db::SqliteGrantStore)
 //! and the `Arc<AuthorizationServerState>` router state. It lives at the crate root (not
 //! under [`crate::http`]) so `domain/` can be built from it without depending on
 //! the transport layer.

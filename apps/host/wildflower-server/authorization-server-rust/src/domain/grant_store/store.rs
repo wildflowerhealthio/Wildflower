@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use url::Url;
 
-use super::GatekeeperTx;
+use super::GrantTx;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
@@ -11,8 +11,8 @@ use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 
-/// The transaction seam over [`GatekeeperTx`]. The domain holds an
-/// `impl GatekeeperStore` and either runs a single primitive standalone (the
+/// The transaction seam over [`GrantTx`]. The domain holds an
+/// `impl GrantStore` and either runs a single primitive standalone (the
 /// default methods below, each a one-liner over
 /// [`with_connection`](Self::with_connection)) or composes several into an
 /// atomic operation inside [`transaction`](Self::transaction) /
@@ -26,15 +26,15 @@ use crate::domain::signing_key::SigningKey;
 /// The six concerns (clients, signing keys, authorization requests,
 /// authorization codes, refresh-token families, grants) all hang off one port
 /// because they share one database and one axum state.
-pub trait GatekeeperStore {
+pub trait GrantStore {
     /// The connection-scoped primitive handle this store hands to a closure. For
     /// the `SQLite` adapter it wraps a checked-out diesel connection; for the
     /// fake it wraps the in-memory maps.
-    type Tx<'a>: GatekeeperTx
+    type Tx<'a>: GrantTx
     where
         Self: 'a;
 
-    /// Run `f` with a [`GatekeeperTx`] in **autocommit** mode — each primitive
+    /// Run `f` with a [`GrantTx`] in **autocommit** mode — each primitive
     /// `f` calls is its own implicit transaction, exactly as a bare checked-out
     /// connection behaves. The single-statement default methods below all route
     /// through here; composing multiple writes that must be atomic is
@@ -86,40 +86,40 @@ pub trait GatekeeperStore {
     // code that don't compose keep calling `store.<op>(..)` directly. Operations
     // that only ever run *inside* a composed transaction (the grant
     // update/delete halves, the two consume probes, the per-client family
-    // expiry) are intentionally absent here — they live on `GatekeeperTx` only.
+    // expiry) are intentionally absent here — they live on `GrantTx` only.
 
-    /// See [`GatekeeperTx::client_by_id`].
+    /// See [`GrantTx::client_by_id`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::client_by_id`]'s error.
+    /// Propagates [`GrantTx::client_by_id`]'s error.
     fn client_by_id(&self, client_id: &str) -> Result<Option<Client>, AuthorizationServerError> {
         self.with_connection(|tx| tx.client_by_id(client_id))
     }
 
-    /// See [`GatekeeperTx::upsert_client`].
+    /// See [`GrantTx::upsert_client`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::upsert_client`]'s error.
+    /// Propagates [`GrantTx::upsert_client`]'s error.
     fn upsert_client(&self, client: &Client) -> Result<(), AuthorizationServerError> {
         self.with_connection(|tx| tx.upsert_client(client))
     }
 
-    /// See [`GatekeeperTx::list_clients`].
+    /// See [`GrantTx::list_clients`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::list_clients`]'s error.
+    /// Propagates [`GrantTx::list_clients`]'s error.
     fn list_clients(&self) -> Result<Vec<Client>, AuthorizationServerError> {
         self.with_connection(|tx| tx.list_clients())
     }
 
-    /// See [`GatekeeperTx::set_client_disabled`].
+    /// See [`GrantTx::set_client_disabled`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::set_client_disabled`]'s error.
+    /// Propagates [`GrantTx::set_client_disabled`]'s error.
     fn set_client_disabled(
         &self,
         client_id: &str,
@@ -128,47 +128,47 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.set_client_disabled(client_id, disabled_at))
     }
 
-    /// See [`GatekeeperTx::all_signing_keys`].
+    /// See [`GrantTx::all_signing_keys`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::all_signing_keys`]'s error.
+    /// Propagates [`GrantTx::all_signing_keys`]'s error.
     fn all_signing_keys(&self) -> Result<Vec<SigningKey>, AuthorizationServerError> {
         self.with_connection(|tx| tx.all_signing_keys())
     }
 
-    /// See [`GatekeeperTx::active_signing_key`].
+    /// See [`GrantTx::active_signing_key`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::active_signing_key`]'s error.
+    /// Propagates [`GrantTx::active_signing_key`]'s error.
     fn active_signing_key(&self) -> Result<Option<SigningKey>, AuthorizationServerError> {
         self.with_connection(|tx| tx.active_signing_key())
     }
 
-    /// See [`GatekeeperTx::has_active_signing_key`].
+    /// See [`GrantTx::has_active_signing_key`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::has_active_signing_key`]'s error.
+    /// Propagates [`GrantTx::has_active_signing_key`]'s error.
     fn has_active_signing_key(&self) -> Result<bool, AuthorizationServerError> {
         self.with_connection(|tx| tx.has_active_signing_key())
     }
 
-    /// See [`GatekeeperTx::insert_signing_key`].
+    /// See [`GrantTx::insert_signing_key`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::insert_signing_key`]'s error.
+    /// Propagates [`GrantTx::insert_signing_key`]'s error.
     fn insert_signing_key(&self, key: &SigningKey) -> Result<(), AuthorizationServerError> {
         self.with_connection(|tx| tx.insert_signing_key(key))
     }
 
-    /// See [`GatekeeperTx::authorization_request_by_id`].
+    /// See [`GrantTx::authorization_request_by_id`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::authorization_request_by_id`]'s error.
+    /// Propagates [`GrantTx::authorization_request_by_id`]'s error.
     fn authorization_request_by_id(
         &self,
         id: &str,
@@ -176,11 +176,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.authorization_request_by_id(id))
     }
 
-    /// See [`GatekeeperTx::authorization_request_by_user_code`].
+    /// See [`GrantTx::authorization_request_by_user_code`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::authorization_request_by_user_code`]'s error.
+    /// Propagates [`GrantTx::authorization_request_by_user_code`]'s error.
     fn authorization_request_by_user_code(
         &self,
         user_code: &str,
@@ -188,11 +188,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.authorization_request_by_user_code(user_code))
     }
 
-    /// See [`GatekeeperTx::pending_authorization_request_by_user_code`].
+    /// See [`GrantTx::pending_authorization_request_by_user_code`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::pending_authorization_request_by_user_code`]'s
+    /// Propagates [`GrantTx::pending_authorization_request_by_user_code`]'s
     /// error.
     fn pending_authorization_request_by_user_code(
         &self,
@@ -201,20 +201,20 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.pending_authorization_request_by_user_code(user_code))
     }
 
-    /// See [`GatekeeperTx::oldest_pending_consent_head`].
+    /// See [`GrantTx::oldest_pending_consent_head`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::oldest_pending_consent_head`]'s error.
+    /// Propagates [`GrantTx::oldest_pending_consent_head`]'s error.
     fn oldest_pending_consent_head(&self) -> Result<Option<PendingConsentHead>, AuthorizationServerError> {
         self.with_connection(|tx| tx.oldest_pending_consent_head())
     }
 
-    /// See [`GatekeeperTx::insert_authorization_request`].
+    /// See [`GrantTx::insert_authorization_request`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::insert_authorization_request`]'s error.
+    /// Propagates [`GrantTx::insert_authorization_request`]'s error.
     fn insert_authorization_request(
         &self,
         request: &AuthorizationRequest,
@@ -222,11 +222,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.insert_authorization_request(request))
     }
 
-    /// See [`GatekeeperTx::approve_authorization_request`].
+    /// See [`GrantTx::approve_authorization_request`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::approve_authorization_request`]'s error.
+    /// Propagates [`GrantTx::approve_authorization_request`]'s error.
     fn approve_authorization_request(
         &self,
         id: &str,
@@ -239,30 +239,30 @@ pub trait GatekeeperStore {
         })
     }
 
-    /// See [`GatekeeperTx::deny_authorization_request`].
+    /// See [`GrantTx::deny_authorization_request`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::deny_authorization_request`]'s error.
+    /// Propagates [`GrantTx::deny_authorization_request`]'s error.
     fn deny_authorization_request(&self, id: &str) -> Result<bool, AuthorizationServerError> {
         self.with_connection(|tx| tx.deny_authorization_request(id))
     }
 
-    /// See [`GatekeeperTx::consume_approved_authorization_request`].
+    /// See [`GrantTx::consume_approved_authorization_request`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::consume_approved_authorization_request`]'s
+    /// Propagates [`GrantTx::consume_approved_authorization_request`]'s
     /// error.
     fn consume_approved_authorization_request(&self, id: &str) -> Result<bool, AuthorizationServerError> {
         self.with_connection(|tx| tx.consume_approved_authorization_request(id))
     }
 
-    /// See [`GatekeeperTx::record_device_poll`].
+    /// See [`GrantTx::record_device_poll`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::record_device_poll`]'s error.
+    /// Propagates [`GrantTx::record_device_poll`]'s error.
     fn record_device_poll(
         &self,
         id: &str,
@@ -271,11 +271,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.record_device_poll(id, polled_at))
     }
 
-    /// See [`GatekeeperTx::redeem_authorization_code`].
+    /// See [`GrantTx::redeem_authorization_code`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::redeem_authorization_code`]'s error.
+    /// Propagates [`GrantTx::redeem_authorization_code`]'s error.
     fn redeem_authorization_code(
         &self,
         code: &str,
@@ -283,11 +283,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.redeem_authorization_code(code))
     }
 
-    /// See [`GatekeeperTx::authorization_code_by_request_id`].
+    /// See [`GrantTx::authorization_code_by_request_id`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::authorization_code_by_request_id`]'s error.
+    /// Propagates [`GrantTx::authorization_code_by_request_id`]'s error.
     fn authorization_code_by_request_id(
         &self,
         request_id: &str,
@@ -295,11 +295,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.authorization_code_by_request_id(request_id))
     }
 
-    /// See [`GatekeeperTx::issue_authorization_code`].
+    /// See [`GrantTx::issue_authorization_code`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::issue_authorization_code`]'s error.
+    /// Propagates [`GrantTx::issue_authorization_code`]'s error.
     fn issue_authorization_code(
         &self,
         code: &IssuedAuthorizationCode,
@@ -307,11 +307,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.issue_authorization_code(code))
     }
 
-    /// See [`GatekeeperTx::insert_refresh_token_family_row`].
+    /// See [`GrantTx::insert_refresh_token_family_row`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::insert_refresh_token_family_row`]'s error.
+    /// Propagates [`GrantTx::insert_refresh_token_family_row`]'s error.
     fn insert_refresh_token_family_row(
         &self,
         family: &RefreshTokenFamily,
@@ -319,20 +319,20 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.insert_refresh_token_family_row(family))
     }
 
-    /// See [`GatekeeperTx::insert_refresh_token`].
+    /// See [`GrantTx::insert_refresh_token`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::insert_refresh_token`]'s error.
+    /// Propagates [`GrantTx::insert_refresh_token`]'s error.
     fn insert_refresh_token(&self, token: &RefreshToken) -> Result<(), AuthorizationServerError> {
         self.with_connection(|tx| tx.insert_refresh_token(token))
     }
 
-    /// See [`GatekeeperTx::refresh_token_with_family_by_hash`].
+    /// See [`GrantTx::refresh_token_with_family_by_hash`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::refresh_token_with_family_by_hash`]'s error.
+    /// Propagates [`GrantTx::refresh_token_with_family_by_hash`]'s error.
     fn refresh_token_with_family_by_hash(
         &self,
         token_hash: &str,
@@ -340,11 +340,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.refresh_token_with_family_by_hash(token_hash))
     }
 
-    /// See [`GatekeeperTx::expire_refresh_token_family`].
+    /// See [`GrantTx::expire_refresh_token_family`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::expire_refresh_token_family`]'s error.
+    /// Propagates [`GrantTx::expire_refresh_token_family`]'s error.
     fn expire_refresh_token_family(
         &self,
         family_id: &str,
@@ -353,12 +353,12 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.expire_refresh_token_family(family_id, now))
     }
 
-    /// See [`GatekeeperTx::expire_refresh_token_families_for_authorization_code`].
+    /// See [`GrantTx::expire_refresh_token_families_for_authorization_code`].
     ///
     /// # Errors
     ///
     /// Propagates
-    /// [`GatekeeperTx::expire_refresh_token_families_for_authorization_code`]'s
+    /// [`GrantTx::expire_refresh_token_families_for_authorization_code`]'s
     /// error.
     fn expire_refresh_token_families_for_authorization_code(
         &self,
@@ -370,29 +370,29 @@ pub trait GatekeeperStore {
         })
     }
 
-    /// See [`GatekeeperTx::all_grants`].
+    /// See [`GrantTx::all_grants`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::all_grants`]'s error.
+    /// Propagates [`GrantTx::all_grants`]'s error.
     fn all_grants(&self) -> Result<Vec<Grant>, AuthorizationServerError> {
         self.with_connection(|tx| tx.all_grants())
     }
 
-    /// See [`GatekeeperTx::grant_by_id`].
+    /// See [`GrantTx::grant_by_id`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::grant_by_id`]'s error.
+    /// Propagates [`GrantTx::grant_by_id`]'s error.
     fn grant_by_id(&self, id: &str) -> Result<Option<Grant>, AuthorizationServerError> {
         self.with_connection(|tx| tx.grant_by_id(id))
     }
 
-    /// See [`GatekeeperTx::grant_by_client_and_redirect`].
+    /// See [`GrantTx::grant_by_client_and_redirect`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::grant_by_client_and_redirect`]'s error.
+    /// Propagates [`GrantTx::grant_by_client_and_redirect`]'s error.
     fn grant_by_client_and_redirect(
         &self,
         client_id: &str,
@@ -401,11 +401,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.grant_by_client_and_redirect(client_id, redirect_uri))
     }
 
-    /// See [`GatekeeperTx::device_grant_by_client_and_device_name`].
+    /// See [`GrantTx::device_grant_by_client_and_device_name`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::device_grant_by_client_and_device_name`]'s
+    /// Propagates [`GrantTx::device_grant_by_client_and_device_name`]'s
     /// error.
     fn device_grant_by_client_and_device_name(
         &self,
@@ -415,11 +415,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.device_grant_by_client_and_device_name(client_id, device_name))
     }
 
-    /// See [`GatekeeperTx::create_authorization_code_grant`].
+    /// See [`GrantTx::create_authorization_code_grant`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::create_authorization_code_grant`]'s error.
+    /// Propagates [`GrantTx::create_authorization_code_grant`]'s error.
     fn create_authorization_code_grant(
         &self,
         grant: &AuthorizationCodeGrant,
@@ -427,11 +427,11 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.create_authorization_code_grant(grant))
     }
 
-    /// See [`GatekeeperTx::create_device_grant`].
+    /// See [`GrantTx::create_device_grant`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::create_device_grant`]'s error.
+    /// Propagates [`GrantTx::create_device_grant`]'s error.
     fn create_device_grant(&self, grant: &DeviceGrant) -> Result<(), AuthorizationServerError> {
         self.with_connection(|tx| tx.create_device_grant(grant))
     }

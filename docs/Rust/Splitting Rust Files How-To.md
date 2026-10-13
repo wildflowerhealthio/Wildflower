@@ -52,7 +52,7 @@ remember the guard is textual, so a mention of a needle in a doc comment counts.
 You cannot split a single trait across files: a supertrait's methods need the
 defining trait in scope at every call site, and every `impl` block would have to
 fragment to match. So a file holding two traits
-(`gatekeeper_store.rs` → `gatekeeper_store/{mod,tx,store}.rs`, one trait each)
+(`grant_store.rs` → `grant_store/{mod,tx,store}.rs`, one trait each)
 splits cleanly, but decomposing one trait into per-resource sub-traits is a large
 churn with real regression risk — not worth it for a size cleanup.
 

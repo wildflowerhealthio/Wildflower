@@ -38,7 +38,7 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
-    GatekeeperStore, NoLoopbackConsentPrompt, SqliteGatekeeperStore,
+    GrantStore, NoLoopbackConsentPrompt, SqliteGrantStore,
 };
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_shared_structures::health_check::{
@@ -322,7 +322,7 @@ fn client_token(app_data_dir: &Path, server_origin: &str, scopes: &[String]) -> 
     // opens an empty one, with no signing key to find.
     let pool = wildflowerhealthio_persistence::open_pool(&app_data_dir.join("wildflower.sqlite"))
         .expect("open the server's database");
-    let signing_key = SqliteGatekeeperStore::new(pool)
+    let signing_key = SqliteGrantStore::new(pool)
         .expect("gatekeeper store")
         .active_signing_key()
         .expect("signing-key query")

@@ -78,12 +78,12 @@ pub(super) fn delete_launch_contexts_expired_by(
 mod tests {
     use chrono::Duration;
 
-    use crate::db::SqliteGatekeeperStore;
+    use crate::db::SqliteGrantStore;
     use crate::domain::launch_context::{LaunchContext, LAUNCH_CONTEXT_TTL};
-    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+    use crate::domain::{GrantStore as _, GrantTx as _};
 
-    fn store() -> SqliteGatekeeperStore {
-        SqliteGatekeeperStore::open_in_memory().expect("store")
+    fn store() -> SqliteGrantStore {
+        SqliteGrantStore::open_in_memory().expect("store")
     }
 
     /// A minted context round-trips through the table: the consume returns the

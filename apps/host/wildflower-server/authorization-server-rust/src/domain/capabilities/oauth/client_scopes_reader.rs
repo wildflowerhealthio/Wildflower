@@ -5,15 +5,15 @@
 use wildflowerhealthio_scopes::Scope;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// Read a client's `allowed_scopes`. Generic over the store port; the binding
-/// instantiates it over the concrete `SqliteGatekeeperStore`.
-pub(crate) struct ClientScopesReader<S: GatekeeperStore> {
+/// instantiates it over the concrete `SqliteGrantStore`.
+pub(crate) struct ClientScopesReader<S: GrantStore> {
     store: S,
 }
 
-impl<S: GatekeeperStore> ClientScopesReader<S> {
+impl<S: GrantStore> ClientScopesReader<S> {
     /// Build the reader over a store handle lifted from the state.
     pub(crate) fn new(store: S) -> Self {
         ClientScopesReader { store }
@@ -50,13 +50,13 @@ impl<S: GatekeeperStore> ClientScopesReader<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::test_fake::{client, FakeGatekeeperStore};
+    use crate::domain::test_fake::{client, FakeGrantStore};
 
     /// A registered client's allowlist comes back parsed; an unknown client is
     /// the empty (fail-open, logged) set.
     #[test]
     fn allowed_scopes_are_parsed_and_unknown_clients_are_empty() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .upsert_client(&client("app", &["patient/*.rs", "openid"]))
             .unwrap();

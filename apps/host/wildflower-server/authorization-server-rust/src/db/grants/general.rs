@@ -160,17 +160,17 @@ mod tests {
     use uuid::Uuid;
 
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
-    use crate::db::SqliteGatekeeperStore;
+    use crate::db::SqliteGrantStore;
     use crate::domain::authorization_server_error::AuthorizationServerError;
     use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-    use crate::domain::{GatekeeperStore as _, GatekeeperTx as _};
+    use crate::domain::{GrantStore as _, GrantTx as _};
 
     /// The grant-revoke cascade (delete the grant + expire the client's
     /// refresh-token families in one transaction), inlined so the db test drives
     /// the real adapter directly rather than reaching up into a domain capability.
     /// Mirrors `domain::capabilities::access::grants::revoke_grant`.
     fn revoke_grant(
-        store: &SqliteGatekeeperStore,
+        store: &SqliteGrantStore,
         grant_id: &str,
         client_id: &str,
         now: DateTime<Utc>,
@@ -253,7 +253,7 @@ mod tests {
         /// reconstructs the whole grant off the `grants` view.
         #[test]
         fn create_and_fetch_round_trip(grant in arb_grant()) {
-            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             match &grant {
                 Grant::AuthorizationCode(g) => {
                     store.create_authorization_code_grant(g).expect("create code grant");
@@ -274,7 +274,7 @@ mod tests {
     /// same client coexist, and each lookup only sees its own kind.
     #[test]
     fn code_and_device_grants_coexist_per_client() {
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
         store
@@ -326,7 +326,7 @@ mod tests {
     fn revoke_removes_the_row_and_expires_the_clients_families() {
         use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
-        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
             .create_device_grant(&DeviceGrant {
                 id: Uuid::new_v4().to_string(),

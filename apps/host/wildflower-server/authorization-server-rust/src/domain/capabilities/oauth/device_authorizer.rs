@@ -15,8 +15,8 @@ use crate::domain::authorization_request::{
     AuthorizationRequest, StartDeviceAuthorizationArgs, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
-use crate::ports::PendingConsentPublisher;
+use crate::domain::GrantStore;
+use crate::ports::OwnerApproval;
 
 /// Lifetime of a device-flow authorization request — the user has this long
 /// to enter their `user_code` before the flow expires.
@@ -55,17 +55,17 @@ impl From<AuthorizationServerError> for DeviceAuthorizationError {
 
 /// Start device authorizations. Generic over the store port so it's
 /// unit-testable against the fake; the binding instantiates it over the
-/// concrete `SqliteGatekeeperStore`.
-pub(crate) struct DeviceAuthorizer<S: GatekeeperStore> {
+/// concrete `SqliteGrantStore`.
+pub(crate) struct DeviceAuthorizer<S: GrantStore> {
     store: S,
-    publisher: Arc<dyn PendingConsentPublisher>,
+    owner_approval: Arc<dyn OwnerApproval>,
 }
 
-impl<S: GatekeeperStore> DeviceAuthorizer<S> {
+impl<S: GrantStore> DeviceAuthorizer<S> {
     /// Build the authorizer over the store and the popup republish port, both
     /// lifted from the state.
-    pub(crate) fn new(store: S, publisher: Arc<dyn PendingConsentPublisher>) -> Self {
-        DeviceAuthorizer { store, publisher }
+    pub(crate) fn new(store: S, owner_approval: Arc<dyn OwnerApproval>) -> Self {
+        DeviceAuthorizer { store, owner_approval }
     }
 
     /// Check the requested scopes against the client's allowlist (coverage-
@@ -103,7 +103,7 @@ impl<S: GatekeeperStore> DeviceAuthorizer<S> {
         self.store.insert_authorization_request(&request)?;
         // A fresh pending row may have just become the head of the consent
         // queue; republish so the host webview popup picks it up.
-        self.publisher.republish_active();
+        self.owner_approval.republish_active();
         Ok(DeviceCodes {
             device_code,
             user_code,
@@ -140,10 +140,10 @@ mod tests {
     use crate::domain::authorization_request::{GrantType, RequestStatus};
 
     use crate::domain::test_fake::{
-        authenticated_public_client, client, owned_scopes, FakeGatekeeperStore, RecordingPublisher,
+        authenticated_public_client, client, owned_scopes, FakeGrantStore, RecordingOwnerApproval,
     };
 
-    fn authenticated(store: &FakeGatekeeperStore) -> AuthenticatedClient {
+    fn authenticated(store: &FakeGrantStore) -> AuthenticatedClient {
         authenticated_public_client(store, client("app", &["patient/*.rs", "openid"]))
     }
 
@@ -151,10 +151,10 @@ mod tests {
     /// a pending device request under its user code and the popup is raised.
     #[test]
     fn start_parks_a_pending_request_and_raises_the_popup() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let client = authenticated(&store);
-        let publisher = Arc::new(RecordingPublisher::default());
-        let authorizer = DeviceAuthorizer::new(store, publisher.clone());
+        let owner_approval = Arc::new(RecordingOwnerApproval::default());
+        let authorizer = DeviceAuthorizer::new(store, owner_approval.clone());
         let device_codes = authorizer
             .start(
                 &client,
@@ -183,21 +183,21 @@ mod tests {
             ["patient/Patient.r", "openid"]
         );
         assert_eq!(parked_request.device_name.as_deref(), Some("Kitchen iPad"));
-        assert_eq!(publisher.count(), 1);
+        assert_eq!(owner_approval.count(), 1);
     }
 
     /// A scope outside the allowlist refuses the whole request before anything
     /// is parked_request.
     #[test]
     fn start_refuses_a_scope_outside_the_allowlist() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let client = authenticated(&store);
-        let publisher = Arc::new(RecordingPublisher::default());
-        let authorizer = DeviceAuthorizer::new(store, publisher.clone());
+        let owner_approval = Arc::new(RecordingOwnerApproval::default());
+        let authorizer = DeviceAuthorizer::new(store, owner_approval.clone());
         assert!(matches!(
             authorizer.start(&client, owned_scopes(&["system/*.cruds"]), None),
             Err(DeviceAuthorizationError::ScopeNotAllowed)
         ));
-        assert_eq!(publisher.count(), 0);
+        assert_eq!(owner_approval.count(), 0);
     }
 }

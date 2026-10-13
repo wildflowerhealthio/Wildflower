@@ -9,18 +9,18 @@ use chrono::Duration;
 
 use crate::domain::authority::TokenEntitlement;
 use crate::domain::token::{mint_access_token, NewJwtArgs, TokenIssuanceError};
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// Mint access tokens for one server. A borrowed view over the store; the gate
 /// is the [`TokenEntitlement`] proof [`mint`](Self::mint) takes.
-pub(crate) struct AccessTokenMinter<'a, S: GatekeeperStore> {
+pub(crate) struct AccessTokenMinter<'a, S: GrantStore> {
     store: &'a S,
     /// The server's bare origin: both the `iss` and the `aud` claim.
     server_origin: &'a str,
     ttl: Duration,
 }
 
-impl<'a, S: GatekeeperStore> AccessTokenMinter<'a, S> {
+impl<'a, S: GrantStore> AccessTokenMinter<'a, S> {
     /// A writer over `store` minting tokens issued by and for `server_origin`,
     /// that live for `ttl`.
     pub(crate) fn new(store: &'a S, server_origin: &'a str, ttl: Duration) -> Self {
@@ -66,10 +66,10 @@ mod tests {
     use super::*;
     use crate::domain::authority::HostOwnerEntitlement;
 
-    use crate::domain::test_fake::{seed_active_signing_key, FakeGatekeeperStore};
+    use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore};
     use crate::domain::token::{verify_jwt, VerifyOptions};
 
-    fn minter(store: &FakeGatekeeperStore) -> AccessTokenMinter<'_, FakeGatekeeperStore> {
+    fn minter(store: &FakeGrantStore) -> AccessTokenMinter<'_, FakeGrantStore> {
         AccessTokenMinter::new(store, "https://server.example", Duration::minutes(5))
     }
 
@@ -77,7 +77,7 @@ mod tests {
     /// unsigned or differently-signed token.
     #[test]
     fn mint_fails_closed_without_an_active_key() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         let entitlement = HostOwnerEntitlement::for_host("host", &["openid".to_owned()]);
         let outcome = minter(&store).mint(TokenEntitlement::HostOwner(&entitlement));
         assert!(matches!(
@@ -91,7 +91,7 @@ mod tests {
     /// against the seeded key.
     #[test]
     fn mint_signs_exactly_the_proofs_claims() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
         let scopes = vec!["system/*.cruds".to_owned(), "openid".to_owned()];
         let entitlement = HostOwnerEntitlement::for_host("host", &scopes);

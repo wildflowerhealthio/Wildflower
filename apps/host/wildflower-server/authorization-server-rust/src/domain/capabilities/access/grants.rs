@@ -1,7 +1,7 @@
 //! Grant capabilities — the `wildflower/Grant.*` capabilities behind
 //! `/access/grants[/{id}]`, and the grant operations they own. The store-touching
 //! logic (`get_grant`, the `revoke_grant` cascade) lives here as `&impl
-//! GatekeeperStore` functions so it stays unit-testable against the in-memory
+//! GrantStore` functions so it stays unit-testable against the in-memory
 //! fake; the capabilities are the scope-gated entries generic over the store,
 //! holding the port dependencies lifted from the state (never `Arc<AuthorizationServerState>`).
 
@@ -13,7 +13,7 @@ use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::Grant;
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::{GrantStore, GrantTx};
 use crate::ports::Revocation;
 
 /// The scope gating [`GrantsReader`] — `wildflower/Grant.r`. Shared by the
@@ -37,7 +37,7 @@ pub(crate) fn grants_revoker_scopes() -> Vec<Scope> {
 
 /// A single grant by id, or [`AuthorizationServerError::GrantNotFound`] when absent — the
 /// `/access/grants/{id}` read (and the load-before-revoke).
-fn get_grant(store: &impl GatekeeperStore, id: &str) -> Result<Grant, AuthorizationServerError> {
+fn get_grant(store: &impl GrantStore, id: &str) -> Result<Grant, AuthorizationServerError> {
     store
         .grant_by_id(id)?
         .ok_or_else(|| AuthorizationServerError::GrantNotFound { id: id.to_owned() })
@@ -51,7 +51,7 @@ fn get_grant(store: &impl GatekeeperStore, id: &str) -> Result<Grant, Authorizat
 /// leave the grant deleted while `offline_access` refresh tokens stay live —
 /// standing consent and standing credentials die together or not at all.
 fn revoke_grant(
-    store: &impl GatekeeperStore,
+    store: &impl GrantStore,
     grant_id: &str,
     client_id: &str,
     now: DateTime<Utc>,
@@ -73,12 +73,12 @@ fn revoke_grant(
 
 /// Read access to standing client grants — `GET /access/grants[/{id}]`. Generic
 /// over the store port so it's unit-testable against the fake; the binding
-/// instantiates it over the concrete `SqliteGatekeeperStore`.
-pub(crate) struct GrantsReader<S: GatekeeperStore> {
+/// instantiates it over the concrete `SqliteGrantStore`.
+pub(crate) struct GrantsReader<S: GrantStore> {
     store: S,
 }
 
-impl<S: GatekeeperStore> GrantsReader<S> {
+impl<S: GrantStore> GrantsReader<S> {
     /// Build the reader over a store handle lifted from the state.
     pub(crate) fn new(store: S) -> Self {
         GrantsReader { store }
@@ -99,12 +99,12 @@ impl<S: GatekeeperStore> GrantsReader<S> {
 /// from [`GrantsReader`] because deleting a grant is a `Grant.d` capability, and
 /// it carries the security-critical token-kill cascade — holds the [`Revocation`]
 /// port for the epoch bump alongside the store.
-pub(crate) struct GrantsRevoker<S: GatekeeperStore> {
+pub(crate) struct GrantsRevoker<S: GrantStore> {
     store: S,
     revocation: Arc<dyn Revocation>,
 }
 
-impl<S: GatekeeperStore> GrantsRevoker<S> {
+impl<S: GrantStore> GrantsRevoker<S> {
     /// Build the revoker over a store handle + the revocation port, both lifted
     /// from the state.
     pub(crate) fn new(store: S, revocation: Arc<dyn Revocation>) -> Self {
@@ -130,11 +130,11 @@ impl<S: GatekeeperStore> GrantsRevoker<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::test_fake::{code_grant, FakeGatekeeperStore};
+    use crate::domain::test_fake::{code_grant, FakeGrantStore};
 
     #[test]
     fn get_grant_returns_the_row_or_grant_not_found() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .create_authorization_code_grant(&code_grant("g1", "client"))
             .unwrap();
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn revoke_grant_maps_the_miss_to_grant_not_found() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .create_authorization_code_grant(&code_grant("g1", "client"))
             .unwrap();
@@ -172,7 +172,7 @@ mod tests {
     fn revoke_grant_also_expires_the_clients_refresh_families() {
         use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .create_authorization_code_grant(&code_grant("g1", "client-a"))
             .unwrap();

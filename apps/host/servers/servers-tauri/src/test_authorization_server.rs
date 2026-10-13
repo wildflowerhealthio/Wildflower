@@ -7,7 +7,7 @@ use tokio::sync::watch;
 use url::Url;
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AuthorizationServerConfig, HostConsentDecider, LaunchContextMinter,
-    NoLoopbackConsentPrompt, PendingConsentHead, SqliteGatekeeperStore,
+    NoLoopbackConsentPrompt, PendingConsentHead, SqliteGrantStore,
 };
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
@@ -19,7 +19,7 @@ pub(crate) const DOMAIN: &str = "ruth.relay.example.com";
 pub(crate) struct TestAuthorizationServer {
     pub(crate) consent_decider: HostConsentDecider,
     pub(crate) launch_context_minter: LaunchContextMinter,
-    pub(crate) store: SqliteGatekeeperStore,
+    pub(crate) store: SqliteGrantStore,
     _pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     _owner_token_rx: watch::Receiver<Option<String>>,
     database_dir: tempfile::TempDir,
@@ -70,7 +70,7 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
     TestAuthorizationServer {
         consent_decider: HostConsentDecider::new(gatekeeper.state),
         launch_context_minter: gatekeeper.launch_context_minter,
-        store: SqliteGatekeeperStore::new(pool).unwrap(),
+        store: SqliteGrantStore::new(pool).unwrap(),
         _pending_consent_rx: pending_consent_rx,
         _owner_token_rx: owner_token_rx,
         database_dir,

@@ -17,7 +17,7 @@ use wildflowerhealthio_persistence::DieselPool;
 
 use wildflowerhealthio_scopes::{Permission, Scope};
 
-use crate::db::SqliteGatekeeperStore;
+use crate::db::SqliteGrantStore;
 use crate::domain::authority::{HostOwnerEntitlement, TokenEntitlement};
 use crate::domain::capabilities::writers::AccessTokenMinter;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
@@ -25,8 +25,8 @@ use crate::domain::signing_key::SigningKey;
 use crate::domain::token::TokenIssuanceError;
 // The persistence port trait — brought into scope so the store's methods
 // (`active_signing_key`, `insert_signing_key`, `upsert_client`, …) resolve on
-// the concrete `SqliteGatekeeperStore` this boot code holds directly.
-use crate::domain::GatekeeperStore as _;
+// the concrete `SqliteGrantStore` this boot code holds directly.
+use crate::domain::GrantStore as _;
 
 /// Wrap the host-owned connection `pool` in a gatekeeper store (applying
 /// migrations, which includes the SQL seed of the SMART sample-app clients)
@@ -44,8 +44,8 @@ pub fn open_and_seed_store(
     first_party_client_id: &str,
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
-) -> anyhow::Result<SqliteGatekeeperStore> {
-    let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
+) -> anyhow::Result<SqliteGrantStore> {
+    let store = SqliteGrantStore::new(pool).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store, host_owner_scopes, first_party_client_id)
         .context("failed to seed first-party client")?;
@@ -60,7 +60,7 @@ pub fn open_and_seed_store(
 /// across every resource type. Upserted on every boot, like
 /// [`ensure_first_party_client`], so it follows the server's origin.
 fn ensure_fhir_ui_client(
-    store: &SqliteGatekeeperStore,
+    store: &SqliteGrantStore,
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
 ) -> anyhow::Result<()> {
@@ -89,7 +89,7 @@ fn ensure_fhir_ui_client(
 /// Generate and insert an active signing key if the table is empty;
 /// otherwise leave the existing keys alone. Idempotent — safe to call on
 /// every boot.
-fn ensure_some_active_signing_key(store: &SqliteGatekeeperStore) -> anyhow::Result<()> {
+fn ensure_some_active_signing_key(store: &SqliteGrantStore) -> anyhow::Result<()> {
     let existing = store.active_signing_key().context("read signing keys")?;
     if existing.is_some() {
         return Ok(());
@@ -110,7 +110,7 @@ fn ensure_some_active_signing_key(store: &SqliteGatekeeperStore) -> anyhow::Resu
 /// [`crate::default_first_party_client_id`]), correcting a store seeded by an
 /// older build (registration time and any admin disable are preserved).
 fn ensure_first_party_client(
-    store: &SqliteGatekeeperStore,
+    store: &SqliteGrantStore,
     host_owner_scopes: &[String],
     first_party_client_id: &str,
 ) -> anyhow::Result<()> {
@@ -304,7 +304,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// Returns an error if the store cannot be opened/migrated or an upsert fails.
 #[cfg(debug_assertions)]
 pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
-    let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
+    let store = SqliteGrantStore::new(pool).context("failed to open gatekeeper store")?;
     // Ports come from the shared dev-port file, not literals — see
     // [`DEV_APP_PORTS_JSON`].
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
@@ -464,7 +464,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
 /// The minter's [`TokenIssuanceError`]: no active signing key, a signing
 /// failure, or a store failure. The boot path adds where it was minting.
 pub(crate) fn mint_host_owner_token(
-    store: &SqliteGatekeeperStore,
+    store: &SqliteGrantStore,
     server_origin: &str,
     ttl: Duration,
     host_owner_scopes: &[String],
@@ -518,7 +518,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
         let client = store
             .client_by_id(HEALTH_VIEWER_DEV_CLIENT_ID)
             .expect("query client")
@@ -568,7 +568,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
         let client = store
             .client_by_id(SYNTHETIC_DATA_DEV_CLIENT_ID)
             .expect("query client")
@@ -614,7 +614,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
         let client = store
             .client_by_id(MEDICATIONS_DEV_CLIENT_ID)
             .expect("query client")
@@ -666,7 +666,7 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
-        let store = SqliteGatekeeperStore::new(pool).expect("open gatekeeper store");
+        let store = SqliteGrantStore::new(pool).expect("open gatekeeper store");
         let client = store
             .client_by_id(LIFTING_DEV_CLIENT_ID)
             .expect("query client")

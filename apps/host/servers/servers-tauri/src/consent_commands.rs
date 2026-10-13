@@ -144,7 +144,7 @@ mod tests {
     use wildflowerhealthio_authorization_server::domain::authorization_request::{
         AuthorizationRequest, GrantType, RequestStatus,
     };
-    use wildflowerhealthio_authorization_server::GatekeeperStore;
+    use wildflowerhealthio_authorization_server::GrantStore;
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
     use super::*;

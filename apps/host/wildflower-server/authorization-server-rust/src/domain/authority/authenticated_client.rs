@@ -10,7 +10,7 @@ use crate::crypto_util::client_secret::verify_client_secret;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GatekeeperStore;
+use crate::domain::GrantStore;
 
 /// A client whose credentials have been verified. It answers the questions a
 /// flow asks of the client it acts for (its id, name, and what its registration
@@ -52,7 +52,7 @@ impl AuthenticatedClient {
     ///
     /// A [`ClientAuthenticationError`] naming the failed check.
     pub(crate) fn authenticate(
-        store: &impl GatekeeperStore,
+        store: &impl GrantStore,
         presented: &ClientCredentials,
     ) -> Result<Self, ClientAuthenticationError> {
         let client = store
@@ -109,7 +109,7 @@ mod tests {
 
     use super::*;
     use crate::crypto_util::client_secret::hash_client_secret;
-    use crate::domain::test_fake::{client, FakeGatekeeperStore};
+    use crate::domain::test_fake::{client, FakeGrantStore};
 
     fn presented(client_id: &str, secret: Option<&str>) -> ClientCredentials {
         ClientCredentials {
@@ -130,7 +130,7 @@ mod tests {
     /// stray secret.
     #[test]
     fn a_public_client_authenticates_on_identity_alone() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store.upsert_client(&client("app", &["openid"])).unwrap();
         let proof =
             AuthenticatedClient::authenticate(&store, &presented("app", None)).expect("public");
@@ -142,7 +142,7 @@ mod tests {
     /// Unknown and disabled clients are refused before any secret is looked at.
     #[test]
     fn unknown_and_disabled_clients_are_refused() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .upsert_client(&Client {
                 disabled_at: Some(Utc::now()),
@@ -164,7 +164,7 @@ mod tests {
     /// unconfigured each name their own failure; the right one authenticates.
     #[test]
     fn a_confidential_client_needs_the_matching_secret() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store.upsert_client(&confidential("app", "s3cret")).unwrap();
         store
             .upsert_client(&Client {
@@ -195,7 +195,7 @@ mod tests {
     /// and its scope allowlist (coverage-aware, like [`Client::allows_scopes`]).
     #[test]
     fn the_proof_answers_for_its_registration() {
-        let store = FakeGatekeeperStore::default();
+        let store = FakeGrantStore::default();
         store
             .upsert_client(&Client {
                 allowed_grant_types: vec![AllowedGrantType::DeviceCode],

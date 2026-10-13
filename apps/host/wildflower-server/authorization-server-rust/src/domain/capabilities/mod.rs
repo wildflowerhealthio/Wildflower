@@ -17,11 +17,11 @@
 //!    compose these rather than calling the privileged store methods directly;
 //!    a source-guard test makes that structural.
 //!
-//! Every capability is generic over the [`GatekeeperStore`](crate::domain::GatekeeperStore)
+//! Every capability is generic over the [`GrantStore`](crate::domain::GrantStore)
 //! port and holds its dependencies lifted from the state (never an
 //! `Arc<AuthorizationServerState>` it reaches into), so its logic is unit-testable
 //! against the in-memory fake. The bindings that name the concrete
-//! `SqliteGatekeeperStore` and build a capability from the router state live in
+//! `SqliteGrantStore` and build a capability from the router state live in
 //! [`crate::live_bindings`], so nothing here depends on a concrete adapter or on
 //! `crate::http`.
 
@@ -64,7 +64,7 @@ mod source_guards {
             ".store",
             ".revocation_store",
             ".first_party_client_id",
-            ".active_pending_consent_tx",
+            ".owner_approval_tx",
             ".loopback_base_url",
             ".server_origin",
             ".loopback_consent_prompt",

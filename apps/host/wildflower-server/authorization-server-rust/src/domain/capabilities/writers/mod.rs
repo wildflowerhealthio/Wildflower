@@ -61,7 +61,7 @@ mod tests {
     const ALLOWED_PREFIXES: &[&str] = &[
         "domain/capabilities/writers/",
         "db/",
-        "domain/gatekeeper_store/",
+        "domain/grant_store/",
         "domain/test_fake/",
         "seeding.rs",
     ];

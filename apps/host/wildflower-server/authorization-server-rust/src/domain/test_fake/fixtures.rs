@@ -6,7 +6,7 @@ use chrono::{DateTime, Duration, Utc};
 use url::Url;
 use wildflowerhealthio_scopes::Grant;
 
-use super::FakeGatekeeperStore;
+use super::FakeGrantStore;
 use crate::crypto_util::pkce::compute_code_challenge;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authority::{
@@ -19,8 +19,8 @@ use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GatekeeperStore;
-use crate::ports::PendingConsentPublisher;
+use crate::domain::GrantStore;
+use crate::ports::OwnerApproval;
 
 /// A pending (by default) device-code authorization request fixture.
 pub(crate) fn device_request(
@@ -120,7 +120,7 @@ pub(crate) fn owned_scopes(scopes: &[&str]) -> Vec<String> {
 }
 
 /// Seed a freshly generated signing key as the active one, and return it.
-pub(crate) fn seed_active_signing_key(store: &FakeGatekeeperStore) -> SigningKey {
+pub(crate) fn seed_active_signing_key(store: &FakeGrantStore) -> SigningKey {
     let mut key = SigningKey::generate().expect("key");
     key.is_active = true;
     store.insert_signing_key(&key).unwrap();
@@ -129,7 +129,7 @@ pub(crate) fn seed_active_signing_key(store: &FakeGatekeeperStore) -> SigningKey
 
 /// Register `client` (which must be public) and authenticate as it.
 pub(crate) fn authenticated_public_client(
-    store: &FakeGatekeeperStore,
+    store: &FakeGrantStore,
     client: Client,
 ) -> AuthenticatedClient {
     let client_id = client.client_id.clone();
@@ -150,7 +150,7 @@ pub(crate) fn authenticated_public_client(
 /// that needs the proof rather than the redemption rule. A standing grant the
 /// test planted for that client and redirect is picked up.
 pub(crate) fn redeemed_code(
-    store: &FakeGatekeeperStore,
+    store: &FakeGrantStore,
     client_id: &str,
     granted_scopes: &[&str],
 ) -> RedeemedAuthorizationCode {
@@ -197,21 +197,21 @@ pub(crate) fn delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
     .expect("non-empty")
 }
 
-/// A [`PendingConsentPublisher`] that counts republish calls. Atomic (not a
+/// A [`OwnerApproval`] that counts republish calls. Atomic (not a
 /// `Cell`) so it satisfies the port's `Send + Sync` bound.
 #[derive(Default)]
-pub(crate) struct RecordingPublisher {
+pub(crate) struct RecordingOwnerApproval {
     republishes: AtomicU32,
 }
 
-impl RecordingPublisher {
+impl RecordingOwnerApproval {
     /// How many times the popup head has been republished.
     pub(crate) fn count(&self) -> u32 {
         self.republishes.load(Ordering::SeqCst)
     }
 }
 
-impl PendingConsentPublisher for RecordingPublisher {
+impl OwnerApproval for RecordingOwnerApproval {
     fn republish_active(&self) {
         self.republishes.fetch_add(1, Ordering::SeqCst);
     }
