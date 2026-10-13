@@ -83,7 +83,7 @@ const useOAuthConsentQuery = (id: string): UseSuspenseQueryResult<OAuthConsentRe
  * decision.
  *
  * Like the device-consent mutation, the consent screen unmounts on
- * success (`onDone()` navigates to `/settings/gatekeeper`), so this
+ * success (`onDone()` navigates to `/settings/authorization`), so this
  * consent's own detail key is never re-read. Invalidate the grants list
  * root the user lands on so the new grant shows.
  */

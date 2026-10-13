@@ -11,7 +11,7 @@
  * reason it fits the console: the page is cross-origin to its API server, so it
  * holds a bearer in memory, and the
  * reader is already looking at the browser that must approve the grant. The
- * device-code flow at `/gatekeeper/device-login` remains for the second-screen
+ * device-code flow at `/authorization/device-login` remains for the second-screen
  * case (and as the 401 fallback), but it is no longer how the landing page
  * signs in.
  *

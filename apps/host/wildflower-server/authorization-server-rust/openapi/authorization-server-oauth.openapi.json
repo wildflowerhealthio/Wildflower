@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Gatekeeper OAuth API",
+    "title": "Wildflower Authorization OAuth API",
     "version": "0.0.0"
   },
   "paths": {

@@ -215,7 +215,7 @@ the literal and fakes only the data part.
 ## A slice route directory mounted under a nested `route()` collides on `IndexRoute`
 
 **Discovered during**: claude/nifty-knuth-8ywi8f (HAR Recorder phase 4)
-**Learning**: `@tanstack/virtual-file-routes`' `physical()` builds each generated route-variable name from the path _inside_ the mount, so two slices whose mounted directory contains an `index.tsx` both reduce to `IndexRouteImport` / `IndexRoute` and `apps/wildflower-react`'s `routeTree.gen.ts` fails to parse (`Identifier 'IndexRouteImport' has already been declared`) — `apps-react`'s `_auth/home/index.tsx` already holds that name. Mounting the slice's whole `_auth/` directory as a sibling (`physical('', routesDir('<slice>', '_auth'))`) keeps the section name in the in-mount path, so the pair generates as `Auth<Section>Route` / `Auth<Section>IndexRoute`. The section layout then belongs to the slice (`src/routes/_auth/<section>.tsx`), not the app — the app-owned layout in `_auth/gatekeeper.tsx` exists only because gatekeeper has a same-named `_open` sibling.
+**Learning**: `@tanstack/virtual-file-routes`' `physical()` builds each generated route-variable name from the path _inside_ the mount, so two slices whose mounted directory contains an `index.tsx` both reduce to `IndexRouteImport` / `IndexRoute` and `apps/wildflower-react`'s `routeTree.gen.ts` fails to parse (`Identifier 'IndexRouteImport' has already been declared`) — `apps-react`'s `_auth/home/index.tsx` already holds that name. Mounting the slice's whole `_auth/` directory as a sibling (`physical('', routesDir('<slice>', '_auth'))`) keeps the section name in the in-mount path, so the pair generates as `Auth<Section>Route` / `Auth<Section>IndexRoute`. The section layout then belongs to the slice (`src/routes/_auth/<section>.tsx`), not the app — the app-owned layout in `_auth/authorization.tsx` exists only because gatekeeper has a same-named `_open` sibling.
 **Suggested destination**: `apps/wildflower-react` routing docs / Strategies
 
 ## A new Tauri-linked crate must be added to `scripts/checks/rust.sh`'s partition lists
@@ -259,7 +259,7 @@ the file's existing marker (the gatekeeper docs use underscores).
 ## The gatekeeper OpenAPI snapshot covers `/oauth/*` only, not `/access/*`
 
 `documented_router()` in `authorization-server-rust` deliberately leaves the Owner-facing
-`/access` surface out of the committed `openapi/gatekeeper-oauth.openapi.json`,
+`/access` surface out of the committed `openapi/authorization-server-oauth.openapi.json`,
 so a change to a consent body (e.g. the `registration` verdict, the approve
 body's `acknowledgedRegistration`) never shows up in the snapshot and
 `UPDATE_OPENAPI=1` regenerates only the `/oauth` prose. The TS mirror in

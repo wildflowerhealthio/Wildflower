@@ -26,7 +26,7 @@ use crate::http::wire_representations::OAuthError;
 /// attempted Basic authentication (RFC 6749 §5.2: the response "MUST include
 /// the `WWW-Authenticate` response header field matching the authentication
 /// scheme used by the client").
-pub const BASIC_AUTH_CHALLENGE: &str = r#"Basic realm="gatekeeper""#;
+pub const BASIC_AUTH_CHALLENGE: &str = r#"Basic realm="wildflower-authorization""#;
 
 /// The two RFC 6749 §2.3.1 ways a client presents its credentials: the HTTP
 /// Basic `Authorization` header (the registered `client_secret_basic` method)

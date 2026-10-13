@@ -1,9 +1,9 @@
 /**
  * Shared device-consent form, reused by:
  *
- *  - the standalone `/gatekeeper/devices/:userCode` route, which
+ *  - the standalone `/authorization/devices/:userCode` route, which
  *    navigates away on `onDone`, and
- *  - the in-settings `/settings/gatekeeper/devices/:userCode` route,
+ *  - the in-settings `/settings/authorization/devices/:userCode` route,
  *    which additionally lets the approver rename the device
  *    (`editableName`).
  *

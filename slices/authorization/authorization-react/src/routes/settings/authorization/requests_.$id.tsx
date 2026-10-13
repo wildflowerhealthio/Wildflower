@@ -41,7 +41,7 @@ const RequestDetailBody = ({ request, id }: RequestDetailBodyProps): JSX.Element
       <PageHeader
         title="Request"
         subtitle={`${request.method} ${request.url}`}
-        backHref="/settings/gatekeeper/requests"
+        backHref="/settings/authorization/requests"
       />
 
       <StatusBadge tone={statusTone(request.status)}>{request.status.toUpperCase()}</StatusBadge>
@@ -103,7 +103,7 @@ const RequestDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
 }
 
 /**
- * The `/settings/gatekeeper/requests/$id` file route — the standalone
+ * The `/settings/authorization/requests/$id` file route — the standalone
  * request-detail screen the list navigates to. The filename's trailing
  * underscore (`requests_`) opts this route OUT of nesting under the
  * `requests` list route (which renders no `<Outlet />`), so the detail
@@ -120,7 +120,7 @@ function RequestDetailRoute(): JSX.Element {
   return <RequestDetailScreen id={id} />
 }
 
-export const Route = createFileRoute('/settings/gatekeeper/requests_/$id')({
+export const Route = createFileRoute('/settings/authorization/requests_/$id')({
   loader: ({ context, params }) =>
     context.queryClient.query({
       ...requestQueryOptions(context.runAuthed, params.id),

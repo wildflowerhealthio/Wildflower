@@ -557,10 +557,10 @@ async fn device_authorization_happy_path() {
             "user_code": user_code,
             // On the hosted launcher, pointed back at this (loopback) server.
             "verification_uri": format!(
-                "{LAUNCHER_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1"
+                "{LAUNCHER_BASE}authorization/devices?server=http%3A%2F%2F127.0.0.1"
             ),
             "verification_uri_complete": format!(
-                "{LAUNCHER_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1&user_code={user_code}"
+                "{LAUNCHER_BASE}authorization/devices?server=http%3A%2F%2F127.0.0.1&user_code={user_code}"
             ),
             "expires_in": 300,
             "interval": 5,

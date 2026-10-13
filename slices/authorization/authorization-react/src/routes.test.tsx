@@ -83,9 +83,9 @@ describe('AuthorizationServerPaths ↔ Route.fullPath drift', () => {
 })
 
 describe('gatekeeper settings bucket', () => {
-  test('every settings route is under /settings/gatekeeper', () => {
+  test('every settings route is under /settings/authorization', () => {
     for (const path of fullPaths(settings)) {
-      expect(path === '/settings/gatekeeper/' || path.startsWith('/settings/gatekeeper/')).toBe(
+      expect(path === '/settings/authorization/' || path.startsWith('/settings/authorization/')).toBe(
         true
       )
     }
@@ -94,16 +94,16 @@ describe('gatekeeper settings bucket', () => {
   test('declares the owner-facing landing routes', () => {
     expect([...fullPaths(settings)].toSorted()).toEqual(
       [
-        '/settings/gatekeeper/',
-        '/settings/gatekeeper/approved/$id',
-        '/settings/gatekeeper/requests',
-        '/settings/gatekeeper/requests/$id',
+        '/settings/authorization/',
+        '/settings/authorization/approved/$id',
+        '/settings/authorization/requests',
+        '/settings/authorization/requests/$id',
         // The device-authorization flow has an owner-facing twin under
         // settings (a back link to the access page) alongside the public
-        // `/gatekeeper/devices*` verification URLs — same inner forms,
+        // `/authorization/devices*` verification URLs — same inner forms,
         // different chrome.
-        '/settings/gatekeeper/devices',
-        '/settings/gatekeeper/devices/$userCode',
+        '/settings/authorization/devices',
+        '/settings/authorization/devices/$userCode',
       ].toSorted()
     )
   })
@@ -115,16 +115,16 @@ describe('gatekeeper route tree', () => {
       .map((route): string => route.id)
       .toSorted()
     expect(ids).toEqual([
-      '/_auth/gatekeeper/devices/$userCode',
-      '/_auth/gatekeeper/oauth-consent/$id',
-      '/_open/gatekeeper/device-login',
-      '/_open/gatekeeper/devices',
-      '/settings/gatekeeper/',
-      '/settings/gatekeeper/approved/$id',
-      '/settings/gatekeeper/devices',
-      '/settings/gatekeeper/devices_/$userCode',
-      '/settings/gatekeeper/requests',
-      '/settings/gatekeeper/requests_/$id',
+      '/_auth/authorization/devices/$userCode',
+      '/_auth/authorization/oauth-consent/$id',
+      '/_open/authorization/device-login',
+      '/_open/authorization/devices',
+      '/settings/authorization/',
+      '/settings/authorization/approved/$id',
+      '/settings/authorization/devices',
+      '/settings/authorization/devices_/$userCode',
+      '/settings/authorization/requests',
+      '/settings/authorization/requests_/$id',
     ])
   })
 
@@ -132,16 +132,16 @@ describe('gatekeeper route tree', () => {
     const paths = fullPaths(routes()).toSorted()
     expect(paths).toEqual(
       [
-        '/gatekeeper/device-login',
-        '/gatekeeper/devices',
-        '/gatekeeper/devices/$userCode',
-        '/gatekeeper/oauth-consent/$id',
-        '/settings/gatekeeper/',
-        '/settings/gatekeeper/approved/$id',
-        '/settings/gatekeeper/devices',
-        '/settings/gatekeeper/devices/$userCode',
-        '/settings/gatekeeper/requests',
-        '/settings/gatekeeper/requests/$id',
+        '/authorization/device-login',
+        '/authorization/devices',
+        '/authorization/devices/$userCode',
+        '/authorization/oauth-consent/$id',
+        '/settings/authorization/',
+        '/settings/authorization/approved/$id',
+        '/settings/authorization/devices',
+        '/settings/authorization/devices/$userCode',
+        '/settings/authorization/requests',
+        '/settings/authorization/requests/$id',
       ].toSorted()
     )
   })

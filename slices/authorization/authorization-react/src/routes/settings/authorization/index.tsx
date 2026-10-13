@@ -31,7 +31,7 @@ interface AccessIndexBodyProps {
 
 /** Navigate to the shared per-grant detail route (both variants link here). */
 const grantDetailHref = (id: string): string =>
-  `/settings/gatekeeper/approved/${encodeURIComponent(id)}`
+  `/settings/authorization/approved/${encodeURIComponent(id)}`
 
 const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
@@ -75,7 +75,7 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
             title: 'HTTP Requests',
             subtitle: 'View incoming request history',
             onClick: () => {
-              void navigate({ to: '/settings/gatekeeper/requests' })
+              void navigate({ to: '/settings/authorization/requests' })
             },
           },
         ]}
@@ -128,7 +128,7 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
             title: 'Authorize a Device',
             subtitle: 'Enter a code to authorize a device',
             onClick: () => {
-              void navigate({ to: '/settings/gatekeeper/devices' })
+              void navigate({ to: '/settings/authorization/devices' })
             },
           },
         ]}
@@ -206,7 +206,7 @@ const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.
 }
 
 /**
- * The `/settings/gatekeeper/` landing file route — the owner-facing access
+ * The `/settings/authorization/` landing file route — the owner-facing access
  * management index.
  *
  * The `/settings` `beforeLoad` gate guarantees a token before this loader
@@ -215,7 +215,7 @@ const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.
  * `TrustedAppsSection` suspends on it and catches its failure itself, so a
  * session that can read grants but not clients still gets the page.
  */
-const Route = createFileRoute('/settings/gatekeeper/')({
+const Route = createFileRoute('/settings/authorization/')({
   loader: async ({ context }) => {
     // Not awaited, and its rejection dropped here only: the failure stays in
     // the query's state, where `TrustedAppsSection` suspends on it and shows it.

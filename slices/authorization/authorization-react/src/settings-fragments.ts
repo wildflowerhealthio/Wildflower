@@ -15,10 +15,10 @@ import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
  */
 const authorizationSettingsItemsFragment: readonly SettingsItem[] = [
   {
-    id: 'gatekeeper',
+    id: 'authorization',
     title: 'Access',
     subtitle: 'Manage apps and devices access to your data',
-    href: '/settings/gatekeeper',
+    href: '/settings/authorization',
   },
 ]
 

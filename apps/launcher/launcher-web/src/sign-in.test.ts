@@ -47,7 +47,7 @@ describe('signInEnvironment', () => {
     // three different values here and only one could be the registered entry.
     const fromRoot = signInEnvironment(pageAt('https://wildflowerhealth.io/'))
     const fromSection = signInEnvironment(pageAt('https://wildflowerhealth.io/settings/requests'))
-    const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/gatekeeper/grants'))
+    const fromDev = signInEnvironment(pageAt('http://127.0.0.1:5173/authorization/grants'))
 
     // Assert
     expect(fromRoot.redirectUri).toBe('https://wildflowerhealth.io/')

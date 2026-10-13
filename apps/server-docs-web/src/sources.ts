@@ -1,6 +1,6 @@
 import fhirSpec from '../../../slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json'
 import appsSpec from '../../host/wildflower-server/apps-rust/openapi/apps.openapi.json'
-import authorizationServerSpec from '../../host/wildflower-server/authorization-server-rust/openapi/gatekeeper-oauth.openapi.json'
+import authorizationServerSpec from '../../host/wildflower-server/authorization-server-rust/openapi/authorization-server-oauth.openapi.json'
 import databasesSpec from '../../host/wildflower-server/databases-rust/openapi/databases.openapi.json'
 import requestLogSpec from '../../host/wildflower-server/request-log-rust/openapi/request-log.openapi.json'
 
@@ -24,7 +24,7 @@ export interface DocSource {
 }
 
 export const docSources: readonly DocSource[] = [
-  { title: 'Gatekeeper', slug: 'gatekeeper', spec: authorizationServerSpec },
+  { title: 'Wildflower Authorization', slug: 'authorization', spec: authorizationServerSpec },
   { title: 'Apps', slug: 'apps', spec: appsSpec },
   { title: 'Databases', slug: 'databases', spec: databasesSpec },
   { title: 'Request log', slug: 'request-log', spec: requestLogSpec },

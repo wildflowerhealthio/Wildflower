@@ -123,9 +123,9 @@ const DEVICE_AUTH_RESPONSE = {
   device_code: 'dev-1',
   // On the launcher the server is configured with, pointed back at itself.
   verification_uri:
-    'https://wildflowerhealth.io/launcher/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io',
+    'https://wildflowerhealth.io/launcher/authorization/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io',
   verification_uri_complete:
-    'https://wildflowerhealth.io/launcher/gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT',
+    'https://wildflowerhealth.io/launcher/authorization/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT',
   interval: 5,
 }
 
@@ -213,7 +213,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     render(withTokenStore(<NeedsAuthMessage />))
     await startSignIn()
 
-    const expected = `${EXTERNAL_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT`
+    const expected = `${EXTERNAL_ROOT}authorization/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WDJB-MJHT`
     await waitFor(
       () => {
         expect(screen.getByRole('link', { name: expected }).getAttribute('href')).toBe(expected)
@@ -222,7 +222,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     )
     expect(
       screen.getByText(
-        `${EXTERNAL_ROOT}gatekeeper/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io`
+        `${EXTERNAL_ROOT}authorization/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io`
       )
     ).toBeTruthy()
   })

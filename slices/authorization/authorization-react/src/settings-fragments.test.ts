@@ -10,13 +10,13 @@ describe('authorizationSettingsItemsFragment', () => {
     expect(authorizationSettingsItemsFragment.length).toBe(1)
   })
 
-  test('links to /settings/gatekeeper — the index path mounted by authorizationSettingsRoutesFragment', () => {
+  test('links to /settings/authorization — the index path mounted by authorizationSettingsRoutesFragment', () => {
     const [item] = authorizationSettingsItemsFragment
-    expect(item?.href).toBe('/settings/gatekeeper')
+    expect(item?.href).toBe('/settings/authorization')
   })
 
   test('has a stable id usable as a React key', () => {
     const [item] = authorizationSettingsItemsFragment
-    expect(item?.id).toBe('gatekeeper')
+    expect(item?.id).toBe('authorization')
   })
 })

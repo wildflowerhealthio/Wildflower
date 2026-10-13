@@ -68,7 +68,7 @@ impl LaunchError {
             Self::TunnelUnknown { .. } => "tunnelUnknown",
             Self::NoValidCertificate { .. } => "noValidCertificate",
             Self::UntrustedCertificate { .. } => "untrustedCertificate",
-            Self::AuthorizationServer(_) => "gatekeeper",
+            Self::AuthorizationServer(_) => "authorizationServer",
             Self::OpeningLauncher { .. } => "openingLauncher",
             Self::Registry(registry_error) => registry_error.kind(),
         }
@@ -143,7 +143,7 @@ mod tests {
                     "minting a launch",
                     "the database is locked",
                 )),
-                "gatekeeper",
+                "authorizationServer",
             ),
             (
                 LaunchError::OpeningLauncher {

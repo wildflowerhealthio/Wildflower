@@ -85,9 +85,9 @@ describe('useRevokeGrantMutation invalidation', () => {
     await result.current.mutateAsync({ id: 'grant-1' })
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'grants'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'grant', 'grant-1'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grant', 'grant-1'] })
   })
 })
 
@@ -101,7 +101,7 @@ describe('useUpdateClientMutation invalidation', () => {
     await result.current.mutateAsync({ clientId: 'ohif-viewer', action })
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'clients'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'clients'] })
     })
   })
 })
@@ -211,9 +211,9 @@ describe('useDecideRequestMutation invalidation', () => {
     await result.current.mutateAsync({ id: 'req-1', decision: 'approved' })
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'requests'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'requests'] })
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'request', 'req-1'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'request', 'req-1'] })
   })
 
   test('rejecting invalidates the same list + detail keys', async () => {
@@ -223,9 +223,9 @@ describe('useDecideRequestMutation invalidation', () => {
     await result.current.mutateAsync({ id: 'req-2', decision: 'rejected' })
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'requests'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'requests'] })
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'request', 'req-2'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'request', 'req-2'] })
   })
 })
 
@@ -237,12 +237,12 @@ describe('useDeviceConsentMutation invalidation', () => {
     await result.current.mutateAsync({ kind: 'approve', userCode: 'WDJB-MJHT', approvedScopes: [] })
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'grants'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
     })
     // The screen unmounts on success, so a self-invalidate of the consent
     // detail would be dead code — assert it does NOT fire.
     expect(invalidateSpy).not.toHaveBeenCalledWith({
-      queryKey: ['gatekeeper', 'device-consent', 'WDJB-MJHT'],
+      queryKey: ['authorization', 'device-consent', 'WDJB-MJHT'],
     })
   })
 })
@@ -281,10 +281,10 @@ describe('useOAuthConsentMutation invalidation', () => {
     await result.current.mutateAsync({ kind: 'deny', id: 'consent-1' })
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'grants'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
     })
     expect(invalidateSpy).not.toHaveBeenCalledWith({
-      queryKey: ['gatekeeper', 'oauth-consent', 'consent-1'],
+      queryKey: ['authorization', 'oauth-consent', 'consent-1'],
     })
   })
 })

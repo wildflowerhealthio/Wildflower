@@ -10,8 +10,8 @@ type DeviceCodeEntryFormProps = {
   /**
    * Called with a validated `XXXX-XXXX` code when the owner submits. The
    * caller navigates to its own device-consent route — the public flow to
-   * `/gatekeeper/devices/$userCode`, the in-settings flow to
-   * `/settings/gatekeeper/devices/$userCode` — which is the only thing that
+   * `/authorization/devices/$userCode`, the in-settings flow to
+   * `/settings/authorization/devices/$userCode` — which is the only thing that
    * differs between the two surfaces that render this form.
    */
   readonly onSubmit: (code: string) => void
@@ -19,7 +19,7 @@ type DeviceCodeEntryFormProps = {
 
 /**
  * The device-code entry form, lifted out of its route so the public
- * (`/gatekeeper/devices`) and owner-facing (`/settings/gatekeeper/devices`)
+ * (`/authorization/devices`) and owner-facing (`/settings/authorization/devices`)
  * surfaces share one implementation and differ only in their page header
  * (the in-settings one carries a back link). Renders no header itself —
  * each route supplies its own `<PageHeader>`.

@@ -80,7 +80,7 @@ and 90 days respectively). See the
   the Owner decides, leaves for the redirect the status carries. See "Wait
   page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
-  `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`
+  `device_code` + `user_code` + verification URIs (under `/authorization/devices`
   on the hosted launcher, carrying `?server=`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
@@ -240,7 +240,7 @@ hand-rolled and Effect-native, and the one there delegates to `fhirclient`.
 
 ## SPA page paths
 
-The gatekeeper API redirects to URLs under `/gatekeeper/`, which the host app
+The gatekeeper API redirects to URLs under `/authorization/`, which the host app
 serves with a single-page app. The redirect targets are typed in
 [`authorization-core/page-paths`](./src/page-paths.ts) (`AuthorizationServerPaths`); the
 SPA's file-based route tree in [`authorization-react`](../authorization-react/src/routes/)

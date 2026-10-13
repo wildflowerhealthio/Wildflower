@@ -143,7 +143,7 @@ describe('redirectUriForRoute', () => {
     expect(redirectUriForRoute('https://wildflowerhealth.io/settings/tunnel', '/home')).toBe(
       'https://wildflowerhealth.io/home'
     )
-    expect(redirectUriForRoute('http://127.0.0.1:5173/gatekeeper/grants', '/home')).toBe(
+    expect(redirectUriForRoute('http://127.0.0.1:5173/authorization/grants', '/home')).toBe(
       'http://127.0.0.1:5173/home'
     )
   })

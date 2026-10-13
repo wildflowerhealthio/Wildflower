@@ -177,7 +177,7 @@ describe('requestsQueryOptions', () => {
 describe('deviceConsentQueryOptions', () => {
   test('keys the query under the user code', () => {
     const options = deviceConsentQueryOptions(makeRunAuthed(stubHttpClientLayer()), 'WDJB-MJHT')
-    expect(options.queryKey).toEqual(['gatekeeper', 'device-consent', 'WDJB-MJHT'])
+    expect(options.queryKey).toEqual(['authorization', 'device-consent', 'WDJB-MJHT'])
   })
 
   test('queryFn reads the device consent through the authed runner', async () => {
@@ -209,7 +209,7 @@ describe('deviceConsentQueryOptions', () => {
 describe('oauthConsentQueryOptions', () => {
   test('keys the query under the consent id', () => {
     const options = oauthConsentQueryOptions(makeRunAuthed(stubHttpClientLayer()), 'consent-1')
-    expect(options.queryKey).toEqual(['gatekeeper', 'oauth-consent', 'consent-1'])
+    expect(options.queryKey).toEqual(['authorization', 'oauth-consent', 'consent-1'])
   })
 
   test('queryFn reads the oauth consent through the authed runner', async () => {

@@ -7,7 +7,7 @@ import type { JSX } from 'react'
  * screens in the shared `pageLayoutStyles['page']` shell so each leaf
  * renders content only.
  *
- * See `_auth/gatekeeper.tsx` for why this layout lives at the app level
+ * See `_auth/authorization.tsx` for why this layout lives at the app level
  * rather than inside the slice.
  */
 function AuthorizationOpenLayout(): JSX.Element {
@@ -18,6 +18,6 @@ function AuthorizationOpenLayout(): JSX.Element {
   )
 }
 
-export const Route = createFileRoute('/_open/gatekeeper')({
+export const Route = createFileRoute('/_open/authorization')({
   component: AuthorizationOpenLayout,
 })

@@ -38,7 +38,7 @@ async fn token_exchange_wrong_basic_secret_returns_401_with_basic_challenge() {
         res.headers()
             .get("www-authenticate")
             .map(|v| v.to_str().unwrap()),
-        Some(r#"Basic realm="gatekeeper""#)
+        Some(r#"Basic realm="wildflower-authorization""#)
     );
     assert_eq!(
         res.headers()
@@ -245,7 +245,7 @@ async fn device_authorization_wrong_basic_secret_returns_401_with_basic_challeng
         res.headers()
             .get("www-authenticate")
             .map(|v| v.to_str().unwrap()),
-        Some(r#"Basic realm="gatekeeper""#)
+        Some(r#"Basic realm="wildflower-authorization""#)
     );
     assert_eq!(
         body_json(res.into_body()).await,

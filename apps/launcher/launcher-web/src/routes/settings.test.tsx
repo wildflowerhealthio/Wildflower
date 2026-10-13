@@ -159,7 +159,7 @@ describe('SettingsScreen', () => {
     await waitFor(() => {
       const hrefs = new Set(sliceRowLinks().map((l) => l.getAttribute('href') ?? ''))
       expect(hrefs.has('/settings/databases')).toBe(true)
-      expect(hrefs.has('/settings/gatekeeper')).toBe(true)
+      expect(hrefs.has('/settings/authorization')).toBe(true)
     })
   })
 

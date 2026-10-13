@@ -20,10 +20,10 @@ const DeviceConsentScreen = ({
 }
 
 /**
- * The `/settings/gatekeeper/devices/$userCode` file route — the
+ * The `/settings/authorization/devices/$userCode` file route — the
  * owner-facing device consent screen reached from the in-settings
  * code-entry page. Renders the same {@link DeviceConsentForm} as the
- * public `/gatekeeper/devices/$userCode` surface but with a back link to
+ * public `/authorization/devices/$userCode` surface but with a back link to
  * the in-settings entry page; on a decision it returns to the access page.
  *
  * The filename's trailing underscore (`devices_`) opts this route OUT of
@@ -41,18 +41,18 @@ function SettingsDeviceConsentRoute(): JSX.Element {
   const navigate = useNavigate()
   return (
     <>
-      <PageHeader title="Authorize Device" backHref="/settings/gatekeeper/devices" />
+      <PageHeader title="Authorize Device" backHref="/settings/authorization/devices" />
       <DeviceConsentScreen
         userCode={userCode}
         onDone={() => {
-          void navigate({ to: '/settings/gatekeeper' })
+          void navigate({ to: '/settings/authorization' })
         }}
       />
     </>
   )
 }
 
-export const Route = createFileRoute('/settings/gatekeeper/devices_/$userCode')({
+export const Route = createFileRoute('/settings/authorization/devices_/$userCode')({
   loader: ({ context, params }) =>
     context.queryClient.query({
       ...deviceConsentQueryOptions(context.runAuthed, params.userCode),

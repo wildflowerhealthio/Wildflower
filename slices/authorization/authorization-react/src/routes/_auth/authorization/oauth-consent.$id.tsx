@@ -14,7 +14,7 @@ const OAuthConsentScreen = ({ id }: { readonly id: string }): JSX.Element => {
       <OAuthConsentForm
         consent={consent}
         onDone={() => {
-          void navigate({ to: '/settings/gatekeeper' })
+          void navigate({ to: '/settings/authorization' })
         }}
       />
     </>
@@ -22,7 +22,7 @@ const OAuthConsentScreen = ({ id }: { readonly id: string }): JSX.Element => {
 }
 
 /**
- * The `/gatekeeper/oauth-consent/$id` file route. Reads the typed `$id`
+ * The `/authorization/oauth-consent/$id` file route. Reads the typed `$id`
  * path param from the generated route via `Route.useParams()` and hands it
  * to the screen as a prop. The `_auth` `beforeLoad` gate guarantees a
  * token before this loader runs, so it's a plain `ensureQueryData` —
@@ -33,7 +33,7 @@ function OAuthConsentRoute(): JSX.Element {
   return <OAuthConsentScreen id={id} />
 }
 
-export const Route = createFileRoute('/_auth/gatekeeper/oauth-consent/$id')({
+export const Route = createFileRoute('/_auth/authorization/oauth-consent/$id')({
   loader: ({ context, params }) =>
     context.queryClient.query({
       ...oauthConsentQueryOptions(context.runAuthed, params.id),

@@ -11,7 +11,7 @@ import { DeviceCodeEntryForm } from '../../../screens/device/device-code-entry-f
  * directly via the published URL, so there is nowhere in-app to go back
  * to). Submitting advances to the public consent route.
  *
- * The owner-facing equivalent (`/settings/gatekeeper/devices`) renders the
+ * The owner-facing equivalent (`/settings/authorization/devices`) renders the
  * same form with a back link to the access page — same inner content,
  * different chrome.
  */
@@ -22,7 +22,7 @@ function DeviceEntryScreen(): JSX.Element {
       <PageHeader title="Enter Code" />
       <DeviceCodeEntryForm
         onSubmit={(code) => {
-          void navigate({ to: `/gatekeeper/devices/${encodeURIComponent(code)}` })
+          void navigate({ to: `/authorization/devices/${encodeURIComponent(code)}` })
         }}
       />
     </>
@@ -30,9 +30,9 @@ function DeviceEntryScreen(): JSX.Element {
 }
 
 /**
- * The `/gatekeeper/devices` file route — the device-code entry screen,
+ * The `/authorization/devices` file route — the device-code entry screen,
  * reachable without a bearer.
  */
-export const Route = createFileRoute('/_open/gatekeeper/devices')({
+export const Route = createFileRoute('/_open/authorization/devices')({
   component: DeviceEntryScreen,
 })

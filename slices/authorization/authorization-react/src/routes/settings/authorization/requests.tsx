@@ -51,7 +51,7 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
         ? `${r.origin} · ${formatInstant(r.requestedAt)}`
         : formatInstant(r.requestedAt),
     onClick: () => {
-      void navigate({ to: `/settings/gatekeeper/requests/${encodeURIComponent(r.id)}` })
+      void navigate({ to: `/settings/authorization/requests/${encodeURIComponent(r.id)}` })
     },
     actions:
       r.status === 'pending' ? (
@@ -88,7 +88,7 @@ const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
 
   return (
     <>
-      <PageHeader title="Requests" backHref="/settings/gatekeeper" backLabel="Access" />
+      <PageHeader title="Requests" backHref="/settings/authorization" backLabel="Access" />
 
       <ErrorBanner error={decideMutation.error} />
       <ItemList title="In-Flight" items={pending.map((r) => toItem(r))} />
@@ -104,12 +104,12 @@ const RequestsListScreen = (): JSX.Element => {
 }
 
 /**
- * The `/settings/gatekeeper/requests` file route — the incoming HTTP
+ * The `/settings/authorization/requests` file route — the incoming HTTP
  * request history. The `/settings` `beforeLoad` gate guarantees a token
  * before this loader runs, so it's a plain `ensureQueryData` — failures
  * propagate to `errorComponent`.
  */
-export const Route = createFileRoute('/settings/gatekeeper/requests')({
+export const Route = createFileRoute('/settings/authorization/requests')({
   loader: ({ context }) =>
     context.queryClient.query({ ...requestsQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: RequestsListScreen,

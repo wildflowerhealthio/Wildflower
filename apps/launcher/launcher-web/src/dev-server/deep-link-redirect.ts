@@ -18,10 +18,10 @@ interface DevRequest {
  * @remarks
  * `main-web` takes its router basepath from the directory it was loaded at,
  * because on GitHub Pages every load lands on the app root: `404.html` sends a
- * deep link like `/launcher/gatekeeper/devices` to `/launcher/?redirect=…`, and the entry
+ * deep link like `/launcher/authorization/devices` to `/launcher/?redirect=…`, and the entry
  * restores the route (see "The 404 redirect" in `slices/branding/AGENTS.md`).
  * Vite's own SPA fallback instead serves `index.html` at the deep path itself,
- * so the app would take `/gatekeeper/devices/` for its basepath and match no
+ * so the app would take `/authorization/devices/` for its basepath and match no
  * route. This gives the dev server the same redirect Pages performs.
  *
  * Only a browser page load (`GET`, `Accept` naming `text/html`) of a path

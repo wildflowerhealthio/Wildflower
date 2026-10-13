@@ -3,7 +3,7 @@
  * documented slice of `/access` (client management).
  *
  * Diffs the Rust/axum server's OpenAPI spec (emitted by `utoipa`, committed at
- * `authorization-server-rust/openapi/gatekeeper-oauth.openapi.json`) against the TypeScript
+ * `authorization-server-rust/openapi/authorization-server-oauth.openapi.json`) against the TypeScript
  * client's spec (`OpenApi.fromApi(AuthorizationServerApi)`). The generic wire-shape
  * comparison + the parse/dereference/assert harness live in
  * `shared-structures-core/openapi-drift`; this file owns only the
@@ -19,7 +19,7 @@ import { AuthorizationServerApi } from './index.ts'
 defineSpecDriftTest({
   name: 'gatekeeper OAuth',
   serverSpec: new URL(
-    '../../../../../apps/host/wildflower-server/authorization-server-rust/openapi/gatekeeper-oauth.openapi.json',
+    '../../../../../apps/host/wildflower-server/authorization-server-rust/openapi/authorization-server-oauth.openapi.json',
     import.meta.url
   ),
   clientApi: AuthorizationServerApi,

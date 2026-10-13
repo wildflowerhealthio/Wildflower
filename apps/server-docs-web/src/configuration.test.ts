@@ -25,7 +25,7 @@ describe('consoleConfiguration', () => {
 
   it('renders one source per documented slice, in the host order, first one open', () => {
     expect(configuration.sources.map((source) => source.title)).toEqual([
-      'Gatekeeper',
+      'Wildflower Authorization',
       'Apps',
       'Databases',
       'Request log',

@@ -32,7 +32,7 @@ impl ConsentError {
             Self::ServerNotRunning { .. } => "serverNotRunning",
             Self::NotPending => "notPending",
             Self::RegistrationNotAcknowledged => "registrationNotAcknowledged",
-            Self::AuthorizationServer(_) => "gatekeeper",
+            Self::AuthorizationServer(_) => "authorizationServer",
         }
     }
 }
@@ -86,7 +86,7 @@ mod tests {
             ),
             (
                 AuthorizationServerError::infrastructure("reading a consent", "the database is locked"),
-                "gatekeeper",
+                "authorizationServer",
             ),
         ];
         for (authorization_server_error, kind) in cases {

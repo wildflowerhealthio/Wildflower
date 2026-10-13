@@ -9,7 +9,7 @@ import { CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY, type Grant } from '../../../querie
 import { AccessIndexBody, AccessIndexErrorView } from './index.tsx'
 
 /**
- * Locks in the recovery path of the `/settings/gatekeeper/` route's
+ * Locks in the recovery path of the `/settings/authorization/` route's
  * `errorComponent`. The Retry button used to call only `reset` — which clears
  * the `CatchBoundary`'s local error state but does NOT re-run the route loader,
  * so recovery rode implicitly on `useGrantsQuery` (`useSuspenseQuery`)
@@ -33,7 +33,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
-    // The route module calls `createFileRoute('/settings/gatekeeper/')({...})` at
+    // The route module calls `createFileRoute('/settings/authorization/')({...})` at
     // import time, so the stub must accept the path and return the config passthrough.
     createFileRoute:
       () =>

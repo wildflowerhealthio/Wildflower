@@ -46,7 +46,7 @@ const useDeviceConsentQuery = (userCode: string): UseSuspenseQueryResult<DeviceC
  * decision.
  *
  * On success the consent screen unmounts (`onDone()` navigates to
- * `/settings/gatekeeper`), so invalidating this consent's own detail key
+ * `/settings/authorization`), so invalidating this consent's own detail key
  * would be dead — nothing re-reads it. Instead invalidate the grants list
  * root: a device approval now upserts a durable device grant (keyed on
  * `(clientId, deviceName)`), which shows in the "Authorized Devices" list —

@@ -13,7 +13,7 @@ pub enum PendingConsentHead {
     /// `GET /access/devices/{userCode}`.
     Device {
         /// The pairing code the Owner would otherwise type at
-        /// `/gatekeeper/devices`. Never `NULL` in the row — the head query skips
+        /// `/authorization/devices`. Never `NULL` in the row — the head query skips
         /// a device row missing one rather than surfacing an unfetchable key.
         user_code: String,
     },

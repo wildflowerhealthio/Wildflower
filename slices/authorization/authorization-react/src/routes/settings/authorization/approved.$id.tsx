@@ -36,7 +36,7 @@ const GrantDetailBody = ({ grant }: { readonly grant: Grant }): JSX.Element => {
   return Match.value(grant).pipe(
     Match.when({ grantType: 'authorization_code' }, (appGrant) => (
       <>
-        <PageHeader title="Approved App" backHref="/settings/gatekeeper" backLabel="Access" />
+        <PageHeader title="Approved App" backHref="/settings/authorization" backLabel="Access" />
         <div className={pageLayout['section']}>
           <GrantField label="Client" value={appGrant.clientId} />
           <GrantField label="Redirect URI" value={appGrant.redirectUri} />
@@ -47,7 +47,7 @@ const GrantDetailBody = ({ grant }: { readonly grant: Grant }): JSX.Element => {
     )),
     Match.when({ grantType: 'device_code' }, (deviceGrant) => (
       <>
-        <PageHeader title="Authorized Device" backHref="/settings/gatekeeper" backLabel="Access" />
+        <PageHeader title="Authorized Device" backHref="/settings/authorization" backLabel="Access" />
         <div className={pageLayout['section']}>
           <GrantField label="Device" value={deviceGrant.deviceName} />
           <GrantField label="Client" value={deviceGrant.clientId} />
@@ -66,7 +66,7 @@ const GrantDetailScreen = ({ id }: { readonly id: string }): JSX.Element => {
 }
 
 /**
- * The `/settings/gatekeeper/approved/$id` file route — the shared detail screen
+ * The `/settings/authorization/approved/$id` file route — the shared detail screen
  * for both grant variants. Reads the typed `$id` path param and hands it to the
  * screen. The `_auth` / `/settings` `beforeLoad` gate guarantees a token before
  * this loader runs, so it's a plain `ensureQueryData` — failures propagate to
@@ -77,7 +77,7 @@ function GrantDetailRoute(): JSX.Element {
   return <GrantDetailScreen id={id} />
 }
 
-const Route = createFileRoute('/settings/gatekeeper/approved/$id')({
+const Route = createFileRoute('/settings/authorization/approved/$id')({
   loader: ({ context, params }) =>
     context.queryClient.query({
       ...grantQueryOptions(context.runAuthed, params.id),

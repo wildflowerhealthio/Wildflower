@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { GrantDetailBody } from './approved.$id.tsx'
 
 /**
- * `approved.$id.tsx` calls `createFileRoute('/settings/gatekeeper/approved/$id')`
+ * `approved.$id.tsx` calls `createFileRoute('/settings/authorization/approved/$id')`
  * at import time, and its `PageHeader` back-link renders a TanStack `<Link>`;
  * stub both so the presentational `GrantDetailBody` renders without a
  * `RouterProvider`. `Link` becomes a plain anchor.

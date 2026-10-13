@@ -9,11 +9,11 @@ import type { JSX } from 'react'
  * leaf renders content only.
  *
  * Lives in the app's routes dir (not the slice) because mounting it
- * inside the slice's `_auth/gatekeeper.tsx` would clash with the sibling
- * `_open/gatekeeper.tsx` layout once both are pulled in via
+ * inside the slice's `_auth/authorization.tsx` would clash with the sibling
+ * `_open/authorization.tsx` layout once both are pulled in via
  * `physical()` from `routes.config.ts` — the router-plugin builds its
  * generated route-variable name from the in-mount path
- * (just `/gatekeeper` for either), and the two would collide. Owning the
+ * (just `/authorization` for either), and the two would collide. Owning the
  * layout at the app level keeps the `/_auth/` and `/_open/` prefixes in
  * scope so the generator can disambiguate.
  */
@@ -25,6 +25,6 @@ function AuthorizationAuthLayout(): JSX.Element {
   )
 }
 
-export const Route = createFileRoute('/_auth/gatekeeper')({
+export const Route = createFileRoute('/_auth/authorization')({
   component: AuthorizationAuthLayout,
 })

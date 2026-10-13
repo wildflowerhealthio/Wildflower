@@ -20,7 +20,7 @@ test('deviceEntryUrlOn moves the server’s device-entry page onto the given cop
 
         // Assert — the copy's own device-entry page, carrying exactly the
         // query the server built.
-        expect(`${moved.origin}${moved.pathname}`).toBe(`${servedRoot}gatekeeper/devices`)
+        expect(`${moved.origin}${moved.pathname}`).toBe(`${servedRoot}authorization/devices`)
         expect(moved.search).toBe(new URL(verificationUri).search)
       }
     ),
@@ -30,18 +30,18 @@ test('deviceEntryUrlOn moves the server’s device-entry page onto the given cop
 
 test('deviceEntryUrlOn refuses a verification URI that is not absolute', () => {
   expect(() =>
-    AuthorizationServerPaths.deviceEntryUrlOn('https://x.test/app/', '/gatekeeper/devices')
+    AuthorizationServerPaths.deviceEntryUrlOn('https://x.test/app/', '/authorization/devices')
   ).toThrow(TypeError)
 })
 
 test('oauthConsentPath percent-encodes the request id', () => {
-  expect(AuthorizationServerPaths.oauthConsentPath('abc')).toBe('/gatekeeper/oauth-consent/abc')
-  expect(AuthorizationServerPaths.oauthConsentPath('?bad')).toBe('/gatekeeper/oauth-consent/%3Fbad')
+  expect(AuthorizationServerPaths.oauthConsentPath('abc')).toBe('/authorization/oauth-consent/abc')
+  expect(AuthorizationServerPaths.oauthConsentPath('?bad')).toBe('/authorization/oauth-consent/%3Fbad')
 })
 
 test('deviceConsentPath percent-encodes the user code', () => {
   expect(AuthorizationServerPaths.deviceConsentPath('BCDF-GHJK')).toBe(
-    '/gatekeeper/devices/BCDF-GHJK'
+    '/authorization/devices/BCDF-GHJK'
   )
 })
 
@@ -50,8 +50,8 @@ test('deviceConsentPath percent-encodes characters outside the RFC 8628 alphabet
   const inputs = ['a/b', 'a?b', 'a#b', 'a&b', 'a b', 'a%b', 'aÆb']
   for (const input of inputs) {
     const path = AuthorizationServerPaths.deviceConsentPath(input)
-    expect(path.startsWith('/gatekeeper/devices/')).toBe(true)
-    const segment = path.replace('/gatekeeper/devices/', '')
+    expect(path.startsWith('/authorization/devices/')).toBe(true)
+    const segment = path.replace('/authorization/devices/', '')
     expect(decodeURIComponent(segment)).toBe(input)
     expect(segment).not.toContain('/')
     expect(segment).not.toContain('?')
@@ -63,7 +63,7 @@ test('property: any user code produces a valid path that round-trips through dec
   fc.assert(
     fc.property(fc.string(), (userCode) => {
       const path = AuthorizationServerPaths.deviceConsentPath(userCode)
-      const segment = path.slice('/gatekeeper/devices/'.length)
+      const segment = path.slice('/authorization/devices/'.length)
       expect(decodeURIComponent(segment)).toBe(userCode)
     }),
     { numRuns: numRunsFor({ base: 100 }) }

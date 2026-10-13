@@ -316,13 +316,13 @@ client. Flow:
    the chosen `device_name`. Server creates a `flow='device_code'`
    `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.
    The verification URIs point at the hosted launcher
-   (`https://wildflowerhealth.io/launcher/gatekeeper/devices?server=<origin>`,
+   (`https://wildflowerhealth.io/launcher/authorization/devices?server=<origin>`,
    the host's `launcher_base_url`), not at the server itself — the host
    serves no UI of its own. A copy of the launcher that starts a pairing
    itself (`NeedsAuthMessage`) shows its **own** device-entry page instead,
    keeping the query the server built (`AuthorizationServerPaths.deviceEntryUrlOn`),
    so a pairing started on a PR preview or a dev server is approved there.
-2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
+2. Owner enters the `user_code` at `/authorization/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device — or answers it in the host's consent sheet, which the
    [pending-consent queue](#pending-consent-queue) raises with no code entry.

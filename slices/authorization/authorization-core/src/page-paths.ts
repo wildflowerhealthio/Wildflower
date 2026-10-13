@@ -13,9 +13,9 @@
  */
 export namespace AuthorizationServerPaths {
   export const oauthConsentPath = (id: string): string =>
-    `/gatekeeper/oauth-consent/${encodeURIComponent(id)}`
+    `/authorization/oauth-consent/${encodeURIComponent(id)}`
 
-  export const deviceEntryPath = (): string => `/gatekeeper/devices`
+  export const deviceEntryPath = (): string => `/authorization/devices`
 
   /**
    * The device-entry page a server's `verification_uri` (or
@@ -30,7 +30,7 @@ export namespace AuthorizationServerPaths {
    * `servedRoot` is slash-terminated (the copy's origin plus its basepath).
    * Throws a `TypeError` when `verificationUri` is not an absolute URL.
    *
-   * @example AuthorizationServerPaths.deviceEntryUrlOn('https://x.test/pr-7/launcher/', 'https://wildflowerhealth.io/launcher/gatekeeper/devices?server=s&user_code=AB') // 'https://x.test/pr-7/launcher/gatekeeper/devices?server=s&user_code=AB'
+   * @example AuthorizationServerPaths.deviceEntryUrlOn('https://x.test/pr-7/launcher/', 'https://wildflowerhealth.io/launcher/authorization/devices?server=s&user_code=AB') // 'https://x.test/pr-7/launcher/authorization/devices?server=s&user_code=AB'
    */
   export const deviceEntryUrlOn = (servedRoot: string, verificationUri: string): string => {
     const page = new URL(deviceEntryPath().replace(/^\//, ''), servedRoot)
@@ -39,5 +39,5 @@ export namespace AuthorizationServerPaths {
   }
 
   export const deviceConsentPath = (userCode: string): string =>
-    `/gatekeeper/devices/${encodeURIComponent(userCode)}`
+    `/authorization/devices/${encodeURIComponent(userCode)}`
 }

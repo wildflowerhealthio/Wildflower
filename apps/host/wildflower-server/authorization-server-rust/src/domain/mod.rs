@@ -57,7 +57,7 @@ pub mod oauth_error_code;
 // The `/oauth/authorize` failures rendered as a local page rather than a
 // redirect; the HTML lives in `http::errors`.
 pub mod oauth_error_kind;
-// URL/path builders for the gatekeeper's user-facing `/gatekeeper/*` webview
+// URL/path builders for the gatekeeper's user-facing `/authorization/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
 // drift-tested against `authorization-core/src/page-paths.ts`.
 pub mod page_paths;

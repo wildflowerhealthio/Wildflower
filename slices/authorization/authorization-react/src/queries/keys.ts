@@ -6,22 +6,22 @@
  * invalidates both surfaces.
  */
 
-const GRANTS_QUERY_KEY = ['gatekeeper', 'grants'] as const
-const grantQueryKey = (id: string): readonly [string, string, string] => ['gatekeeper', 'grant', id]
-const CLIENTS_QUERY_KEY = ['gatekeeper', 'clients'] as const
-const REQUESTS_QUERY_KEY = ['gatekeeper', 'requests'] as const
+const GRANTS_QUERY_KEY = ['authorization', 'grants'] as const
+const grantQueryKey = (id: string): readonly [string, string, string] => ['authorization', 'grant', id]
+const CLIENTS_QUERY_KEY = ['authorization', 'clients'] as const
+const REQUESTS_QUERY_KEY = ['authorization', 'requests'] as const
 const requestQueryKey = (id: string): readonly [string, string, string] => [
-  'gatekeeper',
+  'authorization',
   'request',
   id,
 ]
 const deviceConsentQueryKey = (userCode: string): readonly [string, string, string] => [
-  'gatekeeper',
+  'authorization',
   'device-consent',
   userCode,
 ]
 const oauthConsentQueryKey = (id: string): readonly [string, string, string] => [
-  'gatekeeper',
+  'authorization',
   'oauth-consent',
   id,
 ]

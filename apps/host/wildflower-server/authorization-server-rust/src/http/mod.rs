@@ -138,7 +138,7 @@ fn openapi_spec() -> utoipa::openapi::OpenApi {
     use utoipa::Modify as _;
 
     let (_router, mut spec) = documented_router().split_for_parts();
-    spec.info = utoipa::openapi::Info::new("AuthorizationServer OAuth API", "0.0.0");
+    spec.info = utoipa::openapi::Info::new("Wildflower Authorization OAuth API", "0.0.0");
     // Every documented `/access` operation is scope-gated (the ungated
     // `/access/session` isn't documented), so the gated paths are read off the
     // spec rather than listed by hand.
@@ -159,7 +159,7 @@ mod openapi_tests {
     /// The committed spec snapshot the TS spec-drift test reads.
     const SPEC_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/openapi/gatekeeper-oauth.openapi.json"
+        "/openapi/authorization-server-oauth.openapi.json"
     );
 
     /// The generated `OpenAPI` document must match the committed snapshot. A wire

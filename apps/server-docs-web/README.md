@@ -10,7 +10,7 @@ snapshots**:
 
 | Sidebar group | Snapshot                                                                                      |
 | ------------- | --------------------------------------------------------------------------------------------- |
-| Gatekeeper    | `apps/host/wildflower-server/authorization-server-rust/openapi/gatekeeper-oauth.openapi.json` |
+| Gatekeeper    | `apps/host/wildflower-server/authorization-server-rust/openapi/authorization-server-oauth.openapi.json` |
 | Apps          | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                             |
 | Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`                   |
 | Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`               |

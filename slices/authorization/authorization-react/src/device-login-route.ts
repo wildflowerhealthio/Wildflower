@@ -6,7 +6,7 @@
  * hard-codes the pair a second time and a rename silently strands users on a
  * dead route.
  */
-const DEVICE_LOGIN_ROUTE = '/gatekeeper/device-login'
+const DEVICE_LOGIN_ROUTE = '/authorization/device-login'
 
 /**
  * The device-login screen's search params.

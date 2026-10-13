@@ -27,7 +27,7 @@ import { pickDeviceLoginSearch, type DeviceLoginSearch } from '../../../device-l
  * open-redirect hole, `parseRequestScopes` decodes the scope list), so
  * no further guard is needed here.
  */
-export const Route = createFileRoute('/_open/gatekeeper/device-login')({
+export const Route = createFileRoute('/_open/authorization/device-login')({
   component: NeedsAuthMessage,
   validateSearch: (search: Record<string, unknown>): DeviceLoginSearch =>
     pickDeviceLoginSearch(search),
