@@ -1198,7 +1198,8 @@ impl UiServer {
                 self.loopback_base_url.join(path).expect("UI call URL"),
             )
             .header("forwarded", PUBLIC_BROWSER_FORWARDED)
-            .header("sec-fetch-site", "same-origin");
+            .header("sec-fetch-site", "same-origin")
+            .header("origin", SERVER_ORIGIN);
         match session_cookie {
             Some(session_cookie) => request.header("cookie", session_cookie),
             None => request,
@@ -1274,6 +1275,87 @@ async fn the_fhir_ui_signs_in_through_gatekeeper_and_reads_fhir_on_its_session()
             .expect("GET /Patient reaches the server")
             .status(),
         reqwest::StatusCode::UNAUTHORIZED
+    );
+
+    server.shut_down().await;
+}
+
+/// A page on another server behind the same relay is same-site to this one,
+/// so its form posts carry the UI's `SameSite=Lax` session cookie. Neither a
+/// FHIR write nor a write through the UI's own routes, which sit outside the
+/// gate, rides it: both are refused before they reach HFS.
+#[tokio::test(flavor = "multi_thread")]
+async fn another_server_s_page_cannot_write_on_the_ui_s_session() {
+    let server = UiServer::start().await;
+    let session_cookie = server.sign_in().await;
+    let user_settings = || async {
+        server
+            .ui_request(
+                reqwest::Method::GET,
+                "_user/settings",
+                Some(&session_cookie),
+            )
+            .send()
+            .await
+            .expect("GET /_user/settings reaches the server")
+            .text()
+            .await
+            .expect("the settings")
+    };
+    let settings_before = user_settings().await;
+
+    // The body each would send without a preflight: JSON as `text/plain` to
+    // the FHIR API, the UI's own form encoding to its route, which writes the
+    // user's settings.
+    for (path, content_type, body) in [
+        ("Patient", "text/plain", r#"{"resourceType":"Patient"}"#),
+        (
+            "ui/version",
+            "application/x-www-form-urlencoded",
+            "version=R4",
+        ),
+    ] {
+        let form_post = server
+            .browser
+            .post(
+                server
+                    .loopback_base_url
+                    .join(path)
+                    .expect("form action URL"),
+            )
+            .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+            .header("sec-fetch-site", "same-site")
+            .header("origin", OTHER_SERVER_ORIGIN)
+            .header("content-type", content_type)
+            .header("cookie", &session_cookie)
+            .body(body)
+            .send()
+            .await
+            .expect("the form post reaches the server");
+        assert_eq!(
+            form_post.status(),
+            reqwest::StatusCode::FORBIDDEN,
+            "POST /{path}"
+        );
+    }
+
+    let patients = server
+        .ui_request(reqwest::Method::GET, "Patient", Some(&session_cookie))
+        .send()
+        .await
+        .expect("GET /Patient reaches the server")
+        .json::<Value>()
+        .await
+        .expect("a Bundle");
+    assert_eq!(
+        patients["entry"],
+        serde_json::json!([]),
+        "no Patient was created: {patients}"
+    );
+    assert_eq!(
+        user_settings().await,
+        settings_before,
+        "the UI's settings are unchanged"
     );
 
     server.shut_down().await;
@@ -1415,6 +1497,7 @@ async fn a_bulk_export_runs_and_its_files_download() {
                 .browser
                 .get(on_loopback(&server.loopback_base_url, &status_url))
                 .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+                .header("sec-fetch-site", "same-origin")
                 .header("cookie", &session_cookie)
                 .send()
                 .await
@@ -1449,6 +1532,7 @@ async fn a_bulk_export_runs_and_its_files_download() {
         .browser
         .get(on_loopback(&server.loopback_base_url, &patient_file_url))
         .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+        .header("sec-fetch-site", "same-origin")
         .header("cookie", &session_cookie)
         .send()
         .await

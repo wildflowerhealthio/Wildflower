@@ -34,7 +34,9 @@ use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
-use crate::http::middleware::ui_session_bearer::present_ui_session_bearer;
+use crate::http::middleware::ui_session_bearer::{
+    present_ui_session_bearer, UiSessionBearerConfig,
+};
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::http::{not_found, root_fallback};
@@ -359,13 +361,17 @@ pub async fn set_up(
     .context("failed to set up FHIR R4 router")?;
 
     // A signed-in browser's FHIR calls carry only the UI's session cookie, so
-    // the session's bearer is presented for them ahead of the gate
-    // (`ui_session_bearer`).
+    // the session's bearer is presented for them ahead of the gate; a write
+    // carrying the cookie from another origin is refused, before the UI's
+    // routes too (`ui_session_bearer`).
     let gated_fhir_r4 =
         fhir_routers
             .augmented_fhir_r4_router
             .layer(axum::middleware::from_fn_with_state(
-                ui_sessions,
+                Arc::new(UiSessionBearerConfig {
+                    ui_sessions,
+                    loopback_base_url: loopback_base_url.clone(),
+                }),
                 present_ui_session_bearer,
             ));
 

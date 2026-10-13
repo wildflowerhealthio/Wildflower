@@ -13,7 +13,8 @@ use std::time::Duration;
 use helios_persistence::backends::local_fs::LocalFsOutputStore;
 use helios_persistence::backends::sqlite::SqliteBackend;
 use helios_persistence::core::{
-    BulkExportStorage, DefaultExportWorker, ExportClaimStrategy, ExportOutputStore, WorkerId,
+    BulkExportStorage, DefaultExportWorker, ExpiredExportRef, ExportClaimStrategy,
+    ExportOutputStore, WorkerId,
 };
 use helios_rest::bulk_export_auth::BearerScopeAuth;
 use helios_rest::config::BulkExportConfig;
@@ -125,7 +126,9 @@ impl BulkExportWorker {
 
     /// Delete the files, then the record, of each job whose output is older
     /// than `output_ttl`. Files go first: a record deleted before its files
-    /// would leave nothing to find them by.
+    /// would leave nothing to find them by. A job that fails to delete is
+    /// logged and passed over, so it can't hold back the jobs after it; it is
+    /// tried again on the next sweep.
     async fn delete_expired_jobs(
         &self,
         output_ttl: Duration,
@@ -135,14 +138,26 @@ impl BulkExportWorker {
             .list_expired_exports(chrono::Utc::now(), output_ttl, EXPIRED_JOBS_PER_SWEEP)
             .await?;
         for expired_job in expired_jobs {
-            self.output_store
-                .delete_job_outputs(&expired_job.tenant, &expired_job.job_id)
-                .await?;
-            self.sqlite_backend
-                .delete_export(&expired_job.tenant, &expired_job.job_id)
-                .await?;
+            if let Err(error) = self.delete_expired_job(&expired_job).await {
+                tracing::error!(
+                    "failed to delete expired bulk export {}: {error}",
+                    expired_job.job_id.as_str()
+                );
+            }
         }
         Ok(())
+    }
+
+    async fn delete_expired_job(
+        &self,
+        expired_job: &ExpiredExportRef,
+    ) -> helios_persistence::error::StorageResult<()> {
+        self.output_store
+            .delete_job_outputs(&expired_job.tenant, &expired_job.job_id)
+            .await?;
+        self.sqlite_backend
+            .delete_export(&expired_job.tenant, &expired_job.job_id)
+            .await
     }
 }
 
@@ -157,32 +172,48 @@ async fn wait_or_shutdown(shutdown: &CancellationToken, interval: Duration) {
 mod tests {
     use helios_fhir::FhirVersion;
     use helios_persistence::core::{
-        BulkExportStorage, ExportLevel, ExportRequest, ExportStatus, ResourceStorage,
+        BulkExportStorage, ExportJobId, ExportLevel, ExportRequest, ExportStatus, ResourceStorage,
         StartExportInput,
     };
     use helios_persistence::tenant::TenantContext;
 
     use super::*;
 
-    /// A job the worker ran to completion writes its file; once its output
-    /// has outlived the TTL, the sweep deletes both its record and its files.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn a_finished_export_is_deleted_with_its_files_once_expired() {
-        let bulk_export_dir = tempfile::tempdir().expect("a temp export dir");
+    /// A backend holding one Patient to export, and a worker over it writing
+    /// each job's files under `bulk_export_dir`.
+    async fn worker_with_a_patient(
+        bulk_export_dir: &std::path::Path,
+    ) -> (Arc<SqliteBackend>, BulkExportWorker) {
         let sqlite_backend = Arc::new(SqliteBackend::in_memory().expect("an in-memory backend"));
         sqlite_backend
             .init_schema()
             .expect("the schema initializes");
-        let tenant = TenantContext::system();
         sqlite_backend
             .create(
-                &tenant,
+                &TenantContext::system(),
                 "Patient",
                 serde_json::json!({ "resourceType": "Patient" }),
                 FhirVersion::R4,
             )
             .await
             .expect("a Patient to export");
+        let worker = BulkExportWorker::new(
+            sqlite_backend.clone(),
+            Arc::new(LocalFsOutputStore::new(
+                bulk_export_dir,
+                "https://example.invalid",
+            )),
+            BulkExportConfig::default(),
+        );
+        (sqlite_backend, worker)
+    }
+
+    /// Start a system-level export and have `worker` run it to completion.
+    async fn export_to_completion(
+        sqlite_backend: &SqliteBackend,
+        worker: &BulkExportWorker,
+    ) -> ExportJobId {
+        let tenant = TenantContext::system();
         let job_id = sqlite_backend
             .start_export(
                 &tenant,
@@ -196,15 +227,6 @@ mod tests {
             )
             .await
             .expect("the export is accepted");
-        let worker = BulkExportWorker::new(
-            sqlite_backend.clone(),
-            Arc::new(LocalFsOutputStore::new(
-                bulk_export_dir.path(),
-                "https://example.invalid",
-            )),
-            BulkExportConfig::default(),
-        );
-
         let shutdown = CancellationToken::new();
         tokio::time::timeout(Duration::from_secs(30), async {
             let wait_for_completion = async {
@@ -224,10 +246,23 @@ mod tests {
         })
         .await
         .expect("the job runs to completion in time");
-        let job_dir = bulk_export_dir
-            .path()
-            .join(tenant.tenant_id().as_str())
-            .join(job_id.as_str());
+        job_id
+    }
+
+    fn job_dir(bulk_export_dir: &std::path::Path, job_id: &ExportJobId) -> std::path::PathBuf {
+        bulk_export_dir
+            .join(TenantContext::system().tenant_id().as_str())
+            .join(job_id.as_str())
+    }
+
+    /// A job the worker ran to completion writes its file; once its output
+    /// has outlived the TTL, the sweep deletes both its record and its files.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_finished_export_is_deleted_with_its_files_once_expired() {
+        let bulk_export_dir = tempfile::tempdir().expect("a temp export dir");
+        let (sqlite_backend, worker) = worker_with_a_patient(bulk_export_dir.path()).await;
+        let job_id = export_to_completion(&sqlite_backend, &worker).await;
+        let job_dir = job_dir(bulk_export_dir.path(), &job_id);
         assert!(
             std::fs::read_dir(&job_dir)
                 .expect("the job's folder is written")
@@ -243,11 +278,51 @@ mod tests {
 
         assert!(
             sqlite_backend
-                .get_export_status(&tenant, &job_id)
+                .get_export_status(&TenantContext::system(), &job_id)
                 .await
                 .is_err(),
             "the job's record is deleted"
         );
         assert!(!job_dir.exists(), "the job's files are deleted");
+    }
+
+    /// An expired job whose files can't be deleted keeps its record for the
+    /// next sweep, and doesn't stop the sweep deleting the jobs after it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_job_that_fails_to_delete_does_not_hold_back_the_jobs_after_it() {
+        let bulk_export_dir = tempfile::tempdir().expect("a temp export dir");
+        let (sqlite_backend, worker) = worker_with_a_patient(bulk_export_dir.path()).await;
+        let stuck_job_id = export_to_completion(&sqlite_backend, &worker).await;
+        let later_job_id = export_to_completion(&sqlite_backend, &worker).await;
+        // A file where the job's folder should be: removing it as a folder
+        // fails, whatever the permissions of the user running the test.
+        let stuck_job_dir = job_dir(bulk_export_dir.path(), &stuck_job_id);
+        std::fs::remove_dir_all(&stuck_job_dir).expect("the stuck job's folder is removed");
+        std::fs::write(&stuck_job_dir, b"").expect("a file takes the folder's place");
+
+        worker
+            .delete_expired_jobs(Duration::ZERO)
+            .await
+            .expect("the sweep succeeds");
+
+        let tenant = TenantContext::system();
+        assert!(
+            sqlite_backend
+                .get_export_status(&tenant, &stuck_job_id)
+                .await
+                .is_ok(),
+            "the stuck job's record is kept"
+        );
+        assert!(
+            sqlite_backend
+                .get_export_status(&tenant, &later_job_id)
+                .await
+                .is_err(),
+            "the later job's record is deleted"
+        );
+        assert!(
+            !job_dir(bulk_export_dir.path(), &later_job_id).exists(),
+            "the later job's files are deleted"
+        );
     }
 }
