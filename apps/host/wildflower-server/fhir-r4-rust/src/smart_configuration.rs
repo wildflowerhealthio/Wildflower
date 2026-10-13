@@ -10,8 +10,8 @@
 //! Rather than patching helios-auth upstream, we mount this handler at
 //! `/.well-known/smart-configuration` and put HFS's router behind it as a
 //! fallback (see [`lib.rs`](crate)). The advertised endpoints are the
-//! gatekeeper URLs on the same origin, so the SMART app fetches discovery
-//! here, then follows links straight to gatekeeper for the authorize/token
+//! authorization server URLs on the same origin, so the SMART app fetches discovery
+//! here, then follows links straight to the authorization server for the authorize/token
 //! dance.
 //!
 //! This is the sole discovery implementation; the former TypeScript twin in the
@@ -56,7 +56,7 @@ pub(crate) struct SmartConfiguration {
 /// The SMART capability that tells a client this is a Wildflower server rather
 /// than a plain SMART one: both serve FHIR at the URL a client signs in to, so
 /// the launcher reads it to choose what it offers. The document is committed as
-/// `snapshots/smart-configuration.json`, which `gatekeeper-core`'s discovery
+/// `snapshots/smart-configuration.json`, which `authorization-core`'s discovery
 /// tests read, so the client is tested against what this serves.
 pub(crate) const WILDFLOWER_SERVER_CAPABILITY: &str = "wildflower-server";
 
@@ -133,7 +133,7 @@ mod tests {
         url::Url::parse(value).unwrap()
     }
 
-    /// The committed document `gatekeeper-core`'s discovery tests read
+    /// The committed document `authorization-core`'s discovery tests read
     /// (`smart-discovery.test.ts`), so the TS client is tested against exactly
     /// what this serves. Regenerate with
     /// `UPDATE_SMART_CONFIGURATION=1 cargo test -p wildflowerhealthio-fhir-r4 smart_configuration_snapshot`.

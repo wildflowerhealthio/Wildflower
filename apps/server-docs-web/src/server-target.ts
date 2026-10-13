@@ -3,14 +3,14 @@
  *
  * The parsing itself belongs to every static Wildflower page that targets a
  * server the reader chooses, so it lives in
- * `gatekeeper-core/smart-client` (`normalizeServerUrl`, `searchWithServerUrl`,
+ * `authorization-core/smart-client` (`normalizeServerUrl`, `searchWithServerUrl`,
  * `serverUrlFromSearch`), and so does turning the `iss` of a SMART launch the
  * console is opened with into a `?server=` (`searchAfterArrivingLaunch`). What
  * stays here is the one thing that is this console's alone: the target it
  * assumes when the URL names none.
  */
 
-import { serverUrlFromSearch as parseServerUrl } from '@wildflowerhealthio/gatekeeper-core/smart-client'
+import { serverUrlFromSearch as parseServerUrl } from '@wildflowerhealthio/authorization-core/smart-client'
 
 import { HOST_LOOPBACK_ORIGIN } from './host-defaults.ts'
 

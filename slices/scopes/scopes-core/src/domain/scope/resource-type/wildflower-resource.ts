@@ -90,7 +90,7 @@ namespace WildflowerResourceType {
     }
   }
 
-  /** A Wildflower-specific resource the gatekeeper governs (Rust's `WildflowerResource`). */
+  /** A Wildflower-specific resource the authorization server governs (Rust's `WildflowerResource`). */
   export type Resource =
     | 'AuthorizationRequest'
     | 'Grant'

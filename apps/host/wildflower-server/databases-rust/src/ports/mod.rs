@@ -3,7 +3,7 @@
 //! and the real filesystem/SQLite side-effects. Keeping the traits here (rather
 //! than in `domain/`) lets the domain depend on behaviour without owning the
 //! interface's placement, and the concrete implementations live in
-//! [`adapters`](crate::adapters). Mirrors `apps-rust` / `gatekeeper-rust`'s
+//! [`adapters`](crate::adapters). Mirrors `apps-rust` / `authorization-server-rust`'s
 //! `ports/`.
 //!
 //!  - [`DatabaseFiles`] — the filesystem/SQLite operations the capabilities need,

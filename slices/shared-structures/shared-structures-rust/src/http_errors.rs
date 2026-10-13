@@ -1,7 +1,7 @@
 //! Shared HTTP error template: the logged, opaque `500`.
 //!
 //! Every `-rust` slice's `response_templates` used to re-declare this same
-//! struct (`tunnel-rust`, `apps-rust`, `gatekeeper-rust`, …): an operator-facing
+//! struct (`tunnel-rust`, `apps-rust`, `authorization-server-rust`, …): an operator-facing
 //! `context` + a `source` detail, logged at error level and returned as an empty
 //! `500` (the detail goes to the logs, never the client). It lives here so a
 //! slice imports it instead of copying it. Slice-specific domain errors (404s,

@@ -30,7 +30,7 @@ pub enum WildflowerResourceType {
     Known(WildflowerResource),
 }
 
-/// A Wildflower-specific resource the gatekeeper governs.
+/// A Wildflower-specific resource the authorization server governs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WildflowerResource {
     AuthorizationRequest,

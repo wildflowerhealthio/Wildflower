@@ -149,10 +149,10 @@ search is scoped with `patient=` (or unscoped for All patients).
 under the title. `crus` is create + read + update + search: every write is an
 update to a client-minted id that creates the resource the first time, and the
 app never deletes. That one string is what the `lifting` tile's OAuth client
-(gatekeeper migrations `0019_seed_lifting_app_client`,
+(authorization server migrations `0019_seed_lifting_app_client`,
 `0020_first_party_apps_pick_the_patient` and `0025_rekey_lifting_app_clients`)
 and the debug-only `lifting-dev` tile's client (`seed_dev_app_clients` in
-`gatekeeper-rust/src/seeding.rs`) allow, exactly; a test there reads
+`authorization-server-rust/src/seeding.rs`) allow, exactly; a test there reads
 `src/config.ts` and pins both clients to it.
 
 ## Where the bundle is served
@@ -182,14 +182,14 @@ equal the client's allowed scopes.
   `0017_rekey_lifting_app`) launching
   `https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}`
   with `requires_tunnel` set, as every first-party row has. Its public
-  OAuth client (gatekeeper migration `0019_seed_lifting_app_client`, its
+  OAuth client (the authorization server migration `0019_seed_lifting_app_client`, its
   scopes as `0020_first_party_apps_pick_the_patient` left them, re-keyed by
   `0025_rekey_lifting_app_clients`) redirects to
   `https://wildflowerhealth.io/lifting/`.
 - **`lifting-dev`** is seeded in debug builds only, at runtime rather than
   by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
-  `http://localhost:<port>/` (`gatekeeper-rust/src/seeding.rs`).
+  `http://localhost:<port>/` (`authorization-server-rust/src/seeding.rs`).
 
 ## Running locally
 

@@ -1,0 +1,742 @@
+# Wildflower Authorization Jargon Explanation
+
+This doc fixes the meaning of every domain term that appears in the
+`authorization` slice — internal vocabulary first, then the OAuth 2.0 / OIDC
+spec terms that show up in the code. The goal is to surface concepts that
+overlap so a future round can decide whether to merge or rename them.
+
+Everything here is **descriptive of the code as it stands today**. Open
+questions about whether two concepts should collapse are flagged with
+**Open question:** callouts.
+
+## What the authorization server is for
+
+Wildflower Authorization allows an authorized **Owner** on one device to
+issue **Grants** to OAuth Clients (registered in the
+[`clients`](#client) table) requesting access on a separate device,
+allowing them to access data in a system. The host browser bootstraps
+onto a fresh deployment via the RFC 8628 device authorization flow; a
+direct-loopback caller on the host's own machine is instead presented with a
+host-minted token (see [bootstrap URL](#bootstrap-url)).
+
+## Roles
+
+Three distinct human/machine roles whose names collide easily — get these
+straight first.
+
+| Role               | Who they are                                                                                                            | Where they show up                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **OAuth client**   | Remote app requesting access (the SMART-on-FHIR caller, or `wildflower-host` itself).                                   | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table  |
+| **Owner**          | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests. | `/access/...` endpoints, `RequireAuthMiddleware`, Bearer tokens with `'owner'` scope |
+| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                                  | OAuth spec only; we say "Owner"                                                      |
+
+> **Open question:** The OAuth `client` (third-party app) is unrelated to
+> HTTP-client instances in the codebase — the word is overloaded. The
+> spec name wins for `client_id`, but we should never use bare "client"
+> in Wildflower Authorization prose without a qualifier.
+
+## Slice-internal terms
+
+These are the concepts stored by `authorization-server-rust` and named in
+`authorization-core/src/contexts/`. Each one corresponds to either a table,
+an event, or a Tag.
+
+### Client
+
+A registered OAuth client. Every `client_id` accepted on `/oauth/token` or
+`/oauth/device_authorization` must resolve to a row in this table — unknown
+ids are rejected at the boundary. `/oauth/authorize` is the exception: an
+unknown `client_id` (or a known one whose request steps outside its
+registration) is carried to the Owner's consent prompt with a warning, and
+the row is created or widened only when the Owner approves — see
+[Trust on first use](#trust-on-first-use).
+
+- **Table:** `clients`
+- **Identifier:** `clientId` (string PK, not a generated id — the
+  registrar supplies it).
+- **Kind:** `'public' | 'confidential'`. Confidential clients carry a
+  `secretHash` (SHA-256) and must present `client_secret` on
+  `/oauth/token`, verified by `timingSafeEqual`.
+- **Allowlists:** `redirectUris` (exact match) and `allowedScopes`
+  (what this client may request without the Owner being warned). For every
+  client but `wildflower-host` these are the _registered_ set, not a hard
+  cap: a request outside them reaches consent as a
+  [registration verdict](#trust-on-first-use) of `changed`, and approval
+  widens the row.
+- **Lifecycle:** registered (seeded by a migration or at boot, or created
+  by [trust on first use](#trust-on-first-use)) → widened (a later TOFU
+  approval) → disabled / re-enabled by the Owner. Disabling is a soft switch
+  on `disabledAt`: the row, its allowlists, and its secret are kept. While
+  `disabledAt` is set, every OAuth endpoint refuses the client:
+  `/oauth/authorize` renders the local "Disabled client" page, and client
+  authentication at `/oauth/token` and `/oauth/device_authorization` fails
+  with `invalid_client`. Re-enabling clears the stamp and the client works
+  again exactly as registered.
+- **Owner management:** `GET /access/clients` lists every row (never the
+  secret hash) with a `firstParty` flag. `PATCH /access/clients/:clientId`
+  with `{ "disabledAt": … }` answers with the updated row and sets the stamp
+  as follows:
+  - any UTC time disables the client now, stamped with the server's own
+    now whatever time was sent. A disable can be neither scheduled nor
+    backdated. The launcher sends its current time.
+  - `null` re-enables the client.
+  - a client that already has a `disabledAt` keeps it. The update is
+    idempotent, and a repeated disable doesn't move the time.
+
+  An unknown `clientId` is a 404. The routes are gated on
+  `wildflower/Client.r` (list) and `wildflower/Client.u` (the `PATCH`). The
+  settings UI shows them as the "Trusted Apps" list on the Access screen.
+  Disabling leaves the client's [grants](#grant) and
+  refresh-token families in place — unusable while it's disabled, live again
+  once it's enabled; revoke a grant to end it for good.
+
+The `wildflower-host` first-party client (`FIRST_PARTY_CLIENT_ID`) is
+auto-seeded by the server at startup, with
+`kind: 'public'`, empty `redirectUris` (it gets its token via the device
+flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
+redirects), and `allowedScopes: ['owner']`. It can't be disabled: the Owner reaches
+`/access/clients` through it, so a `PATCH /access/clients/wildflower-host` that
+sets a `disabledAt` is refused with a `409 FirstPartyClientLocked`.
+
+### Trust on first use
+
+An authorization-code request **presents** a client registration: its
+`client_id`, `redirect_uri`, and scopes (`PresentedClientRegistration` in
+Rust). `/oauth/authorize` judges whether to accept it as it stands against
+the current [`clients`](#client) row, and computes a **registration verdict**
+(`ClientRegistrationVerdict`):
+
+- **`registered`** — the row exists, the `redirect_uri` resolves to an
+  allowlist entry, and every requested scope is covered by `allowedScopes`.
+  Only this verdict may take the existing-[`Grant`](#grant) fast path.
+- **`new`** — no row exists. The consent prompt names the app by its
+  `client_id` and shows the redirect origin.
+- **`changed`** (`WouldWiden` in Rust) — the row exists but the
+  `redirect_uri` is not allowlisted and/or some requested scopes (`newScopes`)
+  fall outside `allowedScopes`, so approving would widen the row.
+
+The verdict is computed at read time (both at `/authorize` and on
+`GET /access/oauth-consents/:id`, which returns it as `registration`), never
+stored, so two prompts for the same app agree with whatever the row says
+now. Nothing is persisted for a `new` client until approval; a denied or
+expired prompt leaves no trace of it.
+
+Approving a `new` or `changed` prompt requires the Owner's explicit
+`acknowledgedRegistration` (the consent UI's "I recognise this app and this
+redirect address" checkbox) — the server rejects the approval without it.
+On approval the row is created (`kind: 'public'`, every grant type, name
+equal to the `client_id`, the one redirect, the granted scopes) or widened:
+the exact `redirect_uri` is added to `redirectUris` and the **granted** (not
+requested) scopes widen `allowedScopes`, so a later identical request is
+`registered` and fast-paths. The clamp on such an approval is
+`allowedScopes ∪ requestedScopes`; the approving Owner still cannot delegate
+a scope they do not hold themselves.
+
+That widening is by scope, not by string (`wildflowerhealthio_scopes::widened_scopes`):
+granting `patient/Patient.cruds` over a registered `patient/Patient.r`
+records the one broader scope instead of both spellings, and `.r` plus a
+later `.s` is recorded as `.rs`. A row created by a first approval and one
+widened into the same state are byte-identical. See
+[Grant](#grant) for the same rule on the standing consent.
+
+While the redirect is untrusted (verdict `new`, or `changed` with a new
+redirect) every later validation failure at `/authorize` — bad scheme,
+non-`code` `response_type`, bad PKCE — renders the local error page rather
+than redirecting, exactly as an unknown client's failure does on the other
+endpoints (RFC 6749 §4.1.2.1's open-redirect rule). Scope strings are not
+validated against a grammar on this path: an unparseable scope is carried to
+the prompt as an opaque named scope that matches only itself.
+
+The first-party `wildflower-host` client is exempt: an unregistered redirect
+or scope for it is rejected at the boundary, and approval never widens its
+row. Disabled clients are rejected on every endpoint regardless of verdict,
+and a widening never clears `disabledAt` — trust the Owner took back stays
+taken back until they re-enable the app.
+
+TOFU only ever grows trust, so its other half is the Owner's
+[client management](#client) surface: every row TOFU created or widened is
+listed in "Trusted Apps", and an app approved by mistake can be disabled
+there. There's no per-redirect or per-scope narrowing yet — disabling is
+all-or-nothing.
+
+> **Trade-off:** any page can present a _known_ `client_id` with its own
+> redirect, and the Owner sees a `changed` prompt under a trusted app's name.
+> The prompt's prominent redirect origin and the acknowledgment checkbox are
+> the mitigation; the Owner is the trust anchor, as with any TOFU scheme.
+> The device flow stays strict.
+
+### AuthorizationRequest
+
+A pending OAuth 2.0 authorization that has been started but not yet
+resolved.
+
+- **Table:** `authorizationRequests`
+- **Discriminator:** `grantType: 'authorization_code' | 'device_code'`
+  (matches the OAuth `grant_type` request parameter).
+- **Status field:** `'pending' | 'approved' | 'denied' | 'expired'`.
+- **TTL:** 5 minutes.
+- **Identifier:** `id` (UUID — for code flow, the request id; for
+  device flow, the `device_code`).
+- **Device-flow extras:** `userCode` (the human-typed RFC 8628 §6.1
+  code, formatted `BCDF-GHJK`); `lastPolledAt` (for the `slow_down`
+  rate limit); `deviceName` (see [Device name](#device-name)).
+
+Code-flow rows carry the OAuth client's PKCE `code_challenge`,
+`redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
+started by a SMART App Launch also carries the consumed `launch` and the
+patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
+Device-flow rows leave those columns null.
+
+### LaunchContext
+
+One SMART App Launch `launch` value this server handed out, and what it
+binds. An in-process launcher (the apps slice's `POST /apps/{id}`, the base's
+Launch) mints it through the authorization server's `LaunchContextMinter` and puts it in the
+app's launch URL; the app forwards it to `/oauth/authorize`.
+
+- **Table:** `launch_contexts`, owned by the authorization server. No other slice touches it.
+- **Identifier:** `nonce`, the opaque `launch` value (32 CSPRNG bytes,
+  base64url).
+- **Binds:** the app's `client_id`, or no client (the base's launch: a
+  server's launcher can be any app, so the first client to present the value
+  takes it), and a nullable `patient`. Only a launch that names its client can
+  bind a patient. Nothing sets the patient yet: apps pick it in-app.
+- **TTL:** 5 minutes, the same as an `AuthorizationRequest`.
+- **Single use:** `/oauth/authorize` consumes it with one conditional `UPDATE`
+  (unconsumed, unexpired, minted for the presenting client or for any client),
+  so of two racing authorizes only one wins. Expired rows are pruned when the
+  next one is minted.
+- **Refusals:** an unknown, expired, consumed or other client's `launch` is
+  `invalid_request`, the same for every reason. A request with no `launch` is
+  plain OAuth.
+- **Patient:** when the context binds a patient, the consent approval must name
+  the same patient (`409 LaunchPatientMismatch` otherwise), and a standing
+  grant for another patient doesn't take the fast path.
+
+### AuthorizationCode
+
+A single-use bearer credential issued **after** an
+`AuthorizationRequest` (code flow only) is approved. The OAuth client
+redeems it at `POST /oauth/token` to receive a JWT access token.
+
+- **Table:** `authorizationCodes`
+- **Identifier:** `code` (UUID, the primary key).
+- **TTL:** 60 seconds from issuance.
+- **Lifecycle:** issued by `authorizationCodeIssued`, deleted by
+  `authorizationCodeConsumed` on every terminal token-exchange path
+  (success, expiry, mismatch, verifier failure).
+
+Device-flow does not use `AuthorizationCode`; the device-code branch of
+`/oauth/token` reads the approval directly off `AuthorizationRequest`.
+
+### Grant
+
+A standing consent record: "OAuth client X is allowed to ask for scopes
+Y at redirect URI Z without re-prompting the Owner." Used to fast-path
+re-authorizations.
+
+- **Table:** `grants`
+- **Identifier:** plain string.
+- **Indexed by:** `(clientId, redirectUri)` pair, queried via
+  `byClientIdAndRedirectUri$`. Re-approval updates via `grantUpdated`
+  rather than minting a duplicate row.
+- **Scopes union across approvals** (authorization-server-rust): a later approval
+  merges its scopes into the standing grant — approving a narrower
+  request never un-approves earlier consent. Revoking the grant is the
+  way to withdraw consent (and also revokes the client's refresh
+  tokens).
+- **The union is by scope, not by string** (`wildflowerhealthio_scopes::widened_scopes`):
+  consenting to `patient/Patient.cruds` over a standing
+  `patient/Patient.r` records the one broader scope rather than both
+  spellings, and `.r` plus a later `.s` is recorded as `.rs`. The
+  widened list still reaches every interaction it reached before — only
+  the spelling is shortened. A v1 word scope (`.read`) is never folded
+  into a v2 letter bag, which would hand the client letter-grammar
+  access it was never granted.
+- **The fast path matches by coverage**, the same
+  `allowed_scope_covers` test `Client.allowedScopes` is read through:
+  a standing consent to `patient/Observation.rs` pre-approves a later
+  request for the narrower `patient/Observation.r`.
+- **Key fields:** `clientId`, `scopes`, `redirectUri`, `grantedAt`,
+  `lastUsedAt` (event slot reserved, materializer present, but **no
+  consumer commits `clientAccessRecorded` yet**), `patient`
+  (SMART-on-FHIR launch context).
+
+Display name lives on [`Client`](#client)`.name`, not on `Grant`.
+
+### SigningKey
+
+An RSA 2048-bit JWK used to sign and verify authorization-server-issued JWTs.
+Public components are published at `/.well-known/jwks.json`.
+
+- **Table:** `signingKeys`
+- **Identifier:** `kid` (JWK key id, nanoid). Set on every signed
+  JWT's protected header so verifiers can resolve the right key.
+- **Algorithm:** RS256.
+- **Active-key selection:** `isActive: boolean` column;
+  `signingKeyActivated({ kid })` flips the named key on (and any
+  prior active key off, in one materializer step). Sign-side picks
+  via `SigningKey.queries.active$`. Verify-side iterates every key
+  in the table — that's the rotation-safe path.
+
+### Owner auth middleware (`RequireAuthMiddleware`)
+
+The authorization wall on every Owner-facing JSON endpoint
+(`/access/oauth-consents/*`, `/access/devices/*`, `/access/grants/*`,
+`/access/requests/*`). Two-stage check:
+
+1. `internal/jwt.ts:verifyJwt` validates the Bearer token (signature,
+   `iss`, `aud`, `exp` — all enforced by `jose.jwtVerify`'s options),
+   then looks up the JWT's `sub` in the [`clients`](#client) table.
+   Disabled clients are rejected.
+2. The middleware then enforces `'owner' ∈ payload.scope`. A
+   third-party SMART client's token (with `patient/*.read` scope)
+   verifies fine but doesn't pass this gate.
+
+HTML pages in the `authorization-server-pages` group do **not** carry this
+middleware; they're public. The middleware reads the access token from the
+`Authorization: Bearer` header only — the server issues and accepts no
+cookies. The launcher attaches its in-memory bearer; a direct-loopback
+caller attaches nothing and is authenticated by the host's
+loopback-provenance owner trust, which presents the host-minted token on its
+behalf.
+
+### Device flow (RFC 8628)
+
+The first-party host browser's path to becoming an Owner-authenticated
+client. Flow:
+
+1. On the device-login screen the user names the device and adjusts a scope
+   request with the shared scope picker (see [Device name](#device-name) and
+   [Expandable consent](#expandable-consent)), then starts sign-in. The picker
+   is pre-seeded with the read+search happy path (`system/*.rs wildflower/*.rs`)
+   when the client's allowed set covers it, so the common case is
+   name-it-and-go. The browser
+   POSTs `/oauth/device_authorization` with `client_id`, the built `scope`, and
+   the chosen `device_name`. Server creates a `flow='device_code'`
+   `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.
+   The verification URIs point at the hosted launcher
+   (`https://wildflowerhealth.io/launcher/authorization/devices?server=<origin>`,
+   the host's `launcher_base_url`), not at the server itself — the host
+   serves no UI of its own. A copy of the launcher that starts a pairing
+   itself (`NeedsAuthMessage`) shows its **own** device-entry page instead,
+   keeping the query the server built (`AuthorizationServerPaths.deviceEntryUrlOn`),
+   so a pairing started on a PR preview or a dev server is approved there.
+2. Owner enters the `user_code` at `/authorization/devices` (or scans the QR
+   for `verification_uri_complete`) on a separate, already-Owner-authed
+   device — or answers it in the host's consent sheet, which the
+   [pending-consent queue](#pending-consent-queue) raises with no code entry.
+3. Owner reviews the request (device name + requested scopes) and approves via
+   `POST /access/devices/:userCode/approve`. The Owner may add scopes beyond
+   what the device requested (up to the client's `allowedScopes`) or prune them
+   — see [Expandable consent](#expandable-consent) — and, from the settings
+   surface, adjust the device name.
+4. Browser polls `POST /oauth/token` with `grant_type=urn:ietf:params:oauth:grant-type:device_code`
+   until status flips. Returns `authorization_pending` while waiting,
+   `slow_down` if polled faster than the advertised `interval` (5s),
+   `access_denied` / `expired_token` on terminal failure.
+
+The device_code is single-use: the row's status flips to `expired` on
+the first successful token mint so a second poll returns `expired_token`.
+
+### Device name
+
+A human-chosen label for the device being paired ("Ada's laptop"), distinct from
+the OAuth [client](#client) name (all first-party devices share the
+`wildflower-host` client, so the client name can't tell them apart). A
+non-standard RFC 8628 extension: the requesting device sends it as the
+`device_name` form field on `/oauth/device_authorization`; it is stored on the
+device-flow [`AuthorizationRequest`](#authorizationrequest), surfaced to the
+Owner on the consent prompt, and — from the settings consent surface — editable
+before approval (persisted `COALESCE`-style, so an omitted value keeps the stored
+one).
+
+When the device doesn't send a name, the server infers a friendly one from the
+request's `User-Agent` (e.g. `"Chrome on macOS"`) — only as a fallback, never
+overriding a name the device or Owner chose. Unrecognizable User-Agents (the
+many non-browser device-code clients — CLIs, TV apps, bare HTTP libraries) infer
+nothing; the effective name then falls back to the client name at grant-mint
+time so the durable device grant's `(client_id, device_name)` key stays total.
+Optional on the wire; auth-code requests carry no device name.
+
+### Pending-consent queue
+
+The single FIFO of authorization requests waiting on the Owner, spanning **both**
+grant flows: a device-code request parked by `/oauth/device_authorization` and an
+authorization-code request parked by `/oauth/authorize` share one queue,
+oldest `requestedAt` first.
+
+The head of that queue is a `PendingConsentHead`, discriminated because the two
+flows have no shared lookup key:
+
+| Flow               | Head                           | Hydrated by                      |
+| ------------------ | ------------------------------ | -------------------------------- |
+| Device (RFC 8628)  | `{ kind: 'device', userCode }` | `GET /access/devices/:userCode`  |
+| Authorization code | `{ kind: 'oauth', id }`        | `GET /access/oauth-consents/:id` |
+
+The Rust side recomputes the head (`oldest_pending_consent_head`) after every
+transition that could move it — either flow's insert, approve, or deny — and
+publishes it on a `watch` channel. The Tauri host emits each server's head to
+its base as the `pending-consent` event, raises the window when a server with
+nothing waiting gets a request (not when its queue advances), and gives the base
+commands that read and decide a request in-process through
+`HostConsentDecider`, the same consent capabilities with the host Owner's grant
+(see `apps/host/servers`'s
+[Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
+
+A request that the [grant](#grant) fast path fully pre-approves never enters the
+queue: `/oauth/authorize` approves it in the same handler, so it never sits
+`pending` awaiting a human. Requests are dropped from the head once expired — a
+background reaper re-runs the query so an idle host doesn't stay stuck on a head
+whose TTL lapsed.
+
+Closing the host's consent sheet decides nothing: the request stays pending
+and answerable from Settings until it expires, while the requesting browser
+keeps waiting (on the [wait page](#wait-page) for a code request).
+
+### Wait page
+
+The page `/oauth/authorize` parks a browser on while the Owner decides:
+`/oauth/authorize/{id}/wait`, served by the authorization server itself on whichever
+origin the browser reached it at (loopback, a tunnel, a forwarded front). The
+`Location` is relative to `/oauth/authorize`, so no launcher address is
+involved. The page is static HTML, CSS and JS
+(`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
+`GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
+redirect the status carries, which the authorization server built from the client's
+allowlisted or just-approved `redirect_uri`. That makes this redirect the only
+address a sign-in ever leaves the authorization server for, and no request parameter can
+name a different one. The page takes no decision itself: the Owner answers in
+the host's consent sheet, a signed-in launcher, or the
+[loopback owner dialog](#loopback-owner-dialog).
+
+It interpolates nothing (the script reads the request id from its own path),
+loads only from its own origin under a strict CSP, and follows only an
+`http:`/`https:` redirect. Its colours are copies of `react-tundraish` palette
+tokens under the same names.
+
+### Loopback owner dialog
+
+A native Approve / Reject dialog the desktop host raises for one kind of login:
+a **direct-loopback** `/oauth/authorize` (no `Forwarded` header) whose
+`client_id` is `03a513940b52f8c2649a5366d1a26d19` (the hosted launcher) signing in to the server
+on the same machine. The person at the keyboard is the Owner, so the host asks
+them in place rather than sending them to the in-app consent page.
+
+The request is parked and queued exactly as any other code request: the browser
+is still sent to the [wait page](#wait-page), and the request still appears in
+the launcher. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
+`LoopbackConsentPrompt` port). Whichever surface decides first wins, because a
+deny, like an approve, only changes a request that is still `pending`.
+
+- **Approve** runs the ordinary code-flow approval with the host Owner as the
+  approver: the requested scopes within `host_owner_scopes` are delegated, and
+  the dialog itself is the registration acknowledgement. It registers or widens
+  the client as [trust on first use](#trust-on-first-use) does, but records
+  **no** standing [Grant](#grant) (`ApprovalMemory::AskEveryTime`), so every
+  loopback login asks again.
+- **Reject**, closing the dialog, or leaving it unanswered until the request
+  expires denies it (the wait page carries `access_denied` back to the client).
+- A host with no native dialog wires `NoLoopbackConsentPrompt`, which
+  **abstains**, leaving the request to the launcher.
+
+Forwarded (tunnel) requests and every other `client_id` never reach the dialog.
+Anyone on loopback can present the `client_id`. The dialog names the redirect
+origin, and the Owner is at the machine, which is the same trade-off as trust on
+first use.
+
+### Expandable consent
+
+The device-code consent path is **expandable**: the Owner may grant scopes the
+device did **not** request, up to the client's `allowedScopes`, as well as narrow
+what was asked. This contrasts with the **clamped** authorization-code / app
+consent path, where the grant may only be narrowed within the requested set
+(`granted ⊆ requested`) — a third-party app can never widen its own grant. The
+distinction lives in the two `ApprovableScopes` constructors: `for_device`
+measures the grantable subset against `client.allowedScopes`; `for_code`
+measures it against the request's `requestedScopes`. The shared scope-picker UI models the
+same split with its `expandable` vs `clamped` mode.
+
+### Scope sets
+
+A consent decision reads several scope lists at once, so the Rust names each
+one by **where it comes from**:
+
+| Name                            | Source                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `requested_scopes`              | The OAuth client's request (`?scope=`, or the device request).                                               |
+| `owner_approved_scopes`         | The scopes the Owner ticked on the consent prompt (`approvedScopes` on the wire).                            |
+| `registered_client_scopes`      | The client's stored registration (`Client.allowed_scopes`, `allowedScopes` on the wire).                     |
+| `registration_ceiling_scopes`   | The most a code approval may grant: the registration, plus the request for a client trusted on first use.    |
+| `unregistered_requested_scopes` | Requested scopes the registration does not cover (`newScopes` on the wire).                                  |
+| `approver_missing_scopes`       | Resource scopes an approval would grant that the approving Owner does not hold (`missingScopes` on the 403). |
+| `granted_scopes`                | What an approval delegated, recorded on the request, the code, and the refresh family.                       |
+| `host_owner_scopes`             | The host owner's configured authority (`local_granted_scopes` in `tauri-shared-config.json`).                |
+
+An approval with any `approver_missing_scopes` is refused as a whole with
+`403 InsufficientScope`. Nothing is recorded, no code is issued, and the request
+stays `pending`, so an approver whose token does cover it can still answer it.
+The launcher's consent page renders that 403 as its permission surface. The
+surface's step-up runs device-login for the missing scopes and then returns to
+the consent page so the Owner can approve again.
+
+### Bootstrap URL
+
+Replaces the deleted PIN flow's "operator gets onto a cold deployment"
+mechanism. The host process (`authorization-server-rust`, native-shell wrapper, dev
+server) has direct access to the signing key and mints a short-lived owner
+access token directly. It verifies normally
+because `wildflower-host` is a registered [`Client`](#client) and
+`'owner' ∈ scope` — no new endpoint, no redemption table.
+
+The web SPA has no client-side URL-token consumption: it signs in through
+SMART (or the device flow) and holds the resulting bearer in memory. A
+direct-loopback caller never holds the host-minted token at all — the host
+presents it on the caller's requests.
+
+### `authorization-server-pages` group
+
+The HttpApi group whose endpoints serve **HTML** to humans
+(`OAuthConsentPage`, `DeviceEntryPage`, `DeviceConsentPage`). Core ships definitions only; consumer slices
+(`authorization-react`) provide the handler layer through the phantom-id
+bridge described in `docs/Effect/HttpApi Composition How-To.md`. Every
+page is public; auth is JS-driven on the JSON endpoints behind them.
+
+### `access-management`
+
+The HttpApi group fronting the **Owner-facing** JSON endpoints under
+`/access/...` — list/inspect/revoke `Grant`s, list/update
+[`Client`](#client)s, list/decide pending HTTP requests. These all go through `RequireAuthMiddleware`.
+
+### HTTP request gating (`httpRequests` table + `/access/requests`)
+
+A separate, authorization-server-as-proxy concern: inbound HTTP requests are logged
+to `httpRequests` and pause until the Owner approves or denies them.
+**Not currently wired** — the `/access/requests` endpoints are defined
+but no producer pushes rows yet.
+
+> **Open question:** The HTTP-request gating flow shares the
+> "row pending human decision" pattern with `AuthorizationRequest`.
+> Candidate for folding the two together.
+
+## OAuth 2.0 / OIDC spec terms
+
+These are the IETF / OpenID terms that appear verbatim in the code or
+URL params. Definitions paraphrased from the relevant RFCs; see "Where
+it shows up" for the call sites.
+
+### `client_id`
+
+Identifier of the OAuth client. Form-supplied at `/oauth/authorize`,
+`/oauth/token`, and `/oauth/device_authorization`. On the latter two every
+accepted value must resolve to a row in [`clients`](#client); on
+`/oauth/authorize` an unknown value reaches consent as a `new`
+[registration verdict](#trust-on-first-use). Disabled clients are rejected
+everywhere.
+
+### `redirect_uri`
+
+Where the OAuth client wants the authorization code delivered after
+approval. Validated to be `http(s)`; matched against the client's
+`redirectUris` allowlist (exact match — no prefix games). A miss is not a
+rejection but a `changed` [registration verdict](#trust-on-first-use)
+(`wildflower-host` excepted), and until the Owner approves, the URI is
+untrusted — no error redirects to it.
+
+### `scope`
+
+Space-delimited list of permission strings the OAuth client is asking
+for. Compared against `client.allowedScopes`; a scope outside that set makes
+the request a `changed` [registration verdict](#trust-on-first-use) that the
+Owner is warned about (`wildflower-host` excepted — its requests are
+rejected with `invalid_scope`). Stored on
+`AuthorizationRequest.requestedScopes`,
+`AuthorizationCode.grantedScopes`, and `Grant.scopes`.
+
+### `state`
+
+Opaque CSRF token chosen by the OAuth client. Echoed verbatim in the
+final redirect. Not used by the authorization server logic; persisted in the
+`AuthorizationRequest.clientState` column so it survives the polling
+round-trip.
+
+### PKCE (`code_challenge`, `code_challenge_method`, `code_verifier`)
+
+Proof Key for Code Exchange — RFC 7636. Defends against authorization-code
+interception by binding the code to a high-entropy secret only the client
+holds.
+
+- **`code_verifier`** — random string the client generates and keeps.
+  RFC 7636 §4.1 requires 43–128 characters; the schema enforces this
+  via `Schema.minLength(43).pipe(Schema.maxLength(128))`.
+- **`code_challenge`** — `BASE64URL(SHA-256(code_verifier))` per RFC 7636
+  §4.2. Sent on `/oauth/authorize` and persisted on the
+  `AuthorizationRequest` and `AuthorizationCode` rows.
+- **`code_challenge_method`** — `S256` is the only value accepted.
+  RFC 7636 also defines `plain` but we reject it.
+- **Verification** — `internal/pkce.ts:computeCodeChallenge` recomputes
+  the challenge from the verifier at token exchange and compares with
+  `timingSafeEqual`.
+
+### `iss` (issuer) and `aud` (audience)
+
+JWT claims (RFC 7519 §4.1.1, §4.1.3) — _who_ minted this token and _for
+whom_ it's intended. Both are the server's origin, `https://<domain>` (no
+path suffix), on every token the authorization server mints — OAuth and host owner alike. See
+[Origins Explanation](../../../docs/Origins/Explanation.md).
+
+A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
+talking to, the verifier."** A token signed for `aud=A` should not be
+honored by `aud=B`, even if the signature is valid.
+
+The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`,
+whichever origin the request was served on. Both checks are performed by
+`verify_jwt`'s `VerifyOptions` (`expected_issuer`, `accepted_audiences`) — not
+by manual post-verify checks — so a caller using `verify_jwt` directly is forced
+to pass them and can't silently accept any iss/aud.
+
+### `sub` (subject)
+
+JWT claim — _whom_ the token is about. Required to be a string; required
+to resolve to a registered, enabled [`Client`](#client) row. The
+[`clients`](#client) lookup is the authoritative gate that distinguishes
+"valid token issued by this authorization server" from "valid signature but
+not-our-issuer".
+
+### `exp`, `iat`
+
+JWT claim timestamps (Unix seconds). Both set at token minting; `exp`
+is enforced at verification.
+
+### JWKS / JWK / `kid`
+
+- **JWK** — a JSON-serialized cryptographic key (RFC 7517).
+- **JWKS** — a JSON document at `/.well-known/jwks.json` listing this
+  server's public verifying keys. The HttpApi group is named
+  `oauth-discovery`.
+- **`kid`** — JWK key id; the [SigningKey](#signingkey) primary key.
+  Set on every signed JWT's protected header so multi-key verifiers can
+  pick the right one without trying every key in the JWKS.
+
+### Authorization code flow / `grant_type=authorization_code`
+
+The standard OAuth 2.0 grant for browser-redirect flows. `/oauth/authorize`
+requires `response_type=code` (RFC 6749 §4.1.1 makes the parameter
+REQUIRED; `code` is the only value we implement — anything else is
+rejected as `unsupported_response_type`). The `/oauth/token`
+endpoint dispatches on `grant_type`; the `authorization_code` branch
+verifies PKCE + redirect_uri + client_id match the issued code, then
+mints a JWT.
+
+Unless an existing [grant](#grant) pre-approves every requested scope, the
+request is parked for the Owner: the browser lands on the
+[wait page](#wait-page), and the request joins the
+[pending-consent queue](#pending-consent-queue) so the host app's consent
+sheet asks about it and a signed-in launcher lists it. Whichever surface decides it, the wait
+page redirects the client once its poll observes the outcome. The browser that
+started the flow is usually not signed in — a SMART app launched from another
+device, one reaching the tunnel origin, or the launcher signing in to begin
+with — so it waits rather than decides.
+
+### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`
+
+RFC 8628. The grant type used by `wildflower-host` (and any other
+no-redirect-capable OAuth client) to bootstrap onto a deployment. See
+the [Device flow](#device-flow-rfc-8628) section above.
+
+### Refresh token / `grant_type=refresh_token`
+
+RFC 6749 §6, implemented in authorization-server-rust with OAuth 2.1 rotation
+semantics. Issued at `/oauth/token` only when the granted scopes include
+`offline_access` (the SMART on FHIR convention).
+
+- **Tables:** `refresh_token_families` holds the per-authorization facts
+  (client, scopes, patient, deadline) exactly once; `refresh_tokens` holds
+  one row per rotation, storing the SHA-256 base64url digest — never the
+  plaintext.
+- **Rotation:** each redemption consumes the presented token and returns
+  its successor in the same family. Replaying a consumed token is treated
+  as theft and revokes the whole family.
+- **Lifetime:** the family has an absolute 90-day deadline
+  (`REFRESH_TOKEN_FAMILY_TTL`) measured from the original authorization;
+  rotation never extends it.
+- **Revocation:** soft — killing a family (replay detection, or
+  `DELETE /access/grants/{id}` revoking the client's standing consent)
+  pulls the family's `expires_at` back to the revocation instant and
+  stamps its live token consumed. Rows are never deleted, so the lineage
+  stays auditable.
+
+### Access-token revocation (`jti` denylist + subject epoch)
+
+Refresh-token revocation (above) stops a client minting _new_ access tokens;
+this stops an _already-issued, still-unexpired_ access token — the leaked-token
+case (#269). Every minted access token now carries a unique `jti` (RFC 7519
+§4.1.7), which is a **revocation handle, not a single-use nonce** — normal reuse
+of the one multi-use bearer is untouched. The shared store (`token-revocation-rust`,
+its own `token_revocation` migration namespace on the same database) holds two
+levers:
+
+- **`revoked_jtis`** — a per-token denylist. `POST /access/revocations` with a
+  `jti`, and logout of the presented token, add rows here.
+- **`revocation_epochs`** — a per-subject `not_before`. Bumping it (via
+  `POST /access/revocations` with a `subject`, or a grant revoke) invalidates
+  every token that subject holds whose `iat` predates the bump — cheap bulk
+  revocation with no per-issued-`jti` registry. `subject` is the `sub` claim
+  (today the `client_id`), so revocation is per-client; per-device needs a
+  device handle in the token (future work).
+
+A token is **revoked** iff its `jti` is denylisted **or** its `iat` predates its
+subject's epoch. The auth gate (`verify_auth_token_claims`) runs the full check
+on every Owner-gated and every FHIR request; HFS additionally checks the
+per-`jti` denylist in-process (defense-in-depth). Expired denylist rows are swept
+at startup and daily. See `docs/Origins/Explanation.md` for how this composes
+with the served-origin model.
+
+### Bearer token / `token_type=Bearer`
+
+The single token-type literal we hand back at `/oauth/token`. RFC 6750
+defines the `Authorization: Bearer <token>` header convention.
+`RequireAuthMiddleware` consumes the header for Owner-facing endpoints.
+
+### `.well-known`
+
+URL-path convention from RFC 5785 for discovery endpoints. Today we host
+JWKS at `/.well-known/jwks.json`. Future SMART-on-FHIR conformance will
+also need `/.well-known/smart-configuration` and probably
+`/.well-known/openid-configuration`.
+
+### SMART-on-FHIR
+
+The SMART App Launch profile of OAuth 2.0 used by FHIR servers
+([HL7 spec](https://hl7.org/fhir/smart-app-launch/)). What the authorization server is
+imitating. Concretely it adds:
+
+- `patient` launch context (carried on `AuthorizationCode.patient` and
+  the access-token JWT's `patient` claim).
+- Scope strings shaped like `patient/Observation.read`.
+- The `launch` parameter on `/oauth/authorize`: a
+  [LaunchContext](#launchcontext) this server minted for the client.
+- The `aud` parameter on `/oauth/authorize`: when present it must be the
+  server's origin, `https://<domain>`, which is also its FHIR base, else
+  `invalid_request`. The token's `aud` claim is the server's origin (see
+  [`iss` and `aud`](#iss-issuer-and-aud-audience)).
+
+## See-also: where these concepts may overlap
+
+A short index of pairs/triples flagged with **Open question** above,
+collected for the next round:
+
+1. **AuthorizationCode ↔ AuthorizationRequest** — same row at different
+   stages? Could be one table with a richer `status` discriminator.
+2. **AuthorizationRequest ↔ HTTP request gate** — both are "row pending
+   an Owner decision." Candidate for a shared `pendingApprovals` shape.
+
+## References
+
+- [README](../authorization-core/README.md) — current tables and routes
+- `apps/host/wildflower-server/authorization-server-rust/src/` — server implementation and storage
+- `slices/authorization/authorization-core/src/http-api-definition/` — endpoint groups
+- RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), RFC 7519 (JWT), RFC 7517 (JWK),
+  RFC 6750 (Bearer), RFC 5785 (`.well-known`), RFC 8628 (Device
+  Authorization Flow)
+- [SMART App Launch](https://hl7.org/fhir/smart-app-launch/)

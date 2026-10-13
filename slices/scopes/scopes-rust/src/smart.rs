@@ -1,6 +1,6 @@
 //! String-facing entry points to the scope grammar, implemented on top of the
 //! structured [`Scope`] model. These keep the
-//! `&str`/`Vec<String>` signatures gatekeeper's consent handlers call, parsing
+//! `&str`/`Vec<String>` signatures the authorization server's consent handlers call, parsing
 //! to `Scope` internally so coverage and rendering share one implementation.
 
 use std::collections::HashSet;

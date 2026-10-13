@@ -29,7 +29,7 @@ import {
  * `useRouteContext({ from: '__root__', select })`. fhir-r4-react
  * has no router of its own, so rather than
  * mount one we mock `useRouteContext` to feed a layer through its
- * `select` — the same harness shape gatekeeper-react's mutation tests
+ * `select` — the same harness shape authorization-react's mutation tests
  * use. Each test installs the layer it wants via the module-level
  * `layerHolder` ref (the `vi.mock` factory is hoisted, so it reads the
  * ref lazily at render time). The transport is a stub HttpClient, so the

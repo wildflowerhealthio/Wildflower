@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   insecureTargetReason as sharedInsecureTargetReason,
   normalizeServerUrl as sharedNormalizeServerUrl,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import { Match } from 'effect'
 import {
   detectSmartSupport,
@@ -160,17 +160,17 @@ describe('startStandaloneLaunch', () => {
 })
 
 // `normalizeServerUrl`'s own behaviour is covered where it now lives, in
-// `gatekeeper-core/smart-client`'s `server-target.test.ts`. What this file still
+// `authorization-core/smart-client`'s `server-target.test.ts`. What this file still
 // owes is the dedupe itself: this module used to carry a byte-identical copy,
 // and re-exporting is only worth anything if it is genuinely the same function.
 describe('normalizeServerUrl', () => {
-  it('is the one implementation gatekeeper-core owns, not a local copy', () => {
+  it('is the one implementation authorization-core owns, not a local copy', () => {
     expect(normalizeServerUrl).toBe(sharedNormalizeServerUrl)
   })
 })
 
 describe('insecureTargetReason', () => {
-  it('is the one implementation gatekeeper-core owns, not a local copy', () => {
+  it('is the one implementation authorization-core owns, not a local copy', () => {
     expect(insecureTargetReason).toBe(sharedInsecureTargetReason)
   })
 })

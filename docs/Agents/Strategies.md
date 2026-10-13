@@ -151,7 +151,7 @@ A hand-rolled flow that feels ad hoc is often a spec you're implementing without
 
 ### Three response buckets: file / 302→`/` / index.html
 
-A SPA-fallback handler has three legitimate responses for a pathname; conflating any two causes security blind-spots or UX papercuts. (1) _direct hit_ → serve the real file. (2) _deep link / unknown but well-formed_ (e.g. `/gatekeeper/requests`) → serve `index.html` so the SPA router takes over. (3) _sketchy_ (`..` literal or encoded, null bytes) → **302 to `/`**, not 200 with the shell — a probe shouldn't get the SPA rendered at its chosen URL, and the 302 distinguishes the bucket in logs. "Always serve index.html on miss" silently 200-OKs probes; "404 on traversal" is needlessly hostile to mistyped legitimate requests.
+A SPA-fallback handler has three legitimate responses for a pathname; conflating any two causes security blind-spots or UX papercuts. (1) _direct hit_ → serve the real file. (2) _deep link / unknown but well-formed_ (e.g. `/authorization/requests`) → serve `index.html` so the SPA router takes over. (3) _sketchy_ (`..` literal or encoded, null bytes) → **302 to `/`**, not 200 with the shell — a probe shouldn't get the SPA rendered at its chosen URL, and the 302 distinguishes the bucket in logs. "Always serve index.html on miss" silently 200-OKs probes; "404 on traversal" is needlessly hostile to mistyped legitimate requests.
 
 ## Code & module organization
 

@@ -1,0 +1,17 @@
+//! [`OwnerApproval`] — asking the Owner: the seam a consent-queue transition
+//! calls to republish the request awaiting the Owner's approval after it
+//! changes the pending queue.
+
+/// Republish the head of the pending-consent queue to the host.
+///
+/// Any transition that may change which request is first in line — a fresh
+/// `/oauth/device_authorization` or `/oauth/authorize` insert, an approve or a
+/// deny on either consent surface — calls this after the store write, so the
+/// host's popup opens, advances, or closes to match. The real implementation
+/// ([`AuthorizationServerState`](crate::http::AuthorizationServerState)) recomputes the head from
+/// the store and publishes it on the head's watch channel; a test fake just
+/// records that it was asked to.
+pub(crate) trait OwnerApproval: Send + Sync + 'static {
+    /// Recompute and republish the active pending-consent head.
+    fn republish_active(&self);
+}

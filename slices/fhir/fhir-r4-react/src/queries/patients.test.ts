@@ -11,7 +11,7 @@ import { PATIENTS_QUERY_KEY, patientsQueryOptions, type RunAuthed } from './inde
  * Drives the FHIR `patientsQueryOptions` over the real
  * runner → fhir-layer → HttpClient path, with a stub HttpClient that
  * returns a canned `Patient` searchset bundle. Mirrors
- * `gatekeeper-react`'s `queries.test.ts` — the slice owns its own
+ * `authorization-react`'s `queries.test.ts` — the slice owns its own
  * `runAuthed` builder locally so the test has no app dependency.
  */
 

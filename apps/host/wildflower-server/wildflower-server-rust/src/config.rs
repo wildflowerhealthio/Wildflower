@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
-use wildflowerhealthio_gatekeeper::{LoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_authorization_server::{LoopbackConsentPrompt, PendingConsentHead};
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
@@ -28,9 +28,9 @@ pub struct WildflowerServerConfig {
     pub search_parameter_data_dir: PathBuf,
     /// The hosted launcher every browser-facing link points at.
     pub launcher_base: LauncherBase,
-    /// The scopes gatekeeper seeds the first-party client with and mints the host
+    /// The scopes the authorization server seeds the first-party client with and mints the host
     /// owner token under (see
-    /// [`GatekeeperConfig::host_owner_scopes`](wildflowerhealthio_gatekeeper::GatekeeperConfig::host_owner_scopes)).
+    /// [`AuthorizationServerConfig::host_owner_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_owner_scopes)).
     pub host_owner_scopes: Vec<String>,
     /// The host's first-party OAuth `client_id`.
     pub first_party_client_id: String,
@@ -70,7 +70,7 @@ pub struct DeviceCertificateConfig {
 /// every run of every server shares.
 #[derive(Clone)]
 pub struct HostPorts {
-    /// The native Approve / Reject dialog gatekeeper raises when the hosted owner
+    /// The native Approve / Reject dialog the authorization server raises when the hosted owner
     /// UI logs in over direct loopback.
     pub loopback_consent_prompt: Arc<dyn LoopbackConsentPrompt>,
 }
@@ -96,7 +96,7 @@ pub struct ServerObservers {
     /// starts; the run publishes nothing after it stops.
     pub certificate_tx: watch::Sender<Option<CertificateState>>,
     /// The head of the server's pending-consent queue, published by
-    /// gatekeeper as the run starts and after each change to the queue, for
+    /// the authorization server as the run starts and after each change to the queue, for
     /// as long as the server runs.
     pub pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     /// Each forwarded request (every request through the tunnel, and each one

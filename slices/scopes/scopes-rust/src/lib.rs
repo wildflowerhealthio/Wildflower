@@ -3,7 +3,7 @@
 //! [`scope`] is the structured, owned [`Scope`] model — parse, render, and
 //! coverage. [`smart`] keeps the string-facing grammar entry points
 //! (`grantable_scopes`, `allowed_scope_covers`, `widened_scopes`) that
-//! gatekeeper's consent handlers call, implemented on top of the model.
+//! authorization server's consent handlers call, implemented on top of the model.
 
 pub mod scope;
 pub mod smart;

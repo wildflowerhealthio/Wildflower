@@ -10,7 +10,7 @@
 //! [`crate::domain::capabilities`]), gated by `wildflower/RequestLog.r` and
 //! answering a `403 InsufficientScope` when the caller's token doesn't cover
 //! it. The server still layers the built router with its bearer gate
-//! (`wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware`), which inserts the
+//! (`wildflowerhealthio_authorization_server::authorization_server_auth_middleware`), which inserts the
 //! `ScopeClaims` the capability reads.
 
 mod errors;

@@ -1,0 +1,117 @@
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import {
+  AsyncErrorView,
+  ErrorBanner,
+  ItemList,
+  PageHeader,
+} from '@wildflowerhealthio/react-tundraish'
+import type { JSX } from 'react'
+
+import { formatInstant } from '../../../format-date.ts'
+import {
+  requestsQueryOptions,
+  useDecideRequestMutation,
+  useRequestsQuery,
+  type HttpRequest,
+} from '../../../queries/index.ts'
+import pageLayout from '../../../styles/page-layout.module.css'
+
+interface RequestsListBodyProps {
+  readonly requests: readonly HttpRequest[]
+}
+
+const RequestsListBody = ({ requests }: RequestsListBodyProps): JSX.Element => {
+  const navigate = useNavigate()
+  const decideMutation = useDecideRequestMutation()
+
+  const decide = (id: string, decision: 'approved' | 'rejected'): void => {
+    decideMutation.mutate({ id, decision })
+  }
+
+  // Gate only the acting row's buttons while its decision is in flight.
+  // `decideMutation` is shared across the list, so `isPending` alone would
+  // disable every row's buttons; comparing the in-flight `variables.id`
+  // restores the old per-row behaviour.
+  const rowPending = (id: string): boolean =>
+    decideMutation.isPending && decideMutation.variables?.id === id
+
+  const toItem = (
+    r: HttpRequest
+  ): {
+    id: string
+    title: string
+    subtitle: string
+    onClick: () => void
+    actions?: JSX.Element
+  } => ({
+    id: r.id,
+    title: `${r.method} ${r.url}`,
+    subtitle:
+      r.origin !== ''
+        ? `${r.origin} · ${formatInstant(r.requestedAt)}`
+        : formatInstant(r.requestedAt),
+    onClick: () => {
+      void navigate({ to: `/settings/authorization/requests/${encodeURIComponent(r.id)}` })
+    },
+    actions:
+      r.status === 'pending' ? (
+        <div className={pageLayout['row-actions']}>
+          <button
+            type="button"
+            className="button-2 filled"
+            disabled={rowPending(r.id)}
+            onClick={(e) => {
+              e.stopPropagation()
+              decide(r.id, 'approved')
+            }}
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            className="button-2 filled accent-red"
+            disabled={rowPending(r.id)}
+            onClick={(e) => {
+              e.stopPropagation()
+              decide(r.id, 'rejected')
+            }}
+          >
+            Reject
+          </button>
+        </div>
+      ) : undefined,
+  })
+
+  const pending = requests.filter((r) => r.status === 'pending')
+  const approved = requests.filter((r) => r.status === 'approved')
+  const rejected = requests.filter((r) => r.status === 'rejected')
+
+  return (
+    <>
+      <PageHeader title="Requests" backHref="/settings/authorization" backLabel="Access" />
+
+      <ErrorBanner error={decideMutation.error} />
+      <ItemList title="In-Flight" items={pending.map((r) => toItem(r))} />
+      <ItemList title="Approved" items={approved.map((r) => toItem(r))} />
+      <ItemList title="Rejected" items={rejected.map((r) => toItem(r))} />
+    </>
+  )
+}
+
+const RequestsListScreen = (): JSX.Element => {
+  const { data: requests } = useRequestsQuery()
+  return <RequestsListBody requests={requests} />
+}
+
+/**
+ * The `/settings/authorization/requests` file route — the incoming HTTP
+ * request history. The `/settings` `beforeLoad` gate guarantees a token
+ * before this loader runs, so it's a plain `ensureQueryData` — failures
+ * propagate to `errorComponent`.
+ */
+export const Route = createFileRoute('/settings/authorization/requests')({
+  loader: ({ context }) =>
+    context.queryClient.query({ ...requestsQueryOptions(context.runAuthed), staleTime: 'static' }),
+  component: RequestsListScreen,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Requests" />,
+})

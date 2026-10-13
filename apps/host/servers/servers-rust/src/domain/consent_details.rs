@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use url::Url;
-use wildflowerhealthio_gatekeeper::{
+use wildflowerhealthio_authorization_server::{
     ClientRegistrationVerdict, DeviceConsentView, OAuthConsentView,
 };
 
@@ -46,7 +46,7 @@ pub enum ConsentDetails {
 }
 
 impl ConsentDetails {
-    /// The device request `user_code`, as the gatekeeper loaded it by that
+    /// The device request `user_code`, as the authorization server loaded it by that
     /// code.
     pub(crate) fn of_device(user_code: String, view: DeviceConsentView) -> Self {
         let DeviceConsentView {
@@ -120,7 +120,7 @@ impl From<ClientRegistrationVerdict> for Registration {
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
-    use wildflowerhealthio_gatekeeper::domain::authorization_request::{
+    use wildflowerhealthio_authorization_server::domain::authorization_request::{
         AuthorizationRequest, GrantType, RequestStatus,
     };
 

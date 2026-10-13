@@ -19,7 +19,7 @@ members = [
   "apps/host/browser-sniffer-tauri",
   "slices/ohif-server-rust",
   "apps/host/wildflower-server/fhir-r4-rust",
-  "apps/host/wildflower-server/gatekeeper-rust",
+  "apps/host/wildflower-server/authorization-server-rust",
   "apps/host/wildflower-server/token-revocation-rust",
   "slices/persistence-rust",
   "slices/scopes/scope-capabilities-rust",

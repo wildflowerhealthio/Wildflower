@@ -10,7 +10,7 @@ const NO_CLIENT_CALLER = 'No client'
 
 /**
  * An OAuth client as the owner reads it: its display name from `names`
- * (gatekeeper's client list), else its `clientId`.
+ * (the authorization server's client list), else its `clientId`.
  */
 const clientNameOf = (clientId: string, names: ReadonlyMap<string, string>): string =>
   names.get(clientId) ?? clientId

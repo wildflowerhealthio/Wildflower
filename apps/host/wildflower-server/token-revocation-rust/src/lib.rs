@@ -1,6 +1,6 @@
 //! `token-revocation-rust` — the shared token-revocation store.
 //!
-//! A gatekeeper access token is a stateless, **multi-use** bearer: a client
+//! An authorization server access token is a stateless, **multi-use** bearer: a client
 //! reuses one token across many FHIR calls. So a token's `jti`
 //! (RFC 7519 §4.1.7) is an **identity handle for revocation**, not a one-shot
 //! nonce — nothing is rejected unless the `jti` (or the subject's whole token
@@ -18,7 +18,7 @@
 //! `iat < not_before(subject)`.
 //!
 //! It carries no auth policy and no helios dependency, so both enforcement
-//! points can read it in-process without pulling each other in: `gatekeeper-rust`
+//! points can read it in-process without pulling each other in: `authorization-server-rust`
 //! (the gate + the revoke control surface) and `fhir-r4-rust`'s HFS auth-provider
 //! wrapper (per-`jti` denylist only — helios's `Principal` carries no `iat`).
 
@@ -27,7 +27,7 @@ use rusqlite::{params, OptionalExtension};
 use wildflowerhealthio_persistence::{Connection, DbResult};
 
 /// Migration namespace for the revocation tables in the shared database. Kept
-/// distinct from `gatekeeper` so the two slices' `schema_migrations` versions
+/// distinct from the authorization server's `gatekeeper` namespace so the two slices' `schema_migrations` versions
 /// don't collide (see [`wildflowerhealthio_persistence::run_migrations`]).
 const NAMESPACE: &str = "token_revocation";
 
@@ -100,12 +100,12 @@ impl RevocationStore {
     }
 
     /// The **complete** revocation check, for the enforcement point that holds
-    /// full claims (the gatekeeper gate): a token is revoked iff its `jti` is on
+    /// full claims (the authorization server gate): a token is revoked iff its `jti` is on
     /// the denylist **or** its `issued_at` predates the subject's revocation
     /// epoch.
     ///
     /// `jti`/`issued_at` are `Option` because verification tolerates legacy
-    /// tokens minted before gatekeeper wrote a `jti`. A missing `jti` simply
+    /// tokens minted before the authorization server wrote a `jti`. A missing `jti` simply
     /// can't be denylisted individually. A missing `issued_at` under an *active*
     /// subject epoch **fails closed** (treated as revoked): a token that can't
     /// prove it was issued after the bump must not slip through a deliberate

@@ -2,7 +2,7 @@
 //! [`set_up`] and served by [`WildflowerServer::serve`] on two listeners.
 //!
 //! [`set_up`] opens the host's databases, sets up each server slice
-//! (gatekeeper, FHIR R4, OHIF, request log, apps, databases), gates
+//! (the authorization server, FHIR R4, OHIF, request log, apps, databases), gates
 //! them, and wraps the result once per listener: for the **loopback listener**
 //! in the loopback owner trust, the loopback-peer gate, the CORS policy and the
 //! forwarded-request report; for the **tunnel listener** in the CORS policy,
@@ -34,13 +34,13 @@
 //! Layered like the other Rust slices:
 //!
 //!  - `config` — the host's inputs above, at the crate root like
-//!    `gatekeeper-rust`'s `config`.
+//!    `authorization-server-rust`'s `config`.
 //!  - `domain` — [`ServerHealth`] and the reachability monitor that publishes
 //!    it, through its `HealthProbe` port; [`CertificateAuthority`],
 //!    [`CertificateState`] with what a run observed that it is derived from,
 //!    and [`CertificateHistoryEntry`].
 //!  - `adapters` — ports implemented here, where both sides are in reach:
-//!    apps' `AppLaunchScopes` from gatekeeper's OAuth clients, and the
+//!    apps' `AppLaunchScopes` from the authorization server's OAuth clients, and the
 //!    monitor's `HealthProbe` over `reqwest`; and the device certificate,
 //!    rustls-acme's order and renewal of the tunnel listener's certificate
 //!    as [`DeviceCertificateConfig`] says, which reports its state and

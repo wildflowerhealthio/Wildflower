@@ -62,7 +62,7 @@ const DeletedSchema = Schema.Struct({ deleted: Schema.Boolean })
 /**
  * Data-management endpoints — the JSON surface over the host's SQLite
  * databases. The group carries no middleware; the host authenticates the whole
- * `/databases` surface behind the gatekeeper bearer gate, each database's
+ * `/databases` surface behind the authorization server bearer gate, each database's
  * download/delete is additionally gated by its declared scope on the Rust side
  * (a `403 InsufficientScope` when the token doesn't cover it), and the TS
  * client layer still attaches the bearer (see

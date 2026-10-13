@@ -2,7 +2,7 @@
 
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
-use wildflowerhealthio_gatekeeper::domain::gatekeeper_error::GatekeeperError;
+use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 
 use crate::domain::{CertificateAuthority, RegistryError};
 
@@ -43,9 +43,9 @@ pub enum LaunchError {
         domain: String,
         issuer: CertificateAuthority,
     },
-    /// The server's gatekeeper couldn't mint the launch.
-    #[error("the server's gatekeeper failed: {0}")]
-    Gatekeeper(#[from] GatekeeperError),
+    /// The server's authorization server couldn't mint the launch.
+    #[error("the server's authorization server failed: {0}")]
+    AuthorizationServer(#[from] AuthorizationServerError),
     /// The launcher's window couldn't be opened.
     #[error("the launcher couldn't be opened: {reason}")]
     OpeningLauncher { reason: String },
@@ -68,7 +68,7 @@ impl LaunchError {
             Self::TunnelUnknown { .. } => "tunnelUnknown",
             Self::NoValidCertificate { .. } => "noValidCertificate",
             Self::UntrustedCertificate { .. } => "untrustedCertificate",
-            Self::Gatekeeper(_) => "gatekeeper",
+            Self::AuthorizationServer(_) => "authorizationServer",
             Self::OpeningLauncher { .. } => "openingLauncher",
             Self::Registry(registry_error) => registry_error.kind(),
         }
@@ -139,11 +139,11 @@ mod tests {
                 "untrustedCertificate",
             ),
             (
-                LaunchError::Gatekeeper(GatekeeperError::infrastructure(
+                LaunchError::AuthorizationServer(AuthorizationServerError::infrastructure(
                     "minting a launch",
                     "the database is locked",
                 )),
-                "gatekeeper",
+                "authorizationServer",
             ),
             (
                 LaunchError::OpeningLauncher {

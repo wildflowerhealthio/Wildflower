@@ -3,7 +3,7 @@
 //! request: each one that came in through the tunnel, and each one a front run
 //! on this machine relayed.
 //!
-//! The gatekeeper bearer gates stamp a [`RequestCaller`] on a response's
+//! The authorization server bearer gates stamp a [`RequestCaller`] on a response's
 //! extensions, from the verified token, or a [`RequestRefusal`] on the `401`
 //! they answer instead. The server's forwarded-request layer reads them back
 //! and reports a [`ForwardedRequest`] to the host, which turns them into
@@ -12,7 +12,7 @@
 
 use std::time::{Duration, SystemTime};
 
-/// The OAuth client a response was served to: a gatekeeper bearer gate
+/// The OAuth client a response was served to: an authorization server bearer gate
 /// verified the request's token, which is bound to this client (the token's
 /// `sub`). Stamped on the response's extensions, so it is its own type rather
 /// than a bare `String`.
@@ -21,7 +21,7 @@ pub struct RequestCaller {
     pub client_id: String,
 }
 
-/// Why a gatekeeper bearer gate answered `401`: stamped on the response's
+/// Why an authorization server bearer gate answered `401`: stamped on the response's
 /// extensions in place of a [`RequestCaller`].
 ///
 /// A `403` that carries a [`RequestCaller`] is the other refusal a caller can

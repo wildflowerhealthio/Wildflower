@@ -7,7 +7,7 @@ publish.workspace = true
 # The apps slice, host-side: SQLite-backed selection of bundled apps plus a
 # CRUD surface for user-defined custom apps, the `/apps` HTTP routes the
 # webview consumes (list + launch redirect), and the owner-gated admin routes
-# the consumer wraps with the gatekeeper. Layered like `wildflowerhealthio-gatekeeper`: pure
+# the consumer wraps with the authorization server. Layered like `wildflowerhealthio-authorization-server`: pure
 # `domain`, `db`, and `http`.
 [dependencies]
 anyhow.workspace = true
@@ -34,14 +34,14 @@ wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scop
 ] }
 # The shared forwarding-header provenance helper (`request_provenance`,
 # `served_base_url_for`) the launch handler dispatches and renders against —
-# same contract wildflowerhealthio-gatekeeper uses to resolve token issuer URLs.
+# same contract wildflowerhealthio-authorization-server uses to resolve token issuer URLs.
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
   "served-origin",
   "http-errors",
 ] }
 rand = "0.10"
 # The loopback base URL and public origin `AppsConfig` / `AppsState` carry; the
-# origin accessors derive from them (same crate/version wildflowerhealthio-gatekeeper uses).
+# origin accessors derive from them (same crate/version wildflowerhealthio-authorization-server uses).
 url = "2"
 
 tracing = "0.1"

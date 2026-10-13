@@ -6,7 +6,7 @@ import {
   DEVICE_LOGIN_ROUTE,
   TokenResponseHandlerContext,
   type TokenResponseHandler,
-} from '@wildflowerhealthio/gatekeeper-react'
+} from '@wildflowerhealthio/authorization-react'
 import { type AuthState, AuthStateProvider } from '@wildflowerhealthio/react-kitchen-sink'
 import { ErrorBoundary } from '@wildflowerhealthio/react-tundraish'
 import { Sentry } from '@wildflowerhealthio/telemetry-web'
@@ -70,7 +70,7 @@ interface RenderAppOptions {
   readonly tokenStore: BearerAuthStateStore
   /**
    * The auth-readiness wait the gated routes' `beforeLoad` calls, threaded
-   * into router context. `main-web` passes gatekeeper-react's
+   * into router context. `main-web` passes authorization-react's
    * `makeAwaitLandingAuthReady` over `tokenStore`; tests pass fakes.
    */
   readonly awaitAuthReady: RouterContext['awaitAuthReady']
@@ -173,7 +173,7 @@ const deviceFlowTokenResponseHandler = (
  * this, a stale-token failure pins until the user navigates away —
  * the cache is keyed on the query, not on the bearer.
  *
- * The settings screen's Logout row is gatekeeper's, over `tokenStore`: it
+ * The settings screen's Logout row is the authorization server's, over `tokenStore`: it
  * revokes the bearer at the session's server, clears the tab's
  * `sessionStorage` (the session's server included) and reloads the bare
  * landing page at `basepath`, so the reader picks a server rather than being

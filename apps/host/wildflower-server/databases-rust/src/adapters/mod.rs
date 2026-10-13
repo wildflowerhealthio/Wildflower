@@ -3,7 +3,7 @@
 //! [`FilesystemDatabaseFiles`](filesystem_database_files::FilesystemDatabaseFiles),
 //! the `std::fs` / `rusqlite` implementation of the
 //! [`DatabaseFiles`](crate::ports::DatabaseFiles) port over the server's
-//! folder. Mirrors `gatekeeper-rust`'s `adapters/`.
+//! folder. Mirrors `authorization-server-rust`'s `adapters/`.
 
 mod filesystem_database_files;
 

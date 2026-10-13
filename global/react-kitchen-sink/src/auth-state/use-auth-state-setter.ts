@@ -8,7 +8,7 @@ import type { AuthStateStore } from './auth-state-store.ts'
  * tree.
  *
  * Use this from components that publish a new auth signal — the
- * gatekeeper device-login completion, a sign-out flow, etc. The
+ * authorization server device-login completion, a sign-out flow, etc. The
  * returned setter is stable for the surrounding store's lifetime, so
  * it's safe to put in a `useEffect`'s dep array.
  */

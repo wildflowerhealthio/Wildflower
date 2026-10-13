@@ -33,7 +33,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use helios_auth::{cookie_value, AccessOutcome, SessionStore, SESSION_COOKIE};
 use url::Url;
-use wildflowerhealthio_gatekeeper::ensure_bearer_header;
+use wildflowerhealthio_authorization_server::ensure_bearer_header;
 use wildflowerhealthio_shared_structures::origin_string;
 use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 

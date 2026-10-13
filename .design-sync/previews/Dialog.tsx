@@ -30,7 +30,7 @@ export const Confirm = () => {
 /**
  * The blocking variant (`dismissable={false}`) — no × button, backdrop clicks
  * and ESC are swallowed; the host needs an explicit answer before the user can
- * move on (gatekeeper device-authorization consent).
+ * move on (the authorization server device-authorization consent).
  */
 export const Blocking = () => (
   <div style={{ minHeight: 240 }}>

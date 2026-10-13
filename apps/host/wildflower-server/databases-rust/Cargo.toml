@@ -12,7 +12,7 @@ publish.workspace = true
 # runs no migrations — it works at the file level on databases other slices own,
 # so the host passes it only the data directory. Layered like `wildflowerhealthio-apps` /
 # `wildflowerhealthio-request-log`: pure `catalog`/`metadata`/`files` helpers behind the `http`
-# surface; authN comes from the consumer (the gatekeeper bearer gate) and
+# surface; authN comes from the consumer (the authorization server bearer gate) and
 # download/delete are scope-gated per database (`http::scoped`).
 [dependencies]
 axum.workspace = true

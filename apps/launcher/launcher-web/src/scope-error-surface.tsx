@@ -1,5 +1,5 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { buildStepUpTarget } from '@wildflowerhealthio/gatekeeper-react'
+import { buildStepUpTarget } from '@wildflowerhealthio/authorization-react'
 import { AuthorizationFailure } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
 

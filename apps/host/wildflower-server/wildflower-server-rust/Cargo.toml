@@ -4,7 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 publish.workspace = true
 
-# The Wildflower server: `serve` composes every server slice (gatekeeper, FHIR R4,
+# The Wildflower server: `serve` composes every server slice (the authorization server, FHIR R4,
 # OHIF, tunnel, request log, apps, databases) into the API and serves
 # it on the loopback port and the tunnel listener, over TLS with a certificate
 # it orders itself, until its shutdown token is cancelled, with its `/health` and the reachability monitor that reads it
@@ -88,7 +88,7 @@ diesel.workspace = true
 wildflowerhealthio-apps = { path = "../apps-rust" }
 wildflowerhealthio-databases = { path = "../databases-rust" }
 wildflowerhealthio-fhir-r4 = { path = "../fhir-r4-rust" }
-wildflowerhealthio-gatekeeper = { path = "../gatekeeper-rust" }
+wildflowerhealthio-authorization-server = { path = "../authorization-server-rust" }
 wildflowerhealthio-ohif-server = { path = "../../../../slices/ohif-server-rust" }
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 wildflowerhealthio-request-log = { path = "../request-log-rust" }
@@ -101,7 +101,7 @@ wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-struc
   # owner trust; the forwarded-request report's client address and served host.
   "served-origin",
 ] }
-# Built once on the shared db and threaded into both gatekeeper and the FHIR
+# Built once on the shared db and threaded into both the authorization server and the FHIR
 # server so the auth gate and HFS read one revocation denylist/epoch store (#269).
 wildflowerhealthio-token-revocation = { path = "../token-revocation-rust" }
 wildflowerhealthio-tunnel = { path = "../tunnel-rust" }

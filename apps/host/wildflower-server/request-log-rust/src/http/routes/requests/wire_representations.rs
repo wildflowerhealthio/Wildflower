@@ -58,7 +58,7 @@ impl From<RequestAuthParam> for RequestAuth {
 
 /// What the request log holds for one (caller, client address) pair — a row of
 /// `GET /requests/callers`. The client's display name is not included; resolve
-/// `clientId` through gatekeeper's client list.
+/// `clientId` through the authorization server's client list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CallerSummaryBody {

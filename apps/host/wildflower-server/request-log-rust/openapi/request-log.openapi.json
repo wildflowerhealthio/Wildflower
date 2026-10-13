@@ -120,7 +120,7 @@
     "schemas": {
       "CallerSummaryBody": {
         "type": "object",
-        "description": "What the request log holds for one (caller, client address) pair — a row of\n`GET /requests/callers`. The client's display name is not included; resolve\n`clientId` through gatekeeper's client list.",
+        "description": "What the request log holds for one (caller, client address) pair — a row of\n`GET /requests/callers`. The client's display name is not included; resolve\n`clientId` through the authorization server's client list.",
         "required": [
           "clientId",
           "address",

@@ -1,7 +1,7 @@
 import {
   normalizeServerUrl,
   SERVER_QUERY_PARAM,
-} from '@wildflowerhealthio/gatekeeper-core/smart-client'
+} from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'

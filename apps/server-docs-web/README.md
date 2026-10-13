@@ -8,13 +8,13 @@ pointed at whichever running server the reader chooses.
 It documents five slices, one sidebar group each, from the **committed OpenAPI
 snapshots**:
 
-| Sidebar group | Snapshot                                                                            |
-| ------------- | ----------------------------------------------------------------------------------- |
-| Gatekeeper    | `apps/host/wildflower-server/gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json` |
-| Apps          | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                   |
-| Databases     | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`         |
-| Request log   | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`     |
-| FHIR R4       | `slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json`                                  |
+| Sidebar group            | Snapshot                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Wildflower Authorization | `apps/host/wildflower-server/authorization-server-rust/openapi/authorization-server-oauth.openapi.json` |
+| Apps                     | `apps/host/wildflower-server/apps-rust/openapi/apps.openapi.json`                                       |
+| Databases                | `apps/host/wildflower-server/databases-rust/openapi/databases.openapi.json`                             |
+| Request log              | `apps/host/wildflower-server/request-log-rust/openapi/request-log.openapi.json`                         |
+| FHIR R4                  | `slices/fhir/fhir-r4/openapi/fhir-r4.openapi.json`                                                      |
 
 Those snapshots are the same files the per-slice Rust snapshot tests and the
 `api-sync.yml` drift guard hold to the live routes, so publishing from them
@@ -67,7 +67,7 @@ The target lives in the URL:
 
 The document transforms and the Scalar configuration are pure functions in
 `src/spec.ts` and `src/configuration.ts`, unit-tested beside them; the `?server=`
-parsing itself lives in `gatekeeper-core/smart-client` (every static Wildflower
+parsing itself lives in `authorization-core/smart-client` (every static Wildflower
 page that targets a reader-chosen server needs it), and `src/server-target.ts`
 holds only this console's fallback — the desktop host's loopback origin.
 `src/arrival.ts` holds how a load settles what it arrived with: the query it
@@ -96,7 +96,7 @@ in by hand.
    a FHIR base, is the SMART `iss`. A Wildflower server serves FHIR at its root
    and answers that path from `apps/host/wildflower-server/fhir-r4-rust/src/smart_configuration.rs`
    (unauthenticated, exempt from the bearer gate), pointing it at its own
-   gatekeeper and listing the `wildflower-server` capability, whether it is
+   authorization server and listing the `wildflower-server` capability, whether it is
    served at an origin or behind a path prefix. A target that is unreachable,
    answers 404 or with something else fails here, and the reason is shown in
    the header bar.
@@ -114,7 +114,7 @@ in by hand.
    The authorization response is stripped from the address bar immediately,
    on a failed return as on a successful one: `code`, `state`, `error`,
    `error_description`, and the `iss` an authorization server may add to name
-   itself (RFC 9207), all through `gatekeeper-core/smart-client`'s
+   itself (RFC 9207), all through `authorization-core/smart-client`'s
    `searchWithoutAuthorizationResponse`.
 
 Back from the authorization server can restore the console from the
@@ -123,7 +123,7 @@ line asking the server how to sign in. On that restore (`pageshow` with
 `persisted`) the button and status line start over.
 
 The client is registered by
-`apps/host/wildflower-server/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`
+`apps/host/wildflower-server/authorization-server-rust/migrations/0007_seed_wildflower_server_docs_client`
 and re-keyed to that random id, with its redirect moved to `/server-docs/`, by
 `0028_rekey_site_app_clients`;
 `src/smart-client.ts` is the browser-side reading of that row's `client_id` and
@@ -142,7 +142,7 @@ per-document, so a five-slice console would ask the reader to sign in five times
 it drives the flow through a popup whose location it polls, which would boot a
 second copy of this bundle inside the popup; and it generates `state` with
 `Math.random`. The flow above is a few hundred lines of dependency-free code in
-`gatekeeper-core/smart-client` (`smart-discovery.ts`, `pkce.ts`,
+`authorization-core/smart-client` (`smart-discovery.ts`, `pkce.ts`,
 `authorization-flow.ts`, `sign-in.ts`), all unit-tested there and shared with the
 hosted launcher, and it puts one token into all five documents through Scalar's
 `authentication` configuration block. This console supplies the app-specific
@@ -151,7 +151,7 @@ namespaced under — from `src/smart-client.ts`, and derives its redirect URI.
 
 ### Opened with a launch
 
-A link carrying a SMART launch (`gatekeeper-core/smart-client`'s
+A link carrying a SMART launch (`authorization-core/smart-client`'s
 `arrivingSmartLaunchFrom` reads it, as every Wildflower page a launch can open
 does) starts the sign-in on load, with no click: an EHR's `launch` works once
 and only for a few minutes. The authorization request carries that `launch`,
@@ -168,7 +168,7 @@ and the token can be admin-capable. Scalar's `persistAuth` — which would write
 the whole auth block, token included, to `localStorage` — is explicitly off and
 asserted off in `configuration.test.ts`. Signing out drops the variable; closing
 the tab does the same. The spirit is the embedded store's in
-[Auth Token Storage Explanation](../../slices/gatekeeper/docs/Auth%20Token%20Storage%20Explanation.md).
+[Auth Token Storage Explanation](../../slices/authorization/docs/Auth%20Token%20Storage%20Explanation.md).
 
 The one thing that does touch `sessionStorage` is the pending request — the PKCE
 verifier, the `state` and the target server — because a full-page redirect
@@ -180,7 +180,7 @@ the server returns is discarded: there is no session to refresh into.
 
 The console does not carry a list of addresses it is allowed to sign in from.
 It **derives** its `redirect_uri` from where the page is being served, with
-`gatekeeper-core/smart-client`'s `redirectUriForPage` — the page's own directory
+`authorization-core/smart-client`'s `redirectUriForPage` — the page's own directory
 URL, which is what the fhirclient-based apps (`apps/medications/medications-web`,
 `apps/importer-web`) have always done. One build
 therefore signs in from the published site, from a PR preview under
@@ -191,12 +191,12 @@ and from `vp run -F @wildflowerhealthio/server-docs-web dev`, with nothing to ke
 the seed carries only the published URL. The other addresses are **not**
 rejected: for every client but the first-party host, an unregistered redirect
 reaches the Owner's consent prompt as a "this redirect is new" warning, and
-approving it adds the entry to the client row (`gatekeeper-rust`'s
+approving it adds the entry to the client row (`authorization-server-rust`'s
 `domain/client_registration.rs`). The Owner's consent is the gate — which is
 the honest one, since a static page cannot know what a given server's row holds.
 
 Two properties make the derivation safe to rely on, both pinned by tests in
-`gatekeeper-core`:
+`authorization-core`:
 
 - **It is stable across the round trip.** The value is derived from the page's
   directory, so the string sent to `/authorize` and the string derived again on

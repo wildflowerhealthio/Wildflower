@@ -110,7 +110,7 @@ const removeServer = ({
 /**
  * Open the server `domain`'s launcher, as a SMART EHR launch against it, in a
  * window of its own: its launcher URL with `iss`, the server's FHIR base, and
- * a `launch` its gatekeeper minted, which any app may use once. Answers once
+ * a `launch` its authorization server minted, which any app may use once. Answers once
  * the window is open, and never changes the server's run policy.
  *
  * @remarks

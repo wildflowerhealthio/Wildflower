@@ -1,8 +1,8 @@
 import type { HttpClient } from '@effect/platform'
 import { AppsRouterContext } from '@wildflowerhealthio/apps-react'
+import { AuthorizationRouterContext } from '@wildflowerhealthio/authorization-react'
 import { DatabasesRouterContext } from '@wildflowerhealthio/databases-react'
 import { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
-import { GatekeeperRouterContext } from '@wildflowerhealthio/gatekeeper-react'
 import { RequestLogRouterContext } from '@wildflowerhealthio/request-log-react'
 import { Effect, Layer, pipe } from 'effect'
 
@@ -37,7 +37,7 @@ const buildRunAuthed = (
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
     Layer.mergeAll(
       AppsRouterContext.sliceRuntimeLayer,
-      GatekeeperRouterContext.sliceRuntimeLayer,
+      AuthorizationRouterContext.sliceRuntimeLayer,
       FhirR4ResourcesRouterContext.sliceRuntimeLayer,
       DatabasesRouterContext.sliceRuntimeLayer,
       RequestLogRouterContext.sliceRuntimeLayer
@@ -57,7 +57,7 @@ const buildRunAuthed = (
     // The retry sits *inside* the runner (before `provide`, so each re-send
     // re-runs the request within the same built runtime), scoped to the
     // authed surface: the device-login flow runs its own effects through
-    // `useGatekeeperRuntimeLayer`, not `runAuthed`, so its expected 401/400
+    // `useAuthorizationRuntimeLayer`, not `runAuthed`, so its expected 401/400
     // polling responses are untouched. A persistent 401 propagates unchanged so
     // the QueryCache `onError` can redirect to device login.
     runAuthed: (effect, options) => {

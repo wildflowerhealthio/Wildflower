@@ -66,7 +66,7 @@ away from the vocabulary it belongs with).
 
 Enforcement needs the caller's scopes, which an authN layer must have verified and
 stashed first. That seam is a **pair** of middlewares that must stay in lockstep:
-gatekeeper's `require_valid_session` guards its own `/access` and inserts the rich
+the authorization server's `require_valid_session` guards its own `/access` and inserts the rich
 `VerifiedClaims`; `require_valid_bearer_token` wraps the host's downstream slice
 routers and inserts the framework-neutral `ScopeClaims`. Both run one shared
 verify pipeline, so a token becomes authority the same way wherever it lands — and
@@ -78,5 +78,5 @@ mocking the other.
 
 - [Scope-Gated Endpoints How-To](./Scope-Gated%20Endpoints%20How-To.md) — applying
   the pattern in a new slice.
-- [gatekeeper Jargon Explanation](../../slices/gatekeeper/docs/Jargon%20Explanation.md)
+- [Wildflower Authorization Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)
   — the scope grammar (SMART v1/v2, resources, permissions) the gates check.

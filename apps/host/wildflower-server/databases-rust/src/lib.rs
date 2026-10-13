@@ -4,7 +4,7 @@
 //! Where the other `-rust` slices each own a store, this one is deliberately
 //! storeless: it operates at the *file* level on databases that other slices
 //! own (`health-data.sqlite` is managed by `fhir-r4-rust`, `wildflower.sqlite` by
-//! the gatekeeper / apps / request-log slices), so the host hands
+//! the authorization server / apps / request-log slices), so the host hands
 //! it only the data directory.
 //!
 //! The slice has no built-in knowledge of which databases exist: the host
@@ -45,7 +45,7 @@
 //!    remove it. The settings UI tells the Owner to restart to finish.
 //!
 //! The router carries no middleware of its own. The host layers it with the
-//! gatekeeper bearer gate (`wildflowerhealthio_gatekeeper::gatekeeper_auth_middleware`)
+//! authorization server bearer gate (`wildflowerhealthio_authorization_server::authorization_server_auth_middleware`)
 //! for authN; authZ is per-database: download/delete require the descriptor's
 //! declared `read_scope`/`delete_scope` (see [`domain::capabilities`]), while the
 //! metadata list is authenticated-only.
@@ -72,7 +72,7 @@ pub use live_bindings::state::DatabasesState;
 /// resolves each catalogued database beneath it on demand.
 ///
 /// The returned router carries no middleware — the consumer wraps it with its
-/// own authN gate (the Tauri host applies the gatekeeper bearer gate); the
+/// own authN gate (the Tauri host applies the authorization server bearer gate); the
 /// per-database scope checks live inside the router's facades.
 pub fn setup_databases(config: &DatabasesConfig) -> Router {
     let files = adapters::FilesystemDatabaseFiles::new(config.data_dir.clone());

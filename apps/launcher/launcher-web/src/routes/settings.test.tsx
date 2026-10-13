@@ -7,13 +7,13 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
+  authorizationLogoutSettingsItem,
+  makeBearerAuthStateStore,
+} from '@wildflowerhealthio/authorization-react'
+import {
   TELEMETRY_CONSENT_COPY,
   WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY,
 } from '@wildflowerhealthio/branding-core'
-import {
-  gatekeeperLogoutSettingsItem,
-  makeBearerAuthStateStore,
-} from '@wildflowerhealthio/gatekeeper-react'
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { TelemetryConsentGate } from '@wildflowerhealthio/telemetry-react'
 import { Option } from 'effect'
@@ -35,7 +35,7 @@ import {
 // it on top of every child's own header); it's the index page's single
 // `<PageHeader>`, so the macro tree below (layout + index) still renders
 // exactly one "Settings" h1. The gate's behaviour is exercised in
-// `gatekeeper-react`'s `auth-ready.test.ts`; mounting `SettingsLayout`
+// `authorization-react`'s `auth-ready.test.ts`; mounting `SettingsLayout`
 // directly here bypasses the gate, which is exactly the unit under test.
 import { SettingsLayout } from './settings.tsx'
 import { SettingsIndex, SettingsIndexRoute } from './settings/index.tsx'
@@ -106,7 +106,7 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('aggregates one row per participating slice (databases, gatekeeper)', async () => {
+  test('aggregates one row per participating slice (databases, authorization)', async () => {
     renderSettingsScreen()
     await waitFor(() => {
       expect(screen.getAllByText('Your data').length).toBeGreaterThanOrEqual(1)
@@ -159,7 +159,7 @@ describe('SettingsScreen', () => {
     await waitFor(() => {
       const hrefs = new Set(sliceRowLinks().map((l) => l.getAttribute('href') ?? ''))
       expect(hrefs.has('/settings/databases')).toBe(true)
-      expect(hrefs.has('/settings/gatekeeper')).toBe(true)
+      expect(hrefs.has('/settings/authorization')).toBe(true)
     })
   })
 
@@ -171,7 +171,7 @@ describe('SettingsScreen', () => {
     store.writeSession({ serverUrl: 'https://abc.tunnel.example', bearer: 'eyJ.owner.token' })
     const left = Promise.withResolvers<undefined>()
     renderSettingsScreen([
-      gatekeeperLogoutSettingsItem({
+      authorizationLogoutSettingsItem({
         bearerStore: store,
         fetch: () => Promise.resolve(new Response(null, { status: 204 })),
         leave: () => left.resolve(undefined),

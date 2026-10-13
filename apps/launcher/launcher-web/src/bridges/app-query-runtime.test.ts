@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { makeBearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
 import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { makeBearerAuthStateStore } from '@wildflowerhealthio/gatekeeper-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
