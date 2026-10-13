@@ -142,9 +142,9 @@ only it composes. Rust-only, no `-core`.
     reqwest), the device certificate over rustls-acme with its state, and
     the certificate history file; `http/` the
     server's own middleware (CORS, the loopback owner trust, the
-    forwarded-request report, the tunnel front), the tunnel listener with its
-    PROXY header reader and its TLS acceptor, the `/health` checks and the
-    `404`; `live_bindings/` composition only: `set_up`, `WildflowerServer`
+    forwarded-request report, the tunnel front, the FHIR web UI session's
+    bearer), the tunnel listener with its PROXY header reader and its TLS
+    acceptor, the `/health` checks, the root fallback and the `404`; `live_bindings/` composition only: `set_up`, `WildflowerServer`
     and the database catalogue.
   - The `test-support` feature adds `WildflowerServer::tunnel_stream_tx`
     for `tests/serve.rs`, which hands the tunnel listener connections the way

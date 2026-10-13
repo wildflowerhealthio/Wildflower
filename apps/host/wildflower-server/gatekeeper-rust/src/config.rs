@@ -34,6 +34,13 @@ pub struct GatekeeperConfig {
     /// standalone/test builds use [`crate::default_first_party_client_id`].
     pub first_party_client_id: String,
 
+    /// The `client_id` of the FHIR server's web UI (`helios-ui`), which signs
+    /// its users in here with the authorization-code flow. Seeded on every boot
+    /// with `{server_origin}/ui/callback` as its one redirect URI (see
+    /// [`crate::seeding`]). The host owns the id and hands the same one to
+    /// `fhir-r4-rust`, which sends it as the UI's `client_id`.
+    pub fhir_ui_client_id: String,
+
     /// The hosted launcher the device-flow `verification_uri` and logout's
     /// landing live on (see [`LauncherBase`]). The live Tauri app sources it
     /// from `tauri-shared-config.json`.

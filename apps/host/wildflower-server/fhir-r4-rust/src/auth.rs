@@ -7,7 +7,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use helios_audit::{sinks::NullSink, AuditSink, ExclusionFilter};
 use helios_auth::error::AuthError;
-use helios_auth::{AuthConfig, AuthProvider, JwksBearerAuthProvider, JwksCache, Principal};
+use helios_auth::{
+    AuthConfig, AuthProvider, JwksBearerAuthProvider, JwksCache, Principal, SessionStore,
+};
 use helios_rest::AuthMiddlewareState;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
@@ -62,10 +64,14 @@ impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
 /// `revocation_store` is the shared denylist the host wires into both this and
 /// gatekeeper; the returned provider consults it per validated token (see
 /// [`RevocationCheckingProvider`]).
+///
+/// `ui_sessions` is the web UI's session store: HFS treats a same-site request
+/// carrying its session cookie and no `Authorization` as the session's bearer.
 pub(crate) fn build_auth(
     jwks_url: Option<&str>,
     revocation_store: RevocationStore,
     server_origin: &str,
+    ui_sessions: Arc<SessionStore>,
 ) -> (AuthConfig, Option<Arc<AuthMiddlewareState>>) {
     let Some(jwks_url) = jwks_url else {
         return (AuthConfig::default(), None);
@@ -94,8 +100,7 @@ pub(crate) fn build_auth(
         audit_exclusion_filter: ExclusionFilter::new(vec![]),
         // FHIR is mounted at a fixed prefix with no tenant path segment.
         tenant_url_routing: false,
-        // No web-UI login: every caller presents its own bearer token.
-        sessions: None,
+        sessions: Some(ui_sessions),
     });
 
     (config, Some(state))
@@ -118,6 +123,17 @@ mod tests {
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
     /// Another server's origin.
     const OTHER_ORIGIN: &str = "https://lab.relay.example";
+
+    /// The web UI's session store, for this server.
+    fn sessions() -> std::sync::Arc<helios_auth::SessionStore> {
+        let origin = url::Url::parse(SERVER_ORIGIN).expect("origin");
+        let loopback = url::Url::parse("http://127.0.0.1:8080").expect("loopback");
+        std::sync::Arc::new(helios_auth::SessionStore::new(crate::ui_login_config(
+            &origin,
+            &loopback,
+            "fhir-ui-client",
+        )))
+    }
 
     fn store() -> RevocationStore {
         RevocationStore::open_in_memory().expect("open in-memory revocation store")
@@ -150,7 +166,7 @@ mod tests {
 
     #[test]
     fn jwks_url_none_leaves_hfs_auth_off() {
-        let (config, state) = build_auth(None, store(), SERVER_ORIGIN);
+        let (config, state) = build_auth(None, store(), SERVER_ORIGIN, sessions());
         assert!(
             !config.enabled,
             "HFS auth must be disabled when no JWKS URL is configured"
@@ -164,14 +180,18 @@ mod tests {
     #[test]
     fn jwks_url_some_enables_auth_pinned_to_the_server_origin() {
         let url = "http://127.0.0.1:8080/.well-known/jwks.json";
-        let (config, state) = build_auth(Some(url), store(), SERVER_ORIGIN);
+        let (config, state) = build_auth(Some(url), store(), SERVER_ORIGIN, sessions());
 
         assert!(config.enabled);
         assert_eq!(config.jwks_url.as_deref(), Some(url));
         // `iss` = `aud` = the server's origin; see `docs/Origins/Explanation.md`.
         assert_eq!(config.expected_issuer.as_deref(), Some(SERVER_ORIGIN));
         assert_eq!(config.expected_audience.as_deref(), Some(SERVER_ORIGIN));
-        assert!(state.is_some());
+        let state = state.expect("auth state");
+        assert!(
+            state.sessions.is_some(),
+            "HFS must take a signed-in UI session as its bearer"
+        );
     }
 
     /// HFS's own validator as `build_auth` configures it for [`SERVER_ORIGIN`],
@@ -193,7 +213,7 @@ mod tests {
             listener.local_addr().expect("JWKS listener address")
         );
         tokio::spawn(async move { axum::serve(listener, router).await });
-        let (_config, state) = build_auth(Some(&jwks_url), store(), SERVER_ORIGIN);
+        let (_config, state) = build_auth(Some(&jwks_url), store(), SERVER_ORIGIN, sessions());
         state.expect("auth is on with a JWKS URL").provider.clone()
     }
 

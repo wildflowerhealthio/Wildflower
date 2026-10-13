@@ -1,7 +1,8 @@
 //! fhir-r4-rust is a thin embedding of [HeliosSoftware/hfs](https://github.com/HeliosSoftware/hfs)
 //! as the FHIR R4 backend. It opens a sqlite store, serves HFS's Axum router
 //! at the server's root (FHIR base = origin), overrides the SMART discovery doc with a
-//! SMART-App-Launch-shaped one, adds the `$everything` operation HFS lacks, and
+//! SMART-App-Launch-shaped one, adds the `$everything` operation HFS lacks,
+//! mounts HFS's web UI at `/ui` with its sign-in against gatekeeper, and
 //! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy against
 //! gatekeeper's JWKS.
 
@@ -11,13 +12,17 @@ mod delegate;
 mod patient_everything;
 mod smart_configuration;
 
+use std::sync::{Arc, Mutex};
+
 use anyhow::Context;
 use axum::extract::DefaultBodyLimit;
 use axum::http::Method;
 use axum::routing::{get, Router};
+use helios_auth::{LoginConfig, SessionStore};
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
 use helios_rest::fhir_types::is_valid_resource_type;
 use helios_rest::{create_app_with_auth, ServerConfig};
+use wildflowerhealthio_scopes::{Permission, Scope};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 use wildflowerhealthio_token_revocation::RevocationStore;
@@ -55,9 +60,11 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 ];
 
 /// First path segments HFS serves that are neither a resource type nor a
-/// `$operation`: the server-level interactions, the discovery docs (under
-/// `.well-known`), and the bulk-data, admin and console surfaces.
+/// `$operation`: the web UI and its per-user settings, the server-level
+/// interactions, and the bulk-data, admin, console and subscription surfaces.
 const FHIR_ROOT_SEGMENTS: &[&str] = &[
+    "ui",
+    "_user",
     "metadata",
     "_history",
     "_search",
@@ -114,6 +121,12 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// HFS's `/metadata` remain unauthenticated per the SMART spec — see
 /// [`UNAUTHENTICATED_FHIR_PATHS`].
 ///
+/// `ui_sessions` holds the web UI's signed-in sessions (built from
+/// [`ui_login_config`] by the host, which shares it with the gate in front of
+/// this router): the UI's login runs against it, and HFS takes a same-site
+/// request carrying its `hfs_session` cookie and no `Authorization` as the
+/// session's bearer.
+///
 /// `revocation_store` is the shared token-revocation store the host wires into
 /// both this and gatekeeper; when auth is enabled, HFS consults it per validated
 /// token through a revocation-checking [`AuthProvider`](helios_auth::AuthProvider)
@@ -134,6 +147,7 @@ pub fn setup_fhir_r4(
     runtime: &ServerRuntimeConfig,
     config: &FhirR4Config,
     revocation_store: RevocationStore,
+    ui_sessions: Arc<SessionStore>,
 ) -> anyhow::Result<FhirR4Routers> {
     // Point HFS's backend at the on-disk FHIR R4 SearchParameter asset directory
     // the host provides (a bundled resource — never embedded in the binary), so
@@ -187,17 +201,29 @@ pub fn setup_fhir_r4(
         ..ServerConfig::default()
     };
 
-    let (auth_config, auth_state) =
-        build_auth(config.jwks_url.as_deref(), revocation_store, &server_origin);
+    let (auth_config, auth_state) = build_auth(
+        config.jwks_url.as_deref(),
+        revocation_store,
+        &server_origin,
+        ui_sessions.clone(),
+    );
     let hfs_router = create_app_with_auth(
         sqlite_backend,
         server_config,
-        auth_config,
+        auth_config.clone(),
         auth_state,
         // Audit middleware: we don't write FHIR audit events from inside
         // fhir-r4-rust today; the gatekeeper gating layer above us handles
         // owner/admin access auditing separately.
         None,
+    );
+
+    let hfs_router = mount_ui(
+        hfs_router,
+        spec_dir,
+        &server_origin,
+        auth_config.outbound_provider(),
+        ui_sessions,
     );
 
     // Specific routes win over fallback: our SMART App Launch discovery doc and
@@ -235,6 +261,97 @@ pub fn setup_fhir_r4(
     })
 }
 
+/// Serializes [`mount_ui`] across the process. `helios-ui`'s login and
+/// dashboard settings are process-wide statics that each mount reads once, so
+/// two servers setting up in one process at once could otherwise each mount the
+/// other's session store.
+static UI_MOUNT: Mutex<()> = Mutex::new(());
+
+/// Mount HFS's web UI (`helios-ui`) at `/ui` on `hfs_router`, with its
+/// interactive login over `ui_sessions`.
+///
+/// The UI's conformance pages call the server's own FHIR API over HTTP. They
+/// call it at `server_origin`, never loopback: a direct-local request without a
+/// bearer is given the host owner's token, and these calls carry the signed-in
+/// user's bearer or none.
+fn mount_ui(
+    hfs_router: Router,
+    spec_dir: &std::path::Path,
+    server_origin: &str,
+    outbound_auth: Arc<dyn helios_auth::outbound::OutboundAuthProvider>,
+    ui_sessions: Arc<SessionStore>,
+) -> Router {
+    let _serialized = UI_MOUNT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    helios_ui::set_interactive_login(helios_ui::LoginRuntime {
+        sessions: ui_sessions,
+    });
+    // The Home dashboard never refreshes itself (#1078).
+    helios_ui::set_dashboard_refresh(helios_ui::DashboardRefresh {
+        moving_secs: u32::MAX,
+        settled_secs: u32::MAX,
+    });
+    helios_ui::mount_with_body_limit_and_tenant_routing(
+        hfs_router,
+        env!("CARGO_PKG_VERSION"),
+        Some(spec_dir.to_path_buf()),
+        helios_ui::NlSearch {
+            enabled: false,
+            configured: false,
+            model: String::new(),
+        },
+        None,
+        None,
+        String::new(),
+        server_origin.to_string(),
+        outbound_auth,
+        helios_fhir::FhirVersion::R4,
+        None,
+        server_origin.to_string(),
+        MAX_UI_BODY_BYTES,
+        false,
+        None,
+        helios_ui::PatientNameSearchSupport::Enabled,
+        None,
+    )
+}
+
+/// The largest request body the UI's own pages accept (its imports and editor).
+const MAX_UI_BODY_BYTES: usize = 30 * 1024 * 1024;
+
+/// The web UI's sign-in, as `helios-auth`'s [`LoginConfig`]: the
+/// authorization-code flow with PKCE against this server's gatekeeper, as the
+/// public client `ui_client_id` (which gatekeeper seeds with
+/// `{public_origin}/ui/callback` as its redirect URI), asking for
+/// `user/*.cruds`.
+///
+/// The browser is sent to the authorize endpoint on `public_origin`, where it
+/// reaches the server. HFS redeems the code server-side at the token endpoint on
+/// `loopback_base_url`: gatekeeper's `/oauth/*` routes take no host owner token
+/// on loopback, and the call stays on the device. Gatekeeper has no OpenID
+/// Connect, so there is no ID token and no end-session endpoint: the session's
+/// identity is its access token's `sub`.
+#[must_use]
+pub fn ui_login_config(
+    public_origin: &url::Url,
+    loopback_base_url: &url::Url,
+    ui_client_id: &str,
+) -> LoginConfig {
+    let origin = wildflowerhealthio_shared_structures::origin_string(public_origin);
+    let loopback_origin = wildflowerhealthio_shared_structures::origin_string(loopback_base_url);
+    LoginConfig {
+        client_id: ui_client_id.to_string(),
+        client_secret: None,
+        redirect_uri: format!("{origin}/ui/callback"),
+        scopes: Scope::fhir_user_all(Permission::ALL).to_string(),
+        authorization_endpoint: format!("{origin}/oauth/authorize"),
+        token_endpoint: format!("{loopback_origin}/oauth/token"),
+        end_session_endpoint: None,
+        cookie_secure: public_origin.scheme() == "https",
+    }
+}
+
 /// Filename HFS's `SearchParameterLoader` expects for the R4 spec bundle inside
 /// `data_dir` — it derives this exact name from the FHIR version and loads no
 /// other. The vendored asset (`assets/search-parameters-r4.json`) and the
@@ -243,7 +360,7 @@ const SEARCH_PARAMETERS_R4_FILENAME: &str = "search-parameters-r4.json";
 
 #[cfg(test)]
 mod tests {
-    use super::{is_fhir_r4_route, UNAUTHENTICATED_FHIR_PATHS};
+    use super::{is_fhir_r4_route, ui_login_config, UNAUTHENTICATED_FHIR_PATHS};
     use axum::http::Method;
 
     /// The gate exempts these only on the FHIR router, so each must route there.
@@ -280,6 +397,10 @@ mod tests {
             (Method::GET, "/console/metrics/uptime"),
             (Method::GET, "/.well-known/smart-configuration"),
             (Method::GET, "/.well-known/bulk-submit-jwks.json"),
+            (Method::GET, "/ui"),
+            (Method::GET, "/ui/resources"),
+            (Method::GET, "/ui/callback"),
+            (Method::PUT, "/_user/settings"),
         ];
         for (method, path) in fhir {
             assert!(is_fhir_r4_route(&method, path), "{method} {path} is FHIR's");
@@ -308,6 +429,41 @@ mod tests {
                 "{method} {path} is not FHIR's"
             );
         }
+    }
+
+    /// The UI signs in through the browser at the public origin, redeems the
+    /// code on loopback, comes back to the redirect URI gatekeeper seeds, and
+    /// asks for `user/*.cruds` as a public client; its cookie is `Secure` on an
+    /// https origin.
+    #[test]
+    fn ui_login_config_points_the_browser_public_and_the_redemption_at_loopback() {
+        let public_origin = url::Url::parse("https://ruth.relay.example").expect("origin");
+        let loopback = url::Url::parse("http://127.0.0.1:8123/").expect("loopback");
+
+        let login = ui_login_config(&public_origin, &loopback, "fhir-ui-client");
+
+        assert_eq!(
+            (
+                login.client_id.as_str(),
+                login.client_secret,
+                login.redirect_uri.as_str(),
+                login.scopes.as_str(),
+                login.authorization_endpoint.as_str(),
+                login.token_endpoint.as_str(),
+                login.end_session_endpoint,
+                login.cookie_secure,
+            ),
+            (
+                "fhir-ui-client",
+                None,
+                "https://ruth.relay.example/ui/callback",
+                "user/*.cruds",
+                "https://ruth.relay.example/oauth/authorize",
+                "http://127.0.0.1:8123/oauth/token",
+                None,
+                true,
+            )
+        );
     }
 
     /// The vendored asset must ship under the filename HFS's loader expects, be

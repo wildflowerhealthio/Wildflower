@@ -11,7 +11,7 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde_json::{json, Value};
 use tower::ServiceExt;
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
 use wildflowerhealthio_scope_capabilities::ScopeClaims;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
@@ -52,7 +52,13 @@ fn build_router() -> (Router, TempDb) {
     };
 
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
-    let routers = setup_fhir_r4(&runtime, &config, revocation_store).expect("setup_fhir_r4");
+    let routers = setup_fhir_r4(
+        &runtime,
+        &config,
+        revocation_store,
+        ui_sessions(&runtime, &config),
+    )
+    .expect("setup_fhir_r4");
     let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(
         wildflowerhealthio_ohif_server::setup_ohif_server(routers.raw_hfs_router),
     );
@@ -221,4 +227,16 @@ async fn request_without_a_bearer_token_yields_403() {
         .expect("router is infallible");
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+/// The web UI's session store `setup_fhir_r4` takes, as the host builds it.
+fn ui_sessions(
+    runtime: &ServerRuntimeConfig,
+    config: &FhirR4Config,
+) -> std::sync::Arc<helios_auth::SessionStore> {
+    std::sync::Arc::new(helios_auth::SessionStore::new(ui_login_config(
+        &config.public_origin,
+        runtime.loopback_base_url_ref(),
+        "fhir-ui-client",
+    )))
 }

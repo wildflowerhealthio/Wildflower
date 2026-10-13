@@ -35,6 +35,7 @@ fn set_up_gatekeeper(pool: &DieselPool) -> (wildflowerhealthio_gatekeeper::Gatek
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
         host_owner_scopes: wildflowerhealthio_gatekeeper::default_local_granted_scopes(),
         first_party_client_id: wildflowerhealthio_gatekeeper::default_first_party_client_id(),
+        fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base URL"),
     };

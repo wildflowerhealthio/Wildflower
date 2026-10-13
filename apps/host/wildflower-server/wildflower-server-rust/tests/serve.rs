@@ -1013,3 +1013,184 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
         .expect("the serve task doesn't panic")
         .expect("a cancelled serve returns Ok");
 }
+
+/// A request a browser on the server's public origin sends, as the tunnel front
+/// stamps it.
+const PUBLIC_BROWSER_FORWARDED: &str = "for=192.0.2.1;host=test.relay.invalid;proto=https";
+
+/// The `name=value` pairs a response's `Set-Cookie` headers set.
+fn cookies_set_by(response: &reqwest::Response) -> Vec<String> {
+    response
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .filter_map(|cookie| cookie.split(';').next())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The response's `Location`.
+fn location_of(response: &reqwest::Response) -> String {
+    response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|location| location.to_str().ok())
+        .expect("a Location")
+        .to_owned()
+}
+
+/// `url`'s path and query, sent to the loopback listener instead.
+fn on_loopback(loopback_base_url: &Url, url: &str) -> Url {
+    let url = Url::parse(url).expect("an absolute URL");
+    let mut on_loopback = loopback_base_url.join(url.path()).expect("loopback URL");
+    on_loopback.set_query(url.query());
+    on_loopback
+}
+
+/// The FHIR web UI's sign-in, end to end through the composed server: the UI
+/// sends the browser to gatekeeper's authorize endpoint as its seeded client,
+/// the Owner approves it, the UI redeems the code on its callback and sets its
+/// session cookie, and a FHIR read carrying only that cookie is served, while
+/// the same read without it is refused at the gate.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_fhir_ui_signs_in_through_gatekeeper_and_reads_fhir_on_its_session() {
+    let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
+    let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
+        .expect("loopback base URL");
+    let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
+    let (active_pending_consent_tx, _active_pending_consent_rx) =
+        watch::channel::<Option<PendingConsentHead>>(None);
+    let host_ports = HostPorts {
+        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
+        on_device_webview_handle: Arc::new(NoOnDeviceWebview),
+        host_owner_token_tx,
+        active_pending_consent_tx,
+    };
+    let (server_health_tx, _server_health_rx) = watch::channel(None);
+    let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
+    let observers = ServerObservers {
+        server_health_tx,
+        tunnel_state_tx: watch::channel(None).0,
+        certificate_tx: watch::channel(None).0,
+        forwarded_request_tx,
+    };
+    let shutdown = CancellationToken::new();
+    let serving = tokio::time::timeout(
+        LIFECYCLE_TIMEOUT,
+        start_serving(
+            server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
+            host_ports,
+            observers,
+            shutdown.clone(),
+        ),
+    )
+    .await
+    .expect("the server binds in time");
+    let browser = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("an HTTP client");
+
+    // The UI sends a visitor to gatekeeper's authorize endpoint, on the public
+    // origin, remembering the pending sign-in in a cookie.
+    let login = browser
+        .get(loopback_base_url.join("ui/login").expect("login URL"))
+        .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+        .send()
+        .await
+        .expect("GET /ui/login reaches the server");
+    let authorize_url = location_of(&login);
+    assert!(
+        authorize_url.starts_with(&format!("{SERVER_ORIGIN}/oauth/authorize?")),
+        "sent to gatekeeper's authorize endpoint, got {authorize_url}"
+    );
+    let pending_cookies = cookies_set_by(&login).join("; ");
+
+    // Gatekeeper parks the request for the Owner, who approves it.
+    let parked = browser
+        .get(on_loopback(&loopback_base_url, &authorize_url))
+        .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+        .send()
+        .await
+        .expect("GET /oauth/authorize reaches the server");
+    let wait_page = location_of(&parked);
+    let request_id = wait_page
+        .strip_prefix("authorize/")
+        .and_then(|rest| rest.strip_suffix("/wait"))
+        .unwrap_or_else(|| panic!("parked for the Owner, got {wait_page}"));
+    let owner_token = host_owner_token_rx
+        .borrow()
+        .clone()
+        .expect("the host owner token is minted at set-up");
+    let approved: Value = browser
+        .post(
+            loopback_base_url
+                .join(&format!("access/oauth-consents/{request_id}/approve"))
+                .expect("approve URL"),
+        )
+        .bearer_auth(owner_token)
+        .json(&serde_json::json!({
+            "approvedScopes": ["user/*.cruds"],
+            "patient": null,
+            "acknowledgedRegistration": true,
+        }))
+        .send()
+        .await
+        .expect("the approval reaches the server")
+        .json()
+        .await
+        .expect("a consent result");
+    let callback_url = approved["redirect"]
+        .as_str()
+        .unwrap_or_else(|| panic!("approved with a redirect, got {approved}"));
+    assert!(callback_url.starts_with(&format!("{SERVER_ORIGIN}/ui/callback?")));
+
+    // The UI redeems the code and sets its session cookie.
+    let callback = browser
+        .get(on_loopback(&loopback_base_url, callback_url))
+        .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+        .header("cookie", &pending_cookies)
+        .send()
+        .await
+        .expect("GET /ui/callback reaches the server");
+    let session_cookie = cookies_set_by(&callback)
+        .into_iter()
+        .find(|cookie| cookie.starts_with(&format!("{}=", helios_auth::SESSION_COOKIE)))
+        .unwrap_or_else(|| panic!("a session cookie, after {}", callback.status()));
+
+    // A FHIR read carrying only the session cookie is served; without it, the
+    // gate refuses it.
+    let read_patients = |cookie: Option<&str>| {
+        let mut request = browser
+            .get(loopback_base_url.join("Patient").expect("Patient URL"))
+            .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+            .header("sec-fetch-site", "same-origin");
+        if let Some(cookie) = cookie {
+            request = request.header("cookie", cookie);
+        }
+        request.send()
+    };
+    let signed_in = read_patients(Some(&session_cookie))
+        .await
+        .expect("GET /Patient reaches the server");
+    assert_eq!(signed_in.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        signed_in.json::<Value>().await.expect("a Bundle")["resourceType"],
+        "Bundle"
+    );
+    assert_eq!(
+        read_patients(None)
+            .await
+            .expect("GET /Patient reaches the server")
+            .status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+
+    shutdown.cancel();
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)
+        .await
+        .expect("serve returns in time once cancelled")
+        .expect("the serve task doesn't panic")
+        .expect("a cancelled serve returns Ok");
+}

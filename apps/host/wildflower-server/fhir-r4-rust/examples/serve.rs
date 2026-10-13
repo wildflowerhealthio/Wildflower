@@ -7,7 +7,7 @@ use anyhow::Context;
 use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 #[tokio::main]
@@ -37,7 +37,12 @@ async fn main() -> anyhow::Result<()> {
     // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is
     // never consulted — the always-allow double satisfies the signature.
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
-    let routers = setup_fhir_r4(&runtime, &config, revocation_store)?;
+    let routers = setup_fhir_r4(
+        &runtime,
+        &config,
+        revocation_store,
+        ui_sessions(&runtime, &config),
+    )?;
     let router = Router::new().merge(routers.augmented_fhir_r4_router).merge(
         wildflowerhealthio_ohif_server::setup_ohif_server(routers.raw_hfs_router),
     );
@@ -52,4 +57,16 @@ async fn main() -> anyhow::Result<()> {
     eprintln!("fhir-r4-rust serve (dev): http://{addr}");
     axum::serve(listener, router).await?;
     Ok(())
+}
+
+/// The web UI's session store `setup_fhir_r4` takes, as the host builds it.
+fn ui_sessions(
+    runtime: &ServerRuntimeConfig,
+    config: &FhirR4Config,
+) -> std::sync::Arc<helios_auth::SessionStore> {
+    std::sync::Arc::new(helios_auth::SessionStore::new(ui_login_config(
+        &config.public_origin,
+        runtime.loopback_base_url_ref(),
+        "fhir-ui-client",
+    )))
 }

@@ -14,7 +14,7 @@ use axum::http::{Request, StatusCode};
 use axum::Router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 /// Unique temp dir per test so parallel tests don't share a sqlite file.
@@ -58,9 +58,14 @@ fn build_router() -> (Router, TempDb) {
     // consulted — the always-allow double satisfies the signature without
     // standing up a database.
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
-    let router = setup_fhir_r4(&runtime, &config, revocation_store)
-        .expect("setup_fhir_r4")
-        .augmented_fhir_r4_router;
+    let router = setup_fhir_r4(
+        &runtime,
+        &config,
+        revocation_store,
+        ui_sessions(&runtime, &config),
+    )
+    .expect("setup_fhir_r4")
+    .augmented_fhir_r4_router;
     (router, TempDb { dir })
 }
 
@@ -182,4 +187,16 @@ async fn medication_dispense_round_trips() {
     assert_eq!(got["status"], "completed");
     assert_eq!(got["substitution"]["wasSubstituted"], false);
     assert_eq!(got["quantity"]["value"], 30);
+}
+
+/// The web UI's session store `setup_fhir_r4` takes, as the host builds it.
+fn ui_sessions(
+    runtime: &ServerRuntimeConfig,
+    config: &FhirR4Config,
+) -> std::sync::Arc<helios_auth::SessionStore> {
+    std::sync::Arc::new(helios_auth::SessionStore::new(ui_login_config(
+        &config.public_origin,
+        runtime.loopback_base_url_ref(),
+        "fhir-ui-client",
+    )))
 }

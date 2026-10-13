@@ -9,12 +9,13 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use axum::Router;
+use helios_auth::SessionStore;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
-use wildflowerhealthio_fhir_r4::{setup_fhir_r4, FhirR4Config};
+use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
 use wildflowerhealthio_gatekeeper::{
     gatekeeper_auth_middleware, require_loopback_peer_middleware, setup_gatekeeper,
     GatekeeperConfig, HostConsentDecider,
@@ -33,6 +34,7 @@ use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
+use crate::http::middleware::ui_session_bearer::present_ui_session_bearer;
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::http::{not_found, root_fallback};
@@ -45,6 +47,9 @@ use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
 // these names — `databases-rust` has no built-in knowledge of them.
 const HEALTH_DATA_DB: &str = "health-data.sqlite";
 const WILDFLOWER_DB: &str = "wildflower.sqlite";
+/// The `client_id` of the FHIR server's web UI (`helios-ui`): gatekeeper seeds
+/// the client under it and `fhir-r4-rust` signs the UI's users in as it.
+const FHIR_UI_CLIENT_ID: &str = "5ea43272eba5e825c50de39032f96bf0";
 
 /// How many visitor streams the tunnel may hand over before the tunnel
 /// listener takes them. Past this, the tunnel waits.
@@ -235,6 +240,7 @@ pub async fn set_up(
         server_origin: public_origin.clone(),
         host_owner_scopes,
         first_party_client_id,
+        fhir_ui_client_id: FHIR_UI_CLIENT_ID.to_string(),
         launcher_base: launcher_base.clone(),
     };
 
@@ -265,8 +271,20 @@ pub async fn set_up(
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
 
-    let fhir_routers = setup_fhir_r4(&runtime, &fhir_r4_config, revocation_store.clone())
-        .context("failed to set up FHIR R4 router")?;
+    // The FHIR web UI's signed-in sessions, shared by HFS (its login and
+    // REST auth) and the middleware in front of the bearer gate.
+    let ui_sessions = Arc::new(SessionStore::new(ui_login_config(
+        &public_origin,
+        &loopback_base_url,
+        FHIR_UI_CLIENT_ID,
+    )));
+    let fhir_routers = setup_fhir_r4(
+        &runtime,
+        &fhir_r4_config,
+        revocation_store.clone(),
+        ui_sessions.clone(),
+    )
+    .context("failed to set up FHIR R4 router")?;
     let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
@@ -322,10 +340,24 @@ pub async fn set_up(
     // client fetches before it holds a token, so those paths are exempted from
     // the bearer gate; every other FHIR path still requires a token. It serves
     // at the root through the fallback below, not as merged routes.
-    let gated_fhir_r4 = fhir_r4_router.layer(gatekeeper_auth_middleware(
-        gatekeeper.state.clone(),
-        wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
-    ));
+    // The web UI's pages pass the gate: HFS sends a visitor without a session
+    // to its sign-in, which a bearer gate would refuse outright. A signed-in
+    // browser's other FHIR calls carry only the session cookie, so the session's
+    // bearer is presented for them ahead of the gate (`ui_session_bearer`).
+    let gated_fhir_r4 = Router::new()
+        .route("/ui", axum::routing::any_service(fhir_r4_router.clone()))
+        .route(
+            "/ui/{*rest}",
+            axum::routing::any_service(fhir_r4_router.clone()),
+        )
+        .fallback_service(fhir_r4_router.layer(gatekeeper_auth_middleware(
+            gatekeeper.state.clone(),
+            wildflowerhealthio_fhir_r4::UNAUTHENTICATED_FHIR_PATHS,
+        )))
+        .layer(axum::middleware::from_fn_with_state(
+            ui_sessions,
+            present_ui_session_bearer,
+        ));
 
     let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
 
