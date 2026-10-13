@@ -6,7 +6,7 @@
 //!
 //! Also home to [`CacheSuppressed`], the RFC 6749 §5.1/§5.2 cache-suppression
 //! wrapper the token-surface responses, the authorize-status poll, and the
-//! `/access` surface render through — a wire concern (headers on the response),
+//! `/authorization` surface render through — a wire concern (headers on the response),
 //! not route logic.
 
 use axum::http::header;
@@ -23,7 +23,7 @@ use crate::domain::oauth_error_code::OAuthErrorCode;
 /// must never be cached; wrapping makes that part of the value instead of a
 /// step a call site can forget. The same wrapper renders the authorize-status
 /// poll (its `Approved` redirect carries a redeemable code) and, applied as a
-/// blanket layer, every Owner `/access/*` response.
+/// blanket layer, every Owner `/authorization/*` response.
 pub(crate) struct CacheSuppressed<T>(pub(crate) T);
 
 impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {

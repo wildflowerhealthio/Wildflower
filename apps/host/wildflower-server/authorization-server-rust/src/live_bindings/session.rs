@@ -1,5 +1,5 @@
 //! The session bindings — the [`TokenVerifier`] both authN gates run, and the
-//! authenticated-only [`SessionEnder`] / [`SessionReader`] the `/access`
+//! authenticated-only [`SessionEnder`] / [`SessionReader`] the `/authorization`
 //! self-service handlers acquire through `Authenticated<…>`, over the concrete
 //! runtime types. See the [module docs](super) for the binding seam.
 

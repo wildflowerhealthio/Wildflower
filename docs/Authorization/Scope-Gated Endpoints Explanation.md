@@ -36,7 +36,7 @@ Two things make this a structural guarantee rather than a convention:
 
 ## Two flavours, and why the type distinguishes them
 
-Most capabilities are gated by one fixed scope — `GET /access/grants` always needs
+Most capabilities are gated by one fixed scope — `GET /authorization/grants` always needs
 `wildflower/Grant.r`. A few are **data-dependent**: which scope a database
 download needs depends on _which_ database. The data-dependent flavour can't state
 its scope up front, so its static gate is "authenticated only" and the real check
@@ -66,7 +66,7 @@ away from the vocabulary it belongs with).
 
 Enforcement needs the caller's scopes, which an authN layer must have verified and
 stashed first. That seam is a **pair** of middlewares that must stay in lockstep:
-the authorization server's `require_valid_session` guards its own `/access` and inserts the rich
+the authorization server's `require_valid_session` guards its own `/authorization` and inserts the rich
 `VerifiedClaims`; `require_valid_bearer_token` wraps the host's downstream slice
 routers and inserts the framework-neutral `ScopeClaims`. Both run one shared
 verify pipeline, so a token becomes authority the same way wherever it lands — and

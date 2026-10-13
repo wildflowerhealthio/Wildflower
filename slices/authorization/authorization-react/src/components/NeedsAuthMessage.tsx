@@ -56,7 +56,7 @@ const DEFAULT_ALLOWED_SCOPES = 'system/*.cruds wildflower/*.cruds wildflower/lau
  * name-it-and-go rather than rule-by-rule assembly. Only seeded when the client's
  * allowed set actually covers it.
  *
- * A signed-in caller stepping up is seeded from `GET /access/session` instead
+ * A signed-in caller stepping up is seeded from `GET /authorization/session` instead
  * ({@link useCurrentSessionScopes}); a fixed preset there would hand back a
  * *narrower* grant than the one the user already had.
  */
@@ -123,7 +123,7 @@ const partitionByGrantability = (
 
 /**
  * The scopes the caller's session already holds, read once from
- * `GET /access/session` — or `null` while that read is outstanding and whenever
+ * `GET /authorization/session` — or `null` while that read is outstanding and whenever
  * there is no session to read at all (the plain sign-in path, where it 401s).
  *
  * That endpoint is authN-only on purpose: the callers who need it most are the

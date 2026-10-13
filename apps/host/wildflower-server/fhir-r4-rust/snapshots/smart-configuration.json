@@ -3,10 +3,8 @@
   "jwks_uri": "https://ruth.wildflowerhealth.io/.well-known/jwks.json",
   "authorization_endpoint": "https://ruth.wildflowerhealth.io/oauth/authorize",
   "token_endpoint": "https://ruth.wildflowerhealth.io/oauth/token",
-  "registration_endpoint": "https://ruth.wildflowerhealth.io/auth/register",
-  "management_endpoint": "https://ruth.wildflowerhealth.io/user/manage",
-  "introspection_endpoint": "https://ruth.wildflowerhealth.io/user/introspect",
-  "revocation_endpoint": "https://ruth.wildflowerhealth.io/user/revoke",
+  "management_endpoint": "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io",
+  "wildflower_authorization_api": "https://ruth.wildflowerhealth.io/authorization/",
   "scopes_supported": [
     "openid",
     "profile",
@@ -22,11 +20,13 @@
   ],
   "grant_types_supported": [
     "authorization_code",
-    "client_credentials"
+    "refresh_token",
+    "urn:ietf:params:oauth:grant-type:device_code"
   ],
   "token_endpoint_auth_methods_supported": [
     "client_secret_basic",
-    "private_key_jwt"
+    "client_secret_post",
+    "none"
   ],
   "code_challenge_methods_supported": [
     "S256"

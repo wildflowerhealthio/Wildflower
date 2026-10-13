@@ -90,7 +90,7 @@ async fn device_consent_clamps_granted_scopes_to_client_allowed() {
 
     // The Owner approves both scopes; the handler must drop `write`.
     let approve = loopback_request(
-        Request::post("/access/devices/WILD-FLWR/approve")
+        Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}"))
             .header("content-type", "application/json"),
@@ -133,7 +133,7 @@ async fn device_consent_threads_patient_onto_request() {
 
     // The Owner approves and selects a patient context.
     let approve = loopback_request(
-        Request::post("/access/devices/WILD-FLWR/approve")
+        Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}"))
             .header("content-type", "application/json"),
@@ -182,7 +182,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
 
     // The Owner grants the un-requested-but-allowed `write` on top of `read`.
     let approve = loopback_request(
-        Request::post("/access/devices/WILD-FLWR/approve")
+        Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}"))
             .header("content-type", "application/json"),
@@ -208,7 +208,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
 /// The device-authorization request carries the human-chosen `device_name`
 /// extension end to end: minted at `/oauth/device_authorization`, stored on the
 /// request, and surfaced (alongside the client's `allowedScopes` expansion
-/// envelope) on the `/access/devices/{userCode}` consent prompt.
+/// envelope) on the `/authorization/devices/{userCode}` consent prompt.
 #[tokio::test]
 async fn device_authorization_carries_device_name_to_consent() {
     let (g, host_owner_token, _db) = spin_up();
@@ -227,7 +227,7 @@ async fn device_authorization_carries_device_name_to_consent() {
 
     // The consent prompt surfaces the device name and a non-empty expansion envelope.
     let get = loopback_request(
-        Request::get(format!("/access/devices/{user_code}"))
+        Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}")),
         Body::empty(),
@@ -264,7 +264,7 @@ async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() 
         .to_string();
 
     let get = loopback_request(
-        Request::get(format!("/access/devices/{user_code}"))
+        Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}")),
         Body::empty(),
@@ -296,7 +296,7 @@ async fn explicit_device_name_wins_over_user_agent_inference() {
         .to_string();
 
     let get = loopback_request(
-        Request::get(format!("/access/devices/{user_code}"))
+        Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}")),
         Body::empty(),
@@ -326,7 +326,7 @@ async fn device_consent_approver_can_adjust_device_name() {
     );
 
     let approve = loopback_request(
-        Request::post("/access/devices/WILD-FLWR/approve")
+        Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}"))
             .header("content-type", "application/json"),
@@ -368,7 +368,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
 
     // Approve, naming the device.
     let approve = loopback_request(
-        Request::post("/access/devices/WILD-FLWR/approve")
+        Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}"))
             .header("content-type", "application/json"),
@@ -383,7 +383,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get("/access/grants")
+            Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -747,7 +747,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get("/access/grants")
+            Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -760,7 +760,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::delete(format!("/access/grants/{grant_id}"))
+            Request::delete(format!("/authorization/grants/{grant_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),

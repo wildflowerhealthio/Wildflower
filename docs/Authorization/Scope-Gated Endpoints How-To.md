@@ -3,7 +3,7 @@
 How to put a slice's HTTP endpoints behind **per-resource scope checks** using
 the shared `scope-capabilities-rust` machinery, so a forgotten permission check
 can't compile a data-touching handler. The pattern originated on the authorization server's
-`/access` surface and now lives in the scopes slice for every slice to copy. For
+`/authorization` surface and now lives in the scopes slice for every slice to copy. For
 _why_ it is shaped this way, read the
 [Scope-Gated Endpoints Explanation](./Scope-Gated%20Endpoints%20Explanation.md).
 
@@ -64,7 +64,7 @@ middlewares (see the Explanation):
   `require_valid_bearer_token` inserts a `ScopeClaims` after verifying the token,
   so downstream slices read scopes **without depending on the authorization server's domain
   claims type**.
-- The authorization server's own `/access` uses `require_valid_session`, which inserts the rich
+- The authorization server's own `/authorization` uses `require_valid_session`, which inserts the rich
   `VerifiedClaims` (implementing `GrantedScopes`).
 
 A slice that mounts its own authN layer inserts its own claims value the same way.
@@ -205,11 +205,11 @@ decodes the body (and the web UI can name the missing scopes via `scopes-react`'
 import `InsufficientScopeSchema` from `shared-structures-core/http-api-definition`
 and attach it with `.addError(InsufficientScopeSchema, { status: 403 })` — at the
 `HttpApiGroup` level when the whole group is scope-gated (e.g. the authorization server's
-`/access`), or per endpoint when a group mixes gated and ungated endpoints (e.g.
+`/authorization`), or per endpoint when a group mixes gated and ungated endpoints (e.g.
 databases' `DeleteDatabase`, since `ListDatabases` is authenticated-only). Keep
 the Rust-documented set and the TS-declared set the same, or the per-slice
 OpenAPI drift snapshot test fails. A surface with no `utoipa` documentation (e.g.
-The authorization server's `/access`, which isn't in any committed spec) still returns the 403
+The authorization server's `/authorization`, which isn't in any committed spec) still returns the 403
 at runtime through the extractor's rejection — only the TS declaration is needed
 there.
 
@@ -233,7 +233,7 @@ user-facing surface — but it helps to know what the contract buys:
   mints a whole new grant, so requesting only the missing scopes would strip what
   the session already had — and `?returnTo=` brings the user back to the denied
   page on grant, where the loader re-runs the action against the new grant.
-- The current scopes come from `GET /access/session`, which reports back the
+- The current scopes come from `GET /authorization/session`, which reports back the
   caller's own verified `scope` claim. It is **authN-only** — no `Scoped<…>`
   capability — precisely because the callers who need it are the under-scoped
   sessions arriving from a 403, whom a scope gate would lock out of reading their
@@ -255,7 +255,7 @@ step-up path dead-ends for that endpoint.
 
 ## Three flavours of gate
 
-- **Fixed capability** (the authorization server's `/access`): the scope is constant, so
+- **Fixed capability** (the authorization server's `/authorization`): the scope is constant, so
   implement `FixedScopeCapability` — `required_scopes()` returns it and `build`
   takes only `state`. The `Scoped` extractor is the whole gate.
 - **Data-dependent** (databases' per-database scope): the required scope depends
@@ -268,7 +268,7 @@ step-up path dead-ends for that endpoint.
   whether the resource exists on disk. (Catalogue membership — which ids the host
   declares — is separately public to any authenticated caller, so a `404` for an
   uncatalogued id is not a leak.)
-- **Authenticated-only** (the authorization server's logout and `GET /access/session`): the
+- **Authenticated-only** (the authorization server's logout and `GET /authorization/session`): the
   caller acts on their _own_ session and no scope applies — a scope gate would
   lock out exactly the under-scoped callers who need to log out or read their own
   scopes. Implement `AuthenticatedCapability` (`build(state, claims)` receives the
@@ -340,7 +340,7 @@ lets a guard test assert `domain/` never imports `crate::http`.
 ## Worked examples
 
 - **Fixed:** `apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/` — the
-  `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
+  `/authorization` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
   `ConsentDecider`, `TokenRevoker`), generic over `GrantStore`, bound to the
   concrete store in `authorization-server-rust/src/live_bindings/`. Their privileged writes
   go through the writers under an authority proof (see the section above).

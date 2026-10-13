@@ -60,7 +60,7 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
 
 /// The "a server-side step failed" payload shared by the OAuth surfaces'
 /// error enums (`TokenError` and `AuthorizeError`): an operator-facing `context`
-/// and the `source` detail, logged + returned as an opaque 500. (The `/access`
+/// and the `source` detail, logged + returned as an opaque 500. (The `/authorization`
 /// surface renders the same opaque 500 through
 /// [`AuthorizationServerError::Infrastructure`](crate::domain::authorization_server_error::AuthorizationServerError::Infrastructure),
 /// which builds an `InternalError` at render time rather than holding one.) This
@@ -89,7 +89,7 @@ pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
 /// [`InsufficientApproverScope`](AuthorizationServerError::InsufficientApproverScope),
 /// when an approver tries to delegate scopes beyond their own grant. This is the
 /// authorization (not authentication) failure path the resource-scope epic
-/// introduces — the first 403 the authorization server's `/access` surface can return.
+/// introduces — the first 403 the authorization server's `/authorization` surface can return.
 /// The wire shape and this constructor live in `scope-capabilities-rust` (the
 /// reusable capability layer), re-exported here so call sites keep importing it
 /// from `errors`.
@@ -169,7 +169,7 @@ pub(crate) struct AuthorizationRequestNotFoundBody {
 /// resource's identifying field), and an opaque
 /// [`Infrastructure`](AuthorizationServerError::Infrastructure) failure is logged (via the
 /// shared [`InternalError`]) and answered as an opaque, empty 500. This is the
-/// whole of the HTTP layer's error knowledge for the `/access` surface; the
+/// whole of the HTTP layer's error knowledge for the `/authorization` surface; the
 /// handlers just `?` a `Result<_, AuthorizationServerError>` from a domain action.
 impl IntoResponse for AuthorizationServerError {
     fn into_response(self) -> Response {

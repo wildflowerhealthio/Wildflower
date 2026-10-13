@@ -1,8 +1,8 @@
 //! [`HostConsentDecider`] — the host reads and decides a server's pending
 //! consents as its Owner, in-process, with no token.
 //!
-//! The same [`ConsentReader`] and [`ConsentDecider`] the `/access/devices/*`
-//! and `/access/oauth-consents/*` routes acquire through `Scoped<…>`, built
+//! The same [`ConsentReader`] and [`ConsentDecider`] the `/authorization/devices/*`
+//! and `/authorization/oauth-consents/*` routes acquire through `Scoped<…>`, built
 //! here with the host Owner's grant (the scopes the host owner token carries)
 //! as the approver's, as the loopback dialog's approver is. An approval is
 //! remembered as a standing grant, as one made in the launcher is.
@@ -23,7 +23,7 @@ use crate::ports::OwnerApproval;
 
 /// Lets the host read and approve or deny this server's waiting consents as
 /// its Owner, in-process, without HTTP or a token: the in-process twin of the
-/// launcher's `/access/devices/*` and `/access/oauth-consents/*` routes.
+/// launcher's `/authorization/devices/*` and `/authorization/oauth-consents/*` routes.
 ///
 /// Whoever holds one decides with the host Owner's authority and no token,
 /// so only the host gets one: it is built from the [`AuthorizationServerState`]

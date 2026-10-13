@@ -49,7 +49,7 @@ impl IntoResponse for OAuthErrorResponse {
 }
 
 /// Error half of the token / device-authorization endpoints' `Result`-returning
-/// handlers (the OAuth-surface analogue of the Owner `/access` surface's
+/// handlers (the OAuth-surface analogue of the Owner `/authorization` surface's
 /// [`AuthorizationServerError`](crate::domain::authorization_server_error::AuthorizationServerError)). Every
 /// variant renders the matching RFC 6749 §5.2 response, cache-suppressed per
 /// §5.1, through `IntoResponse` — so a fallible step bails with `?` instead of

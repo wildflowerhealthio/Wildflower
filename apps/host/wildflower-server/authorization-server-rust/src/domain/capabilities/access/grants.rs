@@ -1,5 +1,5 @@
 //! Grant capabilities — the `wildflower/Grant.*` capabilities behind
-//! `/access/grants[/{id}]`, and the grant operations they own. The store-touching
+//! `/authorization/grants[/{id}]`, and the grant operations they own. The store-touching
 //! logic (`get_grant`, the `revoke_grant` cascade) lives here as `&impl
 //! GrantStore` functions so it stays unit-testable against the in-memory
 //! fake; the capabilities are the scope-gated entries generic over the store,
@@ -36,7 +36,7 @@ pub(crate) fn grants_revoker_scopes() -> Vec<Scope> {
 }
 
 /// A single grant by id, or [`AuthorizationServerError::GrantNotFound`] when absent — the
-/// `/access/grants/{id}` read (and the load-before-revoke).
+/// `/authorization/grants/{id}` read (and the load-before-revoke).
 fn get_grant(store: &impl GrantStore, id: &str) -> Result<Grant, AuthorizationServerError> {
     store
         .grant_by_id(id)?
@@ -71,7 +71,7 @@ fn revoke_grant(
     }
 }
 
-/// Read access to standing client grants — `GET /access/grants[/{id}]`. Generic
+/// Read access to standing client grants — `GET /authorization/grants[/{id}]`. Generic
 /// over the store port so it's unit-testable against the fake; the binding
 /// instantiates it over the concrete `SqliteGrantStore`.
 pub(crate) struct GrantsReader<S: GrantStore> {
@@ -95,7 +95,7 @@ impl<S: GrantStore> GrantsReader<S> {
     }
 }
 
-/// Revoke access to a standing grant — `DELETE /access/grants/{id}`. Distinct
+/// Revoke access to a standing grant — `DELETE /authorization/grants/{id}`. Distinct
 /// from [`GrantsReader`] because deleting a grant is a `Grant.d` capability, and
 /// it carries the security-critical token-kill cascade — holds the [`Revocation`]
 /// port for the epoch bump alongside the store.

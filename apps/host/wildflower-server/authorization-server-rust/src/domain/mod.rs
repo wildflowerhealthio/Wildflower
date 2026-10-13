@@ -5,7 +5,7 @@
 //! [`GrantStore`] port abstracts persistence ([`crate::db`]'s
 //! `SqliteGrantStore` owns the SQL behind it); the store-touching logic
 //! lives with each entity module (the refresh-token rotation, the session
-//! revoke) or inside a [`capabilities`] capability (the scope-gated `/access`
+//! revoke) or inside a [`capabilities`] capability (the scope-gated `/authorization`
 //! operations, generic over the store port); and everything fails with the
 //! domain's own [`authorization_server_error`] vocabulary. Persistence mappings live in
 //! [`crate::db`], transport in [`crate::http`], the router state (which builds
@@ -19,7 +19,7 @@ pub mod grant_store;
 // that checks the rule each proof stands for.
 pub(crate) mod authority;
 
-// The capabilities, generic over the store port: the scope-gated `/access`
+// The capabilities, generic over the store port: the scope-gated `/authorization`
 // surface (`access/`), the pre-auth `/oauth` front door (`oauth/`), the
 // caller's own session (`session/`), and the proof-gated privileged writers
 // (`writers/`). The bindings to the concrete state live in

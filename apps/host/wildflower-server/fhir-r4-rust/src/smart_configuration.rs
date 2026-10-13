@@ -14,6 +14,11 @@
 //! here, then follows links straight to the authorization server for the authorize/token
 //! dance.
 //!
+//! The document advertises only what is served: every endpoint URL in it is a
+//! route this server answers, apart from `management_endpoint`, the hosted
+//! Wildflower Authorization app ([`AuthorizationAppBase`]). That app
+//! configures itself from this document, so it is the app's contract.
+//!
 //! This is the sole discovery implementation; the former TypeScript twin in the
 //! fhir-r4 slice has been removed.
 
@@ -21,17 +26,20 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use serde::Serialize;
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 /// State threaded to the discovery handler: the loopback origin it falls back
 /// to when a request arrives without forwarding headers (a typed
 /// [`Url`](url::Url) base URL; the handler derives the bare origin string from
-/// it), and the server's origin it reports as `issuer`.
+/// it), the server's origin it reports as `issuer`, and the Wildflower
+/// Authorization app it advertises as `management_endpoint`.
 #[derive(Clone)]
 pub(crate) struct SmartConfigState {
     pub loopback_base_url: url::Url,
     /// The server's bare origin, every token's `iss` and `aud`.
     pub server_origin: String,
+    pub authorization_app_base: AuthorizationAppBase,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,10 +48,12 @@ pub(crate) struct SmartConfiguration {
     jwks_uri: String,
     authorization_endpoint: String,
     token_endpoint: String,
-    registration_endpoint: String,
+    /// The Wildflower Authorization app, pointed at this server's `issuer`.
     management_endpoint: String,
-    introspection_endpoint: String,
-    revocation_endpoint: String,
+    /// A Wildflower extension field: the base of the authorization server's
+    /// JSON API (`/authorization/`), which the Wildflower Authorization app
+    /// reads rather than hardcoding a server path.
+    wildflower_authorization_api: String,
     scopes_supported: Vec<&'static str>,
     response_types_supported: Vec<&'static str>,
     grant_types_supported: Vec<&'static str>,
@@ -75,7 +85,26 @@ const SCOPES_SUPPORTED: &[&str] = &[
     "offline_access",
 ];
 
-fn build_smart_configuration(server_origin: &str, base_url: &url::Url) -> SmartConfiguration {
+/// The grants `/oauth/token` accepts: the authorization server's
+/// `TokenPayload`.
+const GRANT_TYPES_SUPPORTED: &[&str] = &[
+    "authorization_code",
+    "refresh_token",
+    "urn:ietf:params:oauth:grant-type:device_code",
+];
+
+/// How a client authenticates at `/oauth/token`: a confidential client's
+/// secret in an `Authorization: Basic` header or in the form body (the
+/// authorization server's `resolve_client_credentials`), or, for a public
+/// client, its `client_id` alone.
+const TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED: &[&str] =
+    &["client_secret_basic", "client_secret_post", "none"];
+
+fn build_smart_configuration(
+    server_origin: &str,
+    base_url: &url::Url,
+    authorization_app_base: &AuthorizationAppBase,
+) -> SmartConfiguration {
     // The advertised endpoints are per-request URL strings; derive the bare
     // origin (no trailing slash, no default port) once and interpolate.
     let origin = wildflowerhealthio_shared_structures::origin_string(base_url);
@@ -87,14 +116,14 @@ fn build_smart_configuration(server_origin: &str, base_url: &url::Url) -> SmartC
         jwks_uri: format!("{origin}/.well-known/jwks.json"),
         authorization_endpoint: format!("{origin}/oauth/authorize"),
         token_endpoint: format!("{origin}/oauth/token"),
-        registration_endpoint: format!("{origin}/auth/register"),
-        management_endpoint: format!("{origin}/user/manage"),
-        introspection_endpoint: format!("{origin}/user/introspect"),
-        revocation_endpoint: format!("{origin}/user/revoke"),
+        management_endpoint: authorization_app_base
+            .management_url(server_origin)
+            .to_string(),
+        wildflower_authorization_api: format!("{origin}/authorization/"),
         scopes_supported: SCOPES_SUPPORTED.to_vec(),
         response_types_supported: vec!["code"],
-        grant_types_supported: vec!["authorization_code", "client_credentials"],
-        token_endpoint_auth_methods_supported: vec!["client_secret_basic", "private_key_jwt"],
+        grant_types_supported: GRANT_TYPES_SUPPORTED.to_vec(),
+        token_endpoint_auth_methods_supported: TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED.to_vec(),
         code_challenge_methods_supported: vec!["S256"],
         capabilities: vec![
             "launch-ehr",
@@ -120,7 +149,12 @@ pub(crate) async fn smart_configuration_handler(
     let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    Json(build_smart_configuration(&state.server_origin, &base_url)).into_response()
+    Json(build_smart_configuration(
+        &state.server_origin,
+        &base_url,
+        &state.authorization_app_base,
+    ))
+    .into_response()
 }
 
 #[cfg(test)]
@@ -133,14 +167,21 @@ mod tests {
         url::Url::parse(value).unwrap()
     }
 
+    /// The document served at `served_base`, advertising the hosted app.
+    fn document(served_base: &str) -> SmartConfiguration {
+        let authorization_app =
+            AuthorizationAppBase::parse("https://wildflowerhealth.io/authorization/")
+                .expect("valid base");
+        build_smart_configuration(SERVER_ORIGIN, &base(served_base), &authorization_app)
+    }
+
     /// The committed document `authorization-core`'s discovery tests read
     /// (`smart-discovery.test.ts`), so the TS client is tested against exactly
     /// what this serves. Regenerate with
     /// `UPDATE_SMART_CONFIGURATION=1 cargo test -p wildflowerhealthio-fhir-r4 smart_configuration_snapshot`.
     #[test]
     fn smart_configuration_snapshot_is_up_to_date() {
-        let doc =
-            build_smart_configuration(SERVER_ORIGIN, &base("https://ruth.wildflowerhealth.io"));
+        let doc = document("https://ruth.wildflowerhealth.io");
         let rendered = format!(
             "{}\n",
             serde_json::to_string_pretty(&doc).expect("serialize the discovery document")
@@ -166,8 +207,7 @@ mod tests {
 
     #[test]
     fn discovery_doc_points_authorization_endpoint_at_root_oauth() {
-        let doc =
-            build_smart_configuration(SERVER_ORIGIN, &base("https://ruth.wildflowerhealth.io"));
+        let doc = document("https://ruth.wildflowerhealth.io");
         assert_eq!(
             doc.authorization_endpoint,
             "https://ruth.wildflowerhealth.io/oauth/authorize"
@@ -186,14 +226,29 @@ mod tests {
     /// on, while the endpoint URLs follow the served origin.
     #[test]
     fn discovery_doc_reports_the_server_origin_as_issuer() {
-        let doc = build_smart_configuration(SERVER_ORIGIN, &base("http://127.0.0.1:8080/"));
+        let doc = document("http://127.0.0.1:8080/");
         assert_eq!(doc.issuer, SERVER_ORIGIN);
         assert_eq!(doc.token_endpoint, "http://127.0.0.1:8080/oauth/token");
     }
 
+    /// The management page is the hosted app pointed at the `issuer`, and the
+    /// authorization API follows the served origin like the endpoints.
+    #[test]
+    fn discovery_doc_points_management_at_the_app_and_the_api_at_the_served_origin() {
+        let doc = document("http://127.0.0.1:8080/");
+        assert_eq!(
+            doc.management_endpoint,
+            "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io"
+        );
+        assert_eq!(
+            doc.wildflower_authorization_api,
+            "http://127.0.0.1:8080/authorization/"
+        );
+    }
+
     #[test]
     fn discovery_doc_advertises_smart_app_launch_capabilities() {
-        let doc = build_smart_configuration(SERVER_ORIGIN, &base("https://example.com"));
+        let doc = document("https://example.com");
         assert!(doc.capabilities.contains(&"launch-ehr"));
         assert!(doc.capabilities.contains(&"permission-v2"));
         assert!(doc.grant_types_supported.contains(&"authorization_code"));
@@ -203,7 +258,7 @@ mod tests {
 
     #[test]
     fn discovery_doc_advertises_curated_public_scopes() {
-        let doc = build_smart_configuration(SERVER_ORIGIN, &base("https://example.com"));
+        let doc = document("https://example.com");
         // The curated public SMART read set — standard SMART App Launch scopes,
         // not the system's internal/admin vocabulary.
         assert!(doc.scopes_supported.contains(&"openid"));

@@ -1,3 +1,4 @@
+pub mod authorization_app;
 pub mod bridge;
 pub mod launcher;
 pub mod request_caller;

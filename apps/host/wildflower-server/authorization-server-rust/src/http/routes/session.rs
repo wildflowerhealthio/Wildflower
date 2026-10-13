@@ -1,9 +1,9 @@
-//! `GET /access/session` — the caller reading back their *own* session.
+//! `GET /authorization/session` — the caller reading back their *own* session.
 //!
 //! **Self-service, authN-only**, exactly like [`logout`](super::logout): every
 //! field is derived from the token the caller already presented, so the response
 //! can't disclose anything they don't already hold, and no `Scoped<…>` capability
-//! gates it — the `/access` mount's
+//! gates it — the `/authorization` mount's
 //! [`require_valid_session`](crate::http::middleware::require_valid_session) gate
 //! is the whole authorization it needs. That is load-bearing rather than merely
 //! convenient: the callers who need this most are *under*-scoped sessions (one

@@ -57,7 +57,7 @@ impl From<ClientView> for ClientBody {
     }
 }
 
-/// `GET /access/clients` — every registered OAuth client (seeded or trusted on first
+/// `GET /authorization/clients` — every registered OAuth client (seeded or trusted on first
 /// use), disabled ones included, ordered by `clientId`. Acquired through
 /// [`LiveClientsReader`] (scope `wildflower/Client.r`).
 #[utoipa::path(

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Either, Match } from 'effect'
+import { Effect, Either, Match, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -26,17 +26,26 @@ const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> =>
   jwks_uri: `${origin}/.well-known/jwks.json`,
   authorization_endpoint: `${origin}/oauth/authorize`,
   token_endpoint: `${origin}/oauth/token`,
-  grant_types_supported: ['authorization_code', 'client_credentials'],
+  management_endpoint: `https://wildflowerhealth.io/authorization/?iss=${encodeURIComponent(origin)}`,
+  wildflower_authorization_api: `${origin}/authorization/`,
+  grant_types_supported: ['authorization_code', 'refresh_token'],
   response_types_supported: ['code'],
   code_challenge_methods_supported: ['S256'],
   capabilities: ['launch-ehr', 'client-public', WILDFLOWER_SERVER_CAPABILITY],
 })
 
-/** A plain SMART server's discovery document: the same, without the Wildflower capability. */
-const plainSmartDiscoveryDocument = (origin: string): Record<string, unknown> => ({
-  ...wildflowerDiscoveryDocument(origin),
-  capabilities: ['launch-ehr', 'client-public'],
-})
+/**
+ * A plain SMART server's discovery document: the same, without the Wildflower
+ * capability, management page or authorization API.
+ */
+const plainSmartDiscoveryDocument = (origin: string): Record<string, unknown> => {
+  const {
+    management_endpoint: _management,
+    wildflower_authorization_api: _api,
+    ...document
+  } = wildflowerDiscoveryDocument(origin)
+  return { ...document, capabilities: ['launch-ehr', 'client-public'] }
+}
 
 const onSecurePage = { pageIsSecure: true }
 
@@ -141,6 +150,10 @@ describe('smartIssuerFrom', () => {
           authorizationEndpoint: 'https://ruth.wildflowerhealth.io/oauth/authorize',
           tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
         },
+        managementEndpoint: Option.some(
+          'https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io'
+        ),
+        wildflowerAuthorizationApi: Option.some('https://ruth.wildflowerhealth.io/authorization/'),
       })
     )
   })
@@ -192,6 +205,79 @@ describe('smartIssuerFrom', () => {
     // Assert
     expect(Either.map(result, (issuer) => issuer.smartServer)).toEqual(
       Either.right(WildflowerServer.make({ fhirBaseUrl: 'https://ruth.wildflowerhealth.io' }))
+    )
+  })
+
+  it('should read the management page and authorization API the Wildflower server serves', () => {
+    // Arrange — the committed document, as above.
+    const servedDocument: unknown = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../../../apps/host/wildflower-server/fhir-r4-rust/snapshots/smart-configuration.json',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    )
+
+    // Act
+    const result = smartIssuerFrom('https://ruth.wildflowerhealth.io', servedDocument, onSecurePage)
+
+    // Assert
+    expect(
+      Either.map(result, ({ managementEndpoint, wildflowerAuthorizationApi }) => ({
+        managementEndpoint,
+        wildflowerAuthorizationApi,
+      }))
+    ).toEqual(
+      Either.right({
+        managementEndpoint: Option.some(
+          'https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io'
+        ),
+        wildflowerAuthorizationApi: Option.some('https://ruth.wildflowerhealth.io/authorization/'),
+      })
+    )
+  })
+
+  it('should read no management page or authorization API from a document without them', () => {
+    // Arrange
+    const document = plainSmartDiscoveryDocument('https://example.test')
+
+    // Act
+    const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+
+    // Assert
+    expect(
+      Either.map(result, ({ managementEndpoint, wildflowerAuthorizationApi }) => ({
+        managementEndpoint,
+        wildflowerAuthorizationApi,
+      }))
+    ).toEqual(
+      Either.right({ managementEndpoint: Option.none(), wildflowerAuthorizationApi: Option.none() })
+    )
+  })
+
+  it('should read an authorization API that is not a usable URL as none', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('/authorization/', 'http://remote.test/authorization/', 'not a url'),
+        (api) => {
+          // Arrange
+          const document = {
+            ...wildflowerDiscoveryDocument('https://example.test'),
+            wildflower_authorization_api: api,
+          }
+
+          // Act
+          const result = smartIssuerFrom('https://example.test', document, onSecurePage)
+
+          // Assert
+          expect(Either.map(result, (issuer) => issuer.wildflowerAuthorizationApi)).toEqual(
+            Either.right(Option.none())
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 10 }) }
     )
   })
 

@@ -39,14 +39,7 @@ impl LauncherBase {
     ///
     /// Returns the [`url::ParseError`] when `base` is not an absolute URL.
     pub fn parse(base: &str) -> Result<Self, url::ParseError> {
-        let mut url = Url::parse(base)?;
-        if !url.path().ends_with('/') {
-            let path = format!("{}/", url.path());
-            url.set_path(&path);
-        }
-        url.set_query(None);
-        url.set_fragment(None);
-        Ok(Self(url))
+        directory_url(base).map(Self)
     }
 
     /// The launcher root itself.
@@ -84,6 +77,19 @@ impl LauncherBase {
     pub fn open_url(&self, server_origin: &str, return_to: &str) -> Url {
         self.route_url("/", server_origin, &[(RETURN_TO_PARAM, return_to)])
     }
+}
+
+/// `base` as the root of a hosted app: absolute, with a trailing slash so a
+/// route resolves *under* it, and without a query or fragment.
+pub(crate) fn directory_url(base: &str) -> Result<Url, url::ParseError> {
+    let mut url = Url::parse(base)?;
+    if !url.path().ends_with('/') {
+        let path = format!("{}/", url.path());
+        url.set_path(&path);
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url)
 }
 
 #[cfg(test)]

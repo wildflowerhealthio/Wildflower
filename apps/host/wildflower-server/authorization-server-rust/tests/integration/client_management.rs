@@ -2,19 +2,19 @@ use chrono::{DateTime, SecondsFormat};
 
 use crate::common::*;
 
-// --- Owner client management (`/access/clients`, #162) ------------------------
+// --- Owner client management (`/authorization/clients`, #162) ------------------------
 //
 // The other half of trust on first use: the Owner can see every client they
 // trust (migration-seeded or TOFU-created) and take that trust back by PATCHing
 // its `disabledAt`. A disabled client is refused at both OAuth front doors at
 // once; re-enabling (`null`) restores it with its registration intact. The first-party host client can't be disabled.
 
-/// `GET /access/clients` as `token`.
+/// `GET /authorization/clients` as `token`.
 async fn list_clients(g: &AuthorizationServer, token: &str) -> axum::response::Response {
     g.router
         .clone()
         .oneshot(loopback_request(
-            Request::get("/access/clients")
+            Request::get("/authorization/clients")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {token}")),
             Body::empty(),
@@ -23,7 +23,7 @@ async fn list_clients(g: &AuthorizationServer, token: &str) -> axum::response::R
         .expect("oneshot")
 }
 
-/// The `GET /access/clients` rows, asserting the list itself succeeded.
+/// The `GET /authorization/clients` rows, asserting the list itself succeeded.
 async fn listed_clients(g: &AuthorizationServer, token: &str) -> Vec<Value> {
     let res = list_clients(g, token).await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -38,7 +38,7 @@ fn find_client<'a>(clients: &'a [Value], client_id: &str) -> Option<&'a Value> {
     clients.iter().find(|c| c["clientId"] == client_id)
 }
 
-/// `PATCH /access/clients/{client_id}` with the raw JSON `body`, as `token`.
+/// `PATCH /authorization/clients/{client_id}` with the raw JSON `body`, as `token`.
 async fn patch_client(
     g: &AuthorizationServer,
     token: &str,
@@ -48,7 +48,7 @@ async fn patch_client(
     g.router
         .clone()
         .oneshot(loopback_request(
-            Request::patch(format!("/access/clients/{client_id}"))
+            Request::patch(format!("/authorization/clients/{client_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {token}"))
                 .header("content-type", "application/json"),
@@ -370,9 +370,10 @@ async fn unauthenticated_callers_are_rejected() {
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let disable = serde_json::json!({ "disabledAt": Utc::now().to_rfc3339() }).to_string();
     let requests = [
-        (Request::get("/access/clients"), Body::empty()),
+        (Request::get("/authorization/clients"), Body::empty()),
         (
-            Request::patch("/access/clients/test-app").header("content-type", "application/json"),
+            Request::patch("/authorization/clients/test-app")
+                .header("content-type", "application/json"),
             Body::from(disable),
         ),
     ];

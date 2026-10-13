@@ -34,10 +34,12 @@ async fn auth_code_grant_happy_path_end_to_end() {
 
     // 2. Owner approves the requested scope via the consent endpoint.
     let approve = loopback_request(
-        Request::post(format!("/access/oauth-consents/{request_id}/approve"))
-            .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
-            .header("content-type", "application/json"),
+        Request::post(format!(
+            "/authorization/oauth-consents/{request_id}/approve"
+        ))
+        .header("host", "127.0.0.1")
+        .header("authorization", format!("Bearer {host_owner_token}"))
+        .header("content-type", "application/json"),
         Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
@@ -159,7 +161,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get(format!("/access/oauth-consents/{request_id}"))
+            Request::get(format!("/authorization/oauth-consents/{request_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -216,10 +218,12 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
 
     // 2. Owner approves the *narrowed* `.s` — tighter than the requested `.rs`.
     let approve = loopback_request(
-        Request::post(format!("/access/oauth-consents/{request_id}/approve"))
-            .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
-            .header("content-type", "application/json"),
+        Request::post(format!(
+            "/authorization/oauth-consents/{request_id}/approve"
+        ))
+        .header("host", "127.0.0.1")
+        .header("authorization", format!("Bearer {host_owner_token}"))
+        .header("content-type", "application/json"),
         Body::from(
             r#"{"approvedScopes":["patient/Observation.s"],"acknowledgedRegistration":false}"#,
         ),
@@ -415,7 +419,7 @@ async fn consent_approval_persists_grant() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get("/access/grants")
+            Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -585,7 +589,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::get("/access/grants")
+            Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),
@@ -957,7 +961,7 @@ async fn denying_a_new_app_registers_nothing() {
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::post(format!("/access/oauth-consents/{request_id}/deny"))
+            Request::post(format!("/authorization/oauth-consents/{request_id}/deny"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {host_owner_token}")),
             Body::empty(),

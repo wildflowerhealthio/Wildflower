@@ -33,6 +33,10 @@ async fn main() -> anyhow::Result<()> {
         // Dev binary: no relay, so HFS's links point back at the loopback
         // server itself.
         public_origin: "http://127.0.0.1:8080".parse()?,
+        authorization_app_base:
+            wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase::parse(
+                "https://wildflowerhealth.io/authorization/",
+            )?,
     };
 
     // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is

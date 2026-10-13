@@ -9,6 +9,7 @@ struct TauriSharedConfig {
     local_granted_scopes: String,
     first_party_client_id: String,
     launcher_base_url: String,
+    authorization_app_base_url: String,
     background_service_label: String,
     background_service_foreground_type: String,
 }
@@ -67,6 +68,10 @@ fn main() {
     println!(
         "cargo:rustc-env=WILDFLOWER_LAUNCHER_BASE_URL={}",
         config.launcher_base_url
+    );
+    println!(
+        "cargo:rustc-env=WILDFLOWER_AUTHORIZATION_APP_BASE_URL={}",
+        config.authorization_app_base_url
     );
     // The debug launcher address is the launcher's dev server, whose port the
     // shared dev-port file pins (the launcher's `vite.config.web.ts` binds it).

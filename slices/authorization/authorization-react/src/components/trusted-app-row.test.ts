@@ -102,7 +102,7 @@ describe('trustedAppRow', () => {
 
 const decodeClient = Schema.decodeUnknownSync(AccessManagement.ClientSchema)
 
-/** A migration-seeded SMART app, as `GET /access/clients` returns it. */
+/** A migration-seeded SMART app, as `GET /authorization/clients` returns it. */
 const ohifViewer = {
   clientId: 'ohif-viewer',
   name: 'OHIF Viewer',

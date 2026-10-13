@@ -41,6 +41,7 @@ use wildflowerhealthio_authorization_server::{
     GrantStore, NoLoopbackConsentPrompt, SqliteGrantStore,
 };
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::health_check::{
     ComponentType, HealthReport, HealthStatus,
 };
@@ -87,6 +88,10 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
         )),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base"),
+        authorization_app_base: AuthorizationAppBase::parse(
+            "https://authorization.test/authorization/",
+        )
+        .expect("authorization app base"),
         // The owner-defining scopes the authorization server requires the host owner token to cover.
         host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
@@ -983,6 +988,82 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
         .expect("a cancelled serve returns Ok");
 }
 
+/// Every URL the SMART discovery document advertises on the origin it was
+/// served on is a route the server answers: requested without a token, none
+/// is a `404`. The authorization API's base names no resource of its own, so
+/// it is walked through its `session` route. The one URL off that origin is
+/// the `management_endpoint`, the hosted Wildflower Authorization app pointed
+/// at the `issuer`.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_endpoint_smart_discovery_advertises_is_routed() {
+    let server = UiServer::start().await;
+    let served_origin = server.loopback_base_url.origin().ascii_serialization();
+    let discovery: Value = server
+        .browser
+        .get(
+            server
+                .loopback_base_url
+                .join(".well-known/smart-configuration")
+                .expect("discovery URL"),
+        )
+        .send()
+        .await
+        .expect("GET the discovery document")
+        .json()
+        .await
+        .expect("a JSON discovery document");
+    assert_eq!(discovery["issuer"], SERVER_ORIGIN);
+    assert_eq!(
+        discovery["management_endpoint"],
+        "https://authorization.test/authorization/?iss=https%3A%2F%2Ftest.relay.invalid"
+    );
+
+    let mut walked = Vec::new();
+    for (field, value) in discovery.as_object().expect("a JSON object") {
+        if field == "issuer" || field == "management_endpoint" {
+            continue;
+        }
+        let Some(url) = value.as_str().and_then(|value| Url::parse(value).ok()) else {
+            continue;
+        };
+        assert_eq!(
+            url.origin().ascii_serialization(),
+            served_origin,
+            "{field} is on the origin discovery was served on"
+        );
+        let route = if field == "wildflower_authorization_api" {
+            url.join("session").expect("the API's session route")
+        } else {
+            url
+        };
+        let status = server
+            .browser
+            .get(route.clone())
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("GET {route}: {error}"))
+            .status();
+        assert_ne!(
+            status,
+            reqwest::StatusCode::NOT_FOUND,
+            "{field} ({route}) is routed"
+        );
+        walked.push(field.as_str());
+    }
+    walked.sort_unstable();
+    assert_eq!(
+        walked,
+        [
+            "authorization_endpoint",
+            "jwks_uri",
+            "token_endpoint",
+            "wildflower_authorization_api"
+        ]
+    );
+
+    server.shut_down().await;
+}
+
 /// A request a browser on the server's public origin sends, as the tunnel front
 /// stamps it.
 const PUBLIC_BROWSER_FORWARDED: &str = "for=192.0.2.1;host=test.relay.invalid;proto=https";
@@ -1112,7 +1193,9 @@ impl UiServer {
             .browser
             .post(
                 self.loopback_base_url
-                    .join(&format!("access/oauth-consents/{request_id}/approve"))
+                    .join(&format!(
+                        "authorization/oauth-consents/{request_id}/approve"
+                    ))
                     .expect("approve URL"),
             )
             .bearer_auth(owner_token)

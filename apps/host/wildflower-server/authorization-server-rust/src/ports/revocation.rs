@@ -22,7 +22,7 @@ pub(crate) trait Revocation: Send + Sync + 'static {
 
     /// Bump a subject's revocation epoch to now, killing every access **and**
     /// refresh token issued to it before this instant — the bulk revoke behind a
-    /// grant revoke and `/access/revocations` subject revoke.
+    /// grant revoke and `/authorization/revocations` subject revoke.
     ///
     /// # Errors
     ///

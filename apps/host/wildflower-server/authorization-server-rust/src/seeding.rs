@@ -473,7 +473,7 @@ pub(crate) fn mint_host_owner_token(
     // The host owner token carries the host's granted scopes (by default the FHIR
     // and Wildflower full-access wildcards): it gates HFS's FHIR surface, and —
     // because those wildcards cover every per-resource scope the `Scoped<…>`
-    // extractors require — it passes every gate on the authorization server's `/access/*` admin
+    // extractors require — it passes every gate on the authorization server's `/authorization/*` admin
     // surface too. `setup_authorization_server` asserts the granted set covers
     // `WILDFLOWER_WIDEST_SCOPES` before we reach here.
     //

@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
+
 #[derive(Debug, Clone)]
 pub struct FhirR4Config {
     pub log_level: String,
@@ -37,4 +39,8 @@ pub struct FhirR4Config {
     /// `aud` HFS requires of every token, and the `issuer` the SMART discovery
     /// document reports. See `docs/Origins/Explanation.md`.
     pub public_origin: url::Url,
+    /// The hosted Wildflower Authorization app, which the SMART discovery
+    /// document advertises, pointed at this server, as its
+    /// `management_endpoint`.
+    pub authorization_app_base: AuthorizationAppBase,
 }

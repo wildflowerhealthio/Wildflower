@@ -274,6 +274,7 @@ where
         .with_state(SmartConfigState {
             loopback_base_url: loopback_base_url.clone(),
             server_origin: server_origin.clone(),
+            authorization_app_base: config.authorization_app_base.clone(),
         });
 
     // `$everything` delegates back into HFS in-process (see

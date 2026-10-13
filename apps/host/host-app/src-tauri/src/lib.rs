@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tauri::Manager;
 use url::Url;
 use wildflowerhealthio_servers::{ServerDetail, ServerRecord};
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_tauri_unit_runner::{
@@ -45,6 +46,12 @@ const LAUNCHER_BASE_URL: &str = if cfg!(debug_assertions) {
 } else {
     env!("WILDFLOWER_LAUNCHER_BASE_URL")
 };
+
+// The hosted Wildflower Authorization app (see
+// `wildflowerhealthio_shared_structures::authorization_app`), from the same
+// `tauri-shared-config.json` (re-emitted by `build.rs`), in every build: each
+// server's SMART discovery advertises it as its `management_endpoint`.
+const AUTHORIZATION_APP_BASE_URL: &str = env!("WILDFLOWER_AUTHORIZATION_APP_BASE_URL");
 
 // The launcher a new server gets: the hosted launcher, the release
 // `launcher_base_url` from the same `tauri-shared-config.json` (re-emitted by
@@ -136,6 +143,9 @@ fn server_config(
 ) -> anyhow::Result<WildflowerServerConfig> {
     let launcher_base = LauncherBase::parse(LAUNCHER_BASE_URL)
         .context("launcher_base_url (from tauri-shared-config.json) must be an absolute URL")?;
+    let authorization_app_base = AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE_URL).context(
+        "authorization_app_base_url (from tauri-shared-config.json) must be an absolute URL",
+    )?;
     // Hostname/port come from the shared `tauri-shared-config.json` (see
     // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`).
     let loopback_base_url = Url::parse(&format!("http://{LOOPBACK_HOSTNAME}:{LOOPBACK_PORT}"))
@@ -209,6 +219,7 @@ fn server_config(
         runtime,
         search_parameter_data_dir,
         launcher_base,
+        authorization_app_base,
         host_owner_scopes: host_owner_scopes(),
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
@@ -447,6 +458,16 @@ mod tests {
     #[test]
     fn the_default_launcher_is_an_absolute_url() {
         url::Url::parse(super::DEFAULT_LAUNCHER_URL).expect("launcher_base_url is an absolute URL");
+    }
+
+    /// Each server's config parses the authorization app's base, so one that
+    /// isn't an absolute URL would stop every server starting.
+    #[test]
+    fn the_authorization_app_base_is_an_absolute_url() {
+        wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase::parse(
+            super::AUTHORIZATION_APP_BASE_URL,
+        )
+        .expect("authorization_app_base_url is an absolute URL");
     }
 
     /// The plugin checks the type `TauriUnitRunner`'s background session starts

@@ -1,4 +1,4 @@
-//! `POST /access/revocations` — the token-revocation control surface. Acquired
+//! `POST /authorization/revocations` — the token-revocation control surface. Acquired
 //! through the [`LiveTokenRevoker`](crate::live_bindings::LiveTokenRevoker)
 //! facade (scope `wildflower/Token.d`): a caller must cover the `Token` delete
 //! scope — which an owner's `wildflower/*.cruds` does — to revoke, else a `403`.
@@ -41,10 +41,10 @@ pub fn router() -> Router<Arc<AuthorizationServerState>> {
 
 /// Error half of the revocations handler. The request-body validation failures
 /// ([`BadRequest`](RevocationError::BadRequest)) are HTTP-layer-only — they
-/// describe a malformed `POST /access/revocations` body, not a domain outcome —
+/// describe a malformed `POST /authorization/revocations` body, not a domain outcome —
 /// so they can't live on [`AuthorizationServerError`]; the backing-store failures delegate
 /// to `AuthorizationServerError`'s opaque, logged-500 rendering. This is the one residual
-/// error mechanism left after the `/access` surface converged on
+/// error mechanism left after the `/authorization` surface converged on
 /// `impl IntoResponse for AuthorizationServerError` (the rest of the surface returns
 /// `Result<_, AuthorizationServerError>` directly).
 enum RevocationError {
@@ -85,7 +85,7 @@ impl IntoResponse for RevocationError {
     }
 }
 
-/// Wire body of `POST /access/revocations`. Purely the deserialization shape:
+/// Wire body of `POST /authorization/revocations`. Purely the deserialization shape:
 /// the fields are optional so [`into_revocation`](RevocationRequest::into_revocation)
 /// can return a precise 400 for an ambiguous or empty body rather than a generic
 /// deserialization error. The *validated* request is the [`Revocation`] enum —

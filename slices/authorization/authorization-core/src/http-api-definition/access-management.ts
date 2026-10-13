@@ -209,7 +209,7 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
   // `GetSession` is authN-only and simply never returns it.
   .addError(InsufficientScopeSchema, { status: 403 })
   .middleware(RequireAuthMiddleware)
-  .prefix('/access')
+  .prefix('/authorization')
 
 export {
   httpApiGroup,

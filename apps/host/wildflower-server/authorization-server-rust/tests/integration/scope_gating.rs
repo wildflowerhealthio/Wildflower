@@ -1,6 +1,6 @@
 use crate::common::*;
 
-// --- Scope-gated `/access` authorization (resource-based authz, #261) ---------
+// --- Scope-gated `/authorization` authorization (resource-based authz, #261) ---------
 //
 // authN (a valid token) is proven above via 401; these pin authZ: a valid but
 // under-scoped token is a 403 naming the missing scope, the exact-scope token
@@ -12,7 +12,7 @@ async fn access_grants_list_with_grant_read_scope_returns_200() {
     let (g, _host_owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
-        Request::get("/access/grants")
+        Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
         Body::empty(),
@@ -29,7 +29,7 @@ async fn access_grants_list_with_wildflower_wildcard_returns_200() {
     let (g, _host_owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/*.cruds"]);
     let req = loopback_request(
-        Request::get("/access/grants")
+        Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
         Body::empty(),
@@ -46,7 +46,7 @@ async fn access_grants_delete_with_only_read_scope_returns_403_missing_delete() 
     let (g, _host_owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
-        Request::delete("/access/grants/any-id")
+        Request::delete("/authorization/grants/any-id")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
         Body::empty(),
@@ -68,7 +68,7 @@ async fn access_grants_delete_with_grant_delete_scope_passes_the_gate() {
     let (g, _host_owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.d"]);
     let req = loopback_request(
-        Request::delete("/access/grants/nope")
+        Request::delete("/authorization/grants/nope")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
         Body::empty(),
@@ -84,7 +84,7 @@ async fn access_revocations_requires_token_delete_scope() {
     // A `Grant.r` token can't revoke tokens — 403 naming `wildflower/Token.d`.
     let under_scoped = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
-        Request::post("/access/revocations")
+        Request::post("/authorization/revocations")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {under_scoped}"))
             .header("content-type", "application/json"),
@@ -100,7 +100,7 @@ async fn access_revocations_requires_token_delete_scope() {
     // A `Token.d` token clears the gate and the subject epoch bump succeeds.
     let authorized = mint_scoped_token(&db, &["wildflower/Token.d"]);
     let req = loopback_request(
-        Request::post("/access/revocations")
+        Request::post("/authorization/revocations")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {authorized}"))
             .header("content-type", "application/json"),
@@ -117,7 +117,7 @@ async fn access_logout_is_self_service_any_valid_bearer() {
     let (g, _host_owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
-        Request::post("/access/logout")
+        Request::post("/authorization/logout")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
         Body::empty(),
@@ -128,14 +128,14 @@ async fn access_logout_is_self_service_any_valid_bearer() {
 
 #[tokio::test]
 async fn access_session_reports_the_callers_own_scopes_without_an_admin_scope() {
-    // `GET /access/session` is self-service like logout: it reports back the
+    // `GET /authorization/session` is self-service like logout: it reports back the
     // caller's *own* verified `scope` claim, so it takes no admin scope. That is
     // the point — the callers who need it are the under-scoped sessions arriving
     // from a 403, whom a scope gate would lock out of reading their own scopes.
     let (g, _host_owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["patient/Observation.rs", "wildflower/Grant.r"]);
     let req = loopback_request(
-        Request::get("/access/session")
+        Request::get("/authorization/session")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
         Body::empty(),
@@ -150,12 +150,12 @@ async fn access_session_reports_the_callers_own_scopes_without_an_admin_scope() 
 
 #[tokio::test]
 async fn access_session_without_a_token_is_401_not_an_empty_scope_list() {
-    // The `/access` authN gate still applies. An unauthenticated caller must get
+    // The `/authorization` authN gate still applies. An unauthenticated caller must get
     // a 401 — never a 200 with `[]`, which the device-login screen would read as
     // "this session holds nothing" rather than "there is no session".
     let (g, _host_owner_token, _db) = spin_up();
     let req = loopback_request(
-        Request::get("/access/session").header("host", "127.0.0.1"),
+        Request::get("/authorization/session").header("host", "127.0.0.1"),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
