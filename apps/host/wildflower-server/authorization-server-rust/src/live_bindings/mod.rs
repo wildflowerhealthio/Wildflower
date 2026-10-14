@@ -53,7 +53,7 @@ pub use host_consent_decider::HostConsentDecider;
 pub use launch_context_minter::LaunchContextMinter;
 pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
-    LiveLoopbackOwnerApprover, LivePublicKeysReader, LiveSameDeviceSignIn,
+    LivePublicKeysReader, LiveSameDeviceSignIn,
 };
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
 pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};

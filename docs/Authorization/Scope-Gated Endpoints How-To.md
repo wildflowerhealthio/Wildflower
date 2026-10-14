@@ -297,22 +297,19 @@ the rule the proof stands for:
 - `RedeemedAuthorizationCode` / `ConsumedDeviceRequest` / `ValidatedRefreshToken`
   — the redemptions a token is minted under, each carrying the scopes of the
   record it redeemed.
-- `HostOwnerEntitlement` — what the host's own boot-time owner token may claim,
-  the one authority with no approving human; constructible only in `seeding.rs`.
 - `RedeemedSameDeviceSignInCode` — a one-time same-device sign-in code the
   Wildflower host app minted in-process, redeemed at `/oauth/sign-in`: an Owner
   browser's token's authority, as the `wildflower-owner-browser` client holding
   the host Owner's grant.
 
 The minter signs only under a `TokenEntitlement` — an enum with one variant per
-redemption plus `HostOwnerEntitlement` — so a token's claims always come from a
+redemption — so a token's claims always come from a
 proof, never from a caller-assembled scope list. The sets of proofs a writer
 accepts (`TokenEntitlement`, `GrantRedemption`, `CodeAuthority`) are enums, not
 traits, so each is one closed list an audit can read.
 
-Two source guards make it structural: one pins every privileged store method
-name to the writers, the other pins the `HostOwnerEntitlement` constructor to
-seeding.
+A source guard makes it structural: it pins every privileged store method name
+to the writers.
 The audit is then the proof constructors plus the writers, not every flow.
 Capabilities that no principal unlocks (the pre-auth `/oauth` front door, the
 token verifier) are acquired through the authorization server's `Live<F>` extractor, so a

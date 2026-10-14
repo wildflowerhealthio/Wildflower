@@ -9,7 +9,7 @@ use crate::common::*;
 /// (`last_polled_at` is within `DEVICE_CODE_POLL_INTERVAL`).
 #[tokio::test]
 async fn device_grant_pending_then_slow_down() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     plant_device_request(
         &store_handle(&db),
         "wildflower-host",
@@ -39,7 +39,7 @@ async fn device_grant_pending_then_slow_down() {
 /// (single-use, RFC 8628 §3.4).
 #[tokio::test]
 async fn device_grant_single_use_then_expired_token() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     plant_device_request(
         &store_handle(&db),
         "wildflower-host",
@@ -75,7 +75,7 @@ async fn device_grant_single_use_then_expired_token() {
 /// code-flow path already clamped to `allowed_scopes`).
 #[tokio::test]
 async fn device_consent_clamps_granted_scopes_to_client_allowed() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     // The client currently permits only `read` — `write` is no longer allowed.
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     // A pending device request that still asks for the now-disallowed `write`.
@@ -92,7 +92,7 @@ async fn device_consent_clamps_granted_scopes_to_client_allowed() {
     let approve = loopback_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("authorization", format!("Bearer {owner_token}"))
             .header("content-type", "application/json"),
         Body::from(r#"{"approvedScopes":["read","write"]}"#),
     );
@@ -120,7 +120,7 @@ async fn device_consent_clamps_granted_scopes_to_client_allowed() {
 /// so this is the only test that exercises the wired-through path.
 #[tokio::test]
 async fn device_consent_threads_patient_onto_request() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     plant_device_request(
         &store_handle(&db),
@@ -135,7 +135,7 @@ async fn device_consent_threads_patient_onto_request() {
     let approve = loopback_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("authorization", format!("Bearer {owner_token}"))
             .header("content-type", "application/json"),
         Body::from(r#"{"approvedScopes":["read"],"patient":"Patient/123"}"#),
     );
@@ -162,7 +162,7 @@ async fn device_consent_threads_patient_onto_request() {
 /// for the still-enforced allowed-scopes ceiling.)
 #[tokio::test]
 async fn device_consent_allows_expansion_beyond_requested() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     // The client is allowed both read and write.
     seed_client_with_redirect(
         &db,
@@ -184,7 +184,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
     let approve = loopback_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("authorization", format!("Bearer {owner_token}"))
             .header("content-type", "application/json"),
         Body::from(r#"{"approvedScopes":["read","write"]}"#),
     );
@@ -211,7 +211,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
 /// envelope) on the `/authorization/devices/{userCode}` consent prompt.
 #[tokio::test]
 async fn device_authorization_carries_device_name_to_consent() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     // Start the flow with a device name (URL-encoded, includes a space + apostrophe).
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
@@ -229,7 +229,7 @@ async fn device_authorization_carries_device_name_to_consent() {
     let get = loopback_request(
         Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}")),
+            .header("authorization", format!("Bearer {owner_token}")),
         Body::empty(),
     );
     let res = g.router.clone().oneshot(get).await.expect("oneshot");
@@ -248,7 +248,7 @@ async fn device_authorization_carries_device_name_to_consent() {
 /// by the durable grant). A browser-shaped UA becomes "Browser on OS".
 #[tokio::test]
 async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     // No `device_name` in the body — only a browser User-Agent.
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
@@ -266,7 +266,7 @@ async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() 
     let get = loopback_request(
         Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}")),
+            .header("authorization", format!("Bearer {owner_token}")),
         Body::empty(),
     );
     let res = g.router.clone().oneshot(get).await.expect("oneshot");
@@ -281,7 +281,7 @@ async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() 
 /// inference — the explicit name wins even when a recognizable UA is present.
 #[tokio::test]
 async fn explicit_device_name_wins_over_user_agent_inference() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded")
@@ -298,7 +298,7 @@ async fn explicit_device_name_wins_over_user_agent_inference() {
     let get = loopback_request(
         Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}")),
+            .header("authorization", format!("Bearer {owner_token}")),
         Body::empty(),
     );
     let res = g.router.clone().oneshot(get).await.expect("oneshot");
@@ -314,7 +314,7 @@ async fn explicit_device_name_wins_over_user_agent_inference() {
 /// so an omitted name leaves the stored one intact).
 #[tokio::test]
 async fn device_consent_approver_can_adjust_device_name() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     plant_device_request(
         &store_handle(&db),
@@ -328,7 +328,7 @@ async fn device_consent_approver_can_adjust_device_name() {
     let approve = loopback_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("authorization", format!("Bearer {owner_token}"))
             .header("content-type", "application/json"),
         Body::from(r#"{"approvedScopes":["read"],"deviceName":"Reception iPad"}"#),
     );
@@ -350,7 +350,7 @@ async fn device_consent_approver_can_adjust_device_name() {
 /// code-flow half.
 #[tokio::test]
 async fn device_approval_mints_durable_grant_and_links_refresh_family() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "device-client",
@@ -370,7 +370,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
     let approve = loopback_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("authorization", format!("Bearer {owner_token}"))
             .header("content-type", "application/json"),
         Body::from(r#"{"approvedScopes":["read","offline_access"],"deviceName":"Reception iPad"}"#),
     );
@@ -385,7 +385,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
         .oneshot(loopback_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -430,7 +430,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
 /// at the refresh-token grant before any token lookup.
 #[tokio::test]
 async fn token_endpoint_rejects_grant_outside_client_allow_list() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     store_handle(&db)
         .upsert_client(&Client {
             client_id: "code-only".to_string(),
@@ -464,7 +464,7 @@ async fn token_endpoint_rejects_grant_outside_client_allow_list() {
 /// device endpoint.
 #[tokio::test]
 async fn device_authorization_sets_cache_suppression_headers() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let res = post_form(
         &g.router,
         "/oauth/device_authorization",
@@ -491,7 +491,7 @@ async fn device_authorization_sets_cache_suppression_headers() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn offline_access_issues_rotating_refresh_token() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -500,7 +500,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     );
     let request_id = authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read%20offline_access",
         r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistration":false}"#,
@@ -641,7 +641,7 @@ async fn offline_access_issues_rotating_refresh_token() {
 /// The rows survive the attempt — natural deadline passage writes nothing.
 #[tokio::test]
 async fn expired_refresh_token_family_is_rejected() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -682,7 +682,7 @@ async fn expired_refresh_token_family_is_rejected() {
 /// mismatch does NOT revoke the rightful owner's family.
 #[tokio::test]
 async fn refresh_token_is_bound_to_issuing_client() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "owner-app", "https://app.example/cb", &["read"]);
     seed_client_with_redirect(&db, "other-app", "https://other.example/cb", &["read"]);
     let store = store_handle(&db);
@@ -719,7 +719,7 @@ async fn refresh_token_is_bound_to_issuing_client() {
 /// tokens — standing consent and standing credentials die together.
 #[tokio::test]
 async fn revoking_grant_revokes_refresh_tokens() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -728,7 +728,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
     );
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -749,7 +749,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
         .oneshot(loopback_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -762,7 +762,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
         .oneshot(loopback_request(
             Request::delete(format!("/authorization/grants/{grant_id}"))
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await

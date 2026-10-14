@@ -1,16 +1,13 @@
-use std::sync::Arc;
-
 use axum::extract::Query;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
-use wildflowerhealthio_shared_structures::served_origin::{request_provenance, RequestProvenance};
 
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::capabilities::oauth::{
-    asks_loopback_dialog, AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
+    AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::http::errors::InternalError;
@@ -18,7 +15,7 @@ use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
 
 use super::wait_page::wait_page_location;
-use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveLoopbackOwnerApprover};
+use crate::live_bindings::LiveCodeAuthorizationStarter;
 
 /// `302 Found` redirect. RFC 6749's examples use 302 and the TypeScript
 /// implementation emits 302, so all `/oauth/authorize` redirects use it for
@@ -157,7 +154,7 @@ pub struct AuthorizeParams {
 ///    wait page at `/oauth/authorize/{id}/wait`, served by this authorization server on
 ///    the origin the browser used, which polls `GET /oauth/authorize/{id}` (a
 ///    custom extension, not part of any RFC) until the Owner decides — in the
-///    popup, in a signed-in launcher, or in the host's native dialog. RFC 6749
+///    popup or in a signed-in launcher. RFC 6749
 ///    leaves the owner-interaction mechanism unspecified, so the wait page is
 ///    spec-legal; likewise §4.1 explicitly allows skipping consent on a
 ///    previously established authorization decision, which is what the grant
@@ -187,8 +184,6 @@ pub struct AuthorizeParams {
 )]
 pub(super) async fn handle_authorize_request(
     code_authorization_starter: Live<LiveCodeAuthorizationStarter>,
-    loopback_owner_approver: Live<LiveLoopbackOwnerApprover>,
-    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     let next_step = code_authorization_starter.start(
@@ -222,24 +217,9 @@ pub(super) async fn handle_authorize_request(
             &client_state,
         )),
         // Otherwise this authorization server's wait page, which waits for whichever
-        // surface — the host popup, a signed-in launcher's consent list, or (for
-        // the hosted launcher over direct loopback) the host's native dialog —
+        // surface — the host popup or a signed-in launcher's consent list —
         // decides first.
         AuthorizeNextStep::AwaitOwner { request_id } => {
-            let is_direct_loopback = matches!(
-                request_provenance(&headers),
-                Some(RequestProvenance::Loopback)
-            );
-            if asks_loopback_dialog(is_direct_loopback, &params.client_id) {
-                let asking = Arc::new(loopback_owner_approver.0)
-                    .ask_and_decide(request_id.clone(), generate_authorization_code);
-                tokio::spawn(async move {
-                    match asking.await {
-                        Ok(decision) => tracing::info!(?decision, "loopback dialog decided"),
-                        Err(error) => tracing::error!(%error, "loopback dialog failed"),
-                    }
-                });
-            }
             found_redirect(&wait_page_location(&request_id))
         }
     })

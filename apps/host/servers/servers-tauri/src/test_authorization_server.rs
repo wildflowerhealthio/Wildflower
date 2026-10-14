@@ -1,13 +1,11 @@
 //! [`TestAuthorizationServer`]: a server's authorization server over a temporary database, for
 //! the commands' tests to read, decide and mint through.
 
-use std::sync::Arc;
-
 use tokio::sync::watch;
 use url::Url;
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AuthorizationServerConfig, HostConsentDecider, LaunchContextMinter,
-    NoLoopbackConsentPrompt, PendingConsentHead, SqliteGrantStore,
+    PendingConsentHead, SqliteGrantStore,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -22,7 +20,6 @@ pub(crate) struct TestAuthorizationServer {
     pub(crate) launch_context_minter: LaunchContextMinter,
     pub(crate) store: SqliteGrantStore,
     _pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
-    _owner_token_rx: watch::Receiver<Option<String>>,
     database_dir: tempfile::TempDir,
 }
 
@@ -50,7 +47,6 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
         wildflowerhealthio_persistence::Connection::open_in_memory().unwrap(),
     )
     .unwrap();
-    let (owner_token_tx, owner_token_rx) = watch::channel(None);
     let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
     let authorization_server = setup_authorization_server(
         pool.clone(),
@@ -69,9 +65,7 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
             )
             .unwrap(),
         },
-        &owner_token_tx,
         pending_consent_tx,
-        Arc::new(NoLoopbackConsentPrompt),
     )
     .unwrap();
     TestAuthorizationServer {
@@ -79,7 +73,6 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
         launch_context_minter: authorization_server.launch_context_minter,
         store: SqliteGrantStore::new(pool).unwrap(),
         _pending_consent_rx: pending_consent_rx,
-        _owner_token_rx: owner_token_rx,
         database_dir,
     }
 }

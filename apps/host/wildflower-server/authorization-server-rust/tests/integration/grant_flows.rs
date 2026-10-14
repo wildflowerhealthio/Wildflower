@@ -5,7 +5,7 @@ use crate::common::*;
 /// end-to-end. Asserts a signed bearer token comes back with the granted scope.
 #[tokio::test]
 async fn auth_code_grant_happy_path_end_to_end() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let challenge = compute_code_challenge(CODE_VERIFIER);
 
@@ -38,7 +38,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
             "/authorization/oauth-consents/{request_id}/approve"
         ))
         .header("host", "127.0.0.1")
-        .header("authorization", format!("Bearer {host_owner_token}"))
+        .header("authorization", format!("Bearer {owner_token}"))
         .header("content-type", "application/json"),
         Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#),
     );
@@ -130,7 +130,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
 /// can lead with something a patient can recognize.
 #[tokio::test]
 async fn oauth_consent_prompt_carries_client_display_name() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let challenge = compute_code_challenge(CODE_VERIFIER);
 
@@ -163,7 +163,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
         .oneshot(loopback_request(
             Request::get(format!("/authorization/oauth-consents/{request_id}"))
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -182,7 +182,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
 /// `is_requested` change in `wildflowerhealthio_scopes::grantable_scopes`.
 #[tokio::test]
 async fn auth_code_grant_owner_narrows_requested_scope() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     // The client is allowed the broader `.rs`; the request asks for `.rs`.
     seed_client_with_redirect(
         &db,
@@ -222,7 +222,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
             "/authorization/oauth-consents/{request_id}/approve"
         ))
         .header("host", "127.0.0.1")
-        .header("authorization", format!("Bearer {host_owner_token}"))
+        .header("authorization", format!("Bearer {owner_token}"))
         .header("content-type", "application/json"),
         Body::from(
             r#"{"approvedScopes":["patient/Observation.s"],"acknowledgedRegistration":false}"#,
@@ -268,7 +268,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
 /// whose token does cover it (here the host Owner) can still answer it.
 #[tokio::test]
 async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_request_stays_pending() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -320,8 +320,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
         status.get("redirect").is_none_or(Value::is_null),
         "{status}"
     );
-    let res =
-        approve_oauth_consent(&g, &host_owner_token, &request_id, approve_body.to_string()).await;
+    let res = approve_oauth_consent(&g, &owner_token, &request_id, approve_body.to_string()).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res.into_body()).await["status"], "approved");
 }
@@ -332,7 +331,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
 /// stays the granted set verbatim.
 #[tokio::test]
 async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -341,7 +340,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
     );
     let request_id = authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "patient%2FObservation.read",
         r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistration":false}"#,
@@ -404,11 +403,11 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
 /// the standing-consent record that powers the `/authorize` fast path.
 #[tokio::test]
 async fn consent_approval_persists_grant() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -421,7 +420,7 @@ async fn consent_approval_persists_grant() {
         .oneshot(loopback_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -452,11 +451,11 @@ async fn consent_approval_persists_grant() {
 /// `code` (RFC 6749 §4.1 — a previously established authorization decision).
 #[tokio::test]
 async fn pre_approved_scopes_skip_consent_on_reauthorize() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -507,7 +506,7 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
 /// approval has collapsed two narrow consents into one broader scope.
 #[tokio::test]
 async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -516,7 +515,7 @@ async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
     );
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "patient%2FObservation.rs",
         r#"{"approvedScopes":["patient/Observation.rs"],"acknowledgedRegistration":false}"#,
@@ -559,7 +558,7 @@ async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
 /// not un-approve the previously consented `read`.
 #[tokio::test]
 async fn consent_approvals_union_scopes_into_grant() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -568,7 +567,7 @@ async fn consent_approvals_union_scopes_into_grant() {
     );
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -578,7 +577,7 @@ async fn consent_approvals_union_scopes_into_grant() {
     // the grant must still cover both afterwards.
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read%20write",
         r#"{"approvedScopes":["write"],"acknowledgedRegistration":false}"#,
@@ -591,7 +590,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         .oneshot(loopback_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -610,7 +609,7 @@ async fn consent_approvals_union_scopes_into_grant() {
 /// `invalid_grant` PKCE failure (RFC 7636 §4.6 / RFC 6749 §5.2).
 #[tokio::test]
 async fn auth_code_grant_wrong_verifier_rejected() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let redirect = Url::parse("https://app.example/cb").unwrap();
     plant_authorization_code(
@@ -641,7 +640,7 @@ async fn auth_code_grant_wrong_verifier_rejected() {
 /// store-level insert of an already-expired row rather than a real-time sleep.
 #[tokio::test]
 async fn auth_code_grant_expired_code_rejected() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let redirect = Url::parse("https://app.example/cb").unwrap();
     plant_authorization_code(
@@ -671,7 +670,7 @@ async fn auth_code_grant_expired_code_rejected() {
 /// (RFC 6749 §10.5).
 #[tokio::test]
 async fn auth_code_grant_replay_rejected() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let redirect = Url::parse("https://app.example/cb").unwrap();
     plant_authorization_code(
@@ -704,7 +703,7 @@ async fn auth_code_grant_replay_rejected() {
 /// lineage, so the previously-issued refresh token can no longer be rotated.
 #[tokio::test]
 async fn auth_code_replay_revokes_issued_refresh_family() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -764,12 +763,12 @@ async fn auth_code_replay_revokes_issued_refresh_family() {
 /// for a client with no row at all.
 #[tokio::test]
 async fn consent_prompt_reports_the_registration_verdict() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
 
     let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
     let known = parked_request_id(&res);
-    let consent = get_oauth_consent(&g, &host_owner_token, &known).await;
+    let consent = get_oauth_consent(&g, &owner_token, &known).await;
     assert_eq!(
         consent["registration"],
         serde_json::json!({ "status": "registered" })
@@ -777,7 +776,7 @@ async fn consent_prompt_reports_the_registration_verdict() {
 
     let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
     let unknown = parked_request_id(&res);
-    let consent = get_oauth_consent(&g, &host_owner_token, &unknown).await;
+    let consent = get_oauth_consent(&g, &owner_token, &unknown).await;
     assert_eq!(
         consent["registration"],
         serde_json::json!({"status": "new"})
@@ -791,13 +790,13 @@ async fn consent_prompt_reports_the_registration_verdict() {
 /// the prompt is still pending, so the Owner can decide again.
 #[tokio::test]
 async fn approving_a_new_app_without_acknowledgement_is_rejected() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
     let request_id = parked_request_id(&res);
 
     let res = approve_oauth_consent(
         &g,
-        &host_owner_token,
+        &owner_token,
         &request_id,
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#.to_string(),
     )
@@ -825,7 +824,7 @@ async fn approving_a_new_app_without_acknowledgement_is_rejected() {
         .unwrap()
         .is_none());
     // Still pending — the prompt loads again.
-    let consent = get_oauth_consent(&g, &host_owner_token, &request_id).await;
+    let consent = get_oauth_consent(&g, &owner_token, &request_id).await;
     assert_eq!(
         consent["registration"],
         serde_json::json!({"status": "new"})
@@ -839,13 +838,13 @@ async fn approving_a_new_app_without_acknowledgement_is_rejected() {
 /// client.
 #[tokio::test]
 async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
     let request_id = parked_request_id(&res);
 
     let res = approve_oauth_consent(
         &g,
-        &host_owner_token,
+        &owner_token,
         &request_id,
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#.to_string(),
     )
@@ -901,7 +900,7 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
 /// identity (`registered_at`, name) survives.
 #[tokio::test]
 async fn approving_a_changed_app_widens_its_registration() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://elsewhere.example/cb", &["read"]);
     let store = store_handle(&db);
     let before = store.client_by_id("test-app").unwrap().unwrap();
@@ -913,7 +912,7 @@ async fn approving_a_changed_app_widens_its_registration() {
     )
     .await;
     let request_id = parked_request_id(&res);
-    let consent = get_oauth_consent(&g, &host_owner_token, &request_id).await;
+    let consent = get_oauth_consent(&g, &owner_token, &request_id).await;
     assert_eq!(
         consent["registration"],
         serde_json::json!({
@@ -925,7 +924,7 @@ async fn approving_a_changed_app_widens_its_registration() {
 
     let res = approve_oauth_consent(
         &g,
-        &host_owner_token,
+        &owner_token,
         &request_id,
         r#"{"approvedScopes":["read","write"],"acknowledgedRegistration":true}"#.to_string(),
     )
@@ -953,7 +952,7 @@ async fn approving_a_changed_app_widens_its_registration() {
 /// only.
 #[tokio::test]
 async fn denying_a_new_app_registers_nothing() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
     let request_id = parked_request_id(&res);
 
@@ -963,7 +962,7 @@ async fn denying_a_new_app_registers_nothing() {
         .oneshot(loopback_request(
             Request::post(format!("/authorization/oauth-consents/{request_id}/deny"))
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -982,11 +981,11 @@ async fn denying_a_new_app_registers_nothing() {
 /// combination.
 #[tokio::test]
 async fn a_changed_request_never_takes_the_fast_path() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -1001,7 +1000,7 @@ async fn a_changed_request_never_takes_the_fast_path() {
 
     let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
     let request_id = parked_request_id(&res);
-    let consent = get_oauth_consent(&g, &host_owner_token, &request_id).await;
+    let consent = get_oauth_consent(&g, &owner_token, &request_id).await;
     assert_eq!(consent["registration"]["status"], "changed");
     // The pre-approved set is empty too: a changed request is presented fresh.
     assert_eq!(

@@ -6,7 +6,6 @@ mod common;
 mod device_code;
 mod grant_flows;
 mod host_consent_decider;
-mod loopback_dialog;
 mod oauth_endpoints;
 mod request_caller;
 mod revocation;

@@ -26,7 +26,7 @@ fn header<'a>(res: &'a axum::response::Response, name: &str) -> &'a str {
 /// address is involved.
 #[tokio::test]
 async fn a_parked_request_waits_beside_the_authorize_endpoint_on_the_origin_it_used() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
 
     let direct = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
     let forwarded = g
@@ -71,7 +71,7 @@ async fn a_parked_request_waits_beside_the_authorize_endpoint_on_the_origin_it_u
 /// it to its own origin and out of caches, frames and referrers.
 #[tokio::test]
 async fn the_wait_page_is_static_and_locked_down() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let hostile_id = "%3Cscript%3Ealert(1)%3C%2Fscript%3E";
 
     let ordinary = get(&g, "/oauth/authorize/req-1/wait").await;
@@ -107,7 +107,7 @@ async fn the_wait_page_is_static_and_locked_down() {
 /// the types the page's `nosniff` requires.
 #[tokio::test]
 async fn the_wait_page_assets_are_served_beside_it() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
 
     let page = body_string(get(&g, "/oauth/authorize/req-1/wait").await.into_body()).await;
     assert!(page.contains(r#"src="../wait.js""#), "{page}");

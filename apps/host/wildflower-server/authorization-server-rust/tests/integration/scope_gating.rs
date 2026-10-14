@@ -9,7 +9,7 @@ use crate::common::*;
 
 #[tokio::test]
 async fn access_grants_list_with_grant_read_scope_returns_200() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
         Request::get("/authorization/grants")
@@ -26,7 +26,7 @@ async fn access_grants_list_with_grant_read_scope_returns_200() {
 async fn access_grants_list_with_wildflower_wildcard_returns_200() {
     // `wildflower/*.cruds` covers `wildflower/Grant.r` — a non-owner token that
     // holds the Wildflower wildcard still passes the per-resource gate.
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/*.cruds"]);
     let req = loopback_request(
         Request::get("/authorization/grants")
@@ -43,7 +43,7 @@ async fn access_grants_delete_with_only_read_scope_returns_403_missing_delete() 
     // A valid token scoped to read-only is authenticated (not a 401) but
     // unauthorized to revoke — the gate rejects with 403 BEFORE the handler, so
     // even a non-existent id is a 403, never a 404.
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
         Request::delete("/authorization/grants/any-id")
@@ -65,7 +65,7 @@ async fn access_grants_delete_with_only_read_scope_returns_403_missing_delete() 
 async fn access_grants_delete_with_grant_delete_scope_passes_the_gate() {
     // The `Grant.d` scope clears the gate, so the handler runs and reports the
     // missing grant as a 404 — proving the gate admitted the request (not a 403).
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.d"]);
     let req = loopback_request(
         Request::delete("/authorization/grants/nope")
@@ -80,7 +80,7 @@ async fn access_grants_delete_with_grant_delete_scope_passes_the_gate() {
 
 #[tokio::test]
 async fn access_revocations_requires_token_delete_scope() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     // A `Grant.r` token can't revoke tokens — 403 naming `wildflower/Token.d`.
     let under_scoped = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
@@ -114,7 +114,7 @@ async fn access_revocations_requires_token_delete_scope() {
 async fn access_logout_is_self_service_any_valid_bearer() {
     // Logout takes no admin scope: a token with an unrelated, narrow scope still
     // logs itself out (303 redirect), because it only needs authN.
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
     let req = loopback_request(
         Request::post("/authorization/logout")
@@ -132,7 +132,7 @@ async fn access_session_reports_the_callers_own_scopes_without_an_admin_scope() 
     // caller's *own* verified `scope` claim, so it takes no admin scope. That is
     // the point — the callers who need it are the under-scoped sessions arriving
     // from a 403, whom a scope gate would lock out of reading their own scopes.
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["patient/Observation.rs", "wildflower/Grant.r"]);
     let req = loopback_request(
         Request::get("/authorization/session")
@@ -153,7 +153,7 @@ async fn access_session_without_a_token_is_401_not_an_empty_scope_list() {
     // The `/authorization` authN gate still applies. An unauthenticated caller must get
     // a 401 — never a 200 with `[]`, which the device-login screen would read as
     // "this session holds nothing" rather than "there is no session".
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let req = loopback_request(
         Request::get("/authorization/session").header("host", "127.0.0.1"),
         Body::empty(),

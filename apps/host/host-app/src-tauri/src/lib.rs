@@ -1,8 +1,5 @@
-mod loopback_consent_dialog;
-
 use anyhow::Context;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use tauri::Manager;
 use url::Url;
 use wildflowerhealthio_servers::{ServerDetail, ServerRecord};
@@ -12,7 +9,7 @@ use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_tauri_unit_runner::{
     BackgroundServiceStartConfig, BackgroundSessionLength, TauriUnitRunner,
 };
-use wildflowerhealthio_wildflower_server::{HostPorts, WildflowerServerConfig};
+use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 
 // Loopback hostname/port for the embedded API server, derived at compile time
 // from the SINGLE SOURCE OF TRUTH
@@ -28,13 +25,13 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
 // The host's granted-scope string, also sourced from
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`).
 // The authorization server seeds the host app's client's
-// `allowed_scopes` and mints the host owner token from this set (asserting it
-// covers `WILDFLOWER_WIDEST_SCOPES`).
+// `allowed_scopes` from this set and decides consents in-process as the Owner
+// holding it (asserting it covers `WILDFLOWER_WIDEST_SCOPES`).
 const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 
 // The Wildflower host app's OAuth `client_id`, sourced from the same
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`):
-// the id the authorization server seeds the host app's client and mints the owner token under.
+// the id the authorization server seeds the host app's client under.
 const WILDFLOWER_HOST_APP_CLIENT_ID: &str = env!("WILDFLOWER_HOST_APP_CLIENT_ID");
 
 // The hosted launcher (see `wildflowerhealthio_shared_structures::launcher`), sourced from the
@@ -113,7 +110,7 @@ fn relay_settings_of(server: &ServerRecord) -> wildflowerhealthio_tunnel::RelayS
     )
 }
 
-/// The host's scopes for its owner token, from `LOCAL_GRANTED_SCOPES`.
+/// The host Owner's scopes, from `LOCAL_GRANTED_SCOPES`.
 fn host_owner_scopes() -> Vec<String> {
     LOCAL_GRANTED_SCOPES
         .split_whitespace()
@@ -228,21 +225,6 @@ fn server_config(
     })
 }
 
-/// Wraps the host's native adapters as the [`HostPorts`] every run of every
-/// server shares.
-fn host_ports(app_handle: &tauri::AppHandle) -> HostPorts {
-    HostPorts {
-        // The native Approve / Reject dialog the authorization server raises when the hosted
-        // launcher logs in over direct loopback (see `loopback_consent_dialog`).
-        loopback_consent_prompt: Arc::new(
-            loopback_consent_dialog::TauriLoopbackConsentPrompt::new(
-                app_handle.clone(),
-                host_owner_scopes(),
-            ),
-        ),
-    }
-}
-
 /// Build and run the Tauri application.
 ///
 /// # Panics
@@ -294,7 +276,6 @@ pub fn run() {
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
         // Native web view, presenting external URLs with native chrome
         // and document-start JS injection — the native counterpart to the
         // browser-sniffer WebviewWindow path, which stays in place. iOS uses a
@@ -402,7 +383,6 @@ pub fn run() {
                 &data_root,
                 default_launcher_url,
                 &runner,
-                host_ports(app.handle()),
                 move |server| server_config(server, &config_data_root, &config_app_handle),
             );
             Ok(())

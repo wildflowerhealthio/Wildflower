@@ -16,7 +16,7 @@ mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
-// FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.
+// host's FHIR web UI session middleware uses it.
 pub use middleware::ensure_bearer_header;
 // The two layerable gates the host composes its routers from. Each lives beside
 // the handler it wraps, in `middleware/`.
@@ -96,21 +96,6 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         .nest("/oauth", routes::oauth::page_router())
         .nest("/authorization", access)
         .with_state(state)
-}
-
-/// Whether `path` is on the authorization server's **pre-auth public surface** — the
-/// discovery + OAuth routes a client reaches before it holds a token
-/// (`/.well-known/*` incl. `jwks.json`, and `/oauth/*`). The `/authorization/*` admin
-/// surface is authenticated + scope-gated and NOT public.
-///
-/// Owned here, beside [`router`] (which mounts these paths), so a consumer that
-/// must exclude the pre-auth surface can't drift from the routes. The desktop
-/// loopback-owner-trust middleware uses it to avoid stamping the owner bearer
-/// onto a pre-auth request, where a stray owner bearer could confuse client
-/// authentication.
-#[must_use]
-pub fn is_pre_auth_public_path(path: &str) -> bool {
-    path.starts_with("/oauth") || path.starts_with("/.well-known")
 }
 
 /// The scopes an OAuth client (`client_id`) is permitted to request — its stored

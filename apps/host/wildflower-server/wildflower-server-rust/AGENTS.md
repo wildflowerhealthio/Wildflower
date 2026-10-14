@@ -21,11 +21,10 @@ only it composes. Rust-only, no `-core`.
   - **Two listeners, two routers.** Each listener serves its own router,
     built from the one inner router:
     - The **loopback listener** (the bound loopback port) serves the local
-      clients and a front run on this machine. Its router adds the loopback
-      owner trust, the loopback-peer gate, CORS and the forwarded-request
-      report. A request with no `Forwarded` is a direct-local caller and gets
-      the host owner token; one a front relayed carries the front's
-      `Forwarded`.
+      clients and a front run on this machine. Its router adds the
+      loopback-peer gate, CORS and the forwarded-request report. A request
+      with no `Forwarded` is a direct-local caller and presents its own bearer
+      like any other; one a front relayed carries the front's `Forwarded`.
     - The **tunnel listener** serves the tunnel. The tunnel has no route on
       the server and binds no port: its rathole client hands each visitor's
       stream over in process, on a channel `set_up` creates. Each stream runs
@@ -38,7 +37,7 @@ only it composes. Rust-only, no `-core`.
       another host closes the connection; a TLS-ALPN-01 validation handshake
       (ALPN `acme-tls/1`) is answered and closed. The tunnel router adds the forwarded-request report, the
       tunnel front and, outermost so even a `421` is readable cross-origin,
-      CORS, and never the owner trust or the loopback-peer gate. The front drops any inbound `Forwarded`, answers
+      CORS, and never the loopback-peer gate. The front drops any inbound `Forwarded`, answers
       `421` (unreported) unless every host the request names (each `Host`, and
       the request target's authority) is the server's domain, and writes
       `Forwarded: for=<visitor>;host="<domain>";proto=https` (no `for`
@@ -147,7 +146,7 @@ only it composes. Rust-only, no `-core`.
     app mints the one-time same-device sign-in codes through
     `WildflowerServer::same_device_sign_in_code_minter`, in-process.
   - Layout: `config.rs` at the crate root, the host's inputs
-    (`WildflowerServerConfig` with its `DeviceCertificateConfig`, `HostPorts`,
+    (`WildflowerServerConfig` with its `DeviceCertificateConfig`, and
     `ServerObservers`); `domain/`
     `ServerHealth` and the reachability monitor with its `HealthProbe` port,
     `CertificateAuthority`, `CertificateState` with the
@@ -157,7 +156,7 @@ only it composes. Rust-only, no `-core`.
     `LaunchContextMinter` from the authorization server, the monitor's `HealthProbe` over
     reqwest), the device certificate over rustls-acme with its state, and
     the certificate history file; `http/` the
-    server's own middleware (CORS, the loopback owner trust, the
+    server's own middleware (CORS, the
     forwarded-request report, the tunnel front, the session cookies'
     bearer), the tunnel listener with its PROXY header reader and its TLS
     acceptor, the `/health` checks, the root fallback and the `404`; `live_bindings/` composition only: `set_up`, `WildflowerServer`
@@ -183,8 +182,7 @@ only it composes. Rust-only, no `-core`.
   bundle dir) or from the server's record (the tunnel's relay settings, the
   domain, and the `DeviceCertificateConfig` its
   `ServerRecord::device_certificate_config` builds: the CA, the server's
-  certificate folder and the install's ACME account folder). `HostPorts` carries its native adapters as trait
-  objects (`LoopbackConsentPrompt`). The server reads none of the host's build-time
+  certificate folder and the install's ACME account folder). The server reads none of the host's build-time
   configuration or platform paths itself.
 - **The host watches the server through `ServerObservers`.** Host-owned
   senders: the server's `ServerHealth` through its public origin, published by
@@ -220,7 +218,7 @@ only it composes. Rust-only, no `-core`.
 - [Server Runs Explanation](../../servers/docs/Server%20Runs%20Explanation.md)
   — how the host runs, restarts and watches each server, as a `ServerUnit`.
 - [Origins Explanation](../../../../docs/Origins/Explanation.md) — the two listeners,
-  and loopback vs forwarded served origins, which the owner trust, the 404 and
-  HFS's base URL resolve per request.
+  and loopback vs forwarded served origins, which the 404 and HFS's base URL
+  resolve per request.
 - [Shared Diesel Pool Explanation](../../../../docs/Persistence/Shared%20Diesel%20Pool%20Explanation.md)
   — the pool `set_up` builds and shares across the diesel-backed slices.

@@ -6,18 +6,18 @@
 use crate::common::*;
 
 /// An Owner-authenticated `GET` against `path`.
-fn owner_get(host_owner_token: &str, path: &str) -> Request<Body> {
+fn owner_get(owner_token: &str, path: &str) -> Request<Body> {
     loopback_request(
         Request::get(path)
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}")),
+            .header("authorization", format!("Bearer {owner_token}")),
         Body::empty(),
     )
 }
 
 #[tokio::test]
 async fn device_prompt_is_cache_suppressed() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -34,7 +34,7 @@ async fn device_prompt_is_cache_suppressed() {
         .router
         .clone()
         .oneshot(owner_get(
-            &host_owner_token,
+            &owner_token,
             &format!("/authorization/devices/{user_code}"),
         ))
         .await
@@ -45,7 +45,7 @@ async fn device_prompt_is_cache_suppressed() {
 
 #[tokio::test]
 async fn oauth_consent_prompt_is_cache_suppressed() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
     let request_id = parked_request_id(&res);
@@ -54,7 +54,7 @@ async fn oauth_consent_prompt_is_cache_suppressed() {
         .router
         .clone()
         .oneshot(owner_get(
-            &host_owner_token,
+            &owner_token,
             &format!("/authorization/oauth-consents/{request_id}"),
         ))
         .await
@@ -65,11 +65,11 @@ async fn oauth_consent_prompt_is_cache_suppressed() {
 
 #[tokio::test]
 async fn grants_list_is_cache_suppressed() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let res = g
         .router
         .clone()
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -80,7 +80,7 @@ async fn grants_list_is_cache_suppressed() {
 /// unauthenticated request's 401 carries the headers too.
 #[tokio::test]
 async fn unauthenticated_401_is_cache_suppressed() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let res = g
         .router
         .clone()
@@ -97,14 +97,11 @@ async fn unauthenticated_401_is_cache_suppressed() {
 /// A handler's own 404 — an unknown `user_code` — is suppressed like its 200.
 #[tokio::test]
 async fn unknown_device_404_is_cache_suppressed() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let res = g
         .router
         .clone()
-        .oneshot(owner_get(
-            &host_owner_token,
-            "/authorization/devices/NOPE-NOPE",
-        ))
+        .oneshot(owner_get(&owner_token, "/authorization/devices/NOPE-NOPE"))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -115,7 +112,7 @@ async fn unknown_device_404_is_cache_suppressed() {
 /// `Pending` is pinned here, `Approved` in the auth-code happy path.
 #[tokio::test]
 async fn pending_authorization_status_is_cache_suppressed() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let res = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
     let request_id = parked_request_id(&res);
 

@@ -19,9 +19,8 @@ use crate::ports::OwnerApproval;
 use wildflowerhealthio_scopes::Grant;
 
 /// Everything an approval needs beyond the prompt itself: who is approving,
-/// which client's registration is fixed,
-/// whether the approval is remembered, and the instant the writes are stamped
-/// with. Bundled (rather than four more parameters) so
+/// which client's registration is fixed, and the instant the writes are
+/// stamped with. Bundled (rather than three more parameters) so
 /// [`approve_oauth_consent`]'s signature stays readable.
 pub(crate) struct ApprovalContext<'a> {
     /// The deciding Owner's own granted scopes — the bound on what the
@@ -31,24 +30,8 @@ pub(crate) struct ApprovalContext<'a> {
     /// fixed: defined by the server, never trusted on first use, never
     /// widened by an approval.
     pub(crate) wildflower_host_app_client_id: &'a str,
-    /// Whether the approval becomes a standing grant.
-    pub(crate) memory: ApprovalMemory,
     /// The instant stamped onto the code and the standing grant.
     pub(crate) now: DateTime<Utc>,
-}
-
-/// Whether an approved code-flow prompt is remembered as a standing grant — the
-/// one difference between the approval surfaces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ApprovalMemory {
-    /// Record (or widen) the standing grant, so a later request inside it takes
-    /// the `/authorize` fast path. The launcher's consent prompt.
-    RememberAsStandingGrant,
-    /// Record no grant: the next request from the client asks the Owner again.
-    /// The host's loopback dialog, which prompts on every login. A client
-    /// trusted on first use is still registered, so the next request is
-    /// `Registered` rather than `New`.
-    AskEveryTime,
 }
 
 /// Load the authorization request for `id` and verify it's a pending, unexpired
@@ -75,9 +58,9 @@ pub(crate) fn load_pending_code_request(
 }
 
 /// Approve an authorization-code consent prompt: clamp the Owner's ticks into a
-/// [`DelegatedScopes`] proof, issue the code, record the standing grant (unless
-/// [`ApprovalMemory::AskEveryTime`]) and, for a client trusted on first use, its
-/// registration, republish the popup head, and return the client callback URL.
+/// [`DelegatedScopes`] proof, issue the code, record the standing grant and,
+/// for a client trusted on first use, its registration, republish the popup
+/// head, and return the client callback URL.
 /// An approval that grants nothing is applied as a **deny**.
 ///
 /// A request the
@@ -154,26 +137,14 @@ pub(crate) fn approve_oauth_consent(
     // Persist the (possibly brand-new) registration with the grant it justifies:
     // one transaction, so a client row never outlives a failed approval.
     let registration_to_widen = (!registration_is_fixed).then_some(&registration_verdict);
-    let grant_recorder = GrantRecorder::over(store);
-    match (ctx.memory, registration_to_widen) {
-        (ApprovalMemory::RememberAsStandingGrant, _) => grant_recorder.record_code_grant(
-            &request.client_id,
-            requested_redirect_uri,
-            &delegated_scopes,
-            input.patient.as_deref(),
-            now,
-            registration_to_widen,
-        )?,
-        (ApprovalMemory::AskEveryTime, Some(registration_verdict)) => grant_recorder
-            .record_registration(
-                &request.client_id,
-                requested_redirect_uri,
-                &delegated_scopes,
-                now,
-                registration_verdict,
-            )?,
-        (ApprovalMemory::AskEveryTime, None) => {}
-    }
+    GrantRecorder::over(store).record_code_grant(
+        &request.client_id,
+        requested_redirect_uri,
+        &delegated_scopes,
+        input.patient.as_deref(),
+        now,
+        registration_to_widen,
+    )?;
 
     // This request was the popup head (or queued behind one) until the approval
     // above flipped it out of `pending`, so the head has to be recomputed — the

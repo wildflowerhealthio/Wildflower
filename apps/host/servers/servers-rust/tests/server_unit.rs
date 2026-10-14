@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use tokio::sync::mpsc;
 use url::Url;
-use wildflowerhealthio_authorization_server::{NoLoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_authorization_server::PendingConsentHead;
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_servers::{
     ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
@@ -31,8 +31,7 @@ use wildflowerhealthio_unit_runner::{
     BackgroundSessionLength, RunState, StopReason, SystemClock, UnitId, UnitRunner, UnitStatus,
 };
 use wildflowerhealthio_wildflower_server::{
-    CertificateAuthority, CertificateState, DeviceCertificateConfig, HostPorts,
-    WildflowerServerConfig,
+    CertificateAuthority, CertificateState, DeviceCertificateConfig, WildflowerServerConfig,
 };
 
 /// How long a run may take to come up or wind down before the test fails
@@ -141,9 +140,6 @@ fn server_on_a_runner() -> ServerOnARunner {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    let host_ports = HostPorts {
-        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-    };
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned(), loopback_base_url.clone());
 
@@ -155,7 +151,6 @@ fn server_on_a_runner() -> ServerOnARunner {
     unit_runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
         Ok(ServerUnit::new(
             config.clone(),
-            host_ports.clone(),
             forwarded_request_tx.clone(),
         ))
     });

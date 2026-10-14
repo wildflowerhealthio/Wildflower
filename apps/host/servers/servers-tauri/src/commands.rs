@@ -363,7 +363,6 @@ mod tests {
     use serde::Deserialize;
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
-    use wildflowerhealthio_authorization_server::NoLoopbackConsentPrompt;
     use wildflowerhealthio_rathole_settings::{
         ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
     };
@@ -374,7 +373,7 @@ mod tests {
         BackgroundServiceStartConfig, BackgroundSessionLength, RunContext, RunState, RunStop,
         StopReason, TauriUnitRunner, Unit, UnitId, UnitStatus,
     };
-    use wildflowerhealthio_wildflower_server::{CertificateState, CertificateStatus, HostPorts};
+    use wildflowerhealthio_wildflower_server::{CertificateState, CertificateStatus};
 
     use crate::ServerUnits;
 
@@ -489,9 +488,6 @@ mod tests {
             Arc::new(|record: &ServerRecord| {
                 anyhow::bail!("no config for {} in these tests", record.domain())
             }),
-            HostPorts {
-                loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-            },
             forwarded_request_tx,
         );
         let servers = ServersState::new(

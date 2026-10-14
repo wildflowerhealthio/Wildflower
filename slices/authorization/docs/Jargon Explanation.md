@@ -29,7 +29,7 @@ first. "Host" alone is ambiguous (the host app, the HTTP `Host` header, the
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
 | **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                              | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
 | **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.  | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
-| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app). | The `wildflower-host` client, the host owner token, the in-process consent decider        |
+| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app). | The `wildflower-host` client, the in-process consent decider                              |
 | **Owner browser**       | A browser the host app has signed in as the Owner on the same device. See [Owner browser](#owner-browser).               | The `wildflower-owner-browser` client, the `__Host-owner_browser_session` cookie          |
 | **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                   | OAuth spec only; we say "Owner"                                                           |
 
@@ -330,11 +330,8 @@ middleware; they're public. The middleware reads the access token from the
 FHIR UI's `hfs_session`, only from its own pages, with an Origin check on
 writes, and turns each into a bearer token ahead of the gate
 (`wildflower-server-rust`'s `session_cookie_bearer`); with both, `hfs_session`
-wins. The launcher attaches
-its in-memory bearer; a direct-loopback
-caller attaches nothing and is authenticated by the host's
-loopback-provenance owner trust, which presents the host-minted token on its
-behalf.
+wins. Every other caller, direct-loopback or relayed, attaches its own bearer:
+the launcher its in-memory one.
 
 ### Device flow (RFC 8628)
 
@@ -441,8 +438,7 @@ redirect the status carries, which the authorization server built from the clien
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the authorization server for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers in
-the host's consent sheet, a signed-in launcher, or the
-[loopback owner dialog](#loopback-owner-dialog).
+the host's consent sheet or a signed-in launcher.
 
 It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an
@@ -452,15 +448,9 @@ tokens under the same names.
 ### Wildflower host app
 
 The app on the Owner's device that runs this server in its own process. Its
-OAuth client is `wildflower-host`. It holds its own token (the host owner
-token, minted at boot and re-minted hourly), whose subject is that client.
-Revoking the subject, or one of the client's grants (which bumps the same
-revocation epoch), revokes that token too, so the server then mints and
-publishes a fresh one at once: every revocation goes through
-`HostOwnerTokenRemintingRevocation`, which asks the re-minter for it. The
-fresh token waits for the second after the revocation, since the revocation's
-epoch is that second and a token's `iat` is whole seconds; for that moment,
-under a second, the host app holds no live token.
+OAuth client is `wildflower-host`. It holds no token of its own: it decides
+consents, mints launches and mints same-device sign-in codes in-process, as
+the Owner.
 
 ### Owner browser
 
@@ -498,36 +488,6 @@ every Owner browser is signed out by revoking the `wildflower-owner-browser`
 subject. A request whose cookie holds an expired or revoked token is served as
 if the cookie weren't sent, and the response clears it. The cookie needs
 `https`, so it works on `https://<domain>` and not on the loopback listener.
-
-### Loopback owner dialog
-
-A native Approve / Reject dialog the desktop host raises for one kind of login:
-a **direct-loopback** `/oauth/authorize` (no `Forwarded` header) whose
-`client_id` is `03a513940b52f8c2649a5366d1a26d19` (the hosted launcher) signing in to the server
-on the same machine. The person at the keyboard is the Owner, so the host asks
-them in place rather than sending them to the in-app consent page.
-
-The request is parked and queued exactly as any other code request: the browser
-is still sent to the [wait page](#wait-page), and the request still appears in
-the launcher. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
-`LoopbackConsentPrompt` port). Whichever surface decides first wins, because a
-deny, like an approve, only changes a request that is still `pending`.
-
-- **Approve** runs the ordinary code-flow approval with the host Owner as the
-  approver: the requested scopes within `host_owner_scopes` are delegated, and
-  the dialog itself is the registration acknowledgement. It registers or widens
-  the client as [trust on first use](#trust-on-first-use) does, but records
-  **no** standing [Grant](#grant) (`ApprovalMemory::AskEveryTime`), so every
-  loopback login asks again.
-- **Reject**, closing the dialog, or leaving it unanswered until the request
-  expires denies it (the wait page carries `access_denied` back to the client).
-- A host with no native dialog wires `NoLoopbackConsentPrompt`, which
-  **abstains**, leaving the request to the launcher.
-
-Forwarded (tunnel) requests and every other `client_id` never reach the dialog.
-Anyone on loopback can present the `client_id`. The dialog names the redirect
-origin, and the Owner is at the machine, which is the same trade-off as trust on
-first use.
 
 ### Expandable consent
 

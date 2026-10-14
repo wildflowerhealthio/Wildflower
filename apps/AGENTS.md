@@ -89,9 +89,9 @@ unscoped name:
 | Sentry DSN build variable                  | `VITE_SENTRY_DSN_<PACKAGE>`                                                                                                              | `VITE_SENTRY_DSN_LIFTING_WEB`     |
 | Sentry `app` tag and OpenTelemetry service | the unscoped package name                                                                                                                | `lifting-web`                     |
 
-A client id is never a name: the host's loopback consent dialog shows the
-client's registered `name`, and nothing looks an app up by its client id, so a
-tile id and its client id are independent.
+A client id is never a name: the consent prompts show the client's registered
+`name`, and nothing looks an app up by its client id, so a tile id and its
+client id are independent.
 
 A crate's name carries the `wildflowerhealthio-` prefix because crates.io has
 no namespaces; it stands in for the npm scope. The folder keeps `-rust`, which

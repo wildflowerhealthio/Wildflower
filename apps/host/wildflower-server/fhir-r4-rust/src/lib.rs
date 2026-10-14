@@ -382,10 +382,9 @@ const MAX_UI_BODY_BYTES: usize = 30 * 1024 * 1024;
 ///
 /// The browser is sent to the authorize endpoint on `public_origin`, where it
 /// reaches the server. HFS redeems the code server-side at the token endpoint on
-/// `loopback_base_url`: the authorization server's `/oauth/*` routes take no host owner token
-/// on loopback, and the call stays on the device. The authorization server has no OpenID
-/// Connect, so there is no ID token and no end-session endpoint: the session's
-/// identity is its access token's `sub`.
+/// `loopback_base_url`, so the call stays on the device. The authorization
+/// server has no OpenID Connect, so there is no ID token and no end-session
+/// endpoint: the session's identity is its access token's `sub`.
 #[must_use]
 pub fn ui_login_config(
     public_origin: &url::Url,

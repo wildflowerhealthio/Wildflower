@@ -309,7 +309,7 @@ pub(super) fn approve_authorization_request(
 /// Mark a *pending* `id` denied, returning `true` iff a pending row was
 /// actually transitioned — the same `status = 'pending'` guard as
 /// [`approve_authorization_request`], so when two surfaces decide one request
-/// (the launcher and the host's loopback dialog) the first terminal transition
+/// (the launcher and the host popup) the first terminal transition
 /// wins and a late deny can't overwrite an approval.
 pub(super) fn deny_authorization_request(
     conn: &mut SqliteConnection,
@@ -932,7 +932,7 @@ mod tests {
     }
 
     // A deny transitions only a `pending` request: the first decision on a
-    // request wins, so a late deny (the loopback dialog after the launcher
+    // request wins, so a late deny (the host popup after the launcher
     // approved, or the reverse) leaves the terminal row untouched and reports
     // that it did nothing.
     #[test]

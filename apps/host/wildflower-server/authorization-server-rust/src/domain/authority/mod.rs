@@ -23,9 +23,6 @@
 //!  - [`StandingGrantCoverage`] — a standing grant already covers every scope
 //!    of a *registered* request: the `/oauth/authorize` fast path's authority
 //!    to issue a code with no human in the loop.
-//!  - [`HostOwnerEntitlement`] — what the host's own boot-time owner token may
-//!    claim, the one authority with no approving human; constructible only in
-//!    `seeding` (guarded below).
 //!  - [`RedeemedSameDeviceSignInCode`] — a one-time same-device sign-in code the base minted
 //!    in-process, redeemed at `/oauth/sign-in`: the authority an Owner's
 //!    session token is minted under, as the Owner's client and grant.
@@ -46,15 +43,13 @@
 
 mod authenticated_client;
 mod delegated_scopes;
-mod host_owner_entitlement;
 mod redemption;
 mod same_device_sign_in;
 mod standing_grant;
 mod token_entitlement;
 
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
-pub(crate) use delegated_scopes::{within_approver_grant, ApprovableScopes, DelegatedScopes};
-pub(crate) use host_owner_entitlement::HostOwnerEntitlement;
+pub(crate) use delegated_scopes::{ApprovableScopes, DelegatedScopes};
 pub(crate) use redemption::{
     ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode, RedeemedAuthorizationCode,
     ValidatedRefreshToken,
@@ -62,36 +57,3 @@ pub(crate) use redemption::{
 pub(crate) use same_device_sign_in::RedeemedSameDeviceSignInCode;
 pub(crate) use standing_grant::{GrantCoverage, StandingGrantCoverage};
 pub(crate) use token_entitlement::TokenEntitlement;
-
-#[cfg(test)]
-mod construction_site_guard {
-    use crate::domain::source_guard::{production_lines, relative_to, rs_files_under};
-
-    /// [`HostOwnerEntitlement`](super::HostOwnerEntitlement) is the one
-    /// authority minted with no approving human, so its constructor may be called from exactly one
-    /// place: the boot-time seeding. This test enumerates `src/` and fails if
-    /// the constructor is named anywhere else (its own definition file aside),
-    /// so a second unproven mint can't appear silently. Comments and unit-test
-    /// modules are skipped (see [`production_lines`]).
-    #[test]
-    fn host_owner_entitlement_is_constructed_only_by_seeding() {
-        let needle = concat!("HostOwnerEntitlement::", "for_host(");
-        let allowed = ["seeding.rs", "domain/authority/host_owner_entitlement.rs"];
-        let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
-        for path in rs_files_under(src) {
-            let relative = relative_to(&path, src);
-            if allowed.contains(&relative.as_str()) {
-                continue;
-            }
-            let source =
-                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {relative}: {e}"));
-            for (n, line) in production_lines(&source) {
-                assert!(
-                    !line.contains(needle),
-                    "{relative}:{n} constructs the host-owner entitlement; only seeding may \
-                     mint a token with no approving human",
-                );
-            }
-        }
-    }
-}

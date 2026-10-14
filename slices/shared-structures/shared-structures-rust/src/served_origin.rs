@@ -56,9 +56,8 @@
 //! means the request came through the front, and a malformed one is *rejected*
 //! ([`request_provenance`] returns `None`, the caller `500`s) rather than
 //! collapsed to loopback. Collapsing a malformed forwarded request to loopback
-//! would let a relayed remote caller be mistaken for a direct-local one —
-//! e.g. handed the host owner token (`is_forwarded` gates that trust on the
-//! loopback listener). See `docs/Origins/Explanation.md`.
+//! would let a relayed remote caller be mistaken for a direct-local one. See
+//! `docs/Origins/Explanation.md`.
 
 use axum::http::HeaderMap;
 use url::Url;
@@ -128,9 +127,9 @@ pub fn served_base_url_for(headers: &HeaderMap, loopback_base_url: &Url) -> Opti
 /// iff a `Forwarded` header is **present** (in any form).
 ///
 /// SECURITY: keys on presence alone, *not* on [`safe_host`], so a malformed
-/// `Host` can't flip a relayed caller to direct-local and let it inherit the
-/// `!is_forwarded`-gated local-owner trust (e.g. the desktop host's owner-token
-/// injection). `true` exactly when [`request_provenance`] is not `Some(Loopback)`.
+/// `Host` can't flip a relayed caller to direct-local (e.g. to drop it from the
+/// host's forwarded-request report). `true` exactly when [`request_provenance`]
+/// is not `Some(Loopback)`.
 pub fn is_forwarded(headers: &HeaderMap) -> bool {
     headers.contains_key("forwarded")
 }
@@ -426,8 +425,8 @@ mod tests {
     #[test]
     fn is_forwarded_stays_true_for_a_present_but_malformed_forwarded_header() {
         // SECURITY REGRESSION GUARD: a malformed `Host` must not flip `is_forwarded`
-        // to `false`, or a caller a front relayed over loopback would inherit the
-        // `!is_forwarded`-gated owner trust. See the `is_forwarded` doc.
+        // to `false`, or a caller a front relayed over loopback would be taken
+        // for a direct-local one. See the `is_forwarded` doc.
         for malformed in [
             "host=",                                     // empty host
             "for=192.0.2.1;proto=https",                 // no host param

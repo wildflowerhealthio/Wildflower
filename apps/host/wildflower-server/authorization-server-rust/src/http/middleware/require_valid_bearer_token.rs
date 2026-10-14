@@ -73,8 +73,8 @@ pub fn authorization_server_auth_middleware(
     axum::middleware::from_fn_with_state(gate, handler)
 }
 
-/// If `headers` carries no `Authorization: Bearer`, insert `bearer`. Lets the
-/// desktop host's owner token (the Tauri loopback-owner-trust middleware)
+/// If `headers` carries no `Authorization: Bearer`, insert `bearer`. Lets a
+/// FHIR web UI session's bearer (the host's `ui_session_bearer` middleware)
 /// satisfy the bearer gate and any downstream check that reads only the bearer
 /// header, without disturbing a request that already presents one.
 pub fn ensure_bearer_header(headers: &mut HeaderMap, bearer: &HeaderValue) {
@@ -138,8 +138,8 @@ mod tests {
 
     #[test]
     fn ensure_bearer_header_injects_when_absent() {
-        // A direct-loopback desktop request carries no Authorization header;
-        // the host injects its owner bearer so the bearer gate accepts it.
+        // A signed-in web UI request carries no Authorization header; the host
+        // injects its session's bearer so the bearer gate accepts it.
         let mut headers = HeaderMap::new();
         ensure_bearer_header(
             &mut headers,

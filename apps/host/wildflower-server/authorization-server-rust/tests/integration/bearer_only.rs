@@ -10,7 +10,7 @@ use crate::common::*;
 /// — no `Set-Cookie` rides the response.
 #[tokio::test]
 async fn the_host_app_s_device_grant_sets_no_cookie() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     plant_device_request(
         &store_handle(&db),
         "wildflower-host",
@@ -38,7 +38,7 @@ async fn the_host_app_s_device_grant_sets_no_cookie() {
 /// The host app's refresh grant likewise returns only the JSON token.
 #[tokio::test]
 async fn the_host_app_s_refresh_grant_sets_no_cookie() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     plant_refresh_token(
         &store_handle(&db),
         "owner-refresh",
@@ -62,14 +62,14 @@ async fn the_host_app_s_refresh_grant_sets_no_cookie() {
 /// is unauthenticated: the cookie is not a credential.
 #[tokio::test]
 async fn a_cookie_carried_token_is_not_a_credential() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let res = g
         .router
         .clone()
         .oneshot(loopback_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
-                .header("cookie", format!("wf_auth={host_owner_token}")),
+                .header("cookie", format!("wf_auth={owner_token}")),
             Body::empty(),
         ))
         .await
@@ -81,14 +81,14 @@ async fn a_cookie_carried_token_is_not_a_credential() {
 /// sets no cookies.
 #[tokio::test]
 async fn logout_redirects_to_the_launcher_without_cookies() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let res = g
         .router
         .clone()
         .oneshot(loopback_request(
             Request::post("/authorization/logout")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await

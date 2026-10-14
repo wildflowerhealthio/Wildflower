@@ -2,7 +2,7 @@ use crate::common::*;
 
 #[tokio::test]
 async fn jwks_endpoint_returns_seeded_key() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let req = loopback_request(Request::get("/.well-known/jwks.json"), Body::empty());
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -36,7 +36,7 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
     use axum::Router;
     use wildflowerhealthio_authorization_server::authorization_server_auth_middleware;
 
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     // A trivial downstream router wrapped in the bearer gate with only the
     // discovery path exempted — exercises the real middleware wiring (full path,
     // exact match) rather than just the `is_exempt` helper.
@@ -70,7 +70,7 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
 
 #[tokio::test]
 async fn access_grants_without_auth_returns_401() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let req = loopback_request(Request::get("/authorization/grants"), Body::empty());
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -78,11 +78,11 @@ async fn access_grants_without_auth_returns_401() {
 
 #[tokio::test]
 async fn access_grants_with_owner_token_returns_empty_list() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let req = loopback_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}")),
+            .header("authorization", format!("Bearer {owner_token}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -91,13 +91,13 @@ async fn access_grants_with_owner_token_returns_empty_list() {
     assert_eq!(body, serde_json::json!([]));
 }
 
-/// The host owner token authenticates on a FORWARDED (tunnel-origin) request
+/// An Owner token authenticates on a FORWARDED (tunnel-origin) request
 /// too, where the served origin is the tunnel public host, not loopback: its
 /// `iss` and `aud` are the server's origin, checked against the server's
 /// configuration rather than the request.
 #[tokio::test]
 async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let req = loopback_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
@@ -105,7 +105,7 @@ async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
                 "forwarded",
                 "host=ruth.wildflowerhealth.example;proto=https",
             )
-            .header("authorization", format!("Bearer {host_owner_token}")),
+            .header("authorization", format!("Bearer {owner_token}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -134,7 +134,7 @@ async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: b
 /// served on: over loopback and relayed through the tunnel alike.
 #[tokio::test]
 async fn a_token_for_this_server_passes_over_loopback_and_the_tunnel() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let owner_scopes: Vec<String> =
         wildflowerhealthio_authorization_server::default_local_granted_scopes();
     let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
@@ -154,7 +154,7 @@ async fn a_token_for_this_server_passes_over_loopback_and_the_tunnel() {
 /// `aud` is a path under this server's origin.
 #[tokio::test]
 async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let other_server = "https://lab.relay.example";
     let path_under_origin = format!("{SERVER_ORIGIN}/fhir-r4");
     let owner_scopes: Vec<String> =
@@ -179,11 +179,11 @@ async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
 
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let req = loopback_request(
         Request::get("/authorization/grants/nope")
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}")),
+            .header("authorization", format!("Bearer {owner_token}")),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");

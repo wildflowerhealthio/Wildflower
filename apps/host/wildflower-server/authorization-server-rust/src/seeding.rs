@@ -12,17 +12,14 @@
 //! the generated signing key) stay here.
 
 use anyhow::Context;
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use wildflowerhealthio_persistence::DieselPool;
 
 use wildflowerhealthio_scopes::{Permission, Scope};
 
 use crate::db::SqliteGrantStore;
-use crate::domain::authority::{HostOwnerEntitlement, TokenEntitlement};
-use crate::domain::capabilities::writers::AccessTokenMinter;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::token::TokenIssuanceError;
 // The persistence port trait — brought into scope so the store's methods
 // (`active_signing_key`, `insert_signing_key`, `upsert_client`, …) resolve on
 // the concrete `SqliteGrantStore` this boot code holds directly.
@@ -463,42 +460,6 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             .with_context(|| format!("seed dev client {client_id}"))?;
     }
     Ok(())
-}
-
-/// Mint an Owner-scoped access token for `wildflower-host`, the
-/// host app's client. Called once during [`crate::setup_authorization_server`] so
-/// the server's loopback owner trust can present it for a direct-loopback
-/// caller.
-///
-/// `iss` and `aud` are both `server_origin`, like every token this server
-/// mints, so it is accepted over loopback and through the tunnel alike. See
-/// `docs/Origins/Explanation.md`.
-///
-/// # Errors
-///
-/// The minter's [`TokenIssuanceError`]: no active signing key, a signing
-/// failure, or a store failure. The boot path adds where it was minting.
-pub(crate) fn mint_host_owner_token(
-    store: &SqliteGrantStore,
-    server_origin: &str,
-    ttl: Duration,
-    host_owner_scopes: &[String],
-    wildflower_host_app_client_id: &str,
-) -> Result<String, TokenIssuanceError> {
-    // The host owner token carries the host's granted scopes (by default the FHIR
-    // and Wildflower full-access wildcards): it gates HFS's FHIR surface, and —
-    // because those wildcards cover every per-resource scope the `Scoped<…>`
-    // extractors require — it passes every gate on the authorization server's `/authorization/*` admin
-    // surface too. `setup_authorization_server` asserts the granted set covers
-    // `WILDFLOWER_WIDEST_SCOPES` before we reach here.
-    //
-    // The one token minted with no approving human: its authority is the named
-    // `HostOwnerEntitlement` proof (constructible only here), through the same
-    // minter.
-    let entitlement =
-        HostOwnerEntitlement::for_host(wildflower_host_app_client_id, host_owner_scopes);
-    AccessTokenMinter::new(store, server_origin, ttl)
-        .mint(TokenEntitlement::HostOwner(&entitlement))
 }
 
 #[cfg(test)]

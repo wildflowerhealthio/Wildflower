@@ -57,7 +57,7 @@ async fn assert_refused(res: axum::response::Response, what: &str) {
 
 #[tokio::test]
 async fn a_code_signs_in_once() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let code = g.same_device_sign_in_code_minter.mint();
 
     let signed_in = sign_in(&g, &code, "/").await;
@@ -70,7 +70,7 @@ async fn a_code_signs_in_once() {
 
 #[tokio::test]
 async fn an_unknown_code_signs_nobody_in() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let _outstanding = g.same_device_sign_in_code_minter.mint();
     assert_refused(sign_in(&g, "no-such-code", "/").await, "an unknown code").await;
     assert_refused(
@@ -89,7 +89,7 @@ async fn an_unknown_code_signs_nobody_in() {
 
 #[tokio::test]
 async fn the_browser_goes_on_to_an_allowed_next() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     for (next, location) in [
         (
             "/oauth/authorize/req-1/consent",
@@ -119,7 +119,7 @@ async fn the_browser_goes_on_to_an_allowed_next() {
 
 #[tokio::test]
 async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let code = g.same_device_sign_in_code_minter.mint();
     for next in [
         "//evil.example/",
@@ -143,7 +143,7 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
 /// grant, for eight hours, which the gate accepts.
 #[tokio::test]
 async fn the_cookie_holds_an_eight_hour_owner_token() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let res = sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await;
     let cookies = set_cookie_values(&res);
     let owner_token = owner_browser_session_token(&res);
@@ -188,7 +188,7 @@ async fn the_cookie_holds_an_eight_hour_owner_token() {
 /// `jti` is revoked, `401`, while another sign-in's token still works.
 #[tokio::test]
 async fn an_owner_browser_session_is_revoked_by_its_jti() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let session = |token: String| {
         let router = g.router.clone();
         async move {
@@ -221,7 +221,7 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
         .router
         .clone()
         .oneshot(owner_revocation_request(
-            &host_owner_token,
+            &owner_token,
             serde_json::json!({
                 "jti": jti_of(&first),
                 "expiresAt": (Utc::now() + Duration::hours(8)).to_rfc3339(),
@@ -240,7 +240,7 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
 /// own client, stays signed in.
 #[tokio::test]
 async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let first = owner_browser_session_token(
         &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
     );
@@ -265,7 +265,7 @@ async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
         .router
         .clone()
         .oneshot(owner_revocation_request(
-            &host_owner_token,
+            &owner_token,
             serde_json::json!({
                 "subject": wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID,
             }),
@@ -277,7 +277,7 @@ async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
     assert_eq!(grants_status(first).await, StatusCode::UNAUTHORIZED);
     assert_eq!(grants_status(second).await, StatusCode::UNAUTHORIZED);
     assert_eq!(
-        grants_status(host_owner_token).await,
+        grants_status(owner_token).await,
         StatusCode::OK,
         "the host app is still signed in"
     );
@@ -289,7 +289,7 @@ async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
 /// re-enabling the client lets the same code sign in.
 #[tokio::test]
 async fn a_disabled_owner_browser_client_signs_nobody_in_until_re_enabled() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     let owner_browser_client_id = wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID;
     let code = g.same_device_sign_in_code_minter.mint();
 
@@ -308,7 +308,7 @@ async fn a_disabled_owner_browser_client_signs_nobody_in_until_re_enabled() {
     );
 
     assert_eq!(
-        enable_client(&g, &host_owner_token, owner_browser_client_id)
+        enable_client(&g, &owner_token, owner_browser_client_id)
             .await
             .status(),
         StatusCode::OK

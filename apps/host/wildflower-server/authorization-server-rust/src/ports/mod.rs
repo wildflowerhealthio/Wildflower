@@ -12,20 +12,10 @@
 //!    either consent surface);
 //!  - [`Revocation`] / [`RevocationCheck`] — denylist a token `jti` or
 //!    bulk-revoke a subject, and answer whether a token is revoked; the seams
-//!    the revoking capabilities, logout, and the token verifier go through;
-//!  - [`LoopbackConsentPrompt`] — ask the Owner at the machine, in a native
-//!    dialog, to approve a direct-loopback login by the hosted launcher (public,
-//!    since the host implements it with its dialog plugin).
+//!    the revoking capabilities, logout, and the token verifier go through.
 
-mod loopback_consent;
 mod owner_approval;
 mod revocation;
 
 pub(crate) use owner_approval::OwnerApproval;
 pub(crate) use revocation::{Revocation, RevocationCheck};
-// Public (not `pub(crate)`): the host implements this seam and names its
-// types when wiring `AuthorizationServerState`, so they are re-exported from the crate root.
-pub use loopback_consent::{
-    LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
-    LoopbackRegistrationNotice, NoLoopbackConsentPrompt,
-};

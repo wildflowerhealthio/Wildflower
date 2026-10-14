@@ -45,9 +45,9 @@ pub(crate) struct ForwardedRequestSenders {
 /// log but not the host: the reachability monitor asks it through the relay at
 /// the start of every run, and a health check is nobody using the server.
 ///
-/// The forwarded test is [`is_forwarded`], the same presence-only predicate the
-/// loopback owner trust keys on, so a request with a malformed `Forwarded`
-/// header is reported too, with no client address or served host.
+/// The forwarded test is [`is_forwarded`], a presence-only predicate, so a
+/// request with a malformed `Forwarded` header is reported too, with no client
+/// address or served host.
 ///
 /// # Remarks
 ///
@@ -305,8 +305,7 @@ mod tests {
     }
 
     /// A malformed `Forwarded` header still came through the front, so it is
-    /// reported, as the owner trust treats it as forwarded, with no address or
-    /// host it could vouch for.
+    /// reported, with no address or host it could vouch for.
     #[tokio::test]
     async fn a_malformed_forwarded_header_is_still_reported() {
         let request = Request::get("/anonymous")

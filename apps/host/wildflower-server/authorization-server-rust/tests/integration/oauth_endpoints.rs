@@ -6,7 +6,7 @@ use crate::common::*;
 /// table, so a request nobody approves leaves no trace of the app.
 #[tokio::test]
 async fn authorize_unknown_client_parks_a_pending_request() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let res = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
     let request_id = parked_request_id(&res);
 
@@ -36,7 +36,7 @@ async fn authorize_unknown_client_parks_a_pending_request() {
 /// page instead.
 #[tokio::test]
 async fn authorize_unknown_client_renders_later_failures_locally() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let challenge = compute_code_challenge(CODE_VERIFIER);
     for (query, expected) in [
         (
@@ -72,7 +72,7 @@ async fn authorize_unknown_client_renders_later_failures_locally() {
 /// 302ing to it.
 #[tokio::test]
 async fn authorize_unregistered_redirect_parks_and_keeps_the_redirect_untrusted() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://elsewhere.example/cb", &["read"]);
     let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
     parked_request_id(&res);
@@ -92,7 +92,7 @@ async fn authorize_unregistered_redirect_parks_and_keeps_the_redirect_untrusted(
 /// one client-level rejection trust-on-first-use does not relax.
 #[tokio::test]
 async fn authorize_disabled_client_is_still_rejected() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     // Inserted disabled: `upsert_client` deliberately preserves `disabled_at`,
     // so the flag has to be set on the row's first write.
     store_handle(&db)
@@ -125,7 +125,7 @@ async fn authorize_validates_redirect_uri_before_pkce_method() {
     // validation and renders the local "Redirect URI not allowed" page rather
     // than redirecting. (The redirect-path tests below seed a client with an
     // allowlisted redirect_uri via `seed_client_with_redirect`.)
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let query =
         "response_type=code&code_challenge_method=plain&client_id=wildflower-host&scope=owner&\
                  code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
@@ -144,7 +144,7 @@ async fn authorize_unsupported_response_type_redirects_back() {
     // `unsupported_response_type` is a *redirectable* error (RFC 6749
     // §4.1.2.1): once client_id + redirect_uri validate, the failure goes
     // back to the client as `error` + `state` query params, not a local page.
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let query = "response_type=token&code_challenge_method=S256&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
@@ -163,7 +163,7 @@ async fn authorize_unsupported_response_type_redirects_back() {
 
 #[tokio::test]
 async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let query = "response_type=code&code_challenge_method=plain&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
@@ -187,12 +187,12 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
 /// `authorize_unsupported_pkce_method_redirects_invalid_request`).
 #[tokio::test]
 async fn authorize_disallowed_scope_parks_a_pending_request() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let res = get_authorize(&g.router, &authorize_query("test-app", "read%20write")).await;
     let request_id = parked_request_id(&res);
 
-    let consent = get_oauth_consent(&g, &host_owner_token, &request_id).await;
+    let consent = get_oauth_consent(&g, &owner_token, &request_id).await;
     assert_eq!(
         consent["registration"],
         serde_json::json!({
@@ -210,7 +210,7 @@ async fn authorize_disallowed_scope_parks_a_pending_request() {
 /// 5-minute TTL — the bug this covers.
 #[tokio::test]
 async fn authorize_publishes_the_parked_request_as_the_consent_head() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     assert_eq!(
         pending_consent_head(&db),
@@ -236,7 +236,7 @@ async fn authorize_publishes_the_parked_request_as_the_consent_head() {
 #[tokio::test]
 async fn deciding_an_oauth_consent_clears_the_consent_head() {
     for decision in ["approve", "deny"] {
-        let (g, host_owner_token, db) = spin_up();
+        let (g, owner_token, db) = spin_up();
         seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
         let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
         let request_id = parked_request_id(&res);
@@ -253,7 +253,7 @@ async fn deciding_an_oauth_consent_clears_the_consent_head() {
                     "/authorization/oauth-consents/{request_id}/{decision}"
                 ))
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}"))
+                .header("authorization", format!("Bearer {owner_token}"))
                 .header("content-type", "application/json"),
                 Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
             ))
@@ -275,12 +275,12 @@ async fn deciding_an_oauth_consent_clears_the_consent_head() {
 /// they already consented to, on a request that is already `approved`.
 #[tokio::test]
 async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     // First pass: park, approve, and so establish the standing grant.
     authorize_and_approve(
         &g,
-        &host_owner_token,
+        &owner_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#,
@@ -313,7 +313,7 @@ async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
 /// (registered) redirect_uri, exactly as before.
 #[tokio::test]
 async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     // Give the host client a redirect so the request reaches the scope check.
     let store = store_handle(&db);
     let mut host = store
@@ -341,7 +341,7 @@ async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
     // client allowed `patient/Observation.rs` also admits a request for the
     // narrower `patient/Observation.r` it covers — parking a pending request
     // like any allowed scope (no `error=` redirect back to the client).
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -380,7 +380,7 @@ async fn authorize_treats_a_cross_grammar_scope_request_as_new() {
     // letter grammars (mirroring scopes-core). A client registered with the v1
     // `patient/Observation.read` does NOT cover a request for the
     // letter-equivalent `patient/Observation.rs` — v1 apps request v1 scopes.
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -397,7 +397,7 @@ async fn authorize_treats_a_cross_grammar_scope_request_as_new() {
     // Not covered → not `registered`; the request is parked for the Owner rather
     // than rejected, and the prompt names the uncovered spelling.
     let request_id = parked_request_id(&res);
-    let consent = get_oauth_consent(&g, &host_owner_token, &request_id).await;
+    let consent = get_oauth_consent(&g, &owner_token, &request_id).await;
     assert_eq!(
         consent["registration"]["newScopes"],
         serde_json::json!(["patient/Observation.rs"]),
@@ -415,7 +415,7 @@ fn smart_launch_query(smart_params: &str) -> String {
 /// carries the consumed launch. The same `launch` is refused the second time.
 #[tokio::test]
 async fn authorize_consumes_a_smart_launch_once() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let launch = g
         .launch_context_minter
@@ -434,7 +434,7 @@ async fn authorize_consumes_a_smart_launch_once() {
     assert_eq!(parked.launch_bound_patient, None);
     let res = approve_oauth_consent(
         &g,
-        &host_owner_token,
+        &owner_token,
         &request_id,
         r#"{"approvedScopes":["read"],"patient":null,"acknowledgedRegistration":true}"#.to_owned(),
     )
@@ -454,7 +454,7 @@ async fn authorize_consumes_a_smart_launch_once() {
 /// it at `/oauth/authorize`; a replay is refused.
 #[tokio::test]
 async fn authorize_consumes_a_launch_for_any_client_once() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let launch = g
         .launch_context_minter
@@ -483,7 +483,7 @@ async fn authorize_consumes_a_launch_for_any_client_once() {
 /// origin as `aud`.
 #[tokio::test]
 async fn authorize_refuses_a_bad_smart_launch_or_aud() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let other_clients_launch = g
         .launch_context_minter
@@ -517,7 +517,7 @@ async fn authorize_refuses_a_bad_smart_launch_or_aud() {
 /// renders the local error page rather than redirecting.
 #[tokio::test]
 async fn authorize_renders_a_bad_smart_launch_locally_for_an_untrusted_redirect() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     for (smart_params, title) in [
         ("launch=forged-launch", "Invalid launch"),
         (
@@ -537,7 +537,7 @@ async fn authorize_renders_a_bad_smart_launch_locally_for_an_untrusted_redirect(
 
 #[tokio::test]
 async fn device_authorization_happy_path() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "client_id=wildflower-host&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
@@ -584,7 +584,7 @@ async fn device_authorization_allows_scope_covered_by_client_wildcard() {
     // `system/Observation.rs`. The old exact-match gate rejected this with
     // `invalid_scope`; now it issues a device/user code pair like any allowed
     // scope.
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "client_id=wildflower-host&scope=system%2FObservation.rs";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
@@ -597,7 +597,7 @@ async fn device_authorization_allows_scope_covered_by_client_wildcard() {
 
 #[tokio::test]
 async fn device_authorization_unknown_client_returns_401() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "client_id=ghost&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
@@ -612,7 +612,7 @@ async fn device_authorization_unknown_client_returns_401() {
 
 #[tokio::test]
 async fn token_exchange_unknown_code_returns_400_invalid_grant() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "grant_type=authorization_code&client_id=wildflower-host&\
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
@@ -632,7 +632,7 @@ async fn token_exchange_unknown_code_returns_400_invalid_grant() {
 /// verifier is rejected as `invalid_grant` before the code is even looked up.
 #[tokio::test]
 async fn token_exchange_short_code_verifier_returns_400_invalid_grant() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "grant_type=authorization_code&client_id=wildflower-host&\
                 code=missing&code_verifier=tooshort&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
@@ -651,7 +651,7 @@ async fn token_exchange_short_code_verifier_returns_400_invalid_grant() {
 /// on every `/oauth/token` response, including errors.
 #[tokio::test]
 async fn token_exchange_error_sets_cache_suppression_headers() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "grant_type=authorization_code&client_id=wildflower-host&\
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
@@ -677,7 +677,7 @@ async fn token_exchange_error_sets_cache_suppression_headers() {
 /// cache-suppressed 400 `invalid_request` before any grant work happens.
 #[tokio::test]
 async fn token_exchange_rejects_non_form_content_type() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "grant_type=refresh_token&client_id=wildflower-host&refresh_token=whatever";
     let req = loopback_request(
         Request::post("/oauth/token").header("content-type", "application/json"),
@@ -704,7 +704,7 @@ async fn token_exchange_rejects_non_form_content_type() {
 /// authorization-core's oauth.test.ts).
 #[tokio::test]
 async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
                 client_id=wildflower-host&device_code=missing";
     let req = loopback_request(

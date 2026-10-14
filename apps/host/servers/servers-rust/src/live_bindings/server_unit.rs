@@ -6,7 +6,7 @@ use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};
 use wildflowerhealthio_wildflower_server::{
-    CertificateState, HostPorts, ServerHealth, ServerObservers, WildflowerServerConfig,
+    CertificateState, ServerHealth, ServerObservers, WildflowerServerConfig,
 };
 
 use crate::domain::ServerDetail;
@@ -25,22 +25,19 @@ use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
 /// The unit knows nothing of Tauri: the host hands it everything it reads.
 pub struct ServerUnit {
     config: WildflowerServerConfig,
-    host_ports: HostPorts,
     forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
 }
 
 impl ServerUnit {
-    /// A run of the server `config` describes, over the host's `host_ports`,
-    /// reporting each request its tunnel relays on `forwarded_request_tx`.
+    /// A run of the server `config` describes, reporting each request its
+    /// tunnel relays on `forwarded_request_tx`.
     #[must_use]
     pub fn new(
         config: WildflowerServerConfig,
-        host_ports: HostPorts,
         forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
     ) -> Self {
         Self {
             config,
-            host_ports,
             forwarded_request_tx,
         }
     }
@@ -64,7 +61,6 @@ impl Unit for ServerUnit {
         let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
         let server = wildflowerhealthio_wildflower_server::set_up(
             self.config,
-            self.host_ports,
             ServerObservers {
                 server_health_tx,
                 tunnel_state_tx,

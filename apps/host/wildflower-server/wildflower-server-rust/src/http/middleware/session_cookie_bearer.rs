@@ -250,7 +250,7 @@ mod tests {
     use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
     use wildflowerhealthio_authorization_server::{
         setup_authorization_server, AuthorizationServerConfig, AuthorizationServerState,
-        GrantStore, NoLoopbackConsentPrompt, SqliteGrantStore, OWNER_BROWSER_CLIENT_ID,
+        GrantStore, SqliteGrantStore, OWNER_BROWSER_CLIENT_ID,
     };
     use wildflowerhealthio_persistence::{Connection, DieselPool};
     use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -307,9 +307,7 @@ mod tests {
                 pool.clone(),
                 revocation_store.clone(),
                 &config,
-                &watch::channel(None).0,
                 watch::channel(None).0,
-                Arc::new(NoLoopbackConsentPrompt),
             )
             .expect("set up the authorization server");
             AuthorizationServerFixture {

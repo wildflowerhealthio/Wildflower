@@ -64,9 +64,8 @@ impl<'a, S: GrantStore> AccessTokenMinter<'a, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::authority::HostOwnerEntitlement;
 
-    use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore};
+    use crate::domain::test_fake::{redeemed_code, seed_active_signing_key, FakeGrantStore};
     use crate::domain::token::{verify_jwt, VerifyOptions};
 
     fn minter(store: &FakeGrantStore) -> AccessTokenMinter<'_, FakeGrantStore> {
@@ -78,25 +77,24 @@ mod tests {
     #[test]
     fn mint_fails_closed_without_an_active_key() {
         let store = FakeGrantStore::default();
-        let entitlement = HostOwnerEntitlement::for_host("host", &["openid".to_owned()]);
-        let outcome = minter(&store).mint(TokenEntitlement::HostOwner(&entitlement));
+        let redeemed = redeemed_code(&store, "client-a", &["openid"]);
+        let outcome = minter(&store).mint(TokenEntitlement::AuthorizationCode(&redeemed));
         assert!(matches!(
             outcome,
             Err(TokenIssuanceError::NoActiveSigningKey)
         ));
     }
 
-    /// The minted token carries exactly the entitlement's claims — client and
-    /// scopes — names the server's origin as both `iss` and `aud`, and verifies
-    /// against the seeded key.
+    /// The minted token carries exactly the entitlement's claims — client,
+    /// scopes and patient — names the server's origin as both `iss` and `aud`,
+    /// and verifies against the seeded key.
     #[test]
     fn mint_signs_exactly_the_proofs_claims() {
         let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
-        let scopes = vec!["system/*.cruds".to_owned(), "openid".to_owned()];
-        let entitlement = HostOwnerEntitlement::for_host("host", &scopes);
+        let redeemed = redeemed_code(&store, "client-a", &["patient/Patient.rs", "openid"]);
         let access_token = minter(&store)
-            .mint(TokenEntitlement::HostOwner(&entitlement))
+            .mint(TokenEntitlement::AuthorizationCode(&redeemed))
             .expect("mint");
         let keys = store.all_signing_keys().unwrap();
         let claims = verify_jwt(
@@ -108,8 +106,9 @@ mod tests {
             },
         )
         .expect("verifies against the seeded key");
-        assert_eq!(claims.subject, "host");
-        assert_eq!(claims.scope.as_deref(), Some("system/*.cruds openid"));
+        assert_eq!(claims.subject, "client-a");
+        assert_eq!(claims.scope, Some(redeemed.token_scopes().join(" ")));
+        assert_eq!(claims.patient.as_deref(), Some("pat-1"));
         assert_eq!(claims.issuer, "https://server.example");
         assert_eq!(claims.audience, vec!["https://server.example".to_owned()]);
     }
