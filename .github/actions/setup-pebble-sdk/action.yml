@@ -71,7 +71,7 @@ runs:
 
     - name: Setup uv
       if: steps.restore.outputs.cache-hit != 'true'
-      uses: astral-sh/setup-uv@v10.2.0
+      uses: astral-sh/setup-uv@v10.3.0
       with:
         enable-cache: false
 
