@@ -1,0 +1,73 @@
+import { cleanup, render, screen } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
+
+import type { OAuthConsentResource } from '../../queries/index.ts'
+import { consentAsksForPatient } from './consent-asks-for-patient.ts'
+import { OAuthConsentCard } from './oauth-consent-card.tsx'
+
+/**
+ * What the card adds over its use in `OAuthConsentForm` (whose tests cover the
+ * editing and the decision): when its composer reads patients, and the name
+ * search a composer can put above the picker.
+ */
+
+afterEach(() => {
+  cleanup()
+})
+
+const consentFor = (scopes: readonly string[]): OAuthConsentResource => ({
+  id: 'consent-1',
+  clientId: 'fitbit-sync',
+  clientName: 'Fitbit Sync',
+  scopes,
+  redirectUri: 'https://app.example/cb',
+  preApprovedScopes: [],
+  patient: null,
+  registration: { status: 'registered' },
+})
+
+describe('consentAsksForPatient', () => {
+  test.each([
+    [['launch/patient', 'openid'], true],
+    [['patient/Observation.rs'], true],
+    [['user/Observation.rs', 'openid'], false],
+    [['openid', 'fhirUser'], false],
+  ])('%j → %s', (scopes, expected) => {
+    expect(consentAsksForPatient(consentFor(scopes))).toBe(expected)
+  })
+})
+
+describe('OAuthConsentCard — patient search', () => {
+  const renderCard = (
+    patientSearch?: Parameters<typeof OAuthConsentCard>[0]['patientSearch']
+  ): void => {
+    render(
+      <OAuthConsentCard
+        consent={consentFor(['launch/patient', 'openid'])}
+        consentMutation={{ mutate: vi.fn(), isPending: false, error: null }}
+        patients={{ options: [], loading: false, error: null }}
+        patientSearch={patientSearch}
+        onDone={vi.fn()}
+      />
+    )
+  }
+
+  test('without a search the patient bar has the picker alone', () => {
+    renderCard()
+
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(screen.getByRole('button', { name: /No patient/ })).toBeDefined()
+  })
+
+  test('the search field shows the name and hands each edit to its composer', async () => {
+    const onNameChange = vi.fn<(name: string) => void>()
+    renderCard({ name: 'Le', onNameChange })
+
+    const search = screen.getByRole<HTMLInputElement>('searchbox', { name: 'Find a patient' })
+    expect(search.value).toBe('Le')
+    await userEvent.setup({ delay: null }).type(search, 'e')
+
+    expect(onNameChange).toHaveBeenLastCalledWith('Lee')
+  })
+})

@@ -14,6 +14,10 @@
       "source": "./src/data-types/index.ts",
       "default": "./dist/data-types/index.js"
     },
+    "./human-name-display": {
+      "source": "./src/data-types/complex/human-name-display.ts",
+      "default": "./dist/human-name-display/index.js"
+    },
     "./identity": {
       "source": "./src/identity/index.ts",
       "default": "./dist/identity/index.js"

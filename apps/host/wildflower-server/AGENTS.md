@@ -17,6 +17,9 @@ in a slice because more than one product uses them (`slices/authorization`,
   `/authorization` admin routes. Its TypeScript half,
   [`slices/authorization`](../../../slices/authorization/AGENTS.md), is shared by
   every app that signs in.
+- [`authorization-server-web`](./authorization-server-web/AGENTS.md) — the
+  authorization pages (the consent card), a Vite build that
+  `authorization-server-rust` embeds and serves on the server's own origin.
 - **`token-revocation-rust`** — the per-token denylist and per-subject epoch
   both enforcement points read: `authorization-server-rust`'s gate and
   `fhir-r4-rust`'s `JtiCache`. Neither of those depends on the other.
@@ -44,7 +47,7 @@ in a slice because more than one product uses them (`slices/authorization`,
 ## Rules
 
 - **Only the host uses these.** A crate lives here because the host is its
-  only Rust consumer. The crates other crates or apps also use
+  only Rust consumer; `authorization-server-web` because its crate is. The crates other crates or apps also use
   (`scopes-rust`, `persistence-rust`, `rathole-settings-rust`,
   `ohif-server-rust`, …) stay in `slices/`.
 - **No slice depends on a crate here.** A test that drives two slices

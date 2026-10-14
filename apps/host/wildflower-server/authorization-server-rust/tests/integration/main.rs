@@ -3,6 +3,7 @@ mod cache_suppression;
 mod client_auth;
 mod client_management;
 mod common;
+mod consent_card;
 mod device_code;
 mod grant_flows;
 mod host_consent_decider;

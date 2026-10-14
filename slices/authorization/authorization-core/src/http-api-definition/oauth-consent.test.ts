@@ -7,6 +7,7 @@ import {
   ApproveOAuthConsentBody,
   LaunchPatientMismatchSchema,
   OAuthConsentRegistrationSchema,
+  OAuthConsentResultSchema,
   OAuthConsentSchema,
   RegistrationNotAcknowledgedSchema,
 } from './oauth-consent.ts'
@@ -173,5 +174,22 @@ describe('LaunchPatientMismatchSchema', () => {
 
     // Assert
     expect(decoded).toEqual({ error: 'LaunchPatientMismatch', id: 'consent-1' })
+  })
+})
+
+describe('OAuthConsentResultSchema', () => {
+  it('decodes a code-flow decision with the client callback, approved or denied', () => {
+    for (const wire of [
+      { status: 'approved', redirect: 'https://app.example/cb?code=c&state=s' },
+      { status: 'denied', redirect: 'https://app.example/cb?error=access_denied&state=s' },
+    ]) {
+      expect(Schema.decodeUnknownSync(OAuthConsentResultSchema)(wire)).toEqual(wire)
+    }
+  })
+
+  it('decodes a device-flow decision, which carries no callback', () => {
+    for (const wire of [{ status: 'approved' }, { status: 'denied' }]) {
+      expect(Schema.decodeUnknownSync(OAuthConsentResultSchema)(wire)).toEqual(wire)
+    }
   })
 })

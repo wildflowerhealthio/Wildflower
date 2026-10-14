@@ -18,6 +18,8 @@ packages:
   - apps/host/*
   - apps/host/recorder/*
   - apps/host/servers/*
+  # The authorization server's pages, which its crate beside them embeds.
+  - apps/host/wildflower-server/authorization-server-web
   # The launcher: the web app that manages a Wildflower server, and the
   # packages it is built from, grouped by the slice they came from.
   - apps/launcher/*

@@ -419,7 +419,8 @@ keeps waiting (on the [wait page](#wait-page) for a code request).
 
 ### Wait page
 
-The page `/oauth/authorize` parks a browser on while the Owner decides:
+The page `/oauth/authorize` parks a browser that isn't an
+[Owner browser](#owner-browser) on while the Owner decides:
 `/oauth/authorize/{id}/wait`, served by the authorization server itself on whichever
 origin the browser reached it at (loopback, a tunnel, a forwarded front). The
 `Location` is relative to `/oauth/authorize`, so no launcher address is
@@ -430,12 +431,43 @@ redirect the status carries, which the authorization server built from the clien
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the authorization server for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers in
-the host's consent sheet or a signed-in launcher.
+the host's consent sheet, a signed-in launcher, or the
+[consent card](#consent-card). While the request is pending, the page also
+reads `GET /authorization/oauth-consents/{id}` on whatever session the browser
+carries; once that succeeds (the browser has signed in as the Owner since), it
+switches to the consent card beside it.
 
 It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an
 `http:`/`https:` redirect. Its colours are copies of `react-tundraish` palette
 tokens under the same names.
+
+### Consent card
+
+The page an [Owner browser](#owner-browser) decides a parked
+authorization-code request on: `/oauth/authorize/{id}/consent`, on the
+server's own origin, so the address bar names the server being approved.
+`/oauth/authorize` sends a browser there instead of the
+[wait page](#wait-page) when the request carries a live
+`__Host-owner_browser_session` cookie, and the wait page switches to it once
+the browser signs in.
+
+It is a React page from the **authorization pages** bundle
+(`apps/host/wildflower-server/authorization-server-web`), which the
+authorization server embeds and serves with the wait page's headers; its
+hashed scripts and stylesheets are at `/oauth/assets/*`, cached as immutable.
+It has no API of its own. On the Owner browser's session, which the host's
+cookie→bearer layer presents as the bearer, it reads
+`GET /authorization/oauth-consents/{id}`, searches FHIR `GET /Patient?name=…`
+when the request asks for a patient, and posts `/approve` or `/deny`. The card
+is `authorization-react`'s `OAuthConsentCard`: the app's identity and where it
+sends the browser back to, the [trust-on-first-use](#trust-on-first-use)
+warning and its acknowledgement, the requested scopes (unticking only), the
+patient search, and Approve and Deny. The decision's answer carries the
+client's callback (`code` + `state`, or `error=access_denied` + `state`), and
+the page leaves for it with `location.replace`, only for an `http:`/`https:`
+URL. A browser that can't read the request (`401`, `403`, or `404` once it is
+no longer pending) goes to the wait page instead.
 
 ### Wildflower host app
 
@@ -480,6 +512,9 @@ every Owner browser is signed out by revoking the `wildflower-owner-browser`
 subject. A request whose cookie holds an expired or revoked token is served as
 if the cookie weren't sent, and the response clears it. The cookie needs
 `https`, so it works on `https://<domain>` and not on the loopback listener.
+`/oauth/authorize` reads the cookie too: a parked request from an Owner
+browser goes to the [consent card](#consent-card) rather than the
+[wait page](#wait-page).
 
 ### Expandable consent
 
@@ -666,11 +701,12 @@ verifies PKCE + redirect_uri + client_id match the issued code, then
 mints a JWT.
 
 Unless an existing [grant](#grant) pre-approves every requested scope, the
-request is parked for the Owner: the browser lands on the
-[wait page](#wait-page), and the request joins the
+request is parked for the Owner: it joins the
 [pending-consent queue](#pending-consent-queue) so the host app's consent
-sheet asks about it and a signed-in launcher lists it. Whichever surface decides it, the wait
-page redirects the client once its poll observes the outcome. The browser that
+sheet asks about it and a signed-in launcher lists it. A browser signed in as
+the Owner lands on the [consent card](#consent-card) and decides there; any
+other lands on the [wait page](#wait-page), which redirects the client once
+its poll observes the outcome, whichever surface decides it. The browser that
 started the flow is usually not signed in — a SMART app launched from another
 device, one reaching the tunnel origin, or the launcher signing in to begin
 with — so it waits rather than decides.

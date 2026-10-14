@@ -1,7 +1,10 @@
 // The authorization server's wait page (`../wait_page.rs`). Polls this request's status
 // at the sibling `/oauth/authorize/{id}` until the Owner decides, then leaves
 // for the redirect the authorization server built from the client's allowlisted
-// `redirect_uri`. See "Wait page" in the Wildflower Authorization Jargon Explanation.
+// `redirect_uri`. While the request is pending it also checks whether this
+// browser is signed in as the Owner (it can read the request's consent), and
+// if so switches to the consent card beside it, `/oauth/authorize/{id}/consent`.
+// See "Wait page" in the Wildflower Authorization Jargon Explanation.
 //
 // Loaded as a module script, so its names stay out of the page's globals.
 
@@ -67,6 +70,51 @@ const leaveFor = (redirect) => {
 }
 
 /**
+ * Whether this browser can decide the request on the consent card: it reads
+ * the request's consent, `/authorization/oauth-consents/{id}`, on the session
+ * its cookie carries. A browser not signed in as the Owner gets a `401`; one
+ * that can't reach the server stays on this page and polls again.
+ *
+ * @returns {Promise<boolean>}
+ */
+const canOpenConsentCard = async () => {
+  // `…/oauth/authorize/{id}/wait` → `…/authorization/oauth-consents/{id}`,
+  // the id segment carried over as it was encoded.
+  const requestIdSegment = window.location.pathname.split('/').slice(-2, -1)[0] ?? ''
+  const consentUrl = new URL(
+    `../../../authorization/oauth-consents/${requestIdSegment}`,
+    window.location.href
+  )
+  try {
+    const response = await fetch(consentUrl, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The request is still pending: switch to the consent card if this browser
+ * can decide it there, else poll again after the interval.
+ *
+ * @param {string} statusPath
+ * @returns {Promise<void>}
+ */
+const awaitDecision = async (statusPath) => {
+  if (await canOpenConsentCard()) {
+    document.documentElement.dataset['state'] = 'leaving'
+    window.location.replace(new URL('consent', window.location.href).href)
+    return
+  }
+  setTimeout(() => {
+    void poll(statusPath, 0)
+  }, POLL_INTERVAL_MS)
+}
+
+/**
  * Act on one decoded status body: poll again, leave, or settle.
  *
  * @param {string} statusPath
@@ -75,9 +123,7 @@ const leaveFor = (redirect) => {
 const follow = (statusPath, status) => {
   switch (status.status) {
     case 'pending':
-      setTimeout(() => {
-        void poll(statusPath, 0)
-      }, POLL_INTERVAL_MS)
+      void awaitDecision(statusPath)
       return
     case 'approved':
       leaveFor(status.redirect)

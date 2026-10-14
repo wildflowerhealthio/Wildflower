@@ -12,8 +12,9 @@ use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{CodeAuthority, GrantRecorder, RequestApprover};
-use crate::domain::client_redirect::build_client_redirect_url;
+use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
+use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 use wildflowerhealthio_scopes::Grant;
@@ -120,7 +121,7 @@ pub(crate) fn approve_oauth_consent(
     )?
     else {
         return deny_consent(store, owner_approval, id, make_consent_not_found)
-            .map(|()| ConsentOutcome::Denied);
+            .map(|()| denial_outcome(&pending_request));
     };
 
     let Some(issued_code) = RequestApprover::over(store).approve_for_code(
@@ -161,14 +162,37 @@ pub(crate) fn approve_oauth_consent(
 
 /// Deny the pending authorization-code request `id`. Validates it's a live
 /// code-flow prompt first (so a stale/unknown id is the structured 404), then
-/// marks it denied and republishes the popup head.
+/// marks it denied, republishes the popup head, and returns the client's
+/// `error=access_denied` callback.
 pub(crate) fn deny_oauth_consent(
     store: &impl GrantStore,
     owner_approval: &dyn OwnerApproval,
     id: &str,
-) -> Result<(), AuthorizationServerError> {
-    load_pending_code_request(store, id)?;
+) -> Result<ConsentOutcome, AuthorizationServerError> {
+    let pending_request = load_pending_code_request(store, id)?;
     deny_consent(store, owner_approval, id, || {
         AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() }
-    })
+    })?;
+    Ok(denial_outcome(&pending_request))
+}
+
+/// The outcome of denying `pending_request`: the client callback carrying
+/// `error=access_denied` and the client's `state` (RFC 6749 §4.1.2.1), the
+/// same one the status poll hands the wait page.
+fn denial_outcome(pending_request: &PendingCodeRequest) -> ConsentOutcome {
+    let client_callback_url =
+        pending_request
+            .request()
+            .client_state
+            .as_deref()
+            .map(|client_state| {
+                build_client_error_redirect_url(
+                    pending_request.redirect_uri(),
+                    OAuthErrorCode::AccessDenied,
+                    client_state,
+                )
+            });
+    ConsentOutcome::Denied {
+        redirect: client_callback_url,
+    }
 }

@@ -9,8 +9,14 @@
 //! `session_cookie_bearer`) reads it back on requests from the server's own
 //! pages: it presents a live session's token as the request's bearer, so the
 //! bearer gates check it like any other token, and clears an ended one.
+//! `/oauth/authorize` reads it too, on the navigation a client starts, to send
+//! a browser signed in as the Owner to the consent card rather than the wait
+//! page.
 
 use std::sync::Arc;
+
+use axum::http::{header, HeaderMap};
+use cookie::Cookie;
 
 use crate::domain::capabilities::oauth::OWNER_BROWSER_SESSION_TTL;
 use crate::domain::token::VerifyError;
@@ -58,7 +64,37 @@ pub fn owner_browser_session_has_ended(
     state: &Arc<AuthorizationServerState>,
     owner_browser_token: &str,
 ) -> bool {
-    match LiveTokenVerifier::from_state(state).verify(owner_browser_token) {
+    has_ended(&LiveTokenVerifier::from_state(state), owner_browser_token)
+}
+
+/// Whether `headers` carry an Owner browser session that hasn't ended (see
+/// [`owner_browser_session_has_ended`]): the browser that sent them is signed
+/// in as the Owner.
+pub(crate) fn carries_owner_browser_session(
+    token_verifier: &LiveTokenVerifier,
+    headers: &HeaderMap,
+) -> bool {
+    owner_browser_session_token(headers)
+        .is_some_and(|owner_browser_token| !has_ended(token_verifier, &owner_browser_token))
+}
+
+/// The Owner browser session cookie's value among `headers`' `Cookie`s, if
+/// the browser sent it.
+fn owner_browser_session_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|cookie_header| cookie_header.to_str().ok())
+        .flat_map(Cookie::split_parse)
+        .filter_map(Result::ok)
+        .find(|cookie| cookie.name() == OWNER_BROWSER_SESSION_COOKIE)
+        .map(|cookie| cookie.value().to_owned())
+}
+
+/// Whether `token_verifier` would refuse `owner_browser_token` for good: bad,
+/// expired or revoked. An unreadable store says nothing about the token.
+fn has_ended(token_verifier: &LiveTokenVerifier, owner_browser_token: &str) -> bool {
+    match token_verifier.verify(owner_browser_token) {
         Ok(_) => false,
         Err(VerifyError::TokenRejected | VerifyError::Revoked) => true,
         Err(
@@ -72,7 +108,45 @@ pub fn owner_browser_session_has_ended(
 
 #[cfg(test)]
 mod tests {
-    use super::{owner_browser_session_clearing_set_cookie, owner_browser_session_set_cookie};
+    use axum::http::{header, HeaderMap, HeaderValue};
+
+    use super::{
+        owner_browser_session_clearing_set_cookie, owner_browser_session_set_cookie,
+        owner_browser_session_token,
+    };
+
+    fn cookie_headers(cookie_headers: &[&'static str]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        for cookie_header in cookie_headers {
+            headers.append(header::COOKIE, HeaderValue::from_static(cookie_header));
+        }
+        headers
+    }
+
+    #[test]
+    fn the_session_token_is_read_from_among_the_browser_s_cookies() {
+        for (cookies, expected) in [
+            (&["__Host-owner_browser_session=a.b.c"][..], Some("a.b.c")),
+            (
+                &["hfs_session=s-1; __Host-owner_browser_session=a.b.c; theme=dark"][..],
+                Some("a.b.c"),
+            ),
+            (
+                &["hfs_session=s-1", "__Host-owner_browser_session=a.b.c"][..],
+                Some("a.b.c"),
+            ),
+            // A name that only starts like the cookie's is another cookie.
+            (&["__Host-owner_browser_session_x=a.b.c"][..], None),
+            (&["hfs_session=s-1"][..], None),
+            (&[][..], None),
+        ] {
+            assert_eq!(
+                owner_browser_session_token(&cookie_headers(cookies)).as_deref(),
+                expected,
+                "{cookies:?}"
+            );
+        }
+    }
 
     #[test]
     fn the_cookie_has_exactly_the_owner_browser_session_attributes() {

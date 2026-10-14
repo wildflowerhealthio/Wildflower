@@ -70,6 +70,9 @@ rand = "0.10"
 rand_core = { version = "0.6", features = ["getrandom"] }
 uuid = { version = "1", features = ["v4"] }
 base64.workspace = true
+# Reads the Owner browser session out of a request's `Cookie` header, where
+# `/oauth/authorize` decides between the consent card and the wait page.
+cookie = "0.18"
 percent-encoding = "2"
 serde_urlencoded = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
@@ -77,6 +80,11 @@ tracing = "0.1"
 url = { version = "2", features = ["serde"] }
 thiserror = "2"
 tokio = { workspace = true, features = ["sync", "macros"] }
+# Embeds the authorization pages' build
+# (`apps/host/wildflower-server/authorization-server-web/dist`): `consent.html`
+# and its hashed `assets/`, served at `/oauth/authorize/{id}/consent` and
+# `/oauth/assets/*`. `build.rs` reruns the build when it changes.
+include_dir = "0.7"
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`),
 # so a future `unsafe` block in the crypto/OAuth code is a compile error.

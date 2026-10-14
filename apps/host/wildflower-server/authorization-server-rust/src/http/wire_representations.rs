@@ -103,13 +103,15 @@ pub(crate) struct ApproveBody {
     pub(crate) device_name: Option<String>,
 }
 
-/// Result the launcher sees after approving or denying a consent prompt.
+/// Result the approving surface sees after approving or denying a consent
+/// prompt.
 ///
-/// A code-flow approval carries the client callback URL (`code` + `state`
-/// appended to the client's `redirect_uri`) so the approving surface can
-/// complete the flow directly when the approver *is* the requesting client —
-/// no separate poll of `/oauth/authorize/{id}` needed. Device-flow approvals
-/// have no client `redirect_uri`, so `redirect` is `None` and (thanks to
+/// A code-flow decision carries the client callback URL (`code` + `state`, or
+/// `error=access_denied` + `state`, appended to the client's `redirect_uri`) so
+/// the approving surface can complete the flow directly when it is the
+/// requesting browser (the consent card) — no separate poll of
+/// `/oauth/authorize/{id}` needed. Device-flow decisions have no client
+/// `redirect_uri`, so `redirect` is `None` and (thanks to
 /// `skip_serializing_if`) omitted from the wire entirely.
 #[derive(Debug, Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
@@ -118,7 +120,10 @@ pub(crate) enum ConsentResult {
         #[serde(skip_serializing_if = "Option::is_none")]
         redirect: Option<String>,
     },
-    Denied,
+    Denied {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        redirect: Option<String>,
+    },
 }
 
 /// Render the domain consent action's [`ConsentOutcome`](crate::domain::capabilities::ConsentOutcome)
@@ -130,7 +135,9 @@ impl From<crate::domain::capabilities::ConsentOutcome> for ConsentResult {
             crate::domain::capabilities::ConsentOutcome::Approved { redirect } => {
                 ConsentResult::Approved { redirect }
             }
-            crate::domain::capabilities::ConsentOutcome::Denied => ConsentResult::Denied,
+            crate::domain::capabilities::ConsentOutcome::Denied { redirect } => {
+                ConsentResult::Denied { redirect }
+            }
         }
     }
 }

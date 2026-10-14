@@ -46,6 +46,13 @@ export default defineConfig({
       dts: tsgoDts,
       exports: false,
       platform: 'neutral',
+      entry: { 'human-name-display/index': 'src/data-types/complex/human-name-display.ts' },
+    },
+    {
+      deps: { resolveDepSubpath: true },
+      dts: tsgoDts,
+      exports: false,
+      platform: 'neutral',
       entry: { 'telemetry/index': 'src/telemetry/index.ts' },
     },
   ],

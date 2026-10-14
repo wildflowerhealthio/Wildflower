@@ -122,10 +122,24 @@ const lastApprovedScopes = (): readonly string[] | undefined => {
 
 describe('OAuthConsentForm — app identity', () => {
   test('the header names the app, demoting the client id to a mono line', () => {
-    renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
+    renderForm(makeConsent({ scopes: ['patient/Observation.r'], clientId: 'fitbit-sync' }), vi.fn())
 
     expect(screen.getByRole('heading', { name: 'Fitbit Sync' })).toBeDefined()
-    expect(screen.getByText('app.example')).toBeDefined()
+    expect(screen.getByText('fitbit-sync')).toBeDefined()
+  })
+
+  test('the header names the host the app sends the browser back to', () => {
+    renderForm(
+      makeConsent({
+        scopes: ['patient/Observation.r'],
+        redirectUri: 'https://sync.fitbit.example:8443/oauth/cb?x=1',
+      }),
+      vi.fn()
+    )
+
+    expect(screen.getByText('Returns you to', { exact: false }).textContent).toBe(
+      'Returns you to sync.fitbit.example:8443'
+    )
   })
 
   test('falls back to the client id as the subject when the name is empty', () => {

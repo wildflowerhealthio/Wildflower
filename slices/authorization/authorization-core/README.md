@@ -70,15 +70,25 @@ and 90 days respectively). See the
   `client_id`, an unregistered `redirect_uri`, or scopes outside the
   registration are carried to the consent prompt as a registration verdict
   rather than rejected (`wildflower-host` excepted). A request no standing
-  grant covers redirects to the wait page below, relative to itself, so the
-  browser stays on whichever origin it reached the authorization server at.
+  grant covers redirects to the consent card below when the browser carries a
+  live Owner browser session, and to the wait page otherwise, relative to
+  itself, so the browser stays on whichever origin it reached the
+  authorization server at.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/authorize/:id/wait` — the **wait page**, served by the authorization server
   itself: static HTML, CSS and JS (`authorization-server-rust`'s
   `http/routes/oauth/wait_page/`) that polls `/oauth/authorize/:id` and, once
-  the Owner decides, leaves for the redirect the status carries. See "Wait
-  page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
+  the Owner decides, leaves for the redirect the status carries. It switches
+  to the consent card once the browser can read the request's consent. See
+  "Wait page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
+- `/oauth/authorize/:id/consent` — the **consent card**, where an Owner
+  browser decides the request through `/authorization/oauth-consents/:id`
+  and leaves for the callback the decision carries. A React page from
+  `apps/host/wildflower-server/authorization-server-web`, which the
+  authorization server embeds; its hashed assets are at `/oauth/assets/*`.
+  See "Consent card" in the
+  [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
   `device_code` + `user_code` + verification URIs (under `/authorization/devices`
   on the hosted launcher, carrying `?server=`).
@@ -88,7 +98,9 @@ and 90 days respectively). See the
 - `/authorization/oauth-consents/:id` (+ `/approve`, `/deny`) — Owner actions
   on a pending OAuth code-flow request. The consent carries a `registration`
   verdict (`registered` / `new` / `changed`); approving a `new` or `changed`
-  one requires `acknowledgedRegistration: true`.
+  one requires `acknowledgedRegistration: true`. A decision answers with the
+  client's callback (`redirect`: the code on an approval, `access_denied` on a
+  denial), for the consent card to leave for.
 - `/authorization/devices/:userCode` (+ `/approve`, `/deny`) — Owner actions
   on a pending device-flow request.
 - `/authorization/grants`, `/authorization/grants/:id` — list / inspect / revoke

@@ -1,3 +1,4 @@
+mod authorization_pages;
 mod authorization_status;
 mod authorize;
 mod client_auth;
@@ -5,6 +6,7 @@ mod device_authorization;
 mod device_name_hint;
 mod internal;
 mod openapi;
+mod pages;
 mod sign_in;
 mod token_exchange;
 mod token_request;
@@ -18,11 +20,14 @@ use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
 
-/// The `/oauth/*` pages — the [`wait_page`] and its assets, and the Owner's
+/// The `/oauth/*` pages — the [`wait_page`] and its assets, the
+/// [`authorization_pages`] (the consent card) and theirs, and the Owner's
 /// [`sign_in`] — mounted under `/oauth` beside [`openapi_router`]. Kept out of
 /// the `OpenAPI` spec: they are a browser's pages, not API surface.
 pub(crate) fn page_router() -> Router<Arc<AuthorizationServerState>> {
-    wait_page::router().merge(sign_in::router())
+    wait_page::router()
+        .merge(authorization_pages::router())
+        .merge(sign_in::router())
 }
 
 /// The `/oauth/*` routes as an `OpenApiRouter`, so the OpenAPI spec is collected

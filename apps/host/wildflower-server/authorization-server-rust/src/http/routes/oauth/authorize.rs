@@ -1,5 +1,5 @@
 use axum::extract::Query;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
 use utoipa::IntoParams;
@@ -13,9 +13,11 @@ use crate::domain::client_redirect::{build_client_error_redirect_url, build_clie
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
+use crate::http::owner_browser_session_cookie::carries_owner_browser_session;
 
+use super::authorization_pages::consent_page_location;
 use super::wait_page::wait_page_location;
-use crate::live_bindings::LiveCodeAuthorizationStarter;
+use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveTokenVerifier};
 
 /// `302 Found` redirect. RFC 6749's examples use 302 and the TypeScript
 /// implementation emits 302, so all `/oauth/authorize` redirects use it for
@@ -150,15 +152,19 @@ pub struct AuthorizeParams {
 ///    first (see their fields), and the launch is consumed onto the request.
 /// 2. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
-///    queue (raising the host webview's popup) and the browser is 302'd to the
-///    wait page at `/oauth/authorize/{id}/wait`, served by this authorization server on
-///    the origin the browser used, which polls `GET /oauth/authorize/{id}` (a
-///    custom extension, not part of any RFC) until the Owner decides — in the
-///    popup or in a signed-in launcher. RFC 6749
-///    leaves the owner-interaction mechanism unspecified, so the wait page is
-///    spec-legal; likewise §4.1 explicitly allows skipping consent on a
-///    previously established authorization decision, which is what the grant
-///    fast path implements.
+///    queue (raising the host webview's popup) and the browser is 302'd to a
+///    page this authorization server serves beside the endpoint, on the origin
+///    the browser used. A browser signed in as the Owner (it carries a live
+///    Owner browser session) goes to the consent card at
+///    `/oauth/authorize/{id}/consent`, where the Owner decides in place. Any
+///    other goes to the wait page at `/oauth/authorize/{id}/wait`, which polls
+///    `GET /oauth/authorize/{id}` (a custom extension, not part of any RFC)
+///    until the Owner decides — in the popup, in a signed-in launcher, or on
+///    the consent card once that browser signs in.
+///    RFC 6749 leaves the owner-interaction mechanism unspecified, so both
+///    pages are spec-legal; likewise §4.1 explicitly allows skipping consent
+///    on a previously established authorization decision, which is what the
+///    grant fast path implements.
 /// 3. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
@@ -177,13 +183,15 @@ pub struct AuthorizeParams {
     path = "/authorize",
     params(AuthorizeParams),
     responses(
-        (status = 302, description = "Redirect to the client redirect_uri or the authorization server's wait page"),
+        (status = 302, description = "Redirect to the client redirect_uri, or to the authorization server's consent card (a browser signed in as the Owner) or wait page"),
         (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 503, description = "No active signing key")
     )
 )]
 pub(super) async fn handle_authorize_request(
     code_authorization_starter: Live<LiveCodeAuthorizationStarter>,
+    token_verifier: Live<LiveTokenVerifier>,
+    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     let next_step = code_authorization_starter.start(
@@ -216,11 +224,17 @@ pub(super) async fn handle_authorize_request(
             &code,
             &client_state,
         )),
-        // Otherwise this authorization server's wait page, which waits for whichever
-        // surface — the host popup or a signed-in launcher's consent list —
-        // decides first.
+        // Otherwise the Owner decides: on the consent card, when this browser
+        // is signed in as the Owner, and else from this authorization server's
+        // wait page, which waits for whichever surface — the host popup, a
+        // signed-in launcher's consent list, or the consent card — decides
+        // first.
         AuthorizeNextStep::AwaitOwner { request_id } => {
-            found_redirect(&wait_page_location(&request_id))
+            if carries_owner_browser_session(&token_verifier, &headers) {
+                found_redirect(&consent_page_location(&request_id))
+            } else {
+                found_redirect(&wait_page_location(&request_id))
+            }
         }
     })
 }

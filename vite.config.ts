@@ -62,6 +62,7 @@ export default defineConfig({
       'apps/host/host-app/vitest.config.ts',
       'apps/host/recorder/*/vite.config.ts',
       'apps/host/servers/*/vite.config.ts',
+      'apps/host/wildflower-server/authorization-server-web/vite.config.ts',
       'apps/importer-web/vite.config.ts',
       'apps/launcher/*/vite.config.ts',
       'apps/launcher/databases/*/vite.config.ts',

@@ -85,13 +85,15 @@ pub struct DeviceConsentView {
 /// The Owner's decision on a consent prompt, after the action has applied it.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConsentOutcome {
-    /// Approved. `redirect` is the client callback URL to hand back so an
-    /// approving surface that *is* the requesting client can finish inline
-    /// (code flow with a `client_state`); `None` for the device flow.
+    /// Approved. `redirect` is the client callback URL carrying the code, to
+    /// hand back so the approving surface can finish the flow inline (code
+    /// flow with a `client_state`); `None` for the device flow.
     Approved { redirect: Option<String> },
-    /// Nothing was granted — no requested-and-allowed scope was approved, so the
-    /// request was denied.
-    Denied,
+    /// Denied, or nothing was granted (no requested-and-allowed scope was
+    /// approved, which is applied as a deny). `redirect` is the client callback
+    /// URL carrying `error=access_denied` (code flow with a `client_state`);
+    /// `None` for the device flow.
+    Denied { redirect: Option<String> },
 }
 
 /// The Owner's approval of an authorization-code consent prompt.
@@ -248,8 +250,9 @@ impl<S: GrantStore> ConsentDecider<S> {
         )
     }
 
-    /// Deny an authorization-code consent.
-    pub(crate) fn deny_oauth(&self, id: &str) -> Result<(), AuthorizationServerError> {
+    /// Deny an authorization-code consent, returning the client's
+    /// `error=access_denied` callback.
+    pub(crate) fn deny_oauth(&self, id: &str) -> Result<ConsentOutcome, AuthorizationServerError> {
         deny_oauth_consent(&self.store, self.owner_approval.as_ref(), id)
     }
 
@@ -387,7 +390,12 @@ mod tests {
             || panic!("must not mint a code on a deny"),
         )
         .unwrap();
-        assert_eq!(outcome, ConsentOutcome::Denied);
+        assert_eq!(
+            outcome,
+            ConsentOutcome::Denied {
+                redirect: Some("https://example.com/cb?error=access_denied&state=state".to_owned()),
+            }
+        );
         assert_eq!(
             store
                 .authorization_request_by_id("req-1")
@@ -688,7 +696,7 @@ mod tests {
             || panic!("nothing is grantable, so no code is minted"),
         )
         .unwrap();
-        assert_eq!(outcome, ConsentOutcome::Denied);
+        assert!(matches!(outcome, ConsentOutcome::Denied { .. }));
         assert_eq!(
             store
                 .client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID)
