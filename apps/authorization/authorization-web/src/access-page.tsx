@@ -33,7 +33,7 @@ import styles from './access-page.module.css'
  *
  * - the first-party host client, which is how the Owner reaches the server at
  *   all. The server refuses to disable that client (`409
- *   FirstPartyClientLocked`), and revoking its grant would cut the Owner off
+ *   HostAppClientLocked`), and revoking its grant would cut the Owner off
  *   the same way;
  * - this app's own client, whose revocation would revoke the bearer the page
  *   is signed in with.

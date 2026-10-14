@@ -91,7 +91,7 @@ the row is created or widened only when the Owner approves — see
   refresh-token families in place — unusable while it's disabled, live again
   once it's enabled; revoke a grant to end it for good.
 
-The `wildflower-host` first-party client (`FIRST_PARTY_CLIENT_ID`) is
+The `wildflower-host` first-party client (`WILDFLOWER_HOST_APP_CLIENT_ID`) is
 auto-seeded by the server at startup, with
 `kind: 'public'`, empty `redirectUris` (it gets its token via the device
 flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
@@ -99,7 +99,7 @@ redirects), and `allowedScopes: ['owner']`. It is the Owner's client: every Owne
 is issued to it, so it is locked. A `PATCH /authorization/clients/wildflower-host`
 that sets a `disabledAt`, a `DELETE /authorization/grants/{id}` of one of its
 grants, and a subject-wide `POST /authorization/revocations` naming it are each
-refused with a `409 FirstPartyClientLocked`, since any of them would sign the
+refused with a `409 HostAppClientLocked`, since any of them would sign the
 Owner out everywhere. A single Owner token is revoked by its `jti`.
 
 ### Trust on first use

@@ -63,7 +63,7 @@ mod source_guards {
             "State<",
             ".store",
             ".revocation_store",
-            ".first_party_client_id",
+            ".wildflower_host_app_client_id",
             ".owner_approval_tx",
             ".loopback_base_url",
             ".server_origin",

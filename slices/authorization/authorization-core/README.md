@@ -96,7 +96,7 @@ and 90 days respectively). See the
 - `/authorization/clients`, `/authorization/clients/:clientId` — list every registered
   client, and `PATCH` one's `disabledAt` to take trust back (a UTC time) or
   restore it (`null`); the first-party host can't be disabled
-  (`409 FirstPartyClientLocked`).
+  (`409 HostAppClientLocked`).
 - `/authorization/revocations` — revoke issued tokens now: every token a
   subject (`client_id`) holds, or one token by `jti`.
 

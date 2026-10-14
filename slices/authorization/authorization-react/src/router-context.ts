@@ -32,7 +32,7 @@ type RouterContext = BaseRouterContext.RouterContextWith<AuthorizationServerHttp
    * device-login `client_id` matches the id authorization-server-rust seeds the first-party
    * client under. Omitted on web/standalone builds, where
    * {@link useAuthorizationFirstPartyClientId} returns `undefined` and the caller
-   * falls back to authorization-core's `FIRST_PARTY_CLIENT_ID`.
+   * falls back to authorization-core's `WILDFLOWER_HOST_APP_CLIENT_ID`.
    */
   readonly firstPartyClientId?: string
   /**
@@ -87,7 +87,7 @@ const useAuthorizationLocalGrantedScopes = (): string | undefined =>
  * device-login request with this so it matches the id the authorization server seeds the
  * first-party client under. `undefined` on standalone/web builds where the host
  * context doesn't carry it — the caller falls back to authorization-core's
- * `FIRST_PARTY_CLIENT_ID`.
+ * `WILDFLOWER_HOST_APP_CLIENT_ID`.
  */
 const useAuthorizationFirstPartyClientId = (): string | undefined =>
   useRouteContext({

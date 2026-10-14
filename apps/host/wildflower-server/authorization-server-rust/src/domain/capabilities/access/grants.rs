@@ -103,7 +103,7 @@ pub(crate) struct GrantsRevoker<S: GrantStore> {
     store: S,
     revocation: Arc<dyn Revocation>,
     /// The Owner's client, whose grants are locked.
-    first_party_client_id: Arc<str>,
+    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> GrantsRevoker<S> {
@@ -112,12 +112,12 @@ impl<S: GrantStore> GrantsRevoker<S> {
     pub(crate) fn new(
         store: S,
         revocation: Arc<dyn Revocation>,
-        first_party_client_id: Arc<str>,
+        wildflower_host_app_client_id: Arc<str>,
     ) -> Self {
         GrantsRevoker {
             store,
             revocation,
-            first_party_client_id,
+            wildflower_host_app_client_id,
         }
     }
 
@@ -134,7 +134,7 @@ impl<S: GrantStore> GrantsRevoker<S> {
     /// [`AuthorizationServerError::GrantNotFound`] when no grant has `id`.
     /// A grant of the first-party client is the Owner's, and revoking it would
     /// end every Owner session at once, so it is
-    /// [`AuthorizationServerError::FirstPartyClientLocked`] and nothing is
+    /// [`AuthorizationServerError::HostAppClientLocked`] and nothing is
     /// revoked; a single Owner token is revoked by its `jti` instead.
     pub(crate) fn revoke(
         &self,
@@ -142,8 +142,8 @@ impl<S: GrantStore> GrantsRevoker<S> {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let grant = get_grant(&self.store, id)?;
-        if grant.client_id() == &*self.first_party_client_id {
-            return Err(AuthorizationServerError::FirstPartyClientLocked {
+        if grant.client_id() == &*self.wildflower_host_app_client_id {
+            return Err(AuthorizationServerError::HostAppClientLocked {
                 client_id: grant.client_id().to_owned(),
             });
         }

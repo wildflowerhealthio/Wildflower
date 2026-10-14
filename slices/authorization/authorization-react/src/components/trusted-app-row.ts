@@ -11,7 +11,7 @@ interface TrustedAppRow {
   /**
    * The one switch the row offers: `disable` while trusted, `enable` while
    * disabled. `null` for the first-party host, which can't be disabled (the
-   * server refuses it with `409 FirstPartyClientLocked`).
+   * server refuses it with `409 HostAppClientLocked`).
    */
   readonly action: ClientSwitch | null
 }

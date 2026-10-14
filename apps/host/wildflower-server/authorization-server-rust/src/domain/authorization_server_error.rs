@@ -37,7 +37,7 @@ pub enum AuthorizationServerError {
     /// (like its consent registration is never trusted on first use); a single
     /// Owner token is still revoked by its `jti`. Nothing is written when it
     /// is raised.
-    FirstPartyClientLocked { client_id: String },
+    HostAppClientLocked { client_id: String },
     /// No authorization request has this id — the `/oauth/authorize/{id}`
     /// polling endpoint's 404.
     AuthorizationRequestNotFound { id: String },
@@ -93,7 +93,7 @@ impl std::fmt::Display for AuthorizationServerError {
             AuthorizationServerError::ClientNotFound { client_id } => {
                 write!(f, "no client with id {client_id}")
             }
-            AuthorizationServerError::FirstPartyClientLocked { client_id } => {
+            AuthorizationServerError::HostAppClientLocked { client_id } => {
                 write!(
                     f,
                     "the first-party client {client_id} cannot be disabled, nor its grants or \

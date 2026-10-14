@@ -204,7 +204,7 @@ pub(crate) struct ConsentDecider<S: GrantStore> {
     store: S,
     owner_approval: Arc<dyn OwnerApproval>,
     approver_grant: Grant,
-    first_party_client_id: Arc<str>,
+    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> ConsentDecider<S> {
@@ -217,13 +217,13 @@ impl<S: GrantStore> ConsentDecider<S> {
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
         approver_grant: Grant,
-        first_party_client_id: Arc<str>,
+        wildflower_host_app_client_id: Arc<str>,
     ) -> Self {
         ConsentDecider {
             store,
             owner_approval,
             approver_grant,
-            first_party_client_id,
+            wildflower_host_app_client_id,
         }
     }
 
@@ -247,7 +247,7 @@ impl<S: GrantStore> ConsentDecider<S> {
             generate_code,
             &ApprovalContext {
                 approver_grant: &self.approver_grant,
-                first_party_client_id: &self.first_party_client_id,
+                wildflower_host_app_client_id: &self.wildflower_host_app_client_id,
                 memory: ApprovalMemory::RememberAsStandingGrant,
                 now,
             },
@@ -313,7 +313,7 @@ mod tests {
             generate_code,
             &ApprovalContext {
                 approver_grant,
-                first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
+                wildflower_host_app_client_id: crate::WILDFLOWER_HOST_APP_CLIENT_ID,
                 memory: ApprovalMemory::RememberAsStandingGrant,
                 now: Utc::now(),
             },
@@ -675,14 +675,14 @@ mod tests {
     fn approve_oauth_consent_clamps_the_first_party_client_to_its_registration() {
         let store = FakeGrantStore::default();
         let owner_approval = RecordingOwnerApproval::default();
-        let host = client(crate::FIRST_PARTY_CLIENT_ID, &["read"]);
+        let host = client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"]);
         store.upsert_client(&host).unwrap();
         let mut request = code_request(
             "req-1",
             RequestStatus::Pending,
             Utc::now() + Duration::minutes(5),
         );
-        request.client_id = crate::FIRST_PARTY_CLIENT_ID.to_owned();
+        request.client_id = crate::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned();
         request.requested_scopes = vec!["write".to_owned()];
         store.insert_authorization_request(&request).unwrap();
 
@@ -698,7 +698,7 @@ mod tests {
         assert_eq!(outcome, ConsentOutcome::Denied);
         assert_eq!(
             store
-                .client_by_id(crate::FIRST_PARTY_CLIENT_ID)
+                .client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID)
                 .unwrap()
                 .unwrap(),
             host,

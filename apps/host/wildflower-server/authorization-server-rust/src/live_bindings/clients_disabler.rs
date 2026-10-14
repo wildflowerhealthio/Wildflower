@@ -27,6 +27,9 @@ impl FixedScopeCapability for LiveClientsDisabler {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        ClientsDisabler::new(state.store.clone(), state.first_party_client_id.clone())
+        ClientsDisabler::new(
+            state.store.clone(),
+            state.wildflower_host_app_client_id.clone(),
+        )
     }
 }

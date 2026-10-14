@@ -65,7 +65,7 @@
         "tags": [
           "Access management"
         ],
-        "summary": "`PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 FirstPartyClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
+        "summary": "`PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the first-party host client is\nrefused with `409 HostAppClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
         "operationId": "handle_update_client",
         "parameters": [
           {
@@ -124,7 +124,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FirstPartyClientLockedBody"
+                  "$ref": "#/components/schemas/HostAppClientLockedBody"
                 }
               }
             }
@@ -632,9 +632,9 @@
           }
         }
       },
-      "FirstPartyClientLockedBody": {
+      "HostAppClientLockedBody": {
         "type": "object",
-        "description": "Wire shape for `FirstPartyClientLocked` (409) — the named client is the\nfirst-party host, the Owner's, which can't be disabled, nor its grants or\ntoken cohort revoked, without locking the Owner out.",
+        "description": "Wire shape for `HostAppClientLocked` (409) — the named client is the\nfirst-party host, the Owner's, which can't be disabled, nor its grants or\ntoken cohort revoked, without locking the Owner out.",
         "required": [
           "error",
           "clientId"
@@ -642,7 +642,7 @@
         "properties": {
           "error": {
             "type": "string",
-            "description": "Always `\"FirstPartyClientLocked\"`."
+            "description": "Always `\"HostAppClientLocked\"`."
           },
           "clientId": {
             "type": "string"

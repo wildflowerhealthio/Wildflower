@@ -60,15 +60,15 @@ pub struct AuthorizationServerState {
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
     /// accepts. An `Arc<str>` so each capability built from the state shares it.
     pub(crate) server_origin: Arc<str>,
-    /// The host's first-party `client_id`, pinned from
+    /// The Wildflower host app's `client_id`, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at
     /// [`crate::setup_authorization_server`] — the same id [`crate::seeding`] seeds the
-    /// first-party client row under (both sourced from `tauri-shared-config.json`
+    /// host app's client row under (both sourced from `tauri-shared-config.json`
     /// on the live app). `/token` matches a request's presented `client_id`
     /// against it to grant first-party treatment. An `Arc<str>` so the string is
     /// shared rather than reallocated when the state is cloned before the `Arc`
     /// wrap.
-    pub(crate) first_party_client_id: Arc<str>,
+    pub(crate) wildflower_host_app_client_id: Arc<str>,
     /// The hosted launcher [`page_paths`](crate::domain::page_paths) resolves the
     /// browser-facing pages on, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].

@@ -30,7 +30,7 @@ impl FixedScopeCapability for LiveGrantsRevoker {
         GrantsRevoker::new(
             state.store.clone(),
             Arc::new(state.revocation_store.clone()),
-            state.first_party_client_id.clone(),
+            state.wildflower_host_app_client_id.clone(),
         )
     }
 }

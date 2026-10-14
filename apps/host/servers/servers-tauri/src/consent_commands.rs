@@ -162,7 +162,7 @@ mod tests {
             .insert_authorization_request(&AuthorizationRequest {
                 id: id.to_owned(),
                 grant_type,
-                client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
+                client_id: wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
                     .to_owned(),
                 requested_scopes: vec!["system/*.cruds".to_owned()],
                 code_challenge: (!is_device).then(|| "challenge".to_owned()),

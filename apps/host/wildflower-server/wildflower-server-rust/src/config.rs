@@ -37,7 +37,7 @@ pub struct WildflowerServerConfig {
     /// [`AuthorizationServerConfig::host_owner_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_owner_scopes)).
     pub host_owner_scopes: Vec<String>,
     /// The host's first-party OAuth `client_id`.
-    pub first_party_client_id: String,
+    pub wildflower_host_app_client_id: String,
     /// The relay connection the server's tunnel dials, from the server's
     /// record.
     pub relay_settings: wildflowerhealthio_tunnel::RelaySettings,

@@ -1,5 +1,5 @@
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
-import { FIRST_PARTY_CLIENT_ID } from '@wildflowerhealthio/authorization-core/contexts'
+import { WILDFLOWER_HOST_APP_CLIENT_ID } from '@wildflowerhealthio/authorization-core/contexts'
 import { OAuth } from '@wildflowerhealthio/authorization-core/http-api-definition'
 import { AuthorizationServerPaths } from '@wildflowerhealthio/authorization-core/page-paths'
 /* oxlint-disable react/only-export-components ---
@@ -242,10 +242,10 @@ const NeedsAuthMessage = (): JSX.Element => {
   // literal fallback covers standalone/web renders where the host carries none.
   const localGrantedScopes = useAuthorizationLocalGrantedScopes()
   // The host's first-party `client_id`, threaded from `tauri-shared-config.json`
-  // on Tauri; `FIRST_PARTY_CLIENT_ID` is the standalone/web fallback (the two
+  // on Tauri; `WILDFLOWER_HOST_APP_CLIENT_ID` is the standalone/web fallback (the two
   // can't drift — the config is the shared source). Used as the device-login
   // request's `client_id` below.
-  const firstPartyClientId = useAuthorizationFirstPartyClientId() ?? FIRST_PARTY_CLIENT_ID
+  const firstPartyClientId = useAuthorizationFirstPartyClientId() ?? WILDFLOWER_HOST_APP_CLIENT_ID
   // This launcher as another device reaches it. The pairing link points at its
   // device-entry page rather than the one on the server's configured launcher,
   // so a pairing started on a PR preview or a dev server is approved there too.

@@ -25,7 +25,7 @@ impl FromState for LiveCodeAuthorizationStarter {
         CodeAuthorizationStarter::new(
             state.store.clone(),
             owner_approval,
-            state.first_party_client_id.clone(),
+            state.wildflower_host_app_client_id.clone(),
             state.server_origin.clone(),
         )
     }
@@ -43,7 +43,7 @@ impl FromState for LiveLoopbackOwnerApprover {
             owner_approval,
             state.loopback_consent_prompt.clone(),
             state.host_owner_grant.clone(),
-            state.first_party_client_id.clone(),
+            state.wildflower_host_app_client_id.clone(),
         )
     }
 }
@@ -59,7 +59,7 @@ impl FromState for LiveOwnerSignIn {
             state.owner_sign_in_codes.clone(),
             state.sign_in_destinations.clone(),
             state.server_origin.clone(),
-            state.first_party_client_id.clone(),
+            state.wildflower_host_app_client_id.clone(),
             state.host_owner_grant.clone(),
         )
     }

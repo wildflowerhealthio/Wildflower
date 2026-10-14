@@ -76,9 +76,9 @@ const ClientNotFoundSchema = Schema.Struct({
   clientId: Schema.String,
 })
 
-/** `409` from `UpdateClient` when it would disable the first-party host. */
-const FirstPartyClientLockedSchema = Schema.Struct({
-  error: Schema.Literal('FirstPartyClientLocked'),
+/** `409` from `UpdateClient` when it would disable the Wildflower host app's client. */
+const HostAppClientLockedSchema = Schema.Struct({
+  error: Schema.Literal('HostAppClientLocked'),
   clientId: Schema.String,
 })
 
@@ -159,7 +159,7 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
       .setPayload(UpdateClientSchema)
       .addSuccess(Client.Schema)
       .addError(ClientNotFoundSchema, { status: 404 })
-      .addError(FirstPartyClientLockedSchema, { status: 409 })
+      .addError(HostAppClientLockedSchema, { status: 409 })
   )
   .add(
     HttpApiEndpoint.post('CreateRevocation', '/revocations')
@@ -179,10 +179,10 @@ export {
   httpApiGroup,
   ClientNotFoundSchema,
   ClientsSchema,
-  FirstPartyClientLockedSchema,
   GrantSchema,
   GrantsSchema,
   GrantNotFoundSchema,
+  HostAppClientLockedSchema,
   RevocationRejectedSchema,
   RevocationSchema,
   SessionSchema,

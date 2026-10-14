@@ -25,16 +25,19 @@ pub(crate) fn token_revoker_scopes() -> Vec<Scope> {
 pub(crate) struct TokenRevoker {
     revocation: Arc<dyn Revocation>,
     /// The Owner's client, whose tokens are revoked one at a time only.
-    first_party_client_id: Arc<str>,
+    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl TokenRevoker {
     /// Build the revoker over the revocation port and the first-party
     /// `client_id`, both lifted from the state.
-    pub(crate) fn new(revocation: Arc<dyn Revocation>, first_party_client_id: Arc<str>) -> Self {
+    pub(crate) fn new(
+        revocation: Arc<dyn Revocation>,
+        wildflower_host_app_client_id: Arc<str>,
+    ) -> Self {
         TokenRevoker {
             revocation,
-            first_party_client_id,
+            wildflower_host_app_client_id,
         }
     }
 
@@ -55,11 +58,11 @@ impl TokenRevoker {
     ///
     /// The first-party client is the Owner's, and revoking its cohort would
     /// end every Owner session at once, so it is
-    /// [`AuthorizationServerError::FirstPartyClientLocked`] and nothing is
+    /// [`AuthorizationServerError::HostAppClientLocked`] and nothing is
     /// revoked; a single Owner token is revoked by its `jti` instead.
     pub(crate) fn revoke_subject(&self, subject: &str) -> Result<(), AuthorizationServerError> {
-        if subject == &*self.first_party_client_id {
-            return Err(AuthorizationServerError::FirstPartyClientLocked {
+        if subject == &*self.wildflower_host_app_client_id {
+            return Err(AuthorizationServerError::HostAppClientLocked {
                 client_id: subject.to_owned(),
             });
         }

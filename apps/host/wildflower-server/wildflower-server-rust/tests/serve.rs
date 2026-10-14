@@ -97,8 +97,8 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             .iter()
             .map(ToString::to_string)
             .collect(),
-        first_party_client_id: wildflowerhealthio_authorization_server::FIRST_PARTY_CLIENT_ID
-            .to_owned(),
+        wildflower_host_app_client_id:
+            wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // domain below never answers.

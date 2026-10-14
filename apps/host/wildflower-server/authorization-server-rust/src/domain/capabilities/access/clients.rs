@@ -46,16 +46,16 @@ pub(crate) struct ClientView {
 /// Read access to registered clients — `GET /authorization/clients`.
 pub(crate) struct ClientsReader<S: GrantStore> {
     store: S,
-    first_party_client_id: Arc<str>,
+    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> ClientsReader<S> {
     /// Build the reader over a store handle and the configured first-party
     /// `client_id`, both lifted from the state.
-    pub(crate) fn new(store: S, first_party_client_id: Arc<str>) -> Self {
+    pub(crate) fn new(store: S, wildflower_host_app_client_id: Arc<str>) -> Self {
         ClientsReader {
             store,
-            first_party_client_id,
+            wildflower_host_app_client_id,
         }
     }
 
@@ -66,7 +66,7 @@ impl<S: GrantStore> ClientsReader<S> {
             .list_clients()?
             .into_iter()
             .map(|client| ClientView {
-                first_party: client.client_id == *self.first_party_client_id,
+                first_party: client.client_id == *self.wildflower_host_app_client_id,
                 client,
             })
             .collect())
@@ -79,16 +79,16 @@ impl<S: GrantStore> ClientsReader<S> {
 /// `disabled_at`).
 pub(crate) struct ClientsDisabler<S: GrantStore> {
     store: S,
-    first_party_client_id: Arc<str>,
+    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> ClientsDisabler<S> {
     /// Build the disabler over a store handle and the configured first-party
     /// `client_id`, both lifted from the state.
-    pub(crate) fn new(store: S, first_party_client_id: Arc<str>) -> Self {
+    pub(crate) fn new(store: S, wildflower_host_app_client_id: Arc<str>) -> Self {
         ClientsDisabler {
             store,
-            first_party_client_id,
+            wildflower_host_app_client_id,
         }
     }
 
@@ -105,7 +105,7 @@ impl<S: GrantStore> ClientsDisabler<S> {
     ///
     /// [`AuthorizationServerError::ClientNotFound`] when no such client exists.
     /// Disabling the first-party host is
-    /// [`AuthorizationServerError::FirstPartyClientLocked`] — it would lock the Owner out
+    /// [`AuthorizationServerError::HostAppClientLocked`] — it would lock the Owner out
     /// of the very surface that re-enables it. Re-enabling it stays allowed, so
     /// a host disabled out of band (direct SQL) can still be recovered.
     pub(crate) fn set_disabled_at(
@@ -113,9 +113,9 @@ impl<S: GrantStore> ClientsDisabler<S> {
         client_id: &str,
         stamp: Option<DateTime<Utc>>,
     ) -> Result<ClientView, AuthorizationServerError> {
-        let first_party = client_id == &*self.first_party_client_id;
+        let first_party = client_id == &*self.wildflower_host_app_client_id;
         if first_party && stamp.is_some() {
-            return Err(AuthorizationServerError::FirstPartyClientLocked {
+            return Err(AuthorizationServerError::HostAppClientLocked {
                 client_id: client_id.to_owned(),
             });
         }
@@ -282,7 +282,7 @@ mod tests {
 
         assert_eq!(
             disable(&disabler, HOST, NOW),
-            Err(AuthorizationServerError::FirstPartyClientLocked {
+            Err(AuthorizationServerError::HostAppClientLocked {
                 client_id: HOST.to_owned()
             }),
         );

@@ -9,6 +9,6 @@
  * source shared with the Rust seeder, so it can't drift across the boundary. This
  * constant is only the fallback `NeedsAuthMessage` uses when no host context
  * carries the id (standalone/web builds); it matches authorization-server-rust's own
- * `FIRST_PARTY_CLIENT_ID` fallback and the config's `first_party_client_id`.
+ * `WILDFLOWER_HOST_APP_CLIENT_ID` fallback and the config's `wildflower_host_app_client_id`.
  */
-export const FIRST_PARTY_CLIENT_ID = 'wildflower-host'
+export const WILDFLOWER_HOST_APP_CLIENT_ID = 'wildflower-host'

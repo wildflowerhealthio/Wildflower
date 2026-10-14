@@ -15,11 +15,14 @@ pub(crate) struct HostOwnerEntitlement {
 }
 
 impl HostOwnerEntitlement {
-    /// The host's own authority: `first_party_client_id` holding the configured
+    /// The host's own authority: `wildflower_host_app_client_id` holding the configured
     /// `host_owner_scopes`. Only `seeding` may call this.
-    pub(crate) fn for_host(first_party_client_id: &str, host_owner_scopes: &[String]) -> Self {
+    pub(crate) fn for_host(
+        wildflower_host_app_client_id: &str,
+        host_owner_scopes: &[String],
+    ) -> Self {
         HostOwnerEntitlement {
-            client_id: first_party_client_id.to_owned(),
+            client_id: wildflower_host_app_client_id.to_owned(),
             scopes: host_owner_scopes.to_vec(),
         }
     }

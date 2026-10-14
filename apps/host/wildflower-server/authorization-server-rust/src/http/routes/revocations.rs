@@ -15,7 +15,7 @@
 //!   including one minted in the current (second-granular) second. `subject` is
 //!   the `sub` claim (today the `client_id`); per-device granularity is future
 //!   work (see #269). The first-party host client's cohort is every Owner
-//!   token, so naming it gets `409 FirstPartyClientLocked`; an Owner token is
+//!   token, so naming it gets `409 HostAppClientLocked`; an Owner token is
 //!   revoked by its `jti`.
 //!
 //! The revoke-device endpoint the ticket mentions is deferred — it would be a

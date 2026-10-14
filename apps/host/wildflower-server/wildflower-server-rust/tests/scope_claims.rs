@@ -40,8 +40,8 @@ fn set_up_authorization_server(
         loopback_base_url: Url::parse("http://127.0.0.1").expect("loopback URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
         host_owner_scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
-        first_party_client_id:
-            wildflowerhealthio_authorization_server::default_first_party_client_id(),
+        wildflower_host_app_client_id:
+            wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base URL"),

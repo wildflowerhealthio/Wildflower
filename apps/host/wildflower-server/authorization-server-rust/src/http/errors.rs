@@ -113,13 +113,13 @@ pub(crate) struct ClientNotFoundBody {
     pub(crate) client_id: String,
 }
 
-/// Wire shape for `FirstPartyClientLocked` (409) — the named client is the
+/// Wire shape for `HostAppClientLocked` (409) — the named client is the
 /// first-party host, the Owner's, which can't be disabled, nor its grants or
 /// token cohort revoked, without locking the Owner out.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FirstPartyClientLockedBody {
-    /// Always `"FirstPartyClientLocked"`.
+pub(crate) struct HostAppClientLockedBody {
+    /// Always `"HostAppClientLocked"`.
     pub(crate) error: &'static str,
     pub(crate) client_id: String,
 }
@@ -208,10 +208,10 @@ impl IntoResponse for AuthorizationServerError {
                 }),
             )
                 .into_response(),
-            AuthorizationServerError::FirstPartyClientLocked { client_id } => (
+            AuthorizationServerError::HostAppClientLocked { client_id } => (
                 StatusCode::CONFLICT,
-                Json(FirstPartyClientLockedBody {
-                    error: "FirstPartyClientLocked",
+                Json(HostAppClientLockedBody {
+                    error: "HostAppClientLocked",
                     client_id,
                 }),
             )

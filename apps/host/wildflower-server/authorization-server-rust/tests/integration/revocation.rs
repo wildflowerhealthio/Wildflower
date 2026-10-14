@@ -313,7 +313,7 @@ async fn the_owner_s_token_cohort_cannot_be_revoked_wholesale() {
     assert_eq!(res.status(), StatusCode::CONFLICT);
     assert_eq!(
         body_json(res.into_body()).await,
-        serde_json::json!({ "error": "FirstPartyClientLocked", "clientId": "wildflower-host" }),
+        serde_json::json!({ "error": "HostAppClientLocked", "clientId": "wildflower-host" }),
     );
     assert!(
         !revocation_store_handle(&db)
@@ -359,7 +359,7 @@ async fn the_owner_s_grant_cannot_be_revoked() {
     assert_eq!(res.status(), StatusCode::CONFLICT);
     assert_eq!(
         body_json(res.into_body()).await,
-        serde_json::json!({ "error": "FirstPartyClientLocked", "clientId": "wildflower-host" }),
+        serde_json::json!({ "error": "HostAppClientLocked", "clientId": "wildflower-host" }),
     );
     assert!(store_handle(&db)
         .grant_by_id("owner-grant")

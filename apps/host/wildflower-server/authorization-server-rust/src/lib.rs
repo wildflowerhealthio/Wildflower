@@ -88,17 +88,17 @@ pub use ports::{
     LoopbackRegistrationNotice, NoLoopbackConsentPrompt,
 };
 
-/// `client_id` of the host application's first-party OAuth client. The host
-/// uses this identity to mint Owner tokens for itself and to recognise its
-/// own client registration during bootstrap.
+/// `client_id` of the Wildflower host app's OAuth client. The host app uses
+/// this identity to mint its own Owner token and to recognise its own client
+/// registration during bootstrap.
 ///
 /// This is the standalone/test fallback: the live Tauri app sources the id from
 /// `tauri-shared-config.json` and threads it via
-/// [`AuthorizationServerConfig::first_party_client_id`], the single source shared with the
-/// TS shell (`authorization-core`'s `FIRST_PARTY_CLIENT_ID` is the matching TS
+/// [`AuthorizationServerConfig::wildflower_host_app_client_id`], the single source shared with the
+/// TS shell (`authorization-core`'s `WILDFLOWER_HOST_APP_CLIENT_ID` is the matching TS
 /// fallback), so the id can't drift across the boundary. Rendered by
-/// [`default_first_party_client_id`].
-pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
+/// [`default_wildflower_host_app_client_id`].
+pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "wildflower-host";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access
@@ -157,12 +157,12 @@ pub fn default_local_granted_scopes() -> Vec<String> {
     wildflowerhealthio_scopes::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
 }
 
-/// The default first-party `client_id` — [`FIRST_PARTY_CLIENT_ID`]. Standalone
-/// and test builds seed [`AuthorizationServerConfig::first_party_client_id`] from this;
+/// The default Wildflower host app `client_id` — [`WILDFLOWER_HOST_APP_CLIENT_ID`]. Standalone
+/// and test builds seed [`AuthorizationServerConfig::wildflower_host_app_client_id`] from this;
 /// the live Tauri app sources the value from `tauri-shared-config.json` instead.
 #[must_use]
-pub fn default_first_party_client_id() -> String {
-    FIRST_PARTY_CLIENT_ID.to_string()
+pub fn default_wildflower_host_app_client_id() -> String {
+    WILDFLOWER_HOST_APP_CLIENT_ID.to_string()
 }
 
 /// Lifetime of the host owner token minted at boot (and re-minted hourly). Kept
@@ -293,7 +293,7 @@ pub fn setup_authorization_server(
     let store = seeding::open_and_seed_store(
         pool,
         &config.host_owner_scopes,
-        &config.first_party_client_id,
+        &config.wildflower_host_app_client_id,
         &config.fhir_ui_client_id,
         &config.server_origin,
     )?;
@@ -304,7 +304,7 @@ pub fn setup_authorization_server(
         &server_origin,
         HOST_OWNER_TOKEN_TTL,
         &config.host_owner_scopes,
-        &config.first_party_client_id,
+        &config.wildflower_host_app_client_id,
     )
     .context("failed to mint host owner token")?;
     local_owner_token_tx
@@ -316,7 +316,7 @@ pub fn setup_authorization_server(
         revocation_store: revocation_store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
         server_origin: server_origin.clone(),
-        first_party_client_id: config.first_party_client_id.clone().into(),
+        wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
         loopback_consent_prompt,
@@ -343,7 +343,7 @@ pub fn setup_authorization_server(
         store,
         server_origin,
         config.host_owner_scopes.clone(),
-        config.first_party_client_id.clone(),
+        config.wildflower_host_app_client_id.clone(),
         local_owner_token_tx.clone(),
     );
     // Reclaim expired denylist rows: once at startup, then daily.
@@ -369,7 +369,7 @@ fn spawn_owner_token_reminter(
     store: SqliteGrantStore,
     server_origin: Arc<str>,
     host_owner_scopes: Vec<String>,
-    first_party_client_id: String,
+    wildflower_host_app_client_id: String,
     sender: watch::Sender<Option<String>>,
 ) {
     tokio::spawn(async move {
@@ -385,7 +385,7 @@ fn spawn_owner_token_reminter(
                 &server_origin,
                 HOST_OWNER_TOKEN_TTL,
                 &host_owner_scopes,
-                &first_party_client_id,
+                &wildflower_host_app_client_id,
             ) {
                 // `send` errors only once every receiver has dropped — i.e. the
                 // app is shutting down — so stop the timer then.

@@ -106,7 +106,7 @@ impl From<AuthorizationServerError> for AuthorizationStartError {
 pub(crate) struct CodeAuthorizationStarter<S: GrantStore> {
     store: S,
     owner_approval: Arc<dyn OwnerApproval>,
-    first_party_client_id: Arc<str>,
+    wildflower_host_app_client_id: Arc<str>,
     /// The server's bare origin, `https://<domain>`, also its FHIR base: an
     /// `aud` must name it.
     server_origin: Arc<str>,
@@ -119,13 +119,13 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
-        first_party_client_id: Arc<str>,
+        wildflower_host_app_client_id: Arc<str>,
         server_origin: Arc<str>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
             owner_approval,
-            first_party_client_id,
+            wildflower_host_app_client_id,
             server_origin,
         }
     }
@@ -319,7 +319,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// first-party host, the one client held to its registration rather than
     /// trusted on first use.
     fn registration_is_locked(&self, client_id: &str) -> bool {
-        client_id == &*self.first_party_client_id
+        client_id == &*self.wildflower_host_app_client_id
     }
 
     /// The client row named by the request, if any. A disabled client is

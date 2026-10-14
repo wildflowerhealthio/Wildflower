@@ -43,7 +43,7 @@ that.
   for element: `authorization-server-rust`'s `db/clients.rs` reads the file and
   fails otherwise.
 - **The first-party host client is locked.** The Trusted Apps section offers
-  it no switch (the server answers `409 FirstPartyClientLocked`), and the
+  it no switch (the server answers `409 HostAppClientLocked`), and the
   Approved Apps list offers no Revoke on its grants, nor on any grant until the
   trusted apps have loaded.
 - **Revoking a grant is two calls**: `DELETE /authorization/grants/:id`, then

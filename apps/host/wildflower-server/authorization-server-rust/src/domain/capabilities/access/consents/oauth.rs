@@ -29,7 +29,7 @@ pub(crate) struct ApprovalContext<'a> {
     pub(crate) approver_grant: &'a Grant,
     /// The first-party host's `client_id` — the one client whose registration
     /// is locked: never trusted on first use, never widened by an approval.
-    pub(crate) first_party_client_id: &'a str,
+    pub(crate) wildflower_host_app_client_id: &'a str,
     /// Whether the approval becomes a standing grant.
     pub(crate) memory: ApprovalMemory,
     /// The instant stamped onto the code and the standing grant.
@@ -106,7 +106,7 @@ pub(crate) fn approve_oauth_consent(
 
     // The first-party host is held to its registration; every other client is
     // trusted on first use, so its registration may be created or widened.
-    let registration_is_locked = request.client_id == ctx.first_party_client_id;
+    let registration_is_locked = request.client_id == ctx.wildflower_host_app_client_id;
     let maybe_existing_client = store.client_by_id(&request.client_id)?;
     if registration_is_locked && maybe_existing_client.is_none() {
         return Err(make_consent_not_found());

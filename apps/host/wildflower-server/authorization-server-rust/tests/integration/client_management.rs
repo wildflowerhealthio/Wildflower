@@ -351,7 +351,7 @@ async fn the_first_party_host_client_cannot_be_disabled() {
     assert_eq!(res.status(), StatusCode::CONFLICT);
     assert_eq!(
         body_json(res.into_body()).await,
-        serde_json::json!({ "error": "FirstPartyClientLocked", "clientId": "wildflower-host" }),
+        serde_json::json!({ "error": "HostAppClientLocked", "clientId": "wildflower-host" }),
     );
     assert_eq!(stored_disabled_at(&db, "wildflower-host"), None);
     // The Owner's session still works, and enabling the host stays allowed.

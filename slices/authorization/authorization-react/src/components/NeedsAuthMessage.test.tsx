@@ -62,7 +62,7 @@ const layerHolder: { current: Layer.Layer<AuthorizationServerHttpApiClient> } = 
 const scopesHolder: { current: string | undefined } = { current: undefined }
 
 // Stands in for the host-threaded `firstPartyClientId` router-context value.
-// `undefined` (the default) exercises the standalone `FIRST_PARTY_CLIENT_ID`
+// `undefined` (the default) exercises the standalone `WILDFLOWER_HOST_APP_CLIENT_ID`
 // fallback; a set value proves the device-login request forwards the injected id.
 const clientIdHolder: { current: string | undefined } = { current: undefined }
 
@@ -255,7 +255,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
     expect(payload['device_name']).toBe('Ada')
     expect(payload['scope']).toBe('system/*.rs wildflower/*.rs')
-    // No host-threaded id → the standalone `FIRST_PARTY_CLIENT_ID` fallback.
+    // No host-threaded id → the standalone `WILDFLOWER_HOST_APP_CLIENT_ID` fallback.
     expect(payload['client_id']).toBe('wildflower-host')
   })
 
