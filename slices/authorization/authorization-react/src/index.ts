@@ -36,7 +36,6 @@ export {
   useRunAuthed,
   type ApproveOAuthPayload,
   type AppGrant,
-  type Client,
   type DeviceGrant,
   type Grant,
   type RevokeGrantVariables,

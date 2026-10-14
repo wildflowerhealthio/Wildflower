@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
+import { Client } from '@wildflowerhealthio/authorization-core/domain'
 import {
   clientsQueryOptions,
   formatInstant,
@@ -10,7 +11,6 @@ import { PageHeader } from '@wildflowerhealthio/react-tundraish'
 import { Match } from 'effect'
 import type { JSX } from 'react'
 
-import { clientNameOf } from './client-name.ts'
 import type { RouterContext } from './router-context.ts'
 import styles from './grant-detail.module.css'
 
@@ -81,7 +81,7 @@ const GrantDetail = ({ id }: { readonly id: string }): JSX.Element => {
     select: (context: RouterContext) => context.runAuthed,
   })
   const { data: clients } = useQuery(clientsQueryOptions(runAuthed))
-  return <GrantDetailBody grant={grant} clientName={clientNameOf(clients, grant.clientId)} />
+  return <GrantDetailBody grant={grant} clientName={Client.displayName(clients, grant.clientId)} />
 }
 
 export { GrantDetail, GrantDetailBody }

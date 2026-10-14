@@ -28,7 +28,7 @@ export {
 export type { AppGrant, DeviceGrant, Grant, RevokeGrantVariables } from './grants.ts'
 
 export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation } from './clients.ts'
-export type { Client, ClientSwitch, UpdateClientVariables } from './clients.ts'
+export type { ClientSwitch, UpdateClientVariables } from './clients.ts'
 
 export {
   deviceConsentQueryOptions,

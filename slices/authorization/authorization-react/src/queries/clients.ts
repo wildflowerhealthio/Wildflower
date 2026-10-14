@@ -8,15 +8,12 @@ import {
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
-import type { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
-import { DateTime, Effect, type Schema } from 'effect'
+import type { Client } from '@wildflowerhealthio/authorization-core/domain'
+import { DateTime, Effect } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
 import { CLIENTS_QUERY_KEY } from './keys.ts'
 import { useRunAuthed } from './use-run-authed.ts'
-
-/** A registered OAuth client — a row of the Owner's "Trusted Apps" list. */
-type Client = Schema.Schema.Type<typeof AccessManagement.ClientSchema>
 
 /** Which way a "Trusted Apps" row's switch flips a client. */
 type ClientSwitch = 'disable' | 'enable'
@@ -24,7 +21,12 @@ type ClientSwitch = 'disable' | 'enable'
 /** Shared by the route `loader` (`ensureQueryData`) and {@link useClientsQuery}. */
 const clientsQueryOptions = (
   runAuthed: RunAuthed
-): UseSuspenseQueryOptions<readonly Client[], Error, readonly Client[], typeof CLIENTS_QUERY_KEY> =>
+): UseSuspenseQueryOptions<
+  readonly Client.Type[],
+  Error,
+  readonly Client.Type[],
+  typeof CLIENTS_QUERY_KEY
+> =>
   queryOptions({
     queryKey: CLIENTS_QUERY_KEY,
     queryFn: () =>
@@ -40,7 +42,7 @@ const clientsQueryOptions = (
   })
 
 /** Reads synchronously from cache when the route loader has already warmed it. */
-const useClientsQuery = (): UseSuspenseQueryResult<readonly Client[], Error> =>
+const useClientsQuery = (): UseSuspenseQueryResult<readonly Client.Type[], Error> =>
   useSuspenseQuery(clientsQueryOptions(useRunAuthed()))
 
 /** `UpdateClient`'s input: the client, and which way to flip it. */
@@ -54,7 +56,11 @@ interface UpdateClientVariables {
  * `Clock` (the server stamps its own now whatever time arrives); enabling
  * sends `null`. Invalidates the clients list.
  */
-const useUpdateClientMutation = (): UseMutationResult<Client, Error, UpdateClientVariables> => {
+const useUpdateClientMutation = (): UseMutationResult<
+  Client.Type,
+  Error,
+  UpdateClientVariables
+> => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
@@ -78,4 +84,4 @@ const useUpdateClientMutation = (): UseMutationResult<Client, Error, UpdateClien
 }
 
 export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation }
-export type { Client, ClientSwitch, UpdateClientVariables }
+export type { ClientSwitch, UpdateClientVariables }

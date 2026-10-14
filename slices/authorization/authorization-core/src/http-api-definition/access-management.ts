@@ -1,6 +1,8 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
+
+import { Client } from '../domain/index.ts'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
  * A `Grant` is a materialized consent decision — the Owner approved a client for
@@ -50,30 +52,8 @@ const GrantNotFoundSchema = Schema.Struct({
   id: Schema.String,
 })
 
-/**
- * A registered OAuth `Client` as the Owner's "Trusted apps" list reads it — one
- * `clients` row, seeded by a migration or created when the Owner approved an
- * unknown app (trust on first use). `secret_hash` never leaves the server.
- *
- * - `disabledAt` is when the Owner disabled the client, and `null` while it's
- *   enabled. While it's set, `/oauth/authorize` and `/oauth/token` refuse the
- *   client.
- * - `firstParty` marks the Wildflower host client, which can't be disabled (it's
- *   how the Owner reaches this surface at all).
- */
-const ClientSchema = Schema.Struct({
-  clientId: Schema.String,
-  name: Schema.String,
-  kind: Schema.Literal('public', 'confidential'),
-  redirectUris: Schema.Array(Schema.String),
-  allowedScopes: Schema.Array(Schema.String),
-  allowedGrantTypes: Schema.Array(Schema.String),
-  registeredAt: Schema.DateTimeUtc,
-  disabledAt: Schema.NullOr(Schema.DateTimeUtc),
-  firstParty: Schema.Boolean,
-})
-
-const ClientsSchema = Schema.Array(ClientSchema)
+/** Every client the server trusts: `ListClients`' answer. */
+const ClientsSchema = Schema.Array(Client.Schema)
 
 /**
  * `UpdateClient`'s body — the one client field the Owner can edit.
@@ -177,7 +157,7 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
     HttpApiEndpoint.patch('UpdateClient', '/clients/:clientId')
       .setPath(Schema.Struct({ clientId: Schema.String }))
       .setPayload(UpdateClientSchema)
-      .addSuccess(ClientSchema)
+      .addSuccess(Client.Schema)
       .addError(ClientNotFoundSchema, { status: 404 })
       .addError(FirstPartyClientLockedSchema, { status: 409 })
   )
@@ -198,7 +178,6 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
 export {
   httpApiGroup,
   ClientNotFoundSchema,
-  ClientSchema,
   ClientsSchema,
   FirstPartyClientLockedSchema,
   GrantSchema,

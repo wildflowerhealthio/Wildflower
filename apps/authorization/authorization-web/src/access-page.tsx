@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useRouteContext } from '@tanstack/react-router'
+import { Client } from '@wildflowerhealthio/authorization-core/domain'
 import {
   clientsQueryOptions,
   formatInstant,
@@ -8,7 +9,6 @@ import {
   useGrantsQuery,
   useRevokeGrantMutation,
   type AppGrant,
-  type Client,
   type DeviceGrant,
   type Grant,
 } from '@wildflowerhealthio/authorization-react'
@@ -24,7 +24,6 @@ import {
 import type { JSX } from 'react'
 import { useState } from 'react'
 
-import { clientNameOf } from './client-name.ts'
 import { AUTHORIZATION_CLIENT_ID } from './config.ts'
 import type { RouterContext } from './router-context.ts'
 import styles from './access-page.module.css'
@@ -42,7 +41,9 @@ import styles from './access-page.module.css'
  * `null` until the trusted apps have loaded, so no Revoke shows before the
  * page knows which clients are locked.
  */
-const lockedClientIdsOf = (clients: readonly Client[] | undefined): ReadonlySet<string> | null =>
+const lockedClientIdsOf = (
+  clients: readonly Client.Type[] | undefined
+): ReadonlySet<string> | null =>
   clients === undefined
     ? null
     : new Set([
@@ -116,7 +117,10 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
           },
         }
     return (
-      <Menu label={`Actions for ${clientNameOf(clients, grant.clientId)}`} items={[revokeItem]} />
+      <Menu
+        label={`Actions for ${Client.displayName(clients, grant.clientId)}`}
+        items={[revokeItem]}
+      />
     )
   }
 
@@ -136,7 +140,7 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
             const actions = revokeMenuFor(grant)
             return {
               id: grant.id,
-              title: clientNameOf(clients, grant.clientId),
+              title: Client.displayName(clients, grant.clientId),
               subtitle: `Granted ${formatInstant(grant.grantedAt)} · ${grant.scopes.join(', ')}`,
               onClick: () => {
                 void navigate({ to: '/approved/$id', params: { id: grant.id } })
@@ -180,8 +184,8 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
         }}
       >
         Revoke access for &quot;
-        {grantToRevoke === null ? '' : clientNameOf(clients, grantToRevoke.clientId)}&quot;? Every
-        token it holds stops working now.
+        {grantToRevoke === null ? '' : Client.displayName(clients, grantToRevoke.clientId)}&quot;?
+        Every token it holds stops working now.
       </ConfirmDialog>
     </>
   )
