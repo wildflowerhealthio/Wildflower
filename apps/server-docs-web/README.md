@@ -48,7 +48,7 @@ The target lives in the URL:
 - Only absolute `http:` / `https:` URLs are accepted. A `?server=` carrying
   anything else — `javascript:`, `data:`, protocol-relative `//host`, a bare
   hostname — names no server. Entered in the header bar, it is refused with
-  "Enter a valid http(s) server URL, e.g. https://my-server.example.com." (the
+  "Enter a valid http(s) server URL, e.g. `https://my-server.example.com`." (the
   wording `smart-app-react`'s `ConnectMenu` uses), and the target stays as it
   was.
 - The header bar's input writes the canonical target back into the URL, so a
