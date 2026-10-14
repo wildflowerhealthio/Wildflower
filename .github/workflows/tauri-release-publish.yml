@@ -370,7 +370,7 @@ jobs:
       # Vite+ owns the toolchain (Node + package manager + `vp`), same as
       # every other workflow here — no separate setup-node / corepack / pnpm.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.1
+        uses: voidzero-dev/setup-vp@v1.21.2
         with:
           cache: true
 
@@ -491,7 +491,7 @@ jobs:
           cache-on-failure: true
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.1
+        uses: voidzero-dev/setup-vp@v1.21.2
         with:
           cache: true
 
@@ -630,7 +630,7 @@ jobs:
           cache-on-failure: true
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.1
+        uses: voidzero-dev/setup-vp@v1.21.2
         with:
           cache: true
 
@@ -822,7 +822,7 @@ jobs:
       # Its managed `pnpm` is also what the Gradle project's Rust build task
       # calls back into the Tauri CLI with.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.1
+        uses: voidzero-dev/setup-vp@v1.21.2
         with:
           cache: true
 
@@ -945,7 +945,7 @@ jobs:
       # Both apps' wscripts run `vp pack` in pkjs/ through the
       # node_modules/.bin/vp that `vp install` puts there.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.1
+        uses: voidzero-dev/setup-vp@v1.21.2
         with:
           cache: true
 
