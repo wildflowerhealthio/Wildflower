@@ -8,7 +8,7 @@ import {
 } from '@wildflowerhealthio/react-tundraish'
 import { GrantDraft, Scope, ScopeRequest } from '@wildflowerhealthio/scopes-core'
 import type { GrantDraft as GrantDraftModel } from '@wildflowerhealthio/scopes-core'
-import { ScopePicker } from '@wildflowerhealthio/scopes-react'
+import { ScopePicker, type PatientOption } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -35,7 +35,7 @@ type OAuthConsentMutation = Pick<
 
 /** The patient bar's search of the server's patients by name. */
 interface PatientNameSearch {
-  /** The name typed so far; empty lists the server's first patients. */
+  /** The name typed so far. */
   readonly name: string
   readonly onNameChange: (name: string) => void
 }
@@ -68,7 +68,7 @@ const redirectHostOf = (redirectUri: string): string => {
  * editing surface, and the approve/deny decision wiring. The scope editing
  * itself (statements ⇄ grid, exclusions, flags) is `scopes-react`'s; this card
  * owns the draft and the result routing. What sends the decision and what
- * reads the patients come from its composer: {@link OAuthConsentForm} on the
+ * reads the patients come from its composer: `OAuthConsentForm` on the
  * router's authed runner, or the authorization server's own consent page on the
  * Owner browser's session.
  */
@@ -102,6 +102,15 @@ const OAuthConsentCard = ({
   const [registrationAcknowledged, setRegistrationAcknowledged] = useState(false)
   const registrationNeedsAcknowledgment = consent.registration.status !== 'registered'
   const { options: patients, loading: patientsLoading, error: patientsError } = patientOptions
+  // The patient the Owner picked, kept so the picker still names them once a
+  // later name search no longer lists them.
+  const [pickedPatient, setPickedPatient] = useState<PatientOption | null>(null)
+  const pickablePatients =
+    pickedPatient !== null &&
+    pickedPatient.id === draft.patient &&
+    !patients.some((patient) => patient.id === pickedPatient.id)
+      ? [pickedPatient, ...patients]
+      : patients
 
   // Whether a FHIR patient-context scope is still granted in the *current draft*.
   // The requirement to supply a launch patient tracks this, not the original
@@ -236,13 +245,15 @@ const OAuthConsentCard = ({
             />
           ) : null}
           <PatientChoice
-            patients={patients}
+            patients={pickablePatients}
             loading={patientsLoading}
             error={patientsError}
             value={draft.patient}
             optional={!draftHasPatientContextScope}
+            searchedName={patientSearch?.name.trim() ?? ''}
             onChange={(patientId) => {
               setPatientError(null)
+              setPickedPatient(pickablePatients.find((patient) => patient.id === patientId) ?? null)
               setDraft((previous) => ({ ...previous, patient: patientId }))
             }}
           />

@@ -98,4 +98,4 @@ const searchPatientsByName = (
   )
 }
 
-export { PATIENT_SEARCH_PAGE_SIZE, searchPatientsByName }
+export { searchPatientsByName }

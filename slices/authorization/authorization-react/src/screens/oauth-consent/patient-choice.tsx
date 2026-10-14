@@ -18,6 +18,12 @@ interface PatientChoiceProps {
    * "No patient" choice; `false` ⇒ a patient must be chosen.
    */
   readonly optional: boolean
+  /**
+   * The name `patients` were searched by, or empty when they are the server's
+   * patients unfiltered. An empty list then says nobody matches, not that the
+   * server has no patients.
+   */
+  readonly searchedName?: string
   readonly onChange: (patientId: string | null) => void
 }
 
@@ -39,6 +45,7 @@ const PatientChoice = ({
   error,
   value,
   optional,
+  searchedName = '',
   onChange,
 }: PatientChoiceProps): JSX.Element => {
   if (loading) return <p className={styles['patient-note']}>Loading patients…</p>
@@ -48,6 +55,9 @@ const PatientChoice = ({
         <ErrorBanner error={error} />
       </div>
     )
+  }
+  if (patients.length === 0 && !optional && searchedName !== '') {
+    return <p className={styles['patient-note']}>No patient matches “{searchedName}”.</p>
   }
   if (patients.length === 0 && !optional) {
     return (
