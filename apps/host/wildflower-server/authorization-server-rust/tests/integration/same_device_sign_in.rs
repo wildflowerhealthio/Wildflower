@@ -138,9 +138,9 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
     );
 }
 
-/// The cookie carries exactly the Owner browser session's attributes, and its value is
-/// an Owner token: the first-party client holding the host Owner's grant, for
-/// eight hours, which the gate accepts.
+/// The cookie carries exactly the Owner browser session's attributes, and its
+/// value is an Owner token: the Owner-browser client holding the host Owner's
+/// grant, for eight hours, which the gate accepts.
 #[tokio::test]
 async fn the_cookie_holds_an_eight_hour_owner_token() {
     let (g, _host_owner_token, _db) = spin_up();
@@ -156,7 +156,10 @@ async fn the_cookie_holds_an_eight_hour_owner_token() {
     );
 
     let claims = claims_of(&owner_token);
-    assert_eq!(claims["sub"], "wildflower-host");
+    assert_eq!(
+        claims["sub"],
+        wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID
+    );
     assert_eq!(claims["iss"], SERVER_ORIGIN);
     assert_eq!(claims["aud"], SERVER_ORIGIN);
     assert_eq!(
@@ -230,4 +233,52 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
 
     assert_eq!(session(first).await.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(session(second).await.status(), StatusCode::OK);
+}
+
+/// The Owner-browser client isn't locked: revoking its subject is a `204`
+/// that signs every Owner browser out at once, while the host app, under its
+/// own client, stays signed in.
+#[tokio::test]
+async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
+    let (g, host_owner_token, _db) = spin_up();
+    let first = owner_browser_session_token(
+        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
+    );
+    let second = owner_browser_session_token(
+        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
+    );
+    let grants_status = |token: String| {
+        let router = g.router.clone();
+        async move {
+            router
+                .oneshot(owner_grants_probe(&token))
+                .await
+                .expect("oneshot")
+                .status()
+        }
+    };
+    assert_eq!(grants_status(first.clone()).await, StatusCode::OK);
+
+    // The epoch is second-granular: a token issued in the revoking second is
+    // revoked too, so no wait is needed.
+    let res = g
+        .router
+        .clone()
+        .oneshot(owner_revocation_request(
+            &host_owner_token,
+            serde_json::json!({
+                "subject": wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID,
+            }),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+    assert_eq!(grants_status(first).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(grants_status(second).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        grants_status(host_owner_token).await,
+        StatusCode::OK,
+        "the host app is still signed in"
+    );
 }

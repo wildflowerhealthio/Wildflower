@@ -59,7 +59,6 @@ impl FromState for LiveSameDeviceSignIn {
             state.same_device_sign_in_codes.clone(),
             state.sign_in_destinations.clone(),
             state.server_origin.clone(),
-            state.wildflower_host_app_client_id.clone(),
             state.host_owner_grant.clone(),
         )
     }

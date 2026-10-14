@@ -1,9 +1,9 @@
-//! First-boot seeding for the grant store: the signing key and the
-//! first-party host client. Safe to call on every boot — the signing key is
-//! inserted only when none exists (never rotated), and the first-party client is
-//! *ensured* (re-applied as an upsert) so its definition always matches the
-//! host's granted scopes, correcting any drift in a store created by an older
-//! build.
+//! First-boot seeding for the grant store: the signing key, the first-party
+//! host client and the Owner-browser client. Safe to call on every boot — the
+//! signing key is inserted only when none exists (never rotated), and the two
+//! clients are *ensured* (re-applied as an upsert) so their definitions always
+//! match the host's granted scopes, correcting any drift in a store created by
+//! an older build.
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
@@ -30,9 +30,9 @@ use crate::domain::GrantStore as _;
 
 /// Wrap the host-owned connection `pool` in a grant store (applying
 /// migrations, which includes the SQL seed of the SMART sample-app clients)
-/// and run the runtime-derived first-boot seeding steps — the signing key and
-/// the first-party host client, and the FHIR server UI's client. Safe to call
-/// on every boot.
+/// and run the runtime-derived first-boot seeding steps — the signing key, the
+/// first-party host client, the Owner-browser client, and the FHIR server UI's
+/// client. Safe to call on every boot.
 ///
 /// # Errors
 ///
@@ -49,6 +49,8 @@ pub fn open_and_seed_store(
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
     ensure_first_party_client(&store, host_owner_scopes, wildflower_host_app_client_id)
         .context("failed to seed first-party client")?;
+    ensure_owner_browser_client(&store, host_owner_scopes)
+        .context("failed to seed the Owner-browser client")?;
     ensure_fhir_ui_client(&store, fhir_ui_client_id, server_origin)
         .context("failed to seed the FHIR server UI client")?;
     Ok(store)
@@ -128,6 +130,33 @@ fn ensure_first_party_client(
     store
         .upsert_client(&client)
         .context("seed first-party client")?;
+    Ok(())
+}
+
+/// Ensure the Owner-browser client ([`crate::OWNER_BROWSER_CLIENT_ID`])
+/// matches the code's definition, upserted on every boot like
+/// [`ensure_first_party_client`]: public, no redirect URIs, allowed the
+/// host's `host_owner_scopes` (the grant an Owner browser's token carries).
+/// It is allowed no grant type, since its tokens are minted only at
+/// `/oauth/sign-in`, so no OAuth flow can be run as it.
+fn ensure_owner_browser_client(
+    store: &SqliteGrantStore,
+    host_owner_scopes: &[String],
+) -> anyhow::Result<()> {
+    let client = Client {
+        client_id: crate::OWNER_BROWSER_CLIENT_ID.to_string(),
+        name: "Wildflower (Owner browsers)".to_string(),
+        kind: ClientKind::Public,
+        redirect_uris: vec![],
+        allowed_scopes: host_owner_scopes.to_vec(),
+        allowed_grant_types: vec![],
+        secret_hash: None,
+        registered_at: Utc::now(),
+        disabled_at: None,
+    };
+    store
+        .upsert_client(&client)
+        .context("seed the Owner-browser client")?;
     Ok(())
 }
 
@@ -730,6 +759,35 @@ mod tests {
                 .is_none(),
             "seeding must use the configured id, not the hardcoded fallback",
         );
+    }
+
+    /// The Owner-browser client is seeded as a public client with no redirect
+    /// URIs and no grant type, allowed exactly the host Owner's scopes.
+    #[test]
+    fn seeds_the_owner_browser_client_with_the_owner_s_scopes() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let scopes = vec![
+            "system/*.cruds".to_string(),
+            "wildflower/*.cruds".to_string(),
+        ];
+        let store = open_and_seed_store(
+            pool,
+            &scopes,
+            "host-client",
+            "fhir-ui-client",
+            &url::Url::parse("https://ruth.relay.example").expect("origin"),
+        )
+        .expect("seed store");
+
+        let seeded = store
+            .client_by_id(crate::OWNER_BROWSER_CLIENT_ID)
+            .expect("query client")
+            .expect("the Owner-browser client seeded");
+        assert_eq!(seeded.kind, ClientKind::Public);
+        assert!(seeded.redirect_uris.is_empty());
+        assert!(seeded.allowed_grant_types.is_empty());
+        assert_eq!(seeded.allowed_scopes, scopes);
     }
 
     /// The UI's client is seeded under the configured id as a public client

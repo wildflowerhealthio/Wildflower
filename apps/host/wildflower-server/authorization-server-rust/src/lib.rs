@@ -100,6 +100,16 @@ pub use ports::{
 /// [`default_wildflower_host_app_client_id`].
 pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "wildflower-host";
 
+/// `client_id` of the Owner-browser client: the browsers the host app has
+/// signed in as the Owner on its own device, with a same-device sign-in code at
+/// `/oauth/sign-in`. Each such browser holds a token issued to this client
+/// (its `sub`), so revoking the client's subject signs every Owner browser
+/// out, and one browser's session is revoked by its token's `jti`. Unlike
+/// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it isn't locked: no app's own token
+/// hangs on it. Seeded at boot by [`crate::setup_authorization_server`]; it takes part in no
+/// OAuth flow.
+pub const OWNER_BROWSER_CLIENT_ID: &str = "wildflower-owner-browser";
+
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access
 /// (`wildflower/*.cruds`). An Owner token covers *every* one of these, so it

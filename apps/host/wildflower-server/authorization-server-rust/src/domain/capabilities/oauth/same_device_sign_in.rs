@@ -58,8 +58,6 @@ pub(crate) struct SameDeviceSignIn<S: GrantStore> {
     destinations: Arc<SignInDestinations>,
     /// The server's bare origin, the token's `iss` and `aud`.
     server_origin: Arc<str>,
-    /// The Owner's client: the host's first-party client.
-    owner_client_id: Arc<str>,
     /// The Owner's grant: the host Owner's configured scopes.
     owner_grant: Grant,
 }
@@ -71,7 +69,6 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         codes: Arc<SameDeviceSignInCodes>,
         destinations: Arc<SignInDestinations>,
         server_origin: Arc<str>,
-        owner_client_id: Arc<str>,
         owner_grant: Grant,
     ) -> Self {
         SameDeviceSignIn {
@@ -79,7 +76,6 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             codes,
             destinations,
             server_origin,
-            owner_client_id,
             owner_grant,
         }
     }
@@ -110,7 +106,6 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         let redeemed_sign_in_code = RedeemedSameDeviceSignInCode::redeem(
             &self.codes,
             presented_code,
-            &self.owner_client_id,
             &self.owner_grant,
             now,
         )
@@ -157,7 +152,6 @@ mod tests {
                     .expect("authorization app"),
             )),
             SERVER_ORIGIN.into(),
-            "host".into(),
             Grant::parse(OWNER_SCOPES),
         )
     }
@@ -189,7 +183,7 @@ mod tests {
             },
         )
         .expect("an Owner token this server accepts");
-        assert_eq!(claims.subject, "host");
+        assert_eq!(claims.subject, "wildflower-owner-browser");
         assert_eq!(
             claims.scope.as_deref(),
             Some("system/*.cruds wildflower/*.cruds")
