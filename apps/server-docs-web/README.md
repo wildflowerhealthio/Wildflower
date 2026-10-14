@@ -38,25 +38,26 @@ The console is a static page, so the API it documents is never its own origin.
 The target lives in the URL:
 
 ```text
-/server-docs                                      → http://127.0.0.1:8080
-/server-docs?server=https://example-tunnel-origin → that origin
+/server-docs                                      → no target; asks for a server
+/server-docs?server=https://my-server.example.com → that origin
 ```
 
-- Only absolute `http:` / `https:` URLs are accepted. Anything else —
-  `javascript:`, `data:`, protocol-relative `//host`, a bare hostname — is
-  rejected, and the console falls back to the default.
-- The default is the loopback origin the desktop host's embedded server binds —
-  `http://127.0.0.1:8080` today. It is **derived** from
-  `apps/host/host-app/tauri-shared-config.json` (the same file the Rust host
-  and the Tauri webview read), not restated here, so changing the port there
-  changes this console too.
+- There is no default. A load whose URL names no usable server has no target:
+  the reference is not mounted, the **Sign in** button is hidden, and the
+  status line asks for the server's URL, as the hosted launcher's landing does.
+- Only absolute `http:` / `https:` URLs are accepted. A `?server=` carrying
+  anything else — `javascript:`, `data:`, protocol-relative `//host`, a bare
+  hostname — names no server. Entered in the header bar, it is refused with
+  "Enter a valid http(s) server URL, e.g. https://my-server.example.com." (the
+  wording `smart-app-react`'s `ConnectMenu` uses), and the target stays as it
+  was.
 - The header bar's input writes the canonical target back into the URL, so a
   configured console is shareable as a link.
 - Each spec is served to Scalar with that origin as its only `server` entry and
   with a bearer HTTP security scheme declared, so the UI offers a token field.
-  The running host gates its admin surface on that bearer for every non-loopback
-  caller; the snapshots themselves carry no security metadata because the host
-  applies the gate as a layer.
+  The running host gates its admin surface on that bearer; the snapshots
+  themselves carry no security metadata because the host applies the gate as a
+  layer.
 - The target doubles as the SMART `iss` for signing in — see below.
 - Opened with a SMART launch instead (`?iss=<FHIR base>`, with the EHR's
   `launch` when there is one), the console targets the server `iss` names, its
@@ -69,7 +70,8 @@ The document transforms and the Scalar configuration are pure functions in
 `src/spec.ts` and `src/configuration.ts`, unit-tested beside them; the `?server=`
 parsing itself lives in `authorization-core/smart-client` (every static Wildflower
 page that targets a reader-chosen server needs it), and `src/server-target.ts`
-holds only this console's fallback — the desktop host's loopback origin.
+holds only this console's wording for asking for a server and refusing an
+unusable one.
 `src/arrival.ts` holds how a load settles what it arrived with: the query it
 leaves in the address bar after a launch or a return leg, and the sign-in
 controls it resets when the back-forward cache restores it.
@@ -78,7 +80,7 @@ controls it resets when the back-forward cache restores it.
 The configuration also turns off two Scalar defaults that would otherwise reach
 third parties: its `web` layout proxies "send" through `https://proxy.scalar.com`
 unless `proxyUrl` is set (that would hand a reader's request, bearer token
-included, to a service we don't run — and could never reach a loopback server),
+included, to a service we don't run),
 and `withDefaultFonts` pulls webfonts from `fonts.scalar.com`. Both are asserted
 in `configuration.test.ts`.
 
@@ -212,29 +214,17 @@ the console returns.
 
 One consequence worth knowing when using a preview: the console warns, at the
 point the server address is entered, when a page served over https is pointed at
-a plaintext non-loopback server, because the browser blocks that. Loopback is
-unaffected — browsers treat `http://127.0.0.1` as trustworthy, which is what
-lets the published HTTPS console drive a desktop host at all.
+a plaintext non-loopback server, because the browser blocks that.
 
 ## The CORS caveat
 
 Requests are sent **straight from the reader's browser** to the chosen server —
-there is no proxy — so they are cross-origin and subject to the browser's rules:
-
-- The Wildflower API applies one CORS layer across its whole surface
-  (`api_cors_layer` in `apps/host/wildflower-server/wildflower-server-rust/src/http/middleware/cors.rs`),
-  which mirrors the requesting origin and headers back rather than sending `*`,
-  so the `Authorization` header is allowed and a cross-origin call from this
-  page is accepted by the server.
-- Targeting a **loopback** server from the HTTPS-published console is
-  mixed content. Chromium and Safari treat `http://127.0.0.1` as a
-  potentially-trustworthy origin and allow it; other browsers may block it. When
-  a request fails with no response at all, that is the likely cause — run the
-  console from `vp run -F @wildflowerhealthio/server-docs-web dev` (an `http://localhost`
-  origin) or point it at the server's public tunnel origin instead.
-- The server also gates on a loopback peer address: a forwarded request only
-  passes through the tunnel relay. Pointing this console at a device's loopback
-  from another machine cannot work, whatever CORS says.
+there is no proxy — so they are cross-origin and subject to the browser's rules.
+The Wildflower API applies one CORS layer across its whole surface
+(`api_cors_layer` in `apps/host/wildflower-server/wildflower-server-rust/src/http/middleware/cors.rs`),
+which mirrors the requesting origin and headers back rather than sending `*`,
+so the `Authorization` header is allowed and a cross-origin call from this
+page is accepted by the server.
 
 ## Development
 

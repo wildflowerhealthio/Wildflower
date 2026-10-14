@@ -15,6 +15,7 @@ import {
   normalizeServerUrl,
   redirectUriForPage,
   searchWithServerUrl,
+  serverUrlFromSearch,
   standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
@@ -23,14 +24,16 @@ import {
 
 import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'
-import { serverUrlFromSearch } from './server-target.ts'
+import { NO_SERVER_PROMPT, SERVER_URL_EXAMPLE, serverEntryProblem } from './server-target.ts'
 import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 /**
  * Boots the static Wildflower server-docs console: a Scalar API reference over
  * the five committed slice snapshots, targeted at whichever running server the
- * `?server=` parameter names (see `server-target.ts`), optionally signed in to
- * that server as the console's SMART client (see `smart-client.ts` and `sign-in.ts`).
+ * `?server=` parameter names, optionally signed in to that server as the
+ * console's SMART client (see `smart-client.ts` and `sign-in.ts`). With no
+ * `?server=` it has no target: the header bar asks for one and no reference is
+ * mounted (see `server-target.ts`).
  * Opened with a SMART launch (`?iss=`, with the EHR's `launch` when there is
  * one), it targets the server `iss` names and signs in to it straight away.
  *
@@ -65,6 +68,8 @@ const serverForm = requireElement('#server-form', HTMLFormElement)
 const serverInput = requireElement('#server-url', HTMLInputElement)
 const signInButton = requireElement('#sign-in', HTMLButtonElement)
 const statusLine = requireElement('#auth-status', HTMLParagraphElement)
+
+serverInput.placeholder = SERVER_URL_EXAMPLE
 
 const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
@@ -101,12 +106,22 @@ const signInEnvironment: SignInEnvironment = browserSignInEnvironment(window, {
   redirectUri,
 })
 
-/** Show `message` on the status line, or clear it when `undefined`. */
-const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {
+/**
+ * Show `message` on the status line, or clear it when `undefined`. A `prompt`
+ * asks the reader for something rather than reporting how things went.
+ */
+const showStatus = (
+  message: string | undefined,
+  kind: 'ok' | 'problem' | 'prompt' = 'ok'
+): void => {
   statusLine.textContent = message ?? ''
   statusLine.hidden = message === undefined
   statusLine.classList.toggle('server-bar__status--problem', kind === 'problem')
+  statusLine.classList.toggle('server-bar__status--prompt', kind === 'prompt')
 }
+
+/** The server this page load targets, or `undefined` when its URL names none. */
+const currentServerUrl = (): string | undefined => serverUrlFromSearch(window.location.search)
 
 /**
  * The single boundary where a sign-in `Effect` is run.
@@ -117,7 +132,7 @@ const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'):
  * try. `Effect.match` folds both channels away, so the promise never rejects. An
  * optional `onFailure` runs after that shared handling, for a caller that must
  * still do something itself when its effect fails (the return leg mounts the
- * reference against the default target there, since success never will).
+ * reference against the page's target there, since success never will).
  */
 const runSignInEffect = <A>(
   effect: Effect.Effect<A, SignInError>,
@@ -139,28 +154,40 @@ const runSignInEffect = <A>(
 }
 
 /**
- * Mount (or re-mount) the reference against `serverUrl`. Re-targeting tears the
- * previous instance down rather than patching its configuration: the documents
- * themselves differ between targets, so a clean mount is the honest update — and
- * the same is true of signing in or out, which changes the token every source's
- * bearer field is prefilled with.
+ * Mount (or re-mount) the reference against `serverUrl`, or leave none mounted
+ * when there is no target. Re-targeting tears the previous instance down rather
+ * than patching its configuration: the documents themselves differ between
+ * targets, so a clean mount is the honest update — and the same is true of
+ * signing in or out, which changes the token every source's bearer field is
+ * prefilled with.
  *
  * The token is only offered to the server it was issued for: a reader who
  * re-points the console mid-session keeps their session, but the requests going
  * somewhere else go without it.
  */
-const render = (serverUrl: string): void => {
-  const accessToken = session?.serverUrl === serverUrl ? session.accessToken : undefined
+const render = (serverUrl: string | undefined): void => {
   reference?.destroy()
+  reference = undefined
+  if (serverUrl === undefined) return
+  const accessToken = session?.serverUrl === serverUrl ? session.accessToken : undefined
   reference = createApiReference(
     referenceContainer,
     consoleConfiguration(serverUrl, { prefersDarkMode, accessToken })
   )
 }
 
-/** Put the sign-in button and the status line in step with the current state. */
-const renderAuthControls = (serverUrl: string): void => {
+/**
+ * Put the sign-in button and the status line in step with the current state.
+ * With no target there is nothing to sign in to, so the button goes and the
+ * status line asks for a server.
+ */
+const renderAuthControls = (serverUrl: string | undefined): void => {
   signInButton.disabled = false
+  signInButton.hidden = serverUrl === undefined
+  if (serverUrl === undefined) {
+    showStatus(NO_SERVER_PROMPT, 'prompt')
+    return
+  }
   if (session === undefined) {
     signInButton.textContent = 'Sign in'
     signInButton.title = `Sign in to ${serverUrl} to send authorised requests`
@@ -211,7 +238,7 @@ const scheduleExpiryNotice = (current: Session): void => {
       expiryTimer = undefined
       if (session !== current) return
       session = undefined
-      const serverUrl = serverUrlFromSearch(window.location.search)
+      const serverUrl = currentServerUrl()
       render(serverUrl)
       renderAuthControls(serverUrl)
       showStatus(
@@ -226,10 +253,15 @@ const scheduleExpiryNotice = (current: Session): void => {
 /**
  * Point the console at `candidate`, writing the canonical value back into both
  * the URL (so the configured console stays shareable) and the input, then
- * re-rendering. An unusable candidate falls back to the default target, exactly
- * as a fresh load of the resulting URL would.
+ * re-rendering. An unusable candidate changes nothing: the status line says
+ * why, and the console stays on the target it had.
  */
 const applyServerUrl = (candidate: string): void => {
+  const problem = serverEntryProblem(candidate)
+  if (problem !== undefined) {
+    showStatus(problem, 'problem')
+    return
+  }
   const search = searchWithServerUrl(window.location.search, candidate)
   window.history.replaceState(
     null,
@@ -237,7 +269,7 @@ const applyServerUrl = (candidate: string): void => {
     `${window.location.pathname}${search}${window.location.hash}`
   )
   const serverUrl = serverUrlFromSearch(search)
-  serverInput.value = serverUrl
+  serverInput.value = serverUrl ?? ''
   render(serverUrl)
   renderAuthControls(serverUrl)
 }
@@ -265,7 +297,7 @@ const startSigningIn = (serverUrl: string, launch?: string): void => {
 }
 
 signInButton.addEventListener('click', () => {
-  const serverUrl = serverUrlFromSearch(window.location.search)
+  const serverUrl = currentServerUrl()
   if (session !== undefined) {
     cancelExpiryNotice()
     session = undefined
@@ -274,11 +306,12 @@ signInButton.addEventListener('click', () => {
     showStatus('Signed out. The access token is gone from this tab.')
     return
   }
-  startSigningIn(serverUrl)
+  // Hidden without a target, so there is always one to sign in to here.
+  if (serverUrl !== undefined) startSigningIn(serverUrl)
 })
 
 resetAuthControlsOnBackForwardRestore(window, () => {
-  renderAuthControls(serverUrlFromSearch(window.location.search))
+  renderAuthControls(currentServerUrl())
 })
 
 const returnSearch = window.location.search
@@ -299,13 +332,13 @@ if (settledSearch !== returnSearch) {
   )
 }
 
-const initialServerUrl = serverUrlFromSearch(window.location.search)
-serverInput.value = initialServerUrl
+const initialServerUrl = currentServerUrl()
+serverInput.value = initialServerUrl ?? ''
 renderAuthControls(initialServerUrl)
 
 // Mount the reference now on an ordinary load. On a return leg, defer it: a
 // successful sign-in re-targets the reference at the signed-in server, so mounting
-// the multi-megabyte Scalar bundle against the loopback default first would only
+// the multi-megabyte Scalar bundle against the page's target first would only
 // be torn down and rebuilt. Each way the return resolves below mounts it exactly
 // once — `applyServerUrl` on success, `render` on a failed or empty return.
 if (!returningFromAuthorization) render(initialServerUrl)
@@ -332,11 +365,12 @@ runSignInEffect(
 // Sign in to the server a launch named straight away, with no click: the
 // EHR's launch works once and only for a few minutes. Not when `iss` named no
 // usable server (the console stays on the target it would have had without
-// the launch), nor when this page cannot reach the server, which the status
-// line already says.
+// the launch, if any), nor when this page cannot reach the server, which the
+// status line already says.
 if (
   Option.isSome(arrivingLaunch) &&
   normalizeServerUrl(arrivingLaunch.value.iss) !== undefined &&
+  initialServerUrl !== undefined &&
   insecureTargetReason(initialServerUrl, { pageIsSecure }) === undefined
 ) {
   startSigningIn(initialServerUrl, arrivingLaunch.value.launch)

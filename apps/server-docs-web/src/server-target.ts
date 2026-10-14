@@ -1,31 +1,32 @@
 /**
- * This console's `?server=` default.
+ * What the console says about its target.
  *
  * The parsing itself belongs to every static Wildflower page that targets a
  * server the reader chooses, so it lives in
  * `authorization-core/smart-client` (`normalizeServerUrl`, `searchWithServerUrl`,
  * `serverUrlFromSearch`), and so does turning the `iss` of a SMART launch the
- * console is opened with into a `?server=` (`searchAfterArrivingLaunch`). What
- * stays here is the one thing that is this console's alone: the target it
- * assumes when the URL names none.
+ * console is opened with into a `?server=` (`searchAfterArrivingLaunch`). There
+ * is no default: a load whose URL names no usable server has no target, and the
+ * header bar asks for one, as the hosted launcher's landing does. What stays
+ * here is the console's wording for that ask, matching `smart-app-react`'s
+ * `ConnectMenu` for a Wildflower server.
  */
 
-import { serverUrlFromSearch as parseServerUrl } from '@wildflowerhealthio/authorization-core/smart-client'
+import { normalizeServerUrl } from '@wildflowerhealthio/authorization-core/smart-client'
 
-import { HOST_LOOPBACK_ORIGIN } from './host-defaults.ts'
+/** The example server URL the header bar's field and its messages show. */
+const SERVER_URL_EXAMPLE = 'https://my-server.example.com'
+
+/** What the status line says while the console has no target. */
+const NO_SERVER_PROMPT = 'Enter your Wildflower server’s URL to browse its API and sign in to it.'
 
 /**
- * The target assumed when the URL carries no usable `?server=`: the loopback
- * origin the desktop host's embedded API server binds, read from the shared
- * Tauri config rather than restated here (see `host-defaults.ts`).
+ * Why `candidate` cannot be the console's target, or `undefined` when it can:
+ * only an absolute `http(s)` URL names a server.
  */
-const DEFAULT_SERVER_URL = HOST_LOOPBACK_ORIGIN
+const serverEntryProblem = (candidate: string): string | undefined =>
+  normalizeServerUrl(candidate) === undefined
+    ? `Enter a valid http(s) server URL, e.g. ${SERVER_URL_EXAMPLE}.`
+    : undefined
 
-/**
- * The API origin a page load should target, given its `location.search`.
- * Falls back to {@link DEFAULT_SERVER_URL} when the parameter is absent, empty
- * or rejected as unusable.
- */
-const serverUrlFromSearch = (search: string): string => parseServerUrl(search) ?? DEFAULT_SERVER_URL
-
-export { DEFAULT_SERVER_URL, serverUrlFromSearch }
+export { NO_SERVER_PROMPT, SERVER_URL_EXAMPLE, serverEntryProblem }
