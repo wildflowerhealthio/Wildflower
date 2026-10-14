@@ -27,7 +27,7 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
 
 // The host's granted-scope string, also sourced from
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`).
-// The authorization server seeds its first-party client's
+// The authorization server seeds the host app's client's
 // `allowed_scopes` and mints the host owner token from this set (asserting it
 // covers `WILDFLOWER_WIDEST_SCOPES`).
 const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");

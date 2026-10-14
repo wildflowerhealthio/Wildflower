@@ -209,8 +209,8 @@ pub(crate) struct ConsentDecider<S: GrantStore> {
 
 impl<S: GrantStore> ConsentDecider<S> {
     /// Build the decider over a store handle, the republish port, the approver's
-    /// own granted scopes, and the first-party `client_id` — all lifted from the
-    /// state + claims. The last decides which client's registration is locked
+    /// own granted scopes, and the host app's `client_id` — all lifted from the
+    /// state + claims. The last decides which client's registration is built in
     /// when a code-flow approval is checked against its
     /// [registration verdict](ClientRegistrationVerdict).
     pub(crate) fn new(
@@ -295,7 +295,7 @@ mod tests {
     };
 
     /// Approve a code-flow consent with the real
-    /// first-party id — which the `client` fixture never uses, so the fixture
+    /// host app's client id — which the `client` fixture never uses, so the fixture
     /// client always takes the trust-on-first-use path.
     fn approve_code(
         store: &FakeGrantStore,
@@ -619,7 +619,7 @@ mod tests {
         assert_eq!(widened.registered_at, registered_at);
     }
 
-    /// The clamp for a non-first-party client is `allowed_scopes ∪
+    /// The clamp for a client trusted on first use is `allowed_scopes ∪
     /// requested_scopes`: a scope outside the registration can be granted (that
     /// is what the warning is for) and is then unioned into the row, so the next
     /// identical request is `Registered`.
@@ -667,12 +667,12 @@ mod tests {
         );
     }
 
-    /// The first-party host is exempt from trust-on-first-use in both
+    /// A built-in registration is exempt from trust-on-first-use in both
     /// directions: its clamp is its registered `allowed_scopes` alone, so a
     /// requested-but-unregistered scope is pruned — and with nothing left to
     /// grant the approval lands as a deny, leaving its row untouched.
     #[test]
-    fn approve_oauth_consent_clamps_the_first_party_client_to_its_registration() {
+    fn approve_oauth_consent_clamps_a_built_in_registration_to_itself() {
         let store = FakeGrantStore::default();
         let owner_approval = RecordingOwnerApproval::default();
         let host = client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"]);
@@ -702,7 +702,7 @@ mod tests {
                 .unwrap()
                 .unwrap(),
             host,
-            "the first-party registration is never widened",
+            "the built-in registration is never widened",
         );
     }
 

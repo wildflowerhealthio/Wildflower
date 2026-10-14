@@ -88,7 +88,7 @@ pub(crate) struct LoopbackOwnerApprover<S: GrantStore> {
 impl<S: GrantStore> LoopbackOwnerApprover<S> {
     /// Build the approver over the store, the popup republish port, the host's
     /// dialog, the host Owner's grant (the approving authority), and the
-    /// first-party `client_id` — all lifted from the state.
+    /// host app's `client_id` — all lifted from the state.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,

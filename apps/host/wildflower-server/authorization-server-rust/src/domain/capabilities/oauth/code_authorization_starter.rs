@@ -114,7 +114,7 @@ pub(crate) struct CodeAuthorizationStarter<S: GrantStore> {
 
 impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// Build the starter over the store, the popup republish port, the
-    /// first-party `client_id`, and the server's origin — all lifted from the
+    /// host app's `client_id`, and the server's origin — all lifted from the
     /// state.
     pub(crate) fn new(
         store: S,
@@ -135,7 +135,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// code under the standing grant's authority and sent back to the client;
     /// anything else joins the pending-consent queue.
     ///
-    /// Clients other than the first-party host are trusted on first use (see
+    /// Clients other than the host app's are trusted on first use (see
     /// [`crate::domain::client_registration`]): a request outside the
     /// registration is parked with a warning rather than rejected, never takes
     /// the fast path, and — while its redirect is untrusted — renders every
@@ -161,9 +161,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         if !self.store.has_active_signing_key()? {
             return Err(AuthorizationStartError::NoActiveSigningKey);
         }
-        let registration_is_locked = self.registration_is_locked(authorize_query.client_id);
+        let registration_is_built_in = self.registration_is_built_in(authorize_query.client_id);
         let maybe_existing_client =
-            self.load_client(authorize_query.client_id, registration_is_locked)?;
+            self.load_client(authorize_query.client_id, registration_is_built_in)?;
         let requested_redirect_uri = parse_redirect_uri(authorize_query.redirect_uri)?;
         // A redirect is trustworthy only when a client we already know already
         // registered it.
@@ -172,7 +172,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             .is_some_and(|existing_client| {
                 existing_client.allows_redirect_uri(&requested_redirect_uri)
             });
-        if registration_is_locked && !redirect_allowlisted {
+        if registration_is_built_in && !redirect_allowlisted {
             return Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::RedirectUriNotAllowed,
             ));
@@ -188,10 +188,10 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             .split_whitespace()
             .map(str::to_string)
             .collect();
-        if let (true, Some(locked_client)) =
-            (registration_is_locked, maybe_existing_client.as_ref())
+        if let (true, Some(built_in_client)) =
+            (registration_is_built_in, maybe_existing_client.as_ref())
         {
-            if !locked_client.allows_scopes(&requested_scopes) {
+            if !built_in_client.allows_scopes(&requested_scopes) {
                 return Err(AuthorizationStartError::Redirectable {
                     redirect_uri: requested_redirect_uri,
                     error: OAuthErrorCode::InvalidScope,
@@ -315,23 +315,23 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         })
     }
 
-    /// Whether `client_id`'s registration is locked — true only for the
-    /// first-party host, the one client held to its registration rather than
-    /// trusted on first use.
-    fn registration_is_locked(&self, client_id: &str) -> bool {
+    /// Whether `client_id`'s registration is built in — defined by the server
+    /// rather than trusted on first use: true only for the host app's client,
+    /// the one client held to its registration.
+    fn registration_is_built_in(&self, client_id: &str) -> bool {
         client_id == &*self.wildflower_host_app_client_id
     }
 
     /// The client row named by the request, if any. A disabled client is
-    /// rejected outright, as is an unknown first-party `client_id`; any other
+    /// rejected outright, as is the host app's `client_id` with no row; any other
     /// unknown `client_id` is `None` — a `New` registration verdict.
     fn load_client(
         &self,
         client_id: &str,
-        registration_is_locked: bool,
+        registration_is_built_in: bool,
     ) -> Result<Option<Client>, AuthorizationStartError> {
         let Some(client) = self.store.client_by_id(client_id)? else {
-            return if registration_is_locked {
+            return if registration_is_built_in {
                 Err(AuthorizationStartError::LocalPage(
                     OAuthErrorKind::UnknownClient,
                 ))
@@ -570,9 +570,9 @@ mod tests {
         assert_eq!(owner_approval.count(), 1);
     }
 
-    /// Trust on first use: an unknown non-first-party client is parked_request for the
+    /// Trust on first use: an unknown client other than the host app's is parked_request for the
     /// Owner, and its later failures render locally (the redirect is
-    /// unvouched-for), while the first-party host with an unregistered
+    /// unvouched-for), while the host app's client with an unregistered
     /// redirect is refused outright.
     #[test]
     fn unknown_clients_park_and_untrusted_redirects_fail_locally() {
@@ -600,7 +600,7 @@ mod tests {
     }
 
     /// Once the redirect is trusted, a spec'd failure goes back to the client,
-    /// and the first-party host is held to its scope allowlist.
+    /// and the host app's client is held to its scope allowlist.
     #[test]
     fn trusted_redirects_get_redirectable_errors_and_the_host_is_clamped() {
         let store = FakeGrantStore::default();

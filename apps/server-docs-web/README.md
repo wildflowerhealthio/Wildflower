@@ -189,7 +189,7 @@ and from `vp run -F @wildflowerhealthio/server-docs-web dev`, with nothing to ke
 
 `/oauth/authorize` still matches `redirect_uri` by exact string equality, and
 the seed carries only the published URL. The other addresses are **not**
-rejected: for every client but the first-party host, an unregistered redirect
+rejected: for every client but the host app's, an unregistered redirect
 reaches the Owner's consent prompt as a "this redirect is new" warning, and
 approving it adds the entry to the client row (`authorization-server-rust`'s
 `domain/client_registration.rs`). The Owner's consent is the gate — which is

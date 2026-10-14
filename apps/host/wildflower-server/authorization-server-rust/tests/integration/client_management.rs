@@ -7,7 +7,7 @@ use crate::common::*;
 // The other half of trust on first use: the Owner can see every client they
 // trust (migration-seeded or TOFU-created) and take that trust back by PATCHing
 // its `disabledAt`. A disabled client is refused at both OAuth front doors at
-// once; re-enabling (`null`) restores it with its registration intact. The first-party host client can't be disabled.
+// once; re-enabling (`null`) restores it with its registration intact. An essential client can't be disabled.
 
 /// `GET /authorization/clients` as `token`.
 async fn list_clients(g: &AuthorizationServer, token: &str) -> axum::response::Response {

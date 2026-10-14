@@ -11,11 +11,11 @@ pub enum OAuthErrorKind {
     InvalidRedirectUri,
     /// The `redirect_uri` is not `http` or `https`.
     InvalidScheme,
-    /// The first-party `client_id` has no registration.
+    /// The host app's `client_id` has no registration.
     UnknownClient,
     /// The client has been disabled.
     DisabledClient,
-    /// The first-party client's `redirect_uri` is not registered.
+    /// The host app's client's `redirect_uri` is not registered.
     RedirectUriNotAllowed,
     /// `response_type` is not `code`.
     UnsupportedResponseType,

@@ -130,7 +130,7 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The **default** scopes granted to the first-party host (`wildflower-host`):
+/// The **default** scopes granted to the host app's client (`wildflower-host`):
 /// the widest set, so local users can drive both the FHIR surface and the
 /// non-FHIR (Wildflower) APIs. Rendered by [`default_local_granted_scopes`].
 ///
@@ -229,7 +229,7 @@ pub struct AuthorizationServer {
 /// Build the authorization-server-rust HTTP surface over the host-owned diesel
 /// connection `pool` (the same app-wide `wildflowerhealthio_persistence::open_pool` pool the
 /// other diesel-backed slices ride). Runs idempotent bootstrap
-/// (schema migrations, signing-key seed, first-party client seed), mints
+/// (schema migrations, signing-key seed, essential-client seed), mints
 /// the boot-time host owner token for `config.server_origin`, and:
 ///
 ///  - publishes the host owner token on `local_owner_token_tx` so subscribers (the

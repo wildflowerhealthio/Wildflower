@@ -68,7 +68,7 @@ pub struct AuthorizationServerState {
     /// [`crate::setup_authorization_server`] — the same id [`crate::seeding`] seeds the
     /// host app's client row under (both sourced from `tauri-shared-config.json`
     /// on the live app). `/token` matches a request's presented `client_id`
-    /// against it to grant first-party treatment. An `Arc<str>` so the string is
+    /// against it to hold it to its built-in registration. An `Arc<str>` so the string is
     /// shared rather than reallocated when the state is cloned before the `Arc`
     /// wrap.
     pub(crate) wildflower_host_app_client_id: Arc<str>,

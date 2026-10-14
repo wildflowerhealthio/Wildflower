@@ -193,7 +193,7 @@ pub fn store_handle(db: &TestDb) -> SqliteGrantStore {
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
 /// second store handle on the same shared connection. The redirect-back error
 /// tests (RFC 6749 §4.1.2.1) need a client whose `redirect_uri` validates,
-/// which the seeded first-party client (empty allowlist) cannot provide.
+/// which the seeded host app's client (empty allowlist) cannot provide.
 pub fn seed_client_with_redirect(
     db: &TestDb,
     client_id: &str,

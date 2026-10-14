@@ -247,7 +247,7 @@ and the user gets a correct but generic denial with no step-up offer.
 
 Because `/oauth/device_authorization` rejects the **whole** request with
 `invalid_scope` if any requested scope falls outside the client's `allowed_scopes`,
-a gated endpoint that requires a scope the first-party client isn't allowed to ask
+a gated endpoint that requires a scope the host app's client isn't allowed to ask
 for is not steppable-up: the device-login screen names it as unrequestable instead
 of putting it in the request. Keep required scopes inside the client's allowed set
 (`tauri-shared-config.json`'s `local_granted_scopes`, which seeds them) or the

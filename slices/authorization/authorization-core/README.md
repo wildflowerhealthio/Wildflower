@@ -180,17 +180,17 @@ construction: the outbound string and the one derived again on the callback
 (which arrives carrying `code` and `state`) come from the same directory.
 
 An address the client has not registered is not a dead end. For every client but
-the first-party host, `authorization-server-rust` carries an unregistered `redirect_uri`
+the host app's, `authorization-server-rust` carries an unregistered `redirect_uri`
 to the Owner's consent prompt as a warning and adds it to the row on approval
 (`domain/client_registration.rs`), so the Owner is the gate rather than a list
 inside the page.
 
-The first-party host is the exception, in both directions: `/authorize` refuses
-an unregistered redirect for it outright (the local `RedirectUriNotAllowed`
-page), and `ensure_first_party_client` seeds it from code with no redirect URIs
-at all. A browser page running this flow therefore cannot authorize as
-`wildflower-host`; it needs a client row of its own, the way
-`server-docs-web` and `launcher-web` have one.
+The host app's client is the exception, in both directions: its registration
+is built in, so `/authorize` refuses an unregistered redirect for it outright
+(the local `RedirectUriNotAllowed` page), and `ensure_essential_clients` seeds
+it from code with no redirect URIs at all. A browser page running this flow
+therefore cannot authorize as `wildflower-host`; it needs a client row of its
+own, the way `server-docs-web` and `launcher-web` have one.
 
 ### Returning to a route instead of a directory
 

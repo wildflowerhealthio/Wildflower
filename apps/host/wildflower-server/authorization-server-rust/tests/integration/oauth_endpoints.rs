@@ -180,7 +180,7 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     );
 }
 
-/// A scope outside a (non-first-party) client's registration no longer fails the
+/// A scope outside a client's registration (one not built in) no longer fails the
 /// request: it is carried to the Owner's prompt as a `changed` registration
 /// naming exactly the scopes that stepped outside. The registered redirect stays
 /// trusted, so a *different* failure on the same request still 302s back (see
@@ -308,18 +308,18 @@ async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
     );
 }
 
-/// The first-party host is NOT trusted on first use: an unregistered scope for
+/// The host app's client is NOT trusted on first use: an unregistered scope for
 /// `wildflower-host` is still the `invalid_scope` redirect back to its
 /// (registered) redirect_uri, exactly as before.
 #[tokio::test]
-async fn authorize_first_party_disallowed_scope_still_redirects_invalid_scope() {
+async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
     let (g, _host_owner_token, db) = spin_up();
     // Give the host client a redirect so the request reaches the scope check.
     let store = store_handle(&db);
     let mut host = store
         .client_by_id("wildflower-host")
         .unwrap()
-        .expect("the seeded first-party client");
+        .expect("the seeded host app's client");
     host.redirect_uris = vec![Url::parse("https://app.example/cb").unwrap()];
     store.upsert_client(&host).expect("allowlist a redirect");
 

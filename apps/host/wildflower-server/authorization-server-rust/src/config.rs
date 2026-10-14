@@ -18,7 +18,7 @@ pub struct AuthorizationServerConfig {
     /// was served on. See `docs/Origins/Explanation.md`.
     pub server_origin: Url,
 
-    /// The host owner's scopes, as wire strings — seeded as the first-party
+    /// The host owner's scopes, as wire strings — seeded as the host app's
     /// client's `allowed_scopes` and minted into the boot-time host owner token.
     /// The live Tauri app sources these from `tauri-shared-config.json` (the
     /// single source shared with the TS shell); standalone/test builds use
@@ -29,8 +29,8 @@ pub struct AuthorizationServerConfig {
 
     /// The `client_id` of the Wildflower host app's OAuth client — seeded as
     /// the host app's client row, minted into the boot-time host owner token,
-    /// and matched against a `/token` request's presented `client_id` to grant
-    /// first-party treatment. The live Tauri app sources this from
+    /// and matched against a `/token` request's presented `client_id` to hold it
+    /// to its built-in registration. The live Tauri app sources this from
     /// `tauri-shared-config.json` (the single source shared with the TS shell);
     /// standalone/test builds use [`crate::default_wildflower_host_app_client_id`].
     pub wildflower_host_app_client_id: String,

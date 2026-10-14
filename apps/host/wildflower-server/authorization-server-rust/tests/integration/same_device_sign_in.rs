@@ -235,7 +235,7 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
     assert_eq!(session(second).await.status(), StatusCode::OK);
 }
 
-/// The Owner-browser client isn't locked: revoking its subject is a `204`
+/// Revoking the Owner-browser client's subject is a `204`
 /// that signs every Owner browser out at once, while the host app, under its
 /// own client, stays signed in.
 #[tokio::test]

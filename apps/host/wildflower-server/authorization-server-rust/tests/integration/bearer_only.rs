@@ -6,10 +6,10 @@ use crate::common::*;
 // becomes a bearer in the host's cookie→bearer layer, not here. See
 // `slices/authorization/docs/Auth Token Storage Explanation.md`.
 
-/// The first-party host's device login returns its token in the JSON body only
+/// The host app's device login returns its token in the JSON body only
 /// — no `Set-Cookie` rides the response.
 #[tokio::test]
-async fn first_party_device_grant_sets_no_cookie() {
+async fn the_host_app_s_device_grant_sets_no_cookie() {
     let (g, _host_owner_token, db) = spin_up();
     plant_device_request(
         &store_handle(&db),
@@ -35,9 +35,9 @@ async fn first_party_device_grant_sets_no_cookie() {
     assert!(token["access_token"].as_str().is_some());
 }
 
-/// The first-party host's refresh grant likewise returns only the JSON token.
+/// The host app's refresh grant likewise returns only the JSON token.
 #[tokio::test]
-async fn first_party_refresh_grant_sets_no_cookie() {
+async fn the_host_app_s_refresh_grant_sets_no_cookie() {
     let (g, _host_owner_token, db) = spin_up();
     plant_refresh_token(
         &store_handle(&db),

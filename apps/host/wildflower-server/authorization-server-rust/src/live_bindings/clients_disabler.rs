@@ -14,7 +14,7 @@ use crate::domain::capabilities::access::clients::clients_disabler_scopes;
 use crate::domain::capabilities::{ClientsDisabler, FixedScopeCapability};
 use crate::domain::token::VerifiedClaims;
 
-/// Disable or re-enable a registered client (never the first-party host).
+/// Disable or re-enable a registered client (never disable an essential one).
 pub(crate) type LiveClientsDisabler = ClientsDisabler<SqliteGrantStore>;
 
 impl FixedScopeCapability for LiveClientsDisabler {

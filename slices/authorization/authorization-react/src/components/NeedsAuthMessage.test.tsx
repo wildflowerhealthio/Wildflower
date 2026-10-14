@@ -61,7 +61,7 @@ const layerHolder: { current: Layer.Layer<AuthorizationServerHttpApiClient> } = 
 // set value proves the request forwards the injected config.
 const scopesHolder: { current: string | undefined } = { current: undefined }
 
-// Stands in for the host-threaded `firstPartyClientId` router-context value.
+// Stands in for the host-threaded `wildflowerHostAppClientId` router-context value.
 // `undefined` (the default) exercises the standalone `WILDFLOWER_HOST_APP_CLIENT_ID`
 // fallback; a set value proves the device-login request forwards the injected id.
 const clientIdHolder: { current: string | undefined } = { current: undefined }
@@ -74,7 +74,7 @@ vi.mock('../router-context.ts', () => ({
   useAuthorizationRuntimeLayer: (): Layer.Layer<AuthorizationServerHttpApiClient> =>
     layerHolder.current,
   useAuthorizationLocalGrantedScopes: (): string | undefined => scopesHolder.current,
-  useAuthorizationFirstPartyClientId: (): string | undefined => clientIdHolder.current,
+  useWildflowerHostAppClientId: (): string | undefined => clientIdHolder.current,
   useAuthorizationExternalRoot: (): string => EXTERNAL_ROOT,
 }))
 
@@ -259,7 +259,7 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(payload['client_id']).toBe('wildflower-host')
   })
 
-  test('identifies the request with the host-threaded first-party client id', async () => {
+  test('identifies the request with the host-threaded host app client id', async () => {
     // The live Tauri app threads the id from `tauri-shared-config.json`; the
     // request must carry that value, not the standalone fallback — so the id
     // authorization-server-rust seeds and the id the WebView presents derive from one

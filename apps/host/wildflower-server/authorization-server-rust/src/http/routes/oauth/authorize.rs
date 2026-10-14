@@ -43,7 +43,7 @@ fn found_redirect(location: &str) -> Response {
 pub(super) enum AuthorizeError {
     /// A failure on a request whose `redirect_uri` is not trusted — a disabled
     /// client, a malformed or non-http(s) URI, an unregistered redirect for the
-    /// first-party client, or (because the client is new to this authorization server or
+    /// host app's client, or (because the client is new to this authorization server or
     /// the redirect is not on its registration) any later validation failure.
     /// Renders a local HTML page — redirecting to an unvouched-for URI would be
     /// an open redirect (RFC 6749 §4.1.2.1).
@@ -70,7 +70,7 @@ impl From<AuthorizationStartError> for AuthorizeError {
             AuthorizationStartError::NoActiveSigningKey => AuthorizeError::ServiceUnavailable,
             AuthorizationStartError::LocalPage(kind) => {
                 if kind == OAuthErrorKind::RedirectUriNotAllowed {
-                    tracing::warn!("redirect_uri not allowed for the first-party client");
+                    tracing::warn!("redirect_uri not allowed for the host app's client");
                 }
                 AuthorizeError::LocalPage(kind)
             }
@@ -166,7 +166,7 @@ pub struct AuthorizeParams {
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 ///
-/// Clients other than the first-party host are **trusted on first use**: an
+/// Clients other than the host app's are **trusted on first use**: an
 /// unknown `client_id`, an unregistered `redirect_uri`, and scopes outside the
 /// registration are all carried to the Owner's prompt as a registration warning
 /// rather than rejected here, and nothing is written to the `clients` table

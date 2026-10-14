@@ -176,9 +176,10 @@ endpoints (RFC 6749 §4.1.2.1's open-redirect rule). Scope strings are not
 validated against a grammar on this path: an unparseable scope is carried to
 the prompt as an opaque named scope that matches only itself.
 
-The first-party `wildflower-host` client is exempt: an unregistered redirect
-or scope for it is rejected at the boundary, and approval never widens its
-row. Disabled clients are rejected on every endpoint regardless of verdict,
+The host app's `wildflower-host` client is exempt: its registration is
+**built in** (defined by the server, not trusted on first use), so an
+unregistered redirect or scope for it is rejected at the boundary, and
+approval never widens its row. Disabled clients are rejected on every endpoint regardless of verdict,
 and a widening never clears `disabledAt` — trust the Owner took back stays
 taken back until they re-enable the app.
 
@@ -337,8 +338,7 @@ behalf.
 
 ### Device flow (RFC 8628)
 
-The first-party host browser's path to becoming an Owner-authenticated
-client. Flow:
+The host app's path to becoming an Owner-authenticated client. Flow:
 
 1. On the device-login screen the user names the device and adjusts a scope
    request with the shared scope picker (see [Device name](#device-name) and
@@ -376,7 +376,7 @@ the first successful token mint so a second poll returns `expired_token`.
 ### Device name
 
 A human-chosen label for the device being paired ("Ada's laptop"), distinct from
-the OAuth [client](#client) name (all first-party devices share the
+the OAuth [client](#client) name (every device the host app pairs shares the
 `wildflower-host` client, so the client name can't tell them apart). A
 non-standard RFC 8628 extension: the requesting device sends it as the
 `device_name` form field on `/oauth/device_authorization`; it is stored on the
