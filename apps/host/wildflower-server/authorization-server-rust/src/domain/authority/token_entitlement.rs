@@ -5,6 +5,7 @@
 //! a caller assembled.
 
 use super::host_owner_entitlement::HostOwnerEntitlement;
+use super::owner_sign_in::RedeemedOwnerSignInCode;
 use super::redemption::{ConsumedDeviceRequest, RedeemedAuthorizationCode, ValidatedRefreshToken};
 
 /// The proof a token is minted under. The variants are the whole answer to
@@ -14,6 +15,8 @@ use super::redemption::{ConsumedDeviceRequest, RedeemedAuthorizationCode, Valida
 pub(crate) enum TokenEntitlement<'a> {
     /// The host's own owner token, minted from configuration at boot.
     HostOwner(&'a HostOwnerEntitlement),
+    /// An Owner's session, signed in with a code the base minted.
+    OwnerSignIn(&'a RedeemedOwnerSignInCode),
     /// An authorization code redeemed at `/oauth/token`.
     AuthorizationCode(&'a RedeemedAuthorizationCode),
     /// An approved device request claimed by its poll.
@@ -27,6 +30,9 @@ impl TokenEntitlement<'_> {
     pub(crate) fn client_id(&self) -> &str {
         match self {
             TokenEntitlement::HostOwner(host) => host.client_id(),
+            TokenEntitlement::OwnerSignIn(redeemed_sign_in_code) => {
+                redeemed_sign_in_code.client_id()
+            }
             TokenEntitlement::AuthorizationCode(redeemed_code) => redeemed_code.client_id(),
             TokenEntitlement::DeviceCode(consumed_device_request) => {
                 consumed_device_request.client_id()
@@ -44,6 +50,9 @@ impl TokenEntitlement<'_> {
     pub(crate) fn token_scopes(&self) -> &[String] {
         match self {
             TokenEntitlement::HostOwner(host) => host.token_scopes(),
+            TokenEntitlement::OwnerSignIn(redeemed_sign_in_code) => {
+                redeemed_sign_in_code.token_scopes()
+            }
             TokenEntitlement::AuthorizationCode(redeemed_code) => redeemed_code.token_scopes(),
             TokenEntitlement::DeviceCode(consumed_device_request) => {
                 consumed_device_request.token_scopes()
@@ -54,11 +63,11 @@ impl TokenEntitlement<'_> {
         }
     }
 
-    /// SMART-on-FHIR patient context bound at approval, if any. The host's
-    /// owner token has none.
+    /// SMART-on-FHIR patient context bound at approval, if any. The Owner's
+    /// tokens have none.
     pub(crate) fn patient(&self) -> Option<&str> {
         match self {
-            TokenEntitlement::HostOwner(_) => None,
+            TokenEntitlement::HostOwner(_) | TokenEntitlement::OwnerSignIn(_) => None,
             TokenEntitlement::AuthorizationCode(redeemed_code) => redeemed_code.patient(),
             TokenEntitlement::DeviceCode(consumed_device_request) => {
                 consumed_device_request.patient()

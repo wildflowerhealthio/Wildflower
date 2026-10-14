@@ -1,4 +1,5 @@
 use url::Url;
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 #[derive(Debug, Clone)]
@@ -45,4 +46,10 @@ pub struct AuthorizationServerConfig {
     /// landing live on (see [`LauncherBase`]). The live Tauri app sources it
     /// from `tauri-shared-config.json`.
     pub launcher_base: LauncherBase,
+
+    /// The hosted Wildflower Authorization app (see [`AuthorizationAppBase`]):
+    /// besides the launcher and this server's own paths, the one place
+    /// `/oauth/sign-in` may send a browser next. The live Tauri app sources it
+    /// from `tauri-shared-config.json`.
+    pub authorization_app_base: AuthorizationAppBase,
 }

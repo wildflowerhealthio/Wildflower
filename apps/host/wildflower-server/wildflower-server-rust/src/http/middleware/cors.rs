@@ -9,10 +9,11 @@ use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 ///
 /// Mirroring headers rather than `*` matters: the CORS spec's header wildcard
 /// excludes `Authorization`, the one header the bearer clients need. Credentials
-/// stay off because the server authenticates by `Authorization: Bearer`: the one
-/// ambient credential, the FHIR web UI's session cookie, is for the UI's own
-/// pages on the server's origin, so no other origin may read a response it
-/// rode on (`ui_session_bearer` refuses its writes from elsewhere). A page on a public origin — the hosted launcher at
+/// stay off because every other origin authenticates by `Authorization: Bearer`:
+/// the server accepts two cookies, `__Host-owner_session` and the FHIR UI's
+/// `hfs_session`, only from its own pages, with an Origin check on writes
+/// (`session_cookie_bearer`), and turns each into a bearer token, so no other
+/// origin may read a response one rode on. A page on a public origin — the hosted launcher at
 /// `wildflowerhealth.io/launcher/` — fetching this loopback server makes Chrome send
 /// `Access-Control-Request-Private-Network: true`, and it blocks the request
 /// unless the preflight answers `Access-Control-Allow-Private-Network: true`.
@@ -60,8 +61,9 @@ mod tests {
         );
     }
 
-    /// A cross-origin request is never told it may send credentials: the API
-    /// authenticates by bearer alone, so no ambient credential may ride.
+    /// A cross-origin request is never told it may send credentials: the
+    /// server's cookies are for its own pages, so no other origin may read a
+    /// response one rode on.
     #[tokio::test]
     async fn cross_origin_credentials_are_never_allowed() {
         let router = axum::Router::new()

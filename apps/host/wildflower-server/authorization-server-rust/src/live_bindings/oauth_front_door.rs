@@ -1,8 +1,9 @@
 //! The pre-auth `/oauth` front-door bindings — the public and client-gated
 //! capabilities over the concrete `SqliteGrantStore`. None is scope-gated
-//! (a browser arriving at `/authorize` holds no token; a device request is
-//! gated by its `AuthenticatedClient` proof), so none has a `Capability` impl;
-//! the handlers acquire them through `Live<…>` via [`FromState`].
+//! (a browser arriving at `/authorize` or `/sign-in` holds no token; a device
+//! request is gated by its `AuthenticatedClient` proof, a sign-in by its
+//! code), so none has a `Capability` impl; the handlers acquire them through
+//! `Live<…>` via [`FromState`].
 
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use super::FromState;
 use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::oauth::{
     AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, LoopbackOwnerApprover,
-    PublicKeysReader,
+    OwnerSignIn, PublicKeysReader,
 };
 use crate::ports::OwnerApproval;
 
@@ -43,6 +44,23 @@ impl FromState for LiveLoopbackOwnerApprover {
             state.loopback_consent_prompt.clone(),
             state.host_owner_grant.clone(),
             state.first_party_client_id.clone(),
+        )
+    }
+}
+
+/// Sign a browser in as the Owner with a code the base minted — built by the
+/// `/oauth/sign-in` handler.
+pub(crate) type LiveOwnerSignIn = OwnerSignIn<SqliteGrantStore>;
+
+impl FromState for LiveOwnerSignIn {
+    fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
+        OwnerSignIn::new(
+            state.store.clone(),
+            state.owner_sign_in_codes.clone(),
+            state.sign_in_destinations.clone(),
+            state.server_origin.clone(),
+            state.first_party_client_id.clone(),
+            state.host_owner_grant.clone(),
         )
     }
 }

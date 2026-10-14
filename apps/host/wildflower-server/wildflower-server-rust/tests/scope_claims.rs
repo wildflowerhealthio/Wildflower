@@ -21,6 +21,7 @@ use wildflowerhealthio_authorization_server::{
     GrantStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGrantStore,
 };
 use wildflowerhealthio_persistence::{Connection, DieselPool};
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// The server's origin: the `iss` and `aud` of every token its authorization server
@@ -44,6 +45,10 @@ fn set_up_authorization_server(
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base URL"),
+        authorization_app_base: AuthorizationAppBase::parse(
+            "https://authorization.test/authorization/",
+        )
+        .expect("authorization app base URL"),
     };
     let (owner_token_tx, owner_token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, _pending_consent_rx) =

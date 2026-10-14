@@ -1103,6 +1103,8 @@ fn on_loopback(loopback_base_url: &Url, url: &str) -> Url {
 struct UiServer {
     app_data_dir: tempfile::TempDir,
     loopback_base_url: Url,
+    /// Mints the codes the host signs a browser in as the Owner with.
+    owner_sign_in_code_minter: wildflowerhealthio_authorization_server::OwnerSignInCodeMinter,
     browser: reqwest::Client,
     shutdown: CancellationToken,
     serving: JoinHandle<anyhow::Result<()>>,
@@ -1128,17 +1130,19 @@ impl UiServer {
             forwarded_request_tx,
         };
         let shutdown = CancellationToken::new();
-        let serving = tokio::time::timeout(
+        let server = tokio::time::timeout(
             LIFECYCLE_TIMEOUT,
-            start_serving(
+            set_up(
                 server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
                 host_ports,
                 observers,
-                shutdown.clone(),
             ),
         )
         .await
-        .expect("the server binds in time");
+        .expect("the server binds in time")
+        .expect("the server sets up and binds");
+        let owner_sign_in_code_minter = server.owner_sign_in_code_minter();
+        let serving = tokio::spawn(server.serve(shutdown.clone()));
         let browser = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -1146,6 +1150,7 @@ impl UiServer {
         Self {
             app_data_dir,
             loopback_base_url,
+            owner_sign_in_code_minter,
             browser,
             shutdown,
             serving,
@@ -1322,6 +1327,118 @@ async fn the_fhir_ui_signs_in_through_authorization_server_and_reads_fhir_on_its
             .status(),
         reqwest::StatusCode::UNAUTHORIZED
     );
+
+    server.shut_down().await;
+}
+
+/// The Owner's sign-in, end to end through the composed server: a code the
+/// host mints signs a browser in and sends it on, and its
+/// `__Host-owner_session` cookie alone then reads `GET /authorization/session`
+/// as the Owner from the server's own pages. A write carrying the cookie from
+/// another server's page is refused; one from the server's own page goes
+/// through on it, here revoking the session's own `jti`, after which the
+/// cookie gets `401`.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
+    let server = UiServer::start().await;
+
+    let mut sign_in_url = server
+        .loopback_base_url
+        .join("oauth/sign-in")
+        .expect("sign-in URL");
+    sign_in_url
+        .query_pairs_mut()
+        .append_pair("code", &server.owner_sign_in_code_minter.mint())
+        .append_pair("next", "/ui");
+    let signed_in = server
+        .browser
+        .get(sign_in_url)
+        .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+        .send()
+        .await
+        .expect("GET /oauth/sign-in reaches the server");
+    assert_eq!(signed_in.status(), reqwest::StatusCode::SEE_OTHER);
+    assert_eq!(location_of(&signed_in), "/ui");
+    let owner_cookie = cookies_set_by(&signed_in)
+        .into_iter()
+        .find(|cookie| {
+            cookie.starts_with(&format!(
+                "{}=",
+                wildflowerhealthio_authorization_server::OWNER_SESSION_COOKIE
+            ))
+        })
+        .expect("the Owner's session cookie");
+    let session = || async {
+        server
+            .ui_request(
+                reqwest::Method::GET,
+                "authorization/session",
+                Some(&owner_cookie),
+            )
+            .send()
+            .await
+            .expect("GET /authorization/session reaches the server")
+    };
+
+    let signed_in_session = session().await;
+    assert_eq!(signed_in_session.status(), reqwest::StatusCode::OK);
+    let owner_scopes: Vec<String> =
+        wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+    assert_eq!(
+        signed_in_session.json::<Value>().await.expect("a session")["scopes"],
+        serde_json::json!(owner_scopes)
+    );
+
+    let owner_token = owner_cookie
+        .split_once('=')
+        .map(|(_, token)| token)
+        .expect("a cookie value");
+    let payload = owner_token.split('.').nth(1).expect("a JWT payload");
+    let claims: Value = serde_json::from_slice(
+        &wildflowerhealthio_authorization_server::crypto_util::base64::url_safe_no_pad_decode(
+            payload,
+        )
+        .expect("base64url"),
+    )
+    .expect("JSON claims");
+    let revoke_the_session = serde_json::json!({
+        "jti": claims["jti"],
+        "expiresAt": (chrono::Utc::now() + chrono::Duration::hours(8)).to_rfc3339(),
+    });
+    let revocations_url = server
+        .loopback_base_url
+        .join("authorization/revocations")
+        .expect("revocations URL");
+
+    let from_another_server = server
+        .browser
+        .post(revocations_url)
+        .header("forwarded", PUBLIC_BROWSER_FORWARDED)
+        .header("sec-fetch-site", "same-site")
+        .header("origin", OTHER_SERVER_ORIGIN)
+        .header("cookie", &owner_cookie)
+        .json(&revoke_the_session)
+        .send()
+        .await
+        .expect("the revocation reaches the server");
+    assert_eq!(from_another_server.status(), reqwest::StatusCode::FORBIDDEN);
+    assert_eq!(session().await.status(), reqwest::StatusCode::OK);
+
+    let from_its_own_page = server
+        .ui_request(
+            reqwest::Method::POST,
+            "authorization/revocations",
+            Some(&owner_cookie),
+        )
+        .json(&revoke_the_session)
+        .send()
+        .await
+        .expect("the revocation reaches the server");
+    assert_eq!(from_its_own_page.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(session().await.status(), reqwest::StatusCode::UNAUTHORIZED);
 
     server.shut_down().await;
 }

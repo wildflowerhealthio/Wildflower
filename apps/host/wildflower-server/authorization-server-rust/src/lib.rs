@@ -36,6 +36,10 @@ use wildflowerhealthio_scopes::{
 };
 use wildflowerhealthio_token_revocation::RevocationStore;
 
+use crate::domain::capabilities::oauth::OWNER_SESSION_TTL;
+use crate::domain::owner_sign_in_codes::OwnerSignInCodes;
+use crate::domain::sign_in_redirect::SignInDestinations;
+
 pub use config::AuthorizationServerConfig;
 pub use db::SqliteGrantStore;
 // Debug builds only: the OAuth clients for the first-party apps' vite dev servers
@@ -73,9 +77,9 @@ pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
     is_pre_auth_public_path, require_loopback_peer_middleware, AuthorizationServerAuthMiddleware,
-    AuthorizationServerState, RequireLoopbackPeerMiddleware,
+    AuthorizationServerState, RequireLoopbackPeerMiddleware, OWNER_SESSION_COOKIE,
 };
-pub use live_bindings::LaunchContextMinter;
+pub use live_bindings::{LaunchContextMinter, OwnerSignInCodeMinter};
 pub use wildflowerhealthio_persistence::DieselPool;
 // The loopback-dialog seam: the host implements it with its native dialog
 // plugin and passes it into `setup_authorization_server`, so its trait + types are public.
@@ -197,14 +201,17 @@ const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration:
 
 /// Result of `setup_authorization_server`: the public router that should be merged
 /// into the app's root router, the shared `Arc<AuthorizationServerState>` needed to
-/// gate fhir-r4-rust traffic, and the minter app launches mint their `launch`
-/// values through.
+/// gate fhir-r4-rust traffic, the minter app launches mint their `launch`
+/// values through, and the minter the host mints Owner sign-in codes through.
 pub struct AuthorizationServer {
     pub router: axum::Router,
     pub state: Arc<AuthorizationServerState>,
     /// Mints the SMART App Launch contexts `/oauth/authorize` consumes — for
     /// the in-process launchers (the apps slice, the host).
     pub launch_context_minter: LaunchContextMinter,
+    /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
+    /// Owner with — for the host, in-process.
+    pub owner_sign_in_code_minter: OwnerSignInCodeMinter,
 }
 
 /// Build the authorization-server-rust HTTP surface over the host-owned diesel
@@ -231,7 +238,9 @@ pub struct AuthorizationServer {
 ///    [`authorization_server_auth_middleware`] to gate fhir-r4-rust;
 ///  - returns the [`LaunchContextMinter`] an in-process launcher mints each
 ///    SMART App Launch `launch` value through, which `/oauth/authorize` then
-///    consumes.
+///    consumes;
+///  - returns the [`OwnerSignInCodeMinter`] the host mints each Owner
+///    sign-in code through, which `/oauth/sign-in` then redeems.
 ///
 /// Every token this server mints — OAuth and host owner alike — carries the
 /// server's origin ([`AuthorizationServerConfig::server_origin`]) as both `iss` and
@@ -301,6 +310,7 @@ pub fn setup_authorization_server(
     local_owner_token_tx
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;
+    let owner_sign_in_codes = Arc::new(OwnerSignInCodes::new());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
@@ -311,6 +321,12 @@ pub fn setup_authorization_server(
         owner_approval_tx,
         loopback_consent_prompt,
         host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),
+        owner_sign_in_codes: owner_sign_in_codes.clone(),
+        sign_in_destinations: Arc::new(SignInDestinations::new(
+            config.server_origin.clone(),
+            config.launcher_base.clone(),
+            config.authorization_app_base.clone(),
+        )),
     });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview
@@ -334,10 +350,12 @@ pub fn setup_authorization_server(
     spawn_revocation_purge(revocation_store);
     let router = http::router(state.clone());
     let launch_context_minter = LaunchContextMinter::new(state.store.clone());
+    let owner_sign_in_code_minter = OwnerSignInCodeMinter::new(owner_sign_in_codes);
     Ok(AuthorizationServer {
         router,
         state,
         launch_context_minter,
+        owner_sign_in_code_minter,
     })
 }
 
@@ -395,12 +413,13 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
         loop {
             // First tick is immediate → startup purge; then daily.
             ticks.tick().await;
-            // Retention floor = the longest access token we mint (the 2h host
-            // owner token dwarfs the 15-min OAuth `ACCESS_TOKEN_TTL`), so a
-            // denylist row is never dropped while its token could still be live —
-            // even if the `/authorization/revocations` caller supplied a too-early
-            // `expiresAt`. See `RevocationStore::purge_expired`.
-            match revocation_store.purge_expired(Utc::now(), HOST_OWNER_TOKEN_TTL) {
+            // Retention floor = the longest access token we mint (the 8h Owner
+            // session token, past the 2h host owner token and the 15-min OAuth
+            // `ACCESS_TOKEN_TTL`), so a denylist row is never dropped while its
+            // token could still be live — even if the `/authorization/revocations`
+            // caller supplied a too-early `expiresAt`. See
+            // `RevocationStore::purge_expired`.
+            match revocation_store.purge_expired(Utc::now(), OWNER_SESSION_TTL) {
                 Ok(purged) if purged > 0 => {
                     tracing::info!(purged, "swept expired revoked jtis");
                 }

@@ -294,3 +294,85 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
         "revoking a device grant must bump the client's revocation epoch"
     );
 }
+
+/// The first-party host client is the Owner's: every Owner token is issued to
+/// it, so revoking its whole token cohort would sign the Owner out everywhere.
+/// A subject revocation naming it is a `409`, and revokes nothing.
+#[tokio::test]
+async fn the_owner_s_token_cohort_cannot_be_revoked_wholesale() {
+    let (g, host_owner_token, db) = spin_up();
+    let res = g
+        .router
+        .clone()
+        .oneshot(owner_revocation_request(
+            &host_owner_token,
+            serde_json::json!({ "subject": "wildflower-host" }),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "error": "FirstPartyClientLocked", "clientId": "wildflower-host" }),
+    );
+    assert!(
+        !revocation_store_handle(&db)
+            .is_revoked(
+                None,
+                Some(Utc::now() - Duration::hours(1)),
+                "wildflower-host"
+            )
+            .expect("query"),
+        "the Owner's epoch is untouched"
+    );
+}
+
+/// A grant of the first-party host client is the Owner's, and revoking it
+/// would bump the Owner's epoch: a `409`, and the grant stays.
+#[tokio::test]
+async fn the_owner_s_grant_cannot_be_revoked() {
+    let (g, host_owner_token, db) = spin_up();
+    store_handle(&db)
+        .create_device_grant(
+            &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
+                id: "owner-grant".to_string(),
+                client_id: "wildflower-host".to_string(),
+                scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+                granted_at: Utc::now(),
+                last_used_at: None,
+                patient: None,
+                device_name: "The Owner's laptop".to_string(),
+            },
+        )
+        .expect("create the Owner's grant");
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::delete("/authorization/grants/owner-grant")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "error": "FirstPartyClientLocked", "clientId": "wildflower-host" }),
+    );
+    assert!(store_handle(&db)
+        .grant_by_id("owner-grant")
+        .expect("query")
+        .is_some());
+    assert_eq!(
+        g.router
+            .clone()
+            .oneshot(owner_grants_probe(&host_owner_token))
+            .await
+            .expect("oneshot")
+            .status(),
+        StatusCode::OK,
+        "the Owner is still signed in"
+    );
+}

@@ -19,6 +19,10 @@ pub const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 /// these tests — deliberately not the production address, so an assertion
 /// can't pass by accident against a hard-coded one.
 pub const LAUNCHER_BASE: &str = "https://launcher.test/launcher/";
+
+/// The hosted Wildflower Authorization app in these tests, likewise not the
+/// production address.
+pub const AUTHORIZATION_APP_BASE: &str = "https://authorization.test/authorization/";
 pub use chrono::{Duration, Utc};
 pub use serde_json::Value;
 pub use tower::ServiceExt;
@@ -42,6 +46,7 @@ pub use wildflowerhealthio_authorization_server::{
     GrantStore, PendingConsentHead, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
+pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 pub use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// The two database handles the running router uses, kept so tests can open
@@ -111,6 +116,8 @@ fn spin_up_on(
             wildflowerhealthio_authorization_server::default_first_party_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
+        authorization_app_base: AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE)
+            .expect("AUTHORIZATION_APP_BASE is a valid URL"),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, pending_consent_rx) =

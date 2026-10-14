@@ -1,8 +1,10 @@
 use crate::common::*;
 
-// The server authenticates by `Authorization: Bearer` alone: no grant plants a
-// session cookie, a `wf_auth` cookie authenticates nothing, and logout sets no
-// cookies. See `slices/authorization/docs/Auth Token Storage Explanation.md`.
+// The authorization server's gates read `Authorization: Bearer` alone: no grant
+// plants a session cookie, a `wf_auth` cookie authenticates nothing, and logout
+// sets no cookies. The one cookie it sets, the Owner's from `/oauth/sign-in`,
+// becomes a bearer in the host's cookie→bearer layer, not here. See
+// `slices/authorization/docs/Auth Token Storage Explanation.md`.
 
 /// The first-party host's device login returns its token in the JSON body only
 /// — no `Set-Cookie` rides the response.

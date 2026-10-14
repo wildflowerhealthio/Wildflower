@@ -14,7 +14,8 @@ use crate::live_bindings::LiveGrantsRevoker;
 /// minted under its client, and bump the client's revocation epoch so any
 /// still-live *access* tokens die too — no `offline_access` client (or a leaked
 /// live bearer) outlives the revocation. Acquired through [`LiveGrantsRevoker`]
-/// (scope `wildflower/Grant.d`), which owns the whole cascade.
+/// (scope `wildflower/Grant.d`), which owns the whole cascade. A grant of the
+/// first-party host client is the Owner's, and gets `409 FirstPartyClientLocked`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     delete(handle_revoke_grant)
 }

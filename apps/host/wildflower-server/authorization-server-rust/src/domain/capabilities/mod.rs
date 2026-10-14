@@ -69,6 +69,8 @@ mod source_guards {
             ".server_origin",
             ".loopback_consent_prompt",
             ".host_owner_grant",
+            ".owner_sign_in_codes",
+            ".sign_in_destinations",
         ];
 
         let routes_dir =

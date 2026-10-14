@@ -26,6 +26,9 @@
 //!  - [`HostOwnerEntitlement`] — what the host's own boot-time owner token may
 //!    claim, the one authority with no approving human; constructible only in
 //!    `seeding` (guarded below).
+//!  - [`RedeemedOwnerSignInCode`] — a one-time sign-in code the base minted
+//!    in-process, redeemed at `/oauth/sign-in`: the authority an Owner's
+//!    session token is minted under, as the Owner's client and grant.
 //!  - [`TokenEntitlement`] — the enum the minter mints under, one variant per
 //!    proof above that a token may be minted for; each carries its claims
 //!    privately, so a token's scopes are never a caller-assembled slice.
@@ -44,6 +47,7 @@
 mod authenticated_client;
 mod delegated_scopes;
 mod host_owner_entitlement;
+mod owner_sign_in;
 mod redemption;
 mod standing_grant;
 mod token_entitlement;
@@ -51,6 +55,7 @@ mod token_entitlement;
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
 pub(crate) use delegated_scopes::{within_approver_grant, ApprovableScopes, DelegatedScopes};
 pub(crate) use host_owner_entitlement::HostOwnerEntitlement;
+pub(crate) use owner_sign_in::RedeemedOwnerSignInCode;
 pub(crate) use redemption::{
     ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode, RedeemedAuthorizationCode,
     ValidatedRefreshToken,

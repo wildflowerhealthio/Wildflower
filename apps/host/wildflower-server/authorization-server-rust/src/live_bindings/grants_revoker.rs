@@ -14,7 +14,7 @@ use crate::domain::capabilities::access::grants::grants_revoker_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, GrantsRevoker};
 use crate::domain::token::VerifiedClaims;
 
-/// Revoke a standing grant (with the token-kill cascade).
+/// Revoke a standing grant (with the token-kill cascade), never the Owner's.
 pub(crate) type LiveGrantsRevoker = GrantsRevoker<SqliteGrantStore>;
 
 impl FixedScopeCapability for LiveGrantsRevoker {
@@ -30,6 +30,7 @@ impl FixedScopeCapability for LiveGrantsRevoker {
         GrantsRevoker::new(
             state.store.clone(),
             Arc::new(state.revocation_store.clone()),
+            state.first_party_client_id.clone(),
         )
     }
 }

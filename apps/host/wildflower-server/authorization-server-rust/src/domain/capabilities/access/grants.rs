@@ -102,13 +102,23 @@ impl<S: GrantStore> GrantsReader<S> {
 pub(crate) struct GrantsRevoker<S: GrantStore> {
     store: S,
     revocation: Arc<dyn Revocation>,
+    /// The Owner's client, whose grants are locked.
+    first_party_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> GrantsRevoker<S> {
-    /// Build the revoker over a store handle + the revocation port, both lifted
-    /// from the state.
-    pub(crate) fn new(store: S, revocation: Arc<dyn Revocation>) -> Self {
-        GrantsRevoker { store, revocation }
+    /// Build the revoker over a store handle, the revocation port and the
+    /// first-party `client_id`, all lifted from the state.
+    pub(crate) fn new(
+        store: S,
+        revocation: Arc<dyn Revocation>,
+        first_party_client_id: Arc<str>,
+    ) -> Self {
+        GrantsRevoker {
+            store,
+            revocation,
+            first_party_client_id,
+        }
     }
 
     /// Revoke the grant, bump the client's revocation epoch (killing its live
@@ -118,12 +128,25 @@ impl<S: GrantStore> GrantsRevoker<S> {
     /// first and the operation is idempotent on retry. Runs under this
     /// capability's own `Grant.d` gate; the token-kill is part of revoking a
     /// grant, so it does not additionally require `Token.d`.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::GrantNotFound`] when no grant has `id`.
+    /// A grant of the first-party client is the Owner's, and revoking it would
+    /// end every Owner session at once, so it is
+    /// [`AuthorizationServerError::FirstPartyClientLocked`] and nothing is
+    /// revoked; a single Owner token is revoked by its `jti` instead.
     pub(crate) fn revoke(
         &self,
         id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let grant = get_grant(&self.store, id)?;
+        if grant.client_id() == &*self.first_party_client_id {
+            return Err(AuthorizationServerError::FirstPartyClientLocked {
+                client_id: grant.client_id().to_owned(),
+            });
+        }
         self.revocation
             .revoke_subject_as_of_now(grant.client_id())
             .map_err(|e| {

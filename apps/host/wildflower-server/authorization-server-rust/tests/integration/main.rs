@@ -8,6 +8,7 @@ mod grant_flows;
 mod host_consent_decider;
 mod loopback_dialog;
 mod oauth_endpoints;
+mod owner_sign_in;
 mod request_caller;
 mod revocation;
 mod scope_gating;

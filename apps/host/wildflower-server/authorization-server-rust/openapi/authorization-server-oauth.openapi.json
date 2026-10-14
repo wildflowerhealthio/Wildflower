@@ -634,7 +634,7 @@
       },
       "FirstPartyClientLockedBody": {
         "type": "object",
-        "description": "Wire shape for `FirstPartyClientLocked` (409) — the named client is the\nfirst-party host, which can't be disabled without locking the Owner out.",
+        "description": "Wire shape for `FirstPartyClientLocked` (409) — the named client is the\nfirst-party host, the Owner's, which can't be disabled, nor its grants or\ntoken cohort revoked, without locking the Owner out.",
         "required": [
           "error",
           "clientId"

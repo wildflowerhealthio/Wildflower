@@ -28,11 +28,15 @@ pub enum AuthorizationServerError {
     /// No registered client has this `client_id` — the
     /// `PATCH /authorization/clients/{clientId}` 404.
     ClientNotFound { client_id: String },
-    /// The Owner tried to disable the first-party host client — the
-    /// `PATCH /authorization/clients/{clientId}` **409**. The host client is how the
-    /// Owner reaches this surface at all, so disabling it would lock them out;
-    /// its registration is locked (like its consent registration is never
-    /// trusted on first use). Nothing is written when it is raised.
+    /// The Owner tried to disable the first-party host client, revoke one of
+    /// its grants, or revoke its whole token cohort — the **409** of
+    /// `PATCH /authorization/clients/{clientId}`, `DELETE /authorization/grants/{id}`
+    /// and a subject `POST /authorization/revocations`. The host client is the
+    /// Owner's: every Owner token is issued to it, so any of these would sign
+    /// the Owner out everywhere and lock them out of this surface. It is locked
+    /// (like its consent registration is never trusted on first use); a single
+    /// Owner token is still revoked by its `jti`. Nothing is written when it
+    /// is raised.
     FirstPartyClientLocked { client_id: String },
     /// No authorization request has this id — the `/oauth/authorize/{id}`
     /// polling endpoint's 404.
@@ -90,7 +94,11 @@ impl std::fmt::Display for AuthorizationServerError {
                 write!(f, "no client with id {client_id}")
             }
             AuthorizationServerError::FirstPartyClientLocked { client_id } => {
-                write!(f, "the first-party client {client_id} cannot be disabled")
+                write!(
+                    f,
+                    "the first-party client {client_id} cannot be disabled, nor its grants or \
+                     token cohort revoked"
+                )
             }
             AuthorizationServerError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")
