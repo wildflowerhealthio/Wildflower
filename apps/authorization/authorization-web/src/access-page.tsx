@@ -32,9 +32,8 @@ import styles from './access-page.module.css'
  * The ids of the clients whose grants the page offers no Revoke for:
  *
  * - the first-party host client, which is how the Owner reaches the server at
- *   all. The server refuses to disable that client (`409
- *   HostAppClientLocked`), and revoking its grant would cut the Owner off
- *   the same way;
+ *   all. The server refuses to disable that client or revoke its grants or
+ *   subject (`409 HostAppClientLocked`);
  * - this app's own client, whose revocation would revoke the bearer the page
  *   is signed in with.
  *
@@ -67,8 +66,11 @@ interface AccessPageBodyProps {
  * - **Authorized Devices**: the device-code grants, read only.
  *
  * The first-party host client's grants and switch are not offered: the server
- * refuses to disable that client, and the Owner reaches the server through it.
- * Nor is a Revoke for this app's own grant, which would sign the page out.
+ * refuses to disable that client or revoke its grants, and the Owner reaches
+ * the server through it. Should a revoke reach the server anyway, the error
+ * banner says it is the host app's own access (`useRevokeGrantMutation` decodes
+ * the `409`). Nor is a Revoke for this app's own grant, which would sign the
+ * page out.
  */
 const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element => {
   const navigate = useNavigate()

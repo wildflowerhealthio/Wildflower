@@ -92,13 +92,15 @@ and 90 days respectively). See the
 - `/authorization/devices/:userCode` (+ `/approve`, `/deny`) — Owner actions
   on a pending device-flow request.
 - `/authorization/grants`, `/authorization/grants/:id` — list / inspect / revoke
-  standing grants.
+  standing grants; the first-party host's grants can't be revoked
+  (`409 HostAppClientLocked`).
 - `/authorization/clients`, `/authorization/clients/:clientId` — list every registered
   client, and `PATCH` one's `disabledAt` to take trust back (a UTC time) or
   restore it (`null`); the first-party host can't be disabled
   (`409 HostAppClientLocked`).
 - `/authorization/revocations` — revoke issued tokens now: every token a
-  subject (`client_id`) holds, or one token by `jti`.
+  subject (`client_id`) holds, or one token by `jti`; the first-party host's
+  subject can't be revoked (`409 HostAppClientLocked`).
 
 ## The SMART sign-in client
 
