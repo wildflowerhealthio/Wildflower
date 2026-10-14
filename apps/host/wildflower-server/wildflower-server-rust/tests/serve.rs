@@ -1104,7 +1104,8 @@ struct UiServer {
     app_data_dir: tempfile::TempDir,
     loopback_base_url: Url,
     /// Mints the codes the host signs a browser in as the Owner with.
-    owner_sign_in_code_minter: wildflowerhealthio_authorization_server::OwnerSignInCodeMinter,
+    same_device_sign_in_code_minter:
+        wildflowerhealthio_authorization_server::SameDeviceSignInCodeMinter,
     browser: reqwest::Client,
     shutdown: CancellationToken,
     serving: JoinHandle<anyhow::Result<()>>,
@@ -1141,7 +1142,7 @@ impl UiServer {
         .await
         .expect("the server binds in time")
         .expect("the server sets up and binds");
-        let owner_sign_in_code_minter = server.owner_sign_in_code_minter();
+        let same_device_sign_in_code_minter = server.same_device_sign_in_code_minter();
         let serving = tokio::spawn(server.serve(shutdown.clone()));
         let browser = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -1150,7 +1151,7 @@ impl UiServer {
         Self {
             app_data_dir,
             loopback_base_url,
-            owner_sign_in_code_minter,
+            same_device_sign_in_code_minter,
             browser,
             shutdown,
             serving,
@@ -1331,9 +1332,9 @@ async fn the_fhir_ui_signs_in_through_authorization_server_and_reads_fhir_on_its
     server.shut_down().await;
 }
 
-/// The Owner's sign-in, end to end through the composed server: a code the
+/// The same-device sign-in of an Owner browser, end to end through the composed server: a code the
 /// host mints signs a browser in and sends it on, and its
-/// `__Host-owner_session` cookie alone then reads `GET /authorization/session`
+/// `__Host-owner_browser_session` cookie alone then reads `GET /authorization/session`
 /// as the Owner from the server's own pages. A write carrying the cookie from
 /// another server's page is refused; one from the server's own page goes
 /// through on it, here revoking the session's own `jti`, after which the
@@ -1348,7 +1349,7 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
         .expect("sign-in URL");
     sign_in_url
         .query_pairs_mut()
-        .append_pair("code", &server.owner_sign_in_code_minter.mint())
+        .append_pair("code", &server.same_device_sign_in_code_minter.mint())
         .append_pair("next", "/ui");
     let signed_in = server
         .browser
@@ -1364,10 +1365,10 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
         .find(|cookie| {
             cookie.starts_with(&format!(
                 "{}=",
-                wildflowerhealthio_authorization_server::OWNER_SESSION_COOKIE
+                wildflowerhealthio_authorization_server::OWNER_BROWSER_SESSION_COOKIE
             ))
         })
-        .expect("the Owner's session cookie");
+        .expect("the Owner browser session cookie");
     let session = || async {
         server
             .ui_request(

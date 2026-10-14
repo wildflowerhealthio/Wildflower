@@ -2,7 +2,7 @@ use crate::common::*;
 
 // `GET /oauth/sign-in?code=…&next=…`: a code the base minted in-process signs
 // a browser in as the Owner, once, handing it an Owner token as its
-// `__Host-owner_session` cookie and sending it on to an allowed `next`.
+// `__Host-owner_browser_session` cookie and sending it on to an allowed `next`.
 
 /// `GET /oauth/sign-in` with `code` and `next`, as the browser the base opened
 /// sends it.
@@ -22,15 +22,15 @@ async fn sign_in(g: &AuthorizationServer, code: &str, next: &str) -> axum::respo
 }
 
 /// The Owner token a sign-in's `Set-Cookie` hands the browser.
-fn owner_session_token(res: &axum::response::Response) -> String {
+fn owner_browser_session_token(res: &axum::response::Response) -> String {
     let cookies = set_cookie_values(res);
     let [cookie] = cookies.as_slice() else {
         panic!("exactly one cookie, got {cookies:?}");
     };
     cookie
-        .strip_prefix("__Host-owner_session=")
+        .strip_prefix("__Host-owner_browser_session=")
         .and_then(|rest| rest.split(';').next())
-        .unwrap_or_else(|| panic!("the Owner's session cookie, got {cookie}"))
+        .unwrap_or_else(|| panic!("the Owner browser session cookie, got {cookie}"))
         .to_owned()
 }
 
@@ -58,12 +58,12 @@ async fn assert_refused(res: axum::response::Response, what: &str) {
 #[tokio::test]
 async fn a_code_signs_in_once() {
     let (g, _host_owner_token, _db) = spin_up();
-    let code = g.owner_sign_in_code_minter.mint();
+    let code = g.same_device_sign_in_code_minter.mint();
 
     let signed_in = sign_in(&g, &code, "/").await;
     assert_eq!(signed_in.status(), StatusCode::SEE_OTHER);
     assert_cache_suppressed(&signed_in, "the sign-in");
-    owner_session_token(&signed_in);
+    owner_browser_session_token(&signed_in);
 
     assert_refused(sign_in(&g, &code, "/").await, "a spent code").await;
 }
@@ -71,7 +71,7 @@ async fn a_code_signs_in_once() {
 #[tokio::test]
 async fn an_unknown_code_signs_nobody_in() {
     let (g, _host_owner_token, _db) = spin_up();
-    let _outstanding = g.owner_sign_in_code_minter.mint();
+    let _outstanding = g.same_device_sign_in_code_minter.mint();
     assert_refused(sign_in(&g, "no-such-code", "/").await, "an unknown code").await;
     assert_refused(
         g.router
@@ -104,7 +104,7 @@ async fn the_browser_goes_on_to_an_allowed_next() {
             "https://authorization.test/authorization/?iss=https%3A%2F%2Fruth.relay.example",
         ),
     ] {
-        let code = g.owner_sign_in_code_minter.mint();
+        let code = g.same_device_sign_in_code_minter.mint();
         let res = sign_in(&g, &code, next).await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER, "{next}");
         assert_eq!(
@@ -120,7 +120,7 @@ async fn the_browser_goes_on_to_an_allowed_next() {
 #[tokio::test]
 async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
     let (g, _host_owner_token, _db) = spin_up();
-    let code = g.owner_sign_in_code_minter.mint();
+    let code = g.same_device_sign_in_code_minter.mint();
     for next in [
         "//evil.example/",
         "/\\evil.example",
@@ -138,19 +138,19 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
     );
 }
 
-/// The cookie carries exactly the Owner session's attributes, and its value is
+/// The cookie carries exactly the Owner browser session's attributes, and its value is
 /// an Owner token: the first-party client holding the host Owner's grant, for
 /// eight hours, which the gate accepts.
 #[tokio::test]
 async fn the_cookie_holds_an_eight_hour_owner_token() {
     let (g, _host_owner_token, _db) = spin_up();
-    let res = sign_in(&g, &g.owner_sign_in_code_minter.mint(), "/").await;
+    let res = sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await;
     let cookies = set_cookie_values(&res);
-    let owner_token = owner_session_token(&res);
+    let owner_token = owner_browser_session_token(&res);
     assert_eq!(
         cookies,
         [format!(
-            "__Host-owner_session={owner_token}; Secure; HttpOnly; SameSite=Lax; Path=/; \
+            "__Host-owner_browser_session={owner_token}; Secure; HttpOnly; SameSite=Lax; Path=/; \
              Max-Age=28800"
         )]
     );
@@ -184,7 +184,7 @@ async fn the_cookie_holds_an_eight_hour_owner_token() {
 /// alone: `GET /authorization/session` answers as the Owner, and once the
 /// `jti` is revoked, `401`, while another sign-in's token still works.
 #[tokio::test]
-async fn an_owner_session_is_revoked_by_its_jti() {
+async fn an_owner_browser_session_is_revoked_by_its_jti() {
     let (g, host_owner_token, _db) = spin_up();
     let session = |token: String| {
         let router = g.router.clone();
@@ -199,8 +199,12 @@ async fn an_owner_session_is_revoked_by_its_jti() {
                 .expect("oneshot")
         }
     };
-    let first = owner_session_token(&sign_in(&g, &g.owner_sign_in_code_minter.mint(), "/").await);
-    let second = owner_session_token(&sign_in(&g, &g.owner_sign_in_code_minter.mint(), "/").await);
+    let first = owner_browser_session_token(
+        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
+    );
+    let second = owner_browser_session_token(
+        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
+    );
     assert_ne!(jti_of(&first), jti_of(&second));
 
     let res = session(first.clone()).await;

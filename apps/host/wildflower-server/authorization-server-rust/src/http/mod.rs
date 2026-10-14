@@ -9,7 +9,7 @@ use std::sync::Arc;
 mod errors;
 mod extractors;
 mod middleware;
-mod owner_session_cookie;
+mod owner_browser_session_cookie;
 mod routes;
 mod state;
 mod wire_representations;
@@ -24,8 +24,8 @@ pub use middleware::{
     authorization_server_auth_middleware, require_loopback_peer_middleware,
     AuthorizationServerAuthMiddleware, RequireLoopbackPeerMiddleware,
 };
-pub(crate) use owner_session_cookie::owner_session_set_cookie;
-pub use owner_session_cookie::OWNER_SESSION_COOKIE;
+pub(crate) use owner_browser_session_cookie::owner_browser_session_set_cookie;
+pub use owner_browser_session_cookie::OWNER_BROWSER_SESSION_COOKIE;
 pub use state::AuthorizationServerState;
 
 use axum::middleware as axum_middleware;

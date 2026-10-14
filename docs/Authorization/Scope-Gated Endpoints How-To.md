@@ -299,7 +299,7 @@ the rule the proof stands for:
   record it redeemed.
 - `HostOwnerEntitlement` — what the host's own boot-time owner token may claim,
   the one authority with no approving human; constructible only in `seeding.rs`.
-- `RedeemedOwnerSignInCode` — a one-time sign-in code the base minted
+- `RedeemedSameDeviceSignInCode` — a one-time sign-in code the base minted
   in-process, redeemed at `/oauth/sign-in`: an Owner session token's authority,
   as the first-party client holding the host Owner's grant.
 

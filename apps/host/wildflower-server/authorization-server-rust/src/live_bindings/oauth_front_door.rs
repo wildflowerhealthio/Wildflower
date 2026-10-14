@@ -12,7 +12,7 @@ use super::FromState;
 use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::oauth::{
     AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, LoopbackOwnerApprover,
-    OwnerSignIn, PublicKeysReader,
+    PublicKeysReader, SameDeviceSignIn,
 };
 use crate::ports::OwnerApproval;
 
@@ -50,13 +50,13 @@ impl FromState for LiveLoopbackOwnerApprover {
 
 /// Sign a browser in as the Owner with a code the base minted — built by the
 /// `/oauth/sign-in` handler.
-pub(crate) type LiveOwnerSignIn = OwnerSignIn<SqliteGrantStore>;
+pub(crate) type LiveSameDeviceSignIn = SameDeviceSignIn<SqliteGrantStore>;
 
-impl FromState for LiveOwnerSignIn {
+impl FromState for LiveSameDeviceSignIn {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        OwnerSignIn::new(
+        SameDeviceSignIn::new(
             state.store.clone(),
-            state.owner_sign_in_codes.clone(),
+            state.same_device_sign_in_codes.clone(),
             state.sign_in_destinations.clone(),
             state.server_origin.clone(),
             state.wildflower_host_app_client_id.clone(),

@@ -13,7 +13,7 @@
 //! - [`LaunchContextMinter`] is the mint-only face of the launch-context
 //!   capability, handed out by [`crate::setup_authorization_server`] to the in-process
 //!   launchers outside the authorization server.
-//! - [`OwnerSignInCodeMinter`] is the in-process mint of the one-time codes
+//! - [`SameDeviceSignInCodeMinter`] is the in-process mint of the one-time codes
 //!   `/oauth/sign-in` signs a browser in as the Owner with, handed out the
 //!   same way, to the host.
 //! - [`HostConsentDecider`] is the consent capabilities bound to the host
@@ -35,7 +35,7 @@ mod grants_revoker;
 mod host_consent_decider;
 mod launch_context_minter;
 mod oauth_front_door;
-mod owner_sign_in_code_minter;
+mod same_device_sign_in_code_minter;
 mod session;
 
 pub mod state;
@@ -53,9 +53,9 @@ pub use host_consent_decider::HostConsentDecider;
 pub use launch_context_minter::LaunchContextMinter;
 pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
-    LiveLoopbackOwnerApprover, LiveOwnerSignIn, LivePublicKeysReader,
+    LiveLoopbackOwnerApprover, LivePublicKeysReader, LiveSameDeviceSignIn,
 };
-pub use owner_sign_in_code_minter::OwnerSignInCodeMinter;
+pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
 pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};
 pub use state::AuthorizationServerState;
 pub(crate) use token_exchanger::LiveTokenExchanger;

@@ -3,7 +3,7 @@
 //! sends a cookie and no `Authorization`, and the cookie stands for an access
 //! token:
 //!
-//! - **`__Host-owner_session`**, the Owner's session, which `/oauth/sign-in`
+//! - **`__Host-owner_browser_session`**, the Owner browser session, which `/oauth/sign-in`
 //!   sets. Its value is the Owner's access token itself.
 //! - **`hfs_session`**, the FHIR web UI's (`helios-ui`) session. The UI keeps
 //!   its signed-in user's tokens server-side, so its value names a session in
@@ -42,14 +42,14 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use helios_auth::{cookie_value, AccessOutcome, SessionStore, SESSION_COOKIE};
 use url::Url;
-use wildflowerhealthio_authorization_server::{ensure_bearer_header, OWNER_SESSION_COOKIE};
+use wildflowerhealthio_authorization_server::{ensure_bearer_header, OWNER_BROWSER_SESSION_COOKIE};
 use wildflowerhealthio_shared_structures::origin_string;
 use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 /// A session cookie the layer guards, and where its bearer comes from.
 pub(crate) enum SessionCookie {
-    /// `__Host-owner_session`: its value is the Owner's access token.
-    Owner,
+    /// `__Host-owner_browser_session`: its value is the Owner's access token.
+    OwnerBrowser,
     /// The FHIR web UI's `hfs_session`: its value names a session in the UI's
     /// store, which holds the session's access token.
     FhirUi(Arc<SessionStore>),
@@ -59,7 +59,7 @@ impl SessionCookie {
     /// The cookie's name.
     fn name(&self) -> &'static str {
         match self {
-            SessionCookie::Owner => OWNER_SESSION_COOKIE,
+            SessionCookie::OwnerBrowser => OWNER_BROWSER_SESSION_COOKIE,
             SessionCookie::FhirUi(_) => SESSION_COOKIE,
         }
     }
@@ -69,7 +69,7 @@ impl SessionCookie {
     /// that session lives.
     async fn access_token(&self, value: String) -> Option<String> {
         match self {
-            SessionCookie::Owner => (!value.is_empty()).then_some(value),
+            SessionCookie::OwnerBrowser => (!value.is_empty()).then_some(value),
             SessionCookie::FhirUi(ui_sessions) => match ui_sessions.access_token(&value).await {
                 AccessOutcome::Token(access_token) => Some(access_token),
                 AccessOutcome::NoSession => None,
@@ -194,13 +194,13 @@ mod tests {
     }
 
     /// The Owner's cookie, whose value is its token.
-    fn owner_cookie() -> GuardedCookie {
+    fn owner_browser_cookie() -> GuardedCookie {
         GuardedCookie {
             config: Arc::new(SessionCookieBearerConfig {
-                session_cookie: SessionCookie::Owner,
+                session_cookie: SessionCookie::OwnerBrowser,
                 loopback_base_url: loopback_base_url(),
             }),
-            cookie: "__Host-owner_session=owner-token",
+            cookie: "__Host-owner_browser_session=owner-token",
             bearer: "Bearer owner-token",
         }
     }
@@ -246,7 +246,7 @@ mod tests {
 
     /// Both cookies: every case in the table below runs against each.
     fn guarded_cookies() -> [GuardedCookie; 2] {
-        [owner_cookie(), fhir_ui_cookie()]
+        [owner_browser_cookie(), fhir_ui_cookie()]
     }
 
     /// What `config`'s layer made of a request: its status, and the
@@ -501,13 +501,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_empty_owner_cookie_presents_nothing() {
+    async fn an_empty_owner_browser_cookie_presents_nothing() {
         assert_eq!(
             respond(
-                owner_cookie().config,
+                owner_browser_cookie().config,
                 Method::GET,
                 &[
-                    ("cookie", "__Host-owner_session="),
+                    ("cookie", "__Host-owner_browser_session="),
                     ("sec-fetch-site", "same-origin"),
                 ]
             )

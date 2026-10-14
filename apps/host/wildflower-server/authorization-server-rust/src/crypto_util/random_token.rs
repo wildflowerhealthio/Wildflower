@@ -1,6 +1,6 @@
 //! High-entropy opaque token generation for OAuth artifacts that must be
 //! computationally infeasible to guess — authorization codes (RFC 6749
-//! §10.10), device codes (RFC 8628 §5.1) and Owner sign-in codes. 32 CSPRNG
+//! §10.10), device codes (RFC 8628 §5.1) and same-device sign-in codes. 32 CSPRNG
 //! bytes give 256 bits of entropy, comfortably exceeding the §10.10 ≤ 2^-128
 //! guess-probability target, and base64url (no padding) keeps the result
 //! URL-safe.
@@ -38,10 +38,10 @@ pub(crate) fn generate_launch_nonce() -> String {
     generate_authorization_code()
 }
 
-/// Generate a one-time Owner sign-in code — same construction as
+/// Generate a one-time same-device sign-in code — same construction as
 /// [`generate_authorization_code`]: whoever presents it is signed in as the
 /// Owner, so it gets the same unguessability bar.
-pub(crate) fn generate_owner_sign_in_code() -> String {
+pub(crate) fn generate_same_device_sign_in_code() -> String {
     generate_authorization_code()
 }
 

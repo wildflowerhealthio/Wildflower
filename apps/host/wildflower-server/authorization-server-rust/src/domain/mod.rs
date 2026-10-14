@@ -59,7 +59,7 @@ pub mod oauth_error_code;
 pub mod oauth_error_kind;
 // The one-time codes the base signs a browser in as the Owner with, kept in
 // memory as hashes, and where a sign-in may send the browser next.
-pub(crate) mod owner_sign_in_codes;
+pub(crate) mod same_device_sign_in_codes;
 pub(crate) mod sign_in_redirect;
 // URL/path builders for the authorization server's user-facing `/authorization/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and

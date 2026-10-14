@@ -300,7 +300,7 @@ The authorization wall on every Owner-facing JSON endpoint
 HTML pages in the `authorization-server-pages` group do **not** carry this
 middleware; they're public. The middleware reads the access token from the
 `Authorization: Bearer` header only. The server accepts two cookies,
-`__Host-owner_session` (see [Owner sign-in](#owner-sign-in)) and the FHIR
+`__Host-owner_browser_session` (see [Owner sign-in](#owner-sign-in)) and the FHIR
 UI's `hfs_session`, only from its own pages, with an Origin check on writes,
 and turns each into a bearer token ahead of the gate
 (`wildflower-server-rust`'s `session_cookie_bearer`). The launcher attaches
@@ -430,17 +430,17 @@ no accounts or passwords; the Owner is whoever holds the device running the
 server, and the base runs on that device.
 
 1. The base mints a one-time **sign-in code** in-process, through the
-   `OwnerSignInCodeMinter` its `WildflowerServer` hands out (no HTTP call). A
+   `SameDeviceSignInCodeMinter` its `WildflowerServer` hands out (no HTTP call). A
    code is 256 random bits, single use, and valid for 60 seconds. The server
    keeps only its hash, in memory, so a restart drops it.
 2. The base opens `https://<domain>/oauth/sign-in?code=…&next=…` in a browser.
-3. The server redeems the code (`RedeemedOwnerSignInCode`, an authority proof)
+3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority proof)
    and mints an **Owner token** through the ordinary minter: the first-party
    client holding the host Owner's grant (`host_owner_scopes`, the grant
    `HostConsentDecider` acts with), as a JWT with its own `jti` that expires
    in 8 hours.
 4. It answers `303` to `next`, setting
-   `__Host-owner_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
+   `__Host-owner_browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
 
 `next` must be a path on the server (starting with `/`, not `//`), a URL under
 the hosted launcher, or a URL under the Wildflower Authorization app. Any other

@@ -20,8 +20,8 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
-use crate::domain::owner_sign_in_codes::OwnerSignInCodes;
 use crate::domain::pending_consent::PendingConsentHead;
+use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
 
 /// Shared state threaded through every authorization server handler and lifted into the
@@ -90,11 +90,11 @@ pub struct AuthorizationServerState {
     /// — the approving authority when the Owner answers the loopback dialog,
     /// the same scopes the host owner token carries.
     pub(crate) host_owner_grant: wildflowerhealthio_scopes::Grant,
-    /// The outstanding Owner sign-in codes: minted in-process by the
-    /// [`OwnerSignInCodeMinter`](crate::OwnerSignInCodeMinter)
+    /// The outstanding same-device sign-in codes: minted in-process by the
+    /// [`SameDeviceSignInCodeMinter`](crate::SameDeviceSignInCodeMinter)
     /// [`crate::setup_authorization_server`] hands the host, redeemed at
     /// `/oauth/sign-in`.
-    pub(crate) owner_sign_in_codes: Arc<OwnerSignInCodes>,
+    pub(crate) same_device_sign_in_codes: Arc<SameDeviceSignInCodes>,
     /// Where `/oauth/sign-in` may send a browser next: this server's paths,
     /// the hosted launcher and the Wildflower Authorization app, built at
     /// [`crate::setup_authorization_server`] from the server's origin,

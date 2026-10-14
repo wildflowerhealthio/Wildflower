@@ -131,7 +131,7 @@ only it composes. Rust-only, no `-core`.
     The forwarded-request report skips `/health`, so the probes stay out of
     the request log and the request notifications.
   - **Session cookies.** A browser on the server's own pages carries a
-    cookie and no `Authorization`: the Owner's `__Host-owner_session`, whose
+    cookie and no `Authorization`: the Owner's `__Host-owner_browser_session`, whose
     value is an Owner token `/oauth/sign-in` issued, or the FHIR web UI's
     `hfs_session`, which names a UI session holding a bearer. The inner
     router, under both listeners, is wrapped in one cookie→bearer layer per
@@ -139,8 +139,8 @@ only it composes. Rust-only, no `-core`.
     served origin with no `Authorization` gets the cookie's bearer, and a
     write carrying the cookie from any other origin gets `403`. No route is
     singled out; the gates check the token's scopes and revocation. The host
-    mints the one-time sign-in codes through
-    `WildflowerServer::owner_sign_in_code_minter`, in-process.
+    mints the one-time same-device sign-in codes through
+    `WildflowerServer::same_device_sign_in_code_minter`, in-process.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig` with its `DeviceCertificateConfig`, `HostPorts`,
     `ServerObservers`); `domain/`

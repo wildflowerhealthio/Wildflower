@@ -18,7 +18,7 @@ use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, require_loopback_peer_middleware,
     setup_authorization_server, AuthorizationServerConfig, HostConsentDecider,
-    OwnerSignInCodeMinter,
+    SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -90,7 +90,7 @@ pub struct WildflowerServer {
     launch_context_minter: wildflowerhealthio_authorization_server::LaunchContextMinter,
     /// Mints the one-time codes this server's `/oauth/sign-in` signs a
     /// browser in as the Owner with.
-    owner_sign_in_code_minter: OwnerSignInCodeMinter,
+    same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
@@ -113,14 +113,14 @@ impl WildflowerServer {
         self.launch_context_minter.clone()
     }
 
-    /// A handle that mints a one-time Owner sign-in code, for the host to
+    /// A handle that mints a one-time same-device sign-in code, for the host to
     /// open `https://<domain>/oauth/sign-in?code=…&next=…` in a browser and so
     /// sign that browser in as the Owner. Clone it before
     /// [`serve`](Self::serve); a code is kept in memory only, so it works for
     /// as long as this run serves.
     #[must_use]
-    pub fn owner_sign_in_code_minter(&self) -> OwnerSignInCodeMinter {
-        self.owner_sign_in_code_minter.clone()
+    pub fn same_device_sign_in_code_minter(&self) -> SameDeviceSignInCodeMinter {
+        self.same_device_sign_in_code_minter.clone()
     }
 
     /// How the host reads, approves and denies the server's pending consents
@@ -566,7 +566,7 @@ pub async fn set_up(
     };
     let inner_router = inner_router
         .layer(session_cookie_bearer(SessionCookie::FhirUi(ui_sessions)))
-        .layer(session_cookie_bearer(SessionCookie::Owner));
+        .layer(session_cookie_bearer(SessionCookie::OwnerBrowser));
 
     // Every forwarded request is reported to the request log once its response
     // is ready, and to the host unless it is a `/health` check (the
@@ -648,7 +648,7 @@ pub async fn set_up(
         tunnel_daemon,
         reachability_monitor,
         launch_context_minter: authorization_server.launch_context_minter,
-        owner_sign_in_code_minter: authorization_server.owner_sign_in_code_minter,
+        same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
         device_certificate,
         consent_decider_for_host,
         bulk_export_worker: fhir_routers.bulk_export_worker,

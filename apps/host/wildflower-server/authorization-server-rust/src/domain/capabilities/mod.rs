@@ -69,7 +69,7 @@ mod source_guards {
             ".server_origin",
             ".loopback_consent_prompt",
             ".host_owner_grant",
-            ".owner_sign_in_codes",
+            ".same_device_sign_in_codes",
             ".sign_in_destinations",
         ];
 
