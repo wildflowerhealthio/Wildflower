@@ -4,7 +4,7 @@ import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-c
 
 /**
  * Classification of the auth failures the router runtime reacts to — 401
- * (authentication: redirect to device login) and 403 `InsufficientScope`
+ * (authentication: sign in again) and 403 `InsufficientScope`
  * (authorization: render in place). Pure predicates over the two shapes each
  * failure reaches us as (a raw error, and the `FiberFailure`-wrapped form a
  * rejected `runAuthed` surfaces), so both the `QueryClient` policy
@@ -23,7 +23,7 @@ import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-c
  *   devices, consents) decodes its 401 into. `HttpApiClient` never surfaces
  *   these as a `ResponseError`.
  *
- * Matching only the `ResponseError` shape would leave the device-login redirect
+ * Matching only the `ResponseError` shape would leave the sign-in-again redirect
  * blind to the authorization server's own 401s. The status (or the typed
  * error), not the reason, is the reliable 401 signal.
  */
@@ -52,7 +52,7 @@ const isUnauthorizedFailure = (error: unknown): boolean =>
  *   status 403 whose body was never decoded — we still detect the authorization
  *   failure, but can't name the scopes, so `missingScopes` is empty.
  *
- * Unlike a 401, a 403 is not redirected to device login (the caller *is*
+ * Unlike a 401, a 403 does not sign the caller in again (the caller *is*
  * authenticated); the app renders it in place — so this returns the payload to
  * render rather than triggering a global side-effect.
  */

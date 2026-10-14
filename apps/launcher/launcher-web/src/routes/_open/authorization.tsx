@@ -4,8 +4,8 @@ import type { JSX } from 'react'
 
 /**
  * Public authorization layout. Wraps the slice's unauthenticated RFC 8628
- * screens in the shared `pageLayoutStyles['page']` shell so each leaf
- * renders content only.
+ * device-entry screen in the shared `pageLayoutStyles['page']` shell so the
+ * leaf renders content only.
  *
  * See `_auth/authorization.tsx` for why this layout lives at the app level
  * rather than inside the slice.

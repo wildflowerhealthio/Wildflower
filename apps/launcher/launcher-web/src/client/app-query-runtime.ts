@@ -46,8 +46,8 @@ const apiTransport = (
  * @param session - The page's session, read lazily on every request (see
  *   {@link apiTransport}).
  * @param onUnauthorized - Invoked by the `QueryClient`'s cache when an
- *   authed query/mutation ends in a 401 — the app uses it to send the user
- *   to device login.
+ *   authed query/mutation ends in a 401 — the app uses it to sign the user
+ *   in again.
  * @param effectTelemetryLayer - The Effect telemetry layer every authed
  *   request runs under (see `buildRunAuthed`).
  */

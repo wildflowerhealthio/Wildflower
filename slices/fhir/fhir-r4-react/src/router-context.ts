@@ -33,8 +33,7 @@ const sliceRuntimeLayer: Layer.Layer<
 /**
  * The fully-composed `runtimeLayer` from router context, for a FHIR
  * call site that isn't a one-shot Promise and so can't go through
- * `runAuthed`/`useSuspenseQuery` — an imperative, event-driven runner
- * (like the authorization server's `NeedsAuthMessage` device-flow fiber) that
+ * `runAuthed`/`useSuspenseQuery` — an imperative, event-driven runner that
  * `Effect.provide`s this layer onto its `FhirR4ResourcesHttpApiClient`
  * calls and runs them itself.
  *

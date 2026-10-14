@@ -19,7 +19,6 @@ const router = createRouter({
     runAuthed: () => Promise.reject(new Error('runAuthed not used in route tree tests')),
     runtimeLayer: Layer.die('runtimeLayer not used in route tree tests'),
     awaitAuthReady: () => Promise.resolve(),
-    externalLinkRoot: () => 'https://example.test',
     serverKind: ServerKind.Wildflower(),
   },
 })
@@ -39,6 +38,12 @@ describe('the launcher route tree', () => {
         '/_auth/authorization/oauth-consent/$id',
       ])
     )
+  })
+
+  test('opens only device entry without a session: sign-in is the SMART one, from the landing', () => {
+    expect(routeIds.filter((id) => id.startsWith('/_open/authorization/'))).toEqual([
+      '/_open/authorization/devices',
+    ])
   })
 
   test('keeps the request log in settings', () => {

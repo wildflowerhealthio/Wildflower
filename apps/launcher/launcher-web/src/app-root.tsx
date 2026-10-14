@@ -1,12 +1,6 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
-import {
-  type BearerAuthStateStore,
-  buildDeviceLoginTarget,
-  DEVICE_LOGIN_ROUTE,
-  TokenResponseHandlerContext,
-  type TokenResponseHandler,
-} from '@wildflowerhealthio/authorization-react'
+import { type BearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
 import { type AuthState, AuthStateProvider } from '@wildflowerhealthio/react-kitchen-sink'
 import { ErrorBoundary } from '@wildflowerhealthio/react-tundraish'
 import { Sentry } from '@wildflowerhealthio/telemetry-web'
@@ -18,7 +12,8 @@ import { AppRootTree } from './app-root-tree.tsx'
 import { buildAppQueryRuntime } from './client/app-query-runtime.ts'
 import type { RouterContext } from './router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
-import { logoutSettingsItem, underBasepath } from './web-entry.ts'
+import { signInAgain } from './session/sign-in-again.ts'
+import { logoutSettingsItem } from './web-entry.ts'
 // The design-system stylesheet stack, fonts included — imported here so the
 // app picks it up. An entry that already imported part of it gets no second
 // copy: the bundler dedupes each stylesheet by module id.
@@ -82,17 +77,11 @@ interface RenderAppOptions {
    */
   readonly effectTelemetryLayer: Layer.Layer<never>
   /**
-   * Where a link meant for another device points, before the router basepath.
-   * Threaded into router context for `NeedsAuthMessage`'s device-flow pairing
-   * link — see `RouterContext.externalLinkRoot`.
-   */
-  readonly externalLinkRoot: () => string
-  /**
    * Which kind of server the tree is for, and so which surfaces it offers:
    * what the sign-in redeemed on this load found (`sign-in.ts`'s
    * `serverKindForSession`), and `ServerKind.Wildflower()` when no sign-in was
-   * redeemed on this load — the shell is then reached only by the device-code
-   * flow, which only a Wildflower server serves. Threaded into router context
+   * redeemed on this load — the auth-gated routes are then out of reach, since
+   * a load that redeems nothing starts signed out. Threaded into router context
    * for the route guards and the plain SMART Home.
    */
   readonly serverKind: RouterContext['serverKind']
@@ -112,6 +101,12 @@ interface RenderAppOptions {
    */
   readonly ehrLaunch?: RouterContext['ehrLaunch']
   /**
+   * When this page load redeemed its sign-in, in epoch milliseconds. A 401
+   * within {@link FRESH_SIGN_IN_MS} of it stops on the landing instead of
+   * signing in again: see `buildAppTree`. Omitted on a load that redeemed none.
+   */
+  readonly signedInAt?: number
+  /**
    * The directory this build is served from, as a router `basepath`, when the
    * copy is published under a subpath rather than at the origin root.
    *
@@ -125,35 +120,16 @@ interface RenderAppOptions {
 }
 
 /**
- * The page's {@link TokenResponseHandler}, for `NeedsAuthMessage`'s device
- * flow: write the token as the session's, on the server the session already
- * names, and navigate to `returnTo` under `basepath` without reloading (a
- * reload would drop the in-memory bearer).
- *
- * @throws When a token arrives while no server is signed in to: device login
- *   runs against the session's server, whose requests go nowhere without one,
- *   so a token always has a server to belong to.
+ * How long after a sign-in a 401 counts as the server rejecting that sign-in's
+ * own token. Long enough to cover a slow first page of requests, and short
+ * enough that a bearer revoked later in the session still signs in again
+ * without a click.
  */
-const deviceFlowTokenResponseHandler = (
-  tokenStore: BearerAuthStateStore,
-  history: RouterHistory,
-  basepath: string
-): TokenResponseHandler => ({
-  writeBearer: (accessToken) => {
-    const serverUrl = tokenStore.serverUrl()
-    if (serverUrl === undefined) {
-      throw new Error('a device-login token arrived with no server signed in to')
-    }
-    tokenStore.writeSession({ serverUrl, bearer: accessToken })
-  },
-  navigateAfterAuth: (returnTo) => {
-    // `history.push` writes the address bar directly and does not apply the
-    // router basepath (that is `router.navigate`'s job), so the served base
-    // is prefixed here — otherwise the device-login return lands at
-    // `<origin>/home`, off the app, on a subpath deploy.
-    history.push(underBasepath(basepath, returnTo))
-  },
-})
+const FRESH_SIGN_IN_MS = 60_000
+
+/** What the landing says when a 401 meets the token a sign-in just issued. */
+const FRESH_TOKEN_REJECTED_REASON =
+  'The server turned away the sign-in that just finished, so signing in again would not help.'
 
 /**
  * Build the app: its query runtime and router, and the React tree over them,
@@ -187,10 +163,10 @@ const buildAppTree = ({
   tokenStore,
   awaitAuthReady,
   effectTelemetryLayer,
-  externalLinkRoot,
   serverKind,
   signInProblem,
   ehrLaunch,
+  signedInAt,
   basepath = '/',
 }: RenderAppOptions): JSX.Element => {
   // Router isn't built until after the query runtime (its context needs the
@@ -199,24 +175,63 @@ const buildAppTree = ({
   const routerHandle: { current: AnyRouter | null } = { current: null }
 
   // Fires when an authed query/mutation ends in a 401 — the credential is
-  // gone, so send the user to device login, preserving where they were as `returnTo`. The guard skips a
-  // redundant navigation when they're already on the device-login route.
-  const redirectToDeviceLogin = (): void => {
+  // gone, so sign in again to the session's server, preserving where they were
+  // as `returnTo`. The guard skips a second bounce once they're on the landing,
+  // which would otherwise make the landing itself the `returnTo`.
+  //
+  // A 401 soon after this load's sign-in means the server rejects the token it
+  // just issued, and the landing's sign-in on arrival would come straight back
+  // to the same 401: the authorization server skips consent the grant already
+  // covers. So that 401 hands the landing a sign-in problem, which shows its
+  // reason and holds the sign-in on arrival until the reader asks for one.
+  const signInAgainOnUnauthorized = (): void => {
     const router = routerHandle.current
     if (router === null) return
-    if (router.state.location.pathname === DEVICE_LOGIN_ROUTE) return
-    void router.navigate(buildDeviceLoginTarget(router.state.location.href))
+    if (router.state.location.pathname === '/') return
+    if (signedInAt !== undefined && Date.now() - signedInAt < FRESH_SIGN_IN_MS) {
+      router.update({
+        ...router.options,
+        context: {
+          ...routerContext,
+          signInProblem: {
+            reason: FRESH_TOKEN_REJECTED_REASON,
+            serverUrl: tokenStore.serverUrl(),
+          },
+        },
+      })
+    }
+    signInAgain(
+      tokenStore.setAuthState,
+      (target) => router.navigate(target),
+      router.state.location.href
+    )
   }
 
   const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
     tokenStore,
-    redirectToDeviceLogin,
+    signInAgainOnUnauthorized,
     effectTelemetryLayer
   )
 
   // Keyed on the auth *signal* (the store), not the bearer: a sign-in flips
   // the store's signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
+
+  const routerContext: RouterContext = {
+    queryClient,
+    runAuthed,
+    runtimeLayer,
+    awaitAuthReady,
+    // Threaded so the landing page can report a sign-in that failed before
+    // the tree existed — see `RouterContext.signInProblem`.
+    signInProblem,
+    // Threaded so the landing page can sign in with the EHR launch the page
+    // was opened with — see `RouterContext.ehrLaunch`.
+    ehrLaunch,
+    // Threaded so the auth-gated routes serve only this kind of server's
+    // surfaces — see `RouterContext.serverKind`.
+    serverKind,
+  }
 
   const router = createRouter({
     routeTree,
@@ -225,24 +240,7 @@ const buildAppTree = ({
     // this to its served directory so root-absolute routes resolve there. See
     // `RenderAppOptions.basepath`.
     basepath,
-    context: {
-      queryClient,
-      runAuthed,
-      runtimeLayer,
-      awaitAuthReady,
-      // Threaded so `NeedsAuthMessage`'s pairing link opens on another device —
-      // see `RouterContext.externalLinkRoot`.
-      externalLinkRoot,
-      // Threaded so the landing page can report a sign-in that failed before
-      // the tree existed — see `RouterContext.signInProblem`.
-      signInProblem,
-      // Threaded so the landing page can sign in with the EHR launch the page
-      // was opened with — see `RouterContext.ehrLaunch`.
-      ehrLaunch,
-      // Threaded so the auth-gated routes serve only this kind of server's
-      // surfaces — see `RouterContext.serverKind`.
-      serverKind,
-    },
+    context: routerContext,
     defaultPreload: 'intent',
   })
   routerHandle.current = router
@@ -264,19 +262,15 @@ const buildAppTree = ({
     >
       <QueryClientProvider client={queryClient}>
         <AuthStateProvider store={tokenStore}>
-          <TokenResponseHandlerContext
-            value={deviceFlowTokenResponseHandler(tokenStore, history, basepath)}
-          >
-            <AppRootTree
-              router={router}
-              logoutSettingsItem={logoutSettingsItem(window, basepath, tokenStore)}
-              manageAccessSource={{
-                serverUrl: () => tokenStore.serverUrl(),
-                fetch: (input, init) => window.fetch(input, init),
-                pageIsSecure: window.location.protocol === 'https:',
-              }}
-            />
-          </TokenResponseHandlerContext>
+          <AppRootTree
+            router={router}
+            logoutSettingsItem={logoutSettingsItem(window, basepath, tokenStore)}
+            manageAccessSource={{
+              serverUrl: () => tokenStore.serverUrl(),
+              fetch: (input, init) => window.fetch(input, init),
+              pageIsSecure: window.location.protocol === 'https:',
+            }}
+          />
         </AuthStateProvider>
       </QueryClientProvider>
     </ErrorBoundary>

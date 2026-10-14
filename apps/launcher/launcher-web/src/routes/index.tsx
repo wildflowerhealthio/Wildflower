@@ -51,8 +51,7 @@ const rememberServer = (serverUrl: string): void => {
  *
  * - **unauthed**: renders the landing page (the launcher's introduction beside
  *   the server picker), which signs in by SMART standalone launch, or with the
- *   EHR launch the page was opened with — see `../sign-in.ts` for the flow and
- *   why the launcher uses it rather than the device-code screen.
+ *   EHR launch the page was opened with — see `../sign-in.ts` for the flow.
  * - **authed**: redirects to `/home`, whose gate sends a plain SMART server's
  *   session on to `/fhir-home`.
  */

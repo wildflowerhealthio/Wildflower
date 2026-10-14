@@ -29,7 +29,7 @@ the base opens a server's launcher.
 - **The session is the server and its bearer, together.** authorization-react's
   `makeBearerAuthStateStore`, over the tab's `sessionStorage`, holds it: a
   sign-in writes both with `writeSession` (the redirect flow in `bootApp`, the
-  device flow through `buildAppTree`'s `TokenResponseHandler`). The bearer
+  only sign-in). The bearer
   lives in page memory and goes on `Unauthed`; the server is kept under
   `web-entry.ts`'s `SIGNED_IN_SERVER_KEY`, so a reload or the expiry bounce
   back to the landing signs back in to it. Every API request reads both
@@ -38,10 +38,13 @@ the base opens a server's launcher.
   and a launch's `iss` choose only where the landing signs in
   (`web-entry.ts`'s `chosenServerUrl`). The settings screen's Logout row
   (`web-entry.ts`'s `logoutSettingsItem`) revokes the bearer at the session's
-  server and clears the tab's `sessionStorage`. A 401 sends the reader to
-  device login. Tests:
+  server and clears the tab's `sessionStorage`. A 401, or a 403's "Request
+  access", signs in again (`session/sign-in-again.ts`): the session goes
+  `Unauthed`, keeping its server, and the landing signs back in to it with
+  the page as `returnTo`. Tests:
   `authorization-react`'s `bearer-auth-state-store.test.ts`,
-  `client/app-query-runtime.test.ts`, `web-entry.test.ts`.
+  `client/app-query-runtime.test.ts`, `web-entry.test.ts`, `app-root.test.tsx`,
+  `scope-error-renderer.test.tsx`.
 - **`main-web` takes a SMART launch at its root, with its own sign-in.**
   Like everything `bootApp` does, the launch waits for the consent answer, as
   it does in the SMART apps. `bootApp` reads `?iss=` (and the EHR's `launch`)

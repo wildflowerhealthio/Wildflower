@@ -86,8 +86,8 @@ describe('main-web router basepath', () => {
 
 /**
  * `underBasepath` is how `main-web` writes a root-absolute route straight to the
- * history object (the device-login return) without dropping the served base —
- * `history.push`, unlike `router.navigate`, applies no basepath of its own.
+ * location (the logout's reload of the landing) without dropping the served
+ * base — `location.assign`, unlike `router.navigate`, applies no basepath of its own.
  */
 describe('underBasepath', () => {
   test('prefixes a root-absolute route with the served subpath', () => {

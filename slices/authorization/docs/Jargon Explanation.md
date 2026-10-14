@@ -98,7 +98,7 @@ Two clients are seeded by the server at startup, both `kind: 'public'` with
 empty `redirectUris`, and both allowed the host Owner's scopes
 (`host_owner_scopes`):
 
-- `wildflower-host` (`WILDFLOWER_HOST_APP_CLIENT_ID`), the
+- `wildflower-host`, the
   [Wildflower host app](#wildflower-host-app)'s. It gets its token from a host
   mint or the device flow — see [bootstrap URL](#bootstrap-url) — not OAuth
   redirects. Its grants and subject are revoked like any client's (see
@@ -337,22 +337,14 @@ the launcher its in-memory one.
 
 The host app's path to becoming an Owner-authenticated client. Flow:
 
-1. On the device-login screen the user names the device and adjusts a scope
-   request with the shared scope picker (see [Device name](#device-name) and
-   [Expandable consent](#expandable-consent)), then starts sign-in. The picker
-   is pre-seeded with the read+search happy path (`system/*.rs wildflower/*.rs`)
-   when the client's allowed set covers it, so the common case is
-   name-it-and-go. The browser
-   POSTs `/oauth/device_authorization` with `client_id`, the built `scope`, and
-   the chosen `device_name`. Server creates a `flow='device_code'`
-   `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.
+1. The device POSTs `/oauth/device_authorization` with `client_id`, its
+   `scope`, and a `device_name` (see [Device name](#device-name)). Server
+   creates a `flow='device_code'` `AuthorizationRequest` and returns
+   `{ device_code, user_code, verification_uri, ... }`.
    The verification URIs point at the hosted launcher
    (`https://wildflowerhealth.io/launcher/authorization/devices?server=<origin>`,
    the host's `launcher_base_url`), not at the server itself — the host
-   serves no UI of its own. A copy of the launcher that starts a pairing
-   itself (`NeedsAuthMessage`) shows its **own** device-entry page instead,
-   keeping the query the server built (`AuthorizationServerPaths.deviceEntryUrlOn`),
-   so a pairing started on a PR preview or a dev server is approved there.
+   serves no UI of its own.
 2. Owner enters the `user_code` at `/authorization/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device — or answers it in the host's consent sheet, which the
@@ -521,8 +513,9 @@ An approval with any `approver_missing_scopes` is refused as a whole with
 `403 InsufficientScope`. Nothing is recorded, no code is issued, and the request
 stays `pending`, so an approver whose token does cover it can still answer it.
 The launcher's consent page renders that 403 as its permission surface. The
-surface's step-up runs device-login for the missing scopes and then returns to
-the consent page so the Owner can approve again.
+surface's step-up signs the launcher in again, which asks the Owner's consent
+for its requested scopes, and then returns to the consent page so the Owner can
+approve again.
 
 ### Bootstrap URL
 
@@ -534,7 +527,7 @@ because `wildflower-host` is a registered [`Client`](#client) and
 `'owner' ∈ scope` — no new endpoint, no redemption table.
 
 The web SPA has no client-side URL-token consumption: it signs in through
-SMART (or the device flow) and holds the resulting bearer in memory. A
+SMART and holds the resulting bearer in memory. A
 direct-loopback caller never holds the host-minted token at all — the host
 presents it on the caller's requests.
 

@@ -18,9 +18,9 @@ cache invalidator.
 ## `makeBearerAuthStateStore` — the launcher's session
 
 The launcher is the build the site publishes at `/launcher/`. It runs
-cross-origin to its API server. It signs in through SMART (or the device flow)
-and holds the session — the server it signed in to and the bearer that server
-issued — written together by `writeSession`.
+cross-origin to its API server. It signs in through SMART and holds the
+session — the server it signed in to and the bearer that server issued —
+written together by `writeSession`.
 
 - **The bearer is in memory only** — never `localStorage`, `sessionStorage` or
   a cookie — so it dies with the tab, and `setAuthState(Unauthed())` drops it.

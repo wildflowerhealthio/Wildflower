@@ -11,8 +11,8 @@ import { ScopeErrorSurface } from './scope-error-surface.tsx'
  * rendering. Supplied to `ErrorBodyRendererContext` in {@link AppRootTree}, so
  * every route's error body — and the databases delete banner — picks it up. A 403
  * is an authorization (not authentication) failure, so it surfaces in place
- * rather than redirecting to device login the way a 401 does; step-up is then the
- * user's choice, not an automatic redirect.
+ * rather than signing in again the way a 401 does; step-up is then the user's
+ * choice, not an automatic redirect.
  */
 const renderScopeError = (error: unknown): ReactNode | null => {
   const scope = insufficientScopeFromFailure(error)

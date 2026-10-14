@@ -73,7 +73,6 @@ vi.mock('@wildflowerhealthio/authorization-react', async (importOriginal) => {
   return {
     AuthorizationRouterContext: { sliceRuntimeLayer: Layer.empty },
     authorizationLogoutSettingsItem: actual.authorizationLogoutSettingsItem,
-    TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
   }
 })
 // fhir-r4-react no longer ships a client provider — the app composes its
@@ -175,7 +174,6 @@ describe('buildAppTree provider lifecycle', () => {
           tokenStore,
           awaitAuthReady: () => Promise.resolve(),
           effectTelemetryLayer: Layer.empty,
-          externalLinkRoot: () => 'https://example.test',
           serverKind: ServerKind.Wildflower(),
         })
       )

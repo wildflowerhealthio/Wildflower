@@ -28,7 +28,6 @@ describe('RouterContext assembly', () => {
       runAuthed,
       runtimeLayer,
       awaitAuthReady: () => Promise.resolve(),
-      externalLinkRoot: () => 'https://example.test',
       serverKind: ServerKind.Wildflower(),
     } satisfies RouterContext
 

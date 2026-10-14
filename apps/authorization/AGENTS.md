@@ -5,8 +5,7 @@ manages what a Wildflower server has authorized. It is a SMART client of the
 server `?iss=` names, and every Wildflower server advertises it, pointed at
 itself, as its SMART `management_endpoint`
 (`wildflowerhealthio_shared_structures::authorization_app`). Approving
-requests is not here: the launcher's device-login and consent routes still do
-that.
+requests is not here: the launcher's approval routes still do that.
 
 ## Packages
 

@@ -35,7 +35,6 @@ vi.mock('@wildflowerhealthio/authorization-react', async (importOriginal) => {
   return {
     AuthorizationRouterContext: { sliceRuntimeLayer: Layer.empty },
     authorizationLogoutSettingsItem: actual.authorizationLogoutSettingsItem,
-    TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
   }
 })
 vi.mock('@wildflowerhealthio/react-kitchen-sink', () => ({
@@ -113,7 +112,6 @@ describe('in-memory QueryClientProvider', () => {
           tokenStore,
           awaitAuthReady: () => Promise.resolve(),
           effectTelemetryLayer: Layer.empty,
-          externalLinkRoot: () => 'https://example.test',
           serverKind: ServerKind.Wildflower(),
         })
       )

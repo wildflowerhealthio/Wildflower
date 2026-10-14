@@ -22,7 +22,6 @@ const router = createRouter({
     runAuthed: stubRunAuthed,
     runtimeLayer: Layer.die('runtimeLayer not used in route tests'),
     awaitAuthReady: () => Promise.resolve(),
-    externalLinkRoot: () => 'https://example.test',
   },
 })
 
@@ -77,7 +76,6 @@ describe('authorization route tree', () => {
     expect(ids).toEqual([
       '/_auth/authorization/devices/$userCode',
       '/_auth/authorization/oauth-consent/$id',
-      '/_open/authorization/device-login',
       '/_open/authorization/devices',
     ])
   })
@@ -86,7 +84,6 @@ describe('authorization route tree', () => {
     const paths = fullPaths(routes()).toSorted()
     expect(paths).toEqual(
       [
-        '/authorization/device-login',
         '/authorization/devices',
         '/authorization/devices/$userCode',
         '/authorization/oauth-consent/$id',

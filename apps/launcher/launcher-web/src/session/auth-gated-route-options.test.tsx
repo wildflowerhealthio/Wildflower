@@ -75,7 +75,6 @@ const renderGatedAt = (
     runAuthed: () => Promise.reject(new Error('runAuthed not used')),
     runtimeLayer: Layer.die('runtimeLayer not used'),
     awaitAuthReady,
-    externalLinkRoot: () => 'https://example.test',
     serverKind,
   }
   const router = createRouter({
