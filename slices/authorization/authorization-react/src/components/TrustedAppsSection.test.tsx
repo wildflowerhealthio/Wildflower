@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
+import { Client } from '@wildflowerhealthio/authorization-core/domain'
 import { Schema } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -231,7 +231,7 @@ describe('TrustedAppsList', () => {
 
 // Helpers
 
-const decodeClient = Schema.decodeUnknownSync(AccessManagement.ClientSchema)
+const decodeClient = Schema.decodeUnknownSync(Client.Schema)
 
 const clientBody = {
   kind: 'public',
@@ -264,12 +264,8 @@ const renderWithQueryClient = (ui: JSX.Element): { readonly queryClient: QueryCl
   return { queryClient }
 }
 
-const renderList = (
-  clients: readonly AccessManagementClient[]
-): { readonly queryClient: QueryClient } =>
+const renderList = (clients: readonly Client.Type[]): { readonly queryClient: QueryClient } =>
   renderWithQueryClient(<TrustedAppsList clients={clients} />)
-
-type AccessManagementClient = Schema.Schema.Type<typeof AccessManagement.ClientSchema>
 
 /** Open a row's actions menu and pick one of its items. */
 const chooseAction = (clientName: string, label: string): void => {

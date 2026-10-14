@@ -97,8 +97,8 @@ and 90 days respectively). See the
   client, and `PATCH` one's `disabledAt` to take trust back (a UTC time) or
   restore it (`null`); the first-party host can't be disabled
   (`409 FirstPartyClientLocked`).
-- `/authorization/requests`, `/authorization/requests/:id` (+ `/approve`, `/deny`) —
-  gate decisions on inbound HTTP requests.
+- `/authorization/revocations` — revoke issued tokens now: every token a
+  subject (`client_id`) holds, or one token by `jti`.
 
 ## The SMART sign-in client
 

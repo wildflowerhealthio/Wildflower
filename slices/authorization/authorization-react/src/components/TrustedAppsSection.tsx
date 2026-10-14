@@ -1,5 +1,6 @@
 import { QueryErrorResetBoundary, useQueryErrorResetBoundary } from '@tanstack/react-query'
 import { CatchBoundary, type ErrorComponentProps } from '@tanstack/react-router'
+import type { Client } from '@wildflowerhealthio/authorization-core/domain'
 import {
   AsyncErrorView,
   ConfirmDialog,
@@ -11,11 +12,11 @@ import {
 import type { JSX } from 'react'
 import { Suspense, useState } from 'react'
 
-import { useClientsQuery, useUpdateClientMutation, type Client } from '../queries/index.ts'
+import { useClientsQuery, useUpdateClientMutation } from '../queries/index.ts'
 import { trustedAppRow, type TrustedAppRow } from './trusted-app-row.ts'
 
 /**
- * The Access screen's "Trusted Apps" section, loaded on its own: it suspends
+ * Wildflower Authorization's "Trusted Apps" section, loaded on its own: it suspends
  * on the clients query and catches that query's failure (e.g. a `403` for a
  * session without `wildflower/Client.r`) in place, with a Retry, so the rest
  * of the screen — grants included — still renders.
@@ -53,7 +54,7 @@ const LoadedTrustedApps = (): JSX.Element | null => {
 }
 
 interface TrustedAppsListProps {
-  readonly clients: readonly Client[]
+  readonly clients: readonly Client.Type[]
 }
 
 /**
@@ -87,7 +88,10 @@ const TrustedAppsList = ({ clients }: TrustedAppsListProps): JSX.Element | null 
     )
   }
 
-  const menuItemsFor = (client: Client, { action }: TrustedAppRow): readonly MenuItem[] | null => {
+  const menuItemsFor = (
+    client: Client.Type,
+    { action }: TrustedAppRow
+  ): readonly MenuItem[] | null => {
     if (action === null) return null
     if (mutation.isPending) {
       return [{ id: action, label: action === 'disable' ? 'Disable' : 'Enable', disabled: true }]

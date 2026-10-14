@@ -227,27 +227,10 @@ describe('DeviceConsentForm', () => {
   })
 
   describe('device name', () => {
-    test('read-only surface shows the supplied name and no name input', () => {
+    test('shows the supplied name, read only', () => {
       renderConsentForm(makeConsent({ deviceName: "Ada's laptop" }), vi.fn())
       expect(screen.getByText("Ada's laptop")).toBeDefined()
       expect(screen.queryByRole('textbox', { name: /Device name/ })).toBeNull()
-    })
-
-    test('settings surface (editableName) offers an editable, pre-seeded name field', async () => {
-      const { user } = renderConsentForm(
-        makeConsent({ deviceName: 'Reception iPad' }),
-        vi.fn(),
-        true
-      )
-      const field = screen.getByRole<HTMLInputElement>('textbox', { name: /Device name/ })
-      expect(field.value).toBe('Reception iPad')
-
-      // The approver can rename it before approving.
-      await user.clear(field)
-      await user.type(field, 'Lobby kiosk')
-      expect(screen.getByRole<HTMLInputElement>('textbox', { name: /Device name/ }).value).toBe(
-        'Lobby kiosk'
-      )
     })
   })
 })
@@ -267,15 +250,14 @@ const makeConsent = (overrides?: Partial<DeviceConsent>): DeviceConsent => ({
 
 const renderConsentForm = (
   consent: DeviceConsent,
-  onDone: () => void,
-  editableName = false
+  onDone: () => void
 ): { readonly user: ReturnType<typeof userEvent.setup> } => {
   const queryClient = new QueryClient()
   const user = userEvent.setup()
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
-  render(<DeviceConsentForm consent={consent} onDone={onDone} editableName={editableName} />, {
+  render(<DeviceConsentForm consent={consent} onDone={onDone} />, {
     wrapper,
   })
   return { user }

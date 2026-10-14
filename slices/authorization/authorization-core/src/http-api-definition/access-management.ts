@@ -1,6 +1,8 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
+
+import { Client } from '../domain/index.ts'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
  * A `Grant` is a materialized consent decision — the Owner approved a client for
@@ -50,38 +52,16 @@ const GrantNotFoundSchema = Schema.Struct({
   id: Schema.String,
 })
 
-/**
- * A registered OAuth `Client` as the Owner's "Trusted apps" list reads it — one
- * `clients` row, seeded by a migration or created when the Owner approved an
- * unknown app (trust on first use). `secret_hash` never leaves the server.
- *
- * - `disabledAt` is when the Owner disabled the client, and `null` while it's
- *   enabled. While it's set, `/oauth/authorize` and `/oauth/token` refuse the
- *   client.
- * - `firstParty` marks the Wildflower host client, which can't be disabled (it's
- *   how the Owner reaches this surface at all).
- */
-const ClientSchema = Schema.Struct({
-  clientId: Schema.String,
-  name: Schema.String,
-  kind: Schema.Literal('public', 'confidential'),
-  redirectUris: Schema.Array(Schema.String),
-  allowedScopes: Schema.Array(Schema.String),
-  allowedGrantTypes: Schema.Array(Schema.String),
-  registeredAt: Schema.DateTimeUtc,
-  disabledAt: Schema.NullOr(Schema.DateTimeUtc),
-  firstParty: Schema.Boolean,
-})
-
-const ClientsSchema = Schema.Array(ClientSchema)
+/** Every client the server trusts: `ListClients`' answer. */
+const ClientsSchema = Schema.Array(Client.Schema)
 
 /**
  * `UpdateClient`'s body — the one client field the Owner can edit.
  *
  * `disabledAt` is required, `null` included:
  * - any time disables the client now. The server stamps its own now whatever
- *   time is sent, so a disable can be neither scheduled nor backdated (the
- *   launcher sends its current time).
+ *   time is sent, so a disable can be neither scheduled nor backdated
+ *   (Wildflower Authorization sends its current time).
  * - `null` re-enables it.
  *
  * A client that already has a `disabledAt` keeps it: disabling it again
@@ -103,30 +83,29 @@ const FirstPartyClientLockedSchema = Schema.Struct({
 })
 
 /**
- * `HttpRequest`: a record of an inbound FHIR request that the authorization server
- * has parked for the Owner to approve or deny. The wire shape mirrors
- * the server's `httpRequests` storage row 1:1.
+ * `CreateRevocation`'s body: what to revoke, in exactly one of two modes.
  *
- * `respondedAt` and `statusCode` populate once the Owner approves /
- * denies and the upstream call completes.
+ * - `{ subject }` revokes every token the subject holds that was issued up to
+ *   now. The subject is a token's `sub`, which is the `client_id`.
+ * - `{ jti, expiresAt }` denylists one token until its own expiry.
  */
-const HttpRequestSchema = Schema.Struct({
-  id: Schema.String,
-  method: Schema.String,
-  url: Schema.String,
-  origin: Schema.String,
-  userAgent: Schema.String,
-  requestedAt: Schema.DateTimeUtc,
-  status: Schema.String,
-  statusCode: Schema.NullOr(Schema.Int),
-  respondedAt: Schema.NullOr(Schema.DateTimeUtc),
-})
+const RevocationSchema = Schema.Union(
+  Schema.Struct({ subject: Schema.String }),
+  Schema.Struct({ jti: Schema.String, expiresAt: Schema.DateTimeUtc })
+)
 
-const HttpRequestsSchema = Schema.Array(HttpRequestSchema)
-
-const HttpRequestNotFoundSchema = Schema.Struct({
-  error: Schema.Literal('HttpRequestNotFound'),
-  id: Schema.String,
+/**
+ * `400` from `CreateRevocation` for a body that names neither mode, both, or a
+ * `jti` without its `expiresAt` (or with one already past).
+ */
+const RevocationRejectedSchema = Schema.Struct({
+  error: Schema.Literal(
+    'EmptyRevocation',
+    'AmbiguousRevocation',
+    'MissingExpiresAt',
+    'ExpiresAtInPast'
+  ),
+  detail: Schema.String,
 })
 
 /**
@@ -152,11 +131,8 @@ const SessionSchema = Schema.Struct({
  * - `ListClients` / `UpdateClient`: see every client the Owner trusts and take
  *   that trust back (or restore it) by setting its `disabledAt`. Idempotent;
  *   disabling the first-party host client is a `409`.
- * - `ListRequests` / `GetRequest`: inspect parked FHIR requests waiting
- *   on Owner decision.
- * - `ApproveRequest` / `DenyRequest`: Owner decision for a parked FHIR
- *   request — the server resumes the parked request once the status
- *   flips.
+ * - `CreateRevocation`: revoke issued tokens now — a subject's whole cohort,
+ *   or one token by `jti`.
  * - `GetSession`: the caller reading back *their own* token's scopes. The
  *   odd one out — self-service rather than operator, and deliberately
  *   ungated by any scope on the server, since the sessions that need it
@@ -181,26 +157,14 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
     HttpApiEndpoint.patch('UpdateClient', '/clients/:clientId')
       .setPath(Schema.Struct({ clientId: Schema.String }))
       .setPayload(UpdateClientSchema)
-      .addSuccess(ClientSchema)
+      .addSuccess(Client.Schema)
       .addError(ClientNotFoundSchema, { status: 404 })
       .addError(FirstPartyClientLockedSchema, { status: 409 })
   )
-  .add(HttpApiEndpoint.get('ListRequests', '/requests').addSuccess(HttpRequestsSchema))
   .add(
-    HttpApiEndpoint.get('GetRequest', '/requests/:id')
-      .setPath(Schema.Struct({ id: Schema.String }))
-      .addSuccess(HttpRequestSchema)
-      .addError(HttpRequestNotFoundSchema, { status: 404 })
-  )
-  .add(
-    HttpApiEndpoint.post('ApproveRequest', '/requests/:id/approve')
-      .setPath(Schema.Struct({ id: Schema.String }))
-      .addError(HttpRequestNotFoundSchema, { status: 404 })
-  )
-  .add(
-    HttpApiEndpoint.post('DenyRequest', '/requests/:id/deny')
-      .setPath(Schema.Struct({ id: Schema.String }))
-      .addError(HttpRequestNotFoundSchema, { status: 404 })
+    HttpApiEndpoint.post('CreateRevocation', '/revocations')
+      .setPayload(RevocationSchema)
+      .addError(RevocationRejectedSchema, { status: 400 })
   )
   // Every *operator* endpoint here is scope-gated on the server (a `Scoped<…>`
   // capability per operation), so the shared `403 InsufficientScope` is declared
@@ -214,15 +178,13 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
 export {
   httpApiGroup,
   ClientNotFoundSchema,
-  ClientSchema,
   ClientsSchema,
   FirstPartyClientLockedSchema,
   GrantSchema,
   GrantsSchema,
   GrantNotFoundSchema,
-  HttpRequestSchema,
-  HttpRequestsSchema,
-  HttpRequestNotFoundSchema,
+  RevocationRejectedSchema,
+  RevocationSchema,
   SessionSchema,
   UpdateClientSchema,
 }

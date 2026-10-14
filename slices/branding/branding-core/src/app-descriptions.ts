@@ -3,7 +3,7 @@ import { SECTION_PATHS, type SectionId } from './site.ts'
 
 /**
  * The site sections with a standalone app landing page: the SMART on FHIR apps,
- * and the hosted Wildflower launcher (`app`).
+ * the hosted Wildflower launcher, and Wildflower Authorization.
  */
 type AppSectionId = Extract<
   SectionId,
@@ -14,19 +14,21 @@ type AppSectionId = Extract<
   | 'syntheticData'
   | 'lifting'
   | 'launcher'
+  | 'authorization'
 >
 
 /**
  * The app sections the marketing homepage has a launcher row for: all but the
- * hosted launcher app, which has no homepage row.
+ * hosted launcher and Wildflower Authorization, which have no homepage row.
  */
-type HomepageAppSectionId = Exclude<AppSectionId, 'launcher'>
+type HomepageAppSectionId = Exclude<AppSectionId, 'launcher' | 'authorization'>
 
 /**
  * The six SMART app sections with a homepage row, grouped by the homepage
  * section the row sits in: the patient-facing apps (`built`), then the Importer
- * (`try`), then the Synthetic Data Loader (`developers`). The launcher has a
- * landing page but no homepage row, so it is not among them.
+ * (`try`), then the Synthetic Data Loader (`developers`). The launcher and
+ * Wildflower Authorization have a landing page but no homepage row, so they
+ * are not among them.
  */
 const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'medications',
@@ -88,7 +90,8 @@ interface AppDescription {
    * registers as the app's launch URL, and what a plain SMART server's Home in
    * the launcher links each app through ({@link smartAppLaunchPages}).
    *
-   * Absent for an app no URL launches: the launcher is not a SMART app, and FHIR
+   * Absent for an app no URL launches: the launcher and Wildflower
+   * Authorization sign in to a Wildflower server, not to any FHIR server, and FHIR
    * Sync for Pebble starts only from the Pebble phone app, whose watch hand-off
    * it needs, with its own connect menu as the sign-in.
    */
@@ -281,6 +284,18 @@ const APP_DESCRIPTIONS: {
       'This is where you look after it: connect the devices that record data for you, ' +
         'add apps and decide what each one can see. ' +
         'SMART on FHIR apps, like the ones on this site, launch against your own records.',
+    ],
+    anchor: 'try',
+  },
+  authorization: {
+    name: 'Wildflower Authorization',
+    tagline: 'Shows what can reach your Wildflower server, and takes that access back.',
+    paragraphs: [
+      'Every app and device that reads your records from your Wildflower server does so ' +
+        'because you said yes to it once. I want those yeses in one place, where I can see ' +
+        'them and change my mind.',
+      'Sign in to your server to see each app you have approved, each device you have ' +
+        'paired, and every app your server trusts. Revoke an app and its access ends at once.',
     ],
     anchor: 'try',
   },

@@ -4,7 +4,6 @@
  *
  *   - {@link file://./grants.ts}          — access-management grants (list + detail + revoke)
  *   - {@link file://./clients.ts}         — access-management clients (list + update)
- *   - {@link file://./requests.ts}        — access-management HTTP requests (list + detail + decide)
  *   - {@link file://./device-consent.ts}  — RFC 8628 device-authorization consent
  *   - {@link file://./oauth-consent.ts}   — OAuth authorization-code consent
  *
@@ -16,7 +15,7 @@
  * which resource module a hook lives in.
  */
 
-export { CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY, REQUESTS_QUERY_KEY } from './keys.ts'
+export { CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY } from './keys.ts'
 export { useRunAuthed } from './use-run-authed.ts'
 
 export {
@@ -26,19 +25,10 @@ export {
   useGrantsQuery,
   useRevokeGrantMutation,
 } from './grants.ts'
-export type { AppGrant, DeviceGrant, Grant } from './grants.ts'
+export type { AppGrant, DeviceGrant, Grant, RevokeGrantVariables } from './grants.ts'
 
 export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation } from './clients.ts'
-export type { Client, ClientSwitch, UpdateClientVariables } from './clients.ts'
-
-export {
-  requestQueryOptions,
-  requestsQueryOptions,
-  useDecideRequestMutation,
-  useRequestQuery,
-  useRequestsQuery,
-} from './requests.ts'
-export type { HttpRequest, RequestDecision } from './requests.ts'
+export type { ClientSwitch, UpdateClientVariables } from './clients.ts'
 
 export {
   deviceConsentQueryOptions,

@@ -1,0 +1,9 @@
+.access-page__server {
+  margin: 0 0 var(--space-3);
+  color: var(--color-neutral-4);
+}
+
+.access-page__server-url {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}

@@ -1,5 +1,8 @@
 packages:
   - apps/*
+  # Wildflower Authorization: the hosted app where the Owner manages what a
+  # server has authorized.
+  - apps/authorization/*
   # The watch apps' host-side tests and PebbleKit JS builds; see
   # apps/watch-lifts/watch-lifts-watchapp/test/vite.config.ts for why they aren't part of the watch
   # app packages themselves.

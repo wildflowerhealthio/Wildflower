@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -21,6 +22,10 @@ import type { JSX } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { LogoutSettingsItemContext } from '../session/logout-settings-item-context.ts'
+import {
+  ManageAccessSourceContext,
+  type ManageAccessSource,
+} from '../session/manage-access-settings-item.ts'
 import {
   openDialog,
   restoreDialogModality,
@@ -106,11 +111,11 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('aggregates one row per participating slice (databases, authorization)', async () => {
+  test('aggregates one row per participating slice (request log, databases)', async () => {
     renderSettingsScreen()
     await waitFor(() => {
+      expect(screen.getAllByText('Requests').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Your data').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Access').length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -159,8 +164,15 @@ describe('SettingsScreen', () => {
     await waitFor(() => {
       const hrefs = new Set(sliceRowLinks().map((l) => l.getAttribute('href') ?? ''))
       expect(hrefs.has('/settings/databases')).toBe(true)
-      expect(hrefs.has('/settings/authorization')).toBe(true)
+      expect(hrefs.has('/settings/requests')).toBe(true)
     })
+  })
+
+  test('manages access in the Wildflower Authorization app, not in a settings page', async () => {
+    renderSettingsScreen()
+    await findSettingsHeading()
+    const hrefs = sliceRowLinks().map((link) => link.getAttribute('href') ?? '')
+    expect(hrefs.filter((href) => href.startsWith('/settings/authorization'))).toEqual([])
   })
 
   test('renders the logout row as a button that logs the session out', async () => {
@@ -202,9 +214,11 @@ describe('the settings route’s Logout row', () => {
 
     // Act
     render(
-      <LogoutSettingsItemContext value={Option.some(logout)}>
-        <RouterProvider router={router} />
-      </LogoutSettingsItemContext>
+      <QueryClientProvider client={new QueryClient()}>
+        <LogoutSettingsItemContext value={Option.some(logout)}>
+          <RouterProvider router={router} />
+        </LogoutSettingsItemContext>
+      </QueryClientProvider>
     )
 
     // Assert
@@ -228,7 +242,11 @@ describe('the settings route’s Telemetry row', () => {
       routeTree: rootRoute.addChildren([indexRoute]),
       history: createMemoryHistory({ initialEntries: ['/'] }),
     })
-    render(wrap(<RouterProvider router={router} />))
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        {wrap(<RouterProvider router={router} />)}
+      </QueryClientProvider>
+    )
   }
 
   afterEach(() => {
@@ -293,5 +311,73 @@ describe('the settings route’s Telemetry row', () => {
     await screen.findByRole('heading', { name: 'Settings', level: 1 })
     expect(screen.queryByRole('button', { name: /^Telemetry/ })).toBeNull()
     expect(screen.queryByText('Telemetry')).toBeNull()
+  })
+})
+
+describe('the settings route’s Manage access row', () => {
+  /** The SMART configuration a Wildflower server serves, as `fhir-r4-rust` snapshots it. */
+  const smartConfiguration = {
+    issuer: 'https://ruth.wildflowerhealth.io',
+    authorization_endpoint: 'https://ruth.wildflowerhealth.io/oauth/authorize',
+    token_endpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
+    management_endpoint:
+      'https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io',
+    wildflower_authorization_api: 'https://ruth.wildflowerhealth.io/authorization/',
+    capabilities: ['wildflower-server'],
+  }
+
+  /** Mount the real route binding with `source` as where the row reads from. */
+  const renderWithSource = (source: ManageAccessSource): void => {
+    const rootRoute = createRootRoute({ component: SettingsLayout })
+    const indexRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/',
+      component: SettingsIndexRoute,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([indexRoute]),
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    })
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ManageAccessSourceContext value={source}>
+          <RouterProvider router={router} />
+        </ManageAccessSourceContext>
+      </QueryClientProvider>
+    )
+  }
+
+  test('links out to the management_endpoint the session’s server advertises', async () => {
+    // Arrange
+    const requested: string[] = []
+    renderWithSource({
+      serverUrl: () => 'https://ruth.wildflowerhealth.io',
+      fetch: (input) => {
+        requested.push(input instanceof Request ? input.url : input.toString())
+        return Promise.resolve(Response.json(smartConfiguration))
+      },
+      pageIsSecure: true,
+    })
+
+    // Act
+    const link = await screen.findByRole('link', { name: /Manage access/ })
+
+    // Assert
+    expect(link.getAttribute('href')).toBe(smartConfiguration.management_endpoint)
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(requested).toEqual(['https://ruth.wildflowerhealth.io/.well-known/smart-configuration'])
+  })
+
+  test('is absent with no server signed in to', async () => {
+    // Arrange
+    const fetch = vi.fn<typeof globalThis.fetch>()
+
+    // Act
+    renderWithSource({ serverUrl: () => undefined, fetch, pageIsSecure: true })
+
+    // Assert
+    await findSettingsHeading()
+    expect(screen.queryByRole('link', { name: /Manage access/ })).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
   })
 })

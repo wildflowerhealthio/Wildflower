@@ -153,6 +153,20 @@ const siteSections: readonly SiteSection[] = [
     // `/staging/pr-<n>/launcher/`.
     requiredFiles: ['index.html'],
   },
+  {
+    packageName: '@wildflowerhealthio/authorization-web',
+    // The package lives in `apps/authorization/authorization-web`; its
+    // published path is `/${SECTION_PATHS.authorization}`, which every
+    // Wildflower server's SMART configuration advertises as its
+    // `management_endpoint`.
+    sourceDir: 'apps/authorization/authorization-web/dist',
+    destPath: SECTION_PATHS.authorization,
+    // A single SPA entry: the connect menu, the OAuth redirect target, and the
+    // signed-in access pages. The router derives its basepath from the page's
+    // base, so the same build serves `/authorization/` and a preview's
+    // `/staging/pr-<n>/authorization/`.
+    requiredFiles: ['index.html'],
+  },
 ]
 
 /** A {@link SiteSection} resolved to absolute filesystem paths. */

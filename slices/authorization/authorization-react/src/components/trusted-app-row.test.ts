@@ -1,10 +1,9 @@
-import { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
+import { Client } from '@wildflowerhealthio/authorization-core/domain'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Client } from '../queries/index.ts'
 import { trustedAppRow } from './trusted-app-row.ts'
 
 describe('trustedAppRow', () => {
@@ -100,7 +99,7 @@ describe('trustedAppRow', () => {
 
 // Helpers
 
-const decodeClient = Schema.decodeUnknownSync(AccessManagement.ClientSchema)
+const decodeClient = Schema.decodeUnknownSync(Client.Schema)
 
 /** A migration-seeded SMART app, as `GET /authorization/clients` returns it. */
 const ohifViewer = {
@@ -120,7 +119,7 @@ const instantArb = (): fc.Arbitrary<DateTime.Utc> =>
     .date({ min: new Date('2000-01-01'), max: new Date('2100-01-01'), noInvalidDate: true })
     .map((date) => DateTime.unsafeMake(date))
 
-const clientArb = (): fc.Arbitrary<Client> =>
+const clientArb = (): fc.Arbitrary<Client.Type> =>
   fc.record({
     clientId: fc.string(),
     name: fc.string(),

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { AsyncErrorView, PageHeader } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
 
@@ -6,7 +6,9 @@ import { oauthConsentQueryOptions, useOAuthConsentQuery } from '../../../queries
 import { OAuthConsentForm } from '../../../screens/oauth-consent/oauth-consent-form.tsx'
 
 const OAuthConsentScreen = ({ id }: { readonly id: string }): JSX.Element => {
-  const navigate = useNavigate()
+  // The app root is the app's own route, not one of this slice's, so the
+  // decision lands there through the history, under the router's basepath.
+  const { history, basepath } = useRouter()
   const { data: consent } = useOAuthConsentQuery(id)
   return (
     <>
@@ -14,7 +16,7 @@ const OAuthConsentScreen = ({ id }: { readonly id: string }): JSX.Element => {
       <OAuthConsentForm
         consent={consent}
         onDone={() => {
-          void navigate({ to: '/settings/authorization' })
+          history.push(basepath)
         }}
       />
     </>

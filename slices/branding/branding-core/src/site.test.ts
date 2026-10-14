@@ -26,11 +26,12 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'syntheticData',
   'lifting',
   'watchLifts',
-  'launcher'
+  'launcher',
+  'authorization'
 )
 
 describe('SECTION_PATHS', () => {
-  it('should contain exactly ten sections with the correct deploy-contract paths', () => {
+  it('should contain exactly twelve sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
       medications: 'medications',
@@ -43,6 +44,7 @@ describe('SECTION_PATHS', () => {
       lifting: 'lifting',
       watchLifts: 'watch-lifts',
       launcher: 'launcher',
+      authorization: 'authorization',
     })
   })
 })
