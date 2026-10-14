@@ -180,11 +180,12 @@ const OAuthConsentCard = ({
         },
       },
       {
+        // The server records an approval that keeps none of the requested
+        // scopes as a denial. Either way the request is decided, so both leave
+        // the card with the result, which carries the client's callback.
         onSuccess: (result) => {
-          if (result.status === 'approved') {
+          if (result.status === 'approved' || result.status === 'denied') {
             onDone(result)
-          } else if (result.status === 'denied') {
-            setResultError('Authorization request was denied.')
           } else {
             setResultError(result.message)
           }

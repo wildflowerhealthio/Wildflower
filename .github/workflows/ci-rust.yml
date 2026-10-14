@@ -83,6 +83,10 @@ jobs:
       # the UI is tested by the TypeScript workflow.
       - name: Stub relay admin UI
         run: ./scripts/ci/stub-embedded-bundles.sh relay-admin-web
+      # wildflowerhealthio-authorization-server embeds the consent card's build
+      # the same way; a placeholder page is enough for its tests.
+      - name: Stub authorization server pages
+        run: ./scripts/ci/stub-embedded-bundles.sh authorization-server-web
 
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml, caches the cargo registry + `target/`, and

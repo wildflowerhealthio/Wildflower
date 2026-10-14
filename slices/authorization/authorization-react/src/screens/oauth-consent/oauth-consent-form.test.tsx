@@ -328,19 +328,20 @@ describe('OAuthConsentForm — decision routing', () => {
     expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy()
   })
 
-  test('a denied approval shows the denial notice and stays on the form', async () => {
+  test('an approval the server records as a denial passes the denied result to onDone', async () => {
+    const denied = {
+      status: 'denied' as const,
+      redirect: 'https://app.example/cb?error=access_denied',
+    }
     mutate.mockImplementation((_variables, options) => {
-      options?.onSuccess?.({ status: 'denied' })
+      options?.onSuccess?.(denied)
     })
     const onDone = vi.fn()
     const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), onDone)
 
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'Authorization request was denied.'
-    )
-    expect(onDone).not.toHaveBeenCalled()
+    expect(onDone).toHaveBeenCalledWith(denied)
   })
 })
 
