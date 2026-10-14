@@ -82,26 +82,26 @@ pub(crate) struct LoopbackOwnerApprover<S: GrantStore> {
     owner_approval: Arc<dyn OwnerApproval>,
     prompt: Arc<dyn LoopbackConsentPrompt>,
     host_owner_grant: Grant,
-    first_party_client_id: Arc<str>,
+    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> LoopbackOwnerApprover<S> {
     /// Build the approver over the store, the popup republish port, the host's
     /// dialog, the host Owner's grant (the approving authority), and the
-    /// first-party `client_id` — all lifted from the state.
+    /// host app's `client_id` — all lifted from the state.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
         prompt: Arc<dyn LoopbackConsentPrompt>,
         host_owner_grant: Grant,
-        first_party_client_id: Arc<str>,
+        wildflower_host_app_client_id: Arc<str>,
     ) -> Self {
         LoopbackOwnerApprover {
             store,
             owner_approval,
             prompt,
             host_owner_grant,
-            first_party_client_id,
+            wildflower_host_app_client_id,
         }
     }
 
@@ -209,7 +209,7 @@ impl<S: GrantStore> LoopbackOwnerApprover<S> {
             generate_code,
             &ApprovalContext {
                 approver_grant: &self.host_owner_grant,
-                first_party_client_id: &self.first_party_client_id,
+                wildflower_host_app_client_id: &self.wildflower_host_app_client_id,
                 memory: ApprovalMemory::AskEveryTime,
                 now,
             },
@@ -338,7 +338,7 @@ mod tests {
             Arc::new(RecordingOwnerApproval::default()),
             Arc::new(FixedAnswer(answer)),
             Grant::parse(["wildflower/*.cruds"]),
-            crate::FIRST_PARTY_CLIENT_ID.into(),
+            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
         )
     }
 
@@ -379,7 +379,10 @@ mod tests {
             false,
             "03a513940b52f8c2649a5366d1a26d19"
         ));
-        assert!(!asks_loopback_dialog(true, crate::FIRST_PARTY_CLIENT_ID));
+        assert!(!asks_loopback_dialog(
+            true,
+            crate::WILDFLOWER_HOST_APP_CLIENT_ID
+        ));
         assert!(!asks_loopback_dialog(true, "some-smart-app"));
         assert!(!asks_loopback_dialog(true, ""));
         assert!(!asks_loopback_dialog(

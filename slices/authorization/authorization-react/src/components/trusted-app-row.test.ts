@@ -33,27 +33,27 @@ describe('trustedAppRow', () => {
     expect(row.subtitle.startsWith('ohif-viewer · Disabled ')).toBe(true)
   })
 
-  it('should offer no switch for the first-party host', () => {
+  it('should offer no switch for an essential client', () => {
     // Arrange
     const client = decodeClient({
       ...ohifViewer,
       clientId: 'wildflower-host',
       name: 'Wildflower',
-      firstParty: true,
+      essential: true,
     })
 
     // Act
     const row = trustedAppRow(client)
 
     // Assert
-    expect(row).toEqual({ action: null, disabled: false, subtitle: 'wildflower-host · Built in' })
+    expect(row).toEqual({ action: null, disabled: false, subtitle: 'wildflower-host · Essential' })
   })
 
-  it('should never offer a switch for the first-party host, whatever its state', () => {
+  it('should never offer a switch for an essential client, whatever its state', () => {
     fc.assert(
       fc.property(clientArb(), (generated) => {
         // Arrange
-        const client = { ...generated, firstParty: true }
+        const client = { ...generated, essential: true }
 
         // Act
         const { action } = trustedAppRow(client)
@@ -65,11 +65,11 @@ describe('trustedAppRow', () => {
     )
   })
 
-  it('should always offer Disable exactly when a non-host app has no disabledAt', () => {
+  it('should always offer Disable exactly when a non-essential app has no disabledAt', () => {
     fc.assert(
       fc.property(clientArb(), (generated) => {
         // Arrange
-        const client = { ...generated, firstParty: false }
+        const client = { ...generated, essential: false }
 
         // Act
         const { action, subtitle } = trustedAppRow(client)
@@ -111,7 +111,7 @@ const ohifViewer = {
   allowedGrantTypes: ['authorization_code', 'refresh_token'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
-  firstParty: false,
+  essential: false,
 }
 
 const instantArb = (): fc.Arbitrary<DateTime.Utc> =>
@@ -129,5 +129,5 @@ const clientArb = (): fc.Arbitrary<Client.Type> =>
     allowedGrantTypes: fc.array(fc.string()),
     registeredAt: instantArb(),
     disabledAt: fc.option(instantArb(), { nil: null }),
-    firstParty: fc.boolean(),
+    essential: fc.boolean(),
   })

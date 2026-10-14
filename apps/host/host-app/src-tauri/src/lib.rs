@@ -27,15 +27,15 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
 
 // The host's granted-scope string, also sourced from
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`).
-// The authorization server seeds its first-party client's
+// The authorization server seeds the host app's client's
 // `allowed_scopes` and mints the host owner token from this set (asserting it
 // covers `WILDFLOWER_WIDEST_SCOPES`).
 const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 
-// The host's first-party OAuth `client_id`, sourced from the same
+// The Wildflower host app's OAuth `client_id`, sourced from the same
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`):
-// the id the authorization server seeds the first-party client and mints the owner token under.
-const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
+// the id the authorization server seeds the host app's client and mints the owner token under.
+const WILDFLOWER_HOST_APP_CLIENT_ID: &str = env!("WILDFLOWER_HOST_APP_CLIENT_ID");
 
 // The hosted launcher (see `wildflowerhealthio_shared_structures::launcher`), sourced from the
 // same `tauri-shared-config.json` (re-emitted by `build.rs`). Debug builds use
@@ -221,7 +221,7 @@ fn server_config(
         launcher_base,
         authorization_app_base,
         host_owner_scopes: host_owner_scopes(),
-        first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
+        wildflower_host_app_client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
         domain: server.domain(),
         device_certificate: server.device_certificate_config(data_root),

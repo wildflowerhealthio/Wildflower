@@ -52,7 +52,7 @@ impl HostConsentDecider {
             self.state.store.clone(),
             owner_approval,
             self.state.host_owner_grant.clone(),
-            self.state.first_party_client_id.clone(),
+            self.state.wildflower_host_app_client_id.clone(),
         )
     }
 

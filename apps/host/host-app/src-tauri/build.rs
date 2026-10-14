@@ -7,7 +7,7 @@ struct TauriSharedConfig {
     loopback_hostname: String,
     loopback_port: u16,
     local_granted_scopes: String,
-    first_party_client_id: String,
+    wildflower_host_app_client_id: String,
     launcher_base_url: String,
     authorization_app_base_url: String,
     background_service_label: String,
@@ -62,8 +62,8 @@ fn main() {
         config.local_granted_scopes
     );
     println!(
-        "cargo:rustc-env=WILDFLOWER_FIRST_PARTY_CLIENT_ID={}",
-        config.first_party_client_id
+        "cargo:rustc-env=WILDFLOWER_HOST_APP_CLIENT_ID={}",
+        config.wildflower_host_app_client_id
     );
     println!(
         "cargo:rustc-env=WILDFLOWER_LAUNCHER_BASE_URL={}",

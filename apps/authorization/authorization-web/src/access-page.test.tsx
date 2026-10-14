@@ -127,22 +127,23 @@ describe('the access page', () => {
     ).toEqual(['disabledAt'])
   })
 
-  it('offers no Revoke or switch for the first-party host client', async () => {
+  it('offers a Revoke for the host app’s grant, but no switch for its client', async () => {
     // Arrange
     const server = stubServer()
 
     // Act
     mountAccessPages(server)
 
-    // Assert — the host's grant and client are listed, with no actions.
+    // Assert — the host app's grant has its actions; its trusted-app row has none.
     const approvedApps = await sectionTitled('Approved Apps')
-    await within(approvedApps).findByRole('button', {
-      name: `Actions for ${medicationsClient.name}`,
-    })
-    expect(within(approvedApps).getByText(hostClient.name)).toBeTruthy()
+    expect(
+      await within(approvedApps).findByRole('button', { name: `Actions for ${hostClient.name}` })
+    ).toBeTruthy()
     const trustedApps = await sectionTitled('Trusted Apps')
     expect(await within(trustedApps).findByText(hostClient.name)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: `Actions for ${hostClient.name}` })).toBeNull()
+    expect(
+      within(trustedApps).queryByRole('button', { name: `Actions for ${hostClient.name}` })
+    ).toBeNull()
   })
 
   it('offers no Revoke for this app’s own grant', async () => {
@@ -253,7 +254,7 @@ const medicationsClient = {
   allowedGrantTypes: ['authorization_code'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
-  firstParty: false,
+  essential: false,
 } as const
 
 const hostClient = {
@@ -261,7 +262,7 @@ const hostClient = {
   clientId: hostGrant.clientId,
   name: 'Wildflower Host',
   redirectUris: [],
-  firstParty: true,
+  essential: true,
 } as const
 
 /** One request as the stub server saw it; `body` is the parsed JSON, if any. */

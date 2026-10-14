@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 use super::list_all::ClientBody;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::Scoped;
-use crate::http::errors::{ClientNotFoundBody, FirstPartyClientLockedBody};
+use crate::http::errors::{ClientNotFoundBody, EssentialClientBody};
 use crate::live_bindings::LiveClientsDisabler;
 
 /// Body of `PATCH /authorization/clients/{clientId}` — the one client field the Owner
@@ -29,9 +29,9 @@ pub(crate) struct UpdateClientBody {
 /// whatever time is sent) or re-enable a client by writing its `disabledAt`;
 /// answers with the client as stored. A disabled client is refused at
 /// `/oauth/authorize` and `/oauth/token`. Idempotent (a client that already
-/// has a `disabledAt` keeps it). Disabling the first-party host client is
-/// refused with `409 FirstPartyClientLocked`. Acquired through
-/// [`LiveClientsDisabler`] (scope `wildflower/Client.u`).
+/// has a `disabledAt` keeps it). Disabling an essential client — the host
+/// app's or the Owner-browser client — is refused with `409 EssentialClient`.
+/// Acquired through [`LiveClientsDisabler`] (scope `wildflower/Client.u`).
 #[utoipa::path(
     patch,
     tag = "Access management",
@@ -41,7 +41,7 @@ pub(crate) struct UpdateClientBody {
     responses(
         (status = 200, description = "The client as stored", body = ClientBody),
         (status = 404, description = "No client with that id", body = ClientNotFoundBody),
-        (status = 409, description = "The first-party host client can't be disabled", body = FirstPartyClientLockedBody),
+        (status = 409, description = "The client is essential: disabling it would leave the Owner no way in", body = EssentialClientBody),
     ),
 )]
 pub(super) async fn handle_update_client(

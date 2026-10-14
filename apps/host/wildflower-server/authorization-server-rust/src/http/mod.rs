@@ -9,6 +9,7 @@ use std::sync::Arc;
 mod errors;
 mod extractors;
 mod middleware;
+mod owner_browser_session_cookie;
 mod routes;
 mod state;
 mod wire_representations;
@@ -22,6 +23,11 @@ pub use middleware::ensure_bearer_header;
 pub use middleware::{
     authorization_server_auth_middleware, require_loopback_peer_middleware,
     AuthorizationServerAuthMiddleware, RequireLoopbackPeerMiddleware,
+};
+pub(crate) use owner_browser_session_cookie::owner_browser_session_set_cookie;
+pub use owner_browser_session_cookie::{
+    owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
+    OWNER_BROWSER_SESSION_COOKIE,
 };
 pub use state::AuthorizationServerState;
 

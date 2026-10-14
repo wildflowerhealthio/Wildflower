@@ -27,14 +27,18 @@ pub(crate) mod live_bindings;
 use std::sync::Arc;
 
 use anyhow::Context;
-use chrono::{Duration, Utc};
-use tokio::sync::watch;
+use chrono::{DateTime, Duration, Utc};
+use tokio::sync::{watch, Notify};
 use tokio::time::{interval, MissedTickBehavior};
 use wildflowerhealthio_scopes::{
     ContextLevel, FhirResourceScope, Grant, KnownScope, Permission, ResourceType, Scope,
     WildflowerResourceScope, WildflowerResourceType,
 };
 use wildflowerhealthio_token_revocation::RevocationStore;
+
+use crate::domain::capabilities::oauth::OWNER_BROWSER_SESSION_TTL;
+use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
+use crate::domain::sign_in_redirect::SignInDestinations;
 
 pub use config::AuthorizationServerConfig;
 pub use db::SqliteGrantStore;
@@ -72,10 +76,12 @@ pub use live_bindings::HostConsentDecider;
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
-    is_pre_auth_public_path, require_loopback_peer_middleware, AuthorizationServerAuthMiddleware,
-    AuthorizationServerState, RequireLoopbackPeerMiddleware,
+    is_pre_auth_public_path, owner_browser_session_clearing_set_cookie,
+    owner_browser_session_has_ended, require_loopback_peer_middleware,
+    AuthorizationServerAuthMiddleware, AuthorizationServerState, RequireLoopbackPeerMiddleware,
+    OWNER_BROWSER_SESSION_COOKIE,
 };
-pub use live_bindings::LaunchContextMinter;
+pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter};
 pub use wildflowerhealthio_persistence::DieselPool;
 // The loopback-dialog seam: the host implements it with its native dialog
 // plugin and passes it into `setup_authorization_server`, so its trait + types are public.
@@ -84,17 +90,27 @@ pub use ports::{
     LoopbackRegistrationNotice, NoLoopbackConsentPrompt,
 };
 
-/// `client_id` of the host application's first-party OAuth client. The host
-/// uses this identity to mint Owner tokens for itself and to recognise its
-/// own client registration during bootstrap.
+/// `client_id` of the Wildflower host app's OAuth client. The host app uses
+/// this identity to mint its own Owner token and to recognise its own client
+/// registration during bootstrap.
 ///
 /// This is the standalone/test fallback: the live Tauri app sources the id from
 /// `tauri-shared-config.json` and threads it via
-/// [`AuthorizationServerConfig::first_party_client_id`], the single source shared with the
-/// TS shell (`authorization-core`'s `FIRST_PARTY_CLIENT_ID` is the matching TS
+/// [`AuthorizationServerConfig::wildflower_host_app_client_id`], the single source shared with the
+/// TS shell (`authorization-core`'s `WILDFLOWER_HOST_APP_CLIENT_ID` is the matching TS
 /// fallback), so the id can't drift across the boundary. Rendered by
-/// [`default_first_party_client_id`].
-pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
+/// [`default_wildflower_host_app_client_id`].
+pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "wildflower-host";
+
+/// `client_id` of the Owner-browser client: the browsers the host app has
+/// signed in as the Owner on its own device, with a same-device sign-in code at
+/// `/oauth/sign-in`. Each such browser holds a token issued to this client
+/// (its `sub`), so revoking the client's subject signs every Owner browser
+/// out, and one browser's session is revoked by its token's `jti`. Like
+/// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it is an essential client: it can't be
+/// disabled. Seeded at boot by [`crate::setup_authorization_server`]; it takes part in no
+/// OAuth flow.
+pub const OWNER_BROWSER_CLIENT_ID: &str = "wildflower-owner-browser";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access
@@ -114,7 +130,7 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The **default** scopes granted to the first-party host (`wildflower-host`):
+/// The **default** scopes granted to the host app's client (`wildflower-host`):
 /// the widest set, so local users can drive both the FHIR surface and the
 /// non-FHIR (Wildflower) APIs. Rendered by [`default_local_granted_scopes`].
 ///
@@ -153,12 +169,12 @@ pub fn default_local_granted_scopes() -> Vec<String> {
     wildflowerhealthio_scopes::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
 }
 
-/// The default first-party `client_id` — [`FIRST_PARTY_CLIENT_ID`]. Standalone
-/// and test builds seed [`AuthorizationServerConfig::first_party_client_id`] from this;
+/// The default Wildflower host app `client_id` — [`WILDFLOWER_HOST_APP_CLIENT_ID`]. Standalone
+/// and test builds seed [`AuthorizationServerConfig::wildflower_host_app_client_id`] from this;
 /// the live Tauri app sources the value from `tauri-shared-config.json` instead.
 #[must_use]
-pub fn default_first_party_client_id() -> String {
-    FIRST_PARTY_CLIENT_ID.to_string()
+pub fn default_wildflower_host_app_client_id() -> String {
+    WILDFLOWER_HOST_APP_CLIENT_ID.to_string()
 }
 
 /// Lifetime of the host owner token minted at boot (and re-minted hourly). Kept
@@ -197,20 +213,23 @@ const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration:
 
 /// Result of `setup_authorization_server`: the public router that should be merged
 /// into the app's root router, the shared `Arc<AuthorizationServerState>` needed to
-/// gate fhir-r4-rust traffic, and the minter app launches mint their `launch`
-/// values through.
+/// gate fhir-r4-rust traffic, the minter app launches mint their `launch`
+/// values through, and the minter the host mints same-device sign-in codes through.
 pub struct AuthorizationServer {
     pub router: axum::Router,
     pub state: Arc<AuthorizationServerState>,
     /// Mints the SMART App Launch contexts `/oauth/authorize` consumes — for
     /// the in-process launchers (the apps slice, the host).
     pub launch_context_minter: LaunchContextMinter,
+    /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
+    /// Owner with — for the host, in-process.
+    pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
 }
 
 /// Build the authorization-server-rust HTTP surface over the host-owned diesel
 /// connection `pool` (the same app-wide `wildflowerhealthio_persistence::open_pool` pool the
 /// other diesel-backed slices ride). Runs idempotent bootstrap
-/// (schema migrations, signing-key seed, first-party client seed), mints
+/// (schema migrations, signing-key seed, essential-client seed), mints
 /// the boot-time host owner token for `config.server_origin`, and:
 ///
 ///  - publishes the host owner token on `local_owner_token_tx` so subscribers (the
@@ -231,7 +250,9 @@ pub struct AuthorizationServer {
 ///    [`authorization_server_auth_middleware`] to gate fhir-r4-rust;
 ///  - returns the [`LaunchContextMinter`] an in-process launcher mints each
 ///    SMART App Launch `launch` value through, which `/oauth/authorize` then
-///    consumes.
+///    consumes;
+///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
+///    same-device sign-in code through, which `/oauth/sign-in` then redeems.
 ///
 /// Every token this server mints — OAuth and host owner alike — carries the
 /// server's origin ([`AuthorizationServerConfig::server_origin`]) as both `iss` and
@@ -284,7 +305,7 @@ pub fn setup_authorization_server(
     let store = seeding::open_and_seed_store(
         pool,
         &config.host_owner_scopes,
-        &config.first_party_client_id,
+        &config.wildflower_host_app_client_id,
         &config.fhir_ui_client_id,
         &config.server_origin,
     )?;
@@ -295,22 +316,31 @@ pub fn setup_authorization_server(
         &server_origin,
         HOST_OWNER_TOKEN_TTL,
         &config.host_owner_scopes,
-        &config.first_party_client_id,
+        &config.wildflower_host_app_client_id,
     )
     .context("failed to mint host owner token")?;
     local_owner_token_tx
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;
+    let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
+    let host_owner_token_remints = Arc::new(Notify::new());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
         server_origin: server_origin.clone(),
-        first_party_client_id: config.first_party_client_id.clone().into(),
+        wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
         loopback_consent_prompt,
         host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),
+        same_device_sign_in_codes: same_device_sign_in_codes.clone(),
+        sign_in_destinations: Arc::new(SignInDestinations::new(
+            config.server_origin.clone(),
+            config.launcher_base.clone(),
+            config.authorization_app_base.clone(),
+        )),
+        host_owner_token_remints: host_owner_token_remints.clone(),
     });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview
@@ -322,36 +352,49 @@ pub fn setup_authorization_server(
     // daily. Spawned before the re-minter, which consumes `store`.
     spawn_retention_sweep(store.clone());
     // Keep the webview's owner-session token fresh: re-mint + republish inside
-    // the (now-short) owner-token TTL. See #269.
+    // the (now-short) owner-token TTL, and at once after a revocation of the
+    // host app's subject. See #269.
     spawn_owner_token_reminter(
         store,
         server_origin,
         config.host_owner_scopes.clone(),
-        config.first_party_client_id.clone(),
+        config.wildflower_host_app_client_id.clone(),
+        host_owner_token_remints,
         local_owner_token_tx.clone(),
     );
     // Reclaim expired denylist rows: once at startup, then daily.
     spawn_revocation_purge(revocation_store);
     let router = http::router(state.clone());
     let launch_context_minter = LaunchContextMinter::new(state.store.clone());
+    let same_device_sign_in_code_minter =
+        SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
     Ok(AuthorizationServer {
         router,
         state,
         launch_context_minter,
+        same_device_sign_in_code_minter,
     })
 }
 
 /// Spawn the timer that re-mints the host owner token every
 /// [`OWNER_TOKEN_REMINT_INTERVAL`] and republishes it on the owner-token
 /// `watch` channel, so the host's loopback owner trust moves to a live token
-/// before the previous (short-lived, #269) one expires. On a mint failure
-/// it logs and retries next tick; when every receiver has dropped (app
-/// shutdown) it stops.
+/// before the previous (short-lived, #269) one expires.
+///
+/// It also re-mints whenever `remints` is notified — after a revocation of the
+/// host app's subject killed the published token (see
+/// [`HostOwnerTokenRemintingRevocation`](domain::host_owner_token_remint::HostOwnerTokenRemintingRevocation)).
+/// That revocation's epoch is the whole second after it, and a token's `iat`
+/// is whole seconds, so it first waits for that second to begin
+/// ([`wait_for_the_next_whole_second`]); a token minted sooner would be
+/// revoked on arrival. On a mint failure it logs and retries next tick; when
+/// every receiver has dropped (app shutdown) it stops.
 fn spawn_owner_token_reminter(
     store: SqliteGrantStore,
     server_origin: Arc<str>,
     host_owner_scopes: Vec<String>,
-    first_party_client_id: String,
+    wildflower_host_app_client_id: String,
+    remints: Arc<Notify>,
     sender: watch::Sender<Option<String>>,
 ) {
     tokio::spawn(async move {
@@ -361,13 +404,16 @@ fn spawn_owner_token_reminter(
         // `setup_authorization_server` already published a token, so consume it.
         ticks.tick().await;
         loop {
-            ticks.tick().await;
+            tokio::select! {
+                _ = ticks.tick() => {}
+                () = remints.notified() => wait_for_the_next_whole_second(Utc::now()).await,
+            }
             match seeding::mint_host_owner_token(
                 &store,
                 &server_origin,
                 HOST_OWNER_TOKEN_TTL,
                 &host_owner_scopes,
-                &first_party_client_id,
+                &wildflower_host_app_client_id,
             ) {
                 // `send` errors only once every receiver has dropped — i.e. the
                 // app is shutting down — so stop the timer then.
@@ -384,6 +430,24 @@ fn spawn_owner_token_reminter(
     });
 }
 
+/// Wait until the whole second after `since` has begun on the wall clock, the
+/// one `iat` and revocation epochs are read from. Loops because the runtime
+/// sleeps on the monotonic clock, which can drift from the wall clock.
+async fn wait_for_the_next_whole_second(since: DateTime<Utc>) {
+    let next_second = since.timestamp() + 1;
+    loop {
+        let now = Utc::now();
+        if now.timestamp() >= next_second {
+            return;
+        }
+        let into_this_second = u64::from(now.timestamp_subsec_nanos());
+        tokio::time::sleep(std::time::Duration::from_nanos(
+            1_000_000_000_u64.saturating_sub(into_this_second),
+        ))
+        .await;
+    }
+}
+
 /// Spawn the background sweep that purges expired rows from the revocation
 /// denylist — once at startup (the interval's immediate first tick) then every
 /// [`REVOCATION_PURGE_INTERVAL`]. Purely space reclamation: an expired `jti` is
@@ -395,12 +459,13 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
         loop {
             // First tick is immediate → startup purge; then daily.
             ticks.tick().await;
-            // Retention floor = the longest access token we mint (the 2h host
-            // owner token dwarfs the 15-min OAuth `ACCESS_TOKEN_TTL`), so a
-            // denylist row is never dropped while its token could still be live —
-            // even if the `/authorization/revocations` caller supplied a too-early
-            // `expiresAt`. See `RevocationStore::purge_expired`.
-            match revocation_store.purge_expired(Utc::now(), HOST_OWNER_TOKEN_TTL) {
+            // Retention floor = the longest access token we mint (the 8h Owner
+            // session token, past the 2h host owner token and the 15-min OAuth
+            // `ACCESS_TOKEN_TTL`), so a denylist row is never dropped while its
+            // token could still be live — even if the `/authorization/revocations`
+            // caller supplied a too-early `expiresAt`. See
+            // `RevocationStore::purge_expired`.
+            match revocation_store.purge_expired(Utc::now(), OWNER_BROWSER_SESSION_TTL) {
                 Ok(purged) if purged > 0 => {
                     tracing::info!(purged, "swept expired revoked jtis");
                 }

@@ -387,7 +387,7 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 ## The web owner UI talks to the authorization server as two different clients
 
 **Discovered during**: claude/oauth-redirect-routing-9cmhrj (sending a PR preview's sign-in back to the preview)
-**Learning**: `main-web` signs in by SMART redirect as `client_id=wildflower-react`, but its device-login fallback and step-up screen (`NeedsAuthMessage`) start the device flow as `wildflower-host`. With no host-threaded id it falls back to `FIRST_PARTY_CLIENT_ID`. A web session's token can therefore be bound to either id, so a server-side rule meant for "the web owner UI" has to accept both. The debug host's configured owner UI is the `main-web` dev server on `localhost:5200`, so any page the server builds on its configured owner UI points a deployed PR preview at `localhost`.
+**Learning**: `main-web` signs in by SMART redirect as `client_id=wildflower-react`, but its device-login fallback and step-up screen (`NeedsAuthMessage`) start the device flow as `wildflower-host`. With no host-threaded id it falls back to `WILDFLOWER_HOST_APP_CLIENT_ID`. A web session's token can therefore be bound to either id, so a server-side rule meant for "the web owner UI" has to accept both. The debug host's configured owner UI is the `main-web` dev server on `localhost:5200`, so any page the server builds on its configured owner UI points a deployed PR preview at `localhost`.
 **Suggested destination**: the Wildflower Authorization Jargon Explanation (Client)
 
 ## A page reached by a full navigation starts signed out under an in-memory bearer

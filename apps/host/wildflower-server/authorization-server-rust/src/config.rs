@@ -1,4 +1,5 @@
 use url::Url;
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 #[derive(Debug, Clone)]
@@ -17,7 +18,7 @@ pub struct AuthorizationServerConfig {
     /// was served on. See `docs/Origins/Explanation.md`.
     pub server_origin: Url,
 
-    /// The host owner's scopes, as wire strings — seeded as the first-party
+    /// The host owner's scopes, as wire strings — seeded as the host app's
     /// client's `allowed_scopes` and minted into the boot-time host owner token.
     /// The live Tauri app sources these from `tauri-shared-config.json` (the
     /// single source shared with the TS shell); standalone/test builds use
@@ -26,13 +27,13 @@ pub struct AuthorizationServerConfig {
     /// `/authorization/*` owner gate (asserted in [`crate::setup_authorization_server`]).
     pub host_owner_scopes: Vec<String>,
 
-    /// The `client_id` of the host's first-party OAuth client — seeded as the
-    /// first-party client row, minted into the boot-time host owner token, and
-    /// matched against a `/token` request's presented `client_id` to grant
-    /// first-party treatment. The live Tauri app sources this from
+    /// The `client_id` of the Wildflower host app's OAuth client — seeded as
+    /// the host app's client row, minted into the boot-time host owner token,
+    /// and matched against a `/token` request's presented `client_id` to hold it
+    /// to its fixed registration. The live Tauri app sources this from
     /// `tauri-shared-config.json` (the single source shared with the TS shell);
-    /// standalone/test builds use [`crate::default_first_party_client_id`].
-    pub first_party_client_id: String,
+    /// standalone/test builds use [`crate::default_wildflower_host_app_client_id`].
+    pub wildflower_host_app_client_id: String,
 
     /// The `client_id` of the FHIR server's web UI (`helios-ui`), which signs
     /// its users in here with the authorization-code flow. Seeded on every boot
@@ -45,4 +46,10 @@ pub struct AuthorizationServerConfig {
     /// landing live on (see [`LauncherBase`]). The live Tauri app sources it
     /// from `tauri-shared-config.json`.
     pub launcher_base: LauncherBase,
+
+    /// The hosted Wildflower Authorization app (see [`AuthorizationAppBase`]):
+    /// besides the launcher and this server's own paths, the one place
+    /// `/oauth/sign-in` may send a browser next. The live Tauri app sources it
+    /// from `tauri-shared-config.json`.
+    pub authorization_app_base: AuthorizationAppBase,
 }

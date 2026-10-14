@@ -27,9 +27,6 @@ impl FixedScopeCapability for LiveGrantsRevoker {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        GrantsRevoker::new(
-            state.store.clone(),
-            Arc::new(state.revocation_store.clone()),
-        )
+        GrantsRevoker::new(state.store.clone(), state.revocation())
     }
 }

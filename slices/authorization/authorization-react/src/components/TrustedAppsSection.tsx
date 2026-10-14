@@ -62,7 +62,7 @@ interface TrustedAppsListProps {
  * trusted on first use — with a per-row Disable (confirmed) / Enable switch
  * that PATCHes the client's `disabledAt`. Disabling takes the Owner's trust
  * back at once: the app can't sign in or refresh until it's enabled again.
- * The first-party host offers no switch.
+ * An essential client offers no switch.
  *
  * One switch at a time: while a disable/enable is in flight every row's
  * switch, and the dialog's Disable, is held. The confirm dialog closes once

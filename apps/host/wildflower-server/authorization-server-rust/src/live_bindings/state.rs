@@ -14,13 +14,18 @@
 
 use std::sync::Arc;
 
-use tokio::sync::watch;
+use tokio::sync::{watch, Notify};
 
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
+use crate::domain::essential_client_guard::EssentialClientGuard;
+use crate::domain::host_owner_token_remint::HostOwnerTokenRemintingRevocation;
 use crate::domain::pending_consent::PendingConsentHead;
+use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
+use crate::domain::sign_in_redirect::SignInDestinations;
+use crate::ports::Revocation;
 
 /// Shared state threaded through every authorization server handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
@@ -58,15 +63,15 @@ pub struct AuthorizationServerState {
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
     /// accepts. An `Arc<str>` so each capability built from the state shares it.
     pub(crate) server_origin: Arc<str>,
-    /// The host's first-party `client_id`, pinned from
+    /// The Wildflower host app's `client_id`, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at
     /// [`crate::setup_authorization_server`] — the same id [`crate::seeding`] seeds the
-    /// first-party client row under (both sourced from `tauri-shared-config.json`
+    /// host app's client row under (both sourced from `tauri-shared-config.json`
     /// on the live app). `/token` matches a request's presented `client_id`
-    /// against it to grant first-party treatment. An `Arc<str>` so the string is
+    /// against it to hold it to its fixed registration. An `Arc<str>` so the string is
     /// shared rather than reallocated when the state is cloned before the `Arc`
     /// wrap.
-    pub(crate) first_party_client_id: Arc<str>,
+    pub(crate) wildflower_host_app_client_id: Arc<str>,
     /// The hosted launcher [`page_paths`](crate::domain::page_paths) resolves the
     /// browser-facing pages on, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
@@ -88,4 +93,45 @@ pub struct AuthorizationServerState {
     /// — the approving authority when the Owner answers the loopback dialog,
     /// the same scopes the host owner token carries.
     pub(crate) host_owner_grant: wildflowerhealthio_scopes::Grant,
+    /// The outstanding same-device sign-in codes: minted in-process by the
+    /// [`SameDeviceSignInCodeMinter`](crate::SameDeviceSignInCodeMinter)
+    /// [`crate::setup_authorization_server`] hands the host, redeemed at
+    /// `/oauth/sign-in`.
+    pub(crate) same_device_sign_in_codes: Arc<SameDeviceSignInCodes>,
+    /// Where `/oauth/sign-in` may send a browser next: this server's paths,
+    /// the hosted launcher and the Wildflower Authorization app, built at
+    /// [`crate::setup_authorization_server`] from the server's origin,
+    /// [`launcher_base`](Self::launcher_base) and
+    /// [`AuthorizationServerConfig::authorization_app_base`](crate::AuthorizationServerConfig::authorization_app_base).
+    pub(crate) sign_in_destinations: Arc<SignInDestinations>,
+    /// Asks the host owner token's re-minter, spawned by
+    /// [`crate::setup_authorization_server`], to mint and publish a fresh
+    /// token now: [`revocation`](Self::revocation) notifies it once the host
+    /// app's own subject is revoked.
+    pub(crate) host_owner_token_remints: Arc<Notify>,
+}
+
+impl AuthorizationServerState {
+    /// The guard on the essential clients: the host app's,
+    /// [`wildflower_host_app_client_id`](Self::wildflower_host_app_client_id),
+    /// and the Owner-browser client, [`crate::OWNER_BROWSER_CLIENT_ID`].
+    pub(crate) fn essential_client_guard(&self) -> EssentialClientGuard {
+        EssentialClientGuard::new(
+            self.wildflower_host_app_client_id.clone(),
+            crate::OWNER_BROWSER_CLIENT_ID.into(),
+        )
+    }
+
+    /// The [`Revocation`] port the capabilities revoke through: the shared
+    /// [`revocation_store`](Self::revocation_store), asking for a fresh host
+    /// owner token through
+    /// [`host_owner_token_remints`](Self::host_owner_token_remints) whenever it
+    /// revokes the host app's subject.
+    pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {
+        Arc::new(HostOwnerTokenRemintingRevocation::new(
+            Arc::new(self.revocation_store.clone()),
+            self.wildflower_host_app_client_id.clone(),
+            self.host_owner_token_remints.clone(),
+        ))
+    }
 }

@@ -76,9 +76,13 @@ const ClientNotFoundSchema = Schema.Struct({
   clientId: Schema.String,
 })
 
-/** `409` from `UpdateClient` when it would disable the first-party host. */
-const FirstPartyClientLockedSchema = Schema.Struct({
-  error: Schema.Literal('FirstPartyClientLocked'),
+/**
+ * `UpdateClient`'s `409` for disabling an essential client — the Wildflower
+ * host app's or the Owner-browser client — which would leave the Owner no way
+ * in.
+ */
+const EssentialClientSchema = Schema.Struct({
+  error: Schema.Literal('EssentialClient'),
   clientId: Schema.String,
 })
 
@@ -130,7 +134,7 @@ const SessionSchema = Schema.Struct({
  *   consent UI again instead of auto-approving.
  * - `ListClients` / `UpdateClient`: see every client the Owner trusts and take
  *   that trust back (or restore it) by setting its `disabledAt`. Idempotent;
- *   disabling the first-party host client is a `409`.
+ *   disabling an essential client is a `409`.
  * - `CreateRevocation`: revoke issued tokens now — a subject's whole cohort,
  *   or one token by `jti`.
  * - `GetSession`: the caller reading back *their own* token's scopes. The
@@ -159,7 +163,7 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
       .setPayload(UpdateClientSchema)
       .addSuccess(Client.Schema)
       .addError(ClientNotFoundSchema, { status: 404 })
-      .addError(FirstPartyClientLockedSchema, { status: 409 })
+      .addError(EssentialClientSchema, { status: 409 })
   )
   .add(
     HttpApiEndpoint.post('CreateRevocation', '/revocations')
@@ -179,7 +183,7 @@ export {
   httpApiGroup,
   ClientNotFoundSchema,
   ClientsSchema,
-  FirstPartyClientLockedSchema,
+  EssentialClientSchema,
   GrantSchema,
   GrantsSchema,
   GrantNotFoundSchema,

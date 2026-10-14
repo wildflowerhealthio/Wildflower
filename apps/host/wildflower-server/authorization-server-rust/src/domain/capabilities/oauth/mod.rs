@@ -15,6 +15,8 @@
 //!  - in-process: [`LaunchContexts`] mints the SMART App Launch contexts an app
 //!    launch hands out (for the host and the apps slice) and consumes them for
 //!    [`CodeAuthorizationStarter`];
+//!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device sign-in code the
+//!    base minted for an Owner browser's session token, on its way to an allowed `next`;
 //!  - host-answered: [`LoopbackOwnerApprover`] puts a direct-loopback login by
 //!    the hosted launcher to the host's native dialog and applies the Owner's
 //!    answer, with the host Owner's grant as the approving authority.
@@ -27,6 +29,7 @@ mod device_authorizer;
 mod launch_contexts;
 mod loopback_owner_approver;
 mod public_keys_reader;
+mod same_device_sign_in;
 mod token_exchanger;
 
 pub(crate) use authorization_status_reader::{
@@ -42,4 +45,8 @@ pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use launch_contexts::LaunchContexts;
 pub(crate) use loopback_owner_approver::{asks_loopback_dialog, LoopbackOwnerApprover};
 pub(crate) use public_keys_reader::PublicKeysReader;
+pub(crate) use same_device_sign_in::{
+    OwnerBrowserSession, SameDeviceSignIn, SameDeviceSignInError, SignInRefusal,
+    OWNER_BROWSER_SESSION_TTL,
+};
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

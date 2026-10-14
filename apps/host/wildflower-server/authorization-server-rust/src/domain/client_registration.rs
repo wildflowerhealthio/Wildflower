@@ -2,7 +2,7 @@
 //! compares against the [`clients`](crate::domain::client::Client) row it names,
 //! right now.
 //!
-//! Every client but the first-party host is trusted on first use: an unknown
+//! Every client but the host app's is trusted on first use: an unknown
 //! `client_id`, an unregistered `redirect_uri`, or a scope outside
 //! `allowed_scopes` is carried to the Owner's consent prompt as a warning rather
 //! than rejected at `/authorize`. [`classify_registration`] is the one place that
@@ -172,7 +172,7 @@ mod tests {
 
     /// Coverage, not string equality: a broad registered scope admits the
     /// narrower same-grammar request it covers, exactly as `/authorize`'s
-    /// allowlist check does for the first-party client.
+    /// allowlist check does for the host app's client.
     #[test]
     fn a_scope_covered_by_a_broader_registered_scope_is_registered() {
         let client = client("app", &["patient/Observation.rs"]);

@@ -1,5 +1,5 @@
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
-import { FIRST_PARTY_CLIENT_ID } from '@wildflowerhealthio/authorization-core/contexts'
+import { WILDFLOWER_HOST_APP_CLIENT_ID } from '@wildflowerhealthio/authorization-core/contexts'
 import { OAuth } from '@wildflowerhealthio/authorization-core/http-api-definition'
 import { AuthorizationServerPaths } from '@wildflowerhealthio/authorization-core/page-paths'
 /* oxlint-disable react/only-export-components ---
@@ -23,9 +23,9 @@ import { useTokenResponseHandler } from '../client/token-response-handler.ts'
 import { parseDeviceLoginSearch, parseRequestScopes } from '../device-login-route.ts'
 import {
   useAuthorizationExternalRoot,
-  useAuthorizationFirstPartyClientId,
   useAuthorizationLocalGrantedScopes,
   useAuthorizationRuntimeLayer,
+  useWildflowerHostAppClientId,
   type RuntimeLayer,
 } from '../router-context.ts'
 import deviceCodeStyles from '../styles/device-code.module.css'
@@ -46,7 +46,7 @@ type DeviceFlowState =
 
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 
-/** The first-party client's allowed scopes when the host context carries none (standalone/web). */
+/** The host app's client's allowed scopes when the host context carries none (standalone/web). */
 const DEFAULT_ALLOWED_SCOPES = 'system/*.cruds wildflower/*.cruds wildflower/launch'
 
 /**
@@ -234,18 +234,18 @@ const NeedsAuthMessage = (): JSX.Element => {
   // (`HttpClient | AuthorizationServerHttpApiClient`), provided once by the app —
   // not a one-shot query.
   const layer = useAuthorizationRuntimeLayer()
-  // The first-party client's full `allowed_scopes` set, threaded from the Tauri
+  // The host app's client's full `allowed_scopes` set, threaded from the Tauri
   // shell's `tauri-shared-config.json` (the single source the authorization server also reads
   // to seed those `allowed_scopes`), so the two can't drift. It is the picker's
   // *expansion envelope* here: the user can request anything within it, so the
   // built request always passes the device_authorization coverage check. The
   // literal fallback covers standalone/web renders where the host carries none.
   const localGrantedScopes = useAuthorizationLocalGrantedScopes()
-  // The host's first-party `client_id`, threaded from `tauri-shared-config.json`
-  // on Tauri; `FIRST_PARTY_CLIENT_ID` is the standalone/web fallback (the two
+  // The host app's `client_id`, threaded from `tauri-shared-config.json`
+  // on Tauri; `WILDFLOWER_HOST_APP_CLIENT_ID` is the standalone/web fallback (the two
   // can't drift — the config is the shared source). Used as the device-login
   // request's `client_id` below.
-  const firstPartyClientId = useAuthorizationFirstPartyClientId() ?? FIRST_PARTY_CLIENT_ID
+  const wildflowerHostAppClientId = useWildflowerHostAppClientId() ?? WILDFLOWER_HOST_APP_CLIENT_ID
   // This launcher as another device reaches it. The pairing link points at its
   // device-entry page rather than the one on the server's configured launcher,
   // so a pairing started on a PR preview or a dev server is approved there too.
@@ -346,7 +346,7 @@ const NeedsAuthMessage = (): JSX.Element => {
 
       const auth = yield* client.oauth.DeviceAuthorization({
         payload: {
-          client_id: firstPartyClientId,
+          client_id: wildflowerHostAppClientId,
           // Omit an empty scope entirely — the owner then grants from scratch (device consent
           // is expandable), rather than the server parsing a blank scope string.
           ...(scopes === '' ? {} : { scope: scopes }),
@@ -377,7 +377,7 @@ const NeedsAuthMessage = (): JSX.Element => {
         .TokenExchange({
           payload: {
             grant_type: DEVICE_GRANT_TYPE,
-            client_id: firstPartyClientId,
+            client_id: wildflowerHostAppClientId,
             device_code: auth.device_code,
           },
         })

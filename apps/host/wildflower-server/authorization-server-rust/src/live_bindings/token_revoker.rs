@@ -26,6 +26,6 @@ impl FixedScopeCapability for LiveTokenRevoker {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        TokenRevoker::new(Arc::new(state.revocation_store.clone()))
+        TokenRevoker::new(state.revocation())
     }
 }

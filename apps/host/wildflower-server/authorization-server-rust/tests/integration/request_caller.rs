@@ -98,7 +98,8 @@ async fn the_session_gate_stamps_the_token_s_client() {
     assert_eq!(
         stamped_caller(&response),
         Some(RequestCaller {
-            client_id: wildflowerhealthio_authorization_server::default_first_party_client_id()
+            client_id:
+                wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id()
         })
     );
 }

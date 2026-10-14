@@ -11,7 +11,7 @@ import { TrustedAppsList, TrustedAppsSection } from './TrustedAppsSection.tsx'
 /**
  * The "Trusted Apps" section on the Access index: one row per registered
  * client, with Disable (behind a confirm dialog) while trusted, Enable while
- * disabled, and no switch at all on the first-party host. The transport is
+ * disabled, and no switch at all on an essential client. The transport is
  * stubbed at `runAuthed` (read through the mocked router context), so a
  * confirmed switch is observable as a resolved call plus the list invalidation.
  */
@@ -96,7 +96,7 @@ describe('TrustedAppsList', () => {
     expect(screen.queryByText('Trusted Apps')).toBeNull()
   })
 
-  it('should offer no actions for the first-party host', () => {
+  it('should offer no actions for an essential client', () => {
     // Arrange / Act
     renderList([host])
 
@@ -240,14 +240,14 @@ const clientBody = {
   allowedGrantTypes: ['authorization_code', 'refresh_token'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
-  firstParty: false,
+  essential: false,
 }
 
 const host = decodeClient({
   ...clientBody,
   clientId: 'wildflower-host',
   name: 'Wildflower',
-  firstParty: true,
+  essential: true,
 })
 const ohifViewer = decodeClient({ ...clientBody, clientId: 'ohif-viewer', name: 'OHIF Viewer' })
 const disabledImporter = decodeClient({

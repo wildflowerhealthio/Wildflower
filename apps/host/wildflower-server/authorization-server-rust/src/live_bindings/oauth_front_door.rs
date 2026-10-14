@@ -1,8 +1,9 @@
 //! The pre-auth `/oauth` front-door bindings — the public and client-gated
 //! capabilities over the concrete `SqliteGrantStore`. None is scope-gated
-//! (a browser arriving at `/authorize` holds no token; a device request is
-//! gated by its `AuthenticatedClient` proof), so none has a `Capability` impl;
-//! the handlers acquire them through `Live<…>` via [`FromState`].
+//! (a browser arriving at `/authorize` or `/sign-in` holds no token; a device
+//! request is gated by its `AuthenticatedClient` proof, a sign-in by its
+//! code), so none has a `Capability` impl; the handlers acquire them through
+//! `Live<…>` via [`FromState`].
 
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use super::FromState;
 use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::oauth::{
     AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, LoopbackOwnerApprover,
-    PublicKeysReader,
+    PublicKeysReader, SameDeviceSignIn,
 };
 use crate::ports::OwnerApproval;
 
@@ -24,7 +25,7 @@ impl FromState for LiveCodeAuthorizationStarter {
         CodeAuthorizationStarter::new(
             state.store.clone(),
             owner_approval,
-            state.first_party_client_id.clone(),
+            state.wildflower_host_app_client_id.clone(),
             state.server_origin.clone(),
         )
     }
@@ -42,7 +43,23 @@ impl FromState for LiveLoopbackOwnerApprover {
             owner_approval,
             state.loopback_consent_prompt.clone(),
             state.host_owner_grant.clone(),
-            state.first_party_client_id.clone(),
+            state.wildflower_host_app_client_id.clone(),
+        )
+    }
+}
+
+/// Sign a browser in as the Owner with a code the base minted — built by the
+/// `/oauth/sign-in` handler.
+pub(crate) type LiveSameDeviceSignIn = SameDeviceSignIn<SqliteGrantStore>;
+
+impl FromState for LiveSameDeviceSignIn {
+    fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
+        SameDeviceSignIn::new(
+            state.store.clone(),
+            state.same_device_sign_in_codes.clone(),
+            state.sign_in_destinations.clone(),
+            state.server_origin.clone(),
+            state.host_owner_grant.clone(),
         )
     }
 }

@@ -47,7 +47,13 @@ pub(crate) mod client_registration;
 // The domain's failure vocabulary (shaped like apps' `AppsError`):
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod authorization_server_error;
+// The clients the Owner can't lose without being stuck, which can't be
+// disabled.
+pub(crate) mod essential_client_guard;
 pub mod grant;
+// The `Revocation` port that asks for a fresh host owner token once the host
+// app's own subject is revoked.
+pub(crate) mod host_owner_token_remint;
 // The SMART App Launch contexts a launch mints and `/oauth/authorize` consumes.
 pub mod launch_context;
 // The closed set of OAuth error codes (RFC 6749 §5.2 + the redirect/device
@@ -57,6 +63,10 @@ pub mod oauth_error_code;
 // The `/oauth/authorize` failures rendered as a local page rather than a
 // redirect; the HTML lives in `http::errors`.
 pub mod oauth_error_kind;
+// The one-time codes the base signs a browser in as the Owner with, kept in
+// memory as hashes, and where a sign-in may send the browser next.
+pub(crate) mod same_device_sign_in_codes;
+pub(crate) mod sign_in_redirect;
 // URL/path builders for the authorization server's user-facing `/authorization/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
 // drift-tested against `authorization-core/src/page-paths.ts`.

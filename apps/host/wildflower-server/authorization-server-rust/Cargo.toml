@@ -76,7 +76,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 tracing = "0.1"
 url = { version = "2", features = ["serde"] }
 thiserror = "2"
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "macros"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`),
 # so a future `unsafe` block in the crypto/OAuth code is a compile error.

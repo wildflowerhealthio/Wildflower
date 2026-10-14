@@ -9,6 +9,7 @@ use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AuthorizationServerConfig, HostConsentDecider, LaunchContextMinter,
     NoLoopbackConsentPrompt, PendingConsentHead, SqliteGrantStore,
 };
+use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// The domain of the server the authorization server is for.
@@ -59,10 +60,14 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
             server_origin: Url::parse(&format!("https://{DOMAIN}")).unwrap(),
             host_owner_scopes:
                 wildflowerhealthio_authorization_server::default_local_granted_scopes(),
-            first_party_client_id:
-                wildflowerhealthio_authorization_server::default_first_party_client_id(),
+            wildflower_host_app_client_id:
+                wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
             fhir_ui_client_id: "fhir-ui-client".to_string(),
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/").unwrap(),
+            authorization_app_base: AuthorizationAppBase::parse(
+                "https://authorization.test/authorization/",
+            )
+            .unwrap(),
         },
         &owner_token_tx,
         pending_consent_tx,

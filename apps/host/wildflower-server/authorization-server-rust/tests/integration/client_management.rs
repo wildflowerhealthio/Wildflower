@@ -1,4 +1,4 @@
-use chrono::{DateTime, SecondsFormat};
+use chrono::DateTime;
 
 use crate::common::*;
 
@@ -7,7 +7,7 @@ use crate::common::*;
 // The other half of trust on first use: the Owner can see every client they
 // trust (migration-seeded or TOFU-created) and take that trust back by PATCHing
 // its `disabledAt`. A disabled client is refused at both OAuth front doors at
-// once; re-enabling (`null`) restores it with its registration intact. The first-party host client can't be disabled.
+// once; re-enabling (`null`) restores it with its registration intact. An essential client can't be disabled.
 
 /// `GET /authorization/clients` as `token`.
 async fn list_clients(g: &AuthorizationServer, token: &str) -> axum::response::Response {
@@ -36,58 +36,6 @@ async fn listed_clients(g: &AuthorizationServer, token: &str) -> Vec<Value> {
 
 fn find_client<'a>(clients: &'a [Value], client_id: &str) -> Option<&'a Value> {
     clients.iter().find(|c| c["clientId"] == client_id)
-}
-
-/// `PATCH /authorization/clients/{client_id}` with the raw JSON `body`, as `token`.
-async fn patch_client(
-    g: &AuthorizationServer,
-    token: &str,
-    client_id: &str,
-    body: &Value,
-) -> axum::response::Response {
-    g.router
-        .clone()
-        .oneshot(loopback_request(
-            Request::patch(format!("/authorization/clients/{client_id}"))
-                .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {token}"))
-                .header("content-type", "application/json"),
-            Body::from(body.to_string()),
-        ))
-        .await
-        .expect("oneshot")
-}
-
-/// Disable `client_id` as of `at`, sent as the UTC string the launcher sends.
-async fn disable_client(
-    g: &AuthorizationServer,
-    token: &str,
-    client_id: &str,
-    at: DateTime<Utc>,
-) -> axum::response::Response {
-    let disabled_at = at.to_rfc3339_opts(SecondsFormat::Millis, true);
-    patch_client(
-        g,
-        token,
-        client_id,
-        &serde_json::json!({ "disabledAt": disabled_at }),
-    )
-    .await
-}
-
-/// Re-enable `client_id` (`disabledAt: null`).
-async fn enable_client(
-    g: &AuthorizationServer,
-    token: &str,
-    client_id: &str,
-) -> axum::response::Response {
-    patch_client(
-        g,
-        token,
-        client_id,
-        &serde_json::json!({ "disabledAt": null }),
-    )
-    .await
 }
 
 /// The stored `disabled_at` of `client_id`.
@@ -139,7 +87,10 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
 
     // Seeded by boot (the host) and by migration (a SMART app).
     let host = find_client(&clients, "wildflower-host").expect("the host client is listed");
-    assert_eq!(host["firstParty"], true);
+    assert_eq!(host["essential"], true);
+    let owner_browser = find_client(&clients, "wildflower-owner-browser")
+        .expect("the Owner-browser client is listed");
+    assert_eq!(owner_browser["essential"], true);
     assert!(find_client(&clients, "941de68e6b59eb9dcc32df8ede89e636").is_some());
 
     // Created by the TOFU approval, exactly as it was registered.
@@ -159,7 +110,7 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
             ],
             "registeredAt": tofu["registeredAt"],
             "disabledAt": null,
-            "firstParty": false,
+            "essential": false,
         }),
     );
     assert!(tofu["registeredAt"].is_string());
@@ -344,24 +295,26 @@ async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
 }
 
 #[tokio::test]
-async fn the_first_party_host_client_cannot_be_disabled() {
+async fn an_essential_client_cannot_be_disabled() {
     let (g, host_owner_token, db) = spin_up();
 
-    let res = disable_client(&g, &host_owner_token, "wildflower-host", Utc::now()).await;
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    assert_eq!(
-        body_json(res.into_body()).await,
-        serde_json::json!({ "error": "FirstPartyClientLocked", "clientId": "wildflower-host" }),
-    );
-    assert_eq!(stored_disabled_at(&db, "wildflower-host"), None);
-    // The Owner's session still works, and enabling the host stays allowed.
-    assert_eq!(
-        list_clients(&g, &host_owner_token).await.status(),
-        StatusCode::OK
-    );
-    let res = enable_client(&g, &host_owner_token, "wildflower-host").await;
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res.into_body()).await["firstParty"], true);
+    for essential_client_id in ["wildflower-host", "wildflower-owner-browser"] {
+        let res = disable_client(&g, &host_owner_token, essential_client_id, Utc::now()).await;
+        assert_eq!(res.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            body_json(res.into_body()).await,
+            serde_json::json!({ "error": "EssentialClient", "clientId": essential_client_id }),
+        );
+        assert_eq!(stored_disabled_at(&db, essential_client_id), None);
+        // The Owner's session still works, and enabling the client stays allowed.
+        assert_eq!(
+            list_clients(&g, &host_owner_token).await.status(),
+            StatusCode::OK
+        );
+        let res = enable_client(&g, &host_owner_token, essential_client_id).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(body_json(res.into_body()).await["essential"], true);
+    }
 }
 
 #[tokio::test]

@@ -14,7 +14,7 @@ use crate::domain::capabilities::access::clients::clients_disabler_scopes;
 use crate::domain::capabilities::{ClientsDisabler, FixedScopeCapability};
 use crate::domain::token::VerifiedClaims;
 
-/// Disable or re-enable a registered client (never the first-party host).
+/// Disable or re-enable a registered client (never disable an essential one).
 pub(crate) type LiveClientsDisabler = ClientsDisabler<SqliteGrantStore>;
 
 impl FixedScopeCapability for LiveClientsDisabler {
@@ -27,6 +27,6 @@ impl FixedScopeCapability for LiveClientsDisabler {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        ClientsDisabler::new(state.store.clone(), state.first_party_client_id.clone())
+        ClientsDisabler::new(state.store.clone(), state.essential_client_guard())
     }
 }

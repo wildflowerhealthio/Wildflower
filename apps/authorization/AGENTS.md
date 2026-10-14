@@ -42,10 +42,11 @@ that.
   `src/config.ts` and the seeded row's `allowed_scopes` must match, element
   for element: `authorization-server-rust`'s `db/clients.rs` reads the file and
   fails otherwise.
-- **The first-party host client is locked.** The Trusted Apps section offers
-  it no switch (the server answers `409 FirstPartyClientLocked`), and the
-  Approved Apps list offers no Revoke on its grants, nor on any grant until the
-  trusted apps have loaded.
+- **Essential clients can't be disabled.** The Trusted Apps section offers
+  the host app's client and the Owner-browser client no switch (the server
+  answers `409 EssentialClient`).
+- **No Revoke on this app's own grant.** The Approved Apps list offers none
+  there, since it would revoke the page's bearer.
 - **Revoking a grant is two calls**: `DELETE /authorization/grants/:id`, then
   `POST /authorization/revocations` for the grant's client
   (`authorization-react`'s `useRevokeGrantMutation`).

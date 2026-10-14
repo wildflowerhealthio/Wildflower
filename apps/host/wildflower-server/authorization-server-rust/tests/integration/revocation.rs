@@ -294,3 +294,95 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
         "revoking a device grant must bump the client's revocation epoch"
     );
 }
+
+/// The next host owner token the slice publishes on `rx`, within a few seconds
+/// (the re-mint waits out the revocation's second).
+async fn next_host_owner_token(rx: &mut watch::Receiver<Option<String>>) -> String {
+    tokio::time::timeout(std::time::Duration::from_secs(5), rx.changed())
+        .await
+        .expect("a host owner token is published")
+        .expect("the channel is open");
+    rx.borrow().clone().expect("a token, not None")
+}
+
+/// The status `token` gets from the `/authorization` bearer gate.
+async fn gate_status(g: &AuthorizationServer, token: &str) -> StatusCode {
+    g.router
+        .clone()
+        .oneshot(owner_grants_probe(token))
+        .await
+        .expect("oneshot")
+        .status()
+}
+
+/// Revoking the Wildflower host app's subject revokes the token it holds, and
+/// the slice publishes a fresh host owner token that the gate accepts — even
+/// though the revocation's epoch is the whole second after it.
+#[tokio::test]
+async fn revoking_the_host_app_s_subject_publishes_a_fresh_host_owner_token() {
+    let (g, host_owner_token, db) = spin_up();
+    let mut published = host_owner_token_watch(&db);
+    let res = g
+        .router
+        .clone()
+        .oneshot(owner_revocation_request(
+            &host_owner_token,
+            serde_json::json!({ "subject": "wildflower-host" }),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        gate_status(&g, &host_owner_token).await,
+        StatusCode::UNAUTHORIZED,
+        "the token the host app held is revoked"
+    );
+
+    let fresh_token = next_host_owner_token(&mut published).await;
+    assert_eq!(gate_status(&g, &fresh_token).await, StatusCode::OK);
+}
+
+/// Revoking a grant of the Wildflower host app's client deletes it and bumps
+/// the host app's epoch like any other client's, and the slice publishes a
+/// fresh host owner token that the gate accepts.
+#[tokio::test]
+async fn revoking_a_grant_of_the_host_app_s_client_publishes_a_fresh_host_owner_token() {
+    let (g, host_owner_token, db) = spin_up();
+    let mut published = host_owner_token_watch(&db);
+    store_handle(&db)
+        .create_device_grant(
+            &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
+                id: "owner-grant".to_string(),
+                client_id: "wildflower-host".to_string(),
+                scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+                granted_at: Utc::now(),
+                last_used_at: None,
+                patient: None,
+                device_name: "The Owner's laptop".to_string(),
+            },
+        )
+        .expect("create the Owner's grant");
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::delete("/authorization/grants/owner-grant")
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert!(store_handle(&db)
+        .grant_by_id("owner-grant")
+        .expect("query")
+        .is_none());
+    assert_eq!(
+        gate_status(&g, &host_owner_token).await,
+        StatusCode::UNAUTHORIZED
+    );
+
+    let fresh_token = next_host_owner_token(&mut published).await;
+    assert_eq!(gate_status(&g, &fresh_token).await, StatusCode::OK);
+}

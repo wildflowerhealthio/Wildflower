@@ -18,6 +18,7 @@ use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, require_loopback_peer_middleware,
     setup_authorization_server, AuthorizationServerConfig, HostConsentDecider,
+    SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -33,10 +34,8 @@ use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSen
 use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
+use crate::http::middleware::session_cookie_bearer::present_session_cookie_bearers;
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
-use crate::http::middleware::ui_session_bearer::{
-    present_ui_session_bearer, UiSessionBearerConfig,
-};
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::http::{not_found, root_fallback};
@@ -87,6 +86,9 @@ pub struct WildflowerServer {
     /// Mints the SMART App Launch `launch` values this server's
     /// `/oauth/authorize` consumes.
     launch_context_minter: wildflowerhealthio_authorization_server::LaunchContextMinter,
+    /// Mints the one-time codes this server's `/oauth/sign-in` signs a
+    /// browser in as the Owner with.
+    same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
@@ -107,6 +109,16 @@ impl WildflowerServer {
         &self,
     ) -> wildflowerhealthio_authorization_server::LaunchContextMinter {
         self.launch_context_minter.clone()
+    }
+
+    /// A handle that mints a one-time same-device sign-in code, for the host to
+    /// open `https://<domain>/oauth/sign-in?code=…&next=…` in a browser and so
+    /// sign that browser in as the Owner. Clone it before
+    /// [`serve`](Self::serve); a code is kept in memory only, so it works for
+    /// as long as this run serves.
+    #[must_use]
+    pub fn same_device_sign_in_code_minter(&self) -> SameDeviceSignInCodeMinter {
+        self.same_device_sign_in_code_minter.clone()
     }
 
     /// How the host reads, approves and denies the server's pending consents
@@ -145,9 +157,8 @@ impl WildflowerServer {
             reachability_monitor,
             device_certificate,
             bulk_export_worker,
-            // The launch context minter, the host's consent decider, and the
-            // `test-support` feature's
-            // `tunnel_stream_tx`.
+            // The launch context and sign-in code minters, the host's consent
+            // decider, and the `test-support` feature's `tunnel_stream_tx`.
             ..
         } = self;
         let loopback = axum::serve(
@@ -207,7 +218,7 @@ pub async fn set_up(
         launcher_base,
         authorization_app_base,
         host_owner_scopes,
-        first_party_client_id,
+        wildflower_host_app_client_id,
         relay_settings,
         domain,
         device_certificate,
@@ -252,15 +263,16 @@ pub async fn set_up(
         jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
         search_parameter_data_dir,
         public_origin: public_origin.clone(),
-        authorization_app_base,
+        authorization_app_base: authorization_app_base.clone(),
     };
     let authorization_server_config = AuthorizationServerConfig {
         loopback_base_url: loopback_base_url.clone(),
         server_origin: public_origin.clone(),
         host_owner_scopes,
-        first_party_client_id,
+        wildflower_host_app_client_id,
         fhir_ui_client_id: FHIR_UI_CLIENT_ID.to_string(),
         launcher_base: launcher_base.clone(),
+        authorization_app_base,
     };
 
     // One shared SQLite database for all persistence-rust-backed slices; each
@@ -290,7 +302,7 @@ pub async fn set_up(
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
 
     // The FHIR web UI's signed-in sessions, shared by HFS (its login and
-    // REST auth) and the middleware in front of the bearer gate.
+    // REST auth) and the cookie→bearer layer in front of the gates.
     let ui_sessions = Arc::new(SessionStore::new(ui_login_config(
         &public_origin,
         &loopback_base_url,
@@ -365,21 +377,6 @@ pub async fn set_up(
         ),
     )
     .context("failed to set up FHIR R4 router")?;
-
-    // A signed-in browser's FHIR calls carry only the UI's session cookie, so
-    // the session's bearer is presented for them ahead of the gate; a write
-    // carrying the cookie from another origin is refused, before the UI's
-    // routes too (`ui_session_bearer`).
-    let gated_fhir_r4 =
-        fhir_routers
-            .augmented_fhir_r4_router
-            .layer(axum::middleware::from_fn_with_state(
-                Arc::new(UiSessionBearerConfig {
-                    ui_sessions,
-                    loopback_base_url: loopback_base_url.clone(),
-                }),
-                present_ui_session_bearer,
-            ));
 
     let authorization_server_auth_layer =
         authorization_server_auth_middleware(authorization_server.state.clone(), &[]);
@@ -543,12 +540,27 @@ pub async fn set_up(
         // else `404`, pointing a browser at the hosted launcher (the server
         // serves no UI of its own). See `root_fallback.rs` and `not_found.rs`.
         .fallback_service(root_fallback::fallback(
-            gated_fhir_r4,
+            fhir_routers.augmented_fhir_r4_router,
             Arc::new(not_found::NotFoundConfig {
                 launcher_base,
                 loopback_base_url: loopback_base_url.clone(),
             }),
         ));
+
+    // A browser on the server's own pages carries a session cookie and no
+    // `Authorization`: an Owner browser's, which `/oauth/sign-in` set, or the
+    // FHIR web UI's. A live session's bearer is presented ahead of every gate,
+    // the UI's winning when both are sent; an ended Owner browser session is
+    // skipped and its cookie cleared; and a write carrying either cookie from
+    // another origin is refused, before the UI's routes too
+    // (`session_cookie_bearer`). The token's scopes decide what it reaches, so
+    // no route is singled out.
+    let inner_router = present_session_cookie_bearers(
+        inner_router,
+        authorization_server.state.clone(),
+        ui_sessions,
+        &loopback_base_url,
+    );
 
     // Every forwarded request is reported to the request log once its response
     // is ready, and to the host unless it is a `/health` check (the
@@ -630,6 +642,7 @@ pub async fn set_up(
         tunnel_daemon,
         reachability_monitor,
         launch_context_minter: authorization_server.launch_context_minter,
+        same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
         device_certificate,
         consent_decider_for_host,
         bulk_export_worker: fhir_routers.bulk_export_worker,

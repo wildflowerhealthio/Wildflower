@@ -11,7 +11,7 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<AuthorizationServerHttpApiClien
 /**
  * Slice-local router-context — `BaseRouterContext.RouterContextWith`
  * narrowed to this slice's client, plus the host-threaded
- * `localGrantedScopes`, `firstPartyClientId` and `externalLinkRoot`. `awaitAuthReady` is inherited
+ * `localGrantedScopes`, `wildflowerHostAppClientId` and `externalLinkRoot`. `awaitAuthReady` is inherited
  * only to keep this structural context a faithful subset of the host app's
  * `RouterContext`; the authorization server loaders don't read it — the gate guarantees the
  * token before the loader runs.
@@ -21,20 +21,20 @@ type RouterContext = BaseRouterContext.RouterContextWith<AuthorizationServerHttp
    * The host's granted-scope string (e.g. `system/*.cruds wildflower/*.cruds`),
    * threaded from the Tauri shell's `tauri-shared-config.json` so the WebView's
    * device-login request asks for exactly the scopes authorization-server-rust seeds for
-   * the first-party client. Omitted on web/standalone builds, where
+   * the host app's client. Omitted on web/standalone builds, where
    * {@link useAuthorizationLocalGrantedScopes} returns `undefined` and the caller
    * falls back to the canonical default.
    */
   readonly localGrantedScopes?: string
   /**
-   * The host's first-party OAuth `client_id` (e.g. `wildflower-host`), threaded
+   * The Wildflower host app's OAuth `client_id` (e.g. `wildflower-host`), threaded
    * from the Tauri shell's `tauri-shared-config.json` so the WebView's
-   * device-login `client_id` matches the id authorization-server-rust seeds the first-party
-   * client under. Omitted on web/standalone builds, where
-   * {@link useAuthorizationFirstPartyClientId} returns `undefined` and the caller
-   * falls back to authorization-core's `FIRST_PARTY_CLIENT_ID`.
+   * device-login `client_id` matches the id authorization-server-rust seeds the host
+   * app's client under. Omitted on web/standalone builds, where
+   * {@link useWildflowerHostAppClientId} returns `undefined` and the caller
+   * falls back to authorization-core's `WILDFLOWER_HOST_APP_CLIENT_ID`.
    */
-  readonly firstPartyClientId?: string
+  readonly wildflowerHostAppClientId?: string
   /**
    * Where a link meant for another device points: this launcher's address as
    * seen from outside the page, with no trailing slash, to which the router's
@@ -71,7 +71,7 @@ const useAuthorizationRuntimeLayer = (): RuntimeLayer =>
 /**
  * The host's granted-scope string from router context (see
  * {@link RouterContext.localGrantedScopes}). `NeedsAuthMessage` requests exactly
- * this set at device login so it matches the first-party client's seeded
+ * this set at device login so it matches the host app's client's seeded
  * `allowed_scopes`. `undefined` on standalone/web builds where the host context
  * doesn't carry it — the caller falls back to the canonical default.
  */
@@ -82,17 +82,17 @@ const useAuthorizationLocalGrantedScopes = (): string | undefined =>
   })
 
 /**
- * The host's first-party OAuth `client_id` from router context (see
- * {@link RouterContext.firstPartyClientId}). `NeedsAuthMessage` identifies its
+ * The Wildflower host app's OAuth `client_id` from router context (see
+ * {@link RouterContext.wildflowerHostAppClientId}). `NeedsAuthMessage` identifies its
  * device-login request with this so it matches the id the authorization server seeds the
- * first-party client under. `undefined` on standalone/web builds where the host
+ * host app's client under. `undefined` on standalone/web builds where the host
  * context doesn't carry it — the caller falls back to authorization-core's
- * `FIRST_PARTY_CLIENT_ID`.
+ * `WILDFLOWER_HOST_APP_CLIENT_ID`.
  */
-const useAuthorizationFirstPartyClientId = (): string | undefined =>
+const useWildflowerHostAppClientId = (): string | undefined =>
   useRouteContext({
     from: '__root__',
-    select: (context: RouterContext) => context.firstPartyClientId,
+    select: (context: RouterContext) => context.wildflowerHostAppClientId,
   })
 
 /**
@@ -115,8 +115,8 @@ const useAuthorizationExternalRoot = (): string => {
 export {
   sliceRuntimeLayer,
   useAuthorizationExternalRoot,
-  useAuthorizationFirstPartyClientId,
   useAuthorizationLocalGrantedScopes,
   useAuthorizationRuntimeLayer,
+  useWildflowerHostAppClientId,
 }
 export type { RouterContext, RunAuthed, RuntimeLayer }

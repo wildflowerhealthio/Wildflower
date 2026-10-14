@@ -10,8 +10,8 @@ interface TrustedAppRow {
   readonly disabled: boolean
   /**
    * The one switch the row offers: `disable` while trusted, `enable` while
-   * disabled. `null` for the first-party host, which can't be disabled (the
-   * server refuses it with `409 FirstPartyClientLocked`).
+   * disabled. `null` for an essential client, which can't be disabled (the
+   * server refuses it with `409 EssentialClient`).
    */
   readonly action: ClientSwitch | null
 }
@@ -21,8 +21,8 @@ interface TrustedAppRow {
  * which switch to offer.
  */
 const trustedAppRow = (client: Client.Type): TrustedAppRow => ({
-  subtitle: client.firstParty
-    ? `${client.clientId} · Built in`
+  subtitle: client.essential
+    ? `${client.clientId} · Essential`
     : `${client.clientId} · ${statusOf(client)}`,
   disabled: client.disabledAt !== null,
   action: switchFor(client),
@@ -33,9 +33,9 @@ const statusOf = (client: Client.Type): string =>
     ? `Trusted ${formatInstant(client.registeredAt)}`
     : `Disabled ${formatInstant(client.disabledAt)}`
 
-/** The switch that flips the client's current state; none for the host. */
+/** The switch that flips the client's current state; none for an essential client. */
 const switchFor = (client: Client.Type): ClientSwitch | null => {
-  if (client.firstParty) return null
+  if (client.essential) return null
   return client.disabledAt === null ? 'disable' : 'enable'
 }
 

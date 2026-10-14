@@ -30,6 +30,7 @@ use utoipa::ToSchema;
 use wildflowerhealthio_shared_structures::request_caller::RequestRefusal;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::oauth::SignInRefusal;
 use crate::domain::token::VerifyError;
 
 /// Map a token-[`VerifyError`] to its HTTP response, shared by the auth
@@ -112,12 +113,12 @@ pub(crate) struct ClientNotFoundBody {
     pub(crate) client_id: String,
 }
 
-/// Wire shape for `FirstPartyClientLocked` (409) — the named client is the
-/// first-party host, which can't be disabled without locking the Owner out.
+/// Wire shape for `EssentialClient` (409) — the named client is essential:
+/// disabling it would leave the Owner no way in.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct FirstPartyClientLockedBody {
-    /// Always `"FirstPartyClientLocked"`.
+pub(crate) struct EssentialClientBody {
+    /// Always `"EssentialClient"`.
     pub(crate) error: &'static str,
     pub(crate) client_id: String,
 }
@@ -206,10 +207,10 @@ impl IntoResponse for AuthorizationServerError {
                 }),
             )
                 .into_response(),
-            AuthorizationServerError::FirstPartyClientLocked { client_id } => (
+            AuthorizationServerError::EssentialClient { client_id } => (
                 StatusCode::CONFLICT,
-                Json(FirstPartyClientLockedBody {
-                    error: "FirstPartyClientLocked",
+                Json(EssentialClientBody {
+                    error: "EssentialClient",
                     client_id,
                 }),
             )
@@ -300,6 +301,33 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
 
 pub fn oauth_error_html(kind: &OAuthErrorKind) -> String {
     let (title, body) = title_and_body(kind);
+    local_error_page(title, body)
+}
+
+/// The page `/oauth/sign-in` renders for a request it refuses.
+pub(crate) fn sign_in_error_html(refusal: SignInRefusal) -> String {
+    let (title, body) = match refusal {
+        SignInRefusal::RedirectNotAllowed => (
+            "Sign-in destination not allowed",
+            "The sign-in link sends you somewhere this server doesn't send a browser.",
+        ),
+        SignInRefusal::CodeNotRedeemable => (
+            "Sign-in link expired",
+            "The sign-in link is unknown, already used, or expired. Sign in again from \
+             the Wildflower app.",
+        ),
+        SignInRefusal::OwnerBrowserClientDisabled => (
+            "Browser sign-in disabled",
+            "Browsers can't be signed in as the Owner while the Wildflower (Owner browsers) \
+             client is disabled.",
+        ),
+    };
+    local_error_page(title, body)
+}
+
+/// A local HTML error page: `title` as its title and heading, `body` beneath.
+/// Both are fixed strings, never request input.
+fn local_error_page(title: &str, body: &str) -> String {
     format!(
         "<!doctype html>\n\
 <html lang=\"en\">\n\

@@ -1,14 +1,14 @@
-//! First-boot seeding for the grant store: the signing key and the
-//! first-party host client. Safe to call on every boot — the signing key is
-//! inserted only when none exists (never rotated), and the first-party client is
-//! *ensured* (re-applied as an upsert) so its definition always matches the
-//! host's granted scopes, correcting any drift in a store created by an older
-//! build.
+//! First-boot seeding for the grant store: the signing key and the essential
+//! clients (the host app's client and the Owner-browser client). Safe to call
+//! on every boot — the signing key is inserted only when none exists (never
+//! rotated), and the two clients are *ensured* (re-applied as an upsert) so
+//! their definitions always match the host's granted scopes, correcting any
+//! drift in a store created by an older build.
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
 //! `0003_seed_sample_clients` — since they're static definitions a migration
-//! can express. Only the runtime-derived seeds (the first-party client's scopes,
+//! can express. Only the runtime-derived seeds (the essential clients' scopes,
 //! the generated signing key) stay here.
 
 use anyhow::Context;
@@ -30,9 +30,9 @@ use crate::domain::GrantStore as _;
 
 /// Wrap the host-owned connection `pool` in a grant store (applying
 /// migrations, which includes the SQL seed of the SMART sample-app clients)
-/// and run the runtime-derived first-boot seeding steps — the signing key and
-/// the first-party host client, and the FHIR server UI's client. Safe to call
-/// on every boot.
+/// and run the runtime-derived first-boot seeding steps — the signing key, the
+/// essential clients, and the FHIR server UI's client. Safe to call on every
+/// boot.
 ///
 /// # Errors
 ///
@@ -41,14 +41,14 @@ use crate::domain::GrantStore as _;
 pub fn open_and_seed_store(
     pool: DieselPool,
     host_owner_scopes: &[String],
-    first_party_client_id: &str,
+    wildflower_host_app_client_id: &str,
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
 ) -> anyhow::Result<SqliteGrantStore> {
     let store = SqliteGrantStore::new(pool).context("failed to open grant store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
-    ensure_first_party_client(&store, host_owner_scopes, first_party_client_id)
-        .context("failed to seed first-party client")?;
+    ensure_essential_clients(&store, host_owner_scopes, wildflower_host_app_client_id)
+        .context("failed to seed the essential clients")?;
     ensure_fhir_ui_client(&store, fhir_ui_client_id, server_origin)
         .context("failed to seed the FHIR server UI client")?;
     Ok(store)
@@ -58,7 +58,7 @@ pub fn open_and_seed_store(
 /// redirect URI is `{server_origin}/ui/callback`, where `helios-ui` completes
 /// its sign-in, allowed `user/*.cruds` — the UI acts as the signed-in user
 /// across every resource type. Upserted on every boot, like
-/// [`ensure_first_party_client`], so it follows the server's origin.
+/// [`ensure_essential_clients`], so it follows the server's origin.
 fn ensure_fhir_ui_client(
     store: &SqliteGrantStore,
     fhir_ui_client_id: &str,
@@ -102,20 +102,26 @@ fn ensure_some_active_signing_key(store: &SqliteGrantStore) -> anyhow::Result<()
     Ok(())
 }
 
-/// Ensure the first-party host client matches the code's definition. Upserted on
-/// every boot so its `allowed_scopes` (and the rest of its policy) always match
-/// the host's `host_owner_scopes`, and its `client_id` matches
-/// `first_party_client_id` (the live app sources both from
-/// `tauri-shared-config.json`; see [`crate::default_local_granted_scopes`] /
-/// [`crate::default_first_party_client_id`]), correcting a store seeded by an
-/// older build (registration time and any admin disable are preserved).
-fn ensure_first_party_client(
+/// Ensure the essential clients — the host app's client and the Owner-browser
+/// client ([`crate::OWNER_BROWSER_CLIENT_ID`]) — match the code's definitions.
+/// Upserted on every boot so their `allowed_scopes` (and the rest of their
+/// policy) always match the host's `host_owner_scopes`, and the host app's
+/// `client_id` matches `wildflower_host_app_client_id` (the live app sources
+/// both from `tauri-shared-config.json`; see
+/// [`crate::default_local_granted_scopes`] /
+/// [`crate::default_wildflower_host_app_client_id`]), correcting a store seeded
+/// by an older build (registration time and any admin disable are preserved).
+///
+/// Both are public with no redirect URIs. The host app's client is allowed
+/// every grant type; the Owner-browser client none, since its tokens are
+/// minted only at `/oauth/sign-in`, so no OAuth flow can be run as it.
+fn ensure_essential_clients(
     store: &SqliteGrantStore,
     host_owner_scopes: &[String],
-    first_party_client_id: &str,
+    wildflower_host_app_client_id: &str,
 ) -> anyhow::Result<()> {
-    let client = Client {
-        client_id: first_party_client_id.to_string(),
+    let wildflower_host_app_client = Client {
+        client_id: wildflower_host_app_client_id.to_string(),
         name: "Wildflower (host)".to_string(),
         kind: ClientKind::Public,
         redirect_uris: vec![],
@@ -126,8 +132,17 @@ fn ensure_first_party_client(
         disabled_at: None,
     };
     store
-        .upsert_client(&client)
-        .context("seed first-party client")?;
+        .upsert_client(&wildflower_host_app_client)
+        .context("seed the host app's client")?;
+    let owner_browser_client = Client {
+        client_id: crate::OWNER_BROWSER_CLIENT_ID.to_string(),
+        name: "Wildflower (Owner browsers)".to_string(),
+        allowed_grant_types: vec![],
+        ..wildflower_host_app_client
+    };
+    store
+        .upsert_client(&owner_browser_client)
+        .context("seed the Owner-browser client")?;
     Ok(())
 }
 
@@ -296,7 +311,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// is its single call site in the Tauri host.
 ///
 /// Upserted (not insert-if-missing) so a definition change lands on the next boot
-/// — the same treatment [`ensure_first_party_client`] gets, and safe here because
+/// — the same treatment [`ensure_essential_clients`] gets, and safe here because
 /// nothing but this code owns these rows.
 ///
 /// # Errors
@@ -451,7 +466,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
 }
 
 /// Mint an Owner-scoped access token for `wildflower-host`, the
-/// first-party client. Called once during [`crate::setup_authorization_server`] so
+/// host app's client. Called once during [`crate::setup_authorization_server`] so
 /// the server's loopback owner trust can present it for a direct-loopback
 /// caller.
 ///
@@ -468,7 +483,7 @@ pub(crate) fn mint_host_owner_token(
     server_origin: &str,
     ttl: Duration,
     host_owner_scopes: &[String],
-    first_party_client_id: &str,
+    wildflower_host_app_client_id: &str,
 ) -> Result<String, TokenIssuanceError> {
     // The host owner token carries the host's granted scopes (by default the FHIR
     // and Wildflower full-access wildcards): it gates HFS's FHIR surface, and —
@@ -480,7 +495,8 @@ pub(crate) fn mint_host_owner_token(
     // The one token minted with no approving human: its authority is the named
     // `HostOwnerEntitlement` proof (constructible only here), through the same
     // minter.
-    let entitlement = HostOwnerEntitlement::for_host(first_party_client_id, host_owner_scopes);
+    let entitlement =
+        HostOwnerEntitlement::for_host(wildflower_host_app_client_id, host_owner_scopes);
     AccessTokenMinter::new(store, server_origin, ttl)
         .mint(TokenEntitlement::HostOwner(&entitlement))
 }
@@ -689,15 +705,15 @@ mod tests {
         assert_eq!(production.allowed_scopes, LIFTING_DEV_SCOPES);
     }
 
-    /// The first-party client is seeded under the `client_id` threaded through
-    /// `open_and_seed_store` (from `AuthorizationServerConfig::first_party_client_id`,
+    /// The host app's client is seeded under the `client_id` threaded through
+    /// `open_and_seed_store` (from `AuthorizationServerConfig::wildflower_host_app_client_id`,
     /// which the live app sources from `tauri-shared-config.json`), NOT a
     /// hardcoded literal. This is the cross-boundary drift guard: the TS shell's
     /// device-login `client_id` and the seeded id derive from one source, so a
     /// regression that re-hardcodes the id here (letting it drift from the config
     /// / the TS side) fails this test.
     #[test]
-    fn seeds_first_party_client_under_the_configured_id() {
+    fn seeds_the_host_app_s_client_under_the_configured_id() {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         let scopes = vec![
@@ -716,19 +732,48 @@ mod tests {
         let seeded = store
             .client_by_id("custom-host-client")
             .expect("query client")
-            .expect("first-party client seeded under the configured id");
+            .expect("the host app's client seeded under the configured id");
         assert_eq!(seeded.client_id, "custom-host-client");
         assert_eq!(seeded.allowed_scopes, scopes);
 
         // Nothing is seeded under the fallback const's literal — proving the id
-        // came from the argument, not `FIRST_PARTY_CLIENT_ID`.
+        // came from the argument, not `WILDFLOWER_HOST_APP_CLIENT_ID`.
         assert!(
             store
-                .client_by_id(crate::FIRST_PARTY_CLIENT_ID)
+                .client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID)
                 .expect("query fallback id")
                 .is_none(),
             "seeding must use the configured id, not the hardcoded fallback",
         );
+    }
+
+    /// The Owner-browser client is seeded as a public client with no redirect
+    /// URIs and no grant type, allowed exactly the host Owner's scopes.
+    #[test]
+    fn seeds_the_owner_browser_client_with_the_owner_s_scopes() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let scopes = vec![
+            "system/*.cruds".to_string(),
+            "wildflower/*.cruds".to_string(),
+        ];
+        let store = open_and_seed_store(
+            pool,
+            &scopes,
+            "host-client",
+            "fhir-ui-client",
+            &url::Url::parse("https://ruth.relay.example").expect("origin"),
+        )
+        .expect("seed store");
+
+        let seeded = store
+            .client_by_id(crate::OWNER_BROWSER_CLIENT_ID)
+            .expect("query client")
+            .expect("the Owner-browser client seeded");
+        assert_eq!(seeded.kind, ClientKind::Public);
+        assert!(seeded.redirect_uris.is_empty());
+        assert!(seeded.allowed_grant_types.is_empty());
+        assert_eq!(seeded.allowed_scopes, scopes);
     }
 
     /// The UI's client is seeded under the configured id as a public client

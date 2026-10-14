@@ -21,14 +21,17 @@ host-minted token (see [bootstrap URL](#bootstrap-url)).
 
 ## Roles
 
-Three distinct human/machine roles whose names collide easily — get these
-straight first.
+Distinct human/machine roles whose names collide easily — get these straight
+first. "Host" alone is ambiguous (the host app, the HTTP `Host` header, the
+`__Host-` cookie prefix), so these docs say **Wildflower host app**.
 
-| Role               | Who they are                                                                                                            | Where they show up                                                                          |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **OAuth client**   | Remote app requesting access (the SMART-on-FHIR caller, or `wildflower-host` itself).                                   | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table         |
-| **Owner**          | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests. | `/authorization/...` endpoints, `RequireAuthMiddleware`, Bearer tokens with `'owner'` scope |
-| **Resource owner** | OAuth-spec name for the Owner — the person whose data is being shared.                                                  | OAuth spec only; we say "Owner"                                                             |
+| Role                    | Who they are                                                                                                             | Where they show up                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                              | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
+| **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.  | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
+| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app). | The `wildflower-host` client, the host owner token, the in-process consent decider        |
+| **Owner browser**       | A browser the host app has signed in as the Owner on the same device. See [Owner browser](#owner-browser).               | The `wildflower-owner-browser` client, the `__Host-owner_browser_session` cookie          |
+| **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                   | OAuth spec only; we say "Owner"                                                           |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
 > HTTP-client instances in the codebase — the word is overloaded. The
@@ -73,7 +76,7 @@ the row is created or widened only when the Owner approves — see
   with `invalid_client`. Re-enabling clears the stamp and the client works
   again exactly as registered.
 - **Owner management:** `GET /authorization/clients` lists every row (never the
-  secret hash) with a `firstParty` flag. `PATCH /authorization/clients/:clientId`
+  secret hash) with an `essential` flag. `PATCH /authorization/clients/:clientId`
   with `{ "disabledAt": … }` answers with the updated row and sets the stamp
   as follows:
   - any UTC time disables the client now, stamped with the server's own
@@ -91,13 +94,38 @@ the row is created or widened only when the Owner approves — see
   refresh-token families in place — unusable while it's disabled, live again
   once it's enabled; revoke a grant to end it for good.
 
-The `wildflower-host` first-party client (`FIRST_PARTY_CLIENT_ID`) is
-auto-seeded by the server at startup, with
-`kind: 'public'`, empty `redirectUris` (it gets its token via the device
-flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
-redirects), and `allowedScopes: ['owner']`. It can't be disabled: the Owner reaches
-`/authorization/clients` through it, so a `PATCH /authorization/clients/wildflower-host` that
-sets a `disabledAt` is refused with a `409 FirstPartyClientLocked`.
+Two clients are seeded by the server at startup, both `kind: 'public'` with
+empty `redirectUris`, and both allowed the host Owner's scopes
+(`host_owner_scopes`):
+
+- `wildflower-host` (`WILDFLOWER_HOST_APP_CLIENT_ID`), the
+  [Wildflower host app](#wildflower-host-app)'s. It gets its token from a host
+  mint or the device flow — see [bootstrap URL](#bootstrap-url) — not OAuth
+  redirects. Its grants and subject are revoked like any client's (see
+  [Wildflower host app](#wildflower-host-app) for how the host app stays
+  signed in).
+- `wildflower-owner-browser` (`OWNER_BROWSER_CLIENT_ID`), the
+  [Owner browsers](#owner-browser)'. It is allowed no grant type: its tokens
+  are minted only at `/oauth/sign-in`. Revoking its subject signs every Owner
+  browser out.
+
+Both are [essential clients](#essential-client), which can't be disabled.
+
+### Essential client
+
+A client the Owner can't lose without being stuck: the
+[Wildflower host app](#wildflower-host-app)'s (`wildflower-host`), which is how
+the Owner reaches the server at all, and the Owner-browser client
+(`wildflower-owner-browser`), which is how a browser on the Owner's device
+signs in as the Owner. Disabling either would leave the Owner no way in, so a
+`PATCH /authorization/clients/:clientId` that sets a `disabledAt` on one is
+refused with a `409 EssentialClient`, and nothing is written. Re-enabling one
+stays allowed, so an essential client disabled out of band (direct SQL) can be
+recovered; while the Owner-browser client is disabled that way,
+`/oauth/sign-in` signs no browser in. `GET /authorization/clients` flags both
+`essential`, and the "Trusted Apps" list offers them no switch. The rule lives
+in one place, `EssentialClientGuard`, which the client reader and disabler
+share.
 
 ### Trust on first use
 
@@ -148,9 +176,10 @@ endpoints (RFC 6749 §4.1.2.1's open-redirect rule). Scope strings are not
 validated against a grammar on this path: an unparseable scope is carried to
 the prompt as an opaque named scope that matches only itself.
 
-The first-party `wildflower-host` client is exempt: an unregistered redirect
-or scope for it is rejected at the boundary, and approval never widens its
-row. Disabled clients are rejected on every endpoint regardless of verdict,
+The host app's `wildflower-host` client is exempt: its registration is
+**fixed** (defined by the server; approvals can't create or widen it), so an
+unregistered redirect or scope for it is rejected at the boundary, and
+approval never widens its row. Disabled clients are rejected on every endpoint regardless of verdict,
 and a widening never clears `disabledAt` — trust the Owner took back stays
 taken back until they re-enable the app.
 
@@ -296,16 +325,20 @@ The authorization wall on every Owner-facing JSON endpoint
 
 HTML pages in the `authorization-server-pages` group do **not** carry this
 middleware; they're public. The middleware reads the access token from the
-`Authorization: Bearer` header only — the server issues and accepts no
-cookies. The launcher attaches its in-memory bearer; a direct-loopback
+`Authorization: Bearer` header only. The server accepts two cookies,
+`__Host-owner_browser_session` (see [Owner browser](#owner-browser)) and the
+FHIR UI's `hfs_session`, only from its own pages, with an Origin check on
+writes, and turns each into a bearer token ahead of the gate
+(`wildflower-server-rust`'s `session_cookie_bearer`); with both, `hfs_session`
+wins. The launcher attaches
+its in-memory bearer; a direct-loopback
 caller attaches nothing and is authenticated by the host's
 loopback-provenance owner trust, which presents the host-minted token on its
 behalf.
 
 ### Device flow (RFC 8628)
 
-The first-party host browser's path to becoming an Owner-authenticated
-client. Flow:
+The host app's path to becoming an Owner-authenticated client. Flow:
 
 1. On the device-login screen the user names the device and adjusts a scope
    request with the shared scope picker (see [Device name](#device-name) and
@@ -343,7 +376,7 @@ the first successful token mint so a second poll returns `expired_token`.
 ### Device name
 
 A human-chosen label for the device being paired ("Ada's laptop"), distinct from
-the OAuth [client](#client) name (all first-party devices share the
+the OAuth [client](#client) name (every device the host app pairs shares the
 `wildflower-host` client, so the client name can't tell them apart). A
 non-standard RFC 8628 extension: the requesting device sends it as the
 `device_name` form field on `/oauth/device_authorization`; it is stored on the
@@ -415,6 +448,56 @@ It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an
 `http:`/`https:` redirect. Its colours are copies of `react-tundraish` palette
 tokens under the same names.
+
+### Wildflower host app
+
+The app on the Owner's device that runs this server in its own process. Its
+OAuth client is `wildflower-host`. It holds its own token (the host owner
+token, minted at boot and re-minted hourly), whose subject is that client.
+Revoking the subject, or one of the client's grants (which bumps the same
+revocation epoch), revokes that token too, so the server then mints and
+publishes a fresh one at once: every revocation goes through
+`HostOwnerTokenRemintingRevocation`, which asks the re-minter for it. The
+fresh token waits for the second after the revocation, since the revocation's
+epoch is that second and a token's `iat` is whole seconds; for that moment,
+under a second, the host app holds no live token.
+
+### Owner browser
+
+A browser the [Wildflower host app](#wildflower-host-app) has signed in as the
+Owner on the same device, with a one-time **same-device sign-in code**.
+Wildflower has no accounts or passwords; the Owner is whoever holds the device
+running the server, and the host app runs on that device.
+
+1. The host app mints a same-device sign-in code in-process, through the
+   `SameDeviceSignInCodeMinter` its `WildflowerServer` hands out (no HTTP
+   call). A code is 256 random bits, single use, and valid for 60 seconds. The
+   server keeps only its hash, in memory, so a restart drops it.
+2. The host app opens `https://<domain>/oauth/sign-in?code=…&next=…` in a
+   browser.
+3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
+   proof) and mints a token through the ordinary minter, issued to the
+   `wildflower-owner-browser` client (its `sub`) and holding the host Owner's
+   grant (`host_owner_scopes`, the grant `HostConsentDecider` acts with), as a
+   JWT with its own `jti` that expires in 8 hours.
+4. It answers `303` to `next`, setting
+   `__Host-owner_browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
+
+`next` must be a path on the server (starting with `/`, not `//`), a URL under
+the hosted launcher, or a URL under the Wildflower Authorization app. Any other
+`next`, an unknown, spent or expired code, or a disabled
+`wildflower-owner-browser` client, gets a local error page with no cookie and
+no redirect; a refused `next` or a disabled client leaves the code unspent.
+Enabling the client again lets sign-in work. Disabling it signs no browser
+out: a browser already signed in keeps its session until the token expires or
+is revoked.
+
+There is no session table: the cookie's value is the token, so a restart
+doesn't sign the browser out. One session is revoked by its token's `jti`;
+every Owner browser is signed out by revoking the `wildflower-owner-browser`
+subject. A request whose cookie holds an expired or revoked token is served as
+if the cookie weren't sent, and the response clears it. The cookie needs
+`https`, so it works on `https://<domain>` and not on the loopback listener.
 
 ### Loopback owner dialog
 

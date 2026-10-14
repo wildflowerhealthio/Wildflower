@@ -37,7 +37,7 @@ impl Capability for LiveConsentDecider {
             state.store.clone(),
             owner_approval,
             granted,
-            state.first_party_client_id.clone(),
+            state.wildflower_host_app_client_id.clone(),
         )
     }
 }

@@ -19,6 +19,10 @@ pub const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 /// these tests — deliberately not the production address, so an assertion
 /// can't pass by accident against a hard-coded one.
 pub const LAUNCHER_BASE: &str = "https://launcher.test/launcher/";
+
+/// The hosted Wildflower Authorization app in these tests, likewise not the
+/// production address.
+pub const AUTHORIZATION_APP_BASE: &str = "https://authorization.test/authorization/";
 pub use chrono::{Duration, Utc};
 pub use serde_json::Value;
 pub use tower::ServiceExt;
@@ -42,6 +46,7 @@ pub use wildflowerhealthio_authorization_server::{
     GrantStore, PendingConsentHead, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
+pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 pub use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// The two database handles the running router uses, kept so tests can open
@@ -57,6 +62,10 @@ pub struct TestDb {
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
     pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    /// Live receiver on the host owner token the slice publishes — the channel
+    /// the Tauri host reads the host app's token from. Held so the slice's
+    /// re-minter keeps publishing, and tests can read what it published.
+    host_owner_token_rx: watch::Receiver<Option<String>>,
     /// The directory holding a file-backed database, when there is one — held
     /// so the file outlives the test's handles (see
     /// [`spin_up_with_loopback_prompt`]).
@@ -107,10 +116,12 @@ fn spin_up_on(
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_owner_scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
-        first_party_client_id:
-            wildflowerhealthio_authorization_server::default_first_party_client_id(),
+        wildflower_host_app_client_id:
+            wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
+        authorization_app_base: AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE)
+            .expect("AUTHORIZATION_APP_BASE is a valid URL"),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, pending_consent_rx) =
@@ -143,9 +154,18 @@ fn spin_up_on(
             pool,
             revocation_conn,
             pending_consent_rx,
+            host_owner_token_rx: token_rx,
             _database_dir: database_dir,
         },
     )
+}
+
+/// A receiver on the host owner token channel, with the current token marked
+/// seen, so `changed()` resolves on the next one the slice publishes.
+pub fn host_owner_token_watch(db: &TestDb) -> watch::Receiver<Option<String>> {
+    let mut rx = db.host_owner_token_rx.clone();
+    rx.mark_unchanged();
+    rx
 }
 
 /// The head the host popup would currently be showing — the latest value on the
@@ -173,7 +193,7 @@ pub fn store_handle(db: &TestDb) -> SqliteGrantStore {
 /// Register an OAuth client with an allowlisted `redirect_uri` through a
 /// second store handle on the same shared connection. The redirect-back error
 /// tests (RFC 6749 §4.1.2.1) need a client whose `redirect_uri` validates,
-/// which the seeded first-party client (empty allowlist) cannot provide.
+/// which the seeded host app's client (empty allowlist) cannot provide.
 pub fn seed_client_with_redirect(
     db: &TestDb,
     client_id: &str,
@@ -697,6 +717,58 @@ pub fn owner_revocation_request(token: &str, body: Value) -> Request<Body> {
             .header("content-type", "application/json"),
         Body::from(body.to_string()),
     )
+}
+
+/// `PATCH /authorization/clients/{client_id}` with the raw JSON `body`, as `token`.
+pub async fn patch_client(
+    g: &AuthorizationServer,
+    token: &str,
+    client_id: &str,
+    body: &Value,
+) -> axum::response::Response {
+    g.router
+        .clone()
+        .oneshot(loopback_request(
+            Request::patch(format!("/authorization/clients/{client_id}"))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json"),
+            Body::from(body.to_string()),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// Disable `client_id` as of `at`, sent as the UTC string the launcher sends.
+pub async fn disable_client(
+    g: &AuthorizationServer,
+    token: &str,
+    client_id: &str,
+    at: chrono::DateTime<Utc>,
+) -> axum::response::Response {
+    let disabled_at = at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    patch_client(
+        g,
+        token,
+        client_id,
+        &serde_json::json!({ "disabledAt": disabled_at }),
+    )
+    .await
+}
+
+/// Re-enable `client_id` (`disabledAt: null`).
+pub async fn enable_client(
+    g: &AuthorizationServer,
+    token: &str,
+    client_id: &str,
+) -> axum::response::Response {
+    patch_client(
+        g,
+        token,
+        client_id,
+        &serde_json::json!({ "disabledAt": null }),
+    )
+    .await
 }
 
 /// Assert `res` carries both cache-suppression headers — `Cache-Control:

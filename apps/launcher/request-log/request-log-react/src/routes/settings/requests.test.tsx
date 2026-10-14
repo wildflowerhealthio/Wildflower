@@ -89,7 +89,7 @@ const CLIENTS = [
     allowedGrantTypes: [],
     registeredAt: '2026-06-01T00:00:00Z',
     disabledAt: null,
-    firstParty: false,
+    essential: false,
   },
 ]
 
