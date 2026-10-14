@@ -1,7 +1,9 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { buildStepUpTarget } from '@wildflowerhealthio/authorization-react'
+import { useAuthStateSetter } from '@wildflowerhealthio/react-kitchen-sink'
 import { AuthorizationFailure } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
+
+import { signInAgain } from './session/sign-in-again.ts'
 
 interface ScopeErrorSurfaceProps {
   /** The scopes the caller lacks, from the `403 InsufficientScope` body. */
@@ -10,16 +12,16 @@ interface ScopeErrorSurfaceProps {
 
 /**
  * The `403 InsufficientScope` surface plus its **step-up** action: the read-only
- * `AuthorizationFailure`, whose `onRequestAccess` hook navigates to device login
- * pre-filled with the missing scopes and with `returnTo` set here. See the
+ * `AuthorizationFailure`, whose `onRequestAccess` hook signs in again to the
+ * session's server with `returnTo` set here (`session/sign-in-again.ts`). The
+ * session's grant does not cover the missing scopes, so the new authorization
+ * request goes to the Owner's consent rather than through on the old grant. See the
  * [Scope-Gated Endpoints How-To](../../../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md)
  * for the flow end to end.
  *
  * With no scopes named (the undeclared-403 path, where the body was never
- * decoded) the hook is omitted: there is nothing to pre-fill, so a "Request
- * access" button would be indistinguishable from a plain sign-in. The test is
- * the built target, not `missingScopes.length` — a body naming only blank
- * strings serializes to no `requestScopes` and lands on that same screen.
+ * decoded) the hook is omitted: nothing says which permission the denial was
+ * about, so there is nothing to ask the Owner for.
  *
  * A component rather than a bare `render` closure because the action needs the
  * router. It only ever renders inside `RouterProvider` — `ErrorBodyRendererContext`
@@ -30,13 +32,13 @@ interface ScopeErrorSurfaceProps {
  */
 const ScopeErrorSurface = ({ missingScopes }: ScopeErrorSurfaceProps): JSX.Element => {
   const navigate = useNavigate()
+  const setAuthState = useAuthStateSetter()
   const href = useRouterState({ select: (state) => state.location.href })
-  const target = buildStepUpTarget(missingScopes, href)
   const onRequestAccess =
-    target.search.requestScopes === undefined
+    missingScopes.length === 0
       ? undefined
       : (): void => {
-          void navigate(target)
+          signInAgain(setAuthState, (target) => navigate(target), href)
         }
   return <AuthorizationFailure missingScopes={missingScopes} onRequestAccess={onRequestAccess} />
 }

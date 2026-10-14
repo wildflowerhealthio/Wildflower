@@ -11,21 +11,27 @@ import {
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import {
-  DEVICE_LOGIN_ROUTE,
-  parseDeviceLoginSearch,
-  parseRequestScopes,
+  type BearerAuthStateStore,
+  makeBearerAuthStateStore,
 } from '@wildflowerhealthio/authorization-react'
+import {
+  AuthedExpiryUnknown,
+  AuthStateProvider,
+  isAuthed,
+} from '@wildflowerhealthio/react-kitchen-sink'
+import { Effect } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { renderScopeError } from './scope-error-renderer.tsx'
+import { RETURN_TO_PARAM } from './sign-in.ts'
 
 /**
  * Pins the app's `403 InsufficientScope` wiring end-to-end: which errors get the
  * bespoke surface at all, and — the step-up leg (resource-authorization epic
- * child ⑤) — that "Request access" navigates to device login carrying *exactly*
- * the scopes the 403 named plus where the denial happened, so the screen there
- * can pre-fill the request and the return trip re-runs the denied action.
+ * child ⑤) — that "Request access" signs in again: the session drops, and the
+ * reader lands on the landing carrying where the denial happened, so the new
+ * sign-in's return trip re-runs the denied action.
  *
  * Driven through a real router rather than a mocked `useNavigate`: the assertion
  * is about the resulting location (path + both search params), which a stubbed
@@ -34,6 +40,7 @@ import { renderScopeError } from './scope-error-renderer.tsx'
 
 afterEach(() => {
   cleanup()
+  window.sessionStorage.clear()
 })
 
 /** Where the denial happens in these tests. */
@@ -55,30 +62,44 @@ const undeclaredForbidden = (): HttpClientError.ResponseError => {
   })
 }
 
+/** A signed-in session, as `main-web` holds one after a sign-in redeems. */
+const signedInStore = (): BearerAuthStateStore => {
+  const store = makeBearerAuthStateStore(window.sessionStorage, 'scope-error-renderer.test.server')
+  store.writeSession({ serverUrl: 'https://ruth.wildflowerhealth.io', bearer: 'tok_narrow' })
+  store.setAuthState(AuthedExpiryUnknown())
+  return store
+}
+
 /**
  * Mount whatever `renderScopeError` produced for `error` at {@link DENIED_PATH},
- * inside a router that also carries the real device-login path so the step-up
- * navigation resolves to a live route instead of a 404. Returns the router so
- * assertions can read the location the click produced.
+ * under `store`'s session, inside a router that also carries the landing so the
+ * step-up navigation resolves to a live route instead of a 404. Returns the
+ * router so assertions can read the location the click produced.
  */
-const renderErrorAt = (error: unknown): AnyRouter => {
+const renderErrorAt = (
+  error: unknown,
+  store: BearerAuthStateStore = signedInStore()
+): AnyRouter => {
   const rootRoute = createRootRoute({ component: (): JSX.Element => <Outlet /> })
   const deniedRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: DENIED_PATH,
     component: (): ReactNode => renderScopeError(error),
   })
-  const deviceLoginRoute = createRoute({
+  const landingRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: DEVICE_LOGIN_ROUTE,
-    component: (): JSX.Element => <div>device login</div>,
-    validateSearch: (search: Record<string, unknown>): Record<string, unknown> => search,
+    path: '/',
+    component: (): JSX.Element => <div>landing</div>,
   })
   const router = createRouter({
-    routeTree: rootRoute.addChildren([deniedRoute, deviceLoginRoute]),
+    routeTree: rootRoute.addChildren([deniedRoute, landingRoute]),
     history: createMemoryHistory({ initialEntries: [DENIED_PATH] }),
   })
-  render(<RouterProvider router={router} />)
+  render(
+    <AuthStateProvider store={store}>
+      <RouterProvider router={router} />
+    </AuthStateProvider>
+  )
   return router
 }
 
@@ -97,32 +118,33 @@ describe('renderScopeError', () => {
 })
 
 describe('step-up action', () => {
-  test('carries the missing scopes and the denial location to device login', async () => {
+  test('signs in again, returning to where the denial happened', async () => {
+    const store = signedInStore()
     const router = renderErrorAt(
-      insufficientScopeBody(['wildflower/Grant.d', 'wildflower/Grant.r'])
+      insufficientScopeBody(['wildflower/Grant.d', 'wildflower/Grant.r']),
+      store
     )
 
     await userEvent.click(await screen.findByRole('button', { name: /request access/i }))
 
+    // The landing signs in to the session's server on arrival; `returnTo` is
+    // where the denial happened, so the redeemed sign-in re-runs the denied
+    // loader.
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe(DEVICE_LOGIN_ROUTE)
+      expect(router.state.location.pathname).toBe('/')
     })
-    // Read the params back off the rendered `href` with the very decoder the
-    // device-login screen uses, so this asserts the encoding the screen will
-    // actually see — not a hand-rolled reading of the router's search object.
-    const { returnTo, requestScopes } = parseDeviceLoginSearch(
-      router.state.location.href.split('?')[1] ?? ''
-    )
-    // `returnTo` is where the denial happened, so the post-grant full page load
-    // re-runs the denied loader; `requestScopes` is exactly what the 403 named.
-    expect(returnTo).toBe(DENIED_PATH)
-    expect(parseRequestScopes(requestScopes)).toEqual(['wildflower/Grant.d', 'wildflower/Grant.r'])
+    const search = new URLSearchParams(router.state.location.href.split('?')[1] ?? '')
+    expect(search.get(RETURN_TO_PARAM)).toBe(DENIED_PATH)
+    // The narrow session goes, or the landing would send the reader straight
+    // on to `/home`; its server stays, for the landing to sign back in to.
+    expect(isAuthed(Effect.runSync(store.subscribable.get))).toBe(false)
+    expect(store.bearer()).toBeUndefined()
+    expect(store.serverUrl()).toBe('https://ruth.wildflowerhealth.io')
   })
 
   test('is not offered when the 403 named no scopes', async () => {
-    // The undeclared-403 path: with nothing to pre-fill, a "Request access"
-    // button would be indistinguishable from a plain sign-in, so the surface
-    // stays a read-only explanation.
+    // The undeclared-403 path: with no named permission to ask for, the
+    // surface stays a read-only explanation.
     renderErrorAt(undeclaredForbidden())
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /request access/i })).toBeNull()

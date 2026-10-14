@@ -227,31 +227,22 @@ user-facing surface — but it helps to know what the contract buys:
   `scopes-react`'s `AuthorizationFailure`, which names each missing scope in plain
   language (`wildflower/Grant.d` → "delete Grants").
 - **Step-up:** when the 403 named scopes, the surface offers "Request access",
-  which navigates to device login via `buildStepUpTarget(missingScopes, href)`.
-  The `?requestScopes=` param pre-fills the scope picker there with those scopes
-  **unioned with whatever the caller's current token holds** — the device flow
-  mints a whole new grant, so requesting only the missing scopes would strip what
-  the session already had — and `?returnTo=` brings the user back to the denied
-  page on grant, where the loader re-runs the action against the new grant.
-- The current scopes come from `GET /authorization/session`, which reports back the
-  caller's own verified `scope` claim. It is **authN-only** — no `Scoped<…>`
-  capability — precisely because the callers who need it are the under-scoped
-  sessions arriving from a 403, whom a scope gate would lock out of reading their
-  own scopes. When that read fails (a 401 on the plain sign-in path, an older
-  server), the screen falls back to its fixed read+search preset, so the endpoint
-  is an improvement to the pre-fill rather than a dependency of the flow.
+  which signs the launcher in again (`session/sign-in-again.ts`): the session
+  goes `Unauthed`, the landing runs the SMART sign-in to the same server, and
+  `returnTo` brings the user back to the denied page, where the loader re-runs
+  the action against the new grant. The session's grant does not cover the
+  missing scopes, so the new authorization request goes to the Owner's consent
+  rather than through on the old grant.
 
 The one thing a slice controls here is whether the missing scopes can be named at
 all: declare the 403 (above) and the surface reads them out of the body; skip it
 and the user gets a correct but generic denial with no step-up offer.
 
-Because `/oauth/device_authorization` rejects the **whole** request with
-`invalid_scope` if any requested scope falls outside the client's `allowed_scopes`,
-a gated endpoint that requires a scope the host app's client isn't allowed to ask
-for is not steppable-up: the device-login screen names it as unrequestable instead
-of putting it in the request. Keep required scopes inside the client's allowed set
-(`tauri-shared-config.json`'s `local_granted_scopes`, which seeds them) or the
-step-up path dead-ends for that endpoint.
+Signing in again asks for the launcher's own scope request (`sign-in.ts`) and
+no more, so a gated endpoint that requires a scope outside that request is not
+steppable-up: the new grant cannot cover it either. Keep the scopes the
+launcher's surfaces need inside its request, or the step-up path dead-ends for
+that endpoint.
 
 ## Three flavours of gate
 

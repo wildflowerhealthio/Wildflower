@@ -10,10 +10,9 @@
  * (see {@link EhrLaunch}). It is the fitting flow for this entry for the same
  * reason it fits the console: the page is cross-origin to its API server, so it
  * holds a bearer in memory, and the
- * reader is already looking at the browser that must approve the grant. The
- * device-code flow at `/authorization/device-login` remains for the second-screen
- * case (and as the 401 fallback), but it is no longer how the landing page
- * signs in.
+ * reader is already looking at the browser that must approve the grant. It is
+ * the launcher's only sign-in: a 401 or a step-up sends the reader back to the
+ * landing to run it again (`session/sign-in-again.ts`).
  *
  * What is left here is only what is this entry's own: the registered values
  * below, and the two thin wrappers that fold the flow's error channel into a
@@ -69,7 +68,7 @@ import { ServerKind } from './session/server-kind.ts'
  * value that drifts from the row fails the flow at `/oauth/authorize` rather
  * than degrading quietly.
  *
- * Deliberately **not** `WILDFLOWER_HOST_APP_CLIENT_ID` (`wildflower-host`). The
+ * Deliberately **not** the host app's client (`wildflower-host`). The
  * host app's client has a fixed registration with no redirect URIs and is the one
  * client `/oauth/authorize` refuses to trust on first use, so it cannot carry an
  * authorization-code redirect from a browser page at all — see 0012's header.

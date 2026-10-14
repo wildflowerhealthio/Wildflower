@@ -13,7 +13,7 @@ const DEFAULT_QUERY_RETRIES = 3
  * preloading, not storage restore.
  *
  * `onUnauthorized` fires when an authed query or mutation ends in a 401 — the
- * session is gone, so the caller sends the user to device login. The
+ * session is gone, so the caller signs the user in again. The
  * QueryCache/MutationCache `onError` hooks fire once the query/mutation reaches
  * its error state (after TanStack's own retries), so the redirect isn't
  * re-fired per attempt. `retry` skips TanStack's backoff for a 401, which

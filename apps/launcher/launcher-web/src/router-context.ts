@@ -30,13 +30,6 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<SliceServices>
 
 interface RouterContext extends BaseRouterContext.RouterContextWith<SliceServices> {
   /**
-   * Where a link meant for another device points: this launcher's address as
-   * seen from outside the page, with no trailing slash, to which the router's
-   * basepath is appended. Read by the authorization slice's `NeedsAuthMessage` for
-   * its device-flow pairing link. `main-web` passes its own origin.
-   */
-  readonly externalLinkRoot: () => string
-  /**
    * Why the boot-time SMART sign-in failed, when it did — the `reason` off a
    * `SignInError`, already written for a reader, and the server the failed
    * sign-in was to. `main-web` redeems the authorization code before it mounts

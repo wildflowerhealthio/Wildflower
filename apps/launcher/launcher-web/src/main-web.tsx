@@ -117,8 +117,7 @@ const bootApp = async (): Promise<JSX.Element> => {
     // the next authed request redirects to the landing rather than 401-looping.
     scheduleExpiry(bearerStore.setAuthState, session.expiresInSeconds)
     // Honour the gate's `?returnTo=`, carried across the redirect in the
-    // pending record, sanitised — same rules as `NeedsAuthMessage`'s
-    // device-flow return leg.
+    // pending record, sanitised against an open redirect.
     settleUrlAfterSignIn(sanitizeReturnTo(session.returnTo ?? null))
   } else if (isAuthorizationResponse(returnSearch)) {
     // A return leg that resolved to nothing usable: the response still has to
@@ -148,18 +147,16 @@ const bootApp = async (): Promise<JSX.Element> => {
     history: createBrowserHistory(),
     basepath,
     tokenStore: bearerStore,
-    // An unauthed reader goes to the landing page at `/`, not to device login:
-    // the reader picks the server there before any sign-in can name one.
+    // An unauthed reader goes to the landing page at `/`: the reader picks the
+    // server there before any sign-in can name one.
     awaitAuthReady: makeAwaitLandingAuthReady(bearerStore.subscribable),
-    // The page's own origin, an address another device can open.
-    externalLinkRoot: () => window.location.origin,
     // Empty until the visitor's answer turns performance on: this page never
     // starts telemetry from the build's env.
     effectTelemetryLayer: consentedTelemetryLayer,
-    // What the sign-in redeemed on this load found. With none, the shell is
-    // reached only through the device-code flow, which only a Wildflower
-    // server serves. A reload drops the bearer, and the landing signs back in
-    // on arrival, so the kind is found again rather than remembered.
+    // What the sign-in redeemed on this load found. With none, the load starts
+    // signed out and the auth-gated routes are out of reach. A reload drops
+    // the bearer, and the landing signs back in on arrival, so the kind is
+    // found again rather than remembered.
     serverKind: session === undefined ? ServerKind.Wildflower() : serverKindForSession(session),
     ...(completed.tag === 'Failed' ? { signInProblem: completed.problem } : {}),
     // The EHR launch the landing signs in with on arrival, when this load

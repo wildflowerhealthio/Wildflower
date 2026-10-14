@@ -1,15 +1,4 @@
 export {
-  buildDeviceLoginTarget,
-  buildStepUpTarget,
-  DEVICE_LOGIN_ROUTE,
-  // Exported for `launcher-web`'s step-up test, which reads the params back
-  // off the router with the decoder the screen itself uses rather than a
-  // hand-rolled one — the point of that assertion.
-  parseDeviceLoginSearch,
-  parseRequestScopes,
-} from './device-login-route.ts'
-
-export {
   buildAuthorizationServerClientLayer,
   type AuthorizationServerClientRequirements,
 } from './client/authorization-server-client.ts'
@@ -46,7 +35,7 @@ export { TrustedAppsSection } from './components/TrustedAppsSection.tsx'
 
 export { formatInstant } from './format-date.ts'
 
-export { NeedsAuthMessage, sanitizeReturnTo } from './components/NeedsAuthMessage.tsx'
+export { sanitizeReturnTo } from './return-to.ts'
 
 export { makeAwaitLandingAuthReady } from './client/auth-ready.ts'
 
@@ -61,9 +50,3 @@ export {
   type BearerAuthStateStore,
   type BearerSession,
 } from './client/bearer-auth-state-store.ts'
-
-export {
-  TokenResponseHandlerContext,
-  useTokenResponseHandler,
-  type TokenResponseHandler,
-} from './client/token-response-handler.ts'

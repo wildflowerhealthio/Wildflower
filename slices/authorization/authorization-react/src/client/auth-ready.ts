@@ -25,9 +25,8 @@ const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> =
  * unit-testable. Reads via `Subscribable.get` once:
  * present → succeed; absent → fails with a TanStack `redirect` to the app root.
  * No waiting — nothing delivers a token later. The redirect targets the landing
- * page rather than the device-login route because the launcher picks its API
- * server at runtime, so an unauthed reader needs the
- * server picker before any sign-in can name a target.
+ * page because the launcher picks its API server at runtime, so an unauthed
+ * reader needs the server picker before any sign-in can name a target.
  *
  * `returnTo` is threaded as a `?returnTo=` search param on the redirect so the
  * landing page can send the reader back where they were headed once sign-in
@@ -64,8 +63,8 @@ const landingAuthReadyEffect = (
  * Landing-page auth-readiness factory. Closes over the entry's token
  * subscribable and returns the `awaitAuthReady` function the
  * route's `beforeLoad` calls. Redirects unauthed users to the
- * landing page (`/`) instead of the device-login route, preserving
- * the `returnTo` so the picker can restore it after sign-in.
+ * landing page (`/`), preserving the `returnTo` so the picker can
+ * restore it after sign-in.
  */
 const makeAwaitLandingAuthReady =
   (subscribable: Subscribable.Subscribable<AuthState>): ((returnTo?: string) => Promise<void>) =>
