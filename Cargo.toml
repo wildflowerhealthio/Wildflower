@@ -95,3 +95,19 @@ tauri-plugin-background-service = { git = "https://github.com/wildflowerhealthio
 # Our fork of `rathole` (wildflower/handoff), pinned to a commit while its
 # changes are reviewed upstream in wildflowerhealthio/rathole#1.
 rathole = { git = "https://github.com/wildflowerhealthio/rathole", rev = "50b5409a53cd7d0ae67baf7a66cd462118f3d8ea" }
+
+# Optimise the RSA and argon2 maths even in dev and test builds. The
+# authorization server's tests generate a 2048-bit signing key each, and
+# unoptimised `num-bigint-dig` takes seconds per key (up to ~45s on a CI
+# runner): its tests went from ~510s to ~26s with these. Only these crates are
+# optimised, so our own code still builds and debugs as a plain dev build.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+[profile.dev.package.rsa]
+opt-level = 3
+[profile.dev.package.crypto-bigint]
+opt-level = 3
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

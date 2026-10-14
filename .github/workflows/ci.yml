@@ -97,8 +97,11 @@ jobs:
               # admin UI's TypeScript signer committed here. (The UI itself
               # is stubbed for the Rust job, so its sources don't count.)
               - 'apps/relay/relay-core-js/src/signing/fixtures/*.json'
-              # What the job runs, and the stub placeholders it compiles against.
+              # What the jobs run, how the test shards are planned, and the
+              # stub placeholders they compile against.
               - 'scripts/checks/rust.sh'
+              - 'scripts/ci/rust-shards.ts'
+              - 'scripts/entrypoint.ts'
               - 'scripts/ci/stub-embedded-bundles.sh'
               - '.github/workflows/ci.yml'
               - '.github/workflows/ci-rust.yml'
