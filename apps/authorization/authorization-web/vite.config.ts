@@ -1,3 +1,4 @@
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite-plus'
 
@@ -10,11 +11,26 @@ import base, { devAppServer } from '../../../vite.config.base.ts'
  * OAuth redirect target, and the signed-in access pages. A relative `base` so
  * the built assets resolve from whatever origin / path the bundle is served
  * at (`/authorization/`, or a PR preview's `/staging/pr-<n>/authorization/`).
+ *
+ * `tanstackRouter` must run before `react()` so the generated route tree is
+ * in place before the React transform. It reads the route files under
+ * `src/routes` and writes `src/routeTree.gen.ts`.
  */
 export default defineConfig({
   ...base,
   base: './',
-  plugins: [react()],
+  plugins: [
+    tanstackRouter({
+      target: 'react',
+      routesDirectory: './src/routes',
+      generatedRouteTree: './src/routeTree.gen.ts',
+      autoCodeSplitting: false,
+      // Colocated `*.test.tsx` files live beside the route modules they
+      // exercise; without this the route generator would treat them as routes.
+      routeFileIgnorePattern: '\\.(test|spec)\\.',
+    }),
+    react(),
+  ],
   // Run with `vp run -F @wildflowerhealthio/authorization-web dev`. Its
   // address is no registered redirect, so a sign-in from it goes through the
   // consent prompt's "this app is asking to return somewhere new" warning.

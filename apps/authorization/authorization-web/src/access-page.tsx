@@ -24,6 +24,7 @@ import {
 import type { JSX } from 'react'
 import { useState } from 'react'
 
+import { clientNameOf } from './client-name.ts'
 import type { RouterContext } from './router-context.ts'
 import styles from './access-page.module.css'
 
@@ -104,7 +105,9 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
             setConfirmRevokeId(grant.id)
           },
         }
-    return <Menu label={`Actions for ${grant.clientId}`} items={[revokeItem]} />
+    return (
+      <Menu label={`Actions for ${clientNameOf(clients, grant.clientId)}`} items={[revokeItem]} />
+    )
   }
 
   return (
@@ -123,8 +126,8 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
             const actions = revokeMenuFor(grant)
             return {
               id: grant.id,
-              title: grant.clientId,
-              subtitle: `${grant.scopes.join(', ')} · Granted ${formatInstant(grant.grantedAt)}`,
+              title: clientNameOf(clients, grant.clientId),
+              subtitle: `Granted ${formatInstant(grant.grantedAt)} · ${grant.scopes.join(', ')}`,
               onClick: () => {
                 void navigate({ to: '/approved/$id', params: { id: grant.id } })
               },
@@ -145,7 +148,7 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
           items={deviceGrants.map((grant) => ({
             id: grant.id,
             title: grant.deviceName,
-            subtitle: `${grant.scopes.join(', ')} · Granted ${formatInstant(grant.grantedAt)}`,
+            subtitle: `Granted ${formatInstant(grant.grantedAt)} · ${grant.scopes.join(', ')}`,
             onClick: () => {
               void navigate({ to: '/approved/$id', params: { id: grant.id } })
             },
@@ -166,8 +169,9 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
           setConfirmRevokeId(null)
         }}
       >
-        Revoke access for &quot;{grantToRevoke?.clientId ?? ''}&quot;? Every token it holds stops
-        working now.
+        Revoke access for &quot;
+        {grantToRevoke === null ? '' : clientNameOf(clients, grantToRevoke.clientId)}&quot;? Every
+        token it holds stops working now.
       </ConfirmDialog>
     </>
   )

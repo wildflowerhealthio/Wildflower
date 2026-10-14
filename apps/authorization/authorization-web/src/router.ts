@@ -1,7 +1,7 @@
 import { createRouter, type Router, type RouterHistory } from '@tanstack/react-router'
 
 import type { RouterContext } from './router-context.ts'
-import { routeTree } from './routes/route-tree.tsx'
+import { routeTree } from './routeTree.gen.ts'
 
 /** The signed-in app's router. */
 type AuthorizationRouter = Router<typeof routeTree, 'never', false>

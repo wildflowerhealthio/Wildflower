@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 describe('the access page', () => {
-  it('lists the approved apps from the server’s authorization API, with the session’s bearer', async () => {
+  it('lists the approved apps by client name, from the server’s authorization API, with the session’s bearer', async () => {
     // Arrange
     const server = stubServer()
 
@@ -34,7 +34,7 @@ describe('the access page', () => {
 
     // Assert
     const approvedApps = await sectionTitled('Approved Apps')
-    expect(within(approvedApps).getByText(medicationsGrant.clientId)).toBeTruthy()
+    expect(await within(approvedApps).findByText(medicationsClient.name)).toBeTruthy()
     const grantsRead = server.requests.find(
       (request) => request.method === 'GET' && request.url.endsWith('/grants')
     )
@@ -63,8 +63,11 @@ describe('the access page', () => {
     // Arrange
     const server = stubServer()
     mountAccessPages(server)
+    const approvedApps = await sectionTitled('Approved Apps')
     fireEvent.click(
-      await screen.findByRole('button', { name: `Actions for ${medicationsGrant.clientId}` })
+      await within(approvedApps).findByRole('button', {
+        name: `Actions for ${medicationsClient.name}`,
+      })
     )
     fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
 
@@ -94,8 +97,11 @@ describe('the access page', () => {
     // Arrange
     const server = stubServer()
     mountAccessPages(server)
+    const trustedApps = await sectionTitled('Trusted Apps')
     fireEvent.click(
-      await screen.findByRole('button', { name: `Actions for ${medicationsClient.name}` })
+      await within(trustedApps).findByRole('button', {
+        name: `Actions for ${medicationsClient.name}`,
+      })
     )
     fireEvent.click(screen.getByRole('menuitem', { name: 'Disable' }))
 
@@ -128,10 +134,12 @@ describe('the access page', () => {
 
     // Assert — the host's grant and client are listed, with no actions.
     const approvedApps = await sectionTitled('Approved Apps')
-    await screen.findByRole('button', { name: `Actions for ${medicationsGrant.clientId}` })
-    expect(within(approvedApps).getByText(hostGrant.clientId)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: `Actions for ${hostGrant.clientId}` })).toBeNull()
-    expect(await screen.findByText(hostClient.name)).toBeTruthy()
+    await within(approvedApps).findByRole('button', {
+      name: `Actions for ${medicationsClient.name}`,
+    })
+    expect(within(approvedApps).getByText(hostClient.name)).toBeTruthy()
+    const trustedApps = await sectionTitled('Trusted Apps')
+    expect(await within(trustedApps).findByText(hostClient.name)).toBeTruthy()
     expect(screen.queryByRole('button', { name: `Actions for ${hostClient.name}` })).toBeNull()
   })
 
@@ -142,10 +150,13 @@ describe('the access page', () => {
     const approvedApps = await sectionTitled('Approved Apps')
 
     // Act
-    fireEvent.click(within(approvedApps).getByText(medicationsGrant.clientId))
+    fireEvent.click(await within(approvedApps).findByText(medicationsClient.name))
 
-    // Assert — the detail, with `?iss=` kept on the way.
+    // Assert — the detail, naming the client and giving its id, with `?iss=`
+    // kept on the way.
     expect(await screen.findByRole('heading', { name: 'Approved App' })).toBeTruthy()
+    expect(await screen.findByText(medicationsClient.name)).toBeTruthy()
+    expect(screen.getByText(medicationsGrant.clientId)).toBeTruthy()
     expect(screen.getByText(medicationsGrant.redirectUri)).toBeTruthy()
     expect(router.state.location.search).toEqual({ iss: SERVER_URL })
   })

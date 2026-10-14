@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc && vp build",
+    "build": "vp build && tsc",
     "check": "vp check",
     "dev": "vp dev",
     "preview": "vp preview",
@@ -27,6 +27,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@tanstack/router-plugin": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
