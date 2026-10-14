@@ -14,13 +14,14 @@
 
 use std::sync::Arc;
 
-use tokio::sync::watch;
+use tokio::sync::{watch, Notify};
 
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
-use crate::domain::host_app_client_lock::{HostAppClientLock, HostAppLockedRevocation};
+use crate::domain::host_app_client_lock::HostAppClientLock;
+use crate::domain::host_owner_token_remint::HostOwnerTokenRemintingRevocation;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -103,6 +104,11 @@ pub struct AuthorizationServerState {
     /// [`launcher_base`](Self::launcher_base) and
     /// [`AuthorizationServerConfig::authorization_app_base`](crate::AuthorizationServerConfig::authorization_app_base).
     pub(crate) sign_in_destinations: Arc<SignInDestinations>,
+    /// Asks the host owner token's re-minter, spawned by
+    /// [`crate::setup_authorization_server`], to mint and publish a fresh
+    /// token now: [`revocation`](Self::revocation) notifies it once the host
+    /// app's own subject is revoked.
+    pub(crate) host_owner_token_remints: Arc<Notify>,
 }
 
 impl AuthorizationServerState {
@@ -113,12 +119,15 @@ impl AuthorizationServerState {
     }
 
     /// The [`Revocation`] port the capabilities revoke through: the shared
-    /// [`revocation_store`](Self::revocation_store), behind the
-    /// [`host_app_client_lock`](Self::host_app_client_lock).
+    /// [`revocation_store`](Self::revocation_store), asking for a fresh host
+    /// owner token through
+    /// [`host_owner_token_remints`](Self::host_owner_token_remints) whenever it
+    /// revokes the host app's subject.
     pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {
-        Arc::new(HostAppLockedRevocation::new(
+        Arc::new(HostOwnerTokenRemintingRevocation::new(
             Arc::new(self.revocation_store.clone()),
-            self.host_app_client_lock(),
+            self.wildflower_host_app_client_id.clone(),
+            self.host_owner_token_remints.clone(),
         ))
     }
 }

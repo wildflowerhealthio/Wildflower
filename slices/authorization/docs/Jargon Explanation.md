@@ -102,11 +102,11 @@ empty `redirectUris`, and both allowed the host Owner's scopes
   [Wildflower host app](#wildflower-host-app)'s. It gets its token from a host
   mint or the device flow — see [bootstrap URL](#bootstrap-url) — not OAuth
   redirects. It is locked: a `PATCH /authorization/clients/wildflower-host`
-  that sets a `disabledAt`, a `DELETE /authorization/grants/{id}` of one of
-  its grants, and a subject `POST /authorization/revocations` naming it are
-  each refused with a `409 HostAppClientLocked`, since any of them would cut
-  the server off from its own app. One of its tokens is still revoked by its
-  `jti`. `GET /authorization/clients` flags it `firstParty`.
+  that sets a `disabledAt` is refused with a `409 HostAppClientLocked`, since
+  it would cut off the host app's way back in. Its grants and subject are
+  revoked like any client's (see [Wildflower host app](#wildflower-host-app)
+  for how the host app stays signed in). `GET /authorization/clients` flags it
+  `firstParty`.
 - `wildflower-owner-browser` (`OWNER_BROWSER_CLIENT_ID`), the
   [Owner browsers](#owner-browser)'. It is allowed no grant type: its tokens
   are minted only at `/oauth/sign-in`. It isn't locked: while it is
@@ -439,10 +439,14 @@ tokens under the same names.
 
 The app on the Owner's device that runs this server in its own process. Its
 OAuth client is `wildflower-host`. It holds its own token (the host owner
-token, minted at boot and re-minted hourly), and it can't be disabled or have
-its subject revoked, because that would cut off the server's own app. The rule
-lives in one place, `HostAppClientLock`, which guards the revocation port and
-the client disabler.
+token, minted at boot and re-minted hourly), whose subject is that client.
+Revoking the subject, or one of the client's grants (which bumps the same
+revocation epoch), revokes that token too, so the server then mints and
+publishes a fresh one at once: every revocation goes through
+`HostOwnerTokenRemintingRevocation`, which asks the re-minter for it. The
+fresh token waits for the second after the revocation, since the revocation's
+epoch is that second and a token's `iat` is whole seconds; for that moment,
+under a second, the host app holds no live token.
 
 ### Owner browser
 

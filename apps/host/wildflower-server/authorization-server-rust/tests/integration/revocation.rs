@@ -295,12 +295,33 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     );
 }
 
-/// The Wildflower host app holds its own token under its client, so revoking
-/// that client's subject would cut the server off from its own app. A subject
-/// revocation naming it is a `409`, and revokes nothing.
+/// The next host owner token the slice publishes on `rx`, within a few seconds
+/// (the re-mint waits out the revocation's second).
+async fn next_host_owner_token(rx: &mut watch::Receiver<Option<String>>) -> String {
+    tokio::time::timeout(std::time::Duration::from_secs(5), rx.changed())
+        .await
+        .expect("a host owner token is published")
+        .expect("the channel is open");
+    rx.borrow().clone().expect("a token, not None")
+}
+
+/// The status `token` gets from the `/authorization` bearer gate.
+async fn gate_status(g: &AuthorizationServer, token: &str) -> StatusCode {
+    g.router
+        .clone()
+        .oneshot(owner_grants_probe(token))
+        .await
+        .expect("oneshot")
+        .status()
+}
+
+/// Revoking the Wildflower host app's subject revokes the token it holds, and
+/// the slice publishes a fresh host owner token that the gate accepts — even
+/// though the revocation's epoch is the whole second after it.
 #[tokio::test]
-async fn the_host_app_s_subject_cannot_be_revoked() {
+async fn revoking_the_host_app_s_subject_publishes_a_fresh_host_owner_token() {
     let (g, host_owner_token, db) = spin_up();
+    let mut published = host_owner_token_watch(&db);
     let res = g
         .router
         .clone()
@@ -310,28 +331,24 @@ async fn the_host_app_s_subject_cannot_be_revoked() {
         ))
         .await
         .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::CONFLICT);
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert_eq!(
-        body_json(res.into_body()).await,
-        serde_json::json!({ "error": "HostAppClientLocked", "clientId": "wildflower-host" }),
+        gate_status(&g, &host_owner_token).await,
+        StatusCode::UNAUTHORIZED,
+        "the token the host app held is revoked"
     );
-    assert!(
-        !revocation_store_handle(&db)
-            .is_revoked(
-                None,
-                Some(Utc::now() - Duration::hours(1)),
-                "wildflower-host"
-            )
-            .expect("query"),
-        "the host app's epoch is untouched"
-    );
+
+    let fresh_token = next_host_owner_token(&mut published).await;
+    assert_eq!(gate_status(&g, &fresh_token).await, StatusCode::OK);
 }
 
-/// Revoking a grant of the Wildflower host app's client would bump the host
-/// app's epoch: a `409`, and the grant stays.
+/// Revoking a grant of the Wildflower host app's client deletes it and bumps
+/// the host app's epoch like any other client's, and the slice publishes a
+/// fresh host owner token that the gate accepts.
 #[tokio::test]
-async fn a_grant_of_the_host_app_s_client_cannot_be_revoked() {
+async fn revoking_a_grant_of_the_host_app_s_client_publishes_a_fresh_host_owner_token() {
     let (g, host_owner_token, db) = spin_up();
+    let mut published = host_owner_token_watch(&db);
     store_handle(&db)
         .create_device_grant(
             &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
@@ -356,23 +373,16 @@ async fn a_grant_of_the_host_app_s_client_cannot_be_revoked() {
         ))
         .await
         .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    assert_eq!(
-        body_json(res.into_body()).await,
-        serde_json::json!({ "error": "HostAppClientLocked", "clientId": "wildflower-host" }),
-    );
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert!(store_handle(&db)
         .grant_by_id("owner-grant")
         .expect("query")
-        .is_some());
+        .is_none());
     assert_eq!(
-        g.router
-            .clone()
-            .oneshot(owner_grants_probe(&host_owner_token))
-            .await
-            .expect("oneshot")
-            .status(),
-        StatusCode::OK,
-        "the host app is still signed in"
+        gate_status(&g, &host_owner_token).await,
+        StatusCode::UNAUTHORIZED
     );
+
+    let fresh_token = next_host_owner_token(&mut published).await;
+    assert_eq!(gate_status(&g, &fresh_token).await, StatusCode::OK);
 }

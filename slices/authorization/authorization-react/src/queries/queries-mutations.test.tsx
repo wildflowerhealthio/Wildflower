@@ -21,7 +21,7 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { sliceRuntimeLayer } from '../router-context.ts'
 import { useUpdateClientMutation } from './clients.ts'
 import { useDeviceConsentMutation } from './device-consent.ts'
-import { HostAppAccessLocked, useRevokeGrantMutation } from './grants.ts'
+import { useRevokeGrantMutation } from './grants.ts'
 import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
 
 /**
@@ -155,46 +155,6 @@ describe('useRevokeGrantMutation after a half-failed revoke', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
     })
   })
-})
-
-describe('useRevokeGrantMutation of the host app’s access', () => {
-  test.each(['DELETE', 'POST'])(
-    'a 409 HostAppClientLocked from the %s fails with the host-app message',
-    async (lockedMethod) => {
-      // Arrange — the server refuses the one call with the host app's lock.
-      const requests = routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), (method) =>
-        method === lockedMethod
-          ? Response.json(
-              { error: 'HostAppClientLocked', clientId: 'wildflower-host' },
-              { status: 409 }
-            )
-          : new Response(null, { status: 204 })
-      )
-      const { result } = renderWithClient(() => useRevokeGrantMutation())
-
-      // Act
-      const failure: unknown = await result.current
-        .mutateAsync({ id: 'grant-host', clientId: 'wildflower-host' })
-        .then(
-          () => undefined,
-          (error: unknown) => error
-        )
-
-      // Assert — the decoded lock, as the message the error banner shows, and
-      // nothing sent after the refused call.
-      const cause = Runtime.isFiberFailure(failure)
-        ? failure[Runtime.FiberFailureCauseId]
-        : Cause.empty
-      expect(Cause.failureOption(cause)).toEqual(
-        Option.some(new HostAppAccessLocked({ clientId: 'wildflower-host' }))
-      )
-      expect(failure instanceof Error ? failure.message : failure).toBe(
-        "This is the Wildflower host app's own access. Revoking it would cut off the app " +
-          'running your server.'
-      )
-      expect(requests.at(-1)?.method).toBe(lockedMethod)
-    }
-  )
 })
 
 const clientSwitches = ['disable', 'enable'] as const

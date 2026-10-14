@@ -10,8 +10,6 @@
 
 use wildflowerhealthio_scope_capabilities::MissingScopes;
 
-use crate::ports::SubjectRevocationError;
-
 /// The ways an authorization server domain operation can fail. The `*NotFound` variants
 /// are semantic, client-facing outcomes that are part of the wire contract
 /// (each renders as a structured JSON 404 keyed by the resource's identifying
@@ -30,15 +28,11 @@ pub enum AuthorizationServerError {
     /// No registered client has this `client_id` — the
     /// `PATCH /authorization/clients/{clientId}` 404.
     ClientNotFound { client_id: String },
-    /// The Owner tried to disable the Wildflower host app's client, revoke one
-    /// of its grants, or revoke its subject — the **409** of
-    /// `PATCH /authorization/clients/{clientId}`, `DELETE /authorization/grants/{id}`
-    /// and a subject `POST /authorization/revocations`. The host app holds its
-    /// own token under that client, so any of these would cut the server off
-    /// from its own app; the client is locked (see
+    /// The Owner tried to disable the Wildflower host app's client — the
+    /// `PATCH /authorization/clients/{clientId}` **409**. Disabling it would cut
+    /// off the host app's way back in; the client is locked (see
     /// [`HostAppClientLock`](crate::domain::host_app_client_lock::HostAppClientLock)).
-    /// A single token is still revoked by its `jti`. Nothing is written when
-    /// it is raised.
+    /// Nothing is written when it is raised.
     HostAppClientLocked { client_id: String },
     /// No authorization request has this id — the `/oauth/authorize/{id}`
     /// polling endpoint's 404.
@@ -98,8 +92,7 @@ impl std::fmt::Display for AuthorizationServerError {
             AuthorizationServerError::HostAppClientLocked { client_id } => {
                 write!(
                     f,
-                    "the Wildflower host app's client {client_id} cannot be disabled, nor its \
-                     grants or subject revoked"
+                    "the Wildflower host app's client {client_id} cannot be disabled"
                 )
             }
             AuthorizationServerError::AuthorizationRequestNotFound { id } => {
@@ -162,21 +155,6 @@ impl AuthorizationServerError {
 /// caller's token doesn't cover the capability's required scopes — becomes
 /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope), so it reaches the wire
 /// through this error's rendering like any other failure.
-/// A subject revocation's refusal: the host app's lock is its `409`, a store
-/// failure is opaque.
-impl From<SubjectRevocationError> for AuthorizationServerError {
-    fn from(error: SubjectRevocationError) -> Self {
-        match error {
-            SubjectRevocationError::HostAppClientLocked { client_id } => {
-                AuthorizationServerError::HostAppClientLocked { client_id }
-            }
-            SubjectRevocationError::Store(error) => {
-                AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", error)
-            }
-        }
-    }
-}
-
 impl From<MissingScopes> for AuthorizationServerError {
     fn from(missing: MissingScopes) -> Self {
         AuthorizationServerError::InsufficientScope {

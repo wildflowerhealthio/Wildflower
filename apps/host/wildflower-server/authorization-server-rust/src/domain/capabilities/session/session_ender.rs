@@ -59,10 +59,7 @@ mod tests {
             Ok(())
         }
 
-        fn revoke_subject_as_of_now(
-            &self,
-            _subject: &str,
-        ) -> Result<(), crate::ports::SubjectRevocationError> {
+        fn revoke_subject_as_of_now(&self, _subject: &str) -> Result<(), String> {
             unreachable!("logout revokes a jti, never a subject")
         }
     }

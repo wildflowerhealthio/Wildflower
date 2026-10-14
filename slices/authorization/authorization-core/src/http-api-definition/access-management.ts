@@ -76,11 +76,7 @@ const ClientNotFoundSchema = Schema.Struct({
   clientId: Schema.String,
 })
 
-/**
- * `409` when a request would cut the Wildflower host app off: `UpdateClient`
- * disabling its client, `RevokeGrant` deleting one of its grants, or
- * `CreateRevocation` revoking its subject.
- */
+/** `UpdateClient`'s `409` for disabling the Wildflower host app's client. */
 const HostAppClientLockedSchema = Schema.Struct({
   error: Schema.Literal('HostAppClientLocked'),
   clientId: Schema.String,
@@ -131,14 +127,12 @@ const SessionSchema = Schema.Struct({
  * - `ListGrants` / `GetGrant` / `RevokeGrant`: read or revoke previously
  *   recorded consent decisions. Revoking a Grant means the next
  *   `/oauth/authorize` for that `(clientId, redirectUri)` will hit the
- *   consent UI again instead of auto-approving. Revoking one of the
- *   Wildflower host app's grants is a `409`.
+ *   consent UI again instead of auto-approving.
  * - `ListClients` / `UpdateClient`: see every client the Owner trusts and take
  *   that trust back (or restore it) by setting its `disabledAt`. Idempotent;
  *   disabling the Wildflower host app's client is a `409`.
  * - `CreateRevocation`: revoke issued tokens now — a subject's whole cohort,
- *   or one token by `jti`. Revoking the Wildflower host app's subject is a
- *   `409`.
+ *   or one token by `jti`.
  * - `GetSession`: the caller reading back *their own* token's scopes. The
  *   odd one out — self-service rather than operator, and deliberately
  *   ungated by any scope on the server, since the sessions that need it
@@ -157,7 +151,6 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
     HttpApiEndpoint.del('RevokeGrant', '/grants/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addError(GrantNotFoundSchema, { status: 404 })
-      .addError(HostAppClientLockedSchema, { status: 409 })
   )
   .add(HttpApiEndpoint.get('ListClients', '/clients').addSuccess(ClientsSchema))
   .add(
@@ -172,7 +165,6 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
     HttpApiEndpoint.post('CreateRevocation', '/revocations')
       .setPayload(RevocationSchema)
       .addError(RevocationRejectedSchema, { status: 400 })
-      .addError(HostAppClientLockedSchema, { status: 409 })
   )
   // Every *operator* endpoint here is scope-gated on the server (a `Scoped<…>`
   // capability per operation), so the shared `403 InsufficientScope` is declared

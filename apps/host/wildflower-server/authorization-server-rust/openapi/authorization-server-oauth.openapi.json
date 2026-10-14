@@ -634,7 +634,7 @@
       },
       "HostAppClientLockedBody": {
         "type": "object",
-        "description": "Wire shape for `HostAppClientLocked` (409) — the named client is the\nWildflower host app's, which can't be disabled, nor its grants or subject\nrevoked, without cutting the server off from its own app.",
+        "description": "Wire shape for `HostAppClientLocked` (409) — the named client is the\nWildflower host app's, which can't be disabled without cutting off the host\napp's way back in.",
         "required": [
           "error",
           "clientId"

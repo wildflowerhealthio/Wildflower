@@ -26,23 +26,8 @@ pub(crate) trait Revocation: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// [`SubjectRevocationError::HostAppClientLocked`] when the subject is the
-    /// Wildflower host app's client, which only the
-    /// [`HostAppLockedRevocation`](crate::domain::host_app_client_lock::HostAppLockedRevocation)
-    /// the capabilities hold refuses; [`SubjectRevocationError::Store`] when
-    /// the write fails.
-    fn revoke_subject_as_of_now(&self, subject: &str) -> Result<(), SubjectRevocationError>;
-}
-
-/// Why a subject's tokens weren't revoked.
-#[derive(Debug)]
-pub(crate) enum SubjectRevocationError {
-    /// The subject is the Wildflower host app's client, which is locked (see
-    /// [`HostAppClientLock`](crate::domain::host_app_client_lock::HostAppClientLock)).
-    /// Nothing is written.
-    HostAppClientLocked { client_id: String },
-    /// The store write failed (stringified).
-    Store(String),
+    /// Returns the store failure (stringified) when the write fails.
+    fn revoke_subject_as_of_now(&self, subject: &str) -> Result<(), String>;
 }
 
 /// Answer whether an issued token has been revoked — the read side of the

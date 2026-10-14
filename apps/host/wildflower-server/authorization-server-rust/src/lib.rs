@@ -27,8 +27,8 @@ pub(crate) mod live_bindings;
 use std::sync::Arc;
 
 use anyhow::Context;
-use chrono::{Duration, Utc};
-use tokio::sync::watch;
+use chrono::{DateTime, Duration, Utc};
+use tokio::sync::{watch, Notify};
 use tokio::time::{interval, MissedTickBehavior};
 use wildflowerhealthio_scopes::{
     ContextLevel, FhirResourceScope, Grant, KnownScope, Permission, ResourceType, Scope,
@@ -106,9 +106,7 @@ pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "wildflower-host";
 /// signed in as the Owner on its own device, with a same-device sign-in code at
 /// `/oauth/sign-in`. Each such browser holds a token issued to this client
 /// (its `sub`), so revoking the client's subject signs every Owner browser
-/// out, and one browser's session is revoked by its token's `jti`. Unlike
-/// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it isn't locked: no app's own token
-/// hangs on it. Seeded at boot by [`crate::setup_authorization_server`]; it takes part in no
+/// out, and one browser's session is revoked by its token's `jti`. Seeded at boot by [`crate::setup_authorization_server`]; it takes part in no
 /// OAuth flow.
 pub const OWNER_BROWSER_CLIENT_ID: &str = "wildflower-owner-browser";
 
@@ -323,6 +321,7 @@ pub fn setup_authorization_server(
         .send(Some(host_owner_token))
         .context("token channel receiver dropped before host owner token issuance")?;
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
+    let host_owner_token_remints = Arc::new(Notify::new());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
@@ -339,6 +338,7 @@ pub fn setup_authorization_server(
             config.launcher_base.clone(),
             config.authorization_app_base.clone(),
         )),
+        host_owner_token_remints: host_owner_token_remints.clone(),
     });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview
@@ -350,12 +350,14 @@ pub fn setup_authorization_server(
     // daily. Spawned before the re-minter, which consumes `store`.
     spawn_retention_sweep(store.clone());
     // Keep the webview's owner-session token fresh: re-mint + republish inside
-    // the (now-short) owner-token TTL. See #269.
+    // the (now-short) owner-token TTL, and at once after a revocation of the
+    // host app's subject. See #269.
     spawn_owner_token_reminter(
         store,
         server_origin,
         config.host_owner_scopes.clone(),
         config.wildflower_host_app_client_id.clone(),
+        host_owner_token_remints,
         local_owner_token_tx.clone(),
     );
     // Reclaim expired denylist rows: once at startup, then daily.
@@ -375,14 +377,22 @@ pub fn setup_authorization_server(
 /// Spawn the timer that re-mints the host owner token every
 /// [`OWNER_TOKEN_REMINT_INTERVAL`] and republishes it on the owner-token
 /// `watch` channel, so the host's loopback owner trust moves to a live token
-/// before the previous (short-lived, #269) one expires. On a mint failure
-/// it logs and retries next tick; when every receiver has dropped (app
-/// shutdown) it stops.
+/// before the previous (short-lived, #269) one expires.
+///
+/// It also re-mints whenever `remints` is notified — after a revocation of the
+/// host app's subject killed the published token (see
+/// [`HostOwnerTokenRemintingRevocation`](domain::host_owner_token_remint::HostOwnerTokenRemintingRevocation)).
+/// That revocation's epoch is the whole second after it, and a token's `iat`
+/// is whole seconds, so it first waits for that second to begin
+/// ([`wait_for_the_next_whole_second`]); a token minted sooner would be
+/// revoked on arrival. On a mint failure it logs and retries next tick; when
+/// every receiver has dropped (app shutdown) it stops.
 fn spawn_owner_token_reminter(
     store: SqliteGrantStore,
     server_origin: Arc<str>,
     host_owner_scopes: Vec<String>,
     wildflower_host_app_client_id: String,
+    remints: Arc<Notify>,
     sender: watch::Sender<Option<String>>,
 ) {
     tokio::spawn(async move {
@@ -392,7 +402,10 @@ fn spawn_owner_token_reminter(
         // `setup_authorization_server` already published a token, so consume it.
         ticks.tick().await;
         loop {
-            ticks.tick().await;
+            tokio::select! {
+                _ = ticks.tick() => {}
+                () = remints.notified() => wait_for_the_next_whole_second(Utc::now()).await,
+            }
             match seeding::mint_host_owner_token(
                 &store,
                 &server_origin,
@@ -413,6 +426,24 @@ fn spawn_owner_token_reminter(
             }
         }
     });
+}
+
+/// Wait until the whole second after `since` has begun on the wall clock, the
+/// one `iat` and revocation epochs are read from. Loops because the runtime
+/// sleeps on the monotonic clock, which can drift from the wall clock.
+async fn wait_for_the_next_whole_second(since: DateTime<Utc>) {
+    let next_second = since.timestamp() + 1;
+    loop {
+        let now = Utc::now();
+        if now.timestamp() >= next_second {
+            return;
+        }
+        let into_this_second = u64::from(now.timestamp_subsec_nanos());
+        tokio::time::sleep(std::time::Duration::from_nanos(
+            1_000_000_000_u64.saturating_sub(into_this_second),
+        ))
+        .await;
+    }
 }
 
 /// Spawn the background sweep that purges expired rows from the revocation

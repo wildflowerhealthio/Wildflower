@@ -44,13 +44,11 @@ impl TokenRevoker {
     }
 
     /// Bulk-revoke a subject's whole token cohort via an epoch bump to now.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::HostAppClientLocked`] for the Wildflower
-    /// host app's client, whose epoch the port refuses to bump, so nothing is
-    /// revoked.
     pub(crate) fn revoke_subject(&self, subject: &str) -> Result<(), AuthorizationServerError> {
-        Ok(self.revocation.revoke_subject_as_of_now(subject)?)
+        self.revocation
+            .revoke_subject_as_of_now(subject)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e)
+            })
     }
 }

@@ -48,9 +48,11 @@ pub(crate) mod client_registration;
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod authorization_server_error;
 pub mod grant;
-// The lock on the Wildflower host app's client: no subject revocation of it,
-// and no disabling it.
+// The lock on the Wildflower host app's client: no disabling it.
 pub(crate) mod host_app_client_lock;
+// The `Revocation` port that asks for a fresh host owner token once the host
+// app's own subject is revoked.
+pub(crate) mod host_owner_token_remint;
 // The SMART App Launch contexts a launch mints and `/oauth/authorize` consumes.
 pub mod launch_context;
 // The closed set of OAuth error codes (RFC 6749 §5.2 + the redirect/device

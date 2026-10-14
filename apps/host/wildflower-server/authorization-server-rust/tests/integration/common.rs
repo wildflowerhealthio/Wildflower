@@ -62,6 +62,10 @@ pub struct TestDb {
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
     pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    /// Live receiver on the host owner token the slice publishes — the channel
+    /// the Tauri host reads the host app's token from. Held so the slice's
+    /// re-minter keeps publishing, and tests can read what it published.
+    host_owner_token_rx: watch::Receiver<Option<String>>,
     /// The directory holding a file-backed database, when there is one — held
     /// so the file outlives the test's handles (see
     /// [`spin_up_with_loopback_prompt`]).
@@ -150,9 +154,18 @@ fn spin_up_on(
             pool,
             revocation_conn,
             pending_consent_rx,
+            host_owner_token_rx: token_rx,
             _database_dir: database_dir,
         },
     )
+}
+
+/// A receiver on the host owner token channel, with the current token marked
+/// seen, so `changed()` resolves on the next one the slice publishes.
+pub fn host_owner_token_watch(db: &TestDb) -> watch::Receiver<Option<String>> {
+    let mut rx = db.host_owner_token_rx.clone();
+    rx.mark_unchanged();
+    rx
 }
 
 /// The head the host popup would currently be showing — the latest value on the

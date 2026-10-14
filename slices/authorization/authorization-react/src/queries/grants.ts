@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import type { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
-import { Data, Effect, type Schema } from 'effect'
+import { Effect, type Schema } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
 import { GRANTS_QUERY_KEY, grantQueryKey } from './keys.ts'
@@ -20,31 +20,6 @@ type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
 /** True for the 404 `RevokeGrant` and `GetGrant` answer for a grant that doesn't exist. */
 const isGrantNotFound = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && 'error' in error && error.error === 'GrantNotFound'
-/**
- * True for the 409 `RevokeGrant` and `CreateRevocation` answer for the
- * Wildflower host app's grant or subject.
- */
-const isHostAppClientLocked = (
-  error: unknown
-): error is Schema.Schema.Type<typeof AccessManagement.HostAppClientLockedSchema> =>
-  typeof error === 'object' &&
-  error !== null &&
-  'error' in error &&
-  error.error === 'HostAppClientLocked'
-
-/**
- * A revoke the server refused because the grant is the Wildflower host app's
- * own access. Its message is what the Owner reads where the revoke's error
- * renders.
- */
-class HostAppAccessLocked extends Data.TaggedError('HostAppAccessLocked')<{
-  readonly clientId: string
-}> {
-  override readonly message =
-    "This is the Wildflower host app's own access. Revoking it would cut off the app running " +
-    'your server.'
-}
-
 /** The authorization-code ("Approved App") variant of the grant union. */
 type AppGrant = Extract<Grant, { readonly grantType: 'authorization_code' }>
 /** The device-code ("Authorized Device") variant of the grant union. */
@@ -102,9 +77,7 @@ interface RevokeGrantVariables {
  * Revoke a grant: `RevokeGrant` (DELETE), then `CreateRevocation` for the
  * grant's client, so every token the client holds stops working now, whatever
  * else it was issued under. The second call runs only once the grant is gone.
- * The server's `409 HostAppClientLocked` from either call fails the mutation
- * with {@link HostAppAccessLocked}. Invalidates the grants list and the
- * revoked grant's detail.
+ * Invalidates the grants list and the revoked grant's detail.
  */
 const useRevokeGrantMutation = (): UseMutationResult<void, Error, RevokeGrantVariables> => {
   const runAuthed = useRunAuthed()
@@ -122,11 +95,7 @@ const useRevokeGrantMutation = (): UseMutationResult<void, Error, RevokeGrantVar
           yield* client['access-management'].CreateRevocation({
             payload: { subject: clientId },
           })
-        }).pipe(
-          Effect.catchIf(isHostAppClientLocked, (locked) =>
-            Effect.fail(new HostAppAccessLocked({ clientId: locked.clientId }))
-          )
-        )
+        })
       ),
     // On failure too: the DELETE may have landed before the revocation
     // failed, and the list must not keep showing a grant that's gone.
@@ -141,7 +110,6 @@ const useRevokeGrantMutation = (): UseMutationResult<void, Error, RevokeGrantVar
 
 export {
   grantQueryOptions,
-  HostAppAccessLocked,
   grantsQueryOptions,
   useGrantQuery,
   useGrantsQuery,

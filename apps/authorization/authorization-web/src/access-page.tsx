@@ -28,28 +28,6 @@ import { AUTHORIZATION_CLIENT_ID } from './config.ts'
 import type { RouterContext } from './router-context.ts'
 import styles from './access-page.module.css'
 
-/**
- * The ids of the clients whose grants the page offers no Revoke for:
- *
- * - the first-party host client, which is how the Owner reaches the server at
- *   all. The server refuses to disable that client or revoke its grants or
- *   subject (`409 HostAppClientLocked`);
- * - this app's own client, whose revocation would revoke the bearer the page
- *   is signed in with.
- *
- * `null` until the trusted apps have loaded, so no Revoke shows before the
- * page knows which clients are locked.
- */
-const lockedClientIdsOf = (
-  clients: readonly Client.Type[] | undefined
-): ReadonlySet<string> | null =>
-  clients === undefined
-    ? null
-    : new Set([
-        AUTHORIZATION_CLIENT_ID,
-        ...clients.filter((client) => client.firstParty).map((client) => client.clientId),
-      ])
-
 interface AccessPageBodyProps {
   readonly serverUrl: string
   readonly grants: readonly Grant[]
@@ -65,12 +43,8 @@ interface AccessPageBodyProps {
  *   disables or enables one ({@link TrustedAppsSection});
  * - **Authorized Devices**: the device-code grants, read only.
  *
- * The first-party host client's grants and switch are not offered: the server
- * refuses to disable that client or revoke its grants, and the Owner reaches
- * the server through it. Should a revoke reach the server anyway, the error
- * banner says it is the host app's own access (`useRevokeGrantMutation` decodes
- * the `409`). Nor is a Revoke for this app's own grant, which would sign the
- * page out.
+ * No Revoke is offered for this app's own grant, which would revoke the
+ * bearer the page is signed in with.
  */
 const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element => {
   const navigate = useNavigate()
@@ -79,7 +53,6 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
     select: (context: RouterContext) => context.runAuthed,
   })
   const { data: clients } = useQuery(clientsQueryOptions(runAuthed))
-  const lockedClientIds = lockedClientIdsOf(clients)
   const revokeMutation = useRevokeGrantMutation()
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
 
@@ -104,9 +77,9 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
   )
   const grantToRevoke = appGrants.find((grant) => grant.id === confirmRevokeId) ?? null
 
-  /** The Revoke menu for `grant`, or none for a locked client's grant. */
+  /** The Revoke menu for `grant`, or none for this app's own grant. */
   const revokeMenuFor = (grant: AppGrant): JSX.Element | null => {
-    if (lockedClientIds === null || lockedClientIds.has(grant.clientId)) return null
+    if (grant.clientId === AUTHORIZATION_CLIENT_ID) return null
     // One revoke at a time: held while one is in flight.
     const revokeItem: MenuItem = revokeMutation.isPending
       ? { id: 'revoke', label: 'Revoke', disabled: true }

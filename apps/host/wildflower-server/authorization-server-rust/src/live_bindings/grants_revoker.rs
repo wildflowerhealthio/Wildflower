@@ -14,8 +14,7 @@ use crate::domain::capabilities::access::grants::grants_revoker_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, GrantsRevoker};
 use crate::domain::token::VerifiedClaims;
 
-/// Revoke a standing grant (with the token-kill cascade), never a grant of the
-/// Wildflower host app's client.
+/// Revoke a standing grant (with the token-kill cascade).
 pub(crate) type LiveGrantsRevoker = GrantsRevoker<SqliteGrantStore>;
 
 impl FixedScopeCapability for LiveGrantsRevoker {
