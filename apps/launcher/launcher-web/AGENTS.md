@@ -33,15 +33,15 @@ the base opens a server's launcher.
   lives in page memory and goes on `Unauthed`; the server is kept under
   `web-entry.ts`'s `SIGNED_IN_SERVER_KEY`, so a reload or the expiry bounce
   back to the landing signs back in to it. Every API request reads both
-  lazily (`bridges/app-query-runtime.ts`'s `apiTransport`): it goes to the
+  lazily (`client/app-query-runtime.ts`'s `apiTransport`): it goes to the
   session's server with its bearer, and fails before any sign-in. `?server=`
   and a launch's `iss` choose only where the landing signs in
   (`web-entry.ts`'s `chosenServerUrl`). The settings screen's Logout row
   (`web-entry.ts`'s `logoutSettingsItem`) revokes the bearer at the session's
-  server and clears the tab's `sessionStorage`. A 401 that outlives the
-  boot-race retry sends the reader to device login. Tests:
+  server and clears the tab's `sessionStorage`. A 401 sends the reader to
+  device login. Tests:
   `authorization-react`'s `bearer-auth-state-store.test.ts`,
-  `bridges/app-query-runtime.test.ts`, `web-entry.test.ts`.
+  `client/app-query-runtime.test.ts`, `web-entry.test.ts`.
 - **`main-web` takes a SMART launch at its root, with its own sign-in.**
   Like everything `bootApp` does, the launch waits for the consent answer, as
   it does in the SMART apps. `bootApp` reads `?iss=` (and the EHR's `launch`)

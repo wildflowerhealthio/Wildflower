@@ -208,8 +208,8 @@ const toErrorState = (error: unknown): DeviceFlowState =>
  * device-authorization flow: surface the `user_code`, poll `/oauth/token` until
  * approval, then write the token via the `AuthStateStore` provided by the
  * surrounding `<AuthStateProvider>` (resolved through {@link useAuthStateSetter})
- * and navigate to the sanitized `?returnTo=` path (or {@link POST_AUTH_DEFAULT_PATH})
- * with a full page load so the app reboots with the bearer in place.
+ * and navigate client-side to the sanitized `?returnTo=` path (or
+ * {@link POST_AUTH_DEFAULT_PATH}), keeping the bearer in page memory.
  *
  * It doubles as the **step-up** target: a `403 InsufficientScope` surface sends
  * the user here via `buildStepUpTarget`, and `?requestScopes=` pre-fills the
@@ -494,7 +494,7 @@ const NeedsAuthMessage = (): JSX.Element => {
           <a href={state.verificationUriComplete}>{state.verificationUriComplete}</a>
         </FieldDescription>
         <FieldDescription>
-          Waiting for approval — this page will reload automatically once you sign in.
+          Waiting for approval — this page signs in on its own once the request is approved.
         </FieldDescription>
       </>
     )

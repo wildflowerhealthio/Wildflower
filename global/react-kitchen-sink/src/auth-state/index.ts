@@ -1,7 +1,7 @@
 export {
   AuthedUntil,
   type AuthState,
-  HostAuthed,
+  AuthedExpiryUnknown,
   isAuthed,
   isFreshlyAuthed,
   Unauthed,

@@ -3,10 +3,10 @@ import { Effect } from 'effect'
 
 /**
  * Test fixtures shared by the auth-error suites (`auth-errors.test.ts`,
- * `query-client.test.ts`, `retry-policy.test.ts`): the two error *shapes* the
- * detectors key on and the `FiberFailure` wrapping a rejected `runAuthed`
- * surfaces. Kept in one place so every suite tests against the exact same
- * fixtures rather than its own near-copies.
+ * `query-client.test.ts`): the two error *shapes* the detectors key on and
+ * the `FiberFailure` wrapping a rejected `runAuthed` surfaces. Kept in one
+ * place so every suite tests against the exact same fixtures rather than its
+ * own near-copies.
  */
 
 /**

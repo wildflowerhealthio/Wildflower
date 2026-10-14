@@ -64,7 +64,7 @@ vi.mock('@wildflowerhealthio/telemetry-web', () => ({
   Sentry: { captureException: () => {} },
 }))
 // Minimal route tree; leaf records the `QueryClient` it sees.
-vi.mock('../routeTree.gen.ts', () => {
+vi.mock('./routeTree.gen.ts', () => {
   const rootRoute = createRootRoute({ component: RootShell })
   const leaf = createRoute({
     getParentRoute: () => rootRoute,
@@ -74,8 +74,8 @@ vi.mock('../routeTree.gen.ts', () => {
   return { routeTree: rootRoute.addChildren([leaf]) }
 })
 
-import { RootShell } from '../session/root-shell.tsx'
-import { ServerKind } from '../session/server-kind.ts'
+import { RootShell } from './session/root-shell.tsx'
+import { ServerKind } from './session/server-kind.ts'
 
 describe('in-memory QueryClientProvider', () => {
   beforeEach(() => {
@@ -92,7 +92,7 @@ describe('in-memory QueryClientProvider', () => {
   })
 
   test('provides a single shared QueryClient to the whole tree', async () => {
-    const { buildAppTree, mountAtRoot } = await import('../app-root.tsx')
+    const { buildAppTree, mountAtRoot } = await import('./app-root.tsx')
 
     // Minimal in-memory bearer store — this test only pins the
     // `QueryClient` sharing contract, not anything about the session: a

@@ -14,7 +14,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   AuthedUntil,
   type AuthState,
-  HostAuthed,
+  AuthedExpiryUnknown,
   isAuthed,
   isFreshlyAuthed,
   Unauthed,
@@ -356,7 +356,7 @@ describe('authStateForSession', () => {
         const signal = authStateForSession(sessionWith(undefined), nowSeconds)
 
         // Assert
-        expect(signal).toEqual(HostAuthed())
+        expect(signal).toEqual(AuthedExpiryUnknown())
         expect(isAuthed(signal)).toBe(true)
         expect(isFreshlyAuthed(signal, nowSeconds)).toBe(true)
       }),
@@ -425,12 +425,12 @@ describe('scheduleExpiry', () => {
   })
 
   it('arms no timer for a response that reported no lifetime', () => {
-    // A `HostAuthed` session has no honest `exp` to count down to, so nothing is
+    // An `AuthedExpiryUnknown` session has no honest `exp` to count down to, so nothing is
     // scheduled and it stays authed.
     vi.useFakeTimers()
     const store = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
     store.writeSession({ serverUrl: 'https://ruth.wildflowerhealth.io', bearer: 'tok_hosted' })
-    store.setAuthState(HostAuthed())
+    store.setAuthState(AuthedExpiryUnknown())
 
     scheduleExpiry(store.setAuthState, undefined)
 
