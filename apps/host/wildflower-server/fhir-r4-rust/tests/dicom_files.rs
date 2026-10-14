@@ -45,7 +45,6 @@ fn build_router() -> (Router, TempDb) {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
         bulk_export_dir: dir.join("fhir-exports"),
-        jwks_url: None,
         search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
         public_origin: "https://dev1.example.com"
             .parse()
@@ -61,6 +60,8 @@ fn build_router() -> (Router, TempDb) {
     let routers = setup_fhir_r4(
         &runtime,
         &config,
+        // No signing keys: HFS auth is off.
+        None,
         revocation_store,
         ui_sessions(&runtime, &config),
         // No host gate in front: these drive HFS and the UI directly.
@@ -100,7 +101,7 @@ async fn get_file(router: &Router, id: &str) -> (StatusCode, Vec<u8>, Option<Str
         .method("GET")
         .uri(format!("/api/dicom/files/{id}"))
         // The handler requires a bearer token, which it forwards onto its
-        // in-process HFS sub-request. HFS auth is off here (`jwks_url: None`),
+        // in-process HFS sub-request. HFS auth is off here (no signing keys),
         // so the value is inert — only its presence matters.
         .header("authorization", "Bearer test-token")
         .body(Body::empty())

@@ -53,6 +53,10 @@ async-trait = "0.1"
 # The `JtiCache::check_and_store` signature is in `chrono::DateTime<Utc>`; already
 # in the tree via helios, pinned here as a direct dep for the type reference.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# HFS's bearer validator checks each token against this server's signing keys,
+# read in process (see `src/auth.rs`); the version and crypto backend the
+# authorization server signs with.
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 # Runs bulk `$export`'s worker and cleanup until the server shuts down.
 tokio = { workspace = true, features = ["macros", "time"] }
 tokio-util = "0.7"

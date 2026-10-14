@@ -24,14 +24,6 @@ pub struct FhirR4Config {
     /// through HFS's `/export-file` route, and they are deleted with their job
     /// once its output expires. Created on the first export.
     pub bulk_export_dir: PathBuf,
-    /// JWKS endpoint HFS fetches signing keys from to validate inbound
-    /// Bearer JWTs. `Some(url)` enables HFS auth (every FHIR request must
-    /// carry a token, scopes enforced); `None` leaves HFS open and relies
-    /// on whatever middleware wraps this router from outside (e.g. the
-    /// Tauri host's authorization server gating layer). HFS validates each token's `iss`
-    /// and `aud` against [`Self::public_origin`]; see
-    /// `docs/Origins/Explanation.md`.
-    pub jwks_url: Option<String>,
     /// The server's public origin, e.g. `https://ruth.relay.wildflowerhealth.io`.
     /// HFS's `base_url` — the prefix of every URL it emits (search Bundle links,
     /// `entry.fullUrl`s, a create's `Location`) — is the bare `public_origin`,

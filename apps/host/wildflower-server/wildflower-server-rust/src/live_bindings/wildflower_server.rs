@@ -23,6 +23,7 @@ use wildflowerhealthio_authorization_server::{
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
+use crate::adapters::access_token_signing_keys::AuthorizationServerSigningKeys;
 use crate::adapters::acme_certificate::DeviceCertificate;
 use crate::adapters::app_launch_scopes::AuthorizationServerAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
@@ -245,19 +246,12 @@ pub async fn set_up(
 
     let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
     // The typed loopback base URL is the single source threaded into every
-    // slice's config that renders it (the authorization server / fhir-r4). `loopback_origin` is its
-    // bare origin string (no trailing slash) for the few sub-URLs built by hand.
+    // slice's config that renders it (the authorization server / fhir-r4).
     let loopback_base_url = runtime.loopback_base_url();
-    let loopback_origin = wildflowerhealthio_shared_structures::origin_string(&loopback_base_url);
     let fhir_r4_config = FhirR4Config {
         log_level: "debug".to_string(),
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
         bulk_export_dir: runtime.server_dir.join(FHIR_EXPORTS_DIR),
-        // HFS-enforced auth: every FHIR request must carry a Bearer JWT
-        // signed by an authorization-server-issued key whose `iss` and `aud` are the
-        // server's origin — set by the authorization server at mint, checked by both
-        // the authorization server's gate and HFS.
-        jwks_url: Some(format!("{loopback_origin}/.well-known/jwks.json")),
         search_parameter_data_dir,
         public_origin: public_origin.clone(),
         authorization_app_base: authorization_app_base.clone(),
@@ -356,6 +350,13 @@ pub async fn set_up(
     let fhir_routers = setup_fhir_r4(
         &runtime,
         &fhir_r4_config,
+        // HFS-enforced auth: every FHIR request must carry a Bearer JWT signed
+        // with one of the authorization server's keys, read in process, whose
+        // `iss` and `aud` are the server's origin — set by the authorization
+        // server at mint, checked by both its gate and HFS.
+        Some(Arc::new(AuthorizationServerSigningKeys {
+            signing_keys_reader: authorization_server.signing_keys_reader.clone(),
+        })),
         revocation_store,
         ui_sessions.clone(),
         authorization_server_auth_middleware(

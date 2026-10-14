@@ -16,6 +16,9 @@
 //! - [`SameDeviceSignInCodeMinter`] is the in-process mint of the one-time codes
 //!   `/oauth/sign-in` signs a browser in as the Owner with, handed out the
 //!   same way, to the host.
+//! - [`SigningKeysReader`] is the read-only face of the public signing keys,
+//!   handed out the same way, for the host's FHIR server to verify bearers
+//!   with in-process.
 //! - [`HostConsentDecider`] is the consent capabilities bound to the host
 //!   Owner's grant, for the host to decide consents in-process.
 //! - The remaining modules hold one binding each (the `/authorization` ones implement
@@ -37,6 +40,7 @@ mod launch_context_minter;
 mod oauth_front_door;
 mod same_device_sign_in_code_minter;
 mod session;
+mod signing_keys_reader;
 
 pub mod state;
 mod token_exchanger;
@@ -57,6 +61,7 @@ pub(crate) use oauth_front_door::{
 };
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
 pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};
+pub use signing_keys_reader::SigningKeysReader;
 pub use state::AuthorizationServerState;
 pub(crate) use token_exchanger::LiveTokenExchanger;
 pub(crate) use token_revoker::LiveTokenRevoker;

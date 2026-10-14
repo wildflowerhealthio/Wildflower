@@ -1,5 +1,6 @@
-//! Bridge between our JWKS-URL config and the
-//! `(AuthConfig, AuthMiddlewareState)` pair HFS's
+//! HFS's bearer auth over this server's own access-token signing keys: the
+//! [`AccessTokenSigningKeys`] port the host fills in process, the validator
+//! that reads it, and the `(AuthConfig, AuthMiddlewareState)` pair HFS's
 //! [`helios_rest::create_app_with_auth`] expects.
 
 use std::sync::Arc;
@@ -7,13 +8,170 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use helios_audit::{sinks::NullSink, AuditSink, ExclusionFilter};
 use helios_auth::error::AuthError;
-use helios_auth::{
-    AuthConfig, AuthProvider, JwksBearerAuthProvider, JwksCache, Principal, SessionStore,
-};
+use helios_auth::{AuthConfig, AuthProvider, Principal, ScopeSet, SessionStore};
 use helios_rest::AuthMiddlewareState;
+use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use serde::Deserialize;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
-/// The FHIR-side revocation enforcement point: wraps helios's JWKS validator
+/// The public half of a key this server signs its access tokens with: an
+/// RS256 RSA key, its components base64url-encoded as in an RFC 7517 JWK.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccessTokenPublicKey {
+    /// The key's id, which a token signed with it names in its `kid` header.
+    pub kid: String,
+    /// The RSA modulus `n`, base64url-encoded.
+    pub n: String,
+    /// The RSA public exponent `e`, base64url-encoded.
+    pub e: String,
+}
+
+/// The public halves of the keys this server signs its access tokens with,
+/// read in process, so validating a bearer never calls the server over HTTP.
+/// The host implements it over its authorization server's key store.
+pub trait AccessTokenSigningKeys: Send + Sync + 'static {
+    /// Every key that may have signed a live access token, the active one and
+    /// those rotated out alike.
+    ///
+    /// # Errors
+    ///
+    /// When the keys can't be read.
+    fn public_keys(&self) -> anyhow::Result<Vec<AccessTokenPublicKey>>;
+}
+
+/// An access token's claims, as HFS's [`Principal`] carries them. The
+/// registered claims the [`Validation`] checks (`aud`, `iat`, `nbf`) are
+/// dropped from [`Self::other_claims`] rather than carried twice.
+#[derive(Deserialize)]
+struct AccessTokenClaims {
+    sub: String,
+    iss: String,
+    exp: i64,
+    jti: Option<String>,
+    scope: Option<String>,
+    #[serde(flatten)]
+    other_claims: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The registered claims [`AccessTokenClaims::other_claims`] leaves out.
+const VALIDATED_CLAIMS: &[&str] = &["aud", "iat", "nbf"];
+
+/// HFS's bearer validator: a bearer is a JWT signed with one of
+/// [`AccessTokenSigningKeys`]'s keys (picked by its `kid`), with RS256, unexpired,
+/// naming this server's origin as both `iss` and `aud`, and naming a subject.
+/// Its `scope` becomes the principal's SMART scopes.
+struct SigningKeysBearerProvider {
+    signing_keys: Arc<dyn AccessTokenSigningKeys>,
+    /// The server's bare origin, the one `iss` and the one `aud` accepted.
+    server_origin: String,
+}
+
+impl SigningKeysBearerProvider {
+    /// The key `kid` names, or why there is none to verify with.
+    fn decoding_key(&self, kid: &str) -> Result<DecodingKey, AuthError> {
+        let public_keys = self.signing_keys.public_keys().map_err(|error| {
+            AuthError::InternalError(format!("signing keys read failed: {error:#}"))
+        })?;
+        let public_key = public_keys
+            .iter()
+            .find(|public_key| public_key.kid == kid)
+            .ok_or_else(|| AuthError::UnknownKid {
+                kid: kid.to_owned(),
+            })?;
+        DecodingKey::from_rsa_components(&public_key.n, &public_key.e).map_err(|error| {
+            AuthError::InternalError(format!("signing key {kid} is unreadable: {error}"))
+        })
+    }
+
+    /// What a token must be beyond its signature.
+    fn validation(&self) -> Validation {
+        let mut validation = Validation::new(Algorithm::RS256);
+        validation.set_issuer(&[&self.server_origin]);
+        validation.set_audience(&[&self.server_origin]);
+        // `set_issuer`/`set_audience` check a claim only when it is present.
+        validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
+        validation.validate_nbf = true;
+        validation
+    }
+}
+
+#[async_trait]
+impl AuthProvider for SigningKeysBearerProvider {
+    async fn authenticate(&self, authorization_header: &str) -> Result<Principal, AuthError> {
+        let token = authorization_header
+            .strip_prefix("Bearer ")
+            .filter(|token| !token.is_empty())
+            .ok_or_else(|| {
+                AuthError::InvalidTokenFormat(
+                    "Authorization header must be `Bearer <token>`".to_owned(),
+                )
+            })?;
+        let header = jsonwebtoken::decode_header(token).map_err(|error| {
+            AuthError::InvalidTokenFormat(format!("Failed to decode JWT header: {error}"))
+        })?;
+        let kid = header
+            .kid
+            .ok_or_else(|| AuthError::InvalidTokenFormat("JWT header missing 'kid'".to_owned()))?;
+        let decoding_key = self.decoding_key(&kid)?;
+        let claims =
+            jsonwebtoken::decode::<AccessTokenClaims>(token, &decoding_key, &self.validation())
+                .map_err(validation_error)?
+                .claims;
+
+        let AccessTokenClaims {
+            sub,
+            iss,
+            exp,
+            jti,
+            scope,
+            mut other_claims,
+        } = claims;
+        // Presence alone passes the required-claim check, so an empty subject
+        // would otherwise become an anonymous principal.
+        if sub.is_empty() {
+            return Err(AuthError::ValidationError("Missing 'sub' claim".to_owned()));
+        }
+        let expires_at = chrono::DateTime::from_timestamp(exp, 0)
+            .ok_or_else(|| AuthError::ValidationError("Invalid 'exp' timestamp".to_owned()))?;
+        other_claims.retain(|name, _| !VALIDATED_CLAIMS.contains(&name.as_str()));
+        Ok(Principal {
+            subject: sub,
+            issuer: iss,
+            tenant_id: None,
+            scopes: scope
+                .as_deref()
+                .map_or_else(ScopeSet::empty, ScopeSet::parse),
+            jti,
+            expires_at,
+            custom_claims: other_claims,
+        })
+    }
+
+    fn name(&self) -> &str {
+        "signing-keys-bearer"
+    }
+}
+
+/// A token that failed [`SigningKeysBearerProvider::validation`], as HFS's own
+/// validator reports it.
+fn validation_error(error: jsonwebtoken::errors::Error) -> AuthError {
+    use jsonwebtoken::errors::ErrorKind;
+    match error.kind() {
+        ErrorKind::ExpiredSignature => AuthError::TokenExpired,
+        ErrorKind::InvalidSignature => AuthError::InvalidSignature,
+        ErrorKind::InvalidAudience => AuthError::ValidationError("Invalid audience".to_owned()),
+        ErrorKind::InvalidIssuer => AuthError::ValidationError("Invalid issuer".to_owned()),
+        ErrorKind::InvalidAlgorithm => AuthError::UnsupportedAlgorithm {
+            alg: "not RS256".to_owned(),
+        },
+        ErrorKind::MissingRequiredClaim(claim) => {
+            AuthError::ValidationError(format!("Missing required claim: {claim}"))
+        }
+        _ => AuthError::ValidationError(format!("Token validation failed: {error}")),
+    }
+}
+
+/// The FHIR-side revocation enforcement point: wraps the bearer validator
 /// and rejects a validated token iff its `jti` is on the shared denylist. It
 /// never stores, so a multi-use authorization server bearer passes on every call. Only the
 /// per-`jti` half — `Principal` has no `iat`, so the epoch half stays with
@@ -48,18 +206,13 @@ impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
     }
 }
 
-/// Translate an optional JWKS URL into the `(AuthConfig, auth_state)`
+/// Translate the optional signing keys into the `(AuthConfig, auth_state)`
 /// pair HFS's `create_app_with_auth` expects. `None` leaves HFS auth off.
 ///
-/// `expected_issuer` and `expected_audience` are both `server_origin`, the bare
-/// origin every token this server mints names as its `iss` and `aud`: HFS
-/// checks both (helios-auth matches `aud` exactly when set), so a token another
-/// server minted is refused here as well as at the authorization server's gate. See
+/// HFS requires `server_origin`, the bare origin every token this server mints
+/// names as its `iss` and `aud`, of every token, so a token another server
+/// minted is refused here as well as at the authorization server's gate. See
 /// `docs/Origins/Explanation.md`.
-/// The JWKS cache is *not* initial-fetched: the authorization server's HTTP listener isn't
-/// bound yet when this runs, so a blocking fetch would deadlock. HFS's
-/// `JwksCache` supports lazy fetching — the first request that needs a signing
-/// key triggers a fetch then.
 ///
 /// `revocation_store` is the shared denylist the host wires into both this and
 /// the authorization server; the returned provider consults it per validated token (see
@@ -68,26 +221,29 @@ impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
 /// `ui_sessions` is the web UI's session store: HFS treats a same-site request
 /// carrying its session cookie and no `Authorization` as the session's bearer.
 pub(crate) fn build_auth(
-    jwks_url: Option<&str>,
+    signing_keys: Option<Arc<dyn AccessTokenSigningKeys>>,
     revocation_store: RevocationStore,
     server_origin: &str,
     ui_sessions: Arc<SessionStore>,
 ) -> (AuthConfig, Option<Arc<AuthMiddlewareState>>) {
-    let Some(jwks_url) = jwks_url else {
+    let Some(signing_keys) = signing_keys else {
         return (AuthConfig::default(), None);
     };
 
+    // No `jwks_url`: HFS's own JWKS validator isn't used, the provider below
+    // is.
     let config = AuthConfig {
         enabled: true,
-        jwks_url: Some(jwks_url.to_string()),
         expected_issuer: Some(server_origin.to_string()),
         expected_audience: Some(server_origin.to_string()),
         ..AuthConfig::default()
     };
 
-    let jwks_cache = Arc::new(JwksCache::new(jwks_url, config.jwks_min_refresh_interval));
     let provider = RevocationCheckingProvider {
-        inner: JwksBearerAuthProvider::new(jwks_cache, &config),
+        inner: SigningKeysBearerProvider {
+            signing_keys,
+            server_origin: server_origin.to_owned(),
+        },
         store: revocation_store,
     };
     let audit_sink: Arc<dyn AuditSink> = Arc::new(NullSink);
@@ -108,13 +264,12 @@ pub(crate) fn build_auth(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_auth, RevocationCheckingProvider};
+    use super::{
+        build_auth, AccessTokenPublicKey, AccessTokenSigningKeys, RevocationCheckingProvider,
+    };
     use async_trait::async_trait;
-    use axum::routing::get;
-    use axum::{Json, Router};
     use helios_auth::error::AuthError;
     use helios_auth::{AuthProvider, Principal, ScopeSet};
-    use wildflowerhealthio_authorization_server::crypto_util::public_jwk::PublicJwk;
     use wildflowerhealthio_authorization_server::domain::signing_key::SigningKey;
     use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
     use wildflowerhealthio_token_revocation::RevocationStore;
@@ -164,26 +319,50 @@ mod tests {
         }
     }
 
+    /// Signing keys that are exactly `public_keys`, or can't be read.
+    struct FixedSigningKeys(Option<Vec<AccessTokenPublicKey>>);
+
+    impl AccessTokenSigningKeys for FixedSigningKeys {
+        fn public_keys(&self) -> anyhow::Result<Vec<AccessTokenPublicKey>> {
+            self.0
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("the key store is unreadable"))
+        }
+    }
+
+    /// `key`'s public half, as the host's key store hands it over.
+    fn public_key(key: &SigningKey) -> AccessTokenPublicKey {
+        AccessTokenPublicKey {
+            kid: key.kid.clone(),
+            n: key.values.n.clone(),
+            e: key.values.e.clone(),
+        }
+    }
+
     #[test]
-    fn jwks_url_none_leaves_hfs_auth_off() {
+    fn no_signing_keys_leave_hfs_auth_off() {
         let (config, state) = build_auth(None, store(), SERVER_ORIGIN, sessions());
         assert!(
             !config.enabled,
-            "HFS auth must be disabled when no JWKS URL is configured"
+            "HFS auth must be disabled without signing keys"
         );
         assert!(
             state.is_none(),
-            "no AuthMiddlewareState should be built without a JWKS URL"
+            "no AuthMiddlewareState should be built without signing keys"
         );
     }
 
     #[test]
-    fn jwks_url_some_enables_auth_pinned_to_the_server_origin() {
-        let url = "http://127.0.0.1:8080/.well-known/jwks.json";
-        let (config, state) = build_auth(Some(url), store(), SERVER_ORIGIN, sessions());
+    fn signing_keys_enable_auth_pinned_to_the_server_origin() {
+        let (config, state) = build_auth(
+            Some(std::sync::Arc::new(FixedSigningKeys(Some(Vec::new())))),
+            store(),
+            SERVER_ORIGIN,
+            sessions(),
+        );
 
         assert!(config.enabled);
-        assert_eq!(config.jwks_url.as_deref(), Some(url));
+        assert_eq!(config.jwks_url, None, "HFS fetches no JWKS");
         // `iss` = `aud` = the server's origin; see `docs/Origins/Explanation.md`.
         assert_eq!(config.expected_issuer.as_deref(), Some(SERVER_ORIGIN));
         assert_eq!(config.expected_audience.as_deref(), Some(SERVER_ORIGIN));
@@ -194,27 +373,24 @@ mod tests {
         );
     }
 
-    /// HFS's own validator as `build_auth` configures it for [`SERVER_ORIGIN`],
-    /// fetching its keys from a local JWKS endpoint that publishes `key`.
-    async fn hfs_provider_trusting(key: &SigningKey) -> std::sync::Arc<dyn AuthProvider> {
-        let jwks = serde_json::json!({ "keys": [PublicJwk::from(key)] });
-        let router = Router::new().route(
-            "/.well-known/jwks.json",
-            get(move || {
-                let jwks = jwks.clone();
-                async move { Json(jwks) }
-            }),
+    /// HFS's validator as `build_auth` configures it for [`SERVER_ORIGIN`],
+    /// over `signing_keys`.
+    fn hfs_provider_over(signing_keys: FixedSigningKeys) -> std::sync::Arc<dyn AuthProvider> {
+        let (_config, state) = build_auth(
+            Some(std::sync::Arc::new(signing_keys)),
+            store(),
+            SERVER_ORIGIN,
+            sessions(),
         );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind a JWKS listener");
-        let jwks_url = format!(
-            "http://{}/.well-known/jwks.json",
-            listener.local_addr().expect("JWKS listener address")
-        );
-        tokio::spawn(async move { axum::serve(listener, router).await });
-        let (_config, state) = build_auth(Some(&jwks_url), store(), SERVER_ORIGIN, sessions());
-        state.expect("auth is on with a JWKS URL").provider.clone()
+        state
+            .expect("auth is on with signing keys")
+            .provider
+            .clone()
+    }
+
+    /// HFS's validator, trusting only `key`.
+    fn hfs_provider_trusting(key: &SigningKey) -> std::sync::Arc<dyn AuthProvider> {
+        hfs_provider_over(FixedSigningKeys(Some(vec![public_key(key)])))
     }
 
     /// An authorization server token signed by `key` naming `issuer` and `audience`.
@@ -240,13 +416,21 @@ mod tests {
     #[tokio::test]
     async fn hfs_accepts_only_tokens_naming_this_server_as_iss_and_aud() {
         let key = SigningKey::generate().expect("generate a signing key");
-        let provider = hfs_provider_trusting(&key).await;
+        let provider = hfs_provider_trusting(&key);
 
         let principal = provider
             .authenticate(&bearer(&key, SERVER_ORIGIN, SERVER_ORIGIN))
             .await
             .expect("a token for this server is accepted");
         assert_eq!(principal.issuer, SERVER_ORIGIN);
+        assert_eq!(principal.subject, "app");
+        assert!(principal.jti.is_some());
+        assert_eq!(principal.scopes.raw(), ["patient/*.rs"]);
+        assert!(
+            !principal.custom_claims.contains_key("aud"),
+            "{:?}",
+            principal.custom_claims
+        );
 
         for (issuer, audience) in [
             (OTHER_ORIGIN, OTHER_ORIGIN),
@@ -261,6 +445,47 @@ mod tests {
                 "iss {issuer}, aud {audience} must be refused"
             );
         }
+    }
+
+    /// A token signed with a key the server doesn't hold is refused by its
+    /// `kid`, and one forged under a held key's `kid` by its signature.
+    #[tokio::test]
+    async fn hfs_refuses_a_token_signed_with_a_key_the_server_does_not_hold() {
+        let held = SigningKey::generate().expect("generate a signing key");
+        let provider = hfs_provider_trusting(&held);
+        let other = SigningKey::generate().expect("generate a signing key");
+
+        assert!(matches!(
+            provider
+                .authenticate(&bearer(&other, SERVER_ORIGIN, SERVER_ORIGIN))
+                .await,
+            Err(AuthError::UnknownKid { .. })
+        ));
+        let mut forged = other;
+        forged.kid.clone_from(&held.kid);
+        assert!(matches!(
+            provider
+                .authenticate(&bearer(&forged, SERVER_ORIGIN, SERVER_ORIGIN))
+                .await,
+            Err(AuthError::InvalidSignature)
+        ));
+    }
+
+    /// Keys that can't be read refuse every token as a server-side failure,
+    /// never admitting it.
+    #[tokio::test]
+    async fn hfs_fails_closed_when_the_signing_keys_cannot_be_read() {
+        let key = SigningKey::generate().expect("generate a signing key");
+        let provider = hfs_provider_over(FixedSigningKeys(None));
+
+        let error = provider
+            .authenticate(&bearer(&key, SERVER_ORIGIN, SERVER_ORIGIN))
+            .await
+            .expect_err("unreadable keys refuse the token");
+        assert!(
+            matches!(error, AuthError::InternalError(_)),
+            "expected InternalError, got {error:?}"
+        );
     }
 
     /// The HFS-side multi-use guard: a live `jti` passes on *every* call (the

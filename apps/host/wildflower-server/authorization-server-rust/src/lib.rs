@@ -80,7 +80,7 @@ pub use http::{
     RequireLoopbackPeerMiddleware, OWNER_BROWSER_SESSION_COOKIE,
     OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
-pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter};
+pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter, SigningKeysReader};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
@@ -201,6 +201,9 @@ pub struct AuthorizationServer {
     /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
     /// Owner with — for the host, in-process.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
+    /// Reads the public halves of the signing keys — for the host's FHIR
+    /// server, which verifies each bearer against them in-process.
+    pub signing_keys_reader: SigningKeysReader,
 }
 
 /// Build the authorization-server-rust HTTP surface over the host-owned diesel
@@ -226,7 +229,9 @@ pub struct AuthorizationServer {
 ///    SMART App Launch `launch` value through, which `/oauth/authorize` then
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
-///    same-device sign-in code through, which `/oauth/sign-in` then redeems.
+///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
+///  - returns the [`SigningKeysReader`] the host's FHIR server reads the
+///    public signing keys through, to verify each bearer in-process.
 ///
 /// Every token this server mints carries the server's origin
 /// ([`AuthorizationServerConfig::server_origin`]) as both `iss` and `aud`, and
@@ -290,6 +295,7 @@ pub fn setup_authorization_server(
     spawn_revocation_purge(revocation_store);
     let router = http::router(state.clone());
     let launch_context_minter = LaunchContextMinter::new(state.store.clone());
+    let signing_keys_reader = SigningKeysReader::new(state.store.clone());
     let same_device_sign_in_code_minter =
         SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
     Ok(AuthorizationServer {
@@ -297,6 +303,7 @@ pub fn setup_authorization_server(
         state,
         launch_context_minter,
         same_device_sign_in_code_minter,
+        signing_keys_reader,
     })
 }
 

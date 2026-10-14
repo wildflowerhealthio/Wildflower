@@ -23,9 +23,6 @@ async fn main() -> anyhow::Result<()> {
         log_level: "info".to_string(),
         db_file_path: tmp.join("health-data.sqlite"),
         bulk_export_dir: tmp.join("fhir-exports"),
-        // Dev binary: HFS auth off. Discovery + /metadata still served;
-        // anything that would normally require auth (Patient, etc.) is open.
-        jwks_url: None,
         // The SearchParameter bundle is a deployed asset; point HFS at the
         // crate's vendored copy so searches index (see `assets/README.md`).
         search_parameter_data_dir: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -39,12 +36,16 @@ async fn main() -> anyhow::Result<()> {
             )?,
     };
 
-    // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is
+    // Dev binary: HFS auth is off (no signing keys), so the revocation store is
     // never consulted — the always-allow double satisfies the signature.
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(
         &runtime,
         &config,
+        // Dev binary: HFS auth off. Discovery + /metadata are served as
+        // ever; anything that would normally require auth (Patient, etc.) is
+        // open.
+        None,
         revocation_store,
         ui_sessions(&runtime, &config),
         // No host gate in front: these drive HFS and the UI directly.

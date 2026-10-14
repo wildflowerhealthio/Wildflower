@@ -9649,6 +9649,7 @@ dependencies = [
  "helios-rest",
  "helios-ui",
  "http-body-util",
+ "jsonwebtoken 10.2.0",
  "serde",
  "serde_json",
  "tempfile",

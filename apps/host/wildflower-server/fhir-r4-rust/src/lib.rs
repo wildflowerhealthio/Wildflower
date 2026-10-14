@@ -4,7 +4,7 @@
 //! SMART-App-Launch-shaped one, adds the `$everything` operation HFS lacks,
 //! mounts HFS's web UI at `/ui` with its sign-in against the authorization server, and
 //! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy against
-//! the authorization server's JWKS.
+//! the authorization server's signing keys, read in process.
 
 mod auth;
 mod bulk_export;
@@ -38,6 +38,7 @@ use crate::bulk_export::bulk_export_bundle;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
+pub use crate::auth::{AccessTokenPublicKey, AccessTokenSigningKeys};
 pub use crate::bulk_export::BulkExportWorker;
 pub use crate::config::FhirR4Config;
 
@@ -125,9 +126,11 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 ///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
 ///   `subject=` searches in-process (see [`patient_everything`]).
 ///
-/// When [`FhirR4Config::jwks_url`] is `Some`, HFS auth is enabled: it validates the
-/// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
-/// and gates each FHIR operation against them. The discovery override and
+/// When `access_token_signing_keys` is `Some`, HFS auth is enabled: it
+/// validates the JWT against those keys, read in process, enforces `iss` and
+/// `aud`, parses SMART v2 scopes, and gates each FHIR operation against them.
+/// `None` leaves HFS open, relying on whatever wraps this router from outside
+/// (e.g. the host's bearer gate). The discovery override and
 /// HFS's `/metadata` remain unauthenticated per the SMART spec — see
 /// [`UNAUTHENTICATED_FHIR_PATHS`].
 ///
@@ -162,6 +165,7 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 pub fn setup_fhir_r4<Gate>(
     runtime: &ServerRuntimeConfig,
     config: &FhirR4Config,
+    access_token_signing_keys: Option<Arc<dyn AccessTokenSigningKeys>>,
     revocation_store: RevocationStore,
     ui_sessions: Arc<SessionStore>,
     fhir_api_gate: Gate,
@@ -226,8 +230,9 @@ where
     };
 
     let bulk_export_config = server_config.bulk_export.clone();
+    let hfs_auth_enabled = access_token_signing_keys.is_some();
     let (auth_config, auth_state) = build_auth(
-        config.jwks_url.as_deref(),
+        access_token_signing_keys,
         revocation_store,
         &server_origin,
         ui_sessions.clone(),
@@ -241,7 +246,7 @@ where
     // asks for a bearer exactly when HFS auth is on.
     let export_output_store = Arc::new(
         LocalFsOutputStore::new(&config.bulk_export_dir, server_origin.clone())
-            .with_access_token_required(config.jwks_url.is_some()),
+            .with_access_token_required(hfs_auth_enabled),
     );
     let bulk_export_worker = BulkExportWorker::new(
         sqlite_backend.clone(),

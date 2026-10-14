@@ -1,7 +1,7 @@
 //! End-to-end tests for the `$everything` override, exercised through the real
 //! router `setup_fhir_r4` builds (HFS create/read + indexed, server-side,
 //! fully-paged `subject=` searches + merge), with HFS auth off
-//! (`jwks_url: None`). Covers patient-first ordering, the multi-type related set
+//! (no signing keys). Covers patient-first ordering, the multi-type related set
 //! (`Observation` + `MedicationRequest`), `_count` truncation, paging past a
 //! single search page, server-side parameter filtering, and `404` for a missing
 //! patient.
@@ -48,7 +48,6 @@ fn build_router() -> (Router, TempDb) {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
         bulk_export_dir: dir.join("fhir-exports"),
-        jwks_url: None,
         // The SearchParameter bundle is a deployed asset, not embedded — point
         // HFS at the crate's vendored copy (the host ships it as a bundled
         // resource in production).
@@ -63,13 +62,15 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse the authorization app base"),
     };
 
-    // Auth is off here (jwks_url is None), so the revocation store is never
+    // Auth is off here (no signing keys), so the revocation store is never
     // consulted — the always-allow double satisfies the signature without
     // standing up a database.
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let router = setup_fhir_r4(
         &runtime,
         &config,
+        // No signing keys: HFS auth is off.
+        None,
         revocation_store,
         ui_sessions(&runtime, &config),
         // No host gate in front: these drive HFS and the UI directly.

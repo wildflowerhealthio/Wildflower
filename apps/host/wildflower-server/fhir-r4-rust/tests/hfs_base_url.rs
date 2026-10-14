@@ -47,7 +47,6 @@ fn build_routers() -> (FhirR4Routers, TempDb) {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
         bulk_export_dir: dir.join("fhir-exports"),
-        jwks_url: None,
         search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
         public_origin: PUBLIC_ORIGIN.parse().expect("parse public origin"),
         authorization_app_base:
@@ -61,6 +60,8 @@ fn build_routers() -> (FhirR4Routers, TempDb) {
     let routers = setup_fhir_r4(
         &runtime,
         &config,
+        // No signing keys: HFS auth is off.
+        None,
         revocation_store,
         ui_sessions(&runtime, &config),
         // No host gate in front: these drive HFS and the UI directly.
