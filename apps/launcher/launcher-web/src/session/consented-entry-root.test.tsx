@@ -178,6 +178,24 @@ describe('ConsentedEntryRoot', () => {
     ).toBeDefined()
   })
 
+  it('should show a loading line while the boot is in flight, then the app', async () => {
+    // Arrange — a boot that resolves only when the test says so
+    storeConsent({ crashReports: false, performance: false })
+    const { promise, resolve } = Promise.withResolvers<ReactNode>()
+
+    // Act
+    await renderRoot(() => promise)
+
+    // Assert — the loading line while the sign-in is redeemed, then the app
+    expect(screen.getByText('Loading…')).toBeDefined()
+    expect(screen.queryByTestId('app')).toBeNull()
+    await act(async () => {
+      resolve(<div data-testid="app" />)
+    })
+    expect(await screen.findByTestId('app')).toBeDefined()
+    expect(screen.queryByText('Loading…')).toBeNull()
+  })
+
   it('should report a boot that fails, and show the fallback in place of the app', async () => {
     // Arrange
     vi.spyOn(console, 'error').mockImplementation(() => {})

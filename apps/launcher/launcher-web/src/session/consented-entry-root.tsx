@@ -1,4 +1,6 @@
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { BrandBar } from '@wildflowerhealthio/branding-react'
+import { PageLoading } from '@wildflowerhealthio/react-tundraish'
 import {
   CrashReportingBoundary,
   TelemetryConsentGate,
@@ -23,6 +25,22 @@ function BootedApp({ bootedApp }: { readonly bootedApp: Promise<ReactNode> }): R
 }
 
 /**
+ * What the page shows while `bootApp` runs: the slim `BrandBar` over one
+ * loading line, as on a SMART app's launch page. A return leg's sign-in is
+ * redeemed over the network in that time.
+ */
+function BootLoading(): JSX.Element {
+  return (
+    <>
+      <BrandBar />
+      <main>
+        <PageLoading />
+      </main>
+    </>
+  )
+}
+
+/**
  * The root `main-web` mounts: the telemetry consent gate, then the app.
  *
  * @remarks
@@ -34,7 +52,8 @@ function BootedApp({ bootedApp }: { readonly bootedApp: Promise<ReactNode> }): R
  * (reporting to the `VITE_SENTRY_DSN_LAUNCHER_WEB` project, tagged
  * `app: launcher-web`) and only then calls `bootApp`, once,
  * so a persisted yes has Sentry and the tracer provider running before the
- * router and runtime are built. Later answers (the Telemetry row in settings
+ * router and runtime are built. Until the boot resolves, the page is the brand
+ * bar over a loading line. Later answers (the Telemetry row in settings
  * reopens the dialog) start or narrow telemetry and leave the app mounted. A
  * boot that fails is reported by the boundary around it.
  */
@@ -59,7 +78,7 @@ function ConsentedEntryRoot({ bootApp }: ConsentedEntryRootProps): JSX.Element {
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetryThenBoot}>
       <CrashReportingBoundary extraContext={{ app: 'launcher-web' }}>
         {bootedApp === undefined ? null : (
-          <Suspense fallback={null}>
+          <Suspense fallback={<BootLoading />}>
             <BootedApp bootedApp={bootedApp} />
           </Suspense>
         )}
