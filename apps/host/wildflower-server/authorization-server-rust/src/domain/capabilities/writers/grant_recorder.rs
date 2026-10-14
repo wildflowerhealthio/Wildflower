@@ -91,39 +91,6 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
         })
     }
 
-    /// Register (or widen) a client trusted on first use by what the Owner
-    /// just approved, **without** recording a standing grant — the approval
-    /// surfaces that ask the Owner every time (the host's loopback dialog) use
-    /// this in place of [`record_code_grant`](Self::record_code_grant), so the
-    /// next request from the same client is `Registered` but never covered by a
-    /// grant, and asks again. The row is created or widened exactly as
-    /// [`record_code_grant`](Self::record_code_grant) would, under the same
-    /// `BEGIN IMMEDIATE` read-then-write.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] on a store failure; the transaction
-    /// rolls back.
-    pub(crate) fn record_registration(
-        &self,
-        client_id: &str,
-        redirect_uri: &Url,
-        delegated_scopes: &DelegatedScopes,
-        now: DateTime<Utc>,
-        registration_verdict: &ClientRegistrationVerdict,
-    ) -> Result<(), AuthorizationServerError> {
-        self.store.immediate_transaction(|tx| {
-            write_registration(
-                tx,
-                client_id,
-                redirect_uri,
-                delegated_scopes.scopes(),
-                now,
-                registration_verdict,
-            )
-        })
-    }
-
     /// Insert or cumulatively update the standing device grant for
     /// `(client_id, device_name)` — the same read-merge-write-under-
     /// `BEGIN IMMEDIATE` shape as [`record_code_grant`](Self::record_code_grant),

@@ -11,7 +11,7 @@ use anyhow::Context;
 use axum::Router;
 use helios_auth::SessionStore;
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
@@ -31,15 +31,12 @@ use crate::domain::reachability_monitor::ReachabilityMonitor;
 use crate::http::health::ServerHealthChecks;
 use crate::http::middleware::cors::api_cors_layer;
 use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSenders};
-use crate::http::middleware::loopback_owner_trust::{
-    inject_loopback_owner_token, LoopbackOwnerTrust,
-};
 use crate::http::middleware::session_cookie_bearer::present_session_cookie_bearers;
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::http::{not_found, root_fallback};
-use crate::{HostPorts, ServerObservers, WildflowerServerConfig};
+use crate::{ServerObservers, WildflowerServerConfig};
 
 // Filenames of the server's SQLite databases in its folder. These
 // are the single source of truth for each database's on-disk name: the slice
@@ -64,13 +61,13 @@ const TUNNEL_STREAM_BACKLOG: usize = 64;
 pub struct WildflowerServer {
     /// The loopback port local clients, and a front run on this machine, use.
     loopback_listener: TcpListener,
-    /// What the loopback listener serves: the API behind the loopback owner
-    /// trust and the loopback-peer gate.
+    /// What the loopback listener serves: the API behind the loopback-peer
+    /// gate.
     loopback_router: Router,
     /// The visitor streams the tunnel hands over.
     tunnel_listener: TunnelListener,
     /// What the tunnel listener serves: the API behind the tunnel front,
-    /// with no loopback trust.
+    /// with no loopback-peer gate.
     tunnel_router: Router,
     /// A sender onto the tunnel listener, for
     /// [`tunnel_stream_tx`](Self::tunnel_stream_tx).
@@ -187,9 +184,8 @@ impl WildflowerServer {
 /// loopback port and open the tunnel listener, ready to
 /// [`serve`](WildflowerServer::serve).
 ///
-/// `config` is what the host derived at build time or from its paths; `host`
-/// carries its native adapters; `observers` carries the channels the host
-/// watches the server through.
+/// `config` is what the host derived at build time or from its paths;
+/// `observers` carries the channels the host watches the server through.
 ///
 /// # Errors
 ///
@@ -201,7 +197,7 @@ impl WildflowerServer {
 /// # Remarks
 ///
 /// Slices spawn background tasks (the tunnel supervisor, the reachability
-/// monitor, the certificate's ordering and renewal, the authorization server's re-mint and
+/// monitor, the certificate's ordering and renewal, the authorization server's
 /// sweeps) onto the runtime that runs this future. They are not tied to the
 /// shutdown token: the tunnel supervisor, the reachability monitor and the
 /// certificate stop when the returned [`WildflowerServer`] is
@@ -209,7 +205,6 @@ impl WildflowerServer {
 /// rest when that runtime shuts down.
 pub async fn set_up(
     config: WildflowerServerConfig,
-    host: HostPorts,
     observers: ServerObservers,
 ) -> anyhow::Result<WildflowerServer> {
     let WildflowerServerConfig {
@@ -290,13 +285,6 @@ pub async fn set_up(
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(db.clone())
         .context("failed to open token-revocation store")?;
 
-    // Bind BEFORE minting/publishing the Owner token: `setup_authorization_server`
-    // pushes the freshly-minted token onto the owner-token channel the
-    // loopback owner trust presents. If the port were already taken, minting
-    // first would mean minting a full-Owner bearer while a *foreign* process
-    // owns `127.0.0.1:<port>`.
-    // Binding first guarantees the token is only ever minted once this
-    // process owns the port.
     let loopback_listener = TcpListener::bind(&loopback_host)
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
@@ -345,18 +333,13 @@ pub async fn set_up(
         }
     }
 
-    // `setup_authorization_server` publishes the freshly-minted host owner token on
-    // `host_owner_token_tx`, which the loopback owner trust reads (so its
-    // receiver must be alive by then), and the head of its pending-consent
+    // `setup_authorization_server` publishes the head of its pending-consent
     // queue on the host's channel.
-    let (host_owner_token_tx, host_owner_token_rx) = watch::channel(None);
     let authorization_server = setup_authorization_server(
         diesel_pool.clone(),
         revocation_store.clone(),
         &authorization_server_config,
-        &host_owner_token_tx,
         observers.pending_consent_tx,
-        host.loopback_consent_prompt,
     )
     .context("failed to set up the authorization server")?;
     let consent_decider_for_host = HostConsentDecider::new(authorization_server.state.clone());
@@ -573,21 +556,11 @@ pub async fn set_up(
         forwarded_request_layer::report_forwarded_request,
     );
 
-    // The loopback listener's router: the inner router behind the loopback
-    // owner trust, the loopback-peer gate, CORS and the forwarded-request
-    // report, innermost first.
+    // The loopback listener's router: the inner router behind the
+    // loopback-peer gate, CORS and the forwarded-request report, innermost
+    // first.
     let loopback_router = inner_router
         .clone()
-        // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
-        // present the host owner token for a direct-local caller so the webview
-        // authenticates on connection provenance. Inner of CORS (which answers
-        // preflight first) and of the loopback-peer gate.
-        .layer(axum::middleware::from_fn_with_state(
-            LoopbackOwnerTrust {
-                token_rx: host_owner_token_rx,
-            },
-            inject_loopback_owner_token,
-        ))
         // Defense-in-depth: gate the whole surface on a loopback peer address.
         // Every request on this listener comes from this machine: directly, or
         // relayed by a front run on it, which proxies remote callers from
@@ -614,8 +587,8 @@ pub async fn set_up(
 
     // The tunnel listener's router: the inner router behind the
     // forwarded-request report, the tunnel front and CORS, innermost first. It
-    // has no loopback owner trust and no loopback-peer gate: no tunnel
-    // connection is a local caller, whatever its peer or headers.
+    // has no loopback-peer gate: no tunnel connection is a local caller,
+    // whatever its peer or headers.
     let tunnel_router = inner_router
         .layer(forwarded_request_report)
         // Hold the request to the server's domain and write its

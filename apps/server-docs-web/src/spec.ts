@@ -42,8 +42,8 @@ const withServer = (spec: OpenApiDocument, serverUrl: string): OpenApiDocument =
 /**
  * `spec` with an HTTP bearer security scheme declared and required by default.
  *
- * The running host gates its admin surface on a bearer token for any caller
- * that is not the loopback owner, but the snapshots carry no security metadata
+ * The running host gates its admin surface on a bearer token for every
+ * caller, but the snapshots carry no security metadata
  * to say so. Declaring it here is what makes the reference UI offer a token
  * field, so a reader with a token can send a request that is actually
  * authorised. Any scheme the snapshot already declares is preserved.

@@ -3,9 +3,10 @@
 //!
 //! The same [`ConsentReader`] and [`ConsentDecider`] the `/authorization/devices/*`
 //! and `/authorization/oauth-consents/*` routes acquire through `Scoped<…>`, built
-//! here with the host Owner's grant (the scopes the host owner token carries)
-//! as the approver's, as the loopback dialog's approver is. An approval is
-//! remembered as a standing grant, as one made in the launcher is.
+//! here with the host Owner's grant
+//! ([`host_owner_scopes`](crate::AuthorizationServerConfig::host_owner_scopes))
+//! as the approver's. An approval is remembered as a standing grant, as one
+//! made in the launcher is.
 
 use std::sync::Arc;
 

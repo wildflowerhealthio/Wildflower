@@ -15,7 +15,7 @@ from the one router every slice's routes are composed into:
 - **The loopback listener** (`http://127.0.0.1:<port>/`) serves the on-device
   webview and other local clients, and a front run on this machine (nginx)
   that relays remote callers over the same loopback socket. Its router adds the
-  loopback owner trust and the loopback-peer gate (see
+  loopback-peer gate (see
   [Loopback is the trust boundary](#loopback-is-the-trust-boundary)).
 - **The tunnel listener** serves the visitors who reach the server through
   the relay. It binds no port: the tunnel's rathole client hands each
@@ -25,7 +25,7 @@ from the one router every slice's routes are composed into:
   holds for the server's domain, ordered from Let's Encrypt over TLS-ALPN-01.
   The relay passes TLS through by its SNI, so the device is the only place
   a visitor's connection is decrypted. A handshake whose SNI names another
-  host gets no certificate. Its router has no owner trust and no loopback-peer gate,
+  host gets no certificate. Its router has no loopback-peer gate,
   so no tunnel connection is ever a local caller, whatever its peer or
   headers. Its tunnel front, outside every layer but CORS, holds each request
   to the server's domain, the same host the SNI named (see
@@ -71,9 +71,7 @@ and lands in a `Location` the browser follows, it is validated (`safe_host` /
 authority. A `Forwarded` header that fails validation is **rejected** (the
 request `500`s), _not_ treated as loopback: the header's presence means the
 request was relayed, so collapsing a malformed one to loopback would let a
-relayed remote caller be mistaken for a direct-local one — and inherit the
-local-owner trust the loopback listener grants on "not forwarded" (the owner
-token injection). Only the **absence** of the header reads as loopback. The
+relayed remote caller be mistaken for a direct-local one. Only the **absence** of the header reads as loopback. The
 parsing contract, the exact nginx directive, and the attack cases live on the
 [`served_origin`] module.
 
@@ -100,8 +98,7 @@ relayed, served at the public origin.
 
 ## `iss` and `aud` are the server's origin
 
-Every JWT the authorization server mints, whether through the OAuth flows or as the host owner
-token, names one origin in both its origin-shaped claims: **`iss` = `aud` =
+Every JWT the authorization server mints names one origin in both its origin-shaped claims: **`iss` = `aud` =
 `https://<domain>`, the server's origin**. It is the public origin the server
 builds from its domain at startup (`wildflower_server.rs`), handed to the authorization server
 as [`AuthorizationServerConfig::server_origin`] and to fhir-r4-rust as
@@ -120,8 +117,7 @@ served on, so they are checked against configuration, never against the request:
   FHIR request is checked by the authorization server's gate and again by HFS.
 
 Two things follow. A token for this server is accepted whichever way the request
-arrived, over loopback or relayed through the tunnel, so the host owner token
-and an OAuth token are the same kind of token, checked the same way. And a token
+arrived, over loopback or relayed through the tunnel. And a token
 another server minted names that server's origin, so it is refused here by
 construction, even if the two servers somehow shared a signing key.
 
@@ -186,33 +182,13 @@ On the loopback listener, the loopback-socket gate ([`require_loopback_peer`])
 is what lets every slice trust the `Forwarded` header: a non-loopback peer is
 rejected before any handler runs, so every request a handler sees came from
 this machine, directly or through a front run on it. On the tunnel listener the
-header is the tunnel front's own, and nothing there is trusted as local. See
+header is the tunnel front's own, and nothing there is trusted as local.
+
+The gate decides who may reach the server, not who they are: a direct-loopback
+caller presents its own bearer like any other, and one without a bearer is
+refused at every gated surface. See
 [Apps Explanation](../Apps/Explanation.md) for how this lands in the apps auth
 posture.
-
-## Loopback owner dialog
-
-A direct-loopback caller is the one caller the host can put a question to in
-person: nothing relayed it, so whoever started it is at this machine. The
-desktop host uses that for one login. When the hosted launcher
-(`launcher-web`, served from `https://wildflowerhealth.io/launcher/`) signs in to
-the server on the same machine, the authorization server parks the `/oauth/authorize` request
-as usual and also asks the host to show a native Approve / Reject dialog. The
-dialog names the app, the origin the login returns to, and whether the app or
-that address is new. See the authorization server
-[Jargon](../../slices/authorization/docs/Jargon%20Explanation.md#loopback-owner-dialog)
-for how the answer is applied.
-
-"Direct loopback" is the same test as everywhere else in this doc: the request
-carries **no** `Forwarded` header. A request through the tunnel, or relayed by
-a front, never raises the dialog, whatever its `client_id`. It is decided in
-the launcher alone, because the person who started it is remote.
-
-The hosted page is on a public origin and calls a private-network address, so
-Chrome's Local Network Access check sends a preflight carrying
-`Access-Control-Request-Private-Network: true`. The host's API CORS layer
-answers it with `Access-Control-Allow-Private-Network: true`. Without that
-header Chrome blocks the call before it is sent.
 
 ## SMART scopes
 

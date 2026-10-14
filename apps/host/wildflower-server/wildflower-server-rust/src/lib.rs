@@ -4,8 +4,7 @@
 //! [`set_up`] opens the host's databases, sets up each server slice
 //! (the authorization server, FHIR R4, OHIF, request log, apps, databases), gates
 //! them, and wraps the result once per listener: for the **loopback listener**
-//! in the loopback owner trust, the loopback-peer gate, the CORS policy and the
-//! forwarded-request report; for the **tunnel listener** in the CORS policy,
+//! in the loopback-peer gate, the CORS policy and the forwarded-request report; for the **tunnel listener** in the CORS policy,
 //! the forwarded-request report and the tunnel front, which holds each request
 //! to the server's domain and writes its `Forwarded` header. It starts the
 //! tunnel, which hands each visitor's stream to the tunnel listener in
@@ -19,8 +18,7 @@
 //! server's pending consents in-process.
 //!
 //! The crate has no `tauri` dependency. What the host derives at build time or
-//! from its platform paths arrives in [`WildflowerServerConfig`]; the host's
-//! native adapters arrive in [`HostPorts`];
+//! from its platform paths arrives in [`WildflowerServerConfig`];
 //! the channels the host watches the server through arrive in
 //! [`ServerObservers`], among them the [`ServerHealth`] the reachability
 //! monitor reads from the server's own `/health` through its public origin,
@@ -45,8 +43,8 @@
 //!    rustls-acme's order and renewal of the tunnel listener's certificate
 //!    as [`DeviceCertificateConfig`] says, which reports its state and
 //!    records each new certificate in the server's certificate history.
-//!  - `http` — the server's own middleware (CORS, the loopback owner trust,
-//!    the forwarded-request report, the tunnel front), the tunnel listener
+//!  - `http` — the server's own middleware (CORS, the forwarded-request
+//!    report, the tunnel front), the tunnel listener
 //!    with its PROXY header reader and its TLS, the `/health` checks and the
 //!    unmatched-route `404`.
 //!  - `live_bindings` — [`set_up`] and [`WildflowerServer`].
@@ -59,7 +57,7 @@ mod live_bindings;
 
 pub use adapters::acme_certificate::cached_certificate_state;
 pub use adapters::certificate_history::read_certificate_history;
-pub use config::{DeviceCertificateConfig, HostPorts, ServerObservers, WildflowerServerConfig};
+pub use config::{DeviceCertificateConfig, ServerObservers, WildflowerServerConfig};
 pub use domain::certificate_authority::CertificateAuthority;
 pub use domain::certificate_history::CertificateHistoryEntry;
 pub use domain::certificate_state::{

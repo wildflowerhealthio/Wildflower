@@ -14,7 +14,7 @@
 //! The tunnel listener serves the same API as a remote origin, over TLS with
 //! the certificate cached for the server's domain: its connections are held to
 //! the server's domain by their SNI and their requests by their `Host`,
-//! never get the owner token, are served as the public origin whatever
+//! are served as the public origin whatever
 //! `Forwarded` they carry, and name the visitor from a PROXY protocol v2
 //! header.
 //!
@@ -37,9 +37,7 @@ use tokio_rustls::TlsConnector;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
-use wildflowerhealthio_authorization_server::{
-    GrantStore, NoLoopbackConsentPrompt, SqliteGrantStore,
-};
+use wildflowerhealthio_authorization_server::{GrantStore, SqliteGrantStore};
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::health_check::{
@@ -50,8 +48,7 @@ use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 use wildflowerhealthio_tunnel::{TunnelState, TunnelStream};
 use wildflowerhealthio_wildflower_server::{
-    set_up, CertificateAuthority, DeviceCertificateConfig, HostPorts, ServerObservers,
-    WildflowerServerConfig,
+    set_up, CertificateAuthority, DeviceCertificateConfig, ServerObservers, WildflowerServerConfig,
 };
 
 /// The `Forwarded` header a front run on this machine stamps on a request it
@@ -92,7 +89,7 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             "https://authorization.test/authorization/",
         )
         .expect("authorization app base"),
-        // The owner-defining scopes the authorization server requires the host owner token to cover.
+        // The owner-defining scopes the authorization server requires the Owner's grant to cover.
         host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
             .map(ToString::to_string)
@@ -130,11 +127,10 @@ fn certificate_dir(server_dir: &Path) -> PathBuf {
 /// Set the server up, which binds the loopback port, then spawn `serve`.
 async fn start_serving(
     config: WildflowerServerConfig,
-    host_ports: HostPorts,
     observers: ServerObservers,
     shutdown: CancellationToken,
 ) -> JoinHandle<anyhow::Result<()>> {
-    let server = set_up(config, host_ports, observers)
+    let server = set_up(config, observers)
         .await
         .expect("the server sets up and binds");
     tokio::spawn(server.serve(shutdown))
@@ -175,9 +171,6 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
 
-    let host_ports = HostPorts {
-        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-    };
     let (server_health_tx, server_health_rx) = watch::channel(None);
     let (tunnel_state_tx, mut tunnel_state_rx) = watch::channel(None);
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
@@ -193,12 +186,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     let first_shutdown = CancellationToken::new();
     let first = tokio::time::timeout(
         LIFECYCLE_TIMEOUT,
-        start_serving(
-            config.clone(),
-            host_ports.clone(),
-            observers.clone(),
-            first_shutdown.clone(),
-        ),
+        start_serving(config.clone(), observers.clone(), first_shutdown.clone()),
     )
     .await
     .expect("the first serve binds in time");
@@ -304,7 +292,7 @@ async fn serve_returns_on_shutdown_and_the_port_rebinds() {
     let second_shutdown = CancellationToken::new();
     let second = tokio::time::timeout(
         LIFECYCLE_TIMEOUT,
-        start_serving(config, host_ports, observers, second_shutdown.clone()),
+        start_serving(config, observers, second_shutdown.clone()),
     )
     .await
     .expect("the second serve binds the same port in time");
@@ -414,9 +402,6 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    let host_ports = HostPorts {
-        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-    };
     let (server_health_tx, _server_health_rx) = watch::channel(None);
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
@@ -431,7 +416,6 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         LIFECYCLE_TIMEOUT,
         start_serving(
             server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
-            host_ports,
             observers,
             shutdown.clone(),
         ),
@@ -499,6 +483,60 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
         loopback_request_log_status(&loopback_base_url, &other_servers_reader).await,
         reqwest::StatusCode::UNAUTHORIZED
     );
+
+    shutdown.cancel();
+    tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)
+        .await
+        .expect("serve returns in time once cancelled")
+        .expect("the serve task doesn't panic")
+        .expect("a cancelled serve returns Ok");
+}
+
+/// A direct-loopback caller is authenticated like any other: the loopback
+/// listener presents no credential on its behalf, so a request with no bearer
+/// is refused at every gated surface, whoever sits at the machine.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_direct_loopback_request_without_a_bearer_is_unauthorized() {
+    let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
+    let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
+        .expect("loopback base URL");
+    let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
+    let observers = ServerObservers {
+        server_health_tx: watch::channel(None).0,
+        tunnel_state_tx: watch::channel(None).0,
+        certificate_tx: watch::channel(None).0,
+        pending_consent_tx: watch::channel(None).0,
+        forwarded_request_tx,
+    };
+    let shutdown = CancellationToken::new();
+    let serving = tokio::time::timeout(
+        LIFECYCLE_TIMEOUT,
+        start_serving(
+            server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
+            observers,
+            shutdown.clone(),
+        ),
+    )
+    .await
+    .expect("the server binds in time");
+
+    // The authorization server's admin surface, the request log, the database
+    // catalogue, the apps and the FHIR API.
+    for path in [
+        "authorization/clients",
+        "requests",
+        "databases",
+        "apps",
+        "Patient",
+    ] {
+        let status = reqwest::Client::new()
+            .get(loopback_base_url.join(path).expect("loopback URL"))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("GET /{path} reaches the server: {error}"))
+            .status();
+        assert_eq!(status, reqwest::StatusCode::UNAUTHORIZED, "GET /{path}");
+    }
 
     shutdown.cancel();
     tokio::time::timeout(LIFECYCLE_TIMEOUT, serving)
@@ -664,9 +702,6 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     let certificate = cache_self_signed_certificate(&certificate_dir(server_dir.path())).await;
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    let host_ports = HostPorts {
-        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-    };
     let (server_health_tx, _server_health_rx) = watch::channel(None);
     let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
@@ -680,7 +715,6 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         LIFECYCLE_TIMEOUT,
         set_up(
             server_config(server_dir.path().to_owned(), loopback_base_url.clone()),
-            host_ports,
             observers,
         ),
     )
@@ -692,17 +726,17 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     let serving = tokio::spawn(server.serve(shutdown.clone()));
     tunnel.wait_for_certificate().await;
 
-    // The owner-gated `/apps` answers a loopback caller, who gets the owner
-    // token, and nothing is reported.
+    // The owner-gated `/apps` refuses a direct loopback caller with no bearer,
+    // and nothing is reported.
     let loopback_apps = reqwest::get(loopback_base_url.join("apps").expect("apps URL"))
         .await
         .expect("GET /apps reaches the loopback listener");
-    assert_eq!(loopback_apps.status(), reqwest::StatusCode::OK);
+    assert_eq!(loopback_apps.status(), reqwest::StatusCode::UNAUTHORIZED);
     assert!(forwarded_request_rx.try_recv().is_err());
 
     // The same request through the tunnel, from a loopback-looking connection
-    // with no `Forwarded`, gets no owner token. It is reported as served at
-    // the domain, with no visitor address (no PROXY header).
+    // with no `Forwarded`, is refused too. It is reported as served at the
+    // domain, with no visitor address (no PROXY header).
     let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/apps", DOMAIN, ""))
         .await
         .expect("the tunnel listener answers");
@@ -906,9 +940,6 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
     let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
         .expect("loopback base URL");
-    let host_ports = HostPorts {
-        loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-    };
     let (server_health_tx, _server_health_rx) = watch::channel(None);
     let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
@@ -923,7 +954,6 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
         LIFECYCLE_TIMEOUT,
         start_serving(
             server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
-            host_ports,
             observers,
             shutdown.clone(),
         ),
@@ -1118,9 +1148,6 @@ impl UiServer {
         let app_data_dir = tempfile::tempdir().expect("temp app-data dir");
         let loopback_base_url = Url::parse(&format!("http://127.0.0.1:{}/", free_loopback_port()))
             .expect("loopback base URL");
-        let host_ports = HostPorts {
-            loopback_consent_prompt: Arc::new(NoLoopbackConsentPrompt),
-        };
         let (server_health_tx, _server_health_rx) = watch::channel(None);
         let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(8);
         let observers = ServerObservers {
@@ -1135,7 +1162,6 @@ impl UiServer {
             LIFECYCLE_TIMEOUT,
             set_up(
                 server_config(app_data_dir.path().to_owned(), loopback_base_url.clone()),
-                host_ports,
                 observers,
             ),
         )

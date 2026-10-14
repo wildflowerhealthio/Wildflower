@@ -11,8 +11,8 @@ use super::state::AuthorizationServerState;
 use super::FromState;
 use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, LoopbackOwnerApprover,
-    PublicKeysReader, SameDeviceSignIn,
+    AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, PublicKeysReader,
+    SameDeviceSignIn,
 };
 use crate::ports::OwnerApproval;
 
@@ -27,23 +27,6 @@ impl FromState for LiveCodeAuthorizationStarter {
             owner_approval,
             state.wildflower_host_app_client_id.clone(),
             state.server_origin.clone(),
-        )
-    }
-}
-
-/// Put a direct-loopback login to the host's dialog — built by the
-/// `/oauth/authorize` handler, which drives it off the async runtime.
-pub(crate) type LiveLoopbackOwnerApprover = LoopbackOwnerApprover<SqliteGrantStore>;
-
-impl FromState for LiveLoopbackOwnerApprover {
-    fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        LoopbackOwnerApprover::new(
-            state.store.clone(),
-            owner_approval,
-            state.loopback_consent_prompt.clone(),
-            state.host_owner_grant.clone(),
-            state.wildflower_host_app_client_id.clone(),
         )
     }
 }
@@ -63,7 +46,6 @@ impl FromState for LiveSameDeviceSignIn {
         )
     }
 }
-
 /// Start a device authorization — built by the `/oauth/device_authorization`
 /// handler.
 pub(crate) type LiveDeviceAuthorizer = DeviceAuthorizer<SqliteGrantStore>;

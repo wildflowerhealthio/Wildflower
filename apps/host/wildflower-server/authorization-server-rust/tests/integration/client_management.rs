@@ -68,7 +68,7 @@ async fn refresh_as_confidential_client(g: &AuthorizationServer) -> axum::respon
 
 #[tokio::test]
 async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_confidential_client(&db, "conf-app", "a-secret", &["read"]);
 
     // Trust a brand-new app on first use.
@@ -76,14 +76,14 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
     let request_id = parked_request_id(&res);
     let res = approve_oauth_consent(
         &g,
-        &host_owner_token,
+        &owner_token,
         &request_id,
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let clients = listed_clients(&g, &host_owner_token).await;
+    let clients = listed_clients(&g, &owner_token).await;
 
     // Seeded by boot (the host) and by migration (a SMART app).
     let host = find_client(&clients, "wildflower-host").expect("the host client is listed");
@@ -137,7 +137,7 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
 
 #[tokio::test]
 async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let query = authorize_query("test-app", "read");
 
@@ -145,11 +145,11 @@ async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
     parked_request_id(&get_authorize(&g.router, &query).await);
 
     // The PATCH answers with the client as stored — the same row the list shows.
-    let res = disable_client(&g, &host_owner_token, "test-app", Utc::now()).await;
+    let res = disable_client(&g, &owner_token, "test-app", Utc::now()).await;
     assert_eq!(res.status(), StatusCode::OK);
     let patched = body_json(res.into_body()).await;
     assert!(patched["disabledAt"].is_string());
-    let listed = listed_clients(&g, &host_owner_token).await;
+    let listed = listed_clients(&g, &owner_token).await;
     assert_eq!(find_client(&listed, "test-app"), Some(&patched));
 
     // Disabled: a local error page, never a redirect to the client or a prompt.
@@ -159,7 +159,7 @@ async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
         .await
         .contains("Disabled client"));
 
-    let res = enable_client(&g, &host_owner_token, "test-app").await;
+    let res = enable_client(&g, &owner_token, "test-app").await;
     assert_eq!(res.status(), StatusCode::OK);
 
     // Re-enabled with its registration intact: the same request parks again.
@@ -232,14 +232,14 @@ async fn any_sent_disabled_at_disables_now_with_the_servers_time() {
 
 #[tokio::test]
 async fn disable_and_enable_are_idempotent() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
 
-    let res = disable_client(&g, &host_owner_token, "test-app", Utc::now()).await;
+    let res = disable_client(&g, &owner_token, "test-app", Utc::now()).await;
     assert_eq!(res.status(), StatusCode::OK);
     let first = stored_disabled_at(&db, "test-app").expect("disabled");
     let later = Utc::now() + Duration::hours(1);
-    let res = disable_client(&g, &host_owner_token, "test-app", later).await;
+    let res = disable_client(&g, &owner_token, "test-app", later).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(
         disabled_at_of(&body_json(res.into_body()).await),
@@ -253,7 +253,7 @@ async fn disable_and_enable_are_idempotent() {
     );
 
     for _ in 0..2 {
-        let res = enable_client(&g, &host_owner_token, "test-app").await;
+        let res = enable_client(&g, &owner_token, "test-app").await;
         assert_eq!(res.status(), StatusCode::OK);
     }
     assert_eq!(stored_disabled_at(&db, "test-app"), None);
@@ -261,10 +261,10 @@ async fn disable_and_enable_are_idempotent() {
 
 #[tokio::test]
 async fn an_unknown_client_is_a_404_either_way() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     for disabled_at in [Value::from(Utc::now().to_rfc3339()), Value::Null] {
         let body = serde_json::json!({ "disabledAt": disabled_at });
-        let res = patch_client(&g, &host_owner_token, "ghost", &body).await;
+        let res = patch_client(&g, &owner_token, "ghost", &body).await;
         assert_eq!(res.status(), StatusCode::NOT_FOUND, "{body}");
         assert_eq!(
             body_json(res.into_body()).await,
@@ -275,9 +275,9 @@ async fn an_unknown_client_is_a_404_either_way() {
 
 #[tokio::test]
 async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    let res = disable_client(&g, &host_owner_token, "test-app", Utc::now()).await;
+    let res = disable_client(&g, &owner_token, "test-app", Utc::now()).await;
     assert_eq!(res.status(), StatusCode::OK);
     let disabled_at = stored_disabled_at(&db, "test-app");
 
@@ -288,7 +288,7 @@ async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
         serde_json::json!({ "disabledAt": null, "name": "renamed" }),
         serde_json::json!({ "disabledAt": "not a time" }),
     ] {
-        let res = patch_client(&g, &host_owner_token, "test-app", &body).await;
+        let res = patch_client(&g, &owner_token, "test-app", &body).await;
         assert!(res.status().is_client_error(), "{body}");
         assert_eq!(stored_disabled_at(&db, "test-app"), disabled_at, "{body}");
     }
@@ -296,10 +296,10 @@ async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
 
 #[tokio::test]
 async fn an_essential_client_cannot_be_disabled() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
 
     for essential_client_id in ["wildflower-host", "wildflower-owner-browser"] {
-        let res = disable_client(&g, &host_owner_token, essential_client_id, Utc::now()).await;
+        let res = disable_client(&g, &owner_token, essential_client_id, Utc::now()).await;
         assert_eq!(res.status(), StatusCode::CONFLICT);
         assert_eq!(
             body_json(res.into_body()).await,
@@ -308,10 +308,10 @@ async fn an_essential_client_cannot_be_disabled() {
         assert_eq!(stored_disabled_at(&db, essential_client_id), None);
         // The Owner's session still works, and enabling the client stays allowed.
         assert_eq!(
-            list_clients(&g, &host_owner_token).await.status(),
+            list_clients(&g, &owner_token).await.status(),
             StatusCode::OK
         );
-        let res = enable_client(&g, &host_owner_token, essential_client_id).await;
+        let res = enable_client(&g, &owner_token, essential_client_id).await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(body_json(res.into_body()).await["essential"], true);
     }
@@ -319,7 +319,7 @@ async fn an_essential_client_cannot_be_disabled() {
 
 #[tokio::test]
 async fn unauthenticated_callers_are_rejected() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let disable = serde_json::json!({ "disabledAt": Utc::now().to_rfc3339() }).to_string();
     let requests = [
@@ -344,7 +344,7 @@ async fn unauthenticated_callers_are_rejected() {
 
 #[tokio::test]
 async fn under_scoped_callers_are_rejected_before_the_handler() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
 
     // Listing needs `Client.r`; a grants reader doesn't have it.

@@ -14,14 +14,13 @@
 
 use std::sync::Arc;
 
-use tokio::sync::{watch, Notify};
+use tokio::sync::watch;
 
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
 use crate::domain::essential_client_guard::EssentialClientGuard;
-use crate::domain::host_owner_token_remint::HostOwnerTokenRemintingRevocation;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -81,17 +80,10 @@ pub struct AuthorizationServerState {
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
     pub(crate) owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
-    /// The host's native loopback dialog (see
-    /// [`LoopbackConsentPrompt`](crate::ports::LoopbackConsentPrompt)):
-    /// `/authorize` puts a direct-loopback login by the hosted launcher to it. A
-    /// host with no native dialog (and tests) wires
-    /// [`NoLoopbackConsentPrompt`](crate::ports::NoLoopbackConsentPrompt), which
-    /// abstains, leaving every such login to the launcher.
-    pub(crate) loopback_consent_prompt: Arc<dyn crate::ports::LoopbackConsentPrompt>,
     /// The host Owner's grant, parsed from
     /// [`AuthorizationServerConfig::host_owner_scopes`](crate::AuthorizationServerConfig::host_owner_scopes)
-    /// — the approving authority when the Owner answers the loopback dialog,
-    /// the same scopes the host owner token carries.
+    /// — the approving authority when the host decides a consent in-process
+    /// through [`HostConsentDecider`](crate::HostConsentDecider).
     pub(crate) host_owner_grant: wildflowerhealthio_scopes::Grant,
     /// The outstanding same-device sign-in codes: minted in-process by the
     /// [`SameDeviceSignInCodeMinter`](crate::SameDeviceSignInCodeMinter)
@@ -104,11 +96,6 @@ pub struct AuthorizationServerState {
     /// [`launcher_base`](Self::launcher_base) and
     /// [`AuthorizationServerConfig::authorization_app_base`](crate::AuthorizationServerConfig::authorization_app_base).
     pub(crate) sign_in_destinations: Arc<SignInDestinations>,
-    /// Asks the host owner token's re-minter, spawned by
-    /// [`crate::setup_authorization_server`], to mint and publish a fresh
-    /// token now: [`revocation`](Self::revocation) notifies it once the host
-    /// app's own subject is revoked.
-    pub(crate) host_owner_token_remints: Arc<Notify>,
 }
 
 impl AuthorizationServerState {
@@ -123,15 +110,8 @@ impl AuthorizationServerState {
     }
 
     /// The [`Revocation`] port the capabilities revoke through: the shared
-    /// [`revocation_store`](Self::revocation_store), asking for a fresh host
-    /// owner token through
-    /// [`host_owner_token_remints`](Self::host_owner_token_remints) whenever it
-    /// revokes the host app's subject.
+    /// [`revocation_store`](Self::revocation_store).
     pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {
-        Arc::new(HostOwnerTokenRemintingRevocation::new(
-            Arc::new(self.revocation_store.clone()),
-            self.wildflower_host_app_client_id.clone(),
-            self.host_owner_token_remints.clone(),
-        ))
+        Arc::new(self.revocation_store.clone())
     }
 }

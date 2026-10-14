@@ -179,7 +179,7 @@ async fn token_exchange_missing_client_id_returns_400_invalid_request() {
 /// full of reserved characters survives the encode/decode round trip.
 #[tokio::test]
 async fn token_exchange_basic_secret_with_reserved_characters_round_trips() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_confidential_client(
         &db,
         "conf-app",

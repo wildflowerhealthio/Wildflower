@@ -1,12 +1,10 @@
 //! What the host hands [`set_up`](crate::set_up): its build-time and
-//! platform-path values, its native adapters, and the channels it watches the
-//! server through.
+//! platform-path values and the channels it watches the server through.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
-use wildflowerhealthio_authorization_server::{LoopbackConsentPrompt, PendingConsentHead};
+use wildflowerhealthio_authorization_server::PendingConsentHead;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
@@ -32,8 +30,8 @@ pub struct WildflowerServerConfig {
     /// The hosted Wildflower Authorization app, which the server's SMART
     /// discovery advertises as its `management_endpoint`.
     pub authorization_app_base: AuthorizationAppBase,
-    /// The scopes the authorization server seeds the host app's client with and mints the host
-    /// owner token under (see
+    /// The scopes the authorization server seeds the host app's client with and
+    /// the host decides consents in-process under (see
     /// [`AuthorizationServerConfig::host_owner_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_owner_scopes)).
     pub host_owner_scopes: Vec<String>,
     /// The Wildflower host app's OAuth `client_id`.
@@ -68,15 +66,6 @@ pub struct DeviceCertificateConfig {
     /// The folder the install's ACME account keys are cached in, one per CA,
     /// shared by every server.
     pub acme_account_dir: PathBuf,
-}
-
-/// The host's side of [`set_up`](crate::set_up): its native adapters, which
-/// every run of every server shares.
-#[derive(Clone)]
-pub struct HostPorts {
-    /// The native Approve / Reject dialog the authorization server raises when the hosted owner
-    /// UI logs in over direct loopback.
-    pub loopback_consent_prompt: Arc<dyn LoopbackConsentPrompt>,
 }
 
 /// The channels the host watches a running server through. The host owns the

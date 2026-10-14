@@ -4,12 +4,12 @@ use crate::common::*;
 async fn gate_allows_a_live_token_across_repeated_requests() {
     // Regression guard for the reframe: the same multi-use bearer must
     // authenticate again and again — revocation must NOT reintroduce single-use.
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     for _ in 0..3 {
         let res = g
             .router
             .clone()
-            .oneshot(owner_grants_probe(&host_owner_token))
+            .oneshot(owner_grants_probe(&owner_token))
             .await
             .expect("oneshot");
         assert_eq!(
@@ -22,24 +22,24 @@ async fn gate_allows_a_live_token_across_repeated_requests() {
 
 #[tokio::test]
 async fn gate_rejects_a_revoked_jti() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     // Live first.
     let res = g
         .router
         .clone()
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
     // Denylist this token's jti; the same token is now rejected.
-    let jti = jti_of(&host_owner_token);
+    let jti = jti_of(&owner_token);
     revocation_store_handle(&db)
         .revoke_jti(&jti, Utc::now() + Duration::hours(1), "test")
         .expect("revoke");
     let res = g
         .router
         .clone()
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
     assert_eq!(
@@ -51,7 +51,7 @@ async fn gate_rejects_a_revoked_jti() {
 
 #[tokio::test]
 async fn gate_rejects_after_subject_epoch_bump() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     // Bulk-revoke the host client's cohort. JWT `iat` is second-precision, so
     // advance the epoch one second past the mint second to unambiguously cover a
     // token minted moments ago in this test.
@@ -61,7 +61,7 @@ async fn gate_rejects_after_subject_epoch_bump() {
     let res = g
         .router
         .clone()
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
     assert_eq!(
@@ -73,8 +73,8 @@ async fn gate_rejects_after_subject_epoch_bump() {
 
 #[tokio::test]
 async fn logout_revokes_the_presented_jti() {
-    let (g, host_owner_token, db) = spin_up();
-    let jti = jti_of(&host_owner_token);
+    let (g, owner_token, db) = spin_up();
+    let jti = jti_of(&owner_token);
     // Log out, presenting the token as a bearer.
     let res = g
         .router
@@ -82,7 +82,7 @@ async fn logout_revokes_the_presented_jti() {
         .oneshot(loopback_request(
             Request::post("/authorization/logout")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -99,7 +99,7 @@ async fn logout_revokes_the_presented_jti() {
     let res = g
         .router
         .clone()
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -107,13 +107,13 @@ async fn logout_revokes_the_presented_jti() {
 
 #[tokio::test]
 async fn revocations_endpoint_revokes_by_jti() {
-    let (g, host_owner_token, _db) = spin_up();
-    let jti = jti_of(&host_owner_token);
+    let (g, owner_token, _db) = spin_up();
+    let jti = jti_of(&owner_token);
     let res = g
         .router
         .clone()
         .oneshot(owner_revocation_request(
-            &host_owner_token,
+            &owner_token,
             serde_json::json!({
                 "jti": jti,
                 "expiresAt": (Utc::now() + Duration::hours(1)).to_rfc3339(),
@@ -126,7 +126,7 @@ async fn revocations_endpoint_revokes_by_jti() {
     let res = g
         .router
         .clone()
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -134,12 +134,12 @@ async fn revocations_endpoint_revokes_by_jti() {
 
 #[tokio::test]
 async fn revocations_endpoint_bulk_revokes_by_subject() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     let res = g
         .router
         .clone()
         .oneshot(owner_revocation_request(
-            &host_owner_token,
+            &owner_token,
             serde_json::json!({ "subject": "some-client" }),
         ))
         .await
@@ -157,7 +157,7 @@ async fn revocations_endpoint_bulk_revokes_by_subject() {
 
 #[tokio::test]
 async fn revocations_endpoint_rejects_invalid_bodies() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
     let bad_bodies = [
         // jti without the required expiresAt
         serde_json::json!({ "jti": "abc" }),
@@ -175,7 +175,7 @@ async fn revocations_endpoint_rejects_invalid_bodies() {
         let res = g
             .router
             .clone()
-            .oneshot(owner_revocation_request(&host_owner_token, body.clone()))
+            .oneshot(owner_revocation_request(&owner_token, body.clone()))
             .await
             .expect("oneshot");
         assert_eq!(
@@ -188,7 +188,7 @@ async fn revocations_endpoint_rejects_invalid_bodies() {
 
 #[tokio::test]
 async fn revocations_endpoint_requires_owner_auth() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let res = g
         .router
         .clone()
@@ -205,7 +205,7 @@ async fn revocations_endpoint_requires_owner_auth() {
 
 #[tokio::test]
 async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     // Seed a client + a grant for it.
     seed_client_with_redirect(&db, "granted-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
@@ -229,7 +229,7 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
         .oneshot(loopback_request(
             Request::delete("/authorization/grants/grant-1")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -259,7 +259,7 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     // epoch is keyed on `sub = client_id`, so revoking one device grant revokes
     // that client's live access tokens (per-device token handles are deferred —
     // see #269).
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
@@ -281,7 +281,7 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
         .oneshot(loopback_request(
             Request::delete("/authorization/grants/device-grant-1")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -295,16 +295,6 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     );
 }
 
-/// The next host owner token the slice publishes on `rx`, within a few seconds
-/// (the re-mint waits out the revocation's second).
-async fn next_host_owner_token(rx: &mut watch::Receiver<Option<String>>) -> String {
-    tokio::time::timeout(std::time::Duration::from_secs(5), rx.changed())
-        .await
-        .expect("a host owner token is published")
-        .expect("the channel is open");
-    rx.borrow().clone().expect("a token, not None")
-}
-
 /// The status `token` gets from the `/authorization` bearer gate.
 async fn gate_status(g: &AuthorizationServer, token: &str) -> StatusCode {
     g.router
@@ -315,40 +305,33 @@ async fn gate_status(g: &AuthorizationServer, token: &str) -> StatusCode {
         .status()
 }
 
-/// Revoking the Wildflower host app's subject revokes the token it holds, and
-/// the slice publishes a fresh host owner token that the gate accepts — even
-/// though the revocation's epoch is the whole second after it.
+/// Revoking the Wildflower host app's subject revokes a token issued to it,
+/// like any other client's.
 #[tokio::test]
-async fn revoking_the_host_app_s_subject_publishes_a_fresh_host_owner_token() {
-    let (g, host_owner_token, db) = spin_up();
-    let mut published = host_owner_token_watch(&db);
+async fn revoking_the_host_app_s_subject_revokes_its_tokens() {
+    let (g, owner_token, _db) = spin_up();
     let res = g
         .router
         .clone()
         .oneshot(owner_revocation_request(
-            &host_owner_token,
+            &owner_token,
             serde_json::json!({ "subject": "wildflower-host" }),
         ))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert_eq!(
-        gate_status(&g, &host_owner_token).await,
+        gate_status(&g, &owner_token).await,
         StatusCode::UNAUTHORIZED,
-        "the token the host app held is revoked"
+        "the token issued to the host app is revoked"
     );
-
-    let fresh_token = next_host_owner_token(&mut published).await;
-    assert_eq!(gate_status(&g, &fresh_token).await, StatusCode::OK);
 }
 
 /// Revoking a grant of the Wildflower host app's client deletes it and bumps
-/// the host app's epoch like any other client's, and the slice publishes a
-/// fresh host owner token that the gate accepts.
+/// the host app's epoch like any other client's.
 #[tokio::test]
-async fn revoking_a_grant_of_the_host_app_s_client_publishes_a_fresh_host_owner_token() {
-    let (g, host_owner_token, db) = spin_up();
-    let mut published = host_owner_token_watch(&db);
+async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
+    let (g, owner_token, db) = spin_up();
     store_handle(&db)
         .create_device_grant(
             &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
@@ -368,7 +351,7 @@ async fn revoking_a_grant_of_the_host_app_s_client_publishes_a_fresh_host_owner_
         .oneshot(loopback_request(
             Request::delete("/authorization/grants/owner-grant")
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -379,10 +362,7 @@ async fn revoking_a_grant_of_the_host_app_s_client_publishes_a_fresh_host_owner_
         .expect("query")
         .is_none());
     assert_eq!(
-        gate_status(&g, &host_owner_token).await,
+        gate_status(&g, &owner_token).await,
         StatusCode::UNAUTHORIZED
     );
-
-    let fresh_token = next_host_owner_token(&mut published).await;
-    assert_eq!(gate_status(&g, &fresh_token).await, StatusCode::OK);
 }

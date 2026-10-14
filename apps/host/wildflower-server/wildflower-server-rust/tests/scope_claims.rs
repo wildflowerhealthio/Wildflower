@@ -7,7 +7,6 @@
 //! would catch it: each slice's own tests fabricate the extension.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
@@ -18,7 +17,7 @@ use url::Url;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    GrantStore, NoLoopbackConsentPrompt, PendingConsentHead, SqliteGrantStore,
+    GrantStore, PendingConsentHead, SqliteGrantStore,
 };
 use wildflowerhealthio_persistence::{Connection, DieselPool};
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -28,14 +27,10 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 /// mints, and the only ones its bearer gate accepts.
 const SERVER_ORIGIN: &str = "https://test.relay.invalid";
 
-/// An authorization server over an in-memory database, and the host owner token it
-/// published on start.
+/// An authorization server over an in-memory database.
 fn set_up_authorization_server(
     pool: &DieselPool,
-) -> (
-    wildflowerhealthio_authorization_server::AuthorizationServer,
-    String,
-) {
+) -> wildflowerhealthio_authorization_server::AuthorizationServer {
     let config = AuthorizationServerConfig {
         loopback_base_url: Url::parse("http://127.0.0.1").expect("loopback URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
@@ -50,30 +45,17 @@ fn set_up_authorization_server(
         )
         .expect("authorization app base URL"),
     };
-    let (owner_token_tx, owner_token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, _pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(
         Connection::open_in_memory().expect("open revocation db"),
     )
     .expect("revocation store");
-    let authorization_server = setup_authorization_server(
-        pool.clone(),
-        revocation_store,
-        &config,
-        &owner_token_tx,
-        pending_consent_tx,
-        Arc::new(NoLoopbackConsentPrompt),
-    )
-    .expect("set up the authorization server");
-    let host_owner_token = owner_token_rx
-        .borrow()
-        .clone()
-        .expect("setup_authorization_server publishes the host owner token");
-    (authorization_server, host_owner_token)
+    setup_authorization_server(pool.clone(), revocation_store, &config, pending_consent_tx)
+        .expect("set up the authorization server")
 }
 
-/// A non-owner token carrying exactly `scopes`, signed by the authorization server's
+/// A token carrying exactly `scopes`, signed by the authorization server's
 /// active key and naming [`SERVER_ORIGIN`] as `iss` and `aud`.
 fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
     let key = SqliteGrantStore::new(pool.clone())
@@ -99,7 +81,8 @@ fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
 #[tokio::test]
 async fn bearer_gate_inserts_scope_claims_a_databases_capability_reads() {
     let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
-    let (authorization_server, host_owner_token) = set_up_authorization_server(&pool);
+    let authorization_server = set_up_authorization_server(&pool);
+    let owner_token = mint_scoped_token(&pool, &["system/*.cruds", "wildflower/*.cruds"]);
 
     // A one-database catalogue gated by `wildflower/*` read/delete, backed by a
     // real on-disk SQLite file so the metadata read and snapshot have something
@@ -148,7 +131,7 @@ async fn bearer_gate_inserts_scope_claims_a_databases_capability_reads() {
     assert_eq!(get_status(None).await, StatusCode::UNAUTHORIZED);
     // The owner token covers `wildflower/*`, so the capability builds and
     // streams the snapshot: the gate inserted a `ScopeClaims` it could read.
-    assert_eq!(get_status(Some(host_owner_token)).await, StatusCode::OK);
+    assert_eq!(get_status(Some(owner_token)).await, StatusCode::OK);
     // A valid token that doesn't cover the database's read scope: 403 from the
     // capability, not a 500. It read the inserted claims and found them
     // insufficient.

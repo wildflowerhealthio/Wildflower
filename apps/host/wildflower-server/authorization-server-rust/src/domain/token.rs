@@ -120,8 +120,8 @@ pub fn mint_access_token(
         issuer: args.issuer.to_string(),
         subject: args.client_id.to_string(),
         // A fresh random `jti` per mint — generated here, not taken from
-        // `NewJwtArgs`, so *every* mint site (the OAuth token response, the boot
-        // host-owner token, the refresh/token-exchange path) gets a unique id
+        // `NewJwtArgs`, so *every* mint site (the OAuth token response, the
+        // refresh/token-exchange path) gets a unique id
         // without having to remember to pass one.
         jti: uuid::Uuid::new_v4().to_string(),
         audience: args.audience.unwrap_or(args.issuer).to_string(),

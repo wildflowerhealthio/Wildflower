@@ -19,19 +19,20 @@ pub struct AuthorizationServerConfig {
     pub server_origin: Url,
 
     /// The host owner's scopes, as wire strings — seeded as the host app's
-    /// client's `allowed_scopes` and minted into the boot-time host owner token.
+    /// client's `allowed_scopes`, and the grant the host delegates from when it
+    /// decides a consent in-process (see [`crate::HostConsentDecider`]).
     /// The live Tauri app sources these from `tauri-shared-config.json` (the
     /// single source shared with the TS shell); standalone/test builds use
     /// [`crate::default_local_granted_scopes`]. Must cover every
-    /// [`crate::WILDFLOWER_WIDEST_SCOPES`] entry or the host token can't pass the
+    /// [`crate::WILDFLOWER_WIDEST_SCOPES`] entry or the Owner's grant can't pass the
     /// `/authorization/*` owner gate (asserted in [`crate::setup_authorization_server`]).
     pub host_owner_scopes: Vec<String>,
 
     /// The `client_id` of the Wildflower host app's OAuth client — seeded as
-    /// the host app's client row, minted into the boot-time host owner token,
-    /// and matched against a `/token` request's presented `client_id` to hold it
-    /// to its fixed registration. The live Tauri app sources this from
-    /// `tauri-shared-config.json` (the single source shared with the TS shell);
+    /// the host app's client row and matched against a `/token` request's
+    /// presented `client_id` to hold it to its fixed registration. The live
+    /// Tauri app sources this from `tauri-shared-config.json` (the single
+    /// source shared with the TS shell);
     /// standalone/test builds use [`crate::default_wildflower_host_app_client_id`].
     pub wildflower_host_app_client_id: String,
 

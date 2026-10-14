@@ -12,7 +12,7 @@ use crate::common::*;
 
 #[tokio::test]
 async fn the_host_reads_and_approves_a_parked_authorize_request() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let request_id =
         parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
@@ -62,7 +62,7 @@ async fn the_host_reads_and_approves_a_parked_authorize_request() {
 
 #[tokio::test]
 async fn the_host_reads_approves_and_denies_device_requests() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let mut user_codes = Vec::new();
     for _ in 0..2 {
         let res = g

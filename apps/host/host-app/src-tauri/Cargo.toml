@@ -25,8 +25,6 @@ serde_json = { workspace = true }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-# The `LoopbackConsentRequest` (its `expires_at`) the dialog tests render.
-chrono = { workspace = true, features = ["clock"] }
 tauri-plugin-opener = "2"
 openssl = {version = "0.10.36", features = ["vendored"] } 
 serde_json.workspace = true
@@ -53,7 +51,6 @@ tauri-plugin-native-webview = { path = "../../tauri-plugin-native-webview" }
 # The system's in-app browser as a native page, reporting its close to Rust
 # (iOS, Android; the default browser on desktop). Registered in `run()`.
 tauri-plugin-native-page-browser = { path = "../../tauri-plugin-native-page-browser" }
-wildflowerhealthio-authorization-server = { path = "../../wildflower-server/authorization-server-rust" }
 # `ServerRuntimeConfig` and `LauncherBase` for the server config.
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
 # The `RelaySettings` the host builds from the server's record for its tunnel.
@@ -65,7 +62,6 @@ anyhow.workspace = true
 url = "2"
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-dialog = "2"
 # Local notifications about the servers; registered before `TauriUnitRunner`'s
 # plugins, which ask for the permission before the background session's first
 # start.

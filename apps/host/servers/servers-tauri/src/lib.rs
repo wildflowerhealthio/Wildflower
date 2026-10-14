@@ -106,7 +106,7 @@ use tokio::sync::{mpsc, Mutex};
 use url::Url;
 use wildflowerhealthio_servers::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
 use wildflowerhealthio_tauri_unit_runner::TauriUnitRunner;
-use wildflowerhealthio_wildflower_server::{HostPorts, WildflowerServerConfig};
+use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 
 pub use commands::{
     server_add, server_remove, server_set_credentials, server_set_run_policy, server_update,
@@ -174,15 +174,13 @@ impl ServersState {
 /// `data_root` is the directory the host already resolved and created in
 /// `setup()`, holding `servers.json`. `default_launcher_url` is the launcher
 /// [`server_add`] gives a new server. Each run of a server reads the config
-/// `server_config` builds from its record, and uses the host's `host_ports`,
-/// which every run of every server shares. Call once per app lifecycle, from
+/// `server_config` builds from its record. Call once per app lifecycle, from
 /// `setup()`.
 pub fn host_servers(
     app: &AppHandle,
     data_root: &Path,
     default_launcher_url: Url,
     runner: &TauriUnitRunner<ServerDetail>,
-    host_ports: HostPorts,
     server_config: impl Fn(&ServerRecord) -> anyhow::Result<WildflowerServerConfig>
         + Send
         + Sync
@@ -193,7 +191,6 @@ pub fn host_servers(
     let server_units = ServerUnits::new(
         runner.clone(),
         Arc::new(server_config),
-        host_ports,
         forwarded_request_tx,
     );
     match registry.read_all() {

@@ -62,56 +62,16 @@ pub struct TestDb {
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
     pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
-    /// Live receiver on the host owner token the slice publishes — the channel
-    /// the Tauri host reads the host app's token from. Held so the slice's
-    /// re-minter keeps publishing, and tests can read what it published.
-    host_owner_token_rx: watch::Receiver<Option<String>>,
-    /// The directory holding a file-backed database, when there is one — held
-    /// so the file outlives the test's handles (see
-    /// [`spin_up_with_loopback_prompt`]).
-    _database_dir: Option<tempfile::TempDir>,
 }
 
+/// Set up the authorization server over a fresh in-memory database, and mint
+/// an Owner token for it (see [`mint_owner_token`]).
 pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
     // One shared in-memory diesel pool, built once and handed to the slice —
     // mirrors how the host wires the app-wide `wildflowerhealthio_persistence::open_pool`
     // pool into each diesel-backed slice. `db.pool` is that shared handle;
     // `store_handle` clones it to reach the same database.
     let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
-    spin_up_on(
-        pool,
-        None,
-        std::sync::Arc::new(wildflowerhealthio_authorization_server::NoLoopbackConsentPrompt),
-    )
-}
-
-/// [`spin_up`] with the host's loopback dialog played by `loopback_prompt` — for
-/// the tests that drive a direct-loopback `launcher-web` login through it.
-///
-/// Runs on a temporary **file-backed** database, like the app's, rather than
-/// the shared-cache in-memory one: the dialog's decision writes from a blocking
-/// worker while the runtime drives the startup tasks `setup_authorization_server`
-/// spawns, and shared-cache `SQLite` fails such an overlap with "database table
-/// is locked" instead of waiting on `busy_timeout` as a file database does.
-pub fn spin_up_with_loopback_prompt(
-    loopback_prompt: std::sync::Arc<
-        dyn wildflowerhealthio_authorization_server::LoopbackConsentPrompt,
-    >,
-) -> (AuthorizationServer, String, TestDb) {
-    let database_dir = tempfile::tempdir().expect("temp database dir");
-    let pool =
-        wildflowerhealthio_persistence::open_pool(&database_dir.path().join("wildflower.db"))
-            .expect("open file-backed pool");
-    spin_up_on(pool, Some(database_dir), loopback_prompt)
-}
-
-fn spin_up_on(
-    pool: DieselPool,
-    database_dir: Option<tempfile::TempDir>,
-    loopback_prompt: std::sync::Arc<
-        dyn wildflowerhealthio_authorization_server::LoopbackConsentPrompt,
-    >,
-) -> (AuthorizationServer, String, TestDb) {
     let config = AuthorizationServerConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
@@ -123,7 +83,6 @@ fn spin_up_on(
         authorization_app_base: AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE)
             .expect("AUTHORIZATION_APP_BASE is a valid URL"),
     };
-    let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);
     // The shared revocation store lives on the rusqlite connection the host
@@ -134,51 +93,44 @@ fn spin_up_on(
     let revocation_store =
         wildflowerhealthio_token_revocation::RevocationStore::new(revocation_conn.clone())
             .expect("revocation store");
-    let g = setup_authorization_server(
-        pool.clone(),
-        revocation_store,
-        &config,
-        &token_tx,
-        pending_consent_tx,
-        loopback_prompt,
-    )
-    .expect("setup");
-    let host_owner_token = token_rx
-        .borrow()
-        .clone()
-        .expect("setup_authorization_server publishes the host owner token");
-    (
-        g,
-        host_owner_token,
-        TestDb {
-            pool,
-            revocation_conn,
-            pending_consent_rx,
-            host_owner_token_rx: token_rx,
-            _database_dir: database_dir,
-        },
-    )
+    let g = setup_authorization_server(pool.clone(), revocation_store, &config, pending_consent_tx)
+        .expect("setup");
+    let db = TestDb {
+        pool,
+        revocation_conn,
+        pending_consent_rx,
+    };
+    let owner_token = mint_owner_token(&db);
+    (g, owner_token, db)
 }
 
-/// A receiver on the host owner token channel, with the current token marked
-/// seen, so `changed()` resolves on the next one the slice publishes.
-pub fn host_owner_token_watch(db: &TestDb) -> watch::Receiver<Option<String>> {
-    let mut rx = db.host_owner_token_rx.clone();
-    rx.mark_unchanged();
-    rx
+/// Mint an **Owner** access token: the host app's client holding the host's
+/// default granted scopes, which cover every `/authorization/*` scope gate.
+/// Signed by the seeded active key and naming [`SERVER_ORIGIN`] as `iss` and
+/// `aud`, so every bearer gate accepts it.
+pub fn mint_owner_token(db: &TestDb) -> String {
+    let key = store_handle(db)
+        .active_signing_key()
+        .expect("signing-key query")
+        .expect("a seeded active signing key");
+    mint_access_token(
+        &key,
+        &NewJwtArgs {
+            client_id: wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID,
+            scopes: &wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+            ttl: Duration::minutes(15),
+            issuer: SERVER_ORIGIN,
+            audience: Some(SERVER_ORIGIN),
+            patient: None,
+        },
+    )
+    .expect("mint owner token")
 }
 
 /// The head the host popup would currently be showing — the latest value on the
 /// slice's pending-consent watch channel.
 pub fn pending_consent_head(db: &TestDb) -> Option<PendingConsentHead> {
     db.pending_consent_rx.borrow().clone()
-}
-
-/// A fresh receiver on the slice's pending-consent head, for a test that waits
-/// for a background decision to move the head — an in-memory signal, so the
-/// wait never reads the database while that decision is writing it.
-pub fn pending_consent_watch(db: &TestDb) -> watch::Receiver<Option<PendingConsentHead>> {
-    db.pending_consent_rx.clone()
 }
 
 /// A second `SqliteGrantStore` handle on the *same* shared pool the running
@@ -448,7 +400,7 @@ pub fn polling_request_id(wait_page_location: &str) -> String {
 /// Load the Owner-facing consent prompt for `request_id` as JSON.
 pub async fn get_oauth_consent(
     g: &AuthorizationServer,
-    host_owner_token: &str,
+    owner_token: &str,
     request_id: &str,
 ) -> Value {
     let res = g
@@ -457,7 +409,7 @@ pub async fn get_oauth_consent(
         .oneshot(loopback_request(
             Request::get(format!("/authorization/oauth-consents/{request_id}"))
                 .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {host_owner_token}")),
+                .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
         ))
         .await
@@ -469,7 +421,7 @@ pub async fn get_oauth_consent(
 /// `POST /authorization/oauth-consents/{id}/approve` with an owned JSON body.
 pub async fn approve_oauth_consent(
     g: &AuthorizationServer,
-    host_owner_token: &str,
+    owner_token: &str,
     request_id: &str,
     body: String,
 ) -> axum::response::Response {
@@ -480,7 +432,7 @@ pub async fn approve_oauth_consent(
                 "/authorization/oauth-consents/{request_id}/approve"
             ))
             .header("host", "127.0.0.1")
-            .header("authorization", format!("Bearer {host_owner_token}"))
+            .header("authorization", format!("Bearer {owner_token}"))
             .header("content-type", "application/json"),
             Body::from(body),
         ))
@@ -499,7 +451,7 @@ pub async fn approve_oauth_consent(
 /// flag is ignored.
 pub async fn authorize_and_approve(
     g: &AuthorizationServer,
-    host_owner_token: &str,
+    owner_token: &str,
     client_id: &str,
     scope_query: &str,
     approve_body: &'static str,
@@ -531,7 +483,7 @@ pub async fn authorize_and_approve(
             "/authorization/oauth-consents/{request_id}/approve"
         ))
         .header("host", "127.0.0.1")
-        .header("authorization", format!("Bearer {host_owner_token}"))
+        .header("authorization", format!("Bearer {owner_token}"))
         .header("content-type", "application/json"),
         Body::from(approve_body),
     );
@@ -637,7 +589,7 @@ pub const CONFIDENTIAL_CLIENT_SECRET: &str = "shhh-integration-secret";
 /// Spin up an authorization server with a seeded confidential client and a live planted
 /// refresh token — the cheapest real grant to exercise client auth against.
 pub fn spin_up_with_confidential_client() -> (AuthorizationServer, TestDb) {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     seed_confidential_client(
         &db,
         CONFIDENTIAL_CLIENT_ID,

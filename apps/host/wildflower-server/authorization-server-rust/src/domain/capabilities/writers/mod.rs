@@ -57,7 +57,7 @@ mod tests {
     /// the `SQLite` adapter and port definition that implement and declare the
     /// methods, the in-memory fake, and the boot-time seeding (the signing-key
     /// seed and the essential client rows come from configuration, not from a
-    /// delegation — the `HostOwnerEntitlement` proof names that exception).
+    /// delegation).
     const ALLOWED_PREFIXES: &[&str] = &[
         "domain/capabilities/writers/",
         "db/",

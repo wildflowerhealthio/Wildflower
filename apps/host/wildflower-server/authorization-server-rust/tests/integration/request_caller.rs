@@ -45,7 +45,7 @@ fn get_with_bearer(path: &str, token: Option<&str>) -> Request<Body> {
 
 #[tokio::test]
 async fn the_bearer_gate_stamps_the_token_s_client() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["patient/*.rs"]);
 
     let response = bearer_gated_router(&g)
@@ -64,7 +64,7 @@ async fn the_bearer_gate_stamps_the_token_s_client() {
 
 #[tokio::test]
 async fn the_bearer_gate_stamps_nothing_on_a_rejected_or_exempt_request() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
     let router = bearer_gated_router(&g);
 
     let rejected = router
@@ -85,12 +85,12 @@ async fn the_bearer_gate_stamps_nothing_on_a_rejected_or_exempt_request() {
 
 #[tokio::test]
 async fn the_session_gate_stamps_the_token_s_client() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, owner_token, _db) = spin_up();
 
     let response = g
         .router
         .clone()
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
 
@@ -106,7 +106,7 @@ async fn the_session_gate_stamps_the_token_s_client() {
 
 #[tokio::test]
 async fn the_session_gate_stamps_nothing_on_a_rejected_request() {
-    let (g, _host_owner_token, _db) = spin_up();
+    let (g, _owner_token, _db) = spin_up();
 
     let response = g
         .router
@@ -120,7 +120,7 @@ async fn the_session_gate_stamps_nothing_on_a_rejected_request() {
 
 #[tokio::test]
 async fn the_bearer_gate_stamps_why_it_refused_each_401() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let router = bearer_gated_router(&g);
     let revoked_token = mint_scoped_token(&db, &["patient/*.rs"]);
     revoke(&db, &revoked_token);
@@ -152,7 +152,7 @@ async fn the_bearer_gate_stamps_why_it_refused_each_401() {
 
 #[tokio::test]
 async fn the_session_gate_stamps_why_it_refused_each_401() {
-    let (g, host_owner_token, db) = spin_up();
+    let (g, owner_token, db) = spin_up();
     let no_token = loopback_request(
         Request::get("/authorization/grants").header("host", "127.0.0.1"),
         Body::empty(),
@@ -175,10 +175,10 @@ async fn the_session_gate_stamps_why_it_refused_each_401() {
         Some(RequestRefusal::TokenRejected)
     );
 
-    revoke(&db, &host_owner_token);
+    revoke(&db, &owner_token);
     let revoked = g
         .router
-        .oneshot(owner_grants_probe(&host_owner_token))
+        .oneshot(owner_grants_probe(&owner_token))
         .await
         .expect("oneshot");
     assert_eq!(revoked.status(), StatusCode::UNAUTHORIZED);
@@ -189,7 +189,7 @@ async fn the_session_gate_stamps_why_it_refused_each_401() {
 /// verified it, so the response names its caller and carries no refusal.
 #[tokio::test]
 async fn a_scope_refusal_carries_the_caller_and_no_refusal() {
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["patient/*.rs"]);
 
     let response = g

@@ -4,7 +4,6 @@
 //! configuration it stands for, so the minter never accepts a bare scope slice
 //! a caller assembled.
 
-use super::host_owner_entitlement::HostOwnerEntitlement;
 use super::redemption::{ConsumedDeviceRequest, RedeemedAuthorizationCode, ValidatedRefreshToken};
 use super::same_device_sign_in::RedeemedSameDeviceSignInCode;
 
@@ -13,8 +12,6 @@ use super::same_device_sign_in::RedeemedSameDeviceSignInCode;
 /// the [module docs](super).
 #[derive(Clone, Copy)]
 pub(crate) enum TokenEntitlement<'a> {
-    /// The host's own owner token, minted from configuration at boot.
-    HostOwner(&'a HostOwnerEntitlement),
     /// An Owner browser's session, signed in with a same-device sign-in code the base minted.
     SameDeviceSignIn(&'a RedeemedSameDeviceSignInCode),
     /// An authorization code redeemed at `/oauth/token`.
@@ -29,7 +26,6 @@ impl TokenEntitlement<'_> {
     /// The `sub` / `client_id` the token is issued to.
     pub(crate) fn client_id(&self) -> &str {
         match self {
-            TokenEntitlement::HostOwner(host) => host.client_id(),
             TokenEntitlement::SameDeviceSignIn(redeemed_sign_in_code) => {
                 redeemed_sign_in_code.client_id()
             }
@@ -49,7 +45,6 @@ impl TokenEntitlement<'_> {
     /// [`wildflowerhealthio_scopes::with_alternate_canonical_forms`]).
     pub(crate) fn token_scopes(&self) -> &[String] {
         match self {
-            TokenEntitlement::HostOwner(host) => host.token_scopes(),
             TokenEntitlement::SameDeviceSignIn(redeemed_sign_in_code) => {
                 redeemed_sign_in_code.token_scopes()
             }
@@ -63,11 +58,11 @@ impl TokenEntitlement<'_> {
         }
     }
 
-    /// SMART-on-FHIR patient context bound at approval, if any. The Owner's
-    /// tokens have none.
+    /// SMART-on-FHIR patient context bound at approval, if any. An Owner
+    /// browser's token has none.
     pub(crate) fn patient(&self) -> Option<&str> {
         match self {
-            TokenEntitlement::HostOwner(_) | TokenEntitlement::SameDeviceSignIn(_) => None,
+            TokenEntitlement::SameDeviceSignIn(_) => None,
             TokenEntitlement::AuthorizationCode(redeemed_code) => redeemed_code.patient(),
             TokenEntitlement::DeviceCode(consumed_device_request) => {
                 consumed_device_request.patient()
