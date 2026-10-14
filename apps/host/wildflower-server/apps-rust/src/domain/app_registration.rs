@@ -1,10 +1,10 @@
 //! [`AppRegistration`] — the authoritative `app_registrations` row: one row per
 //! app, holding the global id, the homescreen placement (`position` /
 //! `on_homescreen`), the catalogue facts (`name` / `subtitle` / the soft
-//! `client_id` / the Tunnel-pill `requires_tunnel`), and the launch `url`
-//! template. It is BOTH the diesel-mapped domain row and the `GET /apps` wire
-//! item — one flat struct serialized directly (the "domain-is-wire" registration),
-//! so there is no second projection to drift from.
+//! `client_id`), and the launch `url` template. It is BOTH the diesel-mapped
+//! domain row and the `GET /apps` wire item — one flat struct serialized
+//! directly (the "domain-is-wire" registration), so there is no second
+//! projection to drift from.
 //!
 //! On the wire it is camelCase; `position` is omitted (the `GET /apps` array order
 //! IS the display order) and `client_id` is projected as the derived boolean
@@ -54,9 +54,6 @@ pub struct AppRegistration {
     #[serde(rename = "isSmart", serialize_with = "serialize_client_id_as_is_smart")]
     #[schema(rename = "isSmart", value_type = bool)]
     pub client_id: Option<String>,
-    /// The app's Tunnel pill. It has no effect on launch (every launch resolves
-    /// `{origin}` to the server's public origin); #967 removes it.
-    pub requires_tunnel: bool,
 }
 
 impl AppRegistration {
@@ -118,7 +115,6 @@ mod tests {
                 "name": "App X",
                 "url": "https://example.com/launch",
                 "isSmart": true,
-                "requiresTunnel": false,
             }),
         );
         assert!(json.get("position").is_none(), "position stays on the host");

@@ -1,7 +1,7 @@
-//! `PUT /apps/{id}` — replace an app's *content* (`name` / `subtitle` / `url` /
-//! `requiresTunnel`); the `url` is re-parsed through the write-side filter. An
-//! unknown id is `404`; a bad name / url is `400`. `onHomescreen` is **not**
-//! content — `PUT /home-screen` owns it. The response is the refreshed
+//! `PUT /apps/{id}` — replace an app's *content* (`name` / `subtitle` / `url`);
+//! the `url` is re-parsed through the write-side filter. An unknown id is
+//! `404`; a bad name / url is `400`. `onHomescreen` is **not** content —
+//! `PUT /home-screen` owns it. The response is the refreshed
 //! [`AppRegistration`], hydrated via `RETURNING`.
 
 use axum::extract::Path;
@@ -43,7 +43,6 @@ pub(crate) async fn handle_update_app(
             name: body.name,
             subtitle: body.subtitle,
             url: body.url,
-            requires_tunnel: body.requires_tunnel,
         },
     )?))
 }

@@ -31,10 +31,6 @@ refused by WebKit even on device. The launch never consults the tunnel. The
 trade-off: with the assets remote and the FHIR server reached at its public
 origin, a launch needs the network even on-device.
 
-The `requires_tunnel` flag rides each row and the wire as `requiresTunnel`, and
-the homescreen shows it as a Tunnel pill; it has no effect on launch and is
-removed by #967.
-
 The SMART apps this repository publishes (every app that mounts
 `smart-app-react`'s `SmartAppRoot`) send nothing from the browser but their FHIR
 traffic until the visitor answers a telemetry consent dialog, which comes before
@@ -81,9 +77,8 @@ empty.
 
 One **`app_registrations`** table holds the whole app: `id` (the global id
 space, an explicit PK), `position` (UNIQUE, for ordering + drag-to-reorder),
-`on_homescreen`, `name`, `subtitle`, `url` (the launch template), the soft
-`client_id` reference, and `requires_tunnel` (the Tunnel pill; no effect on
-launch).
+`on_homescreen`, `name`, `subtitle`, `url` (the launch template), and the soft
+`client_id` reference.
 `PUT /home-screen` is the single writer of ordering + `on_homescreen`.
 
 The `url` is an origin-independent template (`domain/app_url.rs`): an absolute
@@ -99,10 +94,9 @@ database.
 ### The registration is the wire shape
 
 `GET /apps` (and `PUT /home-screen`) return `AppRegistration[]` — one flat shape
-per app: `id`, `onHomescreen`, `name`, `subtitle?`, `url`, `isSmart` (derived
-from `client_id`), and `requiresTunnel`. The array order is the display
-order (`position` stays on the host). `GET /apps/{id}` returns the same shape for
-one app.
+per app: `id`, `onHomescreen`, `name`, `subtitle?`, `url`, and `isSmart`
+(derived from `client_id`). The array order is the display order (`position`
+stays on the host). `GET /apps/{id}` returns the same shape for one app.
 
 The `url` on the wire is the **stored template**, never a resolved launch URL:
 the concrete target — with the server's public origin and, for a SMART app, a
@@ -112,7 +106,7 @@ fresh `{launch}` substituted — is materialized only by the launch endpoint
 ### Creating and editing
 
 `POST /apps` creates an app and `PUT /apps/{id}` replaces its content, both from
-the same JSON body (`name`, `subtitle`, `url`, `requiresTunnel`). The server mints
+the same JSON body (`name`, `subtitle`, `url`). The server mints
 a created app's id; the app lands at the end of the homescreen, with no
 `client_id`. A replace is a full **content** replace —
 `on_homescreen` and display order stay owned by `PUT /home-screen` — and an

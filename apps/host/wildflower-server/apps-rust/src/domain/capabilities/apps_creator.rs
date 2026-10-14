@@ -43,7 +43,6 @@ impl<S: AppsStore> AppsCreator<S> {
             subtitle,
             url,
             client_id: None,
-            requires_tunnel: payload.requires_tunnel,
         };
         self.store.insert_app(&registration)
     }
@@ -62,7 +61,6 @@ mod tests {
                 name: "My App".to_owned(),
                 subtitle: None,
                 url: "https://example.com/launch".to_owned(),
-                requires_tunnel: false,
             })
             .expect("create");
         assert!(!registration.id.is_empty());

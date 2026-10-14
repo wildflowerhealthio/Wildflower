@@ -6,7 +6,7 @@ import { useAppCreateMutation } from '../../../queries.ts'
 import { AppFieldInputs, appBodyFrom, type AppFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
-const EMPTY_FIELDS: AppFields = { name: '', subtitle: '', url: '', requiresTunnel: false }
+const EMPTY_FIELDS: AppFields = { name: '', subtitle: '', url: '' }
 
 interface NewAppBodyProps {
   /** Called after a successful create — the route navigates back to the list. */

@@ -122,8 +122,8 @@ clients to it.
   `0015_seed_health_viewer_app`, its URL as
   `0016_launch_first_party_apps_at_root` left it, re-keyed by
   `0019_rekey_site_apps`) launching
-  `https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}`
-  with `requires_tunnel` set, as every first-party row has. Its public OAuth
+  `https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}`.
+  Its public OAuth
   client (the authorization server migration `0022_seed_health_viewer_app_client`, re-keyed by
   `0028_rekey_site_app_clients`) redirects to
   `https://wildflowerhealth.io/health-viewer/`.

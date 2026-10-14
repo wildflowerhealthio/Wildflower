@@ -60,8 +60,8 @@ its authed runner from route context. Like the Importer, **this app writes.**
 
 The production `synthetic-data` registry row (apps migration
 `0019_rekey_site_apps`) launches
-`https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}`
-with `requires_tunnel` set, and its public OAuth client,
+`https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}`,
+and its public OAuth client,
 `225ba6af034a3acec6be7ff8010df67f` (the authorization server migration
 `0028_rekey_site_app_clients`), redirects to
 `https://wildflowerhealth.io/synthetic-data/` and allows exactly

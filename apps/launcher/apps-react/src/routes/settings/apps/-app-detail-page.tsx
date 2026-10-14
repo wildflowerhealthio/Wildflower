@@ -13,8 +13,8 @@ import { AppFieldInputs, appBodyFrom, type AppFields } from './-forms.tsx'
 import formStyles from './-forms.module.css'
 
 /**
- * Full-replace editor for an app's content — name / subtitle / launch URL /
- * requires-tunnel, prefilled from the {@link AppRegistration}. Saving `PUT`s the
+ * Full-replace editor for an app's content — name / subtitle / launch URL,
+ * prefilled from the {@link AppRegistration}. Saving `PUT`s the
  * whole content to `/apps/:id` via {@link useAppReplaceMutation}; an empty
  * subtitle clears it.
  */
@@ -24,7 +24,6 @@ const AppEditForm = ({ app }: { readonly app: AppRegistration }): JSX.Element =>
     name: app.name,
     subtitle: app.subtitle ?? '',
     url: app.url,
-    requiresTunnel: app.requiresTunnel,
   })
 
   const save = (): void => {

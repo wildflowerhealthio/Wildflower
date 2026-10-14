@@ -29,5 +29,4 @@ pub(crate) struct AppBody {
     /// `400 InvalidUrl` through the write-side [`AppUrl`](crate::domain::AppUrl)
     /// filter.
     pub(crate) url: String,
-    pub(crate) requires_tunnel: bool,
 }

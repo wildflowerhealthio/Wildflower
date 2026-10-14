@@ -1,8 +1,7 @@
-import { FieldDescription, TextField, ToggleSwitch } from '@wildflowerhealthio/react-tundraish'
+import { TextField } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
 
 import type { AppBody } from '../../../queries.ts'
-import formStyles from './-forms.module.css'
 
 /**
  * Shared form pieces for the apps settings pages. The `-` prefix keeps this
@@ -15,7 +14,6 @@ interface AppFields {
   readonly name: string
   readonly subtitle: string
   readonly url: string
-  readonly requiresTunnel: boolean
 }
 
 interface AppFieldInputsProps {
@@ -25,8 +23,8 @@ interface AppFieldInputsProps {
 }
 
 /**
- * The four controlled inputs an app carries (name / subtitle / launch URL /
- * requires-tunnel), used by both the create page and the per-app edit page. The
+ * The three controlled inputs an app carries (name / subtitle / launch URL),
+ * used by both the create page and the per-app edit page. The
  * URL description spells out the `{origin}` / `{launch}` tokens the server
  * substitutes at launch (matching `apps-core-js/http-api-definition`'s
  * `Schemas.AppUrlSchema`).
@@ -61,23 +59,6 @@ const AppFieldInputs = ({ fields, onChange, disabled }: AppFieldInputsProps): JS
         onChange({ ...fields, url })
       }}
     />
-    <div className={formStyles['toggle-field']}>
-      {disabled === true ? (
-        <ToggleSwitch checked={fields.requiresTunnel} label="Requires Tunnel" disabled />
-      ) : (
-        <ToggleSwitch
-          checked={fields.requiresTunnel}
-          label="Requires Tunnel"
-          onChange={(requiresTunnel) => {
-            onChange({ ...fields, requiresTunnel })
-          }}
-        />
-      )}
-      <FieldDescription>
-        Shows a Tunnel pill on the app’s tile. It has no effect on launch: every app launches at
-        your server’s public address.
-      </FieldDescription>
-    </div>
   </>
 )
 
@@ -94,7 +75,6 @@ const appBodyFrom = (fields: AppFields): AppBody | undefined => {
   return {
     name,
     url,
-    requiresTunnel: fields.requiresTunnel,
     ...(subtitle === '' ? {} : { subtitle }),
   }
 }

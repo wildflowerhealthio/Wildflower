@@ -72,7 +72,6 @@ impl AppsStore for FakeAppsStore {
         stored.name = registration.name.clone();
         stored.subtitle = registration.subtitle.clone();
         stored.url = registration.url.clone();
-        stored.requires_tunnel = registration.requires_tunnel;
         Ok(Some(stored.clone()))
     }
 
@@ -110,7 +109,7 @@ impl AppsStore for FakeAppsStore {
 
 /// A registration with default content — the one builder every test seeds a
 /// store or fixture from, overriding fields with struct-update syntax. On the
-/// home screen, not SMART, no tunnel; `position` is a placeholder a store
+/// home screen, not SMART; `position` is a placeholder a store
 /// overrides, and `name` defaults to the id.
 pub(crate) fn registration(id: &str) -> AppRegistration {
     AppRegistration {
@@ -123,7 +122,6 @@ pub(crate) fn registration(id: &str) -> AppRegistration {
             .parse::<AppUrl>()
             .expect("a valid seed launch url"),
         client_id: None,
-        requires_tunnel: false,
     }
 }
 

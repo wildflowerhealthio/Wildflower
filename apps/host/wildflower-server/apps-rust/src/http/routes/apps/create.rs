@@ -1,5 +1,5 @@
 //! `POST /apps` — register a new app from a JSON body
-//! (`{name, subtitle?, url, requiresTunnel}`). The server mints the id (a 21-char
+//! (`{name, subtitle?, url}`). The server mints the id (a 21-char
 //! nanoid). `url` is parsed through the write-side [`AppUrl`](crate::domain::AppUrl)
 //! filter so an open redirect never lands in the row; an empty name is
 //! `400 InvalidName`, a bad url `400 InvalidUrl`. Returns the created
@@ -41,6 +41,5 @@ pub(crate) async fn handle_create_app(
         name: body.name,
         subtitle: body.subtitle,
         url: body.url,
-        requires_tunnel: body.requires_tunnel,
     })?))
 }
