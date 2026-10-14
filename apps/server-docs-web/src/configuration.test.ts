@@ -11,8 +11,7 @@ const configuration = consoleConfiguration('https://example-tunnel-origin', {
 describe('consoleConfiguration', () => {
   it('never routes a reader request through a third-party proxy', () => {
     // Scalar's `web` layout defaults to https://proxy.scalar.com, which would
-    // forward the request — bearer token included — to a service we don't run,
-    // and could never reach a loopback server.
+    // forward the request — bearer token included — to a service we don't run.
     expect(configuration.proxyUrl).toBe('')
   })
 

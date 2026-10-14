@@ -35,9 +35,9 @@ interface ConsoleConfiguration {
   /**
    * Empty on purpose. Scalar's `web` layout otherwise defaults to routing
    * every "send" through `https://proxy.scalar.com`, which would hand a
-   * reader's request — bearer token included — to a service we don't run, and
-   * could not reach a loopback server anyway. Requests go straight from the
-   * browser to the chosen server; see the CORS caveat in the README.
+   * reader's request — bearer token included — to a service we don't run.
+   * Requests go straight from the browser to the chosen server; see the CORS
+   * caveat in the README.
    */
   proxyUrl: ''
   /** No webfont fetch from `fonts.scalar.com`: the page must be self-contained. */

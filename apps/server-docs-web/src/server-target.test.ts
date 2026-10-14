@@ -1,12 +1,12 @@
 import {
-  normalizeServerUrl,
   SERVER_QUERY_PARAM,
+  serverUrlFromSearch,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { DEFAULT_SERVER_URL, serverUrlFromSearch } from './server-target.ts'
+import { SERVER_URL_EXAMPLE, serverEntryProblem } from './server-target.ts'
 
 /** Absolute `http(s)` URLs, the only inputs the console accepts. */
 const httpUrl = fc.webUrl({
@@ -15,28 +15,31 @@ const httpUrl = fc.webUrl({
   size: 'small',
 })
 
-describe('serverUrlFromSearch', () => {
-  it('has a fallback the console would itself accept', () => {
-    // The default comes from `tauri-shared-config.json`; if that file ever
-    // described an origin this console rejects, every unparameterised load
-    // would silently target nothing.
-    expect(normalizeServerUrl(DEFAULT_SERVER_URL)).toBe(DEFAULT_SERVER_URL)
+describe('the console target', () => {
+  it('is absent when the URL names no usable server, rather than a default', () => {
+    expect(serverUrlFromSearch('')).toBeUndefined()
+    expect(serverUrlFromSearch('?other=1')).toBeUndefined()
+    expect(serverUrlFromSearch(`?${SERVER_QUERY_PARAM}=`)).toBeUndefined()
+    expect(serverUrlFromSearch(`?${SERVER_QUERY_PARAM}=javascript:alert(1)`)).toBeUndefined()
   })
+})
 
-  it('falls back to the host loopback origin when the parameter is absent or unusable', () => {
-    expect(serverUrlFromSearch('')).toBe(DEFAULT_SERVER_URL)
-    expect(serverUrlFromSearch('?other=1')).toBe(DEFAULT_SERVER_URL)
-    expect(serverUrlFromSearch('?server=')).toBe(DEFAULT_SERVER_URL)
-    expect(serverUrlFromSearch('?server=javascript:alert(1)')).toBe(DEFAULT_SERVER_URL)
-  })
-
-  it('reads the canonical form of an acceptable parameter', () => {
+describe('serverEntryProblem', () => {
+  it('accepts any absolute http(s) URL, the example included', () => {
+    expect(serverEntryProblem(SERVER_URL_EXAMPLE)).toBeUndefined()
     fc.assert(
       fc.property(httpUrl, (url) => {
-        const search = `?${SERVER_QUERY_PARAM}=${encodeURIComponent(url)}`
-        expect(serverUrlFromSearch(search)).toBe(normalizeServerUrl(url))
+        expect(serverEntryProblem(url)).toBeUndefined()
       }),
       { numRuns: numRunsFor({ base: 200 }) }
     )
+  })
+
+  it('says why anything else names no server', () => {
+    for (const candidate of ['', 'my-server.example.com', '//host', 'javascript:alert(1)']) {
+      expect(serverEntryProblem(candidate)).toBe(
+        `Enter a valid http(s) server URL, e.g. ${SERVER_URL_EXAMPLE}.`
+      )
+    }
   })
 })

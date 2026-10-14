@@ -92,8 +92,8 @@ body {
 }
 
 /*
- * Sign-in state and sign-in failures share one line: both answer "can this
- * console send an authorised request right now?".
+ * Sign-in state, sign-in failures and the ask for a server share one line: all
+ * answer "can this console send an authorised request right now?".
  */
 .server-bar__status {
   flex-basis: 100%;
@@ -104,4 +104,8 @@ body {
 
 .server-bar__status--problem {
   color: light-dark(#8c2f2f, #f0a0a0);
+}
+
+.server-bar__status--prompt {
+  color: light-dark(#5a5a66, #a0a0ae);
 }
