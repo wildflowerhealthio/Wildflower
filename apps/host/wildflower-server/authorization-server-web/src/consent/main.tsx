@@ -1,13 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// The design-system stylesheets without the Atkinson Hyperlegible faces: the
-// page's Content Security Policy (`default-src 'none'`, no `font-src`) loads no
-// font, so text falls back to the system stack the font tokens name next.
-// Imported before the app's own CSS modules so app styles win on tied
-// specificity.
-import 'tundra-css'
-import '@wildflowerhealthio/react-tundraish/styles.css'
+// The design-system stylesheet stack (tundra-css, the Wildflower palette and
+// type scale, the self-hosted fonts) in its load-bearing order. Imported before
+// the app's own CSS modules so app styles win on tied specificity.
+import '@wildflowerhealthio/react-tundraish/styles'
 
 import { FetchHttpClient } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'

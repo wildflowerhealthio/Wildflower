@@ -37,12 +37,13 @@ Security Policy (below).
 ## Traps
 
 - **The server serves every file under
-  `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.**
-  No inline `<script>` or `<style>`, no `data:` URLs, no images and no fonts:
-  `main.tsx` imports `tundra-css` and `react-tundraish/styles.css`, not
-  `react-tundraish/styles`, which would load the Atkinson faces.
-- **Only `/oauth/assets/*.js` and `*.css` are served.** An asset of any other
-  type (an image, a font) 404s; keep the pages to scripts and stylesheets.
+  `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.**
+  No inline `<script>` or `<style>`, no `data:` URLs and no images. Fonts load
+  from `/oauth/assets/`: `main.tsx` imports `react-tundraish/styles`, which
+  brings the Atkinson Hyperlegible faces.
+- **Only `/oauth/assets/*.js`, `*.css` and `*.woff2` are served.** An asset of
+  any other type (an image, a `.woff`) 404s; keep the pages to scripts,
+  stylesheets and `woff2` fonts.
 - **Mind the budget.** Anything that imports the FHIR datatype registry
   (`@wildflowerhealthio/fhir-r4/data-types`, `/resources`, `fhir-r4-react`)
   brings `fast-check` and the whole registry into the page: read FHIR through

@@ -12,13 +12,13 @@ import { pageScriptBudget, SHARED_REACT_CHUNK } from './page-script-budget.ts'
  * served at its own path: `consent.html` at `/oauth/authorize/{id}/consent`.
  *
  * - `base: '/oauth/'`, so a page loads its files from `/oauth/assets/`, where
- *   the server serves Vite's content-hashed scripts and stylesheets as
- *   immutable, whatever path the page itself is at.
+ *   the server serves Vite's content-hashed scripts, stylesheets and fonts
+ *   as immutable, whatever path the page itself is at.
  * - Each page loads its own entry and the shared `react` chunk, so a page
  *   never ships another page's code and React is cached once.
  * - Nothing is inlined into the HTML or as a `data:` URL: the server serves
  *   every file under the wait page's Content Security Policy, which allows
- *   only scripts and stylesheets fetched from the server itself.
+ *   only scripts, stylesheets and fonts fetched from the server itself.
  * - `pageScriptBudget` fails the build when a page's JavaScript beside the
  *   shared React chunk is over 150 KB gzipped.
  */

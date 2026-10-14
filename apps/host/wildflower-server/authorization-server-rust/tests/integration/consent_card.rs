@@ -272,7 +272,7 @@ async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
 }
 
 /// The card is served on the request's own path, under the wait page's
-/// headers. Its scripts and stylesheets are pinned by
+/// headers. Its scripts, stylesheets and fonts are pinned by
 /// `authorization_pages.rs`'s unit tests against a build they define.
 #[tokio::test]
 async fn the_consent_card_is_locked_down_and_uncached() {
@@ -299,8 +299,8 @@ async fn the_consent_card_is_locked_down_and_uncached() {
     assert_eq!(header("content-type"), "text/html; charset=utf-8");
     assert_eq!(
         header("content-security-policy"),
-        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; \
-         base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; \
+         connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     );
     assert_eq!(header("referrer-policy"), "no-referrer");
     assert_eq!(header("x-content-type-options"), "nosniff");

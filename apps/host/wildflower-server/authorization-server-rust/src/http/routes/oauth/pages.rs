@@ -8,12 +8,12 @@
 use axum::http::header::{self, HeaderName};
 use url::form_urlencoded;
 
-/// Everything a page loads comes from this origin, it can only talk back to
-/// it, and nothing may frame it. The top-level navigation to the client's
+/// Everything a page loads (its scripts, stylesheets and fonts) comes from
+/// this origin, it can only talk back to it, and nothing may frame it. The top-level navigation to the client's
 /// redirect is not a fetch, so `connect-src` doesn't constrain it.
 pub(super) const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; \
-     style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; \
-     frame-ancestors 'none'";
+     style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; \
+     form-action 'none'; frame-ancestors 'none'";
 
 /// The headers every file of a page carries: its `content_type`, the
 /// [`CONTENT_SECURITY_POLICY`], no `Referer` on anything it loads or leaves

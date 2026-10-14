@@ -88,6 +88,7 @@ async fn the_wait_page_is_static_and_locked_down() {
         "default-src 'none'",
         "script-src 'self'",
         "style-src 'self'",
+        "font-src 'self'",
         "connect-src 'self'",
         "frame-ancestors 'none'",
     ] {

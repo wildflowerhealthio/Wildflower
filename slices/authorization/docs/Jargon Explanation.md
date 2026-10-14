@@ -455,7 +455,8 @@ the browser signs in.
 It is a React page from the **authorization pages** bundle
 (`apps/host/wildflower-server/authorization-server-web`), which the
 authorization server embeds and serves with the wait page's headers; its
-hashed scripts and stylesheets are at `/oauth/assets/*`, cached as immutable.
+hashed scripts, stylesheets and fonts are at `/oauth/assets/*`, cached as
+immutable.
 It has no API of its own. On the Owner browser's session, which the host's
 cookie→bearer layer presents as the bearer, it reads
 `GET /authorization/oauth-consents/{id}`, searches FHIR `GET /Patient?name=…`

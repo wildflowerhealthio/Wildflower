@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/authorization-react": "workspace:*",

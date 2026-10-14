@@ -6,10 +6,10 @@
 //! - `GET /oauth/authorize/{id}/consent` serves the consent card,
 //!   `consent.html`, the same bytes whatever the id: the page reads the id from
 //!   its own path. Uncached, like the wait page.
-//! - `GET /oauth/assets/{file}` serves the pages' scripts and stylesheets,
-//!   Vite's content-hashed files, which never change under a name and are
-//!   cached as `immutable`. Only `.js` and `.css` files are served; anything
-//!   else is `404`.
+//! - `GET /oauth/assets/{file}` serves the pages' scripts, stylesheets and
+//!   fonts, Vite's content-hashed files, which never change under a name and
+//!   are cached as `immutable`. Only `.js`, `.css` and `.woff2` files are
+//!   served; anything else is `404`.
 //!
 //! Every file carries the wait page's security headers
 //! ([`page_security_headers`]). The pages call only the existing APIs
@@ -81,8 +81,8 @@ fn page(pages: &'static Dir<'static>, name: &str) -> Response {
     .into_response()
 }
 
-/// The hashed script or stylesheet `file` under `pages`' `assets/`, cached as
-/// immutable, or `404`.
+/// The hashed script, stylesheet or font `file` under `pages`' `assets/`,
+/// cached as immutable, or `404`.
 fn asset(pages: &'static Dir<'static>, file: &str) -> Response {
     let Some(content_type) = asset_content_type(file) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -98,9 +98,9 @@ fn asset(pages: &'static Dir<'static>, file: &str) -> Response {
         .into_response()
 }
 
-/// The media type an asset is served as, by its extension: a script or a
-/// stylesheet, the only files a page loads under its CSP. `None` for anything
-/// else.
+/// The media type an asset is served as, by its extension: a script, a
+/// stylesheet or a font, the only files a page loads under its CSP. `None` for
+/// anything else.
 fn asset_content_type(file: &str) -> Option<&'static str> {
     match FilePath::new(file)
         .extension()
@@ -108,6 +108,7 @@ fn asset_content_type(file: &str) -> Option<&'static str> {
     {
         Some("js") => Some("text/javascript; charset=utf-8"),
         Some("css") => Some("text/css; charset=utf-8"),
+        Some("woff2") => Some("font/woff2"),
         _ => None,
     }
 }
@@ -137,6 +138,8 @@ mod tests {
                     DirEntry::File(File::new("assets/consent-abc123.js", b"console.log(1)")),
                     DirEntry::File(File::new("assets/react-def456.js", b"export{}")),
                     DirEntry::File(File::new("assets/consent-abc123.css", b"body{}")),
+                    DirEntry::File(File::new("assets/sans-latin-1a2b3c.woff2", b"wOF2")),
+                    DirEntry::File(File::new("assets/sans-latin-1a2b3c.woff", b"wOFF")),
                     DirEntry::File(File::new("assets/logo-0a1b2c.svg", b"<svg/>")),
                 ],
             )),
@@ -171,8 +174,8 @@ mod tests {
     fn assert_locked_down(response: &Response, uri: &str) {
         assert_eq!(
             header_of(response, header::CONTENT_SECURITY_POLICY),
-            "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; \
-             base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; \
+             connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             "{uri}"
         );
         assert_eq!(
@@ -215,7 +218,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hashed_scripts_and_stylesheets_are_immutable_with_their_types() {
+    async fn hashed_scripts_stylesheets_and_fonts_are_immutable_with_their_types() {
         for (uri, content_type, contents) in [
             (
                 "/assets/consent-abc123.js",
@@ -231,6 +234,11 @@ mod tests {
                 "/assets/consent-abc123.css",
                 "text/css; charset=utf-8",
                 &b"body{}"[..],
+            ),
+            (
+                "/assets/sans-latin-1a2b3c.woff2",
+                "font/woff2",
+                &b"wOF2"[..],
             ),
         ] {
             let response = get(uri).await;
@@ -251,9 +259,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn anything_but_a_built_script_or_stylesheet_is_not_found() {
+    async fn anything_but_a_built_script_stylesheet_or_font_is_not_found() {
         for uri in [
             "/assets/nothing.js",
+            "/assets/nothing.woff2",
+            "/assets/sans-latin-1a2b3c.woff",
             "/assets/logo-0a1b2c.svg",
             "/assets/../consent.html",
             "/assets/%2E%2E/consent.html",
