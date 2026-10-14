@@ -1,9 +1,4 @@
-import {
-  HttpClient,
-  HttpClientError,
-  HttpClientRequest,
-  HttpClientResponse,
-} from '@effect/platform'
+import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer, Tracer } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -81,49 +76,6 @@ describe('runAuthed telemetry', () => {
   })
 })
 
-describe('runAuthed boot-race integration', () => {
-  it('re-sends a 401 and resolves once the request clears', async () => {
-    // Arrange
-    const { runAuthed } = buildRunAuthed(flakyUnauthorizedThenOkLayer(), Layer.empty)
-
-    // Act — the first send 401s; the runner re-sends and gets the 204.
-    const status = await runAuthed(fetchStatus)
-
-    // Assert
-    expect(status).toBe(204)
-  })
-
-  it('stops applying the boot-race retry once an authed request has succeeded', async () => {
-    // Arrange — first request 204 (boots the runner), every later one 401.
-    let calls = 0
-    const layer = Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request) => {
-        calls += 1
-        return calls === 1
-          ? Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
-          : Effect.fail(
-              new HttpClientError.ResponseError({
-                request,
-                response: HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
-                reason: 'StatusCode',
-              })
-            )
-      })
-    )
-    const { runAuthed } = buildRunAuthed(layer, Layer.empty)
-
-    // Act — boot, then a genuine post-boot 401.
-    expect(await runAuthed(fetchStatus)).toBe(204)
-    const callsAfterBoot = calls
-    await expect(runAuthed(fetchStatus)).rejects.toThrow()
-
-    // Assert — the post-boot 401 was sent exactly once (no boot-race re-sends):
-    // it's a real expiry, so it propagates immediately for the redirect.
-    expect(calls - callsAfterBoot).toBe(1)
-  })
-})
-
 // Helpers
 
 // Stub that records the outgoing `Authorization` header (or `undefined`)
@@ -157,31 +109,3 @@ const fetchWithHttpInScope: Effect.Effect<number, never, HttpClient.HttpClient> 
     return response.status
   }
 ).pipe(Effect.orDie)
-
-// `HttpClient` stub whose first request fails with a 401 `ResponseError` and
-// whose second succeeds `204` — the boot-race shape (the Tauri host mints its
-// owner token between the two sends).
-const flakyUnauthorizedThenOkLayer = (): Layer.Layer<HttpClient.HttpClient> => {
-  let calls = 0
-  return Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      calls += 1
-      return calls === 1
-        ? Effect.fail(
-            new HttpClientError.ResponseError({
-              request,
-              response: HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
-              reason: 'StatusCode',
-            })
-          )
-        : Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 })))
-    })
-  )
-}
-
-// Issues one request and returns its status, requiring only `HttpClient`.
-const fetchStatus: Effect.Effect<number, HttpClientError.HttpClientError, HttpClient.HttpClient> =
-  Effect.flatMap(HttpClient.HttpClient, (client) =>
-    Effect.map(client.execute(HttpClientRequest.get('/fixture')), (response) => response.status)
-  )

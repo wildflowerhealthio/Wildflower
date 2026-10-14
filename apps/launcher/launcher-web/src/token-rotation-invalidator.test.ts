@@ -3,7 +3,7 @@ import {
   AuthedUntil,
   type AuthState,
   type AuthStateStore,
-  HostAuthed,
+  AuthedExpiryUnknown,
   Unauthed,
 } from '@wildflowerhealthio/react-kitchen-sink'
 import { Deferred, Effect, Fiber, SubscriptionRef } from 'effect'
@@ -87,7 +87,7 @@ describe('forkTokenRotationInvalidator', () => {
     await Effect.runPromise(Effect.repeatN(Effect.yieldNow(), 10))
 
     // Post-mount rotation: the host pushes a fresh signal.
-    tokenStore.setAuthState(HostAuthed())
+    tokenStore.setAuthState(AuthedExpiryUnknown())
 
     // Block until the forked fiber has actually run the invalidation.
     await Effect.runPromise(Deferred.await(flushed))

@@ -160,9 +160,8 @@ const buildSmartQueryClient = (options: BuildSmartQueryClientOptions = {}): Quer
  * `RouterContextWith<FhirR4ResourcesHttpApiClient>` for its `useRouteContext`
  * select to type.
  *
- * There is no boot-race retry (the host app's `runAuthed` has one for the gap
- * before the Tauri host mints its owner token). A bearer token is in hand before this is
- * built, so a 401 here is a real 401.
+ * Nothing is re-sent on a 401: a bearer token is in hand before this is built,
+ * so a 401 here is a real 401.
  *
  * @param session - The FHIR base and bearer token from the SMART handshake
  * @param transport - The underlying `HttpClient` every read goes out over

@@ -14,8 +14,8 @@ import { Effect, type Fiber, type Layer, type Subscribable, Stream } from 'effec
 import { StrictMode, type JSX, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
-import { AppRootTree } from './bridges/app-root-tree.tsx'
+import { AppRootTree } from './app-root-tree.tsx'
+import { buildAppQueryRuntime } from './client/app-query-runtime.ts'
 import type { RouterContext } from './router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 import { logoutSettingsItem, underBasepath } from './web-entry.ts'
@@ -198,9 +198,8 @@ const buildAppTree = ({
   // deferred cell, populated right after `createRouter`.
   const routerHandle: { current: AnyRouter | null } = { current: null }
 
-  // Fires when an authed query/mutation ends in a 401 that outlived the
-  // boot-race retry — the credential is genuinely gone, so send the user to
-  // device login, preserving where they were as `returnTo`. The guard skips a
+  // Fires when an authed query/mutation ends in a 401 — the credential is
+  // gone, so send the user to device login, preserving where they were as `returnTo`. The guard skips a
   // redundant navigation when they're already on the device-login route.
   const redirectToDeviceLogin = (): void => {
     const router = routerHandle.current

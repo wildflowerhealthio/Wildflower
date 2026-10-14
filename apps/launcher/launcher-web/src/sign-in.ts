@@ -53,7 +53,7 @@ import {
 import {
   AuthedUntil,
   type AuthState,
-  HostAuthed,
+  AuthedExpiryUnknown,
   Unauthed,
 } from '@wildflowerhealthio/react-kitchen-sink'
 import { Effect, Option } from 'effect'
@@ -288,14 +288,13 @@ const finishSignIn = async (
  *
  * A reported lifetime becomes `AuthedUntil`, so `isFreshlyAuthed` can tell a
  * lapsed session from a live one. A response that reports none (RFC 6749 leaves
- * `expires_in` optional; the authorization server always sends it) becomes `HostAuthed` — the
- * signal for "authed, with no expiry the page knows" — rather than an
- * `AuthedUntil` carrying an invented `exp`, which would claim a freshness
- * nothing established.
+ * `expires_in` optional; the authorization server always sends it) becomes
+ * `AuthedExpiryUnknown` rather than an `AuthedUntil` carrying an invented
+ * `exp`, which would claim a freshness nothing established.
  */
 const authStateForSession = (session: Session, nowSeconds: number): AuthState =>
   session.expiresInSeconds === undefined
-    ? HostAuthed()
+    ? AuthedExpiryUnknown()
     : AuthedUntil({ exp: nowSeconds + session.expiresInSeconds })
 
 /**
@@ -319,7 +318,7 @@ const serverKindForSession = (session: Session): ServerKind => {
  * signal at `exp` (which also drops the bearer — see `makeBearerAuthStateStore`)
  * sends the next authed navigation back to the landing rather than into a
  * 401 loop. A response that reported no lifetime gets no timer, matching
- * {@link authStateForSession}'s `HostAuthed`.
+ * {@link authStateForSession}'s `AuthedExpiryUnknown`.
  *
  * Mirrors `scheduleExpiryNotice` in `apps/server-docs-web/src/main.ts`.
  * Returns a canceller: this entry signs in once per page load, so it is here for

@@ -23,9 +23,9 @@ import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-c
  *   devices, consents) decodes its 401 into. `HttpApiClient` never surfaces
  *   these as a `ResponseError`.
  *
- * Matching only the `ResponseError` shape left the boot-race retry and the
- * device-login redirect silently blind to the authorization server's own 401s. The status (or
- * the typed error), not the reason, is the reliable 401 signal.
+ * Matching only the `ResponseError` shape would leave the device-login redirect
+ * blind to the authorization server's own 401s. The status (or the typed
+ * error), not the reason, is the reliable 401 signal.
  */
 const isUnauthorizedError = (error: unknown): boolean =>
   (error instanceof HttpClientError.ResponseError && error.response.status === 401) ||

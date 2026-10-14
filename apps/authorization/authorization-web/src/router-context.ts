@@ -40,8 +40,8 @@ const apiRequestBaseUrl = (authorizationApiUrl: string): string =>
  * The router context for `session`: every request the authorization slice's
  * client makes goes to the server's authorization API with the session's
  * bearer, over `transport` (`FetchHttpClient.layer` in the browser, a stub in
- * tests). The bearer is in hand before this is built, so there is no boot-race
- * retry: a 401 is a real one.
+ * tests). The bearer is in hand before this is built, so nothing is re-sent on a
+ * 401: it is a real one.
  */
 const buildRouterContext = (
   session: ServerSession,

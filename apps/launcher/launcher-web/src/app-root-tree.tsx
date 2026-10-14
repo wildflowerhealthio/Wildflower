@@ -4,12 +4,12 @@ import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 import { Option } from 'effect'
 import type { JSX } from 'react'
 
-import { renderScopeError } from '../scope-error-renderer.tsx'
-import { LogoutSettingsItemContext } from '../session/logout-settings-item-context.ts'
+import { renderScopeError } from './scope-error-renderer.tsx'
+import { LogoutSettingsItemContext } from './session/logout-settings-item-context.ts'
 import {
   ManageAccessSourceContext,
   type ManageAccessSource,
-} from '../session/manage-access-settings-item.ts'
+} from './session/manage-access-settings-item.ts'
 
 interface AppRootTreeProps {
   readonly router: AnyRouter

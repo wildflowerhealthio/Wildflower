@@ -3,7 +3,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   AuthedUntil,
   type AuthState,
-  HostAuthed,
+  AuthedExpiryUnknown,
   isAuthed,
   Unauthed,
 } from '@wildflowerhealthio/react-kitchen-sink'
@@ -81,7 +81,7 @@ describe('landingAuthReadyEffect', () => {
     // non-`Unauthed` signal, across every `AuthState` variant.
     const anySignal: fc.Arbitrary<AuthState> = fc.oneof(
       fc.constant(Unauthed()),
-      fc.constant(HostAuthed()),
+      fc.constant(AuthedExpiryUnknown()),
       fc.integer().map((exp) => AuthedUntil({ exp }))
     )
     await fc.assert(
