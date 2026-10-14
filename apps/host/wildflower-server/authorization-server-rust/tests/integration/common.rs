@@ -706,6 +706,58 @@ pub fn owner_revocation_request(token: &str, body: Value) -> Request<Body> {
     )
 }
 
+/// `PATCH /authorization/clients/{client_id}` with the raw JSON `body`, as `token`.
+pub async fn patch_client(
+    g: &AuthorizationServer,
+    token: &str,
+    client_id: &str,
+    body: &Value,
+) -> axum::response::Response {
+    g.router
+        .clone()
+        .oneshot(loopback_request(
+            Request::patch(format!("/authorization/clients/{client_id}"))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json"),
+            Body::from(body.to_string()),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// Disable `client_id` as of `at`, sent as the UTC string the launcher sends.
+pub async fn disable_client(
+    g: &AuthorizationServer,
+    token: &str,
+    client_id: &str,
+    at: chrono::DateTime<Utc>,
+) -> axum::response::Response {
+    let disabled_at = at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    patch_client(
+        g,
+        token,
+        client_id,
+        &serde_json::json!({ "disabledAt": disabled_at }),
+    )
+    .await
+}
+
+/// Re-enable `client_id` (`disabledAt: null`).
+pub async fn enable_client(
+    g: &AuthorizationServer,
+    token: &str,
+    client_id: &str,
+) -> axum::response::Response {
+    patch_client(
+        g,
+        token,
+        client_id,
+        &serde_json::json!({ "disabledAt": null }),
+    )
+    .await
+}
+
 /// Assert `res` carries both cache-suppression headers — `Cache-Control:
 /// no-store` and `Pragma: no-cache` — each exactly once. `what` names the
 /// response in the failure message.

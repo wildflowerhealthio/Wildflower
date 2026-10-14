@@ -109,8 +109,9 @@ empty `redirectUris`, and both allowed the host Owner's scopes
   `jti`. `GET /authorization/clients` flags it `firstParty`.
 - `wildflower-owner-browser` (`OWNER_BROWSER_CLIENT_ID`), the
   [Owner browsers](#owner-browser)'. It is allowed no grant type: its tokens
-  are minted only at `/oauth/sign-in`. It isn't locked, so it can be
-  disabled, and revoking its subject signs every Owner browser out.
+  are minted only at `/oauth/sign-in`. It isn't locked: while it is
+  disabled, `/oauth/sign-in` signs no browser in, and revoking its subject
+  signs every Owner browser out.
 
 ### Trust on first use
 
@@ -466,8 +467,12 @@ running the server, and the host app runs on that device.
 
 `next` must be a path on the server (starting with `/`, not `//`), a URL under
 the hosted launcher, or a URL under the Wildflower Authorization app. Any other
-`next`, or an unknown, spent or expired code, gets a local error page with no
-cookie and no redirect; a refused `next` leaves the code unspent.
+`next`, an unknown, spent or expired code, or a disabled
+`wildflower-owner-browser` client, gets a local error page with no cookie and
+no redirect; a refused `next` or a disabled client leaves the code unspent.
+Enabling the client again lets sign-in work. Disabling it signs no browser
+out: a browser already signed in keeps its session until the token expires or
+is revoked.
 
 There is no session table: the cookie's value is the token, so a restart
 doesn't sign the browser out. One session is revoked by its token's `jti`;

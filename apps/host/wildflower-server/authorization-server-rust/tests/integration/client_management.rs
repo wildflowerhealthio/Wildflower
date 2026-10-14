@@ -1,4 +1,4 @@
-use chrono::{DateTime, SecondsFormat};
+use chrono::DateTime;
 
 use crate::common::*;
 
@@ -36,58 +36,6 @@ async fn listed_clients(g: &AuthorizationServer, token: &str) -> Vec<Value> {
 
 fn find_client<'a>(clients: &'a [Value], client_id: &str) -> Option<&'a Value> {
     clients.iter().find(|c| c["clientId"] == client_id)
-}
-
-/// `PATCH /authorization/clients/{client_id}` with the raw JSON `body`, as `token`.
-async fn patch_client(
-    g: &AuthorizationServer,
-    token: &str,
-    client_id: &str,
-    body: &Value,
-) -> axum::response::Response {
-    g.router
-        .clone()
-        .oneshot(loopback_request(
-            Request::patch(format!("/authorization/clients/{client_id}"))
-                .header("host", "127.0.0.1")
-                .header("authorization", format!("Bearer {token}"))
-                .header("content-type", "application/json"),
-            Body::from(body.to_string()),
-        ))
-        .await
-        .expect("oneshot")
-}
-
-/// Disable `client_id` as of `at`, sent as the UTC string the launcher sends.
-async fn disable_client(
-    g: &AuthorizationServer,
-    token: &str,
-    client_id: &str,
-    at: DateTime<Utc>,
-) -> axum::response::Response {
-    let disabled_at = at.to_rfc3339_opts(SecondsFormat::Millis, true);
-    patch_client(
-        g,
-        token,
-        client_id,
-        &serde_json::json!({ "disabledAt": disabled_at }),
-    )
-    .await
-}
-
-/// Re-enable `client_id` (`disabledAt: null`).
-async fn enable_client(
-    g: &AuthorizationServer,
-    token: &str,
-    client_id: &str,
-) -> axum::response::Response {
-    patch_client(
-        g,
-        token,
-        client_id,
-        &serde_json::json!({ "disabledAt": null }),
-    )
-    .await
 }
 
 /// The stored `disabled_at` of `client_id`.

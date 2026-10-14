@@ -48,8 +48,8 @@ struct SignInParams {
 
 /// Redeem the code for an Owner browser's session token, hand the browser the token as
 /// its `__Host-owner_browser_session` cookie, and `303` it on to `next`. A `next` that
-/// isn't allowed, or a code that is unknown, spent or expired, gets the error
-/// page, with no cookie and no redirect.
+/// isn't allowed, a disabled Owner-browser client, or a code that is unknown,
+/// spent or expired, gets the error page, with no cookie and no redirect.
 ///
 /// Every answer is uncached and sends no `Referer` on, since the request's own
 /// URL carries the code.
@@ -73,6 +73,9 @@ async fn handle_sign_in(
         )
             .into_response(),
         Err(SameDeviceSignInError::Refused(refusal)) => refusal_page(refusal),
+        Err(SameDeviceSignInError::Store(error)) => {
+            InternalError::new("read the Owner-browser client", error).into_response()
+        }
         Err(SameDeviceSignInError::Issuance(error)) => {
             InternalError::new("mint the Owner browser's session token", error).into_response()
         }
