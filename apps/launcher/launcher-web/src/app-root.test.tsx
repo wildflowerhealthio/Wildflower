@@ -2,7 +2,10 @@ import { HttpClientError, HttpClientRequest, HttpClientResponse } from '@effect/
 import { useQuery } from '@tanstack/react-query'
 import { createBrowserHistory, createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
-import { makeBearerAuthStateStore } from '@wildflowerhealthio/authorization-react'
+import {
+  type BearerAuthStateStore,
+  makeBearerAuthStateStore,
+} from '@wildflowerhealthio/authorization-react'
 import { AuthedExpiryUnknown } from '@wildflowerhealthio/react-kitchen-sink'
 import { Layer } from 'effect'
 import type { JSX } from 'react'
@@ -56,7 +59,13 @@ vi.mock('./routeTree.gen.ts', async () => {
   const landing = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: (): JSX.Element => <Landing />,
+    // Reads the sign-in problem from router context, as the real route does.
+    component: function LandingFromContext(): JSX.Element {
+      const problem = landing.useRouteContext({
+        select: (context: { signInProblem?: SignIn.SignInProblem }) => context.signInProblem,
+      })
+      return <Landing {...(problem === undefined ? {} : { bootSignInProblem: problem })} />
+    },
   })
   const denied = createRoute({
     getParentRoute: () => rootRoute,
@@ -72,29 +81,37 @@ afterEach(() => {
   startSignIn.mockClear()
 })
 
+/**
+ * Render the app signed in to {@link SERVER_URL} on the denied page, the
+ * sign-in having redeemed at `signedInAt` when given.
+ */
+const renderDeniedPage = async (signedInAt?: number): Promise<BearerAuthStateStore> => {
+  const { buildAppTree } = await import('./app-root.tsx')
+  const { SIGNED_IN_SERVER_KEY } = await import('./web-entry.ts')
+  const { ServerKind } = await import('./session/server-kind.ts')
+  window.history.replaceState(null, '', DENIED_PATH)
+  const tokenStore = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
+  tokenStore.writeSession({ serverUrl: SERVER_URL, bearer: 'tok_revoked' })
+  tokenStore.setAuthState(AuthedExpiryUnknown())
+  await act(async () => {
+    render(
+      buildAppTree({
+        history: createBrowserHistory(),
+        tokenStore,
+        awaitAuthReady: () => Promise.resolve(),
+        effectTelemetryLayer: Layer.empty,
+        serverKind: ServerKind.Wildflower(),
+        ...(signedInAt === undefined ? {} : { signedInAt }),
+      })
+    )
+  })
+  return tokenStore
+}
+
 describe('a 401', () => {
   test('starts the SMART sign-in to the session’s server, returning to where the reader was', async () => {
-    // Arrange — a signed-in session, on a page whose request 401s.
-    const { buildAppTree } = await import('./app-root.tsx')
-    const { SIGNED_IN_SERVER_KEY } = await import('./web-entry.ts')
-    const { ServerKind } = await import('./session/server-kind.ts')
-    window.history.replaceState(null, '', DENIED_PATH)
-    const tokenStore = makeBearerAuthStateStore(window.sessionStorage, SIGNED_IN_SERVER_KEY)
-    tokenStore.writeSession({ serverUrl: SERVER_URL, bearer: 'tok_revoked' })
-    tokenStore.setAuthState(AuthedExpiryUnknown())
-
-    // Act
-    await act(async () => {
-      render(
-        buildAppTree({
-          history: createBrowserHistory(),
-          tokenStore,
-          awaitAuthReady: () => Promise.resolve(),
-          effectTelemetryLayer: Layer.empty,
-          serverKind: ServerKind.Wildflower(),
-        })
-      )
-    })
+    // Arrange + Act — a signed-in session, on a page whose request 401s.
+    const tokenStore = await renderDeniedPage()
 
     // Assert — one sign-in, to the session's server, carrying the denied page
     // as `returnTo`, with no EHR launch.
@@ -102,6 +119,19 @@ describe('a 401', () => {
       expect(startSignIn).toHaveBeenCalledOnce()
     })
     expect(startSignIn).toHaveBeenCalledWith(SERVER_URL, DENIED_PATH, expect.anything(), undefined)
+    expect(tokenStore.bearer()).toBeUndefined()
+  })
+
+  test('just after a sign-in stops on the landing instead of signing straight back in', async () => {
+    // Arrange + Act — the sign-in redeemed a moment ago, and its token 401s.
+    const tokenStore = await renderDeniedPage(Date.now())
+
+    // Assert — the landing says why and waits for the reader: a second
+    // sign-in would come back to the same 401.
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('turned away the sign-in that just finished')
+    })
+    expect(startSignIn).not.toHaveBeenCalled()
     expect(tokenStore.bearer()).toBeUndefined()
   })
 })

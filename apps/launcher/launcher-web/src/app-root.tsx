@@ -101,6 +101,12 @@ interface RenderAppOptions {
    */
   readonly ehrLaunch?: RouterContext['ehrLaunch']
   /**
+   * When this page load redeemed its sign-in, in epoch milliseconds. A 401
+   * within {@link FRESH_SIGN_IN_MS} of it stops on the landing instead of
+   * signing in again: see `buildAppTree`. Omitted on a load that redeemed none.
+   */
+  readonly signedInAt?: number
+  /**
    * The directory this build is served from, as a router `basepath`, when the
    * copy is published under a subpath rather than at the origin root.
    *
@@ -112,6 +118,18 @@ interface RenderAppOptions {
    */
   readonly basepath?: string
 }
+
+/**
+ * How long after a sign-in a 401 counts as the server rejecting that sign-in's
+ * own token. Long enough to cover a slow first page of requests, and short
+ * enough that a bearer revoked later in the session still signs in again
+ * without a click.
+ */
+const FRESH_SIGN_IN_MS = 60_000
+
+/** What the landing says when a 401 meets the token a sign-in just issued. */
+const FRESH_TOKEN_REJECTED_REASON =
+  'The server turned away the sign-in that just finished, so signing in again would not help.'
 
 /**
  * Build the app: its query runtime and router, and the React tree over them,
@@ -148,6 +166,7 @@ const buildAppTree = ({
   serverKind,
   signInProblem,
   ehrLaunch,
+  signedInAt,
   basepath = '/',
 }: RenderAppOptions): JSX.Element => {
   // Router isn't built until after the query runtime (its context needs the
@@ -159,10 +178,28 @@ const buildAppTree = ({
   // gone, so sign in again to the session's server, preserving where they were
   // as `returnTo`. The guard skips a second bounce once they're on the landing,
   // which would otherwise make the landing itself the `returnTo`.
+  //
+  // A 401 soon after this load's sign-in means the server rejects the token it
+  // just issued, and the landing's sign-in on arrival would come straight back
+  // to the same 401: the authorization server skips consent the grant already
+  // covers. So that 401 hands the landing a sign-in problem, which shows its
+  // reason and holds the sign-in on arrival until the reader asks for one.
   const signInAgainOnUnauthorized = (): void => {
     const router = routerHandle.current
     if (router === null) return
     if (router.state.location.pathname === '/') return
+    if (signedInAt !== undefined && Date.now() - signedInAt < FRESH_SIGN_IN_MS) {
+      router.update({
+        ...router.options,
+        context: {
+          ...routerContext,
+          signInProblem: {
+            reason: FRESH_TOKEN_REJECTED_REASON,
+            serverUrl: tokenStore.serverUrl(),
+          },
+        },
+      })
+    }
     signInAgain(
       tokenStore.setAuthState,
       (target) => router.navigate(target),
@@ -180,6 +217,22 @@ const buildAppTree = ({
   // the store's signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
+  const routerContext: RouterContext = {
+    queryClient,
+    runAuthed,
+    runtimeLayer,
+    awaitAuthReady,
+    // Threaded so the landing page can report a sign-in that failed before
+    // the tree existed — see `RouterContext.signInProblem`.
+    signInProblem,
+    // Threaded so the landing page can sign in with the EHR launch the page
+    // was opened with — see `RouterContext.ehrLaunch`.
+    ehrLaunch,
+    // Threaded so the auth-gated routes serve only this kind of server's
+    // surfaces — see `RouterContext.serverKind`.
+    serverKind,
+  }
+
   const router = createRouter({
     routeTree,
     history,
@@ -187,21 +240,7 @@ const buildAppTree = ({
     // this to its served directory so root-absolute routes resolve there. See
     // `RenderAppOptions.basepath`.
     basepath,
-    context: {
-      queryClient,
-      runAuthed,
-      runtimeLayer,
-      awaitAuthReady,
-      // Threaded so the landing page can report a sign-in that failed before
-      // the tree existed — see `RouterContext.signInProblem`.
-      signInProblem,
-      // Threaded so the landing page can sign in with the EHR launch the page
-      // was opened with — see `RouterContext.ehrLaunch`.
-      ehrLaunch,
-      // Threaded so the auth-gated routes serve only this kind of server's
-      // surfaces — see `RouterContext.serverKind`.
-      serverKind,
-    },
+    context: routerContext,
     defaultPreload: 'intent',
   })
   routerHandle.current = router

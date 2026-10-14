@@ -159,6 +159,9 @@ const bootApp = async (): Promise<JSX.Element> => {
     // found again rather than remembered.
     serverKind: session === undefined ? ServerKind.Wildflower() : serverKindForSession(session),
     ...(completed.tag === 'Failed' ? { signInProblem: completed.problem } : {}),
+    // When this load's sign-in redeemed, so a 401 on its fresh token stops on
+    // the landing rather than signing straight back in to the same 401.
+    ...(session === undefined ? {} : { signedInAt: Date.now() }),
     // The EHR launch the landing signs in with on arrival, when this load
     // was opened with one: held once for the page load, so a landing that
     // mounts again cannot offer it twice.
