@@ -254,7 +254,7 @@ const medicationsClient = {
   allowedGrantTypes: ['authorization_code'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
-  firstParty: false,
+  essential: false,
 } as const
 
 const hostClient = {
@@ -262,7 +262,7 @@ const hostClient = {
   clientId: hostGrant.clientId,
   name: 'Wildflower Host',
   redirectUris: [],
-  firstParty: true,
+  essential: true,
 } as const
 
 /** One request as the stub server saw it; `body` is the parsed JSON, if any. */

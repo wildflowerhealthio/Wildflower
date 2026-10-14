@@ -37,5 +37,5 @@ const medicationViewer = Schema.decodeUnknownSync(Client.Schema)({
   allowedGrantTypes: ['authorization_code'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
-  firstParty: false,
+  essential: false,
 })

@@ -9,7 +9,8 @@ import {
 } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import type { Client } from '@wildflowerhealthio/authorization-core/domain'
-import { DateTime, Effect } from 'effect'
+import type { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
+import { Data, DateTime, Effect, type Schema } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
 import { CLIENTS_QUERY_KEY } from './keys.ts'
@@ -45,6 +46,26 @@ const clientsQueryOptions = (
 const useClientsQuery = (): UseSuspenseQueryResult<readonly Client.Type[], Error> =>
   useSuspenseQuery(clientsQueryOptions(useRunAuthed()))
 
+/** True for `UpdateClient`'s `409` for disabling an essential client. */
+const isEssentialClient = (
+  error: unknown
+): error is Schema.Schema.Type<typeof AccessManagement.EssentialClientSchema> =>
+  typeof error === 'object' &&
+  error !== null &&
+  'error' in error &&
+  error.error === 'EssentialClient'
+
+/**
+ * A disable the server refused because the client is essential. Its message
+ * is what the Owner reads where the switch's error renders.
+ */
+class EssentialClientDisableRefusal extends Data.TaggedError('EssentialClientDisableRefusal')<{
+  readonly clientId: string
+}> {
+  override readonly message =
+    'This client is essential. Disabling it would leave you no way into your server.'
+}
+
 /** `UpdateClient`'s input: the client, and which way to flip it. */
 interface UpdateClientVariables {
   readonly clientId: string
@@ -54,7 +75,8 @@ interface UpdateClientVariables {
 /**
  * `UpdateClient` (PATCH). Disabling sends the current time from the Effect
  * `Clock` (the server stamps its own now whatever time arrives); enabling
- * sends `null`. Invalidates the clients list.
+ * sends `null`. The server's `409 EssentialClient` fails the mutation with
+ * {@link EssentialClientDisableRefusal}. Invalidates the clients list.
  */
 const useUpdateClientMutation = (): UseMutationResult<
   Client.Type,
@@ -74,7 +96,11 @@ const useUpdateClientMutation = (): UseMutationResult<
           const disabledAt = action === 'disable' ? yield* DateTime.now : null
           const client = yield* AuthorizationServerHttpApiClient
           return yield* client['access-management'].UpdateClient({ path, payload: { disabledAt } })
-        })
+        }).pipe(
+          Effect.catchIf(isEssentialClient, (refused) =>
+            Effect.fail(new EssentialClientDisableRefusal({ clientId: refused.clientId }))
+          )
+        )
       )
     },
     onSuccess: async () => {
@@ -83,5 +109,10 @@ const useUpdateClientMutation = (): UseMutationResult<
   })
 }
 
-export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation }
+export {
+  clientsQueryOptions,
+  EssentialClientDisableRefusal,
+  useClientsQuery,
+  useUpdateClientMutation,
+}
 export type { ClientSwitch, UpdateClientVariables }

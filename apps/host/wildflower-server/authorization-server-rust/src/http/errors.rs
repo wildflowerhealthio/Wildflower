@@ -113,13 +113,12 @@ pub(crate) struct ClientNotFoundBody {
     pub(crate) client_id: String,
 }
 
-/// Wire shape for `HostAppClientLocked` (409) — the named client is the
-/// Wildflower host app's, which can't be disabled without cutting off the host
-/// app's way back in.
+/// Wire shape for `EssentialClient` (409) — the named client is essential:
+/// disabling it would leave the Owner no way in.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct HostAppClientLockedBody {
-    /// Always `"HostAppClientLocked"`.
+pub(crate) struct EssentialClientBody {
+    /// Always `"EssentialClient"`.
     pub(crate) error: &'static str,
     pub(crate) client_id: String,
 }
@@ -208,10 +207,10 @@ impl IntoResponse for AuthorizationServerError {
                 }),
             )
                 .into_response(),
-            AuthorizationServerError::HostAppClientLocked { client_id } => (
+            AuthorizationServerError::EssentialClient { client_id } => (
                 StatusCode::CONFLICT,
-                Json(HostAppClientLockedBody {
-                    error: "HostAppClientLocked",
+                Json(EssentialClientBody {
+                    error: "EssentialClient",
                     client_id,
                 }),
             )
@@ -319,8 +318,8 @@ pub(crate) fn sign_in_error_html(refusal: SignInRefusal) -> String {
         ),
         SignInRefusal::OwnerBrowserClientDisabled => (
             "Browser sign-in disabled",
-            "Browsers can't be signed in as the Owner while Wildflower (Owner browsers) is \
-             disabled in your trusted apps.",
+            "Browsers can't be signed in as the Owner while the Wildflower (Owner browsers) \
+             client is disabled.",
         ),
     };
     local_error_page(title, body)

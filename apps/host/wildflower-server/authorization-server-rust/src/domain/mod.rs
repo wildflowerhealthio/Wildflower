@@ -47,9 +47,10 @@ pub(crate) mod client_registration;
 // The domain's failure vocabulary (shaped like apps' `AppsError`):
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod authorization_server_error;
+// The clients the Owner can't lose without being stuck, which can't be
+// disabled.
+pub(crate) mod essential_client_guard;
 pub mod grant;
-// The lock on the Wildflower host app's client: no disabling it.
-pub(crate) mod host_app_client_lock;
 // The `Revocation` port that asks for a fresh host owner token once the host
 // app's own subject is revoked.
 pub(crate) mod host_owner_token_remint;

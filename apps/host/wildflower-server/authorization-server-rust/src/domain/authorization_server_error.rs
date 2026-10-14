@@ -28,12 +28,12 @@ pub enum AuthorizationServerError {
     /// No registered client has this `client_id` — the
     /// `PATCH /authorization/clients/{clientId}` 404.
     ClientNotFound { client_id: String },
-    /// The Owner tried to disable the Wildflower host app's client — the
-    /// `PATCH /authorization/clients/{clientId}` **409**. Disabling it would cut
-    /// off the host app's way back in; the client is locked (see
-    /// [`HostAppClientLock`](crate::domain::host_app_client_lock::HostAppClientLock)).
+    /// The Owner tried to disable an essential client — the
+    /// `PATCH /authorization/clients/{clientId}` **409**. Disabling it would
+    /// leave the Owner no way in (see
+    /// [`EssentialClientGuard`](crate::domain::essential_client_guard::EssentialClientGuard)).
     /// Nothing is written when it is raised.
-    HostAppClientLocked { client_id: String },
+    EssentialClient { client_id: String },
     /// No authorization request has this id — the `/oauth/authorize/{id}`
     /// polling endpoint's 404.
     AuthorizationRequestNotFound { id: String },
@@ -89,11 +89,8 @@ impl std::fmt::Display for AuthorizationServerError {
             AuthorizationServerError::ClientNotFound { client_id } => {
                 write!(f, "no client with id {client_id}")
             }
-            AuthorizationServerError::HostAppClientLocked { client_id } => {
-                write!(
-                    f,
-                    "the Wildflower host app's client {client_id} cannot be disabled"
-                )
+            AuthorizationServerError::EssentialClient { client_id } => {
+                write!(f, "the essential client {client_id} cannot be disabled")
             }
             AuthorizationServerError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")

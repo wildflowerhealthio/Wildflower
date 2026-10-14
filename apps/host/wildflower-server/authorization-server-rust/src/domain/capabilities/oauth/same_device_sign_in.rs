@@ -141,8 +141,10 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         })
     }
 
-    /// Whether the Owner-browser client is disabled. Its row is seeded at
-    /// boot, so a missing one is an error, not an enabled client.
+    /// Whether the Owner-browser client is disabled. It is an essential
+    /// client, which the Owner can't disable, so only a row disabled out of
+    /// band (direct SQL) is. Its row is seeded at boot, so a missing one is an
+    /// error, not an enabled client.
     fn owner_browser_client_is_disabled(&self) -> Result<bool, AuthorizationServerError> {
         let owner_browser_client = self
             .store

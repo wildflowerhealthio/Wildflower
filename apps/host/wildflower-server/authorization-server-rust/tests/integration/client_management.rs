@@ -87,7 +87,10 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
 
     // Seeded by boot (the host) and by migration (a SMART app).
     let host = find_client(&clients, "wildflower-host").expect("the host client is listed");
-    assert_eq!(host["firstParty"], true);
+    assert_eq!(host["essential"], true);
+    let owner_browser = find_client(&clients, "wildflower-owner-browser")
+        .expect("the Owner-browser client is listed");
+    assert_eq!(owner_browser["essential"], true);
     assert!(find_client(&clients, "941de68e6b59eb9dcc32df8ede89e636").is_some());
 
     // Created by the TOFU approval, exactly as it was registered.
@@ -107,7 +110,7 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
             ],
             "registeredAt": tofu["registeredAt"],
             "disabledAt": null,
-            "firstParty": false,
+            "essential": false,
         }),
     );
     assert!(tofu["registeredAt"].is_string());
@@ -292,24 +295,26 @@ async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
 }
 
 #[tokio::test]
-async fn the_first_party_host_client_cannot_be_disabled() {
+async fn an_essential_client_cannot_be_disabled() {
     let (g, host_owner_token, db) = spin_up();
 
-    let res = disable_client(&g, &host_owner_token, "wildflower-host", Utc::now()).await;
-    assert_eq!(res.status(), StatusCode::CONFLICT);
-    assert_eq!(
-        body_json(res.into_body()).await,
-        serde_json::json!({ "error": "HostAppClientLocked", "clientId": "wildflower-host" }),
-    );
-    assert_eq!(stored_disabled_at(&db, "wildflower-host"), None);
-    // The Owner's session still works, and enabling the host stays allowed.
-    assert_eq!(
-        list_clients(&g, &host_owner_token).await.status(),
-        StatusCode::OK
-    );
-    let res = enable_client(&g, &host_owner_token, "wildflower-host").await;
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(body_json(res.into_body()).await["firstParty"], true);
+    for essential_client_id in ["wildflower-host", "wildflower-owner-browser"] {
+        let res = disable_client(&g, &host_owner_token, essential_client_id, Utc::now()).await;
+        assert_eq!(res.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            body_json(res.into_body()).await,
+            serde_json::json!({ "error": "EssentialClient", "clientId": essential_client_id }),
+        );
+        assert_eq!(stored_disabled_at(&db, essential_client_id), None);
+        // The Owner's session still works, and enabling the client stays allowed.
+        assert_eq!(
+            list_clients(&g, &host_owner_token).await.status(),
+            StatusCode::OK
+        );
+        let res = enable_client(&g, &host_owner_token, essential_client_id).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(body_json(res.into_body()).await["essential"], true);
+    }
 }
 
 #[tokio::test]

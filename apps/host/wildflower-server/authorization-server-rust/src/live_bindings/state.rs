@@ -20,7 +20,7 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
-use crate::domain::host_app_client_lock::HostAppClientLock;
+use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::host_owner_token_remint::HostOwnerTokenRemintingRevocation;
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
@@ -112,10 +112,14 @@ pub struct AuthorizationServerState {
 }
 
 impl AuthorizationServerState {
-    /// The lock on the Wildflower host app's client, over
-    /// [`wildflower_host_app_client_id`](Self::wildflower_host_app_client_id).
-    pub(crate) fn host_app_client_lock(&self) -> HostAppClientLock {
-        HostAppClientLock::new(self.wildflower_host_app_client_id.clone())
+    /// The guard on the essential clients: the host app's,
+    /// [`wildflower_host_app_client_id`](Self::wildflower_host_app_client_id),
+    /// and the Owner-browser client, [`crate::OWNER_BROWSER_CLIENT_ID`].
+    pub(crate) fn essential_client_guard(&self) -> EssentialClientGuard {
+        EssentialClientGuard::new(
+            self.wildflower_host_app_client_id.clone(),
+            crate::OWNER_BROWSER_CLIENT_ID.into(),
+        )
     }
 
     /// The [`Revocation`] port the capabilities revoke through: the shared

@@ -65,7 +65,7 @@
         "tags": [
           "Access management"
         ],
-        "summary": "`PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling the Wildflower host app's client\nis refused with `409 HostAppClientLocked`. Acquired through\n[`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
+        "summary": "`PATCH /authorization/clients/{clientId}` — disable (stamped with the server's now,\nwhatever time is sent) or re-enable a client by writing its `disabledAt`;\nanswers with the client as stored. A disabled client is refused at\n`/oauth/authorize` and `/oauth/token`. Idempotent (a client that already\nhas a `disabledAt` keeps it). Disabling an essential client — the host\napp's or the Owner-browser client — is refused with `409 EssentialClient`.\nAcquired through [`LiveClientsDisabler`] (scope `wildflower/Client.u`).",
         "operationId": "handle_update_client",
         "parameters": [
           {
@@ -120,11 +120,11 @@
             }
           },
           "409": {
-            "description": "The Wildflower host app's client can't be disabled",
+            "description": "The client is essential: disabling it would leave the Owner no way in",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HostAppClientLockedBody"
+                  "$ref": "#/components/schemas/EssentialClientBody"
                 }
               }
             }
@@ -491,7 +491,7 @@
       },
       "ClientBody": {
         "type": "object",
-        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, plus `firstParty` — whether this is the host client, which can't be\ndisabled.",
+        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, plus `essential` — whether this is the host app's client or the\nOwner-browser client, which can't be disabled.",
         "required": [
           "clientId",
           "name",
@@ -501,7 +501,7 @@
           "allowedGrantTypes",
           "registeredAt",
           "disabledAt",
-          "firstParty"
+          "essential"
         ],
         "properties": {
           "clientId": {
@@ -546,7 +546,7 @@
             "format": "date-time",
             "description": "Set while the client is disabled; `null` when it is enabled."
           },
-          "firstParty": {
+          "essential": {
             "type": "boolean"
           }
         }
@@ -632,9 +632,9 @@
           }
         }
       },
-      "HostAppClientLockedBody": {
+      "EssentialClientBody": {
         "type": "object",
-        "description": "Wire shape for `HostAppClientLocked` (409) — the named client is the\nWildflower host app's, which can't be disabled without cutting off the host\napp's way back in.",
+        "description": "Wire shape for `EssentialClient` (409) — the named client is essential:\ndisabling it would leave the Owner no way in.",
         "required": [
           "error",
           "clientId"
@@ -642,7 +642,7 @@
         "properties": {
           "error": {
             "type": "string",
-            "description": "Always `\"HostAppClientLocked\"`."
+            "description": "Always `\"EssentialClient\"`."
           },
           "clientId": {
             "type": "string"

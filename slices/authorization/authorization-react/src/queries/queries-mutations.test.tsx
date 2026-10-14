@@ -19,7 +19,7 @@ import { type JSX, type ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
-import { useUpdateClientMutation } from './clients.ts'
+import { EssentialClientDisableRefusal, useUpdateClientMutation } from './clients.ts'
 import { useDeviceConsentMutation } from './device-consent.ts'
 import { useRevokeGrantMutation } from './grants.ts'
 import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
@@ -269,6 +269,35 @@ describe('useUpdateClientMutation request', () => {
   })
 })
 
+describe('useUpdateClientMutation of an essential client', () => {
+  test('a 409 EssentialClient fails with the essential-client message', async () => {
+    // Arrange — the server refuses the disable.
+    routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), () =>
+      Response.json({ error: 'EssentialClient', clientId: 'wildflower-host' }, { status: 409 })
+    )
+    const { result } = renderWithClient(() => useUpdateClientMutation())
+
+    // Act
+    const failure: unknown = await result.current
+      .mutateAsync({ clientId: 'wildflower-host', action: 'disable' })
+      .then(
+        () => undefined,
+        (error: unknown) => error
+      )
+
+    // Assert — the decoded refusal, as the message the error banner shows.
+    const cause = Runtime.isFiberFailure(failure)
+      ? failure[Runtime.FiberFailureCauseId]
+      : Cause.empty
+    expect(Cause.failureOption(cause)).toEqual(
+      Option.some(new EssentialClientDisableRefusal({ clientId: 'wildflower-host' }))
+    )
+    expect(failure instanceof Error ? failure.message : failure).toBe(
+      'This client is essential. Disabling it would leave you no way into your server.'
+    )
+  })
+})
+
 describe('useDeviceConsentMutation invalidation', () => {
   test('invalidates the grants list root (the surface the user lands on), not its own detail', async () => {
     const { result, queryClient } = renderWithClient(() => useDeviceConsentMutation())
@@ -375,7 +404,7 @@ const respondedClient = {
   allowedGrantTypes: ['authorization_code'],
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
-  firstParty: false,
+  essential: false,
 }
 
 /** One request as the recording stub saw it; `body` is the parsed JSON, if any. */

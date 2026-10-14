@@ -95,8 +95,8 @@ and 90 days respectively). See the
   standing grants.
 - `/authorization/clients`, `/authorization/clients/:clientId` — list every registered
   client, and `PATCH` one's `disabledAt` to take trust back (a UTC time) or
-  restore it (`null`); the first-party host can't be disabled
-  (`409 HostAppClientLocked`).
+  restore it (`null`); an essential client (the host app's or the
+  Owner-browser client) can't be disabled (`409 EssentialClient`).
 - `/authorization/revocations` — revoke issued tokens now: every token a
   subject (`client_id`) holds, or one token by `jti`.
 

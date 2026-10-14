@@ -11,8 +11,8 @@ use crate::live_bindings::LiveClientsReader;
 
 /// A registered OAuth client as the Owner's "Trusted apps" list reads it. Every
 /// column of the `clients` row **except `secret_hash`**, which never leaves the
-/// server, plus `firstParty` — whether this is the host client, which can't be
-/// disabled.
+/// server, plus `essential` — whether this is the host app's client or the
+/// Owner-browser client, which can't be disabled.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ClientBody {
@@ -33,16 +33,11 @@ pub(crate) struct ClientBody {
     /// Set while the client is disabled; `null` when it is enabled.
     #[schema(value_type = Option<String>, format = DateTime, required = true)]
     disabled_at: Option<DateTime<Utc>>,
-    first_party: bool,
+    essential: bool,
 }
 
 impl From<ClientView> for ClientBody {
-    fn from(
-        ClientView {
-            client,
-            first_party,
-        }: ClientView,
-    ) -> Self {
+    fn from(ClientView { client, essential }: ClientView) -> Self {
         ClientBody {
             client_id: client.client_id,
             name: client.name,
@@ -52,7 +47,7 @@ impl From<ClientView> for ClientBody {
             allowed_grant_types: client.allowed_grant_types,
             registered_at: client.registered_at,
             disabled_at: client.disabled_at,
-            first_party,
+            essential,
         }
     }
 }

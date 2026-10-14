@@ -10,7 +10,7 @@ use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
-use crate::domain::host_app_client_lock::HostAppClientLock;
+use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::{GrantStore, GrantTx};
 
 /// The scope gating [`ClientsReader`] — `wildflower/Client.r`. Shared by the
@@ -34,27 +34,27 @@ pub(crate) fn clients_disabler_scopes() -> Vec<Scope> {
 }
 
 /// A registered client as the Owner's "Trusted apps" list shows it — the stored
-/// row plus whether it is the first-party host (which can't be disabled, so the
-/// UI offers no switch for it).
+/// row plus whether it is essential (see [`EssentialClientGuard`]), which
+/// can't be disabled, so the UI offers no switch for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClientView {
     pub(crate) client: Client,
-    pub(crate) first_party: bool,
+    pub(crate) essential: bool,
 }
 
 /// Read access to registered clients — `GET /authorization/clients`.
 pub(crate) struct ClientsReader<S: GrantStore> {
     store: S,
-    host_app_client_lock: HostAppClientLock,
+    essential_client_guard: EssentialClientGuard,
 }
 
 impl<S: GrantStore> ClientsReader<S> {
-    /// Build the reader over a store handle and the host app's client lock,
+    /// Build the reader over a store handle and the essential-client guard,
     /// both lifted from the state.
-    pub(crate) fn new(store: S, host_app_client_lock: HostAppClientLock) -> Self {
+    pub(crate) fn new(store: S, essential_client_guard: EssentialClientGuard) -> Self {
         ClientsReader {
             store,
-            host_app_client_lock,
+            essential_client_guard,
         }
     }
 
@@ -65,7 +65,7 @@ impl<S: GrantStore> ClientsReader<S> {
             .list_clients()?
             .into_iter()
             .map(|client| ClientView {
-                first_party: self.host_app_client_lock.locks(&client.client_id),
+                essential: self.essential_client_guard.is_essential(&client.client_id),
                 client,
             })
             .collect())
@@ -78,16 +78,16 @@ impl<S: GrantStore> ClientsReader<S> {
 /// `disabled_at`).
 pub(crate) struct ClientsDisabler<S: GrantStore> {
     store: S,
-    host_app_client_lock: HostAppClientLock,
+    essential_client_guard: EssentialClientGuard,
 }
 
 impl<S: GrantStore> ClientsDisabler<S> {
-    /// Build the disabler over a store handle and the host app's client lock,
+    /// Build the disabler over a store handle and the essential-client guard,
     /// both lifted from the state.
-    pub(crate) fn new(store: S, host_app_client_lock: HostAppClientLock) -> Self {
+    pub(crate) fn new(store: S, essential_client_guard: EssentialClientGuard) -> Self {
         ClientsDisabler {
             store,
-            host_app_client_lock,
+            essential_client_guard,
         }
     }
 
@@ -103,18 +103,19 @@ impl<S: GrantStore> ClientsDisabler<S> {
     /// # Errors
     ///
     /// [`AuthorizationServerError::ClientNotFound`] when no such client exists.
-    /// Disabling the Wildflower host app's client is
-    /// [`AuthorizationServerError::HostAppClientLocked`] (see
-    /// [`HostAppClientLock`]). Re-enabling it stays allowed, so a host app
-    /// client disabled out of band (direct SQL) can still be recovered.
+    /// Disabling an essential client is
+    /// [`AuthorizationServerError::EssentialClient`] (see
+    /// [`EssentialClientGuard`]). Re-enabling one stays allowed, so an
+    /// essential client disabled out of band (direct SQL) can still be
+    /// recovered.
     pub(crate) fn set_disabled_at(
         &self,
         client_id: &str,
         stamp: Option<DateTime<Utc>>,
     ) -> Result<ClientView, AuthorizationServerError> {
-        let first_party = self.host_app_client_lock.locks(client_id);
-        if first_party && stamp.is_some() {
-            return Err(AuthorizationServerError::HostAppClientLocked {
+        let essential = self.essential_client_guard.is_essential(client_id);
+        if essential && stamp.is_some() {
+            return Err(AuthorizationServerError::EssentialClient {
                 client_id: client_id.to_owned(),
             });
         }
@@ -138,10 +139,7 @@ impl<S: GrantStore> ClientsDisabler<S> {
                 Err(not_found())
             }
         })?;
-        Ok(ClientView {
-            client,
-            first_party,
-        })
+        Ok(ClientView { client, essential })
     }
 }
 
@@ -153,6 +151,11 @@ mod tests {
     use crate::domain::test_fake::{client, FakeGrantStore};
 
     const HOST: &str = "wildflower-host";
+    const OWNER_BROWSER: &str = "wildflower-owner-browser";
+
+    fn essential_client_guard() -> EssentialClientGuard {
+        EssentialClientGuard::new(HOST.into(), OWNER_BROWSER.into())
+    }
 
     /// A disabler over a fresh fake seeded with `rows`; tests reach the fake
     /// through its `store` field to arrange and observe rows.
@@ -161,7 +164,7 @@ mod tests {
         for row in rows {
             store.upsert_client(row).unwrap();
         }
-        ClientsDisabler::new(store, HostAppClientLock::new(HOST.into()))
+        ClientsDisabler::new(store, essential_client_guard())
     }
 
     fn at(seconds: i64) -> DateTime<Utc> {
@@ -196,22 +199,27 @@ mod tests {
     }
 
     #[test]
-    fn list_flags_only_the_first_party_client() {
+    fn list_flags_only_the_essential_clients() {
         let store = FakeGrantStore::default();
-        for id in ["b-app", HOST, "a-app"] {
+        for id in ["b-app", HOST, OWNER_BROWSER, "a-app"] {
             store.upsert_client(&client(id, &["openid"])).unwrap();
         }
 
-        let listed = ClientsReader::new(store, HostAppClientLock::new(HOST.into()))
+        let listed = ClientsReader::new(store, essential_client_guard())
             .list()
             .unwrap();
         let summary: Vec<(&str, bool)> = listed
             .iter()
-            .map(|view| (view.client.client_id.as_str(), view.first_party))
+            .map(|view| (view.client.client_id.as_str(), view.essential))
             .collect();
         assert_eq!(
             summary,
-            vec![("a-app", false), ("b-app", false), (HOST, true)]
+            vec![
+                ("a-app", false),
+                ("b-app", false),
+                (HOST, true),
+                (OWNER_BROWSER, true)
+            ]
         );
     }
 
@@ -230,7 +238,7 @@ mod tests {
             disable(&disabler, "app", NOW),
             Ok(ClientView {
                 client: disabled.clone(),
-                first_party: false
+                essential: false
             })
         );
         assert_eq!(stored(&disabler, "app"), disabled);
@@ -239,7 +247,7 @@ mod tests {
             enable(&disabler, "app"),
             Ok(ClientView {
                 client: registered.clone(),
-                first_party: false
+                essential: false
             })
         );
         assert_eq!(stored(&disabler, "app"), registered);
@@ -277,26 +285,32 @@ mod tests {
     }
 
     #[test]
-    fn the_first_party_client_cannot_be_disabled() {
-        let host = client(HOST, &["openid"]);
-        let disabler = disabler_with(std::slice::from_ref(&host));
+    fn an_essential_client_cannot_be_disabled_but_can_be_enabled() {
+        for essential_client_id in [HOST, OWNER_BROWSER] {
+            let essential_client = client(essential_client_id, &["openid"]);
+            let disabler = disabler_with(std::slice::from_ref(&essential_client));
 
-        assert_eq!(
-            disable(&disabler, HOST, NOW),
-            Err(AuthorizationServerError::HostAppClientLocked {
-                client_id: HOST.to_owned()
-            }),
-        );
-        assert_eq!(stored(&disabler, HOST), host, "nothing written");
-        // Enabling it stays allowed — a host disabled out of band (direct SQL)
-        // can still be recovered.
-        assert_eq!(
-            enable(&disabler, HOST),
-            Ok(ClientView {
-                client: host,
-                first_party: true
-            })
-        );
+            assert_eq!(
+                disable(&disabler, essential_client_id, NOW),
+                Err(AuthorizationServerError::EssentialClient {
+                    client_id: essential_client_id.to_owned()
+                }),
+            );
+            assert_eq!(
+                stored(&disabler, essential_client_id),
+                essential_client,
+                "nothing written"
+            );
+            // Enabling it stays allowed — an essential client disabled out of
+            // band (direct SQL) can still be recovered.
+            assert_eq!(
+                enable(&disabler, essential_client_id),
+                Ok(ClientView {
+                    client: essential_client,
+                    essential: true
+                })
+            );
+        }
     }
 
     /// Two registered clients and one id (`ghost`) that is never registered.
@@ -329,7 +343,7 @@ mod tests {
                     (Some(row), Some(&disabled_at)) => {
                         let expected = ClientView {
                             client: Client { disabled_at, ..row.clone() },
-                            first_party: false,
+                            essential: false,
                         };
                         prop_assert_eq!(result, Ok(expected));
                     }

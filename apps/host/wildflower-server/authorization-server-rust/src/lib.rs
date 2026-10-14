@@ -106,7 +106,9 @@ pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "wildflower-host";
 /// signed in as the Owner on its own device, with a same-device sign-in code at
 /// `/oauth/sign-in`. Each such browser holds a token issued to this client
 /// (its `sub`), so revoking the client's subject signs every Owner browser
-/// out, and one browser's session is revoked by its token's `jti`. Seeded at boot by [`crate::setup_authorization_server`]; it takes part in no
+/// out, and one browser's session is revoked by its token's `jti`. Like
+/// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it is an essential client: it can't be
+/// disabled. Seeded at boot by [`crate::setup_authorization_server`]; it takes part in no
 /// OAuth flow.
 pub const OWNER_BROWSER_CLIENT_ID: &str = "wildflower-owner-browser";
 

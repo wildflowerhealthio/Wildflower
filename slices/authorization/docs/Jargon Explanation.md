@@ -76,7 +76,7 @@ the row is created or widened only when the Owner approves — see
   with `invalid_client`. Re-enabling clears the stamp and the client works
   again exactly as registered.
 - **Owner management:** `GET /authorization/clients` lists every row (never the
-  secret hash) with a `firstParty` flag. `PATCH /authorization/clients/:clientId`
+  secret hash) with an `essential` flag. `PATCH /authorization/clients/:clientId`
   with `{ "disabledAt": … }` answers with the updated row and sets the stamp
   as follows:
   - any UTC time disables the client now, stamped with the server's own
@@ -101,17 +101,31 @@ empty `redirectUris`, and both allowed the host Owner's scopes
 - `wildflower-host` (`WILDFLOWER_HOST_APP_CLIENT_ID`), the
   [Wildflower host app](#wildflower-host-app)'s. It gets its token from a host
   mint or the device flow — see [bootstrap URL](#bootstrap-url) — not OAuth
-  redirects. It is locked: a `PATCH /authorization/clients/wildflower-host`
-  that sets a `disabledAt` is refused with a `409 HostAppClientLocked`, since
-  it would cut off the host app's way back in. Its grants and subject are
-  revoked like any client's (see [Wildflower host app](#wildflower-host-app)
-  for how the host app stays signed in). `GET /authorization/clients` flags it
-  `firstParty`.
+  redirects. Its grants and subject are revoked like any client's (see
+  [Wildflower host app](#wildflower-host-app) for how the host app stays
+  signed in).
 - `wildflower-owner-browser` (`OWNER_BROWSER_CLIENT_ID`), the
   [Owner browsers](#owner-browser)'. It is allowed no grant type: its tokens
-  are minted only at `/oauth/sign-in`. It isn't locked: while it is
-  disabled, `/oauth/sign-in` signs no browser in, and revoking its subject
-  signs every Owner browser out.
+  are minted only at `/oauth/sign-in`. Revoking its subject signs every Owner
+  browser out.
+
+Both are [essential clients](#essential-client), which can't be disabled.
+
+### Essential client
+
+A client the Owner can't lose without being stuck: the
+[Wildflower host app](#wildflower-host-app)'s (`wildflower-host`), which is how
+the Owner reaches the server at all, and the Owner-browser client
+(`wildflower-owner-browser`), which is how a browser on the Owner's device
+signs in as the Owner. Disabling either would leave the Owner no way in, so a
+`PATCH /authorization/clients/:clientId` that sets a `disabledAt` on one is
+refused with a `409 EssentialClient`, and nothing is written. Re-enabling one
+stays allowed, so an essential client disabled out of band (direct SQL) can be
+recovered; while the Owner-browser client is disabled that way,
+`/oauth/sign-in` signs no browser in. `GET /authorization/clients` flags both
+`essential`, and the "Trusted Apps" list offers them no switch. The rule lives
+in one place, `EssentialClientGuard`, which the client reader and disabler
+share.
 
 ### Trust on first use
 

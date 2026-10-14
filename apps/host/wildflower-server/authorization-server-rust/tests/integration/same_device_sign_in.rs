@@ -283,21 +283,19 @@ async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
     );
 }
 
-/// While the Owner-browser client is disabled, a sign-in renders the refusal
-/// page and sets no cookie, leaving the code unspent; re-enabling the client
-/// lets the same code sign in.
+/// The Owner-browser client is essential, so the Owner can't disable it; one
+/// disabled out of band (direct SQL) still signs nobody in. A sign-in then
+/// renders the refusal page and sets no cookie, leaving the code unspent;
+/// re-enabling the client lets the same code sign in.
 #[tokio::test]
 async fn a_disabled_owner_browser_client_signs_nobody_in_until_re_enabled() {
-    let (g, host_owner_token, _db) = spin_up();
+    let (g, host_owner_token, db) = spin_up();
     let owner_browser_client_id = wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID;
     let code = g.same_device_sign_in_code_minter.mint();
 
-    assert_eq!(
-        disable_client(&g, &host_owner_token, owner_browser_client_id, Utc::now())
-            .await
-            .status(),
-        StatusCode::OK
-    );
+    assert!(store_handle(&db)
+        .set_client_disabled(owner_browser_client_id, Some(Utc::now()))
+        .expect("disable the client out of band"));
     let refused = sign_in(&g, &code, "/").await;
     assert_cache_suppressed(&refused, "the refusal");
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);

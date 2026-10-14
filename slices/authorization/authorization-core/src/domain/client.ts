@@ -17,8 +17,9 @@ import { Schema } from 'effect'
  * - `disabledAt` is when the Owner disabled the client, and `null` while it's
  *   enabled. While it's set, `/oauth/authorize` and `/oauth/token` refuse the
  *   client.
- * - `firstParty` marks the Wildflower host client, which can't be disabled (it's
- *   how the Owner reaches this surface at all).
+ * - `essential` marks a client the Owner can't lose without being stuck — the
+ *   Wildflower host app's and the Owner-browser client — which can't be
+ *   disabled.
  */
 const ClientSchema = Schema.Struct({
   clientId: Schema.String,
@@ -29,7 +30,7 @@ const ClientSchema = Schema.Struct({
   allowedGrantTypes: Schema.Array(Schema.String),
   registeredAt: Schema.DateTimeUtc,
   disabledAt: Schema.NullOr(Schema.DateTimeUtc),
-  firstParty: Schema.Boolean,
+  essential: Schema.Boolean,
 })
 
 type ClientType = typeof ClientSchema.Type
