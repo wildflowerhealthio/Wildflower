@@ -17,9 +17,7 @@
  * page is served, by `authorization-core/smart-client`'s `redirectUriForPage`.
  *
  * Neither are the **requested scopes**: they are the standalone-launch
- * vocabulary `STANDALONE_LAUNCH_SCOPES` shares with the `launcher-web`
- * page. The two seeded rows register identical `allowed_scopes` (`db/clients.rs`
- * has a test that fails if they drift), so the browser side is one list too.
+ * vocabulary `STANDALONE_LAUNCH_SCOPES` in `authorization-core/smart-client`.
  */
 
 /** The `client_id` the seeded row registers. */

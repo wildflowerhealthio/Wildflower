@@ -1406,6 +1406,44 @@ mod tests {
         assert!(column_for_client(&mut conn, "client_id", FHIR_SYNC_PEBBLE).is_empty());
     }
 
+    /// An install already at `0031` — the launcher's client allowing `0012`'s
+    /// maximal vocabulary — is narrowed by `0032` to the scopes the launcher
+    /// asks for. Reverting `0032` restores what `0031` left.
+    #[test]
+    fn an_install_already_at_0031_narrows_the_launcher_client() {
+        const LAUNCHER: &str = "03a513940b52f8c2649a5366d1a26d19";
+        const LAUNCHER_AT_0031: &str = r#"["openid","profile","fhirUser","launch","launch/patient","offline_access","wildflower/launch","system/*.cruds","wildflower/*.cruds"]"#;
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0031"),
+        )
+        .expect("migrate to 0031");
+        assert_eq!(allowed_scopes_of(&mut conn, LAUNCHER), LAUNCHER_AT_0031);
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0032"),
+        )
+        .expect("upgrade through 0032");
+        assert_eq!(
+            allowed_scopes_of(&mut conn, LAUNCHER),
+            r#"["launch","launch/patient","wildflower/launch","system/*.cruds","wildflower/*.cruds"]"#,
+        );
+
+        let migration_0032 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0032"))
+            .expect("0032 is embedded");
+        migration_0032.revert(&mut conn).expect("revert 0032");
+        assert_eq!(allowed_scopes_of(&mut conn, LAUNCHER), LAUNCHER_AT_0031);
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

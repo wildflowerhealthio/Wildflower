@@ -297,7 +297,8 @@ mod tests {
     /// Loader by `0028` (which re-keys Medications, the console, the Importer and
     /// the Health Viewer to random ids, as `0025` / `0026` did Lifting and the
     /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble), and
-    /// Wildflower Authorization by `0031` — so a
+    /// Wildflower Authorization by `0031` (the launcher's scopes are narrowed by
+    /// `0032`) — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -457,20 +458,22 @@ mod tests {
                 "the console's allowed scopes must cover {requested}",
             );
         }
-        // The launcher (`apps/launcher/launcher-web`'s `main-web` build) is a
-        // standalone-launch client for the same reason the console is — it drives
-        // every slice surface — so `0012` registers it against the console's
-        // vocabulary rather than a set of its own (re-keyed to a random id and
-        // renamed by `0026`). Compared against `docs` rather than a second literal
-        // copy: a scope added to one migration and not the other fails here
-        // instead of drifting quietly.
+        // The launcher (`apps/launcher/launcher-web`'s `main-web` build), seeded
+        // by `0012`, re-keyed to a random id and renamed by `0026`. Its scopes
+        // are pinned to the app by
+        // `migrations_narrow_the_launcher_client_to_the_apps_own_scopes`.
         let web_client = store
             .client_by_id("03a513940b52f8c2649a5366d1a26d19")
             .unwrap()
             .unwrap();
         assert_eq!(web_client.name, "Wildflower Launcher");
-        assert_eq!(web_client.allowed_scopes, docs.allowed_scopes);
-        assert_eq!(web_client.allowed_grant_types, docs.allowed_grant_types);
+        assert_eq!(
+            web_client.allowed_grant_types,
+            vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken,
+            ],
+        );
         // One absolute entry, and it is the app ROOT (`0013` replaced 0012's
         // `/home`; `0026` moved it to `/launcher/`): the web UI is a SPA on browser history, so
         // `redirectUriForRoute` derives the served root per origin (the
@@ -723,6 +726,48 @@ mod tests {
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken,
+            ],
+        );
+    }
+
+    /// The launcher's client (`0012`, narrowed by `0032`) allows exactly the
+    /// scopes the launcher asks for. The scope string is read out of the app's
+    /// `src/sign-in.ts`, the one place the app writes it: the client is trusted
+    /// on first use, so the request is what bounds it, and a row wider than the
+    /// request would be a ceiling nothing uses.
+    #[test]
+    fn migrations_narrow_the_launcher_client_to_the_apps_own_scopes() {
+        const LAUNCHER_SIGN_IN_TS: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../../apps/launcher/launcher-web/src/sign-in.ts"
+        ));
+        const LAUNCHER_CLIENT_ID: &str = "03a513940b52f8c2649a5366d1a26d19";
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let client = store
+            .client_by_id(LAUNCHER_CLIENT_ID)
+            .expect("query (a decode failure surfaces here)")
+            .expect("0012 seeds the launcher client");
+
+        assert!(
+            LAUNCHER_SIGN_IN_TS.contains(&format!("'{LAUNCHER_CLIENT_ID}'")),
+            "apps/launcher/launcher-web/src/sign-in.ts must sign in as {LAUNCHER_CLIENT_ID}",
+        );
+        let scope_string = format!(
+            "const LAUNCHER_SCOPE = '{}'",
+            client.allowed_scopes.join(" ")
+        );
+        assert!(
+            LAUNCHER_SIGN_IN_TS.contains(&scope_string),
+            "apps/launcher/launcher-web/src/sign-in.ts must declare exactly {scope_string}",
+        );
+        assert_eq!(
+            client.allowed_scopes,
+            vec![
+                "launch".to_string(),
+                "launch/patient".to_string(),
+                "wildflower/launch".to_string(),
+                "system/*.cruds".to_string(),
+                "wildflower/*.cruds".to_string(),
             ],
         );
     }

@@ -138,9 +138,7 @@ registration)` does the wiring every browser caller would otherwise repeat —
 including calling `fetch` as a method, since an unbound `Window.fetch` throws
 `Illegal invocation` — and takes `page` structurally, so a test passes a plain
 object instead of a `Window`. `STANDALONE_LAUNCH_SCOPES` is the requested
-`scope` for both seeded public clients: migrations 0007 and 0012 register
-identical `allowed_scopes`, with a `db/clients.rs` test that fails if they
-drift, so the browser side is one list rather than a copy per app.
+`scope` for the server-docs console's seeded public client (migration 0007).
 
 The server URL a sign-in starts from is its FHIR base — the SMART `iss`, which
 the authorization request also names as its `aud`: a Wildflower server serves
