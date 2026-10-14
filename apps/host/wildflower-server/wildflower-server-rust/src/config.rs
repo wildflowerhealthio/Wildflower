@@ -30,10 +30,10 @@ pub struct WildflowerServerConfig {
     /// The hosted Wildflower Authorization app, which the server's SMART
     /// discovery advertises as its `management_endpoint`.
     pub authorization_app_base: AuthorizationAppBase,
-    /// The scopes the authorization server seeds the host app's client with and
-    /// the host decides consents in-process under (see
-    /// [`AuthorizationServerConfig::host_owner_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_owner_scopes)).
-    pub host_owner_scopes: Vec<String>,
+    /// The scopes the authorization server seeds the host app's client with
+    /// (see
+    /// [`AuthorizationServerConfig::host_app_client_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_app_client_scopes)).
+    pub host_app_client_scopes: Vec<String>,
     /// The Wildflower host app's OAuth `client_id`.
     pub wildflower_host_app_client_id: String,
     /// The relay connection the server's tunnel dials, from the server's

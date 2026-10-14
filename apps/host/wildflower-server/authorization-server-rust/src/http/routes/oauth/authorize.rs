@@ -175,7 +175,7 @@ pub struct AuthorizeParams {
 /// rather than rejected here, and nothing is written to the `clients` table
 /// until the Owner approves. Such a request never takes the grant fast path,
 /// and while its redirect is untrusted every other failure renders the local
-/// HTML page instead of redirecting. `wildflower-host` keeps the strict
+/// HTML page instead of redirecting. The host app's client keeps the strict
 /// treatment, and a disabled client is rejected either way.
 #[utoipa::path(
     get,

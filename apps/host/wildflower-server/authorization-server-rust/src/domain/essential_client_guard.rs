@@ -39,15 +39,15 @@ impl EssentialClientGuard {
 mod tests {
     use super::*;
 
-    const HOST_APP: &str = "wildflower-host";
-    const OWNER_BROWSER: &str = "wildflower-owner-browser";
+    const HOST_APP: &str = crate::WILDFLOWER_HOST_APP_CLIENT_ID;
+    const OWNER_BROWSER: &str = crate::OWNER_BROWSER_CLIENT_ID;
 
     #[test]
     fn only_the_host_app_s_and_the_owner_browser_clients_are_essential() {
         let guard = EssentialClientGuard::new(HOST_APP.into(), OWNER_BROWSER.into());
         assert!(guard.is_essential(HOST_APP));
         assert!(guard.is_essential(OWNER_BROWSER));
-        assert!(!guard.is_essential("wildflower-host-2"));
+        assert!(!guard.is_essential(&format!("{HOST_APP}-2")));
         assert!(!guard.is_essential("ohif-viewer"));
     }
 }

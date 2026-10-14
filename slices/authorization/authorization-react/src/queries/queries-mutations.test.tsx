@@ -273,13 +273,13 @@ describe('useUpdateClientMutation of an essential client', () => {
   test('a 409 EssentialClient fails with the essential-client message', async () => {
     // Arrange — the server refuses the disable.
     routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), () =>
-      Response.json({ error: 'EssentialClient', clientId: 'wildflower-host' }, { status: 409 })
+      Response.json({ error: 'EssentialClient', clientId: 'host-app' }, { status: 409 })
     )
     const { result } = renderWithClient(() => useUpdateClientMutation())
 
     // Act
     const failure: unknown = await result.current
-      .mutateAsync({ clientId: 'wildflower-host', action: 'disable' })
+      .mutateAsync({ clientId: 'host-app', action: 'disable' })
       .then(
         () => undefined,
         (error: unknown) => error
@@ -290,7 +290,7 @@ describe('useUpdateClientMutation of an essential client', () => {
       ? failure[Runtime.FiberFailureCauseId]
       : Cause.empty
     expect(Cause.failureOption(cause)).toEqual(
-      Option.some(new EssentialClientDisableRefusal({ clientId: 'wildflower-host' }))
+      Option.some(new EssentialClientDisableRefusal({ clientId: 'host-app' }))
     )
     expect(failure instanceof Error ? failure.message : failure).toBe(
       'This client is essential. Disabling it would leave you no way into your server.'

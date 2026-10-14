@@ -22,12 +22,10 @@ const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_P
     Err(_) => panic!("WILDFLOWER_LOOPBACK_PORT (from tauri-shared-config.json) must be a u16"),
 };
 
-// The host's granted-scope string, also sourced from
-// `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`).
-// The authorization server seeds the host app's client's
-// `allowed_scopes` from this set and decides consents in-process as the Owner
-// holding it (asserting it covers `WILDFLOWER_WIDEST_SCOPES`).
-const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
+// The scopes the host app's OAuth client may be granted, also sourced from
+// `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`):
+// the authorization server seeds the client's `allowed_scopes` from them.
+const HOST_APP_CLIENT_SCOPES: &str = env!("WILDFLOWER_HOST_APP_CLIENT_SCOPES");
 
 // The Wildflower host app's OAuth `client_id`, sourced from the same
 // `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`):
@@ -110,9 +108,9 @@ fn relay_settings_of(server: &ServerRecord) -> wildflowerhealthio_tunnel::RelayS
     )
 }
 
-/// The host Owner's scopes, from `LOCAL_GRANTED_SCOPES`.
-fn host_owner_scopes() -> Vec<String> {
-    LOCAL_GRANTED_SCOPES
+/// The scopes the host app's client may be granted, from `HOST_APP_CLIENT_SCOPES`.
+fn host_app_client_scopes() -> Vec<String> {
+    HOST_APP_CLIENT_SCOPES
         .split_whitespace()
         .map(str::to_owned)
         .collect()
@@ -217,7 +215,7 @@ fn server_config(
         search_parameter_data_dir,
         launcher_base,
         authorization_app_base,
-        host_owner_scopes: host_owner_scopes(),
+        host_app_client_scopes: host_app_client_scopes(),
         wildflower_host_app_client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
         domain: server.domain(),

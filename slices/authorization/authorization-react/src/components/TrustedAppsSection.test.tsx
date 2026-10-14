@@ -82,7 +82,7 @@ describe('TrustedAppsList', () => {
 
     // Assert
     expect(screen.getByText('Trusted Apps')).toBeTruthy()
-    expect(screen.getByText('Wildflower')).toBeTruthy()
+    expect(screen.getByText('Wildflower Host')).toBeTruthy()
     expect(screen.getByText('OHIF Viewer')).toBeTruthy()
     expect(screen.getByText('Importer')).toBeTruthy()
     expect(screen.getAllByText('Disabled')).toHaveLength(1)
@@ -101,7 +101,7 @@ describe('TrustedAppsList', () => {
     renderList([host])
 
     // Assert
-    expect(screen.queryByRole('button', { name: 'Actions for Wildflower' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Actions for Wildflower Host' })).toBeNull()
   })
 
   it('should ask for confirmation before disabling, and send nothing until confirmed', () => {
@@ -245,8 +245,8 @@ const clientBody = {
 
 const host = decodeClient({
   ...clientBody,
-  clientId: 'wildflower-host',
-  name: 'Wildflower',
+  clientId: 'host-app',
+  name: 'Wildflower Host',
   essential: true,
 })
 const ohifViewer = decodeClient({ ...clientBody, clientId: 'ohif-viewer', name: 'OHIF Viewer' })

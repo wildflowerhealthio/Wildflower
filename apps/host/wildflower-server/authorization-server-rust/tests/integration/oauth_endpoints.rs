@@ -119,16 +119,17 @@ async fn authorize_disabled_client_is_still_rejected() {
 async fn authorize_validates_redirect_uri_before_pkce_method() {
     // RFC 6749 §4.1.2.1: client_id/redirect_uri must be validated *before*
     // any redirectable error (scope/PKCE-method), since those failures get
-    // 302'd back to the validated redirect_uri. The seeded `wildflower-host`
-    // client has an empty redirect_uri allowlist, so even with an unsupported
-    // `code_challenge_method=plain` the request fails at redirect-uri
-    // validation and renders the local "Redirect URI not allowed" page rather
-    // than redirecting. (The redirect-path tests below seed a client with an
-    // allowlisted redirect_uri via `seed_client_with_redirect`.)
+    // 302'd back to the validated redirect_uri. The host app's client has a
+    // fixed registration with an empty redirect_uri allowlist, so even with an
+    // unsupported `code_challenge_method=plain` the request fails at
+    // redirect-uri validation and renders the local "Redirect URI not allowed"
+    // page rather than redirecting. (The redirect-path tests below seed a
+    // client with an allowlisted redirect_uri via `seed_client_with_redirect`.)
     let (g, _owner_token, _db) = spin_up();
-    let query =
-        "response_type=code&code_challenge_method=plain&client_id=wildflower-host&scope=owner&\
-                 code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
+    let query = format!(
+        "response_type=code&code_challenge_method=plain&client_id={WILDFLOWER_HOST_APP_CLIENT_ID}&\
+         scope=owner&code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz"
+    );
     let req = loopback_request(
         Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
@@ -276,6 +277,7 @@ async fn deciding_an_oauth_consent_clears_the_consent_head() {
 #[tokio::test]
 async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
     let (g, owner_token, db) = spin_up();
+    seed_test_client(&db);
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     // First pass: park, approve, and so establish the standing grant.
     authorize_and_approve(
@@ -309,7 +311,7 @@ async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
 }
 
 /// The host app's client is NOT trusted on first use: an unregistered scope for
-/// `wildflower-host` is still the `invalid_scope` redirect back to its
+/// the host app's client is still the `invalid_scope` redirect back to its
 /// (registered) redirect_uri, exactly as before.
 #[tokio::test]
 async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
@@ -317,7 +319,7 @@ async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
     // Give the host client a redirect so the request reaches the scope check.
     let store = store_handle(&db);
     let mut host = store
-        .client_by_id("wildflower-host")
+        .client_by_id(WILDFLOWER_HOST_APP_CLIENT_ID)
         .unwrap()
         .expect("the seeded host app's client");
     host.redirect_uris = vec![Url::parse("https://app.example/cb").unwrap()];
@@ -325,7 +327,7 @@ async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
 
     let res = get_authorize(
         &g.router,
-        &authorize_query("wildflower-host", "definitely_not_granted"),
+        &authorize_query(WILDFLOWER_HOST_APP_CLIENT_ID, "definitely_not_granted"),
     )
     .await;
     assert_eq!(res.status(), StatusCode::FOUND);
@@ -537,8 +539,9 @@ async fn authorize_renders_a_bad_smart_launch_locally_for_an_untrusted_redirect(
 
 #[tokio::test]
 async fn device_authorization_happy_path() {
-    let (g, _owner_token, _db) = spin_up();
-    let body = "client_id=wildflower-host&scope=system%2F*.cruds";
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
+    let body = "client_id=integration-test-app&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -579,13 +582,14 @@ async fn device_authorization_happy_path() {
 
 #[tokio::test]
 async fn device_authorization_allows_scope_covered_by_client_wildcard() {
-    // Coverage-aware allowlist (not exact string membership): the host client is
+    // Coverage-aware allowlist (not exact string membership): the test client is
     // allowed `system/*.cruds`, which covers a request for the narrower
     // `system/Observation.rs`. The old exact-match gate rejected this with
     // `invalid_scope`; now it issues a device/user code pair like any allowed
     // scope.
-    let (g, _owner_token, _db) = spin_up();
-    let body = "client_id=wildflower-host&scope=system%2FObservation.rs";
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
+    let body = "client_id=integration-test-app&scope=system%2FObservation.rs";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
@@ -612,8 +616,9 @@ async fn device_authorization_unknown_client_returns_401() {
 
 #[tokio::test]
 async fn token_exchange_unknown_code_returns_400_invalid_grant() {
-    let (g, _owner_token, _db) = spin_up();
-    let body = "grant_type=authorization_code&client_id=wildflower-host&\
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
+    let body = "grant_type=authorization_code&client_id=integration-test-app&\
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
     let req = loopback_request(
@@ -632,8 +637,9 @@ async fn token_exchange_unknown_code_returns_400_invalid_grant() {
 /// verifier is rejected as `invalid_grant` before the code is even looked up.
 #[tokio::test]
 async fn token_exchange_short_code_verifier_returns_400_invalid_grant() {
-    let (g, _owner_token, _db) = spin_up();
-    let body = "grant_type=authorization_code&client_id=wildflower-host&\
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
+    let body = "grant_type=authorization_code&client_id=integration-test-app&\
                 code=missing&code_verifier=tooshort&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
     let req = loopback_request(
@@ -651,8 +657,9 @@ async fn token_exchange_short_code_verifier_returns_400_invalid_grant() {
 /// on every `/oauth/token` response, including errors.
 #[tokio::test]
 async fn token_exchange_error_sets_cache_suppression_headers() {
-    let (g, _owner_token, _db) = spin_up();
-    let body = "grant_type=authorization_code&client_id=wildflower-host&\
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
+    let body = "grant_type=authorization_code&client_id=integration-test-app&\
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
     let req = loopback_request(
@@ -677,8 +684,9 @@ async fn token_exchange_error_sets_cache_suppression_headers() {
 /// cache-suppressed 400 `invalid_request` before any grant work happens.
 #[tokio::test]
 async fn token_exchange_rejects_non_form_content_type() {
-    let (g, _owner_token, _db) = spin_up();
-    let body = "grant_type=refresh_token&client_id=wildflower-host&refresh_token=whatever";
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
+    let body = "grant_type=refresh_token&client_id=integration-test-app&refresh_token=whatever";
     let req = loopback_request(
         Request::post("/oauth/token").header("content-type", "application/json"),
         Body::from(body),
@@ -704,9 +712,10 @@ async fn token_exchange_rejects_non_form_content_type() {
 /// authorization-core's oauth.test.ts).
 #[tokio::test]
 async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
     let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
-                client_id=wildflower-host&device_code=missing";
+                client_id=integration-test-app&device_code=missing";
     let req = loopback_request(
         Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),

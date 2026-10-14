@@ -37,15 +37,19 @@ use crate::domain::GrantStore as _;
 /// step fails.
 pub fn open_and_seed_store(
     pool: DieselPool,
-    host_owner_scopes: &[String],
+    host_app_client_scopes: &[String],
     wildflower_host_app_client_id: &str,
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
 ) -> anyhow::Result<SqliteGrantStore> {
     let store = SqliteGrantStore::new(pool).context("failed to open grant store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
-    ensure_essential_clients(&store, host_owner_scopes, wildflower_host_app_client_id)
-        .context("failed to seed the essential clients")?;
+    ensure_essential_clients(
+        &store,
+        host_app_client_scopes,
+        wildflower_host_app_client_id,
+    )
+    .context("failed to seed the essential clients")?;
     ensure_fhir_ui_client(&store, fhir_ui_client_id, server_origin)
         .context("failed to seed the FHIR server UI client")?;
     Ok(store)
@@ -101,28 +105,29 @@ fn ensure_some_active_signing_key(store: &SqliteGrantStore) -> anyhow::Result<()
 
 /// Ensure the essential clients — the host app's client and the Owner-browser
 /// client ([`crate::OWNER_BROWSER_CLIENT_ID`]) — match the code's definitions.
-/// Upserted on every boot so their `allowed_scopes` (and the rest of their
-/// policy) always match the host's `host_owner_scopes`, and the host app's
-/// `client_id` matches `wildflower_host_app_client_id` (the live app sources
-/// both from `tauri-shared-config.json`; see
-/// [`crate::default_local_granted_scopes`] /
-/// [`crate::default_wildflower_host_app_client_id`]), correcting a store seeded
-/// by an older build (registration time and any admin disable are preserved).
+/// Upserted on every boot so their policy always matches: the host app's
+/// client is allowed `host_app_client_scopes` under
+/// `wildflower_host_app_client_id` (the live app sources both from
+/// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`] /
+/// [`crate::default_wildflower_host_app_client_id`]), and the Owner-browser
+/// client the Owner's scopes ([`crate::OWNER_SCOPES`]). This corrects a store
+/// seeded by an older build (registration time and any admin disable are
+/// preserved).
 ///
 /// Both are public with no redirect URIs. The host app's client is allowed
 /// every grant type; the Owner-browser client none, since its tokens are
 /// minted only at `/oauth/sign-in`, so no OAuth flow can be run as it.
 fn ensure_essential_clients(
     store: &SqliteGrantStore,
-    host_owner_scopes: &[String],
+    host_app_client_scopes: &[String],
     wildflower_host_app_client_id: &str,
 ) -> anyhow::Result<()> {
     let wildflower_host_app_client = Client {
         client_id: wildflower_host_app_client_id.to_string(),
-        name: "Wildflower (host)".to_string(),
+        name: "Wildflower Host".to_string(),
         kind: ClientKind::Public,
         redirect_uris: vec![],
-        allowed_scopes: host_owner_scopes.to_vec(),
+        allowed_scopes: host_app_client_scopes.to_vec(),
         allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
         registered_at: Utc::now(),
@@ -134,8 +139,13 @@ fn ensure_essential_clients(
     let owner_browser_client = Client {
         client_id: crate::OWNER_BROWSER_CLIENT_ID.to_string(),
         name: "Wildflower (Owner browsers)".to_string(),
+        kind: ClientKind::Public,
+        redirect_uris: vec![],
+        allowed_scopes: crate::owner_scopes(),
         allowed_grant_types: vec![],
-        ..wildflower_host_app_client
+        secret_hash: None,
+        registered_at: Utc::now(),
+        disabled_at: None,
     };
     store
         .upsert_client(&owner_browser_client)
@@ -666,21 +676,16 @@ mod tests {
         assert_eq!(production.allowed_scopes, LIFTING_DEV_SCOPES);
     }
 
-    /// The host app's client is seeded under the `client_id` threaded through
-    /// `open_and_seed_store` (from `AuthorizationServerConfig::wildflower_host_app_client_id`,
-    /// which the live app sources from `tauri-shared-config.json`), NOT a
-    /// hardcoded literal. This is the cross-boundary drift guard: the TS shell's
-    /// device-login `client_id` and the seeded id derive from one source, so a
-    /// regression that re-hardcodes the id here (letting it drift from the config
-    /// / the TS side) fails this test.
+    /// The host app's client is seeded under the `client_id` and scopes threaded
+    /// through `open_and_seed_store` (from `AuthorizationServerConfig`, which the
+    /// live app sources from `tauri-shared-config.json`), NOT hardcoded
+    /// literals: a regression that re-hardcodes either here, letting it drift
+    /// from the config, fails this test.
     #[test]
     fn seeds_the_host_app_s_client_under_the_configured_id() {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
-        let scopes = vec![
-            "system/*.cruds".to_string(),
-            "wildflower/*.cruds".to_string(),
-        ];
+        let scopes = vec!["openid".to_string(), "fhirUser".to_string()];
         let store = open_and_seed_store(
             pool,
             &scopes,
@@ -695,6 +700,7 @@ mod tests {
             .expect("query client")
             .expect("the host app's client seeded under the configured id");
         assert_eq!(seeded.client_id, "custom-host-client");
+        assert_eq!(seeded.name, "Wildflower Host");
         assert_eq!(seeded.allowed_scopes, scopes);
 
         // Nothing is seeded under the fallback const's literal — proving the id
@@ -708,19 +714,38 @@ mod tests {
         );
     }
 
+    /// With the standalone defaults, the host app's client may be granted
+    /// `openid` alone: the Owner's authority is not the host client's.
+    #[test]
+    fn the_default_host_app_s_client_is_allowed_openid_only() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let store = open_and_seed_store(
+            pool,
+            &crate::default_host_app_client_scopes(),
+            &crate::default_wildflower_host_app_client_id(),
+            "fhir-ui-client",
+            &url::Url::parse("https://ruth.relay.example").expect("origin"),
+        )
+        .expect("seed store");
+
+        let seeded = store
+            .client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID)
+            .expect("query client")
+            .expect("the host app's client seeded");
+        assert_eq!(seeded.allowed_scopes, vec!["openid".to_string()]);
+    }
+
     /// The Owner-browser client is seeded as a public client with no redirect
-    /// URIs and no grant type, allowed exactly the host Owner's scopes.
+    /// URIs and no grant type, allowed exactly the Owner's scopes, whatever the
+    /// host app's client is allowed.
     #[test]
     fn seeds_the_owner_browser_client_with_the_owner_s_scopes() {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
-        let scopes = vec![
-            "system/*.cruds".to_string(),
-            "wildflower/*.cruds".to_string(),
-        ];
         let store = open_and_seed_store(
             pool,
-            &scopes,
+            &["openid".to_string()],
             "host-client",
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
@@ -734,7 +759,7 @@ mod tests {
         assert_eq!(seeded.kind, ClientKind::Public);
         assert!(seeded.redirect_uris.is_empty());
         assert!(seeded.allowed_grant_types.is_empty());
-        assert_eq!(seeded.allowed_scopes, scopes);
+        assert_eq!(seeded.allowed_scopes, crate::owner_scopes());
     }
 
     /// The UI's client is seeded under the configured id as a public client
@@ -747,10 +772,7 @@ mod tests {
         let origin = url::Url::parse("https://ruth.relay.example").expect("origin");
         let store = open_and_seed_store(
             pool,
-            &[
-                "system/*.cruds".to_string(),
-                "wildflower/*.cruds".to_string(),
-            ],
+            &["openid".to_string()],
             "host-client",
             "fhir-ui-client",
             &origin,

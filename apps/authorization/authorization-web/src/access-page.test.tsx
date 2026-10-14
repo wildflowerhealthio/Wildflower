@@ -222,7 +222,7 @@ const medicationsGrant = {
 const hostGrant = {
   ...medicationsGrant,
   id: 'grant-host',
-  clientId: 'wildflower-host',
+  clientId: 'host-app',
   redirectUri: 'https://ruth.wildflowerhealth.io/',
 } as const
 

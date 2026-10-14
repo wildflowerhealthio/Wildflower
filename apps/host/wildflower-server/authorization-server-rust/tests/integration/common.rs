@@ -6,7 +6,7 @@ pub use axum::http::{Request, StatusCode};
 pub use tokio::sync::watch;
 pub use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AuthorizationServer, AuthorizationServerConfig,
-    WILDFLOWER_LOCAL_GRANTED_SCOPES,
+    OWNER_BROWSER_CLIENT_ID, WILDFLOWER_HOST_APP_CLIENT_ID,
 };
 
 pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
@@ -75,7 +75,8 @@ pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
     let config = AuthorizationServerConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
-        host_owner_scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+        host_app_client_scopes:
+            wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
         wildflower_host_app_client_id:
             wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
@@ -104,27 +105,42 @@ pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
     (g, owner_token, db)
 }
 
-/// Mint an **Owner** access token: the host app's client holding the host's
-/// default granted scopes, which cover every `/authorization/*` scope gate.
+/// The `client_id` [`mint_owner_token`]'s tokens are issued to: a client the
+/// Owner has delegated their whole authority to, as they may the launcher.
+/// Distinct from every client a test revokes or disables, so the Owner's token
+/// outlives those.
+pub const OWNER_TOKEN_CLIENT_ID: &str = "integration-test-owner-app";
+
+/// Mint an **Owner** access token: one issued to [`OWNER_TOKEN_CLIENT_ID`]
+/// holding the Owner's scopes, which cover every `/authorization/*` scope gate.
 /// Signed by the seeded active key and naming [`SERVER_ORIGIN`] as `iss` and
 /// `aud`, so every bearer gate accepts it.
 pub fn mint_owner_token(db: &TestDb) -> String {
+    let owner_scopes = wildflowerhealthio_authorization_server::owner_scopes();
+    let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
+    mint_client_token(db, OWNER_TOKEN_CLIENT_ID, &owner_scopes)
+}
+
+/// Mint an access token issued to `client_id` carrying exactly `scopes`, signed
+/// by the seeded active key and naming [`SERVER_ORIGIN`] as `iss` and `aud`.
+pub fn mint_client_token(db: &TestDb, client_id: &str, scopes: &[&str]) -> String {
     let key = store_handle(db)
         .active_signing_key()
         .expect("signing-key query")
         .expect("a seeded active signing key");
+    let scope: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     mint_access_token(
         &key,
         &NewJwtArgs {
-            client_id: wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID,
-            scopes: &wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+            client_id,
+            scopes: &scope,
             ttl: Duration::minutes(15),
             issuer: SERVER_ORIGIN,
             audience: Some(SERVER_ORIGIN),
             patient: None,
         },
     )
-    .expect("mint owner token")
+    .expect("mint token")
 }
 
 /// The head the host popup would currently be showing — the latest value on the
@@ -166,6 +182,33 @@ pub fn seed_client_with_redirect(
             disabled_at: None,
         })
         .expect("register client");
+}
+
+/// The `client_id` [`seed_test_client`] registers: a stand-in for any client
+/// the tests need to run a grant as, with no fixed registration.
+pub const TEST_CLIENT_ID: &str = "integration-test-app";
+
+/// The scope [`seed_test_client`]'s client is allowed: full system FHIR access,
+/// so a test can ask it for a scope as broad as the Owner holds.
+pub const TEST_CLIENT_SCOPE: &str = "system/*.cruds";
+
+/// Register [`TEST_CLIENT_ID`] through a second store handle on the same
+/// shared connection: a public client allowed every grant type and
+/// [`TEST_CLIENT_SCOPE`], with no redirect URI.
+pub fn seed_test_client(db: &TestDb) {
+    store_handle(db)
+        .upsert_client(&Client {
+            client_id: TEST_CLIENT_ID.to_string(),
+            name: "Integration Test Client".to_string(),
+            kind: ClientKind::Public,
+            redirect_uris: vec![],
+            allowed_scopes: vec![TEST_CLIENT_SCOPE.to_string()],
+            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+            secret_hash: None,
+            registered_at: Utc::now(),
+            disabled_at: None,
+        })
+        .expect("register the test client");
 }
 
 /// Mint a **non-owner** access token carrying exactly `scopes`, signed by the

@@ -265,7 +265,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
 /// requested resource scopes — a narrower device grant — is refused with a
 /// `403 InsufficientScope` naming the uncovered scope. No code is issued: the
 /// request stays `pending`, so the status poll keeps waiting and an approver
-/// whose token does cover it (here the host Owner) can still answer it.
+/// whose token does cover it (here the Owner) can still answer it.
 #[tokio::test]
 async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_request_stays_pending() {
     let (g, owner_token, db) = spin_up();

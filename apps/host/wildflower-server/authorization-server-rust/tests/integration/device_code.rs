@@ -10,16 +10,17 @@ use crate::common::*;
 #[tokio::test]
 async fn device_grant_pending_then_slow_down() {
     let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
     plant_device_request(
         &store_handle(&db),
-        "wildflower-host",
+        TEST_CLIENT_ID,
         "dev-pending",
-        &[&WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()],
+        &[TEST_CLIENT_SCOPE],
         RequestStatus::Pending,
         Utc::now() + Duration::minutes(5),
     );
     let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
-                client_id=wildflower-host&device_code=dev-pending";
+                client_id=integration-test-app&device_code=dev-pending";
     let first = post_form(&g.router, "/oauth/token", body).await;
     assert_eq!(first.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
@@ -40,24 +41,22 @@ async fn device_grant_pending_then_slow_down() {
 #[tokio::test]
 async fn device_grant_single_use_then_expired_token() {
     let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
     plant_device_request(
         &store_handle(&db),
-        "wildflower-host",
+        TEST_CLIENT_ID,
         "dev-approved",
-        &[&WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()],
+        &[TEST_CLIENT_SCOPE],
         RequestStatus::Approved,
         Utc::now() + Duration::minutes(5),
     );
     let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
-                client_id=wildflower-host&device_code=dev-approved";
+                client_id=integration-test-app&device_code=dev-approved";
     let first = post_form(&g.router, "/oauth/token", body).await;
     assert_eq!(first.status(), StatusCode::OK);
     let token = body_json(first.into_body()).await;
     assert_eq!(token["token_type"], "Bearer");
-    assert_eq!(
-        token["scope"],
-        WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()
-    );
+    assert_eq!(token["scope"], TEST_CLIENT_SCOPE);
 
     let second = post_form(&g.router, "/oauth/token", body).await;
     assert_eq!(second.status(), StatusCode::BAD_REQUEST);
@@ -211,12 +210,15 @@ async fn device_consent_allows_expansion_beyond_requested() {
 /// envelope) on the `/authorization/devices/{userCode}` consent prompt.
 #[tokio::test]
 async fn device_authorization_carries_device_name_to_consent() {
-    let (g, owner_token, _db) = spin_up();
+    let (g, owner_token, db) = spin_up();
+    seed_test_client(&db);
     // Start the flow with a device name (URL-encoded, includes a space + apostrophe).
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
-        Body::from("client_id=wildflower-host&scope=system%2F*.cruds&device_name=Ada%27s%20laptop"),
+        Body::from(
+            "client_id=integration-test-app&scope=system%2F*.cruds&device_name=Ada%27s%20laptop",
+        ),
     );
     let res = g.router.clone().oneshot(start).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -248,13 +250,14 @@ async fn device_authorization_carries_device_name_to_consent() {
 /// by the durable grant). A browser-shaped UA becomes "Browser on OS".
 #[tokio::test]
 async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() {
-    let (g, owner_token, _db) = spin_up();
+    let (g, owner_token, db) = spin_up();
+    seed_test_client(&db);
     // No `device_name` in the body — only a browser User-Agent.
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded")
             .header("user-agent", CHROME_MAC_USER_AGENT),
-        Body::from("client_id=wildflower-host&scope=system%2F*.cruds"),
+        Body::from("client_id=integration-test-app&scope=system%2F*.cruds"),
     );
     let res = g.router.clone().oneshot(start).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -281,12 +284,15 @@ async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() 
 /// inference — the explicit name wins even when a recognizable UA is present.
 #[tokio::test]
 async fn explicit_device_name_wins_over_user_agent_inference() {
-    let (g, owner_token, _db) = spin_up();
+    let (g, owner_token, db) = spin_up();
+    seed_test_client(&db);
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded")
             .header("user-agent", CHROME_MAC_USER_AGENT),
-        Body::from("client_id=wildflower-host&scope=system%2F*.cruds&device_name=Ada%27s%20laptop"),
+        Body::from(
+            "client_id=integration-test-app&scope=system%2F*.cruds&device_name=Ada%27s%20laptop",
+        ),
     );
     let res = g.router.clone().oneshot(start).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -464,11 +470,12 @@ async fn token_endpoint_rejects_grant_outside_client_allow_list() {
 /// device endpoint.
 #[tokio::test]
 async fn device_authorization_sets_cache_suppression_headers() {
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
     let res = post_form(
         &g.router,
         "/oauth/device_authorization",
-        "client_id=wildflower-host&scope=system%2F*.cruds",
+        "client_id=integration-test-app&scope=system%2F*.cruds",
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);

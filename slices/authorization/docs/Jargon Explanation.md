@@ -62,7 +62,7 @@ the row is created or widened only when the Owner approves — see
   `/oauth/token`, verified by `timingSafeEqual`.
 - **Allowlists:** `redirectUris` (exact match) and `allowedScopes`
   (what this client may request without the Owner being warned). For every
-  client but `wildflower-host` these are the _registered_ set, not a hard
+  client but the [Wildflower host app](#wildflower-host-app)'s these are the _registered_ set, not a hard
   cap: a request outside them reaches consent as a
   [registration verdict](#trust-on-first-use) of `changed`, and approval
   widens the row.
@@ -95,17 +95,19 @@ the row is created or widened only when the Owner approves — see
   once it's enabled; revoke a grant to end it for good.
 
 Two clients are seeded by the server at startup, both `kind: 'public'` with
-empty `redirectUris`, and both allowed the host Owner's scopes
-(`host_owner_scopes`):
+empty `redirectUris`:
 
-- `wildflower-host`, the
-  [Wildflower host app](#wildflower-host-app)'s. It gets its token from a host
+- `WILDFLOWER_HOST_APP_CLIENT_ID` (configured as `wildflower_host_app_client_id`
+  in `tauri-shared-config.json`), named `Wildflower Host`, the
+  [Wildflower host app](#wildflower-host-app)'s. It is allowed only its own
+  scopes (`host_app_client_scopes`, `openid`), not the Owner's. It gets its token from a host
   mint or the device flow — see [bootstrap URL](#bootstrap-url) — not OAuth
   redirects. Its grants and subject are revoked like any client's (see
   [Wildflower host app](#wildflower-host-app) for how the host app stays
   signed in).
 - `wildflower-owner-browser` (`OWNER_BROWSER_CLIENT_ID`), the
-  [Owner browsers](#owner-browser)'. It is allowed no grant type: its tokens
+  [Owner browsers](#owner-browser)', allowed the Owner's scopes
+  (`OWNER_SCOPES`). It is allowed no grant type: its tokens
   are minted only at `/oauth/sign-in`. Revoking its subject signs every Owner
   browser out.
 
@@ -114,7 +116,7 @@ Both are [essential clients](#essential-client), which can't be disabled.
 ### Essential client
 
 A client the Owner can't lose without being stuck: the
-[Wildflower host app](#wildflower-host-app)'s (`wildflower-host`), which is how
+[Wildflower host app](#wildflower-host-app)'s, which is how
 the Owner reaches the server at all, and the Owner-browser client
 (`wildflower-owner-browser`), which is how a browser on the Owner's device
 signs in as the Owner. Disabling either would leave the Owner no way in, so a
@@ -176,7 +178,7 @@ endpoints (RFC 6749 §4.1.2.1's open-redirect rule). Scope strings are not
 validated against a grammar on this path: an unparseable scope is carried to
 the prompt as an opaque named scope that matches only itself.
 
-The host app's `wildflower-host` client is exempt: its registration is
+The host app's client is exempt: its registration is
 **fixed** (defined by the server; approvals can't create or widen it), so an
 unregistered redirect or scope for it is rejected at the boundary, and
 approval never widens its row. Disabled clients are rejected on every endpoint regardless of verdict,
@@ -367,8 +369,8 @@ the first successful token mint so a second poll returns `expired_token`.
 ### Device name
 
 A human-chosen label for the device being paired ("Ada's laptop"), distinct from
-the OAuth [client](#client) name (every device the host app pairs shares the
-`wildflower-host` client, so the client name can't tell them apart). A
+the OAuth [client](#client) name (every device paired as one client shares
+that client's name, so the client name can't tell them apart). A
 non-standard RFC 8628 extension: the requesting device sends it as the
 `device_name` form field on `/oauth/device_authorization`; it is stored on the
 device-flow [`AuthorizationRequest`](#authorizationrequest), surfaced to the
@@ -405,7 +407,7 @@ publishes it on a `watch` channel. The Tauri host emits each server's head to
 its base as the `pending-consent` event, raises the window when a server with
 nothing waiting gets a request (not when its queue advances), and gives the base
 commands that read and decide a request in-process through
-`HostConsentDecider`, the same consent capabilities with the host Owner's grant
+`HostConsentDecider`, the same consent capabilities with the Owner's grant
 (see `apps/host/servers`'s
 [Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
 
@@ -477,7 +479,8 @@ no longer pending) goes to the wait page instead.
 ### Wildflower host app
 
 The app on the Owner's device that runs this server in its own process. Its
-OAuth client is `wildflower-host`. It holds no token of its own: it decides
+OAuth client is `WILDFLOWER_HOST_APP_CLIENT_ID`, allowed only `openid`. It
+holds no token of its own: it decides
 consents, mints launches and mints same-device sign-in codes in-process, as
 the Owner.
 
@@ -496,8 +499,8 @@ running the server, and the host app runs on that device.
    browser.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
    proof) and mints a token through the ordinary minter, issued to the
-   `wildflower-owner-browser` client (its `sub`) and holding the host Owner's
-   grant (`host_owner_scopes`, the grant `HostConsentDecider` acts with), as a
+   `wildflower-owner-browser` client (its `sub`) and holding the Owner's
+   grant (`OWNER_SCOPES`, the grant `HostConsentDecider` acts with), as a
    JWT with its own `jti` that expires in 8 hours.
 4. It answers `303` to `next`, setting
    `__Host-owner_browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
@@ -557,7 +560,7 @@ one by **where it comes from**:
 | `unregistered_requested_scopes` | Requested scopes the registration does not cover (`newScopes` on the wire).                                  |
 | `approver_missing_scopes`       | Resource scopes an approval would grant that the approving Owner does not hold (`missingScopes` on the 403). |
 | `granted_scopes`                | What an approval delegated, recorded on the request, the code, and the refresh family.                       |
-| `host_owner_scopes`             | The host owner's configured authority (`local_granted_scopes` in `tauri-shared-config.json`).                |
+| `OWNER_SCOPES`                  | The Owner's authority: `WILDFLOWER_WIDEST_SCOPES` plus `wildflower/launch`, defined in code.                 |
 
 An approval with any `approver_missing_scopes` is refused as a whole with
 `403 InsufficientScope`. Nothing is recorded, no code is issued, and the request
@@ -573,7 +576,7 @@ Replaces the deleted PIN flow's "operator gets onto a cold deployment"
 mechanism. The host process (`authorization-server-rust`, native-shell wrapper, dev
 server) has direct access to the signing key and mints a short-lived owner
 access token directly. It verifies normally
-because `wildflower-host` is a registered [`Client`](#client) and
+because the host app's client is a registered [`Client`](#client) and
 `'owner' ∈ scope` — no new endpoint, no redemption table.
 
 The web SPA has no client-side URL-token consumption: it signs in through
@@ -627,7 +630,7 @@ Where the OAuth client wants the authorization code delivered after
 approval. Validated to be `http(s)`; matched against the client's
 `redirectUris` allowlist (exact match — no prefix games). A miss is not a
 rejection but a `changed` [registration verdict](#trust-on-first-use)
-(`wildflower-host` excepted), and until the Owner approves, the URI is
+(the host app's client excepted), and until the Owner approves, the URI is
 untrusted — no error redirects to it.
 
 ### `scope`
@@ -635,7 +638,7 @@ untrusted — no error redirects to it.
 Space-delimited list of permission strings the OAuth client is asking
 for. Compared against `client.allowedScopes`; a scope outside that set makes
 the request a `changed` [registration verdict](#trust-on-first-use) that the
-Owner is warned about (`wildflower-host` excepted — its requests are
+Owner is warned about (the host app's client excepted — its requests are
 rejected with `invalid_scope`). Stored on
 `AuthorizationRequest.requestedScopes`,
 `AuthorizationCode.grantedScopes`, and `Grant.scopes`.
@@ -728,8 +731,8 @@ with — so it waits rather than decides.
 
 ### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`
 
-RFC 8628. The grant type used by `wildflower-host` (and any other
-no-redirect-capable OAuth client) to bootstrap onto a deployment. See
+RFC 8628. The grant type a no-redirect-capable OAuth client uses to
+bootstrap onto a deployment. See
 the [Device flow](#device-flow-rfc-8628) section above.
 
 ### Refresh token / `grant_type=refresh_token`

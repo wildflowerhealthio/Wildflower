@@ -403,7 +403,7 @@ changing how servers run or what the host notifies about them.
   and `UnitRunner` clears the detail when the run ends, so the consent
   commands, which look the decider up in `statuses()`, reach only a running
   server and answer `serverNotRunning` otherwise. They call the capabilities behind `/authorization/devices/{userCode}`
-  and `/authorization/oauth-consents/{id}` with the host Owner's grant, on a
+  and `/authorization/oauth-consents/{id}` with the Owner's grant, on a
   blocking thread: no HTTP, and no owner bearer in the webview. An approval
   is remembered as a standing grant, as one in the launcher is. Errors are
   `{kind, message}`: `serverNotRunning`, `notPending`,
