@@ -131,15 +131,20 @@ only it composes. Rust-only, no `-core`.
     The forwarded-request report skips `/health`, so the probes stay out of
     the request log and the request notifications.
   - **Session cookies.** A browser on the server's own pages carries a
-    cookie and no `Authorization`: the Owner's `__Host-owner_browser_session`, whose
-    value is an Owner token `/oauth/sign-in` issued, or the FHIR web UI's
+    cookie and no `Authorization`: an Owner browser's
+    `__Host-owner_browser_session`, whose value is the token `/oauth/sign-in`
+    issued to the `wildflower-owner-browser` client, or the FHIR web UI's
     `hfs_session`, which names a UI session holding a bearer. The inner
     router, under both listeners, is wrapped in one cookie→bearer layer per
-    cookie (`http/middleware/session_cookie_bearer.rs`): a request from the
-    served origin with no `Authorization` gets the cookie's bearer, and a
-    write carrying the cookie from any other origin gets `403`. No route is
-    singled out; the gates check the token's scopes and revocation. The host
-    mints the one-time same-device sign-in codes through
+    cookie, the UI's outermost
+    (`http/middleware/session_cookie_bearer.rs`'s
+    `present_session_cookie_bearers`): a request from the served origin with
+    no `Authorization` gets a live session's bearer, `hfs_session`'s when it
+    carries both; an Owner browser cookie whose token has expired or been
+    revoked is skipped and cleared on the response; and a write carrying
+    either cookie from any other origin gets `403`. No route is singled out;
+    the gates check the token's scopes and revocation. The Wildflower host
+    app mints the one-time same-device sign-in codes through
     `WildflowerServer::same_device_sign_in_code_minter`, in-process.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig` with its `DeviceCertificateConfig`, `HostPorts`,

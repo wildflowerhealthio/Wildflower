@@ -10,10 +10,11 @@ use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 /// Mirroring headers rather than `*` matters: the CORS spec's header wildcard
 /// excludes `Authorization`, the one header the bearer clients need. Credentials
 /// stay off because every other origin authenticates by `Authorization: Bearer`:
-/// the server accepts two cookies, `__Host-owner_browser_session` and the FHIR UI's
-/// `hfs_session`, only from its own pages, with an Origin check on writes
-/// (`session_cookie_bearer`), and turns each into a bearer token, so no other
-/// origin may read a response one rode on. A page on a public origin — the hosted launcher at
+/// the server accepts two cookies, an Owner browser's
+/// `__Host-owner_browser_session` and the FHIR UI's `hfs_session`, only from
+/// its own pages, with an Origin check on writes (`session_cookie_bearer`),
+/// and turns each into a bearer token, so no other origin may read a response
+/// one rode on. A page on a public origin — the hosted launcher at
 /// `wildflowerhealth.io/launcher/` — fetching this loopback server makes Chrome send
 /// `Access-Control-Request-Private-Network: true`, and it blocks the request
 /// unless the preflight answers `Access-Control-Allow-Private-Network: true`.
