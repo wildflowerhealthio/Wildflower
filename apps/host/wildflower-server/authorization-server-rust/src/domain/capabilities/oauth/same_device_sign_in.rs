@@ -67,7 +67,7 @@ pub(crate) struct SameDeviceSignIn<S: GrantStore> {
     destinations: Arc<SignInDestinations>,
     /// The server's bare origin, the token's `iss` and `aud`.
     server_origin: Arc<str>,
-    /// The Owner's grant: the host Owner's configured scopes.
+    /// The Owner's grant, [`OWNER_SCOPES`](crate::OWNER_SCOPES).
     owner_grant: Grant,
 }
 

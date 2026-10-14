@@ -88,11 +88,10 @@ pub use wildflowerhealthio_persistence::DieselPool;
 ///
 /// This is the standalone/test fallback: the live Tauri app sources the id from
 /// `tauri-shared-config.json` and threads it via
-/// [`AuthorizationServerConfig::wildflower_host_app_client_id`], the single source shared with the
-/// TS shell (`authorization-core`'s `WILDFLOWER_HOST_APP_CLIENT_ID` is the matching TS
-/// fallback), so the id can't drift across the boundary. Rendered by
+/// [`AuthorizationServerConfig::wildflower_host_app_client_id`], so the id can't
+/// drift from the host's config. Rendered by
 /// [`default_wildflower_host_app_client_id`].
-pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "wildflower-host";
+pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a5";
 
 /// `client_id` of the Owner-browser client: the browsers the host app has
 /// signed in as the Owner on its own device, with a same-device sign-in code at
@@ -100,8 +99,8 @@ pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "wildflower-host";
 /// (its `sub`), so revoking the client's subject signs every Owner browser
 /// out, and one browser's session is revoked by its token's `jti`. Like
 /// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it is an essential client: it can't be
-/// disabled. Seeded at boot by [`crate::setup_authorization_server`]; it takes part in no
-/// OAuth flow.
+/// disabled. Seeded at boot by [`crate::setup_authorization_server`] with
+/// [`OWNER_SCOPES`]; it takes part in no OAuth flow.
 pub const OWNER_BROWSER_CLIENT_ID: &str = "wildflower-owner-browser";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
@@ -122,24 +121,16 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The **default** scopes granted to the host app's client (`wildflower-host`):
-/// the widest set, so local users can drive both the FHIR surface and the
-/// non-FHIR (Wildflower) APIs. Rendered by [`default_local_granted_scopes`].
+/// The Owner's scopes: the authority the Owner approves consents with (in the
+/// launcher, or in-process through [`HostConsentDecider`]), what an Owner
+/// browser's session holds, and the Owner-browser client's `allowed_scopes`.
+/// An approval can't delegate a resource scope these don't cover.
 ///
-/// This is no longer the *live* source: the running Tauri app sources the host
-/// grant from `tauri-shared-config.json` and threads it via
-/// [`AuthorizationServerConfig::host_owner_scopes`], so the value can't drift from the TS
-/// shell's device-authorization request. This const is the fallback for
-/// standalone/test builds that don't thread one.
-///
-/// Spelled out independently of [`WILDFLOWER_WIDEST_SCOPES`] (the owner-defining
-/// set) even though the FHIR + Wildflower wildcards coincide: the host's *grant*
-/// and the *owner definition* are distinct concepts that diverge here — the grant
-/// additionally carries `wildflower/launch`, an owner *capability* (not part of the
-/// owner *identity* [`WILDFLOWER_WIDEST_SCOPES`]). As a *known* scope it is NOT
-/// covered by the `wildflower/*` resource wildcard, so the apps launch surface
-/// would `403` the owner without it granted explicitly here.
-pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
+/// [`WILDFLOWER_WIDEST_SCOPES`] (the owner *identity*) plus `wildflower/launch`,
+/// an owner *capability*. As a *known* scope it is NOT covered by the
+/// `wildflower/*` resource wildcard, so the apps launch surface would `403` the
+/// Owner without it listed explicitly here. Rendered by [`owner_scopes`].
+pub const OWNER_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,
         resource: ResourceType::Wildcard,
@@ -153,12 +144,19 @@ pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
     Scope::Known(KnownScope::AnyScopedAppLaunch),
 ];
 
-/// The default host granted-scope wire strings — the rendered
-/// [`WILDFLOWER_LOCAL_GRANTED_SCOPES`]. Standalone and test builds seed
-/// [`AuthorizationServerConfig::host_owner_scopes`] from this; the live Tauri app sources
-/// the value from `tauri-shared-config.json` instead.
-pub fn default_local_granted_scopes() -> Vec<String> {
-    wildflowerhealthio_scopes::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
+/// The Owner's scope wire strings — the rendered [`OWNER_SCOPES`].
+#[must_use]
+pub fn owner_scopes() -> Vec<String> {
+    wildflowerhealthio_scopes::render_scopes(OWNER_SCOPES)
+}
+
+/// The default scopes the host app's client may be granted: `openid` alone.
+/// Standalone and test builds seed
+/// [`AuthorizationServerConfig::host_app_client_scopes`] from this; the live
+/// Tauri app sources the value from `tauri-shared-config.json` instead.
+#[must_use]
+pub fn default_host_app_client_scopes() -> Vec<String> {
+    vec![Scope::Known(KnownScope::Openid).to_string()]
 }
 
 /// The default Wildflower host app `client_id` — [`WILDFLOWER_HOST_APP_CLIENT_ID`]. Standalone
@@ -251,29 +249,9 @@ pub fn setup_authorization_server(
     config: &AuthorizationServerConfig,
     owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
 ) -> anyhow::Result<AuthorizationServer> {
-    // `host_owner_scopes` (the live app sources these from
-    // `tauri-shared-config.json`) is the Owner's grant: what the host delegates
-    // from when it decides a consent in-process, what the host app's client
-    // may be granted, and what an Owner browser's session holds. The `/authorization/*` owner gate checks coverage
-    // of every `WILDFLOWER_WIDEST_SCOPES` entry, so the JSON must keep covering
-    // WIDEST; fail loudly at boot rather than at the first `/authorization/*` call.
-    let host_owner: Vec<Scope> = config
-        .host_owner_scopes
-        .iter()
-        .map(|s| Scope::from(s.as_str()))
-        .collect();
-    assert!(
-        WILDFLOWER_WIDEST_SCOPES
-            .iter()
-            .all(|widest| host_owner.iter().any(|held| held.covers(widest))),
-        "host_owner_scopes (from tauri-shared-config.json) must cover every \
-         WILDFLOWER_WIDEST_SCOPES entry, or the Owner's grant can't pass the \
-         /authorization/* owner gate; got {:?}",
-        config.host_owner_scopes
-    );
     let store = seeding::open_and_seed_store(
         pool,
-        &config.host_owner_scopes,
+        &config.host_app_client_scopes,
         &config.wildflower_host_app_client_id,
         &config.fhir_ui_client_id,
         &config.server_origin,
@@ -289,7 +267,7 @@ pub fn setup_authorization_server(
         wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
-        host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),
+        owner_grant: Grant::new(OWNER_SCOPES.to_vec()),
         same_device_sign_in_codes: same_device_sign_in_codes.clone(),
         sign_in_destinations: Arc::new(SignInDestinations::new(
             config.server_origin.clone(),
@@ -418,4 +396,16 @@ fn spawn_device_consent_reaper(state: Arc<AuthorizationServerState>) {
             ports::OwnerApproval::republish_active(state.as_ref());
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Owner's scopes cover every owner-defining scope, so an Owner's
+    /// token passes every `/authorization/*` owner gate.
+    #[test]
+    fn the_owner_s_scopes_cover_the_widest_scopes() {
+        assert!(Grant::new(OWNER_SCOPES.to_vec()).covers_all(WILDFLOWER_WIDEST_SCOPES));
+    }
 }

@@ -37,8 +37,8 @@ describe('trustedAppRow', () => {
     // Arrange
     const client = decodeClient({
       ...ohifViewer,
-      clientId: 'wildflower-host',
-      name: 'Wildflower',
+      clientId: 'host-app',
+      name: 'Wildflower Host',
       essential: true,
     })
 
@@ -46,7 +46,7 @@ describe('trustedAppRow', () => {
     const row = trustedAppRow(client)
 
     // Assert
-    expect(row).toEqual({ action: null, disabled: false, subtitle: 'wildflower-host · Essential' })
+    expect(row).toEqual({ action: null, disabled: false, subtitle: 'host-app · Essential' })
   })
 
   it('should never offer a switch for an essential client, whatever its state', () => {

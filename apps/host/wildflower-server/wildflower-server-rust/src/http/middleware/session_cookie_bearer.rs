@@ -319,8 +319,8 @@ mod tests {
             let config = AuthorizationServerConfig {
                 loopback_base_url: loopback_base_url(),
                 server_origin: url::Url::parse(SERVED_ORIGIN).expect("origin"),
-                host_owner_scopes:
-                    wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+                host_app_client_scopes:
+                    wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
                 wildflower_host_app_client_id:
                     wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
                 fhir_ui_client_id: "fhir-ui-client".to_string(),
@@ -356,8 +356,7 @@ mod tests {
                 &key,
                 &NewJwtArgs {
                     client_id: OWNER_BROWSER_CLIENT_ID,
-                    scopes: &wildflowerhealthio_authorization_server::default_local_granted_scopes(
-                    ),
+                    scopes: &wildflowerhealthio_authorization_server::owner_scopes(),
                     ttl,
                     issuer: SERVED_ORIGIN,
                     audience: Some(SERVED_ORIGIN),

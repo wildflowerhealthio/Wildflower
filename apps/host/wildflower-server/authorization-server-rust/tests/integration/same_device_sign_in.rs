@@ -109,7 +109,7 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
 }
 
 /// The cookie carries exactly the Owner browser session's attributes, and its
-/// value is an Owner token: the Owner-browser client holding the host Owner's
+/// value is an Owner token: the Owner-browser client holding the Owner's
 /// grant, for eight hours, which the gate accepts.
 #[tokio::test]
 async fn the_cookie_holds_an_eight_hour_owner_token() {
@@ -134,7 +134,7 @@ async fn the_cookie_holds_an_eight_hour_owner_token() {
     assert_eq!(claims["aud"], SERVER_ORIGIN);
     assert_eq!(
         claims["scope"],
-        wildflowerhealthio_authorization_server::default_local_granted_scopes().join(" ")
+        wildflowerhealthio_authorization_server::owner_scopes().join(" ")
     );
     assert_eq!(
         claims["exp"].as_i64().expect("exp") - claims["iat"].as_i64().expect("iat"),
@@ -184,7 +184,7 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(
         body_json(res.into_body()).await["scopes"],
-        serde_json::json!(wildflowerhealthio_authorization_server::default_local_granted_scopes())
+        serde_json::json!(wildflowerhealthio_authorization_server::owner_scopes())
     );
 
     let res = g
@@ -206,8 +206,8 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
 }
 
 /// Revoking the Owner-browser client's subject is a `204`
-/// that signs every Owner browser out at once, while the host app, under its
-/// own client, stays signed in.
+/// that signs every Owner browser out at once, while a token issued to
+/// another client keeps working.
 #[tokio::test]
 async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
     let (g, owner_token, _db) = spin_up();
@@ -249,7 +249,7 @@ async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
     assert_eq!(
         grants_status(owner_token).await,
         StatusCode::OK,
-        "the host app is still signed in"
+        "another client's token is untouched"
     );
 }
 

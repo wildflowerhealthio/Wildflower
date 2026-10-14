@@ -150,8 +150,8 @@ mod tests {
     use super::*;
     use crate::domain::test_fake::{client, FakeGrantStore};
 
-    const HOST: &str = "wildflower-host";
-    const OWNER_BROWSER: &str = "wildflower-owner-browser";
+    const HOST: &str = crate::WILDFLOWER_HOST_APP_CLIENT_ID;
+    const OWNER_BROWSER: &str = crate::OWNER_BROWSER_CLIENT_ID;
 
     fn essential_client_guard() -> EssentialClientGuard {
         EssentialClientGuard::new(HOST.into(), OWNER_BROWSER.into())

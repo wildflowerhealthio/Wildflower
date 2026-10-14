@@ -52,11 +52,11 @@ async fn gate_rejects_a_revoked_jti() {
 #[tokio::test]
 async fn gate_rejects_after_subject_epoch_bump() {
     let (g, owner_token, db) = spin_up();
-    // Bulk-revoke the host client's cohort. JWT `iat` is second-precision, so
+    // Bulk-revoke the Owner token's client's cohort. JWT `iat` is second-precision, so
     // advance the epoch one second past the mint second to unambiguously cover a
     // token minted moments ago in this test.
     revocation_store_handle(&db)
-        .bump_subject_epoch("wildflower-host", Utc::now() + Duration::seconds(1))
+        .bump_subject_epoch(OWNER_TOKEN_CLIENT_ID, Utc::now() + Duration::seconds(1))
         .expect("bump");
     let res = g
         .router
@@ -305,23 +305,34 @@ async fn gate_status(g: &AuthorizationServer, token: &str) -> StatusCode {
         .status()
 }
 
+/// A token issued to the host app's client, holding all it may: `openid`,
+/// which reaches no `/authorization/*` scope gate.
+fn mint_host_app_token(db: &TestDb) -> String {
+    mint_client_token(db, WILDFLOWER_HOST_APP_CLIENT_ID, &["openid"])
+}
+
 /// Revoking the Wildflower host app's subject revokes a token issued to it,
-/// like any other client's.
+/// like any other client's: the gate that forbade it now rejects it outright.
 #[tokio::test]
 async fn revoking_the_host_app_s_subject_revokes_its_tokens() {
-    let (g, owner_token, _db) = spin_up();
+    let (g, owner_token, db) = spin_up();
+    let host_app_token = mint_host_app_token(&db);
+    assert_eq!(
+        gate_status(&g, &host_app_token).await,
+        StatusCode::FORBIDDEN
+    );
     let res = g
         .router
         .clone()
         .oneshot(owner_revocation_request(
             &owner_token,
-            serde_json::json!({ "subject": "wildflower-host" }),
+            serde_json::json!({ "subject": WILDFLOWER_HOST_APP_CLIENT_ID }),
         ))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert_eq!(
-        gate_status(&g, &owner_token).await,
+        gate_status(&g, &host_app_token).await,
         StatusCode::UNAUTHORIZED,
         "the token issued to the host app is revoked"
     );
@@ -332,24 +343,25 @@ async fn revoking_the_host_app_s_subject_revokes_its_tokens() {
 #[tokio::test]
 async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
     let (g, owner_token, db) = spin_up();
+    let host_app_token = mint_host_app_token(&db);
     store_handle(&db)
         .create_device_grant(
             &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
-                id: "owner-grant".to_string(),
-                client_id: "wildflower-host".to_string(),
-                scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+                id: "host-app-grant".to_string(),
+                client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_string(),
+                scopes: wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
                 granted_at: Utc::now(),
                 last_used_at: None,
                 patient: None,
                 device_name: "The Owner's laptop".to_string(),
             },
         )
-        .expect("create the Owner's grant");
+        .expect("create the host app's grant");
     let res = g
         .router
         .clone()
         .oneshot(loopback_request(
-            Request::delete("/authorization/grants/owner-grant")
+            Request::delete("/authorization/grants/host-app-grant")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
             Body::empty(),
@@ -358,11 +370,11 @@ async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert!(store_handle(&db)
-        .grant_by_id("owner-grant")
+        .grant_by_id("host-app-grant")
         .expect("query")
         .is_none());
     assert_eq!(
-        gate_status(&g, &owner_token).await,
+        gate_status(&g, &host_app_token).await,
         StatusCode::UNAUTHORIZED
     );
 }

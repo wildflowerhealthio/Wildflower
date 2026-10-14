@@ -80,11 +80,11 @@ pub struct AuthorizationServerState {
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
     pub(crate) owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
-    /// The host Owner's grant, parsed from
-    /// [`AuthorizationServerConfig::host_owner_scopes`](crate::AuthorizationServerConfig::host_owner_scopes)
-    /// — the approving authority when the host decides a consent in-process
-    /// through [`HostConsentDecider`](crate::HostConsentDecider).
-    pub(crate) host_owner_grant: wildflowerhealthio_scopes::Grant,
+    /// The Owner's grant, [`crate::OWNER_SCOPES`] — the approving authority
+    /// when the host decides a consent in-process through
+    /// [`HostConsentDecider`](crate::HostConsentDecider), and what an Owner
+    /// browser's session holds.
+    pub(crate) owner_grant: wildflowerhealthio_scopes::Grant,
     /// The outstanding same-device sign-in codes: minted in-process by the
     /// [`SameDeviceSignInCodeMinter`](crate::SameDeviceSignInCodeMinter)
     /// [`crate::setup_authorization_server`] hands the host, redeemed at

@@ -67,7 +67,7 @@ mod source_guards {
             ".owner_approval_tx",
             ".loopback_base_url",
             ".server_origin",
-            ".host_owner_grant",
+            ".owner_grant",
             ".same_device_sign_in_codes",
             ".sign_in_destinations",
         ];

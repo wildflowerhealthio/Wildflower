@@ -4,9 +4,9 @@
 //! base can mint a code, and the base runs on the device that runs the server,
 //! so redeeming one is proof of that device. The token it earns is the
 //! Owner's, issued to the Owner-browser client
-//! ([`OWNER_BROWSER_CLIENT_ID`]) and holding the host Owner's grant, the grant
-//! the host's own owner token and the
-//! [`HostConsentDecider`](crate::HostConsentDecider) act under.
+//! ([`OWNER_BROWSER_CLIENT_ID`]) and holding the Owner's grant
+//! ([`OWNER_SCOPES`](crate::OWNER_SCOPES)), the grant the
+//! [`HostConsentDecider`](crate::HostConsentDecider) acts under.
 
 use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;

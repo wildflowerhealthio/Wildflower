@@ -17,11 +17,12 @@ fn owner_get(owner_token: &str, path: &str) -> Request<Body> {
 
 #[tokio::test]
 async fn device_prompt_is_cache_suppressed() {
-    let (g, owner_token, _db) = spin_up();
+    let (g, owner_token, db) = spin_up();
+    seed_test_client(&db);
     let start = loopback_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
-        Body::from("client_id=wildflower-host&scope=system%2F*.cruds"),
+        Body::from("client_id=integration-test-app&scope=system%2F*.cruds"),
     );
     let res = g.router.clone().oneshot(start).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);

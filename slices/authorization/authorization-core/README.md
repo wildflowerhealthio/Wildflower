@@ -69,7 +69,7 @@ and 90 days respectively). See the
 - `/oauth/authorize` — OAuth 2.0 authorization endpoint. An unknown
   `client_id`, an unregistered `redirect_uri`, or scopes outside the
   registration are carried to the consent prompt as a registration verdict
-  rather than rejected (`wildflower-host` excepted). A request no standing
+  rather than rejected (the host app's client excepted). A request no standing
   grant covers redirects to the consent card below when the browser carries a
   live Owner browser session, and to the wait page otherwise, relative to
   itself, so the browser stays on whichever origin it reached the
@@ -199,7 +199,7 @@ The host app's client is the exception, in both directions: its registration
 is fixed, so `/authorize` refuses an unregistered redirect for it outright
 (the local `RedirectUriNotAllowed` page), and `ensure_essential_clients` seeds
 it from code with no redirect URIs at all. A browser page running this flow
-therefore cannot authorize as `wildflower-host`; it needs a client row of its
+therefore cannot authorize as the host app's client; it needs a client row of its
 own, the way `server-docs-web` and `launcher-web` have one.
 
 ### Returning to a route instead of a directory

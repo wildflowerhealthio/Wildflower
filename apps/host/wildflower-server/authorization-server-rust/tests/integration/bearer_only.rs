@@ -6,16 +6,17 @@ use crate::common::*;
 // becomes a bearer in the host's cookie→bearer layer, not here. See
 // `slices/authorization/docs/Auth Token Storage Explanation.md`.
 
-/// The host app's device login returns its token in the JSON body only
-/// — no `Set-Cookie` rides the response.
+/// A device grant returns its token in the JSON body only — no `Set-Cookie`
+/// rides the response.
 #[tokio::test]
-async fn the_host_app_s_device_grant_sets_no_cookie() {
+async fn a_device_grant_sets_no_cookie() {
     let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
     plant_device_request(
         &store_handle(&db),
-        "wildflower-host",
+        TEST_CLIENT_ID,
         "dev-no-cookie",
-        &[&WILDFLOWER_LOCAL_GRANTED_SCOPES[0].to_string()],
+        &[TEST_CLIENT_SCOPE],
         RequestStatus::Approved,
         Utc::now() + Duration::minutes(5),
     );
@@ -23,7 +24,7 @@ async fn the_host_app_s_device_grant_sets_no_cookie() {
         &g.router,
         "/oauth/token",
         "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
-         client_id=wildflower-host&device_code=dev-no-cookie",
+         client_id=integration-test-app&device_code=dev-no-cookie",
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -35,20 +36,21 @@ async fn the_host_app_s_device_grant_sets_no_cookie() {
     assert!(token["access_token"].as_str().is_some());
 }
 
-/// The host app's refresh grant likewise returns only the JSON token.
+/// A refresh grant likewise returns only the JSON token.
 #[tokio::test]
-async fn the_host_app_s_refresh_grant_sets_no_cookie() {
+async fn a_refresh_grant_sets_no_cookie() {
     let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
     plant_refresh_token(
         &store_handle(&db),
-        "owner-refresh",
-        "wildflower-host",
+        "test-refresh",
+        TEST_CLIENT_ID,
         Utc::now() + Duration::days(30),
     );
     let res = post_form(
         &g.router,
         "/oauth/token",
-        "grant_type=refresh_token&client_id=wildflower-host&refresh_token=owner-refresh",
+        "grant_type=refresh_token&client_id=integration-test-app&refresh_token=test-refresh",
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);

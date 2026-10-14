@@ -26,7 +26,7 @@ describe('TokenExchange wire format', () => {
         return yield* client.oauth.TokenExchange({
           payload: {
             grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-            client_id: 'wildflower-host',
+            client_id: 'test-app',
             device_code: 'dev-1',
           },
         })
@@ -38,7 +38,7 @@ describe('TokenExchange wire format', () => {
       {
         contentType: 'application/x-www-form-urlencoded',
         bodyText:
-          'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&client_id=wildflower-host&device_code=dev-1',
+          'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&client_id=test-app&device_code=dev-1',
       },
     ])
   })
@@ -55,7 +55,7 @@ describe('TokenExchange wire format', () => {
         return yield* client.oauth.TokenExchange({
           payload: {
             grant_type: 'authorization_code',
-            client_id: 'wildflower-host',
+            client_id: 'test-app',
             code: 'code-1',
             code_verifier: verifier,
             redirect_uri: 'http://127.0.0.1:8080/callback',
@@ -68,7 +68,7 @@ describe('TokenExchange wire format', () => {
     expect(captures).toEqual([
       {
         contentType: 'application/x-www-form-urlencoded',
-        bodyText: `grant_type=authorization_code&client_id=wildflower-host&code=code-1&code_verifier=${verifier}&redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fcallback`,
+        bodyText: `grant_type=authorization_code&client_id=test-app&code=code-1&code_verifier=${verifier}&redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fcallback`,
       },
     ])
   })
@@ -88,7 +88,7 @@ describe('TokenExchange wire format', () => {
         return yield* client.oauth.TokenExchange({
           payload: {
             grant_type: 'refresh_token',
-            client_id: 'wildflower-host',
+            client_id: 'test-app',
             refresh_token: 'rt-1',
           },
         })
@@ -99,7 +99,7 @@ describe('TokenExchange wire format', () => {
     expect(captures).toEqual([
       {
         contentType: 'application/x-www-form-urlencoded',
-        bodyText: 'grant_type=refresh_token&client_id=wildflower-host&refresh_token=rt-1',
+        bodyText: 'grant_type=refresh_token&client_id=test-app&refresh_token=rt-1',
       },
     ])
   })
@@ -120,7 +120,7 @@ describe('DeviceAuthorization wire format', () => {
         const client = yield* HttpApiClient.make(AuthorizationServerApi)
         return yield* client.oauth.DeviceAuthorization({
           payload: {
-            client_id: 'wildflower-host',
+            client_id: 'test-app',
             scope: 'system/*.cruds',
             device_name: "Ada's laptop",
           },
@@ -132,7 +132,7 @@ describe('DeviceAuthorization wire format', () => {
     expect(captures).toEqual([
       {
         contentType: 'application/x-www-form-urlencoded',
-        bodyText: 'client_id=wildflower-host&scope=system%2F*.cruds&device_name=Ada%27s+laptop',
+        bodyText: 'client_id=test-app&scope=system%2F*.cruds&device_name=Ada%27s+laptop',
       },
     ])
   })

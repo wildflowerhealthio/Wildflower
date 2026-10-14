@@ -60,9 +60,55 @@ async fn the_host_reads_and_approves_a_parked_authorize_request() {
     );
 }
 
+/// The host approves with the Owner's authority, not the host app's client's:
+/// a client trusted on first use is granted `system/*.cruds`, a scope the host
+/// app's client may not hold.
+#[tokio::test]
+async fn the_host_approves_a_scope_the_host_app_s_client_may_not_hold() {
+    let (g, _owner_token, db) = spin_up();
+    let host_app_client = store_handle(&db)
+        .client_by_id(WILDFLOWER_HOST_APP_CLIENT_ID)
+        .unwrap()
+        .expect("the seeded host app's client");
+    assert_eq!(host_app_client.allowed_scopes, vec!["openid".to_owned()]);
+    let request_id = parked_request_id(
+        &get_authorize(&g.router, &authorize_query("tofu-app", "system%2F*.cruds")).await,
+    );
+    let decider = HostConsentDecider::new(g.state.clone());
+    assert_eq!(
+        decider
+            .oauth_consent(&request_id)
+            .expect("the parked request")
+            .registration_verdict,
+        ClientRegistrationVerdict::New
+    );
+
+    let outcome = decider
+        .approve_oauth(
+            &request_id,
+            ApproveOAuthConsentInput {
+                owner_approved_scopes: vec!["system/*.cruds".to_owned()],
+                patient: None,
+                acknowledged_registration: true,
+            },
+            Utc::now(),
+        )
+        .expect("approve");
+    assert!(matches!(outcome, ConsentOutcome::Approved { .. }));
+    assert_eq!(
+        store_handle(&db)
+            .authorization_request_by_id(&request_id)
+            .unwrap()
+            .unwrap()
+            .granted_scopes,
+        Some(vec!["system/*.cruds".to_owned()]),
+    );
+}
+
 #[tokio::test]
 async fn the_host_reads_approves_and_denies_device_requests() {
     let (g, _owner_token, db) = spin_up();
+    seed_test_client(&db);
     let mut user_codes = Vec::new();
     for _ in 0..2 {
         let res = g
@@ -71,7 +117,7 @@ async fn the_host_reads_approves_and_denies_device_requests() {
             .oneshot(loopback_request(
                 Request::post("/oauth/device_authorization")
                     .header("content-type", "application/x-www-form-urlencoded"),
-                Body::from("client_id=wildflower-host&scope=system%2F*.cruds"),
+                Body::from("client_id=integration-test-app&scope=system%2F*.cruds"),
             ))
             .await
             .expect("oneshot");
@@ -81,7 +127,7 @@ async fn the_host_reads_approves_and_denies_device_requests() {
     let decider = HostConsentDecider::new(g.state.clone());
 
     let consent = decider.device_consent(&user_codes[0]).expect("the request");
-    assert_eq!(consent.request.client_id, "wildflower-host");
+    assert_eq!(consent.request.client_id, TEST_CLIENT_ID);
     assert_eq!(
         consent.request.requested_scopes,
         vec!["system/*.cruds".to_owned()]

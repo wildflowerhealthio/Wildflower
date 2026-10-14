@@ -54,10 +54,8 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             "https://authorization.test/authorization/",
         )
         .expect("authorization app base"),
-        host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        host_app_client_scopes:
+            wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
         wildflower_host_app_client_id:
             wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
@@ -276,7 +274,7 @@ async fn start_device_authorization(loopback_base_url: &Url) -> String {
         )
         .header("content-type", "application/x-www-form-urlencoded")
         .body(format!(
-            "client_id={}&scope=system%2F*.cruds",
+            "client_id={}&scope=openid",
             wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
         ))
         .send()
@@ -332,13 +330,13 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
         client_id,
         wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
     );
-    assert_eq!(requested_scopes, ["system/*.cruds"]);
+    assert_eq!(requested_scopes, ["openid"]);
 
     let outcome = tokio::task::block_in_place(|| {
         decider.approve(
             ConsentApproval::Device {
                 user_code: user_codes[0].clone(),
-                approved_scopes: vec!["system/*.cruds".to_owned()],
+                approved_scopes: vec!["openid".to_owned()],
                 patient: None,
             },
             chrono::Utc::now(),

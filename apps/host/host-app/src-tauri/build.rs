@@ -6,7 +6,7 @@ use std::path::Path;
 struct TauriSharedConfig {
     loopback_hostname: String,
     loopback_port: u16,
-    local_granted_scopes: String,
+    host_app_client_scopes: String,
     wildflower_host_app_client_id: String,
     launcher_base_url: String,
     authorization_app_base_url: String,
@@ -58,8 +58,8 @@ fn main() {
         config.loopback_port
     );
     println!(
-        "cargo:rustc-env=WILDFLOWER_LOCAL_GRANTED_SCOPES={}",
-        config.local_granted_scopes
+        "cargo:rustc-env=WILDFLOWER_HOST_APP_CLIENT_SCOPES={}",
+        config.host_app_client_scopes
     );
     println!(
         "cargo:rustc-env=WILDFLOWER_HOST_APP_CLIENT_ID={}",

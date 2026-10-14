@@ -34,7 +34,8 @@ fn set_up_authorization_server(
     let config = AuthorizationServerConfig {
         loopback_base_url: Url::parse("http://127.0.0.1").expect("loopback URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
-        host_owner_scopes: wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+        host_app_client_scopes:
+            wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
         wildflower_host_app_client_id:
             wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),

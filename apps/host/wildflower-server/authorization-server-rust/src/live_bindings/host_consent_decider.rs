@@ -3,9 +3,8 @@
 //!
 //! The same [`ConsentReader`] and [`ConsentDecider`] the `/authorization/devices/*`
 //! and `/authorization/oauth-consents/*` routes acquire through `Scoped<…>`, built
-//! here with the host Owner's grant
-//! ([`host_owner_scopes`](crate::AuthorizationServerConfig::host_owner_scopes))
-//! as the approver's. An approval is remembered as a standing grant, as one
+//! here with the Owner's grant ([`OWNER_SCOPES`](crate::OWNER_SCOPES)) as the
+//! approver's. An approval is remembered as a standing grant, as one
 //! made in the launcher is.
 
 use std::sync::Arc;
@@ -26,7 +25,7 @@ use crate::ports::OwnerApproval;
 /// its Owner, in-process, without HTTP or a token: the in-process twin of the
 /// launcher's `/authorization/devices/*` and `/authorization/oauth-consents/*` routes.
 ///
-/// Whoever holds one decides with the host Owner's authority and no token,
+/// Whoever holds one decides with the Owner's authority and no token,
 /// so only the host gets one: it is built from the [`AuthorizationServerState`]
 /// [`setup_authorization_server`](crate::setup_authorization_server) returns, and nothing in the
 /// HTTP surface reaches it. Each call is a synchronous store transaction, so
@@ -52,7 +51,7 @@ impl HostConsentDecider {
         ConsentDecider::new(
             self.state.store.clone(),
             owner_approval,
-            self.state.host_owner_grant.clone(),
+            self.state.owner_grant.clone(),
             self.state.wildflower_host_app_client_id.clone(),
         )
     }

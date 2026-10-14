@@ -144,6 +144,9 @@ mod tests {
     use wildflowerhealthio_authorization_server::domain::authorization_request::{
         AuthorizationRequest, GrantType, RequestStatus,
     };
+    use wildflowerhealthio_authorization_server::domain::client::{
+        AllowedGrantType, Client, ClientKind,
+    };
     use wildflowerhealthio_authorization_server::GrantStore;
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
@@ -152,6 +155,10 @@ mod tests {
         test_authorization_server, TestAuthorizationServer, DOMAIN,
     };
 
+    /// The client the parked requests are from: allowed every grant type and
+    /// `system/*.cruds`.
+    const TEST_CLIENT_ID: &str = "test-app";
+
     /// Park a pending request on the authorization server's store, as its `/oauth/*`
     /// routes do.
     fn park(authorization_server: &TestAuthorizationServer, id: &str, grant_type: GrantType) {
@@ -159,11 +166,24 @@ mod tests {
         let is_device = grant_type == GrantType::DeviceCode;
         authorization_server
             .store
+            .upsert_client(&Client {
+                client_id: TEST_CLIENT_ID.to_owned(),
+                name: "Test App".to_owned(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
+                allowed_scopes: vec!["system/*.cruds".to_owned()],
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: now,
+                disabled_at: None,
+            })
+            .unwrap();
+        authorization_server
+            .store
             .insert_authorization_request(&AuthorizationRequest {
                 id: id.to_owned(),
                 grant_type,
-                client_id: wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
-                    .to_owned(),
+                client_id: TEST_CLIENT_ID.to_owned(),
                 requested_scopes: vec!["system/*.cruds".to_owned()],
                 code_challenge: (!is_device).then(|| "challenge".to_owned()),
                 code_challenge_method: (!is_device).then(|| "S256".to_owned()),

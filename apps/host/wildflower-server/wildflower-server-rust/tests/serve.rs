@@ -89,11 +89,8 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             "https://authorization.test/authorization/",
         )
         .expect("authorization app base"),
-        // The owner-defining scopes the authorization server requires the Owner's grant to cover.
-        host_owner_scopes: wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        host_app_client_scopes:
+            wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
         wildflower_host_app_client_id:
             wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
@@ -1412,14 +1409,9 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
 
     let signed_in_session = session().await;
     assert_eq!(signed_in_session.status(), reqwest::StatusCode::OK);
-    let owner_scopes: Vec<String> =
-        wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
-            .iter()
-            .map(ToString::to_string)
-            .collect();
     assert_eq!(
         signed_in_session.json::<Value>().await.expect("a session")["scopes"],
-        serde_json::json!(owner_scopes)
+        serde_json::json!(wildflowerhealthio_authorization_server::owner_scopes())
     );
 
     let ui_cookie = server.sign_in().await;
@@ -1457,7 +1449,7 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
             .json::<Value>()
             .await
             .expect("a session")["scopes"],
-        serde_json::json!(owner_scopes),
+        serde_json::json!(wildflowerhealthio_authorization_server::owner_scopes()),
         "a page asking for the Owner browser session gets it"
     );
 

@@ -1444,6 +1444,69 @@ mod tests {
         assert_eq!(allowed_scopes_of(&mut conn, LAUNCHER), LAUNCHER_AT_0031);
     }
 
+    /// An install already at `0031`, holding the host app's client under its
+    /// old `wildflower-host` id and a grant of it, re-keys both when `0033`
+    /// runs: no `wildflower-host` row lingers beside the one seeding upserts.
+    /// Reverting `0033` restores the old id.
+    #[test]
+    fn an_install_already_at_0031_rekeys_the_host_app_client() {
+        use diesel::connection::SimpleConnection as _;
+        const HOST_APP: &str = "c4e755b6a4c1abf2aae6d0d83f2545a5";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0031"),
+        )
+        .expect("migrate to 0031");
+        conn.batch_execute(
+            "INSERT INTO clients \
+             (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+              secret_hash, registered_at, disabled_at) \
+             VALUES ('wildflower-host', 'Wildflower (host)', 'public', '[]', \
+                     '[\"system/*.cruds\"]', '[\"device_code\"]', NULL, \
+                     '2024-01-01 00:00:00+00:00', NULL); \
+             INSERT INTO device_grants \
+             (id, client_id, scopes, granted_at, last_used_at, patient, device_name) \
+             VALUES ('host-grant', 'wildflower-host', '[\"system/*.cruds\"]', \
+                     '2026-01-01T00:00:00Z', NULL, NULL, 'The Owner''s laptop')",
+        )
+        .expect("the host app's client and a grant at 0031");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0033");
+
+        assert!(column_for_client(&mut conn, "client_id", "wildflower-host").is_empty());
+        assert_eq!(
+            column_for_client(&mut conn, "name", HOST_APP)[0].name,
+            "Wildflower Host"
+        );
+        let grant: Vec<Name> = diesel::sql_query(
+            "SELECT client_id AS name FROM device_grants WHERE id = 'host-grant'",
+        )
+        .load(&mut conn)
+        .expect("read the grant");
+        assert_eq!(grant[0].name, HOST_APP);
+
+        let migration_0033 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0033"))
+            .expect("0033 is embedded");
+        migration_0033.revert(&mut conn).expect("revert 0033");
+        assert_eq!(
+            column_for_client(&mut conn, "client_id", "wildflower-host").len(),
+            1
+        );
+        assert!(column_for_client(&mut conn, "client_id", HOST_APP).is_empty());
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database
