@@ -42,7 +42,7 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
     /// client trusted on first use: the `clients` row is created when absent,
     /// otherwise widened in place, and the approved redirect joins its
     /// allowlist exactly when the verdict found it new. `None` — a
-    /// built-in registration, which an approval never widens — writes
+    /// fixed registration, which an approval never widens — writes
     /// no `clients` row at all.
     ///
     /// The grant (and any widened registration) records exactly the proof's
@@ -304,7 +304,7 @@ mod tests {
     }
 
     /// No registration to widen writes no client row at all, even when none exists — a
-    /// built-in registration is never registered by an approval.
+    /// fixed registration is never registered by an approval.
     #[test]
     fn record_code_grant_without_widening_never_creates_a_client() {
         let store = FakeGrantStore::default();

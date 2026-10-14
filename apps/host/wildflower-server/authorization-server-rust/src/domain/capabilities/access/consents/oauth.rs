@@ -19,7 +19,7 @@ use crate::ports::OwnerApproval;
 use wildflowerhealthio_scopes::Grant;
 
 /// Everything an approval needs beyond the prompt itself: who is approving,
-/// which client's registration is built in,
+/// which client's registration is fixed,
 /// whether the approval is remembered, and the instant the writes are stamped
 /// with. Bundled (rather than four more parameters) so
 /// [`approve_oauth_consent`]'s signature stays readable.
@@ -28,7 +28,7 @@ pub(crate) struct ApprovalContext<'a> {
     /// approval may delegate (see [`DelegatedScopes::clamp`]).
     pub(crate) approver_grant: &'a Grant,
     /// The host app's `client_id` — the one client whose registration is
-    /// built in: defined by the server, never trusted on first use, never
+    /// fixed: defined by the server, never trusted on first use, never
     /// widened by an approval.
     pub(crate) wildflower_host_app_client_id: &'a str,
     /// Whether the approval becomes a standing grant.
@@ -105,11 +105,11 @@ pub(crate) fn approve_oauth_consent(
     let request = pending_request.request();
     let requested_redirect_uri = pending_request.redirect_uri();
 
-    // The host app's client is held to its built-in registration; every other client is
+    // The host app's client is held to its fixed registration; every other client is
     // trusted on first use, so its registration may be created or widened.
-    let registration_is_built_in = request.client_id == ctx.wildflower_host_app_client_id;
+    let registration_is_fixed = request.client_id == ctx.wildflower_host_app_client_id;
     let maybe_existing_client = store.client_by_id(&request.client_id)?;
-    if registration_is_built_in && maybe_existing_client.is_none() {
+    if registration_is_fixed && maybe_existing_client.is_none() {
         return Err(make_consent_not_found());
     }
     let registration_verdict = classify_registration(&PresentedClientRegistration {
@@ -132,7 +132,7 @@ pub(crate) fn approve_oauth_consent(
         &ApprovableScopes::for_code(
             &request.requested_scopes,
             maybe_existing_client.as_ref(),
-            registration_is_built_in,
+            registration_is_fixed,
         ),
     )?
     else {
@@ -153,7 +153,7 @@ pub(crate) fn approve_oauth_consent(
 
     // Persist the (possibly brand-new) registration with the grant it justifies:
     // one transaction, so a client row never outlives a failed approval.
-    let registration_to_widen = (!registration_is_built_in).then_some(&registration_verdict);
+    let registration_to_widen = (!registration_is_fixed).then_some(&registration_verdict);
     let grant_recorder = GrantRecorder::over(store);
     match (ctx.memory, registration_to_widen) {
         (ApprovalMemory::RememberAsStandingGrant, _) => grant_recorder.record_code_grant(

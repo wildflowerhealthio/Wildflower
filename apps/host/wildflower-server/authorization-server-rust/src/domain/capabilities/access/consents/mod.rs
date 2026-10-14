@@ -210,7 +210,7 @@ pub(crate) struct ConsentDecider<S: GrantStore> {
 impl<S: GrantStore> ConsentDecider<S> {
     /// Build the decider over a store handle, the republish port, the approver's
     /// own granted scopes, and the host app's `client_id` — all lifted from the
-    /// state + claims. The last decides which client's registration is built in
+    /// state + claims. The last decides which client's registration is fixed
     /// when a code-flow approval is checked against its
     /// [registration verdict](ClientRegistrationVerdict).
     pub(crate) fn new(
@@ -667,12 +667,12 @@ mod tests {
         );
     }
 
-    /// A built-in registration is exempt from trust-on-first-use in both
+    /// A fixed registration is exempt from trust-on-first-use in both
     /// directions: its clamp is its registered `allowed_scopes` alone, so a
     /// requested-but-unregistered scope is pruned — and with nothing left to
     /// grant the approval lands as a deny, leaving its row untouched.
     #[test]
-    fn approve_oauth_consent_clamps_a_built_in_registration_to_itself() {
+    fn approve_oauth_consent_clamps_a_fixed_registration_to_itself() {
         let store = FakeGrantStore::default();
         let owner_approval = RecordingOwnerApproval::default();
         let host = client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"]);
@@ -702,7 +702,7 @@ mod tests {
                 .unwrap()
                 .unwrap(),
             host,
-            "the built-in registration is never widened",
+            "the fixed registration is never widened",
         );
     }
 

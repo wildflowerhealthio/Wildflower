@@ -70,7 +70,7 @@ import { ServerKind } from './session/server-kind.ts'
  * than degrading quietly.
  *
  * Deliberately **not** `WILDFLOWER_HOST_APP_CLIENT_ID` (`wildflower-host`). The
- * host app's client has a built-in registration with no redirect URIs and is the one
+ * host app's client has a fixed registration with no redirect URIs and is the one
  * client `/oauth/authorize` refuses to trust on first use, so it cannot carry an
  * authorization-code redirect from a browser page at all — see 0012's header.
  */

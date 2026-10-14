@@ -32,19 +32,19 @@ impl ApprovableScopes {
         }
     }
 
-    /// An authorization-code prompt for `requested_scopes`. A built-in
+    /// An authorization-code prompt for `requested_scopes`. A fixed
     /// registration (the host app's client) is its own ceiling; any other client
     /// is trusted on first use, so its ceiling also takes in what this request
     /// asked for — its registration is widened with the grant.
     pub(crate) fn for_code(
         requested_scopes: &[String],
         maybe_existing_client: Option<&Client>,
-        registration_is_built_in: bool,
+        registration_is_fixed: bool,
     ) -> Self {
         let registered_client_scopes = maybe_existing_client
             .iter()
             .flat_map(|existing_client| existing_client.allowed_scopes.iter().cloned());
-        let registration_ceiling_scopes = if registration_is_built_in {
+        let registration_ceiling_scopes = if registration_is_fixed {
             registered_client_scopes.collect()
         } else {
             registered_client_scopes
@@ -172,7 +172,7 @@ mod tests {
     use super::*;
     use crate::domain::test_fake::{client, owned_scopes};
 
-    /// A prompt for a built-in registration: exactly what `requested` asks
+    /// A prompt for a fixed registration: exactly what `requested` asks
     /// within what `allowed` lists.
     fn approvable(requested: &[&str], allowed: &[&str]) -> ApprovableScopes {
         ApprovableScopes::for_code(
@@ -320,7 +320,7 @@ mod tests {
 
     /// A client trusted on first use may be granted what its request asked
     /// for even when its registration does not list it (or it has none yet);
-    /// a built-in registration may not.
+    /// a fixed registration may not.
     #[test]
     fn a_code_prompt_widens_the_allowance_only_for_a_registration_trusted_on_first_use() {
         let requested = owned_scopes(&["patient/Patient.r", "openid"]);
@@ -338,8 +338,8 @@ mod tests {
             ["patient/Patient.r", "openid"]
         );
 
-        let built_in = ApprovableScopes::for_code(&requested, Some(&registered), true);
-        assert_eq!(built_in.grantable_subset(approved()), ["openid"]);
+        let fixed = ApprovableScopes::for_code(&requested, Some(&registered), true);
+        assert_eq!(fixed.grantable_subset(approved()), ["openid"]);
     }
 
     /// Even for a registration trusted on first use, a code prompt never grants past what

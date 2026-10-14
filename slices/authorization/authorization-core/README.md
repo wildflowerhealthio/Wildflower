@@ -186,7 +186,7 @@ to the Owner's consent prompt as a warning and adds it to the row on approval
 inside the page.
 
 The host app's client is the exception, in both directions: its registration
-is built in, so `/authorize` refuses an unregistered redirect for it outright
+is fixed, so `/authorize` refuses an unregistered redirect for it outright
 (the local `RedirectUriNotAllowed` page), and `ensure_essential_clients` seeds
 it from code with no redirect URIs at all. A browser page running this flow
 therefore cannot authorize as `wildflower-host`; it needs a client row of its

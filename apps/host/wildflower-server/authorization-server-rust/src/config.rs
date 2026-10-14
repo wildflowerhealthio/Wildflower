@@ -30,7 +30,7 @@ pub struct AuthorizationServerConfig {
     /// The `client_id` of the Wildflower host app's OAuth client — seeded as
     /// the host app's client row, minted into the boot-time host owner token,
     /// and matched against a `/token` request's presented `client_id` to hold it
-    /// to its built-in registration. The live Tauri app sources this from
+    /// to its fixed registration. The live Tauri app sources this from
     /// `tauri-shared-config.json` (the single source shared with the TS shell);
     /// standalone/test builds use [`crate::default_wildflower_host_app_client_id`].
     pub wildflower_host_app_client_id: String,

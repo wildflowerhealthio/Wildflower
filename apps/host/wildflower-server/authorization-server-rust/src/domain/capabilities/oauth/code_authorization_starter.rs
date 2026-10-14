@@ -161,9 +161,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         if !self.store.has_active_signing_key()? {
             return Err(AuthorizationStartError::NoActiveSigningKey);
         }
-        let registration_is_built_in = self.registration_is_built_in(authorize_query.client_id);
+        let registration_is_fixed = self.registration_is_fixed(authorize_query.client_id);
         let maybe_existing_client =
-            self.load_client(authorize_query.client_id, registration_is_built_in)?;
+            self.load_client(authorize_query.client_id, registration_is_fixed)?;
         let requested_redirect_uri = parse_redirect_uri(authorize_query.redirect_uri)?;
         // A redirect is trustworthy only when a client we already know already
         // registered it.
@@ -172,7 +172,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             .is_some_and(|existing_client| {
                 existing_client.allows_redirect_uri(&requested_redirect_uri)
             });
-        if registration_is_built_in && !redirect_allowlisted {
+        if registration_is_fixed && !redirect_allowlisted {
             return Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::RedirectUriNotAllowed,
             ));
@@ -188,10 +188,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             .split_whitespace()
             .map(str::to_string)
             .collect();
-        if let (true, Some(built_in_client)) =
-            (registration_is_built_in, maybe_existing_client.as_ref())
+        if let (true, Some(fixed_client)) = (registration_is_fixed, maybe_existing_client.as_ref())
         {
-            if !built_in_client.allows_scopes(&requested_scopes) {
+            if !fixed_client.allows_scopes(&requested_scopes) {
                 return Err(AuthorizationStartError::Redirectable {
                     redirect_uri: requested_redirect_uri,
                     error: OAuthErrorCode::InvalidScope,
@@ -315,10 +314,10 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         })
     }
 
-    /// Whether `client_id`'s registration is built in — defined by the server
+    /// Whether `client_id`'s registration is fixed — defined by the server
     /// rather than trusted on first use: true only for the host app's client,
     /// the one client held to its registration.
-    fn registration_is_built_in(&self, client_id: &str) -> bool {
+    fn registration_is_fixed(&self, client_id: &str) -> bool {
         client_id == &*self.wildflower_host_app_client_id
     }
 
@@ -328,10 +327,10 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     fn load_client(
         &self,
         client_id: &str,
-        registration_is_built_in: bool,
+        registration_is_fixed: bool,
     ) -> Result<Option<Client>, AuthorizationStartError> {
         let Some(client) = self.store.client_by_id(client_id)? else {
-            return if registration_is_built_in {
+            return if registration_is_fixed {
                 Err(AuthorizationStartError::LocalPage(
                     OAuthErrorKind::UnknownClient,
                 ))

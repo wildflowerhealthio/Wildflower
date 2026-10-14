@@ -180,7 +180,7 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     );
 }
 
-/// A scope outside a client's registration (one not built in) no longer fails the
+/// A scope outside a client's registration (one not fixed) no longer fails the
 /// request: it is carried to the Owner's prompt as a `changed` registration
 /// naming exactly the scopes that stepped outside. The registered redirect stays
 /// trusted, so a *different* failure on the same request still 302s back (see

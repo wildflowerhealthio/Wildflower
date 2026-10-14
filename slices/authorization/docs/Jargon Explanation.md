@@ -177,7 +177,7 @@ validated against a grammar on this path: an unparseable scope is carried to
 the prompt as an opaque named scope that matches only itself.
 
 The host app's `wildflower-host` client is exempt: its registration is
-**built in** (defined by the server, not trusted on first use), so an
+**fixed** (defined by the server; approvals can't create or widen it), so an
 unregistered redirect or scope for it is rejected at the boundary, and
 approval never widens its row. Disabled clients are rejected on every endpoint regardless of verdict,
 and a widening never clears `disabledAt` — trust the Owner took back stays
