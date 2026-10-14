@@ -3,25 +3,32 @@
 //! sends a cookie and no `Authorization`, and the cookie stands for an access
 //! token:
 //!
-//! - **`__Host-owner_browser_session`**, the Owner browser session, which `/oauth/sign-in`
-//!   sets. Its value is the Owner's access token itself.
+//! - **`__Host-owner_browser_session`**, an Owner browser's session, which
+//!   `/oauth/sign-in` sets. Its value is the Owner browser's access token
+//!   itself.
 //! - **`hfs_session`**, the FHIR web UI's (`helios-ui`) session. The UI keeps
 //!   its signed-in user's tokens server-side, so its value names a session in
 //!   the UI's store, which holds the bearer.
 //!
-//! The host layers one instance per cookie around the whole API. For its
-//! cookie, an instance:
+//! [`present_session_cookie_bearers`] layers one instance per cookie around
+//! the whole API, the FHIR web UI's outermost: a request carrying both cookies
+//! gets `hfs_session`'s bearer, the more specific session, and the UI runs as
+//! its own signed-in user. For its cookie, an instance:
 //!
 //! - refuses, `403`, a write (any method but `GET`, `HEAD`, `OPTIONS`,
 //!   `TRACE`) carrying the cookie unless it comes from the served origin. The
 //!   FHIR UI's routes sit outside the gate and act as the session's user on the
-//!   cookie alone, and the Owner's cookie reaches every route, so this is what
-//!   keeps another page from writing through either;
+//!   cookie alone, and an Owner browser's cookie reaches every route, so this
+//!   is what keeps another page from writing through either;
 //! - turns the cookie of a request from the served origin into its bearer, so
 //!   the gates check it like any other token (revocation included). A request
 //!   that brings its own `Authorization` keeps it. A read from anywhere else
 //!   passes without one: a `/ui` page a link opens still renders, and the gates
-//!   refuse whatever else it asks for.
+//!   refuse whatever else it asks for;
+//! - passes a request whose cookie stands for no live session as if the cookie
+//!   weren't sent. An Owner browser's session has ended once the gates would
+//!   refuse its token (expired, or revoked by `jti` or subject); the response
+//!   then clears the cookie, which is `HttpOnly`, so no script on the page can.
 //!
 //! No route is singled out: the token's scopes decide what it reaches.
 //!
@@ -40,39 +47,62 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use axum::Router;
 use helios_auth::{cookie_value, AccessOutcome, SessionStore, SESSION_COOKIE};
 use url::Url;
-use wildflowerhealthio_authorization_server::{ensure_bearer_header, OWNER_BROWSER_SESSION_COOKIE};
+use wildflowerhealthio_authorization_server::{
+    ensure_bearer_header, owner_browser_session_clearing_set_cookie,
+    owner_browser_session_has_ended, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
+};
 use wildflowerhealthio_shared_structures::origin_string;
 use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 /// A session cookie the layer guards, and where its bearer comes from.
 pub(crate) enum SessionCookie {
-    /// `__Host-owner_browser_session`: its value is the Owner's access token.
-    OwnerBrowser,
+    /// `__Host-owner_browser_session`: its value is an Owner browser's access
+    /// token, checked against the authorization server's state before it is
+    /// presented.
+    OwnerBrowser(Arc<AuthorizationServerState>),
     /// The FHIR web UI's `hfs_session`: its value names a session in the UI's
     /// store, which holds the session's access token.
     FhirUi(Arc<SessionStore>),
+}
+
+/// What a session cookie's value stands for.
+enum CookieSession {
+    /// A live session: its access token is the request's bearer.
+    Live(String),
+    /// No session: the request passes as if the cookie weren't sent.
+    Absent,
+    /// An Owner browser session that has ended: the request passes as if the
+    /// cookie weren't sent, and the response clears it.
+    Ended,
 }
 
 impl SessionCookie {
     /// The cookie's name.
     fn name(&self) -> &'static str {
         match self {
-            SessionCookie::OwnerBrowser => OWNER_BROWSER_SESSION_COOKIE,
+            SessionCookie::OwnerBrowser(_) => OWNER_BROWSER_SESSION_COOKIE,
             SessionCookie::FhirUi(_) => SESSION_COOKIE,
         }
     }
 
-    /// The access token the cookie's `value` stands for, if any: an Owner
-    /// cookie's own value, or the bearer of the UI session it names, while
-    /// that session lives.
-    async fn access_token(&self, value: String) -> Option<String> {
+    /// The session the cookie's `value` stands for: an Owner browser
+    /// cookie's own token, unless its session has ended, or the bearer of the
+    /// UI session it names, while that session lives.
+    async fn session(&self, value: String) -> CookieSession {
         match self {
-            SessionCookie::OwnerBrowser => (!value.is_empty()).then_some(value),
+            SessionCookie::OwnerBrowser(authorization_server) => {
+                if owner_browser_session_has_ended(authorization_server, &value) {
+                    CookieSession::Ended
+                } else {
+                    CookieSession::Live(value)
+                }
+            }
             SessionCookie::FhirUi(ui_sessions) => match ui_sessions.access_token(&value).await {
-                AccessOutcome::Token(access_token) => Some(access_token),
-                AccessOutcome::NoSession => None,
+                AccessOutcome::Token(access_token) => CookieSession::Live(access_token),
+                AccessOutcome::NoSession => CookieSession::Absent,
             },
         }
     }
@@ -86,11 +116,39 @@ pub(crate) struct SessionCookieBearerConfig {
     pub(crate) loopback_base_url: Url,
 }
 
+/// Wrap `router` in the layer once per session cookie: an Owner browser's,
+/// checked against `authorization_server`, and the FHIR web UI's, read from
+/// `ui_sessions`. The UI's is outermost, so it runs first: a request carrying
+/// both cookies gets `hfs_session`'s bearer, and the Owner browser instance
+/// then finds `Authorization` set and leaves it.
+pub(crate) fn present_session_cookie_bearers(
+    router: Router,
+    authorization_server: Arc<AuthorizationServerState>,
+    ui_sessions: Arc<SessionStore>,
+    loopback_base_url: &Url,
+) -> Router {
+    let session_cookie_bearer = |session_cookie| {
+        axum::middleware::from_fn_with_state(
+            Arc::new(SessionCookieBearerConfig {
+                session_cookie,
+                loopback_base_url: loopback_base_url.clone(),
+            }),
+            present_session_cookie_bearer,
+        )
+    };
+    router
+        .layer(session_cookie_bearer(SessionCookie::OwnerBrowser(
+            authorization_server,
+        )))
+        .layer(session_cookie_bearer(SessionCookie::FhirUi(ui_sessions)))
+}
+
 /// The middleware: a write carrying the session cookie from anywhere but the
 /// served origin is refused. With no `Authorization` of its own, a request
-/// from the served origin carrying a cookie that stands for an access token
-/// gets `Authorization: Bearer <that token>`. Anything else passes as it came,
-/// for the gates to judge.
+/// from the served origin carrying a cookie that stands for a live session
+/// gets `Authorization: Bearer <its token>`, and one whose Owner browser
+/// session has ended passes without it and has the cookie cleared. Anything
+/// else passes as it came, for the gates to judge.
 pub(crate) async fn present_session_cookie_bearer(
     State(config): State<Arc<SessionCookieBearerConfig>>,
     mut request: Request,
@@ -116,18 +174,27 @@ pub(crate) async fn present_session_cookie_bearer(
     if request.headers().contains_key(header::AUTHORIZATION) {
         return next.run(request).await;
     }
-    let Some(access_token) = config.session_cookie.access_token(cookie).await else {
-        return next.run(request).await;
-    };
-    let Ok(bearer) = HeaderValue::from_str(&format!("Bearer {access_token}")) else {
-        tracing::error!(
-            cookie = config.session_cookie.name(),
-            "a session cookie's access token is not a valid header value"
-        );
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
-    ensure_bearer_header(request.headers_mut(), &bearer);
-    next.run(request).await
+    match config.session_cookie.session(cookie).await {
+        CookieSession::Live(access_token) => {
+            let Ok(bearer) = HeaderValue::from_str(&format!("Bearer {access_token}")) else {
+                tracing::error!(
+                    cookie = config.session_cookie.name(),
+                    "a session cookie's access token is not a valid header value"
+                );
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            };
+            ensure_bearer_header(request.headers_mut(), &bearer);
+            next.run(request).await
+        }
+        CookieSession::Absent => next.run(request).await,
+        CookieSession::Ended => {
+            let mut response = next.run(request).await;
+            let clearing = HeaderValue::from_str(&owner_browser_session_clearing_set_cookie())
+                .expect("the clearing Set-Cookie is a fixed, valid header value");
+            response.headers_mut().append(header::SET_COOKIE, clearing);
+            response
+        }
+    }
 }
 
 /// Whether the browser says the request came from a page on the served
@@ -165,16 +232,30 @@ fn is_from_served_origin(method: &Method, headers: &HeaderMap, loopback_base_url
 
 #[cfg(test)]
 mod tests {
-    use super::{present_session_cookie_bearer, SessionCookie, SessionCookieBearerConfig};
+    use super::{
+        present_session_cookie_bearer, present_session_cookie_bearers, SessionCookie,
+        SessionCookieBearerConfig,
+    };
     use axum::body::{to_bytes, Body};
     use axum::extract::Request;
     use axum::http::{header, HeaderMap, Method, StatusCode};
+    use axum::response::Response;
     use axum::routing::get;
     use axum::Router;
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
     use helios_auth::{Session, SessionPrincipal, SessionStore};
     use std::sync::Arc;
+    use tokio::sync::watch;
     use tower::ServiceExt;
+    use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
+    use wildflowerhealthio_authorization_server::{
+        setup_authorization_server, AuthorizationServerConfig, AuthorizationServerState,
+        GrantStore, NoLoopbackConsentPrompt, SqliteGrantStore, OWNER_BROWSER_CLIENT_ID,
+    };
+    use wildflowerhealthio_persistence::{Connection, DieselPool};
+    use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
+    use wildflowerhealthio_shared_structures::launcher::LauncherBase;
+    use wildflowerhealthio_token_revocation::RevocationStore;
 
     const SERVED_ORIGIN: &str = "https://ruth.relay.example";
     const FORWARDED: &str = "for=192.0.2.1;host=ruth.relay.example;proto=https";
@@ -185,23 +266,111 @@ mod tests {
     /// the `Cookie` header, and the bearer the layer presents for it.
     struct GuardedCookie {
         config: Arc<SessionCookieBearerConfig>,
-        cookie: &'static str,
-        bearer: &'static str,
+        cookie: String,
+        bearer: String,
     }
 
     fn loopback_base_url() -> url::Url {
         url::Url::parse(LOOPBACK_ORIGIN).expect("loopback")
     }
 
-    /// The Owner's cookie, whose value is its token.
-    fn owner_browser_cookie() -> GuardedCookie {
-        GuardedCookie {
-            config: Arc::new(SessionCookieBearerConfig {
-                session_cookie: SessionCookie::OwnerBrowser,
+    /// A real authorization server over an in-memory database, whose state
+    /// judges an Owner browser's token, and the revocation store it reads.
+    struct AuthorizationServerFixture {
+        state: Arc<AuthorizationServerState>,
+        pool: DieselPool,
+        revocation_store: RevocationStore,
+    }
+
+    impl AuthorizationServerFixture {
+        fn new() -> Self {
+            let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("pool");
+            let revocation_store =
+                RevocationStore::new(Connection::open_in_memory().expect("revocation db"))
+                    .expect("revocation store");
+            let config = AuthorizationServerConfig {
                 loopback_base_url: loopback_base_url(),
-            }),
-            cookie: "__Host-owner_browser_session=owner-token",
-            bearer: "Bearer owner-token",
+                server_origin: url::Url::parse(SERVED_ORIGIN).expect("origin"),
+                host_owner_scopes:
+                    wildflowerhealthio_authorization_server::default_local_granted_scopes(),
+                wildflower_host_app_client_id:
+                    wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
+                fhir_ui_client_id: "fhir-ui-client".to_string(),
+                launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
+                    .expect("launcher base"),
+                authorization_app_base: AuthorizationAppBase::parse(
+                    "https://authorization.test/authorization/",
+                )
+                .expect("authorization app base"),
+            };
+            let authorization_server = setup_authorization_server(
+                pool.clone(),
+                revocation_store.clone(),
+                &config,
+                &watch::channel(None).0,
+                watch::channel(None).0,
+                Arc::new(NoLoopbackConsentPrompt),
+            )
+            .expect("set up the authorization server");
+            AuthorizationServerFixture {
+                state: authorization_server.state,
+                pool,
+                revocation_store,
+            }
+        }
+
+        /// An Owner browser's token, signed by the server's key, living `ttl`.
+        fn owner_browser_token(&self, ttl: Duration) -> String {
+            let key = SqliteGrantStore::new(self.pool.clone())
+                .expect("store")
+                .active_signing_key()
+                .expect("key query")
+                .expect("a seeded key");
+            mint_access_token(
+                &key,
+                &NewJwtArgs {
+                    client_id: OWNER_BROWSER_CLIENT_ID,
+                    scopes: &wildflowerhealthio_authorization_server::default_local_granted_scopes(
+                    ),
+                    ttl,
+                    issuer: SERVED_ORIGIN,
+                    audience: Some(SERVED_ORIGIN),
+                    patient: None,
+                },
+            )
+            .expect("mint")
+        }
+
+        /// The layer's config for an Owner browser's cookie, judged here.
+        fn owner_browser_config(&self) -> Arc<SessionCookieBearerConfig> {
+            Arc::new(SessionCookieBearerConfig {
+                session_cookie: SessionCookie::OwnerBrowser(self.state.clone()),
+                loopback_base_url: loopback_base_url(),
+            })
+        }
+    }
+
+    /// The `jti` of `token`, read from its payload.
+    fn jti_of(token: &str) -> String {
+        let payload = token.split('.').nth(1).expect("a JWT payload");
+        let claims: serde_json::Value = serde_json::from_slice(
+            &wildflowerhealthio_authorization_server::crypto_util::base64::url_safe_no_pad_decode(
+                payload,
+            )
+            .expect("base64url"),
+        )
+        .expect("JSON claims");
+        claims["jti"].as_str().expect("a jti").to_owned()
+    }
+
+    /// An Owner browser's cookie, whose value is a live Owner browser token.
+    fn owner_browser_cookie() -> GuardedCookie {
+        let authorization_server = AuthorizationServerFixture::new();
+        let token = authorization_server.owner_browser_token(Duration::hours(8));
+        GuardedCookie {
+            config: authorization_server.owner_browser_config(),
+            cookie: format!("__Host-owner_browser_session={token}"),
+            bearer: format!("Bearer {token}"),
         }
     }
 
@@ -213,8 +382,8 @@ mod tests {
                 session_cookie: SessionCookie::FhirUi(Arc::new(store_with_a_session())),
                 loopback_base_url: loopback_base_url(),
             }),
-            cookie: "hfs_session=session-1",
-            bearer: "Bearer session-token",
+            cookie: "hfs_session=session-1".to_owned(),
+            bearer: "Bearer session-token".to_owned(),
         }
     }
 
@@ -257,26 +426,39 @@ mod tests {
         method: Method,
         headers: &[(&str, &str)],
     ) -> (StatusCode, Option<String>) {
+        let router = echo_router().layer(axum::middleware::from_fn_with_state(
+            config,
+            present_session_cookie_bearer,
+        ));
+        status_and_authorization(send(router, method, headers).await).await
+    }
+
+    /// A `/Patient` route that answers with the `Authorization` it saw.
+    fn echo_router() -> Router {
         async fn authorization(headers: HeaderMap) -> String {
             headers
                 .get(header::AUTHORIZATION)
                 .map(|value| value.to_str().expect("ascii").to_string())
                 .unwrap_or_default()
         }
-        let router = Router::new()
-            .route("/Patient", get(authorization).post(authorization))
-            .layer(axum::middleware::from_fn_with_state(
-                config,
-                present_session_cookie_bearer,
-            ));
+        Router::new().route("/Patient", get(authorization).post(authorization))
+    }
+
+    /// `router`'s response to `method /Patient` with `headers`.
+    async fn send(router: Router, method: Method, headers: &[(&str, &str)]) -> Response {
         let mut request = Request::builder().method(method).uri("/Patient");
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
-        let response = router
+        router
             .oneshot(request.body(Body::empty()).expect("request"))
             .await
-            .expect("infallible");
+            .expect("infallible")
+    }
+
+    /// A response's status, and the `Authorization` [`echo_router`] saw, if
+    /// the request got that far and carried one.
+    async fn status_and_authorization(response: Response) -> (StatusCode, Option<String>) {
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -286,19 +468,29 @@ mod tests {
         (status, authorization)
     }
 
+    /// The `Set-Cookie` values on `response`.
+    fn set_cookies(response: &Response) -> Vec<String> {
+        response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .map(|value| value.to_str().expect("ascii").to_owned())
+            .collect()
+    }
+
     /// [`respond`] to a request carrying `guarded`'s cookie and `headers`.
     async fn respond_with_cookie(
         guarded: &GuardedCookie,
         method: Method,
         headers: &[(&str, &str)],
     ) -> (StatusCode, Option<String>) {
-        let mut with_cookie = vec![("cookie", guarded.cookie)];
+        let mut with_cookie = vec![("cookie", guarded.cookie.as_str())];
         with_cookie.extend_from_slice(headers);
         respond(guarded.config.clone(), method, &with_cookie).await
     }
 
     fn presented(guarded: &GuardedCookie) -> (StatusCode, Option<String>) {
-        (StatusCode::OK, Some(guarded.bearer.to_string()))
+        (StatusCode::OK, Some(guarded.bearer.clone()))
     }
 
     fn passed_without_a_bearer() -> (StatusCode, Option<String>) {
@@ -470,7 +662,7 @@ mod tests {
                     instance.config.clone(),
                     Method::POST,
                     &[
-                        ("cookie", other.cookie),
+                        ("cookie", other.cookie.as_str()),
                         ("forwarded", FORWARDED),
                         ("origin", SIBLING_ORIGIN),
                     ]
@@ -500,19 +692,162 @@ mod tests {
         );
     }
 
+    /// The value a clearing `Set-Cookie` carries for the Owner browser cookie.
+    const CLEARED_OWNER_BROWSER_COOKIE: &str =
+        "__Host-owner_browser_session=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0";
+
+    /// An Owner browser cookie whose session has ended passes as if it weren't
+    /// sent, and the response clears it: a token revoked by its `jti`, one
+    /// revoked with its subject, an expired one, and one that isn't a token.
     #[tokio::test]
-    async fn an_empty_owner_browser_cookie_presents_nothing() {
-        assert_eq!(
-            respond(
-                owner_browser_cookie().config,
+    async fn an_ended_owner_browser_session_passes_without_a_bearer_and_is_cleared() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let revoked_by_jti = authorization_server.owner_browser_token(Duration::hours(8));
+        authorization_server
+            .revocation_store
+            .revoke_jti(
+                &jti_of(&revoked_by_jti),
+                Utc::now() + Duration::hours(8),
+                "test",
+            )
+            .expect("revoke the jti");
+        let expired = authorization_server.owner_browser_token(Duration::hours(-1));
+        for (what, token) in [
+            ("revoked by jti", revoked_by_jti),
+            ("expired", expired),
+            ("not a token", "not-a-token".to_owned()),
+            ("empty", String::new()),
+        ] {
+            let cookie = format!("__Host-owner_browser_session={token}");
+            let response = send(
+                echo_router().layer(axum::middleware::from_fn_with_state(
+                    authorization_server.owner_browser_config(),
+                    present_session_cookie_bearer,
+                )),
                 Method::GET,
                 &[
-                    ("cookie", "__Host-owner_browser_session="),
+                    ("cookie", &cookie),
+                    ("forwarded", FORWARDED),
                     ("sec-fetch-site", "same-origin"),
-                ]
+                ],
             )
-            .await,
-            passed_without_a_bearer()
+            .await;
+            assert_eq!(
+                set_cookies(&response),
+                [CLEARED_OWNER_BROWSER_COOKIE],
+                "{what}"
+            );
+            assert_eq!(
+                status_and_authorization(response).await,
+                passed_without_a_bearer(),
+                "{what}"
+            );
+        }
+
+        let revoked_with_subject = authorization_server.owner_browser_token(Duration::hours(8));
+        authorization_server
+            .revocation_store
+            .revoke_subject_as_of_now(OWNER_BROWSER_CLIENT_ID)
+            .expect("revoke the subject");
+        let cookie = format!("__Host-owner_browser_session={revoked_with_subject}");
+        let response = send(
+            echo_router().layer(axum::middleware::from_fn_with_state(
+                authorization_server.owner_browser_config(),
+                present_session_cookie_bearer,
+            )),
+            Method::GET,
+            &[("cookie", &cookie), ("sec-fetch-site", "same-origin")],
+        )
+        .await;
+        assert_eq!(
+            set_cookies(&response),
+            [CLEARED_OWNER_BROWSER_COOKIE],
+            "revoked with its subject"
+        );
+    }
+
+    /// A live Owner browser session is presented and its cookie left alone.
+    #[tokio::test]
+    async fn a_live_owner_browser_session_keeps_its_cookie() {
+        let guarded = owner_browser_cookie();
+        let response = send(
+            echo_router().layer(axum::middleware::from_fn_with_state(
+                guarded.config.clone(),
+                present_session_cookie_bearer,
+            )),
+            Method::GET,
+            &[
+                ("cookie", &guarded.cookie),
+                ("sec-fetch-site", "same-origin"),
+            ],
+        )
+        .await;
+        assert!(set_cookies(&response).is_empty());
+        assert_eq!(
+            status_and_authorization(response).await,
+            presented(&guarded)
+        );
+    }
+
+    /// With both cookies live, the layers the server composes present the
+    /// FHIR web UI's bearer: the more specific session wins.
+    #[tokio::test]
+    async fn with_both_cookies_the_fhir_ui_session_wins() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let owner_browser_token = authorization_server.owner_browser_token(Duration::hours(8));
+        let router = present_session_cookie_bearers(
+            echo_router(),
+            authorization_server.state.clone(),
+            Arc::new(store_with_a_session()),
+            &loopback_base_url(),
+        );
+        let cookies =
+            format!("__Host-owner_browser_session={owner_browser_token}; hfs_session=session-1");
+        for method in [Method::GET, Method::POST] {
+            let response = send(
+                router.clone(),
+                method.clone(),
+                &[
+                    ("cookie", &cookies),
+                    ("forwarded", FORWARDED),
+                    ("sec-fetch-site", "same-origin"),
+                    ("origin", SERVED_ORIGIN),
+                ],
+            )
+            .await;
+            assert_eq!(
+                status_and_authorization(response).await,
+                (StatusCode::OK, Some("Bearer session-token".to_owned())),
+                "{method}"
+            );
+        }
+    }
+
+    /// The composed layers still present an Owner browser's bearer when it is
+    /// the only cookie.
+    #[tokio::test]
+    async fn the_composed_layers_present_a_lone_owner_browser_cookie() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let owner_browser_token = authorization_server.owner_browser_token(Duration::hours(8));
+        let router = present_session_cookie_bearers(
+            echo_router(),
+            authorization_server.state.clone(),
+            Arc::new(store_with_a_session()),
+            &loopback_base_url(),
+        );
+        let cookie = format!("__Host-owner_browser_session={owner_browser_token}");
+        let response = send(
+            router,
+            Method::GET,
+            &[("cookie", &cookie), ("sec-fetch-site", "same-origin")],
+        )
+        .await;
+        assert_eq!(
+            status_and_authorization(response).await,
+            (
+                StatusCode::OK,
+                Some(format!("Bearer {owner_browser_token}"))
+            )
         );
     }
 }

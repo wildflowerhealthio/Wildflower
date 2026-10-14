@@ -25,7 +25,10 @@ pub use middleware::{
     AuthorizationServerAuthMiddleware, RequireLoopbackPeerMiddleware,
 };
 pub(crate) use owner_browser_session_cookie::owner_browser_session_set_cookie;
-pub use owner_browser_session_cookie::OWNER_BROWSER_SESSION_COOKIE;
+pub use owner_browser_session_cookie::{
+    owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
+    OWNER_BROWSER_SESSION_COOKIE,
+};
 pub use state::AuthorizationServerState;
 
 use axum::middleware as axum_middleware;

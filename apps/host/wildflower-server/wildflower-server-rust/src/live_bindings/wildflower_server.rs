@@ -34,9 +34,7 @@ use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSen
 use crate::http::middleware::loopback_owner_trust::{
     inject_loopback_owner_token, LoopbackOwnerTrust,
 };
-use crate::http::middleware::session_cookie_bearer::{
-    present_session_cookie_bearer, SessionCookie, SessionCookieBearerConfig,
-};
+use crate::http::middleware::session_cookie_bearer::present_session_cookie_bearers;
 use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
@@ -550,23 +548,19 @@ pub async fn set_up(
         ));
 
     // A browser on the server's own pages carries a session cookie and no
-    // `Authorization`: the Owner's, which `/oauth/sign-in` set, or the FHIR web
-    // UI's. Each cookie's bearer is presented ahead of every gate, and a write
-    // carrying either from another origin is refused, before the UI's routes
-    // too (`session_cookie_bearer`). The token's scopes decide what it
-    // reaches, so no route is singled out.
-    let session_cookie_bearer = |session_cookie| {
-        axum::middleware::from_fn_with_state(
-            Arc::new(SessionCookieBearerConfig {
-                session_cookie,
-                loopback_base_url: loopback_base_url.clone(),
-            }),
-            present_session_cookie_bearer,
-        )
-    };
-    let inner_router = inner_router
-        .layer(session_cookie_bearer(SessionCookie::FhirUi(ui_sessions)))
-        .layer(session_cookie_bearer(SessionCookie::OwnerBrowser));
+    // `Authorization`: an Owner browser's, which `/oauth/sign-in` set, or the
+    // FHIR web UI's. A live session's bearer is presented ahead of every gate,
+    // the UI's winning when both are sent; an ended Owner browser session is
+    // skipped and its cookie cleared; and a write carrying either cookie from
+    // another origin is refused, before the UI's routes too
+    // (`session_cookie_bearer`). The token's scopes decide what it reaches, so
+    // no route is singled out.
+    let inner_router = present_session_cookie_bearers(
+        inner_router,
+        authorization_server.state.clone(),
+        ui_sessions,
+        &loopback_base_url,
+    );
 
     // Every forwarded request is reported to the request log once its response
     // is ready, and to the host unless it is a `/health` check (the

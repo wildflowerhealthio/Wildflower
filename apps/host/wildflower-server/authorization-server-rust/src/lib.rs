@@ -76,8 +76,10 @@ pub use live_bindings::HostConsentDecider;
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
-    is_pre_auth_public_path, require_loopback_peer_middleware, AuthorizationServerAuthMiddleware,
-    AuthorizationServerState, RequireLoopbackPeerMiddleware, OWNER_BROWSER_SESSION_COOKIE,
+    is_pre_auth_public_path, owner_browser_session_clearing_set_cookie,
+    owner_browser_session_has_ended, require_loopback_peer_middleware,
+    AuthorizationServerAuthMiddleware, AuthorizationServerState, RequireLoopbackPeerMiddleware,
+    OWNER_BROWSER_SESSION_COOKIE,
 };
 pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter};
 pub use wildflowerhealthio_persistence::DieselPool;

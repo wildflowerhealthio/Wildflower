@@ -1332,13 +1332,15 @@ async fn the_fhir_ui_signs_in_through_authorization_server_and_reads_fhir_on_its
     server.shut_down().await;
 }
 
-/// The same-device sign-in of an Owner browser, end to end through the composed server: a code the
-/// host mints signs a browser in and sends it on, and its
-/// `__Host-owner_browser_session` cookie alone then reads `GET /authorization/session`
-/// as the Owner from the server's own pages. A write carrying the cookie from
-/// another server's page is refused; one from the server's own page goes
-/// through on it, here revoking the session's own `jti`, after which the
-/// cookie gets `401`.
+/// The same-device sign-in of an Owner browser, end to end through the
+/// composed server: a code the host mints signs a browser in and sends it on,
+/// and its `__Host-owner_browser_session` cookie alone then reads
+/// `GET /authorization/session` as the Owner from the server's own pages. Sent
+/// with the FHIR web UI's `hfs_session` too, the UI's session wins. A write
+/// carrying the cookie from another server's page is refused; one from the
+/// server's own page goes through on it, here revoking the session's own
+/// `jti`, after which the cookie is skipped, so the request gets `401`, and
+/// the response clears it.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
     let server = UiServer::start().await;
@@ -1393,6 +1395,23 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
         serde_json::json!(owner_scopes)
     );
 
+    let ui_cookie = server.sign_in().await;
+    let with_both_cookies = server
+        .ui_request(
+            reqwest::Method::GET,
+            "authorization/session",
+            Some(&format!("{owner_cookie}; {ui_cookie}")),
+        )
+        .send()
+        .await
+        .expect("GET /authorization/session reaches the server");
+    assert_eq!(with_both_cookies.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        with_both_cookies.json::<Value>().await.expect("a session")["scopes"],
+        serde_json::json!(["user/*.cruds"]),
+        "the FHIR web UI's session wins"
+    );
+
     let owner_token = owner_cookie
         .split_once('=')
         .map(|(_, token)| token)
@@ -1439,7 +1458,16 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
         .await
         .expect("the revocation reaches the server");
     assert_eq!(from_its_own_page.status(), reqwest::StatusCode::NO_CONTENT);
-    assert_eq!(session().await.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let signed_out = session().await;
+    assert_eq!(signed_out.status(), reqwest::StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        cookies_set_by(&signed_out),
+        [format!(
+            "{}=",
+            wildflowerhealthio_authorization_server::OWNER_BROWSER_SESSION_COOKIE
+        )],
+        "the ended session's cookie is cleared"
+    );
 
     server.shut_down().await;
 }
