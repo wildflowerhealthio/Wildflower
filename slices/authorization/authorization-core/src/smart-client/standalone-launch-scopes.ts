@@ -1,19 +1,15 @@
 /**
- * The scope ceiling every Wildflower standalone-launch page asks for.
+ * The scope ceiling the server-docs console, a standalone-launch page, asks for.
  *
- * Both seeded public clients — `server-docs-web`'s console client (migration 0007, rekeyed by 0028) and
- * `launcher-web`'s launcher client (migration 0012, rekeyed by 0026) — register the *same* `allowed_scopes`,
- * and `db/clients.rs` has a test that fails if one migration gains a scope the
- * other lacks. The browser side is the same story, so the list lives here once
- * rather than in a copy per app: a page that requests a scope its row does not
- * allow fails at `/oauth/authorize`.
+ * It is the `allowed_scopes` of the console's seeded public client (migration
+ * 0007, rekeyed by 0028), held in `authorization-core` beside the flow it feeds.
  *
- * Asking wide is deliberate, and it is the argument both migrations make.
+ * Asking wide is deliberate, and it is the argument the migration makes.
  * `allowed_scopes` is only the ceiling on what may be **requested**; the
- * Owner's consent step is where the grant is actually narrowed. Each of these
- * pages drives every documented slice surface, so neither can know in advance
- * which one the reader will open, and requesting less would 403 surfaces the
- * reader is entitled to.
+ * Owner's consent step is where the grant is actually narrowed. The console
+ * drives every documented slice surface, so it cannot know in advance which one
+ * the reader will open, and requesting less would 403 surfaces the reader is
+ * entitled to.
  */
 
 /** The scopes a standalone-launch page requests. */

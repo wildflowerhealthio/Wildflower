@@ -1,0 +1,45 @@
+-- Narrow the launcher's client (`0012`'s `wildflower-react`, re-keyed by
+-- `0026`) to the scopes the launcher uses. `0012` registered it against the
+-- server-docs console's maximal vocabulary; it now allows exactly what the
+-- launcher asks for (`LAUNCHER_SCOPE` in
+-- `apps/launcher/launcher-web/src/sign-in.ts`; `db/clients.rs` reads that file
+-- and pins this row to it). The client is trusted on first use, so an approval
+-- widens the row to whatever a request asks for: the requested list is what
+-- bounds it, and this row follows it.
+--
+-- Each scope, and the calls that need it:
+--
+--   launch              the EHR launch the page is opened with (`?iss=&launch=`);
+--                       SMART requires it alongside a `launch` parameter
+--   launch/patient      the patient a plain SMART server puts in context, which
+--                       the plain-SMART Home launches apps with
+--   wildflower/launch   POST /apps/{id}, launching an app from Home
+--   system/*.cruds      GET /Patient on the consent prompts; DELETE and export
+--                       of the health-data database
+--   wildflower/*.cruds  /apps, /home-screen, /requests, /authorization/clients,
+--                       /authorization/oauth-consents and /authorization/devices;
+--                       DELETE and export of wildflower.sqlite
+--
+-- The two wildcards are also the floor delegation sets. Launching an app
+-- requires the launcher's token to cover that app's resource scopes, and
+-- approving a consent prompt requires it to cover every resource scope the
+-- approval grants, whichever app asks. So the launcher holds the widest
+-- resource scopes the Owner can delegate.
+--
+-- Out: `openid`, `profile` and `fhirUser` (the launcher reads no identity
+-- claims) and `offline_access` (it keeps its bearer in page memory and never
+-- refreshes it).
+--
+-- ISSUED GRANTS ARE LEFT ALONE. A code grant or refresh family already issued to
+-- the launcher keeps the scopes it was approved with; narrowing it would rewrite
+-- what the Owner approved. Those extra scopes do nothing: the launcher never
+-- redeems a refresh token, and its access tokens lapse after fifteen minutes
+-- (`ACCESS_TOKEN_TTL`).
+--
+-- IDEMPOTENT. The `UPDATE` only fires while the row still holds the exact set
+-- `0012` wrote, so a row whose scopes were deliberately changed since is left
+-- alone, as in `0020`.
+UPDATE clients
+   SET allowed_scopes = '["launch","launch/patient","wildflower/launch","system/*.cruds","wildflower/*.cruds"]'
+ WHERE client_id = '03a513940b52f8c2649a5366d1a26d19'
+   AND allowed_scopes = '["openid","profile","fhirUser","launch","launch/patient","offline_access","wildflower/launch","system/*.cruds","wildflower/*.cruds"]';

@@ -1,6 +1,4 @@
 import {
-  STANDALONE_LAUNCH_SCOPES,
-  standaloneLaunchScopeParameter,
   type PendingStore,
   type Session,
   type SignInPage,
@@ -28,6 +26,7 @@ import {
   authStateForSession,
   CLIENT_ID,
   finishSignIn,
+  LAUNCHER_SCOPE,
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
   REGISTERED_REDIRECT_URI,
@@ -94,13 +93,21 @@ describe('signInEnvironment', () => {
     expect(REGISTERED_REDIRECT_URI).toBe(`${sectionUrl('launcher')}/`)
   })
 
-  it('asks for exactly the scopes the seeded row allows', () => {
+  it('asks for exactly the scopes the launcher uses', () => {
     // Arrange / Act
     const environment = signInEnvironment(pageAt('https://wildflowerhealth.io/'))
 
     // Assert — the wire form is the space-delimited list, in order.
-    expect(environment.scope).toBe(STANDALONE_LAUNCH_SCOPES.join(' '))
-    expect(environment.scope).toBe(standaloneLaunchScopeParameter())
+    // authorization-server-rust's `clients.rs` pins the seeded row to
+    // `LAUNCHER_SCOPE`; this pins the list itself.
+    expect(environment.scope).toBe(LAUNCHER_SCOPE)
+    expect(environment.scope.split(' ')).toEqual([
+      'launch',
+      'launch/patient',
+      'wildflower/launch',
+      'system/*.cruds',
+      'wildflower/*.cruds',
+    ])
     // The id the authorization server migration `0026_rekey_launcher_client` seeds.
     expect(environment.clientId).toBe('03a513940b52f8c2649a5366d1a26d19')
   })
@@ -141,7 +148,7 @@ describe('startSignIn', () => {
     expect(authorize.origin + authorize.pathname).toBe(`${SERVER_URL}/oauth/authorize`)
     expect(authorize.searchParams.get('client_id')).toBe(CLIENT_ID)
     expect(authorize.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:5173/')
-    expect(authorize.searchParams.get('scope')).toBe(standaloneLaunchScopeParameter())
+    expect(authorize.searchParams.get('scope')).toBe(LAUNCHER_SCOPE)
     expect(authorize.searchParams.get('code_challenge_method')).toBe('S256')
   })
 

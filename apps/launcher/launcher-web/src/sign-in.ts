@@ -17,9 +17,8 @@
  *
  * What is left here is only what is this entry's own: the registered values
  * below, and the two thin wrappers that fold the flow's error channel into a
- * {@link SignInStep}. The impure wiring is `browserSignInEnvironment`'s and the
- * requested scopes are the standalone-launch vocabulary both seeded clients
- * share — neither is restated in this app.
+ * {@link SignInStep}. The impure wiring is `browserSignInEnvironment`'s; the
+ * requested scopes are this entry's own, {@link LAUNCHER_SCOPE}.
  *
  * Nothing here navigates or touches the DOM: {@link startSignIn} yields
  * the URL to leave for and {@link finishSignIn} reads a query string, so
@@ -44,7 +43,6 @@ import {
   parsePendingAuthorization,
   redirectUriForRoute,
   SERVER_QUERY_PARAM,
-  standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
   type SignInError,
@@ -75,6 +73,25 @@ import { ServerKind } from './session/server-kind.ts'
  * authorization-code redirect from a browser page at all — see 0012's header.
  */
 const CLIENT_ID = '03a513940b52f8c2649a5366d1a26d19'
+
+/**
+ * The scopes the launcher asks for, and the seeded client's `allowed_scopes`,
+ * element for element (`0032_narrow_launcher_client_scopes`, whose header
+ * traces each one to the calls that need it). The client is trusted on first
+ * use, so an approval widens its row to whatever is asked for: this string is
+ * what bounds it. `authorization-server-rust`'s `db/clients.rs` reads this
+ * file and pins the row to it.
+ *
+ * - `launch` carries the EHR launch a SMART launch opens the page with;
+ * - `launch/patient` asks a plain SMART server for the patient Home launches
+ *   apps with;
+ * - `wildflower/launch` launches an app from Home (`POST /apps/{id}`);
+ * - `system/*.cruds` and `wildflower/*.cruds` cover what Home and Settings
+ *   read and change, and are the most the launcher's consent prompts can
+ *   approve and its launches can delegate: both require the launcher's own
+ *   token to cover the other app's resource scopes, whichever app that is.
+ */
+const LAUNCHER_SCOPE = 'launch launch/patient wildflower/launch system/*.cruds wildflower/*.cruds'
 
 /**
  * The route a sign-in returns to: the app root. A fixed route rather than the
@@ -152,7 +169,7 @@ const signInEnvironment = (page: SignInPage, basePath = '/'): SignInEnvironment 
   browserSignInEnvironment(page, {
     clientId: CLIENT_ID,
     pendingKey: PENDING_AUTHORIZATION_KEY,
-    scope: standaloneLaunchScopeParameter(),
+    scope: LAUNCHER_SCOPE,
     redirectUri:
       redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE, basePath) ??
       REGISTERED_REDIRECT_URI,
@@ -377,6 +394,7 @@ export {
   authStateForSession,
   CLIENT_ID,
   finishSignIn,
+  LAUNCHER_SCOPE,
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
   POST_SIGN_IN_ROUTE,
