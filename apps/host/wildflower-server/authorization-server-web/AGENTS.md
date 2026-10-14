@@ -21,7 +21,8 @@ Security Policy (below).
   the request id from its path and mounts `ConsentPage` over
   `ownerBrowserSessionRunner(location.origin, FetchHttpClient.layer)`.
 - `src/consent/consent-page.tsx` — reads the consent, renders the card with a
-  patient search (`patient-search.ts`, FHIR `GET /Patient?name=`), and leaves
+  patient search (`patient-search.ts`, FHIR `GET /Patient?name=`, each hit
+  read as a `PatientMinimal`), and leaves
   for the callback the decision's answer carries, only an http(s) one
   (`src/client-callback.ts`). A browser that can't read the consent (`401`,
   `403`, `404`) goes to the wait page.
@@ -49,9 +50,9 @@ Security Policy (below).
   stylesheets and `woff2` fonts.
 - **Mind the budget.** Anything that imports the FHIR datatype registry
   (`@wildflowerhealthio/fhir-r4/data-types`, `/resources`, `fhir-r4-react`)
-  brings `fast-check` and the whole registry into the page: read FHIR through
-  narrowed schemas, as `patient-search.ts` does, and show names with
-  `@wildflowerhealthio/fhir-r4/human-name-display`.
+  brings `fast-check` and the whole registry into the page: read patients
+  with `@wildflowerhealthio/fhir-r4/patient-minimal` (`PatientMinimal.Schema`
+  and `displayName`), as `patient-search.ts` does, which loads only `effect`.
 - **`dist/` is embedded at compile time.** Building
   `wildflowerhealthio-authorization-server` (and so the server and the host
   app) needs it: run `vp run -F @wildflowerhealthio/authorization-server-web build`

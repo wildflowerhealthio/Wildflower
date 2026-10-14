@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import type { HttpClientError } from '@effect/platform'
-import { displayName } from '@wildflowerhealthio/fhir-r4/human-name-display'
+import { PatientMinimal, displayName } from '@wildflowerhealthio/fhir-r4/patient-minimal'
 import type { PatientOption } from '@wildflowerhealthio/scopes-react'
 import { Effect, Schema } from 'effect'
 import type { ParseResult } from 'effect'
@@ -9,33 +9,10 @@ import type { ParseResult } from 'effect'
 const PATIENT_SEARCH_PAGE_SIZE = 20
 
 /**
- * A `HumanName` as the search reads it: the fields its display name is read
- * from (fhir-r4's `displayName`). Narrowed from FHIR's `HumanName`, whose
- * schema would bring the whole datatype registry into the page.
- */
-const PatientNameSchema = Schema.Struct({
-  use: Schema.optional(Schema.String),
-  given: Schema.optional(Schema.Array(Schema.String)),
-  family: Schema.optional(Schema.String),
-  text: Schema.optional(Schema.String),
-  period: Schema.optional(Schema.Struct({ end: Schema.optional(Schema.String) })),
-})
-
-/**
- * A `Patient` as the search reads it: its `id`, which the approval binds, and
- * its names, which it is shown by. Narrowed from FHIR's `Patient`, whose other
- * fields the card never reads.
- */
-const PatientSearchHitSchema = Schema.Struct({
-  resourceType: Schema.Literal('Patient'),
-  id: Schema.String,
-  name: Schema.optionalWith(Schema.Array(PatientNameSchema), { default: () => [] }),
-})
-
-/**
  * Any other resource a searchset carries beside its matches, such as an
- * `OperationOutcome` about the search itself, or a `Patient` without an `id`,
- * which nothing could bind. Read only to be left out.
+ * `OperationOutcome` about the search itself, or a `Patient` that doesn't read
+ * as a `PatientMinimal` (one without an `id`, which nothing could bind). Read
+ * only to be left out.
  */
 const OtherSearchResourceSchema = Schema.Struct({ resourceType: Schema.String })
 
@@ -45,20 +22,18 @@ const PatientSearchBundleSchema = Schema.Struct({
   entry: Schema.optionalWith(
     Schema.Array(
       Schema.Struct({
-        resource: Schema.Union(PatientSearchHitSchema, OtherSearchResourceSchema),
+        resource: Schema.Union(PatientMinimal.Schema, OtherSearchResourceSchema),
       })
     ),
     { default: () => [] }
   ),
 })
 
-type PatientSearchHit = Schema.Schema.Type<typeof PatientSearchHitSchema>
-
 /** Whether a searchset `resource` is a patient the search found. */
-const isPatientSearchHit = Schema.is(PatientSearchHitSchema)
+const isPatientSearchHit = Schema.is(PatientMinimal.Schema)
 
 /** The option the patient picker shows `patient` as: its display name, else its id. */
-const patientOptionOf = (patient: PatientSearchHit): PatientOption => ({
+const patientOptionOf = (patient: PatientMinimal.Type): PatientOption => ({
   id: patient.id,
   displayName: displayName(patient.name) ?? patient.id,
 })

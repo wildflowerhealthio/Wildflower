@@ -46,7 +46,7 @@ export default defineConfig({
       dts: tsgoDts,
       exports: false,
       platform: 'neutral',
-      entry: { 'human-name-display/index': 'src/data-types/complex/human-name-display.ts' },
+      entry: { 'patient-minimal/index': 'src/patient-minimal/index.ts' },
     },
     {
       deps: { resolveDepSubpath: true },

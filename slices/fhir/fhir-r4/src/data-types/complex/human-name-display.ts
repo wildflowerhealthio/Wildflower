@@ -3,8 +3,9 @@ import { Array as Arr, DateTime, Option, Order, String as Str } from 'effect'
 /*
  * The display name of a person's `HumanName`s, apart from the `HumanName`
  * schema: this module imports no schema and registers no datatype, so a page
- * that only shows names (the authorization server's consent card) loads it
- * without the FHIR datatype registry. `HumanName.displayName` re-exports it.
+ * that only shows names (the authorization server's consent card) loads it,
+ * through `@wildflowerhealthio/fhir-r4/patient-minimal`, without the FHIR
+ * datatype registry. `HumanName.displayName` re-exports it.
  */
 
 /**
