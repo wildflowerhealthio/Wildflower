@@ -13,7 +13,13 @@
 //! [`present_session_cookie_bearers`] layers one instance per cookie around
 //! the whole API, the FHIR web UI's outermost: a request carrying both cookies
 //! gets `hfs_session`'s bearer, the more specific session, and the UI runs as
-//! its own signed-in user. For its cookie, an instance:
+//! its own signed-in user. A page that acts as the Owner (the consent card)
+//! says so with `Wildflower-Session: owner-browser`
+//! ([`SESSION_HEADER`], [`OWNER_BROWSER_SESSION_HEADER_VALUE`]): the UI's
+//! instance then presents nothing, so the request gets the Owner browser
+//! session's bearer, or none if that cookie is missing or its session has
+//! ended; it never falls back to `hfs_session`'s. Any other value is read as
+//! no header. For its cookie, an instance:
 //!
 //! - refuses, `403`, a write (any method but `GET`, `HEAD`, `OPTIONS`,
 //!   `TRACE`) carrying the cookie unless it comes from the served origin. The
@@ -40,6 +46,13 @@
 //! credentials, so no other origin reads a response a cookie rode on, and only
 //! a request a page can send without a preflight (a form or text `POST`) needs
 //! refusing here.
+//!
+//! The header needs no guard of its own. It is not CORS-safelisted, so another
+//! origin's page can only send it after a preflight, and since CORS never
+//! allows credentials, the browser sends that request without either cookie.
+//! Nor does it widen what a request may do: it only picks which of the
+//! browser's own sessions the request presents, and only from the served
+//! origin, which already reaches either.
 
 use std::sync::Arc;
 
@@ -53,6 +66,7 @@ use url::Url;
 use wildflowerhealthio_authorization_server::{
     ensure_bearer_header, owner_browser_session_clearing_set_cookie,
     owner_browser_session_has_ended, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
+    OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 use wildflowerhealthio_shared_structures::origin_string;
 use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
@@ -88,6 +102,15 @@ impl SessionCookie {
         }
     }
 
+    /// Whether the page sending `headers` chose another session than this
+    /// cookie's: `hfs_session` when it asks for the Owner browser's.
+    fn is_set_aside_by(&self, headers: &HeaderMap) -> bool {
+        matches!(self, SessionCookie::FhirUi(_))
+            && headers
+                .get(SESSION_HEADER)
+                .is_some_and(|session| session == OWNER_BROWSER_SESSION_HEADER_VALUE)
+    }
+
     /// The session the cookie's `value` stands for: an Owner browser
     /// cookie's own token, unless its session has ended, or the bearer of the
     /// UI session it names, while that session lives.
@@ -120,7 +143,9 @@ pub(crate) struct SessionCookieBearerConfig {
 /// checked against `authorization_server`, and the FHIR web UI's, read from
 /// `ui_sessions`. The UI's is outermost, so it runs first: a request carrying
 /// both cookies gets `hfs_session`'s bearer, and the Owner browser instance
-/// then finds `Authorization` set and leaves it.
+/// then finds `Authorization` set and leaves it, unless the request asks for
+/// the Owner browser session, when the UI's instance leaves it to the inner
+/// one.
 pub(crate) fn present_session_cookie_bearers(
     router: Router,
     authorization_server: Arc<AuthorizationServerState>,
@@ -147,7 +172,8 @@ pub(crate) fn present_session_cookie_bearers(
 /// served origin is refused. With no `Authorization` of its own, a request
 /// from the served origin carrying a cookie that stands for a live session
 /// gets `Authorization: Bearer <its token>`, and one whose Owner browser
-/// session has ended passes without it and has the cookie cleared. Anything
+/// session has ended passes without it and has the cookie cleared. One that
+/// asks for another session than the cookie's passes without it. Anything
 /// else passes as it came, for the gates to judge.
 pub(crate) async fn present_session_cookie_bearer(
     State(config): State<Arc<SessionCookieBearerConfig>>,
@@ -171,7 +197,9 @@ pub(crate) async fn present_session_cookie_bearer(
         )
             .into_response();
     }
-    if request.headers().contains_key(header::AUTHORIZATION) {
+    if request.headers().contains_key(header::AUTHORIZATION)
+        || config.session_cookie.is_set_aside_by(request.headers())
+    {
         return next.run(request).await;
     }
     match config.session_cookie.session(cookie).await {
@@ -793,12 +821,7 @@ mod tests {
     async fn with_both_cookies_the_fhir_ui_session_wins() {
         let authorization_server = AuthorizationServerFixture::new();
         let owner_browser_token = authorization_server.owner_browser_token(Duration::hours(8));
-        let router = present_session_cookie_bearers(
-            echo_router(),
-            authorization_server.state.clone(),
-            Arc::new(store_with_a_session()),
-            &loopback_base_url(),
-        );
+        let router = composed_layers(&authorization_server);
         let cookies =
             format!("__Host-owner_browser_session={owner_browser_token}; hfs_session=session-1");
         for method in [Method::GET, Method::POST] {
@@ -821,18 +844,145 @@ mod tests {
         }
     }
 
+    /// The layers the server composes, over [`echo_router`], judging an Owner
+    /// browser's cookie by `authorization_server` and the UI's against its one
+    /// live session.
+    fn composed_layers(authorization_server: &AuthorizationServerFixture) -> Router {
+        present_session_cookie_bearers(
+            echo_router(),
+            authorization_server.state.clone(),
+            Arc::new(store_with_a_session()),
+            &loopback_base_url(),
+        )
+    }
+
+    /// A request from the served origin asking for the Owner browser session
+    /// gets its bearer even with the FHIR web UI's cookie beside it.
+    #[tokio::test]
+    async fn asking_for_the_owner_browser_session_presents_it_over_the_fhir_ui_s() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let owner_browser_token = authorization_server.owner_browser_token(Duration::hours(8));
+        let cookies =
+            format!("__Host-owner_browser_session={owner_browser_token}; hfs_session=session-1");
+        for method in [Method::GET, Method::POST] {
+            let response = send(
+                composed_layers(&authorization_server),
+                method.clone(),
+                &[
+                    ("cookie", &cookies),
+                    ("forwarded", FORWARDED),
+                    ("sec-fetch-site", "same-origin"),
+                    ("origin", SERVED_ORIGIN),
+                    ("wildflower-session", "owner-browser"),
+                ],
+            )
+            .await;
+            assert_eq!(
+                status_and_authorization(response).await,
+                (
+                    StatusCode::OK,
+                    Some(format!("Bearer {owner_browser_token}"))
+                ),
+                "{method}"
+            );
+        }
+    }
+
+    /// Asking for the Owner browser session without a live one presents no
+    /// session at all, never the FHIR web UI's: whether the Owner cookie is
+    /// missing or its session has ended, which is still cleared.
+    #[tokio::test]
+    async fn asking_for_a_missing_owner_browser_session_presents_none() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let expired = authorization_server.owner_browser_token(Duration::hours(-1));
+        for (what, cookies, cleared) in [
+            ("no Owner cookie", "hfs_session=session-1".to_owned(), false),
+            (
+                "an ended Owner session",
+                format!("__Host-owner_browser_session={expired}; hfs_session=session-1"),
+                true,
+            ),
+        ] {
+            let response = send(
+                composed_layers(&authorization_server),
+                Method::GET,
+                &[
+                    ("cookie", &cookies),
+                    ("sec-fetch-site", "same-origin"),
+                    ("wildflower-session", "owner-browser"),
+                ],
+            )
+            .await;
+            assert_eq!(
+                set_cookies(&response) == [CLEARED_OWNER_BROWSER_COOKIE],
+                cleared,
+                "{what}"
+            );
+            assert_eq!(
+                status_and_authorization(response).await,
+                passed_without_a_bearer(),
+                "{what}"
+            );
+        }
+    }
+
+    /// The header still names a session only from the served origin: a write
+    /// from another server's page carrying either cookie is refused with it.
+    #[tokio::test]
+    async fn asking_for_the_owner_browser_session_keeps_the_write_guard() {
+        for guarded in guarded_cookies() {
+            assert_eq!(
+                respond_with_cookie(
+                    &guarded,
+                    Method::POST,
+                    &[
+                        ("forwarded", FORWARDED),
+                        ("origin", SIBLING_ORIGIN),
+                        ("wildflower-session", "owner-browser"),
+                    ]
+                )
+                .await,
+                refused(),
+                "{}",
+                guarded.cookie
+            );
+        }
+    }
+
+    /// Any other value of the header is read as no header: the FHIR web UI's
+    /// session wins as usual.
+    #[tokio::test]
+    async fn an_unknown_session_choice_is_ignored() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let owner_browser_token = authorization_server.owner_browser_token(Duration::hours(8));
+        let cookies =
+            format!("__Host-owner_browser_session={owner_browser_token}; hfs_session=session-1");
+        for value in ["fhir-ui", "Owner-Browser", ""] {
+            let response = send(
+                composed_layers(&authorization_server),
+                Method::GET,
+                &[
+                    ("cookie", &cookies),
+                    ("sec-fetch-site", "same-origin"),
+                    ("wildflower-session", value),
+                ],
+            )
+            .await;
+            assert_eq!(
+                status_and_authorization(response).await,
+                (StatusCode::OK, Some("Bearer session-token".to_owned())),
+                "{value:?}"
+            );
+        }
+    }
+
     /// The composed layers still present an Owner browser's bearer when it is
     /// the only cookie.
     #[tokio::test]
     async fn the_composed_layers_present_a_lone_owner_browser_cookie() {
         let authorization_server = AuthorizationServerFixture::new();
         let owner_browser_token = authorization_server.owner_browser_token(Duration::hours(8));
-        let router = present_session_cookie_bearers(
-            echo_router(),
-            authorization_server.state.clone(),
-            Arc::new(store_with_a_session()),
-            &loopback_base_url(),
-        );
+        let router = composed_layers(&authorization_server);
         let cookie = format!("__Host-owner_browser_session={owner_browser_token}");
         let response = send(
             router,

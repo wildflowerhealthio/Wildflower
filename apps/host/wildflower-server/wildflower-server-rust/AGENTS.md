@@ -139,7 +139,10 @@ only it composes. Rust-only, no `-core`.
     (`http/middleware/session_cookie_bearer.rs`'s
     `present_session_cookie_bearers`): a request from the served origin with
     no `Authorization` gets a live session's bearer, `hfs_session`'s when it
-    carries both; an Owner browser cookie whose token has expired or been
+    carries both, unless it sends `Wildflower-Session: owner-browser`
+    (the authorization server's `SESSION_HEADER` and
+    `OWNER_BROWSER_SESSION_HEADER_VALUE`), when it gets the Owner browser
+    session's bearer or none, never `hfs_session`'s; an Owner browser cookie whose token has expired or been
     revoked is skipped and cleared on the response; and a write carrying
     either cookie from any other origin gets `403`. No route is singled out;
     the gates check the token's scopes and revocation. The Wildflower host

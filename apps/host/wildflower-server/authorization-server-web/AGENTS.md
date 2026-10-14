@@ -28,7 +28,10 @@ Security Policy (below).
 - `src/owner-browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.
   The browser's `__Host-owner_browser_session` cookie rides every same-origin
-  request, and the server's cookie→bearer layer presents its token.
+  request, and the server's cookie→bearer layer presents its token. Every
+  request carries `OWNER_BROWSER_SESSION_HEADER`
+  (`Wildflower-Session: owner-browser`), so a browser also holding the FHIR web
+  UI's `hfs_session` still acts as the Owner, not as the UI's user.
 - `page-script-budget.ts` — the build plugin that fails `vp build` when a
   page's JavaScript, beside the shared React chunk, is over 150 KB gzipped.
 - `vite.config.ts` — the page inputs, `base: '/oauth/'`, the shared `react`

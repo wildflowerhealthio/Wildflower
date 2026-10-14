@@ -78,6 +78,7 @@ pub use http::{
     owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
     require_loopback_peer_middleware, AuthorizationServerAuthMiddleware, AuthorizationServerState,
     RequireLoopbackPeerMiddleware, OWNER_BROWSER_SESSION_COOKIE,
+    OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter};
 pub use wildflowerhealthio_persistence::DieselPool;

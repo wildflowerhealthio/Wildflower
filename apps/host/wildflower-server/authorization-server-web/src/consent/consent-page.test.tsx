@@ -7,7 +7,10 @@ import { Effect, Layer } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import { ownerBrowserSessionRunner } from '../owner-browser-session.ts'
+import {
+  OWNER_BROWSER_SESSION_HEADER,
+  ownerBrowserSessionRunner,
+} from '../owner-browser-session.ts'
 import { ConsentPage } from './consent-page.tsx'
 
 /**
@@ -20,12 +23,16 @@ import { ConsentPage } from './consent-page.tsx'
 const SERVER_ORIGIN = 'https://ruth.relay.example'
 const WAIT_PAGE = new URL(`${SERVER_ORIGIN}/oauth/authorize/req-1/wait`)
 
-/** A request the stub server saw: its method, path, query and JSON body. */
+/**
+ * A request the stub server saw: its method, path, query, JSON body, and the
+ * session it asked the server for (`Wildflower-Session`).
+ */
 interface SeenRequest {
   readonly method: string
   readonly path: string
   readonly query: string
   readonly body: unknown
+  readonly session: string | undefined
 }
 
 /** How the stub server answers one request, by method and path. */
@@ -48,6 +55,7 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       path: url.pathname,
       query: UrlParams.toString(request.urlParams),
       body: bodyOf(request),
+      session: request.headers[OWNER_BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
     const { status, body } = answer(seenRequest)
@@ -119,6 +127,10 @@ const renderPage = (): { readonly user: ReturnType<typeof userEvent.setup> } => 
   return { user: userEvent.setup({ delay: null }) }
 }
 
+/** The session each request the stub server received asked for. */
+const sessionsAskedFor = (): readonly (string | undefined)[] =>
+  seen.map((request) => request.session)
+
 /** The approval bodies the stub server received. */
 const approvals = (): readonly unknown[] =>
   seen.filter((request) => request.path.endsWith('/approve')).map((request) => request.body)
@@ -156,6 +168,7 @@ describe('ConsentPage — exit', () => {
     expect(
       seen.some((request) => request.path === '/authorization/oauth-consents/req-1/deny')
     ).toBe(true)
+    expect(new Set(sessionsAskedFor())).toEqual(new Set([OWNER_BROWSER_SESSION_HEADER.value]))
   })
 
   test('the page refuses to leave for a callback that is not http(s)', async () => {
@@ -261,5 +274,15 @@ describe('ConsentPage — patient search', () => {
         },
       ])
     })
+    // The consent read, the search and the approval each act as the Owner,
+    // even in a browser signed in to the FHIR web UI too.
+    expect(seen.map((request) => request.path)).toEqual(
+      expect.arrayContaining([
+        '/authorization/oauth-consents/req-1',
+        '/Patient',
+        '/authorization/oauth-consents/req-1/approve',
+      ])
+    )
+    expect(new Set(sessionsAskedFor())).toEqual(new Set([OWNER_BROWSER_SESSION_HEADER.value]))
   })
 })

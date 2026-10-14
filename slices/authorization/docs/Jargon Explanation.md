@@ -330,8 +330,10 @@ middleware; they're public. The middleware reads the access token from the
 FHIR UI's `hfs_session`, only from its own pages, with an Origin check on
 writes, and turns each into a bearer token ahead of the gate
 (`wildflower-server-rust`'s `session_cookie_bearer`); with both, `hfs_session`
-wins. Every other caller, direct-loopback or relayed, attaches its own bearer:
-the launcher its in-memory one.
+wins, unless the page asks for the Owner browser's session with
+`Wildflower-Session: owner-browser` (see [Owner browser](#owner-browser)). Every
+other caller, direct-loopback or relayed, attaches its own bearer: the launcher
+its in-memory one.
 
 ### Device flow (RFC 8628)
 
@@ -433,9 +435,9 @@ address a sign-in ever leaves the authorization server for, and no request param
 name a different one. The page takes no decision itself: the Owner answers in
 the host's consent sheet, a signed-in launcher, or the
 [consent card](#consent-card). While the request is pending, the page also
-reads `GET /authorization/oauth-consents/{id}` on whatever session the browser
-carries; once that succeeds (the browser has signed in as the Owner since), it
-switches to the consent card beside it.
+reads `GET /authorization/oauth-consents/{id}` on the browser's Owner browser
+session, asked for with `Wildflower-Session: owner-browser`; once that
+succeeds (the browser has signed in as the Owner since), it switches to the consent card beside it.
 
 It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an
@@ -458,7 +460,9 @@ authorization server embeds and serves with the wait page's headers; its
 hashed scripts, stylesheets and fonts are at `/oauth/assets/*`, cached as
 immutable.
 It has no API of its own. On the Owner browser's session, which the host's
-cookie→bearer layer presents as the bearer, it reads
+cookie→bearer layer presents as the bearer, and which every request asks for
+with `Wildflower-Session: owner-browser` (so a browser also signed in to the
+FHIR web UI still acts as the Owner), it reads
 `GET /authorization/oauth-consents/{id}`, searches FHIR `GET /Patient?name=…`
 when the request asks for a patient, and posts `/approve` or `/deny`. The card
 is `authorization-react`'s `OAuthConsentCard`: the app's identity and where it
@@ -516,6 +520,16 @@ if the cookie weren't sent, and the response clears it. The cookie needs
 `/oauth/authorize` reads the cookie too: a parked request from an Owner
 browser goes to the [consent card](#consent-card) rather than the
 [wait page](#wait-page).
+
+A browser can hold the FHIR web UI's `hfs_session` beside this cookie. A
+request carrying both gets `hfs_session`'s bearer, so the UI runs as its own
+signed-in user, unless it carries the header `Wildflower-Session: owner-browser`:
+then it gets the Owner browser session's bearer, or none if this cookie is
+missing or its session has ended, never `hfs_session`'s. Any other value is
+read as no header. The consent card and the wait page's check for it send the
+header. It needs no guard of its own: it isn't CORS-safelisted, so another
+origin's page sends it only after a preflight, and since CORS never allows
+credentials, that request carries neither cookie.
 
 ### Expandable consent
 

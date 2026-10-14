@@ -12,6 +12,13 @@
 //! `/oauth/authorize` reads it too, on the navigation a client starts, to send
 //! a browser signed in as the Owner to the consent card rather than the wait
 //! page.
+//!
+//! A browser can hold the FHIR web UI's `hfs_session` beside it, and the layer
+//! presents `hfs_session`'s token when both ride a request. A page that acts
+//! as the Owner (the consent card, and the wait page's check for it) sends
+//! [`SESSION_HEADER`] set to [`OWNER_BROWSER_SESSION_HEADER_VALUE`] on its
+//! requests, and the layer presents the Owner browser session's token, or no
+//! session's, instead.
 
 use std::sync::Arc;
 
@@ -28,6 +35,16 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 /// server's alone, set over `https`, and no sibling subdomain can set or
 /// shadow it.
 pub const OWNER_BROWSER_SESSION_COOKIE: &str = "__Host-owner_browser_session";
+
+/// The request header a page on the server's own origin names the session it
+/// acts as in, for a browser holding more than one session cookie. Only
+/// [`OWNER_BROWSER_SESSION_HEADER_VALUE`] means anything; a request without
+/// it, or with any other value, gets the layer's default.
+pub const SESSION_HEADER: &str = "wildflower-session";
+
+/// [`SESSION_HEADER`]'s value for the Owner browser session: the request acts
+/// as the Owner signed in on this browser, or as no session if none is.
+pub const OWNER_BROWSER_SESSION_HEADER_VALUE: &str = "owner-browser";
 
 /// The `Set-Cookie` value that hands a browser `owner_browser_token` as its
 /// Owner browser session: `HttpOnly`, so no script reads it; `SameSite=Lax`,

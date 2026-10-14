@@ -1362,7 +1362,8 @@ async fn the_fhir_ui_signs_in_through_authorization_server_and_reads_fhir_on_its
 /// composed server: a code the host mints signs a browser in and sends it on,
 /// and its `__Host-owner_browser_session` cookie alone then reads
 /// `GET /authorization/session` as the Owner from the server's own pages. Sent
-/// with the FHIR web UI's `hfs_session` too, the UI's session wins. A write
+/// with the FHIR web UI's `hfs_session` too, the UI's session wins, unless
+/// the page asks for the Owner browser session with `Wildflower-Session`. A write
 /// carrying the cookie from another server's page is refused; one from the
 /// server's own page goes through on it, here revoking the session's own
 /// `jti`, after which the cookie is skipped, so the request gets `401`, and
@@ -1436,6 +1437,28 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
         with_both_cookies.json::<Value>().await.expect("a session")["scopes"],
         serde_json::json!(["user/*.cruds"]),
         "the FHIR web UI's session wins"
+    );
+    let asking_for_the_owner = server
+        .ui_request(
+            reqwest::Method::GET,
+            "authorization/session",
+            Some(&format!("{owner_cookie}; {ui_cookie}")),
+        )
+        .header(
+            wildflowerhealthio_authorization_server::SESSION_HEADER,
+            wildflowerhealthio_authorization_server::OWNER_BROWSER_SESSION_HEADER_VALUE,
+        )
+        .send()
+        .await
+        .expect("GET /authorization/session reaches the server");
+    assert_eq!(asking_for_the_owner.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        asking_for_the_owner
+            .json::<Value>()
+            .await
+            .expect("a session")["scopes"],
+        serde_json::json!(owner_scopes),
+        "a page asking for the Owner browser session gets it"
     );
 
     let owner_token = owner_cookie

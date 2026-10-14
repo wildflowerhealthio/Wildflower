@@ -71,9 +71,11 @@ const leaveFor = (redirect) => {
 
 /**
  * Whether this browser can decide the request on the consent card: it reads
- * the request's consent, `/authorization/oauth-consents/{id}`, on the session
- * its cookie carries. A browser not signed in as the Owner gets a `401`; one
- * that can't reach the server stays on this page and polls again.
+ * the request's consent, `/authorization/oauth-consents/{id}`, on its Owner
+ * browser session, asked for with the `Wildflower-Session` header as the card
+ * asks for it, so a browser also signed in to the FHIR web UI is judged as the
+ * Owner. A browser not signed in as the Owner gets a `401`; one that can't
+ * reach the server stays on this page and polls again.
  *
  * @returns {Promise<boolean>}
  */
@@ -87,7 +89,7 @@ const canOpenConsentCard = async () => {
   )
   try {
     const response = await fetch(consentUrl, {
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', 'Wildflower-Session': 'owner-browser' },
       cache: 'no-store',
     })
     return response.ok
