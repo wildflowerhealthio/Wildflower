@@ -1449,7 +1449,7 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
             .json::<Value>()
             .await
             .expect("a session")["scopes"],
-        serde_json::json!(owner_scopes),
+        serde_json::json!(wildflowerhealthio_authorization_server::owner_scopes()),
         "a page asking for the Owner browser session gets it"
     );
 
