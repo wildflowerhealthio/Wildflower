@@ -122,10 +122,24 @@ const lastApprovedScopes = (): readonly string[] | undefined => {
 
 describe('OAuthConsentForm — app identity', () => {
   test('the header names the app, demoting the client id to a mono line', () => {
-    renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), vi.fn())
+    renderForm(makeConsent({ scopes: ['patient/Observation.r'], clientId: 'fitbit-sync' }), vi.fn())
 
     expect(screen.getByRole('heading', { name: 'Fitbit Sync' })).toBeDefined()
-    expect(screen.getByText('app.example')).toBeDefined()
+    expect(screen.getByText('fitbit-sync')).toBeDefined()
+  })
+
+  test('the header names the host the app sends the browser back to', () => {
+    renderForm(
+      makeConsent({
+        scopes: ['patient/Observation.r'],
+        redirectUri: 'https://sync.fitbit.example:8443/oauth/cb?x=1',
+      }),
+      vi.fn()
+    )
+
+    expect(screen.getByText('Returns you to', { exact: false }).textContent).toBe(
+      'Returns you to sync.fitbit.example:8443'
+    )
   })
 
   test('falls back to the client id as the subject when the name is empty', () => {
@@ -314,19 +328,20 @@ describe('OAuthConsentForm — decision routing', () => {
     expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy()
   })
 
-  test('a denied approval shows the denial notice and stays on the form', async () => {
+  test('an approval the server records as a denial passes the denied result to onDone', async () => {
+    const denied = {
+      status: 'denied' as const,
+      redirect: 'https://app.example/cb?error=access_denied',
+    }
     mutate.mockImplementation((_variables, options) => {
-      options?.onSuccess?.({ status: 'denied' })
+      options?.onSuccess?.(denied)
     })
     const onDone = vi.fn()
     const { user } = renderForm(makeConsent({ scopes: ['patient/Observation.r'] }), onDone)
 
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'Authorization request was denied.'
-    )
-    expect(onDone).not.toHaveBeenCalled()
+    expect(onDone).toHaveBeenCalledWith(denied)
   })
 })
 

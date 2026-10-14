@@ -21,5 +21,5 @@ async fn handle_deny_device_consent(
     Path(user_code): Path<String>,
 ) -> Result<Json<ConsentResult>, AuthorizationServerError> {
     consents.deny_device(&user_code)?;
-    Ok(Json(ConsentResult::Denied))
+    Ok(Json(ConsentResult::Denied { redirect: None }))
 }

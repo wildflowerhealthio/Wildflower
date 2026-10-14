@@ -4,36 +4,6 @@ use crate::common::*;
 // a browser in as the Owner, once, handing it an Owner token as its
 // `__Host-owner_browser_session` cookie and sending it on to an allowed `next`.
 
-/// `GET /oauth/sign-in` with `code` and `next`, as the browser the base opened
-/// sends it.
-async fn sign_in(g: &AuthorizationServer, code: &str, next: &str) -> axum::response::Response {
-    let uri = format!(
-        "/oauth/sign-in?{}",
-        url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("code", code)
-            .append_pair("next", next)
-            .finish()
-    );
-    g.router
-        .clone()
-        .oneshot(loopback_request(Request::get(uri), Body::empty()))
-        .await
-        .expect("oneshot")
-}
-
-/// The Owner token a sign-in's `Set-Cookie` hands the browser.
-fn owner_browser_session_token(res: &axum::response::Response) -> String {
-    let cookies = set_cookie_values(res);
-    let [cookie] = cookies.as_slice() else {
-        panic!("exactly one cookie, got {cookies:?}");
-    };
-    cookie
-        .strip_prefix("__Host-owner_browser_session=")
-        .and_then(|rest| rest.split(';').next())
-        .unwrap_or_else(|| panic!("the Owner browser session cookie, got {cookie}"))
-        .to_owned()
-}
-
 /// A token's payload claims, unverified.
 fn claims_of(token: &str) -> Value {
     let payload_b64 = token.split('.').nth(1).expect("jwt has a payload segment");

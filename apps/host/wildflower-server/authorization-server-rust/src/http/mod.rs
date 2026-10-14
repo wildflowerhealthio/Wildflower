@@ -27,7 +27,7 @@ pub use middleware::{
 pub(crate) use owner_browser_session_cookie::owner_browser_session_set_cookie;
 pub use owner_browser_session_cookie::{
     owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
-    OWNER_BROWSER_SESSION_COOKIE,
+    OWNER_BROWSER_SESSION_COOKIE, OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use state::AuthorizationServerState;
 

@@ -1,18 +1,10 @@
-import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import { ErrorBanner, pageLayoutStyles, StatusBadge } from '@wildflowerhealthio/react-tundraish'
-import { GrantDraft, Scope, ScopeRequest } from '@wildflowerhealthio/scopes-core'
-import type { GrantDraft as GrantDraftModel } from '@wildflowerhealthio/scopes-core'
-import { ScopePicker } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useOAuthConsentMutation } from '../../queries/index.ts'
 import type { OAuthConsentResource, OAuthConsentResult } from '../../queries/index.ts'
-import { AppAvatar } from './app-avatar.tsx'
-import { PatientChoice } from './patient-choice.tsx'
-import { RegistrationWarning } from './registration-warning.tsx'
+import { consentAsksForPatient } from './consent-asks-for-patient.ts'
+import { OAuthConsentCard } from './oauth-consent-card.tsx'
 import { usePatientOptions } from './use-patient-options.ts'
-import styles from '../../styles/consent-card.module.css'
 
 interface OAuthConsentFormProps {
   readonly consent: OAuthConsentResource
@@ -20,231 +12,21 @@ interface OAuthConsentFormProps {
 }
 
 /**
- * The OAuth consent card: the app-identity header, the launch-patient bar, the shared
- * {@link ScopePicker} editing surface, and the approve/deny decision wiring. The scope
- * editing itself (statements ⇄ grid, exclusions, flags) is `scopes-react`'s; this form
- * owns the draft, the consent mutation, and the result routing.
+ * The {@link OAuthConsentCard} on the router's authed runner: the decision goes
+ * through {@link useOAuthConsentMutation}, and the patient bar lists the
+ * server's patients through `fhir-r4-react`, read only when the consent asks
+ * for a patient.
  */
 const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Element => {
-  const request = useMemo(
-    () => ScopeRequest.fromRequestedScopes({ optional: consent.scopes }),
-    [consent]
-  )
-
-  // The app's display identity: the registered client name, with the raw
-  // client_id demoted to a small mono line (and doubling as the fallback
-  // subject when registration didn't carry a name).
-  const appName = consent.clientName === '' ? consent.clientId : consent.clientName
-
-  // The launch-patient picker matters when a FHIR patient-context scope or `launch/patient`
-  // is *requested* — this gates the (request-scoped) patient options fetch, so the list is
-  // ready regardless of how the user later prunes the draft.
-  const hasPatientScope = useMemo(
-    () =>
-      Scope.MultiScope.fhirScopes(request.requested).some((scope) =>
-        scope.hasContext(Scope.Contexts.Fhir.patient)
-      ) || request.requested.known.some((known) => known.name === 'launch/patient'),
-    [request]
-  )
-
   const consentMutation = useOAuthConsentMutation()
-  // Deliberate behavior change: seed every *requested* scope as granted (not just the
-  // pre-approved subset) — the user prunes rather than builds.
-  const [draft, setDraft] = useState<GrantDraftModel.GrantDraft>(() =>
-    GrantDraft.fromScopes(consent.scopes, consent.patient ?? null)
-  )
-  const [resultError, setResultError] = useState<string | null>(null)
-  const [patientError, setPatientError] = useState<string | null>(null)
-  // The trust-on-first-use acknowledgment: required before Approve is enabled
-  // whenever `registration.status` is `new`/`changed`; irrelevant (and never
-  // shown) for `registered`, so it always sends `false` in that case.
-  const [registrationAcknowledged, setRegistrationAcknowledged] = useState(false)
-  const registrationNeedsAcknowledgment = consent.registration.status !== 'registered'
-  const {
-    options: patients,
-    loading: patientsLoading,
-    error: patientsError,
-  } = usePatientOptions(hasPatientScope)
-
-  // Whether a FHIR patient-context scope is still granted in the *current draft*.
-  // The requirement to supply a launch patient tracks this, not the original
-  // request: while any patient-context scope remains, a patient must be chosen —
-  // so the picker offers no "No patient" escape hatch.
-  const draftHasPatientContextScope = useMemo(
-    () =>
-      Scope.MultiScope.fhirScopes(draft).some((scope) =>
-        scope.hasContext(Scope.Contexts.Fhir.patient)
-      ),
-    [draft]
-  )
-  // Whether the current draft asks for a launch patient at all: a patient-context
-  // scope, or `launch/patient`. With `launch/patient` alone the patient is
-  // optional — the picker offers "No patient". If the user prunes both, the
-  // picker disappears and no patient is sent.
-  const draftHasPatientScope =
-    draftHasPatientContextScope || draft.known.some((known) => known.name === 'launch/patient')
-
-  const patientBarRef = useRef<HTMLDivElement>(null)
-  const errorRef = useRef<HTMLDivElement>(null)
-
-  const submitting = consentMutation.isPending
-  // A result message (a denial / result error) takes precedence over the raw
-  // mutation error; `ErrorBanner` renders whichever is set. A `403
-  // InsufficientScope` (approving a resource scope the approver's own token
-  // doesn't cover) renders as the app's permission surface, which offers a
-  // step-up sign-in that returns here to approve again.
-  const error = resultError ?? consentMutation.error
-  const hasError = resultError !== null || consentMutation.error !== null
-
-  // The error banner sits at the top of the card, but the buttons that trigger
-  // it are at the bottom — scroll it into view whenever an error appears *or
-  // changes* (e.g. a mutation error replaced by a fresh denial message) so a
-  // scrolled-down user sees why their approval/denial didn't go through. Keyed on
-  // the rendered error identity, not a boolean, so a swap between two non-null
-  // errors still re-scrolls.
-  useEffect(() => {
-    if (error !== null) {
-      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }, [error])
-
-  const handleApprove = (): void => {
-    setResultError(null)
-    // A patient-context grant needs a launch patient — surface the miss beside
-    // the patient bar instead of sending a patientless approval. This holds even
-    // when there is no patient to pick (an empty or unreadable list): the way
-    // forward then is to prune the patient-context scopes, not to approve without one.
-    if (draftHasPatientContextScope && draft.patient === null) {
-      setPatientError('Select a patient to continue.')
-      patientBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      return
-    }
-    consentMutation.mutate(
-      {
-        kind: 'approve',
-        id: consent.id,
-        payload: {
-          approvedScopes: GrantDraft.serializeAll(draft),
-          // Only bind a launch patient when the draft still grants a patient-context
-          // scope or `launch/patient`; a patient chosen before pruning both is dropped.
-          patient: draftHasPatientScope ? draft.patient : null,
-          // `registered` shows no checkbox and always sends `false`; the server
-          // ignores the flag for that status anyway.
-          acknowledgedRegistration: registrationNeedsAcknowledgment && registrationAcknowledged,
-        },
-      },
-      {
-        onSuccess: (result) => {
-          if (result.status === 'approved') {
-            onDone(result)
-          } else if (result.status === 'denied') {
-            setResultError('Authorization request was denied.')
-          } else {
-            setResultError(result.message)
-          }
-        },
-      }
-    )
-  }
-
-  const handleDecline = (): void => {
-    setResultError(null)
-    consentMutation.mutate(
-      { kind: 'deny', id: consent.id },
-      {
-        onSuccess: (result) => {
-          if (result.status === 'denied' || result.status === 'approved') {
-            onDone(result)
-          } else {
-            setResultError(result.message)
-          }
-        },
-      }
-    )
-  }
-
+  const patients = usePatientOptions(consentAsksForPatient(consent))
   return (
-    <section className={styles['card']}>
-      <header className={styles['header']}>
-        <AppAvatar name={appName} redirectUri={consent.redirectUri} />
-        <div className={styles['identity']}>
-          <h2 className={styles['name']}>{appName}</h2>
-          <p className={styles['subtitle']}>wants to connect to your health records</p>
-          <code className={styles['client-id']}>{consent.clientId}</code>
-        </div>
-        <StatusBadge tone="info">Review request</StatusBadge>
-      </header>
-
-      {hasError ? (
-        <div ref={errorRef} className={styles['result-error']}>
-          <ErrorBanner error={error} />
-        </div>
-      ) : null}
-
-      {draftHasPatientScope ? (
-        <div className={styles['patient-bar']} ref={patientBarRef}>
-          <p className={styles['eyebrow']}>Patient</p>
-          <PatientChoice
-            patients={patients}
-            loading={patientsLoading}
-            error={patientsError}
-            value={draft.patient}
-            optional={!draftHasPatientContextScope}
-            onChange={(patientId) => {
-              setPatientError(null)
-              setDraft((previous) => ({ ...previous, patient: patientId }))
-            }}
-          />
-          {patientError !== null && draftHasPatientContextScope ? (
-            <p
-              className={cn(pageLayoutStyles['error'], styles['patient-error'], 'text-body-3')}
-              role="alert"
-            >
-              {patientError}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <RegistrationWarning
-        registration={consent.registration}
-        clientId={consent.clientId}
-        redirectUri={consent.redirectUri}
-        acknowledged={registrationAcknowledged}
-        onAcknowledgeChange={setRegistrationAcknowledged}
-      />
-
-      <ScopePicker subjectName={appName} request={request} draft={draft} onDraftChange={setDraft} />
-
-      <div className={styles['footer']}>
-        <div className={styles['buttons']}>
-          <button
-            type="button"
-            className={cn('button-2 outline accent-red', styles['deny'])}
-            disabled={submitting}
-            onClick={handleDecline}
-          >
-            Deny
-          </button>
-          <button
-            type="button"
-            className={cn('button-2 filled', styles['allow'])}
-            // A fully-pruned draft serializes to no scopes, which the backend
-            // treats as a deny — block the approve action rather than let an
-            // empty grant submit as an accidental denial. A `new`/`changed`
-            // registration additionally gates on the acknowledgment checkbox.
-            disabled={
-              submitting ||
-              !GrantDraft.hasScopes(draft) ||
-              (registrationNeedsAcknowledgment && !registrationAcknowledged)
-            }
-            onClick={handleApprove}
-          >
-            Allow access
-          </button>
-        </div>
-      </div>
-    </section>
+    <OAuthConsentCard
+      consent={consent}
+      consentMutation={consentMutation}
+      patients={patients}
+      onDone={onDone}
+    />
   )
 }
 

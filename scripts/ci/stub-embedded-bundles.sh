@@ -15,6 +15,11 @@
 #            (apps/relay/relay-admin-web, `vp build`) with `include_dir!`. A bare
 #            index.html stands in; the relay's own tests serve a build they
 #            define themselves.
+#   authorization-server-web
+#            wildflowerhealthio-authorization-server embeds the authorization
+#            pages' build (apps/host/wildflower-server/authorization-server-web,
+#            `vp build`) with `include_dir!`. A bare consent.html stands in;
+#            the crate's own tests serve a build they define themselves.
 #
 # The paths live here rather than inline in each workflow so ci-rust.yml and
 # rust-cache-warm.yml can't drift.
@@ -22,10 +27,10 @@
 # `all` stubs every bundle listed above; it is what the cache-warm job runs, so
 # a bundle added later is covered there without editing the workflow.
 #
-# Usage: stub-embedded-bundles.sh <sniffer|relay-admin-web|all>
+# Usage: stub-embedded-bundles.sh <sniffer|relay-admin-web|authorization-server-web|all>
 set -euo pipefail
 
-target="${1:?usage: stub-embedded-bundles.sh <sniffer|relay-admin-web|all>}"
+target="${1:?usage: stub-embedded-bundles.sh <sniffer|relay-admin-web|authorization-server-web|all>}"
 
 stub_sniffer() {
   local out=slices/browser-sniffer/browser-sniffer-tauri-js/dist/tauri-bootstrap.js
@@ -52,15 +57,28 @@ stub_relay_admin_web() {
   echo "stub-embedded-bundles: wrote $out"
 }
 
+stub_authorization_server_web() {
+  local out=apps/host/wildflower-server/authorization-server-web/dist/consent.html
+  mkdir -p "$(dirname "$out")"
+  {
+    echo '<!doctype html>'
+    echo '<!-- CI stub: the real page is the build of apps/host/wildflower-server/authorization-server-web. -->'
+    echo '<title>Approve access</title>'
+  } > "$out"
+  echo "stub-embedded-bundles: wrote $out"
+}
+
 case "$target" in
   sniffer) stub_sniffer ;;
   relay-admin-web) stub_relay_admin_web ;;
+  authorization-server-web) stub_authorization_server_web ;;
   all)
     stub_sniffer
     stub_relay_admin_web
+    stub_authorization_server_web
     ;;
   *)
-    echo "stub-embedded-bundles: unknown target '$target' (expected sniffer|relay-admin-web|all)" >&2
+    echo "stub-embedded-bundles: unknown target '$target' (expected sniffer|relay-admin-web|authorization-server-web|all)" >&2
     exit 1
     ;;
 esac

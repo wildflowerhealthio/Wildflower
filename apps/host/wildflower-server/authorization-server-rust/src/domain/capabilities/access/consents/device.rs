@@ -71,7 +71,7 @@ pub(super) fn approve_device_consent(
             &device_request.id,
             make_consent_not_found,
         )
-        .map(|()| ConsentOutcome::Denied);
+        .map(|()| ConsentOutcome::Denied { redirect: None });
     };
 
     let request_device_name = input

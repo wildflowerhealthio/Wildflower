@@ -97,6 +97,17 @@
   white-space: nowrap;
 }
 
+/* Where the app sends the browser back to, under its client id. */
+.redirect-host {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-4);
+}
+
+.redirect-host code {
+  font-family: var(--font-mono);
+}
+
 /* ── the sunken patient-context bar ───────────────────────────────────────── */
 
 .patient-bar {
@@ -107,6 +118,11 @@
   padding: var(--space-6) var(--space-9);
   background: var(--color-sunken);
   border-bottom: 1.5px solid var(--color-divider);
+}
+
+/* The name search, on its own row above the picker. */
+.patient-search {
+  flex-basis: 100%;
 }
 
 /* Why there is no picker: still loading, an unreadable list, or no patients. */

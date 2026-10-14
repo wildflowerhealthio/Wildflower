@@ -133,6 +133,6 @@ impl HostConsentDecider {
     /// [`AuthorizationServerError::OAuthConsentNotFound`] when it is no longer
     /// pending, or a store failure.
     pub fn deny_oauth(&self, id: &str) -> Result<(), AuthorizationServerError> {
-        self.decider().deny_oauth(id)
+        self.decider().deny_oauth(id).map(|_denied| ())
     }
 }

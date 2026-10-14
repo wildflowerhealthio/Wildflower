@@ -46,6 +46,13 @@ export default defineConfig({
       dts: tsgoDts,
       exports: false,
       platform: 'neutral',
+      entry: { 'patient-minimal/index': 'src/patient-minimal/index.ts' },
+    },
+    {
+      deps: { resolveDepSubpath: true },
+      dts: tsgoDts,
+      exports: false,
+      platform: 'neutral',
       entry: { 'telemetry/index': 'src/telemetry/index.ts' },
     },
   ],

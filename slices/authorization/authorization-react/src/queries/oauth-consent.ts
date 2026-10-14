@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
   useSuspenseQuery,
+  type UseMutationOptions,
   type UseMutationResult,
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
@@ -29,6 +30,11 @@ type ApproveOAuthPayload = {
    */
   readonly acknowledgedRegistration: boolean
 }
+
+/** The Owner's decision on an OAuth consent: approve with a payload, or deny. */
+type OAuthConsentDecision =
+  | { readonly kind: 'approve'; readonly id: string; readonly payload: ApproveOAuthPayload }
+  | { readonly kind: 'deny'; readonly id: string }
 
 const isConsentNotFound = (error: unknown): boolean =>
   typeof error === 'object' &&
@@ -79,8 +85,35 @@ const useOAuthConsentQuery = (id: string): UseSuspenseQueryResult<OAuthConsentRe
   useSuspenseQuery(oauthConsentQueryOptions(useRunAuthed(), id))
 
 /**
- * `ApproveOAuthConsent` / `DenyOAuthConsent`. Returns the resulting
- * decision.
+ * `ApproveOAuthConsent` / `DenyOAuthConsent` over `runAuthed`, as mutation
+ * options: the decision's `mutationFn`, which resolves to the resulting
+ * decision. Shared by {@link useOAuthConsentMutation} and the authorization
+ * server's consent card (`authorization-server-web`), which runs it on the
+ * Owner browser's session rather than the router's.
+ */
+const oauthConsentMutationOptions = (
+  runAuthed: RunAuthed
+): UseMutationOptions<OAuthConsentResult, Error, OAuthConsentDecision> => ({
+  mutationFn: (decision) =>
+    runAuthed(
+      Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
+        decision.kind === 'approve'
+          ? c['oauth-consent'].ApproveOAuthConsent({
+              path: { id: decision.id },
+              payload: {
+                approvedScopes: [...decision.payload.approvedScopes],
+                patient: decision.payload.patient,
+                acknowledgedRegistration: decision.payload.acknowledgedRegistration,
+              },
+            })
+          : c['oauth-consent'].DenyOAuthConsent({ path: { id: decision.id } })
+      ).pipe(foldExpiredConsent)
+    ),
+})
+
+/**
+ * {@link oauthConsentMutationOptions} on the router's authed runner. Returns
+ * the resulting decision.
  *
  * Like the device-consent mutation, the consent screen unmounts on
  * success (`onDone()` navigates away), so this consent's own detail key is
@@ -90,27 +123,12 @@ const useOAuthConsentQuery = (id: string): UseSuspenseQueryResult<OAuthConsentRe
 const useOAuthConsentMutation = (): UseMutationResult<
   OAuthConsentResult,
   Error,
-  | { readonly kind: 'approve'; readonly id: string; readonly payload: ApproveOAuthPayload }
-  | { readonly kind: 'deny'; readonly id: string }
+  OAuthConsentDecision
 > => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (variables) =>
-      runAuthed(
-        Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
-          variables.kind === 'approve'
-            ? c['oauth-consent'].ApproveOAuthConsent({
-                path: { id: variables.id },
-                payload: {
-                  approvedScopes: [...variables.payload.approvedScopes],
-                  patient: variables.payload.patient,
-                  acknowledgedRegistration: variables.payload.acknowledgedRegistration,
-                },
-              })
-            : c['oauth-consent'].DenyOAuthConsent({ path: { id: variables.id } })
-        ).pipe(foldExpiredConsent)
-      ),
+    ...oauthConsentMutationOptions(runAuthed),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: GRANTS_QUERY_KEY })
     },
@@ -119,8 +137,9 @@ const useOAuthConsentMutation = (): UseMutationResult<
 
 export {
   foldExpiredConsent,
+  oauthConsentMutationOptions,
   oauthConsentQueryOptions,
   useOAuthConsentMutation,
   useOAuthConsentQuery,
 }
-export type { ApproveOAuthPayload, OAuthConsentResource, OAuthConsentResult }
+export type { ApproveOAuthPayload, OAuthConsentDecision, OAuthConsentResource, OAuthConsentResult }

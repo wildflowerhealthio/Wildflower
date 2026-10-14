@@ -38,12 +38,14 @@ export {
 export type { DeviceConsent } from './device-consent.ts'
 
 export {
+  oauthConsentMutationOptions,
   oauthConsentQueryOptions,
   useOAuthConsentMutation,
   useOAuthConsentQuery,
 } from './oauth-consent.ts'
 export type {
   ApproveOAuthPayload,
+  OAuthConsentDecision,
   OAuthConsentResource,
   OAuthConsentResult,
 } from './oauth-consent.ts'

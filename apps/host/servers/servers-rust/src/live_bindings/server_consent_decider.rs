@@ -112,7 +112,7 @@ impl ServerConsentDecider {
         };
         Ok(match outcome {
             ConsentOutcome::Approved { .. } => ApprovalOutcome::Approved,
-            ConsentOutcome::Denied => ApprovalOutcome::Denied,
+            ConsentOutcome::Denied { .. } => ApprovalOutcome::Denied,
         })
     }
 

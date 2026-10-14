@@ -745,3 +745,45 @@ pub fn assert_cache_suppressed(res: &axum::response::Response, what: &str) {
         "{what} must carry exactly one Pragma: no-cache"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Owner sign-in (#1098): a code the base mints signs a browser in as the
+// Owner, handing it the Owner browser session cookie.
+// ---------------------------------------------------------------------------
+
+/// `GET /oauth/sign-in` with `code` and `next`, as the browser the base opened
+/// sends it.
+pub async fn sign_in(g: &AuthorizationServer, code: &str, next: &str) -> axum::response::Response {
+    let uri = format!(
+        "/oauth/sign-in?{}",
+        url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("code", code)
+            .append_pair("next", next)
+            .finish()
+    );
+    g.router
+        .clone()
+        .oneshot(loopback_request(Request::get(uri), Body::empty()))
+        .await
+        .expect("oneshot")
+}
+
+/// The Owner token a sign-in's `Set-Cookie` hands the browser.
+pub fn owner_browser_session_token(res: &axum::response::Response) -> String {
+    let cookies = set_cookie_values(res);
+    let [cookie] = cookies.as_slice() else {
+        panic!("exactly one cookie, got {cookies:?}");
+    };
+    cookie
+        .strip_prefix("__Host-owner_browser_session=")
+        .and_then(|rest| rest.split(';').next())
+        .unwrap_or_else(|| panic!("the Owner browser session cookie, got {cookie}"))
+        .to_owned()
+}
+
+/// Sign a browser in as the Owner, returning the Owner browser token its
+/// `__Host-owner_browser_session` cookie holds.
+pub async fn signed_in_owner_browser_token(g: &AuthorizationServer) -> String {
+    let code = g.same_device_sign_in_code_minter.mint();
+    owner_browser_session_token(&sign_in(g, &code, "/").await)
+}

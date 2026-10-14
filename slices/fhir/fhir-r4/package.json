@@ -22,6 +22,10 @@
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"
     },
+    "./patient-minimal": {
+      "source": "./src/patient-minimal/index.ts",
+      "default": "./dist/patient-minimal/index.js"
+    },
     "./resources": {
       "source": "./src/resources/index.ts",
       "default": "./dist/resources/index.js"

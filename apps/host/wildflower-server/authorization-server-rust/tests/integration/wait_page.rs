@@ -88,6 +88,7 @@ async fn the_wait_page_is_static_and_locked_down() {
         "default-src 'none'",
         "script-src 'self'",
         "style-src 'self'",
+        "font-src 'self'",
         "connect-src 'self'",
         "frame-ancestors 'none'",
     ] {
@@ -122,4 +123,23 @@ async fn the_wait_page_assets_are_served_beside_it() {
         assert_eq!(header(&res, "content-type"), content_type, "{path}");
         assert_eq!(header(&res, "cache-control"), "no-store", "{path}");
     }
+}
+
+/// The page's check for whether this browser can open the consent card asks
+/// for the Owner browser session, as the card does, so a browser also signed
+/// in to the FHIR web UI is judged as the Owner.
+#[tokio::test]
+async fn the_wait_page_checks_the_owner_browser_session() {
+    let (g, _host_owner_token, _db) = spin_up();
+
+    let script = body_string(get(&g, "/oauth/authorize/wait.js").await.into_body()).await;
+    let asks_for_the_owner = format!(
+        "'{}': '{}'",
+        wildflowerhealthio_authorization_server::SESSION_HEADER,
+        wildflowerhealthio_authorization_server::OWNER_BROWSER_SESSION_HEADER_VALUE
+    );
+    assert!(
+        script.to_ascii_lowercase().contains(&asks_for_the_owner),
+        "{script}"
+    );
 }
