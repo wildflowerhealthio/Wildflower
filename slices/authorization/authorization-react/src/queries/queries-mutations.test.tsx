@@ -114,6 +114,49 @@ describe('useRevokeGrantMutation request', () => {
   })
 })
 
+describe('useRevokeGrantMutation after a half-failed revoke', () => {
+  test('a grant already gone still has its client’s tokens revoked', async () => {
+    // Arrange — the DELETE answers 404 GrantNotFound: an earlier revoke
+    // deleted the grant and then failed to revoke the tokens.
+    const requests = routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), (method) =>
+      method === 'DELETE'
+        ? Response.json({ error: 'GrantNotFound', id: 'grant-1' }, { status: 404 })
+        : new Response(null, { status: 204 })
+    )
+    const { result } = renderWithClient(() => useRevokeGrantMutation())
+
+    // Act
+    await result.current.mutateAsync({ id: 'grant-1', clientId: 'client-a' })
+
+    // Assert
+    expect(requests.map(({ method, url }) => ({ method, url }))).toEqual([
+      { method: 'DELETE', url: '/authorization/grants/grant-1' },
+      { method: 'POST', url: '/authorization/revocations' },
+    ])
+  })
+
+  test('a failed revocation still refreshes the grants list', async () => {
+    // Arrange — the DELETE lands, the revocation fails.
+    routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), (method) =>
+      method === 'DELETE'
+        ? new Response(null, { status: 204 })
+        : new Response(null, { status: 500 })
+    )
+    const { result, queryClient } = renderWithClient(() => useRevokeGrantMutation())
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    // Act
+    await expect(
+      result.current.mutateAsync({ id: 'grant-1', clientId: 'client-a' })
+    ).rejects.toBeDefined()
+
+    // Assert
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
+    })
+  })
+})
+
 const clientSwitches = ['disable', 'enable'] as const
 
 describe('useUpdateClientMutation invalidation', () => {
@@ -351,7 +394,7 @@ interface RecordedRequest {
  */
 const routeRunAuthedThroughRecordingHttpClient = (
   now: DateTime.Utc,
-  respond: () => Response = () => Response.json(respondedClient, { status: 200 })
+  respond: (method: string) => Response = () => Response.json(respondedClient, { status: 200 })
 ): readonly RecordedRequest[] => {
   const requests: RecordedRequest[] = []
   const recordingHttpClient = Layer.succeed(
@@ -365,7 +408,7 @@ const routeRunAuthedThroughRecordingHttpClient = (
             ? JSON.parse(new TextDecoder().decode(request.body.body))
             : undefined,
       })
-      return Effect.succeed(HttpClientResponse.fromWeb(request, respond()))
+      return Effect.succeed(HttpClientResponse.fromWeb(request, respond(request.method)))
     })
   )
   runAuthedStub.mockImplementationOnce((effect) =>

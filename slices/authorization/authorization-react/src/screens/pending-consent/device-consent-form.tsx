@@ -1,7 +1,6 @@
 /**
  * The device-consent form of the standalone `/authorization/devices/:userCode`
- * route, which navigates away on `onDone`. With `editableName`, the approver
- * may also rename the device.
+ * route, which navigates away on `onDone`.
  *
  * The device-code consent is **expandable**: the owner edits the request through
  * the shared {@link ScopePicker} in `expandable` mode, so they can add scopes the
@@ -13,12 +12,7 @@
  * (page shell + `PageHeader`, or the `Dialog`) is the caller's.
  */
 
-import {
-  ErrorBanner,
-  Field,
-  FieldDescription,
-  TextField,
-} from '@wildflowerhealthio/react-tundraish'
+import { ErrorBanner, Field, FieldDescription } from '@wildflowerhealthio/react-tundraish'
 import { GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
 import { ScopePicker } from '@wildflowerhealthio/scopes-react'
 import type { JSX } from 'react'
@@ -31,15 +25,9 @@ import styles from './device-consent-form.module.css'
 interface DeviceConsentFormProps {
   readonly consent: DeviceConsent
   readonly onDone: () => void
-  /** When true, the approver may rename the device before approving. */
-  readonly editableName?: boolean
 }
 
-const DeviceConsentForm = ({
-  consent,
-  onDone,
-  editableName = false,
-}: DeviceConsentFormProps): JSX.Element => {
+const DeviceConsentForm = ({ consent, onDone }: DeviceConsentFormProps): JSX.Element => {
   const consentMutation = useDeviceConsentMutation()
 
   // Expandable envelope: seed the sections from what the device requested, but let the owner
@@ -53,7 +41,6 @@ const DeviceConsentForm = ({
     [consent]
   )
   const [draft, setDraft] = useState(() => GrantDraft.fromScopes(consent.requestedScopes, null))
-  const [name, setName] = useState(consent.deviceName ?? '')
   const [denied, setDenied] = useState(false)
   // The account's patients feed the picker's "Just one patient" choice (a UI-only
   // selection for now — the approved grant still carries plain `patient/` scopes).
@@ -64,29 +51,12 @@ const DeviceConsentForm = ({
   // precedence over a stale "denied" flag; `ErrorBanner` renders whichever is set.
   const error = consentMutation.error ?? (denied ? 'Authorization request was denied.' : null)
 
-  // The statement subject: the device's (possibly just-edited) name, falling back to the
-  // registered client name. Two-step so the naming policy reads plainly:
-  //  1. the device name in play here — the approver's edit when `editableName`,
-  //     otherwise whatever the device supplied at pairing;
-  //  2. that, or the registered client name when no device name is available.
-  const trimmedName = name.trim()
-  const enteredDeviceName = editableName ? trimmedName : (consent.deviceName ?? '')
-  const subjectName = enteredDeviceName || consent.clientName
+  // The statement subject: the name the device supplied at pairing, or the
+  // registered client name when it supplied none.
+  const subjectName = (consent.deviceName ?? '') || consent.clientName
 
-  // The device-name control: an editable field with `editableName`, a read-only line
-  // elsewhere (only when the device actually named itself).
+  // The device's name, read only, when the device named itself.
   const renderDeviceName = (): JSX.Element | null => {
-    if (editableName) {
-      return (
-        <TextField
-          label="Device name"
-          value={name}
-          onChange={setName}
-          placeholder="e.g. Ada's laptop"
-          autoCapitalize="words"
-        />
-      )
-    }
     if (consent.deviceName !== null && consent.deviceName !== undefined) {
       return (
         <Field label="Device name">
@@ -104,9 +74,6 @@ const DeviceConsentForm = ({
         kind: 'approve',
         userCode: consent.userCode,
         approvedScopes: GrantDraft.serializeAll(draft),
-        // Only send an adjusted name when `editableName`, and only when non-empty —
-        // an omitted name keeps whatever the device supplied (server-side COALESCE).
-        ...(editableName && trimmedName !== '' ? { deviceName: trimmedName } : {}),
         // The chosen launch patient rides to the token's `patient` claim; the picker
         // clears it when the subject switches to all-patients.
         ...(draft.patient === null ? {} : { patient: draft.patient }),

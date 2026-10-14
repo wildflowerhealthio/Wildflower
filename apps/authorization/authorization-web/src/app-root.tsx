@@ -18,6 +18,7 @@ import { authorizationWebTelemetry } from './config.ts'
 import { Landing, type LandingProps } from './landing.tsx'
 import { buildRouterContext } from './router-context.ts'
 import { buildRouter } from './router.ts'
+import { buildSessionQueryClient } from './session-expiry.ts'
 import type { ServerSession } from './sign-in.ts'
 
 /**
@@ -37,17 +38,29 @@ interface SignedInAppProps {
   readonly basepath: string
   /** The transport every API request goes out over: `FetchHttpClient.layer`, or a stub in tests. */
   readonly transport: Layer.Layer<HttpClient.HttpClient>
+  /** Called when a request ends in a 401: the bearer expired or was revoked. */
+  readonly onSessionExpired: () => void
 }
 
 /**
  * The signed-in app: `BrandBar`, with the telemetry status control at its
  * end, over the access pages, whose requests go to the session's server with
  * its bearer. The query client and router are built once, for the page's one
- * session.
+ * session; a 401 on any request calls `onSessionExpired`.
  */
-function SignedInApp({ session, history, basepath, transport }: SignedInAppProps): JSX.Element {
+function SignedInApp({
+  session,
+  history,
+  basepath,
+  transport,
+  onSessionExpired,
+}: SignedInAppProps): JSX.Element {
   const [{ router, queryClient }] = useState(() => {
-    const context = buildRouterContext(session, transport)
+    const context = buildRouterContext(
+      session,
+      transport,
+      buildSessionQueryClient(onSessionExpired)
+    )
     return { router: buildRouter({ history, basepath, context }), queryClient: context.queryClient }
   })
   return (

@@ -19,6 +19,7 @@
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/branding-react": "workspace:*",
     "@wildflowerhealthio/fhir-r4-react": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/smart-app-react": "workspace:*",
     "@wildflowerhealthio/telemetry-react": "workspace:*",

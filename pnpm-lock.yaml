@@ -280,6 +280,9 @@ importers:
       '@wildflowerhealthio/fhir-r4-react':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4-react
+      '@wildflowerhealthio/kitchen-sink':
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish

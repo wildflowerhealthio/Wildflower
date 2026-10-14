@@ -3,10 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Effect, Layer } from 'effect'
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { AUTHORIZATION_CLIENT_ID } from './config.ts'
 import { buildRouterContext } from './router-context.ts'
 import { buildRouter } from './router.ts'
+import { buildSessionQueryClient } from './session-expiry.ts'
 import type { ServerSession } from './sign-in.ts'
 
 /**
@@ -143,6 +145,38 @@ describe('the access page', () => {
     expect(screen.queryByRole('button', { name: `Actions for ${hostClient.name}` })).toBeNull()
   })
 
+  it('offers no Revoke for this app’s own grant', async () => {
+    // Arrange
+    const server = stubServer()
+
+    // Act
+    mountAccessPages(server)
+
+    // Assert — listed by id (it isn't among the trusted apps here), no actions.
+    const approvedApps = await sectionTitled('Approved Apps')
+    await within(approvedApps).findByRole('button', {
+      name: `Actions for ${medicationsClient.name}`,
+    })
+    expect(within(approvedApps).getByText(AUTHORIZATION_CLIENT_ID)).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: `Actions for ${AUTHORIZATION_CLIENT_ID}` })
+    ).toBeNull()
+  })
+
+  it('signs in again once the bearer has expired', async () => {
+    // Arrange — the server answers the grants read with a 401.
+    const server = stubServer(() => new Response(null, { status: 401 }))
+    const onSessionExpired = vi.fn()
+
+    // Act
+    mountAccessPages(server, buildSessionQueryClient(onSessionExpired))
+
+    // Assert
+    await waitFor(() => {
+      expect(onSessionExpired).toHaveBeenCalled()
+    })
+  })
+
   it('opens a grant’s detail from its row', async () => {
     // Arrange
     const server = stubServer()
@@ -189,6 +223,14 @@ const hostGrant = {
   id: 'grant-host',
   clientId: 'wildflower-host',
   redirectUri: 'https://ruth.wildflowerhealth.io/',
+} as const
+
+/** This app's own grant, from the sign-in the page is running on. */
+const ownGrant = {
+  ...medicationsGrant,
+  id: 'grant-own',
+  clientId: AUTHORIZATION_CLIENT_ID,
+  redirectUri: 'https://wildflowerhealth.io/authorization/',
 } as const
 
 const pebbleGrant = {
@@ -238,12 +280,15 @@ interface StubServer {
 }
 
 /** A server whose authorization API answers with the grants and clients above. */
-const stubServer = (): StubServer => {
+const stubServer = (
+  answerGrants: () => Response = () =>
+    Response.json([medicationsGrant, hostGrant, ownGrant, pebbleGrant])
+): StubServer => {
   const requests: RecordedRequest[] = []
   const answer = (method: string, url: string): Response => {
     const path = new URL(url).pathname
     if (method === 'GET' && path === '/authorization/grants') {
-      return Response.json([medicationsGrant, hostGrant, pebbleGrant])
+      return answerGrants()
     }
     if (method === 'GET' && path === `/authorization/grants/${medicationsGrant.id}`) {
       return Response.json(medicationsGrant)
@@ -290,9 +335,9 @@ const sectionTitled = async (title: string): Promise<HTMLElement> => {
 
 /** Mount the signed-in router at the app root, `?iss=` naming the server. */
 const mountAccessPages = (
-  server: StubServer
+  server: StubServer,
+  queryClient: QueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 ): { readonly router: ReturnType<typeof buildRouter> } => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = buildRouter({
     history: createMemoryHistory({
       initialEntries: [`/?iss=${encodeURIComponent(SERVER_URL)}`],

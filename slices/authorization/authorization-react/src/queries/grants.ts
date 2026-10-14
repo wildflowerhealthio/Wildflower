@@ -16,6 +16,10 @@ import { GRANTS_QUERY_KEY, grantQueryKey } from './keys.ts'
 import { useRunAuthed } from './use-run-authed.ts'
 
 type Grant = Schema.Schema.Type<typeof AccessManagement.GrantSchema>
+
+/** True for the 404 `RevokeGrant` and `GetGrant` answer for a grant that doesn't exist. */
+const isGrantNotFound = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && 'error' in error && error.error === 'GrantNotFound'
 /** The authorization-code ("Approved App") variant of the grant union. */
 type AppGrant = Extract<Grant, { readonly grantType: 'authorization_code' }>
 /** The device-code ("Authorized Device") variant of the grant union. */
@@ -83,13 +87,19 @@ const useRevokeGrantMutation = (): UseMutationResult<void, Error, RevokeGrantVar
       runAuthed(
         Effect.gen(function* () {
           const client = yield* AuthorizationServerHttpApiClient
-          yield* client['access-management'].RevokeGrant({ path: { id } })
+          // Already gone means an earlier revoke deleted the grant but its
+          // revocation failed: carry on and revoke the client's tokens now.
+          yield* client['access-management']
+            .RevokeGrant({ path: { id } })
+            .pipe(Effect.catchIf(isGrantNotFound, () => Effect.void))
           yield* client['access-management'].CreateRevocation({
             payload: { subject: clientId },
           })
         })
       ),
-    onSuccess: async (_data, { id }) => {
+    // On failure too: the DELETE may have landed before the revocation
+    // failed, and the list must not keep showing a grant that's gone.
+    onSettled: async (_data, _error, { id }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: GRANTS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: grantQueryKey(id) }),

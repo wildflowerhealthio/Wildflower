@@ -28,5 +28,5 @@ export const Route = createFileRoute('/approved/$id')({
     })
   },
   component: GrantRoute,
-  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Not Found" />,
+  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Error Loading Grant" />,
 })

@@ -25,21 +25,30 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 
 import { clientNameOf } from './client-name.ts'
+import { AUTHORIZATION_CLIENT_ID } from './config.ts'
 import type { RouterContext } from './router-context.ts'
 import styles from './access-page.module.css'
 
 /**
- * The ids of the clients whose grants the page offers no Revoke for: the
- * first-party host client, which is how the Owner reaches the server at all.
- * The server refuses to disable that client (`409 FirstPartyClientLocked`),
- * and revoking its grant would cut the Owner off the same way. `null` until
- * the trusted apps have loaded, so no Revoke shows before the page knows which
- * clients are locked.
+ * The ids of the clients whose grants the page offers no Revoke for:
+ *
+ * - the first-party host client, which is how the Owner reaches the server at
+ *   all. The server refuses to disable that client (`409
+ *   FirstPartyClientLocked`), and revoking its grant would cut the Owner off
+ *   the same way;
+ * - this app's own client, whose revocation would revoke the bearer the page
+ *   is signed in with.
+ *
+ * `null` until the trusted apps have loaded, so no Revoke shows before the
+ * page knows which clients are locked.
  */
 const lockedClientIdsOf = (clients: readonly Client[] | undefined): ReadonlySet<string> | null =>
   clients === undefined
     ? null
-    : new Set(clients.filter((client) => client.firstParty).map((client) => client.clientId))
+    : new Set([
+        AUTHORIZATION_CLIENT_ID,
+        ...clients.filter((client) => client.firstParty).map((client) => client.clientId),
+      ])
 
 interface AccessPageBodyProps {
   readonly serverUrl: string
@@ -58,6 +67,7 @@ interface AccessPageBodyProps {
  *
  * The first-party host client's grants and switch are not offered: the server
  * refuses to disable that client, and the Owner reaches the server through it.
+ * Nor is a Revoke for this app's own grant, which would sign the page out.
  */
 const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element => {
   const navigate = useNavigate()

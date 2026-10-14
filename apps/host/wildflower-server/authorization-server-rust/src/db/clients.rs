@@ -716,7 +716,6 @@ mod tests {
                 "wildflower/Grant.rd".to_string(),
                 "wildflower/Client.ru".to_string(),
                 "wildflower/Token.d".to_string(),
-                "wildflower/AuthorizationRequest.r".to_string(),
             ],
         );
         assert_eq!(

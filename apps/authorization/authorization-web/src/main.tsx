@@ -41,6 +41,12 @@ const bootApp = async (): Promise<JSX.Element> => {
       history={createBrowserHistory()}
       basepath={basepath}
       transport={FetchHttpClient.layer}
+      // The bearer is short-lived and there is no refresh token. Reloading
+      // lands on the landing at this route's `?iss=` address, which signs in
+      // again straight away and returns here.
+      onSessionExpired={() => {
+        window.location.reload()
+      }}
     />
   ) : (
     <SignedOutApp {...boot.landing} />

@@ -70,9 +70,7 @@ describe('PageHeader', () => {
 
   it('uses a custom back label when provided', async () => {
     // Arrange / Act
-    renderWithRouter(
-      <PageHeader title="Request" backHref="/settings/authorization" backLabel="Back to access" />
-    )
+    renderWithRouter(<PageHeader title="Request" backHref="/access" backLabel="Back to access" />)
 
     // Assert
     await waitFor(() => {

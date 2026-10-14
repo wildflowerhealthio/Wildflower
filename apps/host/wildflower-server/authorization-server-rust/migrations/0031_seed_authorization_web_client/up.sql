@@ -22,10 +22,9 @@
 -- the app's `src/config.ts`; `db/clients.rs` reads that file and pins this row
 -- to it):
 --
---   wildflower/Grant.rd                list the grants, revoke one
---   wildflower/Client.ru               list the trusted apps, disable or enable one
---   wildflower/Token.d                 revoke every token a revoked grant's client holds
---   wildflower/AuthorizationRequest.r  read pending authorization requests
+--   wildflower/Grant.rd   list the grants, revoke one
+--   wildflower/Client.ru  list the trusted apps, disable or enable one
+--   wildflower/Token.d    revoke every token a revoked grant's client holds
 --
 -- `INSERT OR IGNORE`, as in `0022`, so an install that already has a client
 -- under this id is a no-op rather than a PK conflict that aborts the run.
@@ -37,7 +36,7 @@ VALUES
         'Wildflower Authorization',
         'public',
         '["https://wildflowerhealth.io/authorization/"]',
-        '["openid","wildflower/Grant.rd","wildflower/Client.ru","wildflower/Token.d","wildflower/AuthorizationRequest.r"]',
+        '["openid","wildflower/Grant.rd","wildflower/Client.ru","wildflower/Token.d"]',
         '["authorization_code","refresh_token"]',
         NULL,
         '2024-01-01 00:00:00+00:00',
