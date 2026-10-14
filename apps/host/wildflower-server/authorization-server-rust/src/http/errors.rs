@@ -114,8 +114,8 @@ pub(crate) struct ClientNotFoundBody {
 }
 
 /// Wire shape for `HostAppClientLocked` (409) — the named client is the
-/// first-party host, the Owner's, which can't be disabled, nor its grants or
-/// token cohort revoked, without locking the Owner out.
+/// Wildflower host app's, which can't be disabled, nor its grants or subject
+/// revoked, without cutting the server off from its own app.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HostAppClientLockedBody {

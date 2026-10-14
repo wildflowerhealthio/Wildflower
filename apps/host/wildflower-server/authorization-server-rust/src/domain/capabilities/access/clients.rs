@@ -4,14 +4,13 @@
 //! alone) is described under "Client" in `slices/authorization/docs/Jargon
 //! Explanation.md`.
 
-use std::sync::Arc;
-
 use chrono::{DateTime, Utc};
 
 use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
+use crate::domain::host_app_client_lock::HostAppClientLock;
 use crate::domain::{GrantStore, GrantTx};
 
 /// The scope gating [`ClientsReader`] — `wildflower/Client.r`. Shared by the
@@ -46,16 +45,16 @@ pub(crate) struct ClientView {
 /// Read access to registered clients — `GET /authorization/clients`.
 pub(crate) struct ClientsReader<S: GrantStore> {
     store: S,
-    wildflower_host_app_client_id: Arc<str>,
+    host_app_client_lock: HostAppClientLock,
 }
 
 impl<S: GrantStore> ClientsReader<S> {
-    /// Build the reader over a store handle and the configured first-party
-    /// `client_id`, both lifted from the state.
-    pub(crate) fn new(store: S, wildflower_host_app_client_id: Arc<str>) -> Self {
+    /// Build the reader over a store handle and the host app's client lock,
+    /// both lifted from the state.
+    pub(crate) fn new(store: S, host_app_client_lock: HostAppClientLock) -> Self {
         ClientsReader {
             store,
-            wildflower_host_app_client_id,
+            host_app_client_lock,
         }
     }
 
@@ -66,7 +65,7 @@ impl<S: GrantStore> ClientsReader<S> {
             .list_clients()?
             .into_iter()
             .map(|client| ClientView {
-                first_party: client.client_id == *self.wildflower_host_app_client_id,
+                first_party: self.host_app_client_lock.locks(&client.client_id),
                 client,
             })
             .collect())
@@ -79,16 +78,16 @@ impl<S: GrantStore> ClientsReader<S> {
 /// `disabled_at`).
 pub(crate) struct ClientsDisabler<S: GrantStore> {
     store: S,
-    wildflower_host_app_client_id: Arc<str>,
+    host_app_client_lock: HostAppClientLock,
 }
 
 impl<S: GrantStore> ClientsDisabler<S> {
-    /// Build the disabler over a store handle and the configured first-party
-    /// `client_id`, both lifted from the state.
-    pub(crate) fn new(store: S, wildflower_host_app_client_id: Arc<str>) -> Self {
+    /// Build the disabler over a store handle and the host app's client lock,
+    /// both lifted from the state.
+    pub(crate) fn new(store: S, host_app_client_lock: HostAppClientLock) -> Self {
         ClientsDisabler {
             store,
-            wildflower_host_app_client_id,
+            host_app_client_lock,
         }
     }
 
@@ -104,16 +103,16 @@ impl<S: GrantStore> ClientsDisabler<S> {
     /// # Errors
     ///
     /// [`AuthorizationServerError::ClientNotFound`] when no such client exists.
-    /// Disabling the first-party host is
-    /// [`AuthorizationServerError::HostAppClientLocked`] — it would lock the Owner out
-    /// of the very surface that re-enables it. Re-enabling it stays allowed, so
-    /// a host disabled out of band (direct SQL) can still be recovered.
+    /// Disabling the Wildflower host app's client is
+    /// [`AuthorizationServerError::HostAppClientLocked`] (see
+    /// [`HostAppClientLock`]). Re-enabling it stays allowed, so a host app
+    /// client disabled out of band (direct SQL) can still be recovered.
     pub(crate) fn set_disabled_at(
         &self,
         client_id: &str,
         stamp: Option<DateTime<Utc>>,
     ) -> Result<ClientView, AuthorizationServerError> {
-        let first_party = client_id == &*self.wildflower_host_app_client_id;
+        let first_party = self.host_app_client_lock.locks(client_id);
         if first_party && stamp.is_some() {
             return Err(AuthorizationServerError::HostAppClientLocked {
                 client_id: client_id.to_owned(),
@@ -162,7 +161,7 @@ mod tests {
         for row in rows {
             store.upsert_client(row).unwrap();
         }
-        ClientsDisabler::new(store, Arc::from(HOST))
+        ClientsDisabler::new(store, HostAppClientLock::new(HOST.into()))
     }
 
     fn at(seconds: i64) -> DateTime<Utc> {
@@ -203,7 +202,9 @@ mod tests {
             store.upsert_client(&client(id, &["openid"])).unwrap();
         }
 
-        let listed = ClientsReader::new(store, Arc::from(HOST)).list().unwrap();
+        let listed = ClientsReader::new(store, HostAppClientLock::new(HOST.into()))
+            .list()
+            .unwrap();
         let summary: Vec<(&str, bool)> = listed
             .iter()
             .map(|view| (view.client.client_id.as_str(), view.first_party))

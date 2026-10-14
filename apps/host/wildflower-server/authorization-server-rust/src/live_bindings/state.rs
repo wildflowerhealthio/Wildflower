@@ -20,9 +20,11 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
+use crate::domain::host_app_client_lock::{HostAppClientLock, HostAppLockedRevocation};
 use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
+use crate::ports::Revocation;
 
 /// Shared state threaded through every authorization server handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
@@ -101,4 +103,22 @@ pub struct AuthorizationServerState {
     /// [`launcher_base`](Self::launcher_base) and
     /// [`AuthorizationServerConfig::authorization_app_base`](crate::AuthorizationServerConfig::authorization_app_base).
     pub(crate) sign_in_destinations: Arc<SignInDestinations>,
+}
+
+impl AuthorizationServerState {
+    /// The lock on the Wildflower host app's client, over
+    /// [`wildflower_host_app_client_id`](Self::wildflower_host_app_client_id).
+    pub(crate) fn host_app_client_lock(&self) -> HostAppClientLock {
+        HostAppClientLock::new(self.wildflower_host_app_client_id.clone())
+    }
+
+    /// The [`Revocation`] port the capabilities revoke through: the shared
+    /// [`revocation_store`](Self::revocation_store), behind the
+    /// [`host_app_client_lock`](Self::host_app_client_lock).
+    pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {
+        Arc::new(HostAppLockedRevocation::new(
+            Arc::new(self.revocation_store.clone()),
+            self.host_app_client_lock(),
+        ))
+    }
 }

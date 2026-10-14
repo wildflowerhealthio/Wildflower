@@ -24,21 +24,12 @@ pub(crate) fn token_revoker_scopes() -> Vec<Scope> {
 /// Revoke issued tokens — `POST /authorization/revocations`.
 pub(crate) struct TokenRevoker {
     revocation: Arc<dyn Revocation>,
-    /// The Owner's client, whose tokens are revoked one at a time only.
-    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl TokenRevoker {
-    /// Build the revoker over the revocation port and the first-party
-    /// `client_id`, both lifted from the state.
-    pub(crate) fn new(
-        revocation: Arc<dyn Revocation>,
-        wildflower_host_app_client_id: Arc<str>,
-    ) -> Self {
-        TokenRevoker {
-            revocation,
-            wildflower_host_app_client_id,
-        }
+    /// Build the revoker over the revocation port lifted from the state.
+    pub(crate) fn new(revocation: Arc<dyn Revocation>) -> Self {
+        TokenRevoker { revocation }
     }
 
     /// Denylist a single token by `jti` until its own expiry.
@@ -56,20 +47,10 @@ impl TokenRevoker {
     ///
     /// # Errors
     ///
-    /// The first-party client is the Owner's, and revoking its cohort would
-    /// end every Owner session at once, so it is
-    /// [`AuthorizationServerError::HostAppClientLocked`] and nothing is
-    /// revoked; a single Owner token is revoked by its `jti` instead.
+    /// [`AuthorizationServerError::HostAppClientLocked`] for the Wildflower
+    /// host app's client, whose epoch the port refuses to bump, so nothing is
+    /// revoked.
     pub(crate) fn revoke_subject(&self, subject: &str) -> Result<(), AuthorizationServerError> {
-        if subject == &*self.wildflower_host_app_client_id {
-            return Err(AuthorizationServerError::HostAppClientLocked {
-                client_id: subject.to_owned(),
-            });
-        }
-        self.revocation
-            .revoke_subject_as_of_now(subject)
-            .map_err(|e| {
-                AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e)
-            })
+        Ok(self.revocation.revoke_subject_as_of_now(subject)?)
     }
 }

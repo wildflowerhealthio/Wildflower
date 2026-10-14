@@ -29,8 +29,8 @@ pub(crate) struct UpdateClientBody {
 /// whatever time is sent) or re-enable a client by writing its `disabledAt`;
 /// answers with the client as stored. A disabled client is refused at
 /// `/oauth/authorize` and `/oauth/token`. Idempotent (a client that already
-/// has a `disabledAt` keeps it). Disabling the first-party host client is
-/// refused with `409 HostAppClientLocked`. Acquired through
+/// has a `disabledAt` keeps it). Disabling the Wildflower host app's client
+/// is refused with `409 HostAppClientLocked`. Acquired through
 /// [`LiveClientsDisabler`] (scope `wildflower/Client.u`).
 #[utoipa::path(
     patch,
@@ -41,7 +41,7 @@ pub(crate) struct UpdateClientBody {
     responses(
         (status = 200, description = "The client as stored", body = ClientBody),
         (status = 404, description = "No client with that id", body = ClientNotFoundBody),
-        (status = 409, description = "The first-party host client can't be disabled", body = HostAppClientLockedBody),
+        (status = 409, description = "The Wildflower host app's client can't be disabled", body = HostAppClientLockedBody),
     ),
 )]
 pub(super) async fn handle_update_client(

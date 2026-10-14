@@ -22,7 +22,7 @@ mod owner_approval;
 mod revocation;
 
 pub(crate) use owner_approval::OwnerApproval;
-pub(crate) use revocation::{Revocation, RevocationCheck};
+pub(crate) use revocation::{Revocation, RevocationCheck, SubjectRevocationError};
 // Public (not `pub(crate)`): the host implements this seam and names its
 // types when wiring `AuthorizationServerState`, so they are re-exported from the crate root.
 pub use loopback_consent::{

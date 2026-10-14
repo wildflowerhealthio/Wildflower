@@ -295,11 +295,11 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     );
 }
 
-/// The first-party host client is the Owner's: every Owner token is issued to
-/// it, so revoking its whole token cohort would sign the Owner out everywhere.
-/// A subject revocation naming it is a `409`, and revokes nothing.
+/// The Wildflower host app holds its own token under its client, so revoking
+/// that client's subject would cut the server off from its own app. A subject
+/// revocation naming it is a `409`, and revokes nothing.
 #[tokio::test]
-async fn the_owner_s_token_cohort_cannot_be_revoked_wholesale() {
+async fn the_host_app_s_subject_cannot_be_revoked() {
     let (g, host_owner_token, db) = spin_up();
     let res = g
         .router
@@ -323,14 +323,14 @@ async fn the_owner_s_token_cohort_cannot_be_revoked_wholesale() {
                 "wildflower-host"
             )
             .expect("query"),
-        "the Owner's epoch is untouched"
+        "the host app's epoch is untouched"
     );
 }
 
-/// A grant of the first-party host client is the Owner's, and revoking it
-/// would bump the Owner's epoch: a `409`, and the grant stays.
+/// Revoking a grant of the Wildflower host app's client would bump the host
+/// app's epoch: a `409`, and the grant stays.
 #[tokio::test]
-async fn the_owner_s_grant_cannot_be_revoked() {
+async fn a_grant_of_the_host_app_s_client_cannot_be_revoked() {
     let (g, host_owner_token, db) = spin_up();
     store_handle(&db)
         .create_device_grant(
@@ -373,6 +373,6 @@ async fn the_owner_s_grant_cannot_be_revoked() {
             .expect("oneshot")
             .status(),
         StatusCode::OK,
-        "the Owner is still signed in"
+        "the host app is still signed in"
     );
 }

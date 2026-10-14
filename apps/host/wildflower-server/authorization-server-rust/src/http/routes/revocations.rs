@@ -14,9 +14,9 @@
 //!   invalidating every token that subject holds issued at or before the call —
 //!   including one minted in the current (second-granular) second. `subject` is
 //!   the `sub` claim (today the `client_id`); per-device granularity is future
-//!   work (see #269). The first-party host client's cohort is every Owner
-//!   token, so naming it gets `409 HostAppClientLocked`; an Owner token is
-//!   revoked by its `jti`.
+//!   work (see #269). Naming the Wildflower host app's client gets
+//!   `409 HostAppClientLocked`, since its cohort includes the host app's own
+//!   token; one of its tokens is revoked by its `jti`.
 //!
 //! The revoke-device endpoint the ticket mentions is deferred — it would be a
 //! thin wrapper over the same `subject` mode once a device/session handle is

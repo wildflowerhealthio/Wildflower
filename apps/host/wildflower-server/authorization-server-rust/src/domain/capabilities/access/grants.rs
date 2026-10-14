@@ -102,23 +102,13 @@ impl<S: GrantStore> GrantsReader<S> {
 pub(crate) struct GrantsRevoker<S: GrantStore> {
     store: S,
     revocation: Arc<dyn Revocation>,
-    /// The Owner's client, whose grants are locked.
-    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> GrantsRevoker<S> {
-    /// Build the revoker over a store handle, the revocation port and the
-    /// first-party `client_id`, all lifted from the state.
-    pub(crate) fn new(
-        store: S,
-        revocation: Arc<dyn Revocation>,
-        wildflower_host_app_client_id: Arc<str>,
-    ) -> Self {
-        GrantsRevoker {
-            store,
-            revocation,
-            wildflower_host_app_client_id,
-        }
+    /// Build the revoker over a store handle + the revocation port, both lifted
+    /// from the state.
+    pub(crate) fn new(store: S, revocation: Arc<dyn Revocation>) -> Self {
+        GrantsRevoker { store, revocation }
     }
 
     /// Revoke the grant, bump the client's revocation epoch (killing its live
@@ -131,27 +121,18 @@ impl<S: GrantStore> GrantsRevoker<S> {
     ///
     /// # Errors
     ///
-    /// [`AuthorizationServerError::GrantNotFound`] when no grant has `id`.
-    /// A grant of the first-party client is the Owner's, and revoking it would
-    /// end every Owner session at once, so it is
-    /// [`AuthorizationServerError::HostAppClientLocked`] and nothing is
-    /// revoked; a single Owner token is revoked by its `jti` instead.
+    /// [`AuthorizationServerError::GrantNotFound`] when no grant has `id`;
+    /// [`AuthorizationServerError::HostAppClientLocked`] for a grant of the
+    /// Wildflower host app's client, whose epoch the port refuses to bump, so
+    /// nothing is revoked.
     pub(crate) fn revoke(
         &self,
         id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let grant = get_grant(&self.store, id)?;
-        if grant.client_id() == &*self.wildflower_host_app_client_id {
-            return Err(AuthorizationServerError::HostAppClientLocked {
-                client_id: grant.client_id().to_owned(),
-            });
-        }
         self.revocation
-            .revoke_subject_as_of_now(grant.client_id())
-            .map_err(|e| {
-                AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e)
-            })?;
+            .revoke_subject_as_of_now(grant.client_id())?;
         revoke_grant(&self.store, id, grant.client_id(), now)
     }
 }

@@ -12,7 +12,7 @@ use super::FromState;
 use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::session::{SessionEnder, SessionReader, TokenVerifier};
 use crate::domain::token::VerifiedClaims;
-use crate::ports::{Revocation, RevocationCheck};
+use crate::ports::RevocationCheck;
 
 /// Verify presented access tokens — built by the two authN gates.
 pub(crate) type LiveTokenVerifier = TokenVerifier<SqliteGrantStore>;
@@ -33,8 +33,7 @@ impl AuthenticatedCapability for LiveSessionEnder {
     type Claims = VerifiedClaims;
 
     fn build(state: Arc<AuthorizationServerState>, claims: VerifiedClaims) -> Self {
-        let revocation: Arc<dyn Revocation> = Arc::new(state.revocation_store.clone());
-        SessionEnder::new(revocation, claims)
+        SessionEnder::new(state.revocation(), claims)
     }
 }
 

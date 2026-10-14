@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 
 use wildflowerhealthio_token_revocation::RevocationStore;
 
-use crate::ports::{Revocation, RevocationCheck};
+use crate::ports::{Revocation, RevocationCheck, SubjectRevocationError};
 
 /// The token-revocation seam — delegates to the shared [`RevocationStore`],
 /// stringifying its error so the port stays free of the store's concrete type.
@@ -15,8 +15,9 @@ impl Revocation for RevocationStore {
         RevocationStore::revoke_jti(self, jti, expires_at, reason).map_err(|e| e.to_string())
     }
 
-    fn revoke_subject_as_of_now(&self, subject: &str) -> Result<(), String> {
-        RevocationStore::revoke_subject_as_of_now(self, subject).map_err(|e| e.to_string())
+    fn revoke_subject_as_of_now(&self, subject: &str) -> Result<(), SubjectRevocationError> {
+        RevocationStore::revoke_subject_as_of_now(self, subject)
+            .map_err(|e| SubjectRevocationError::Store(e.to_string()))
     }
 }
 
