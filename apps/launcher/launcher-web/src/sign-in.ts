@@ -66,7 +66,7 @@ import { ServerKind } from './session/server-kind.ts'
  * value that drifts from the row fails the flow at `/oauth/authorize` rather
  * than degrading quietly.
  *
- * Deliberately **not** the host app's client (`wildflower-host`). The
+ * Deliberately **not** the host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`). The
  * host app's client has a fixed registration with no redirect URIs and is the one
  * client `/oauth/authorize` refuses to trust on first use, so it cannot carry an
  * authorization-code redirect from a browser page at all — see 0012's header.
