@@ -3887,9 +3887,6 @@ importers:
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-plugin':
-        specifier: 'catalog:'
-        version: 1.168.43(@tanstack/react-router@1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.13)(rollup@4.62.2)
       '@testing-library/dom':
         specifier: 'catalog:'
         version: 10.4.2
@@ -3908,12 +3905,6 @@ importers:
       '@wildflowerhealthio/authorization-core':
         specifier: workspace:*
         version: link:../authorization-core
-      '@wildflowerhealthio/fhir-r4':
-        specifier: workspace:*
-        version: link:../../fhir/fhir-r4
-      '@wildflowerhealthio/fhir-r4-react':
-        specifier: workspace:*
-        version: link:../../fhir/fhir-r4-react
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
