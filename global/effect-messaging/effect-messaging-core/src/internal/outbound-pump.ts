@@ -1,5 +1,5 @@
 import type { Scope } from 'effect'
-import { Array, Effect, Queue, Record, Stream } from 'effect'
+import { Array, Cause, Effect, Queue, Record, Stream } from 'effect'
 import type * as Bridge from '../bridge.ts'
 import * as Message from '../message.ts'
 import type { TransportAdapterService } from '../transport-adapter.ts'
@@ -43,11 +43,11 @@ interface OutboundPump<
  *
  * An unowned tag is unreachable for any type-checking caller —
  * `SendableMessage` only admits owned tags. A type-escape (e.g. a cast)
- * lands as a loud `Effect.die`, which the per-message `catchAllDefect`
+ * lands as a loud `Effect.die`, which the per-message `catchAllCause`
  * logs before the pump continues with the next message (mirroring the
  * inbound dispatch's defect handling). A message whose encode *rejects*
- * (a `ParseError` from `stringifyMessage` — now reachable that schemas
- * can refuse values like `NaN`/negatives) is likewise logged and
+ * (a `ParseError` from `stringifyMessage`, e.g. a schema refusing
+ * `NaN` or a negative) is likewise logged and
  * skipped via `catchAll` — one bad message never silently stops the
  * whole outbound path.
  */
@@ -97,16 +97,18 @@ const makeOutboundPump = <
             return emit.pipe(
               // A message whose encode rejects (`ParseError`) is dropped
               // and logged so one bad message can't fail the stream and
-              // brick the whole outbound path; `catchAllDefect` covers
-              // the unowned-tag `die` and any send-side defect.
+              // brick the whole outbound path; `catchAllCause` covers the
+              // unowned-tag `die` and any send-side defect or interrupt.
+              // The scope's own interrupt of this fiber is not recoverable,
+              // so it still stops the pump.
               Effect.catchAll((error) =>
                 Effect.logError(
                   `[effect-messaging] outbound encode rejected; message dropped, pump continues: ${String(error)}`
                 )
               ),
-              Effect.catchAllDefect((defect) =>
+              Effect.catchAllCause((cause) =>
                 Effect.logError(
-                  `[effect-messaging] outbound pump defect; continues: ${String(defect)}`
+                  `[effect-messaging] outbound pump send died; continues: ${Cause.pretty(cause)}`
                 )
               )
             )
