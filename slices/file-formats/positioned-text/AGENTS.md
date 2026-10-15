@@ -5,10 +5,6 @@ below both the importer (a dialect parses it into records) and the anonymizer
 (it masks the runs and downloads them). No DOM, no `fs`, no React, no extraction
 library.
 
-Moved out of `pdf-anonymizer-core` into the `file-formats` slice so the
-LifeLabs importer dialect could consume the schema without depending on the
-anonymizer.
-
 ## Shape
 
 A schema per file, each re-exported as a namespace from `src/index.ts`
@@ -18,10 +14,14 @@ read `Document.Schema` / `Document.Type`, `Page.Schema`, `Run.Schema`:
 - `src/document.ts` — **`Document.Schema`** Effect Schema
   (`{ format: 'wildflower-positioned-text', version: 1, fileName?, pages:
   [{ pageNumber, width, height, runs: [{ text, x, y, width, fontSize,
-  fontName? }] }] }`, top-left `y` origin), plus **`Document.FromJson`**
-  (`Schema.parseJson`) for round-tripping through JSON.
-- `src/page.ts` — **`Page.Schema`**, one page of positioned runs.
-- `src/run.ts` — **`Run.Schema`**, one positioned span of text.
+  fontName? }] }] }`, top-left `y` origin, every measure finite and
+  `pageNumber` whole), plus **`Document.FromJson`** (`Schema.parseJson`) for
+  round-tripping through JSON, **`Document.mapText`**, and **`Document.runs`**
+  (every run, flattened in page then run order).
+- `src/page.ts` — **`Page.Schema`**, one page of positioned runs, and
+  **`Page.mapText`**.
+- `src/run.ts` — **`Run.Schema`**, one positioned span of text, and
+  **`Run.mapText`**.
 - `src/index.ts` — the package barrel.
 
 ## Layering
@@ -33,8 +33,10 @@ lives in `positioned-text-web`. Never imports `pdf-anonymizer-*`,
 
 ## Testing
 
-- `positioned-text.test.ts` — the schema accepts/rejects the right shapes, and
-  a document round-trips through `Document.FromJson`.
+- `positioned-text.test.ts` — the schema accepts/rejects the right shapes
+  (including non-finite measures), a document round-trips through
+  `Document.FromJson`, `mapText` rewrites only run text, and `Document.runs`
+  keeps page then run order.
 
 ## References
 

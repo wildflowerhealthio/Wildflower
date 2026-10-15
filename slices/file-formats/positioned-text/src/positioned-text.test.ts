@@ -107,9 +107,67 @@ describe('Document.Schema', () => {
     // Act & Assert
     expect(() => Schema.decodeUnknownSync(Document.Schema)(doc)).toThrow()
   })
+  it.each([
+    ['x', Number.NaN],
+    ['y', Number.POSITIVE_INFINITY],
+    ['width', Number.NEGATIVE_INFINITY],
+    ['fontSize', Number.NaN],
+  ])('should reject a run whose %s is %s', (field, value) => {
+    // Arrange
+    const doc = {
+      format: 'wildflower-positioned-text',
+      version: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          width: 612,
+          height: 792,
+          runs: [{ text: 'hello', x: 0, y: 0, width: 30, fontSize: 12, [field]: value }],
+        },
+      ],
+    }
+
+    // Act & Assert
+    expect(() => Schema.decodeUnknownSync(Document.Schema)(doc)).toThrow()
+  })
+
+  it.each([
+    ['pageNumber', 1.5],
+    ['width', Number.NaN],
+    ['height', Number.POSITIVE_INFINITY],
+  ])('should reject a page whose %s is %s', (field, value) => {
+    // Arrange
+    const doc = {
+      format: 'wildflower-positioned-text',
+      version: 1,
+      pages: [{ pageNumber: 1, width: 612, height: 792, runs: [], [field]: value }],
+    }
+
+    // Act & Assert
+    expect(() => Schema.decodeUnknownSync(Document.Schema)(doc)).toThrow()
+  })
 })
 
 describe('Document.FromJson', () => {
+  it('should refuse to encode a non-finite run measure rather than write it as null', () => {
+    // Arrange
+    const doc = {
+      format: 'wildflower-positioned-text' as const,
+      version: 1 as const,
+      pages: [
+        {
+          pageNumber: 1,
+          width: 612,
+          height: 792,
+          runs: [{ text: 'hello', x: Number.NaN, y: 0, width: 30, fontSize: 12 }],
+        },
+      ],
+    }
+
+    // Act & Assert
+    expect(() => encode(doc)).toThrow()
+  })
+
   it('should round-trip a document through JSON', () => {
     // Arrange
     const doc = {
@@ -250,6 +308,40 @@ describe('mapText', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('Document.runs', () => {
+  it("should flatten every page's runs in page then run order", () => {
+    // Arrange
+    const doc = {
+      format: 'wildflower-positioned-text' as const,
+      version: 1 as const,
+      pages: [
+        {
+          pageNumber: 1,
+          width: 1,
+          height: 1,
+          runs: [
+            { text: 'a', x: 0, y: 0, width: 1, fontSize: 1 },
+            { text: 'b', x: 1, y: 0, width: 1, fontSize: 1 },
+          ],
+        },
+        { pageNumber: 2, width: 1, height: 1, runs: [] },
+        {
+          pageNumber: 3,
+          width: 1,
+          height: 1,
+          runs: [{ text: 'c', x: 0, y: 0, width: 1, fontSize: 1 }],
+        },
+      ],
+    }
+
+    // Act
+    const runs = Document.runs(doc)
+
+    // Assert
+    expect(runs.map((run) => run.text)).toEqual(['a', 'b', 'c'])
   })
 })
 
