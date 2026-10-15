@@ -60,7 +60,6 @@ describe('RequestLogPageSchema', () => {
           receivedAt: '2026-07-01T12:00:00.123Z',
           clientId: 'lifting',
           address: '192.0.2.1',
-          servedHost: 'dev1.example.com',
           method: 'GET',
           path: '/Patient',
           status: 200,
@@ -73,7 +72,6 @@ describe('RequestLogPageSchema', () => {
     })
     expect(decoded.nextCursor).toEqual(Option.none())
     expect(decoded.requests[0]?.responseBytes).toEqual(Option.none())
-    expect(decoded.requests[0]?.servedHost).toEqual(Option.some('dev1.example.com'))
   })
 })
 

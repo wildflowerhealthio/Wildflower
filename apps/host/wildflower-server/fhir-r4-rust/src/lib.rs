@@ -145,9 +145,8 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// as the session's bearer.
 ///
 /// HFS's `base_url`, the prefix of every URL it emits (Bundle links,
-/// `fullUrl`s, `Location`), is [`FhirR4Config::public_origin`]'s FHIR base: HFS
-/// never reads `Forwarded`/`Host` to vary it, so a client that pages by
-/// following `next` lands on the public origin.
+/// `fullUrl`s, `Location`), is [`FhirR4Config::public_origin`]'s FHIR base, so a
+/// client that pages by following `next` lands on the public origin.
 ///
 /// # Errors
 ///
@@ -266,7 +265,7 @@ where
         .route("/Patient/{id}/$everything", get(patient_everything_handler))
         .with_state(EverythingState {
             hfs_router: hfs_router.clone(),
-            public_origin: config.public_origin.clone(),
+            fhir_base: server_origin.clone(),
         });
 
     let hfs_router_for_delegation = hfs_router.clone();

@@ -346,7 +346,7 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    creates a `flow='device_code'` `AuthorizationRequest` and returns
    `{ device_code, user_code, verification_uri, ... }`.
    The verification URIs are the server's own
-   [device page](#device-page), on the origin the device reached it at:
+   [device page](#device-page), at the server's origin:
    `https://<domain>/oauth/device`, and `…/oauth/device?user_code=<code>` for
    `verification_uri_complete`.
 2. Owner confirms the `user_code` on the device page (typed, or filled in by
@@ -425,11 +425,10 @@ keeps waiting (on the [wait page](#wait-page) for a code request).
 
 The page `/oauth/authorize` parks a browser that isn't an
 [Owner browser](#owner-browser) on while the Owner decides:
-`/oauth/authorize/{id}/wait`, served by the authorization server itself on whichever
-origin the browser reached it at (loopback, a tunnel, a forwarded front). The
-`Location` is relative to `/oauth/authorize`, so no launcher address is
-involved. The page is static HTML, CSS and JS
-(`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
+`/oauth/authorize/{id}/wait`, served by the authorization server itself at the
+server's origin, `https://<domain>`. The `Location` is relative to
+`/oauth/authorize`, so no launcher address is involved. The page is static
+HTML, CSS and JS (`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
 `GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
 redirect the status carries, which the authorization server built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
@@ -702,8 +701,8 @@ A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
 talking to, the verifier."** A token signed for `aud=A` should not be
 honored by `aud=B`, even if the signature is valid.
 
-The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`,
-whichever origin the request was served on. Both checks are performed by
+The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`;
+every request is served at that origin. Both checks are performed by
 `verify_jwt`'s `VerifyOptions` (`expected_issuer`, `accepted_audiences`) — not
 by manual post-verify checks — so a caller using `verify_jwt` directly is forced
 to pass them and can't silently accept any iss/aud.
@@ -804,7 +803,7 @@ subject's epoch. The auth gate (`verify_auth_token_claims`) runs the full check
 on every Owner-gated and every FHIR request; HFS additionally checks the
 per-`jti` denylist in-process (defense-in-depth). Expired denylist rows are swept
 at startup and daily. See `docs/Origins/Explanation.md` for how this composes
-with the served-origin model.
+with the one-origin model.
 
 ### Bearer token / `token_type=Bearer`
 

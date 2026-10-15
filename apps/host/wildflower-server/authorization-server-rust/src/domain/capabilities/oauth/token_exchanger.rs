@@ -163,8 +163,7 @@ impl<S: GrantStore> TokenExchanger<S> {
     }
 
     /// Mint an OAuth access token whose `iss` and `aud` are both the server's
-    /// origin, whichever origin the request was served on (see
-    /// `docs/Origins/Explanation.md`).
+    /// origin (see `docs/Origins/Explanation.md`).
     fn mint(&self, entitlement: TokenEntitlement<'_>) -> Result<String, TokenExchangeError> {
         let minter = AccessTokenMinter::new(&self.store, &self.server_origin, ACCESS_TOKEN_TTL);
         Ok(minter.mint(entitlement)?)

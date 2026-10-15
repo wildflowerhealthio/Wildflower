@@ -29,9 +29,9 @@ use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMint
 use crate::domain::reachability_monitor::ReachabilityMonitor;
 use crate::http::health::ServerHealthChecks;
 use crate::http::middleware::cors::api_cors_layer;
-use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSenders};
+use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestReporter};
 use crate::http::middleware::session_cookie_bearer::present_session_cookie_bearers;
-use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
+use crate::http::middleware::tunnel_front::refuse_misdirected_requests;
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::http::{not_found, root_fallback};
@@ -399,9 +399,8 @@ pub async fn set_up(
     // `GET /apps` (list), the admin surface (`POST /apps`,
     // `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are scope-gated on
     // `wildflower/Apps.*`. The launch route `POST /apps/{id}` is scope-gated on the
-    // `wildflower/launch` umbrella, with a per-app SMART check in the handler; a
-    // forwarded launch rides the front trust boundary for the redirect. Every
-    // launch resolves `{origin}` to the server's public origin.
+    // `wildflower/launch` umbrella, with a per-app SMART check in the handler.
+    // Every launch resolves `{origin}` to the server's public origin.
     let apps_config = AppsConfig {
         public_origin: public_origin.clone(),
     };
@@ -503,7 +502,7 @@ pub async fn set_up(
             fhir_routers.augmented_fhir_r4_router,
             Arc::new(not_found::NotFoundConfig {
                 launcher_base,
-                server_origin: public_origin.clone(),
+                server_origin: wildflowerhealthio_shared_structures::origin_string(&public_origin),
             }),
         ));
 
@@ -526,7 +525,7 @@ pub async fn set_up(
     // is ready, and to the host unless it is a `/health` check (the
     // reachability monitor's probes).
     let forwarded_request_report = axum::middleware::from_fn_with_state(
-        ForwardedRequestSenders {
+        ForwardedRequestReporter {
             host_tx: observers.forwarded_request_tx,
             request_log_tx: request_log.forwarded_request_tx,
         },
@@ -537,13 +536,13 @@ pub async fn set_up(
     // forwarded-request report, the tunnel front and CORS, innermost first.
     let tunnel_router = inner_router
         .layer(forwarded_request_report)
-        // Hold the request to the server's domain and write its
-        // `Forwarded` header (see `stamp_tunnel_forwarded`), so every layer
-        // and handler inside reads it as a forwarded request, served at the
-        // public origin. A misdirected request's `421` is not reported.
+        // Hold the request to the server's domain (see
+        // `refuse_misdirected_requests`); every layer and handler inside
+        // serves it at the public origin. A misdirected request's `421` is
+        // not reported.
         .layer(axum::middleware::from_fn_with_state(
-            TunnelFront::new(public_origin)?,
-            stamp_tunnel_forwarded,
+            public_origin,
+            refuse_misdirected_requests,
         ))
         // Outermost, so a remote app can read even the front's `421`. Every
         // app's page is served from another origin (the hosted launcher, an

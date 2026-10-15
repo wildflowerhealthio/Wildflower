@@ -22,11 +22,11 @@
 //! no header. For its cookie, an instance:
 //!
 //! - refuses, `403`, a write (any method but `GET`, `HEAD`, `OPTIONS`,
-//!   `TRACE`) carrying the cookie unless it comes from the served origin. The
+//!   `TRACE`) carrying the cookie unless it comes from the server's origin. The
 //!   FHIR UI's routes sit outside the gate and act as the session's user on the
 //!   cookie alone, and an Owner browser's cookie reaches every route, so this
 //!   is what keeps another page from writing through either;
-//! - turns the cookie of a request from the served origin into its bearer, so
+//! - turns the cookie of a request from the server's origin into its bearer, so
 //!   the gates check it like any other token (revocation included). A request
 //!   that brings its own `Authorization` keeps it. A read from anywhere else
 //!   passes without one: a `/ui` page a link opens still renders, and the gates
@@ -51,7 +51,7 @@
 //! origin's page can only send it after a preflight, and since CORS never
 //! allows credentials, the browser sends that request without either cookie.
 //! Nor does it widen what a request may do: it only picks which of the
-//! browser's own sessions the request presents, and only from the served
+//! browser's own sessions the request presents, and only from the server's
 //! origin, which already reaches either.
 
 use std::sync::Arc;
@@ -69,7 +69,6 @@ use wildflowerhealthio_authorization_server::{
     OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 use wildflowerhealthio_shared_structures::origin_string;
-use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 /// A session cookie the layer guards, and where its bearer comes from.
 pub(crate) enum SessionCookie {
@@ -132,11 +131,12 @@ impl SessionCookie {
 }
 
 /// What an instance of the layer reads: the cookie it guards, and the
-/// server's origin, the served origin of a request with no `Forwarded` (see
-/// [`served_base_url_for`]).
+/// server's origin, the only origin a request carrying it may come from.
 pub(crate) struct SessionCookieBearerConfig {
     pub(crate) session_cookie: SessionCookie,
-    pub(crate) server_origin: Url,
+    /// The server's bare origin, `https://<domain>`, spelled as a browser's
+    /// `Origin` header spells it ([`origin_string`]).
+    pub(crate) server_origin: String,
 }
 
 /// Wrap `router` in the layer once per session cookie: an Owner browser's,
@@ -152,6 +152,7 @@ pub(crate) fn present_session_cookie_bearers(
     ui_sessions: Arc<SessionStore>,
     server_origin: &Url,
 ) -> Router {
+    let server_origin = origin_string(server_origin);
     let session_cookie_bearer = |session_cookie| {
         axum::middleware::from_fn_with_state(
             Arc::new(SessionCookieBearerConfig {
@@ -169,8 +170,8 @@ pub(crate) fn present_session_cookie_bearers(
 }
 
 /// The middleware: a write carrying the session cookie from anywhere but the
-/// served origin is refused. With no `Authorization` of its own, a request
-/// from the served origin carrying a cookie that stands for a live session
+/// server's origin is refused. With no `Authorization` of its own, a request
+/// from the server's origin carrying a cookie that stands for a live session
 /// gets `Authorization: Bearer <its token>`, and one whose Owner browser
 /// session has ended passes without it and has the cookie cleared. One that
 /// asks for another session than the cookie's passes without it. Anything
@@ -183,7 +184,7 @@ pub(crate) async fn present_session_cookie_bearer(
     let Some(cookie) = cookie_value(request.headers(), config.session_cookie.name()) else {
         return next.run(request).await;
     };
-    if !is_from_served_origin(request.method(), request.headers(), &config.server_origin) {
+    if !is_from_server_origin(request.method(), request.headers(), &config.server_origin) {
         if request.method().is_safe() {
             return next.run(request).await;
         }
@@ -221,18 +222,17 @@ pub(crate) async fn present_session_cookie_bearer(
     }
 }
 
-/// Whether the browser says the request came from a page on the served
+/// Whether the browser says the request came from a page on the server's
 /// origin. Each header a browser sends must agree:
 ///
 /// - `Sec-Fetch-Site`, when sent, is `same-origin`, or `none` for the user's
 ///   own navigation (a typed URL or a bookmark);
-/// - `Origin`, when sent, is the served origin.
+/// - `Origin`, when sent, is the server's origin.
 ///
 /// A write must send `Origin`: every browser does on a `POST`, including one
 /// too old to send `Sec-Fetch-Site`. A read needn't, since a browser leaves it
-/// off a same-origin `GET`. A `Forwarded` the served origin can't be read from
-/// matches no `Origin`.
-fn is_from_served_origin(method: &Method, headers: &HeaderMap, server_origin: &Url) -> bool {
+/// off a same-origin `GET`.
+fn is_from_server_origin(method: &Method, headers: &HeaderMap, server_origin: &str) -> bool {
     if let Some(fetch_site) = headers.get("sec-fetch-site") {
         let is_same_origin = fetch_site.to_str().is_ok_and(|fetch_site| {
             fetch_site.eq_ignore_ascii_case("same-origin")
@@ -243,13 +243,9 @@ fn is_from_served_origin(method: &Method, headers: &HeaderMap, server_origin: &U
         }
     }
     match headers.get(header::ORIGIN) {
-        Some(request_origin) => {
-            served_base_url_for(headers, server_origin).is_some_and(|served_base_url| {
-                request_origin
-                    .to_str()
-                    .is_ok_and(|request_origin| request_origin == origin_string(&served_base_url))
-            })
-        }
+        Some(request_origin) => request_origin
+            .to_str()
+            .is_ok_and(|request_origin| request_origin == server_origin),
         None => method.is_safe(),
     }
 }
@@ -281,8 +277,7 @@ mod tests {
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
     use wildflowerhealthio_token_revocation::RevocationStore;
 
-    const SERVED_ORIGIN: &str = "https://ruth.relay.example";
-    const FORWARDED: &str = "for=192.0.2.1;host=ruth.relay.example;proto=https";
+    const SERVER_ORIGIN: &str = "https://ruth.relay.example";
     const SIBLING_ORIGIN: &str = "https://evil.relay.example";
 
     /// A cookie the layer guards, as the tests send it: the layer's config,
@@ -294,7 +289,7 @@ mod tests {
     }
 
     fn server_origin() -> url::Url {
-        url::Url::parse(SERVED_ORIGIN).expect("origin")
+        url::Url::parse(SERVER_ORIGIN).expect("origin")
     }
 
     /// A real authorization server over an in-memory database, whose state
@@ -356,8 +351,8 @@ mod tests {
                     client_id: OWNER_BROWSER_CLIENT_ID,
                     scopes: &wildflowerhealthio_authorization_server::owner_scopes(),
                     ttl,
-                    issuer: SERVED_ORIGIN,
-                    audience: Some(SERVED_ORIGIN),
+                    issuer: SERVER_ORIGIN,
+                    audience: Some(SERVER_ORIGIN),
                     patient: None,
                 },
             )
@@ -368,7 +363,7 @@ mod tests {
         fn owner_browser_config(&self) -> Arc<SessionCookieBearerConfig> {
             Arc::new(SessionCookieBearerConfig {
                 session_cookie: SessionCookie::OwnerBrowser(self.state.clone()),
-                server_origin: server_origin(),
+                server_origin: SERVER_ORIGIN.to_owned(),
             })
         }
     }
@@ -403,7 +398,7 @@ mod tests {
         GuardedCookie {
             config: Arc::new(SessionCookieBearerConfig {
                 session_cookie: SessionCookie::FhirUi(Arc::new(store_with_a_session())),
-                server_origin: server_origin(),
+                server_origin: SERVER_ORIGIN.to_owned(),
             }),
             cookie: "hfs_session=session-1".to_owned(),
             bearer: "Bearer session-token".to_owned(),
@@ -419,7 +414,7 @@ mod tests {
             id: "session-1".to_string(),
             principal: SessionPrincipal {
                 subject: "fhir-ui-client".to_string(),
-                issuer: SERVED_ORIGIN.to_string(),
+                issuer: SERVER_ORIGIN.to_string(),
                 name: None,
                 preferred_username: None,
                 email: None,
@@ -524,14 +519,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_read_from_the_served_origin_gets_the_cookie_s_bearer() {
+    async fn a_read_from_the_server_origin_gets_the_cookie_s_bearer() {
         let cases: [&[(&str, &str)]; 4] = [
-            &[("forwarded", FORWARDED), ("sec-fetch-site", "same-origin")],
-            &[("forwarded", FORWARDED), ("sec-fetch-site", "none")],
+            &[("sec-fetch-site", "same-origin")],
+            &[("sec-fetch-site", "none")],
             // A browser too old to send `Sec-Fetch-Site`, and no `Origin` on a
             // same-origin `GET`.
-            &[("forwarded", FORWARDED)],
-            &[("forwarded", FORWARDED), ("origin", SERVED_ORIGIN)],
+            &[],
+            &[("origin", SERVER_ORIGIN)],
         ];
         for guarded in guarded_cookies() {
             for headers in cases {
@@ -546,17 +541,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_write_from_the_served_origin_gets_the_cookie_s_bearer() {
-        let cases: [&[(&str, &str)]; 3] = [
-            &[
-                ("forwarded", FORWARDED),
-                ("sec-fetch-site", "same-origin"),
-                ("origin", SERVED_ORIGIN),
-            ],
+    async fn a_write_from_the_server_origin_gets_the_cookie_s_bearer() {
+        let cases: [&[(&str, &str)]; 2] = [
+            &[("sec-fetch-site", "same-origin"), ("origin", SERVER_ORIGIN)],
             // A browser too old to send `Sec-Fetch-Site`.
-            &[("forwarded", FORWARDED), ("origin", SERVED_ORIGIN)],
-            // A request with no `Forwarded` is served at the server's origin.
-            &[("sec-fetch-site", "same-origin"), ("origin", SERVED_ORIGIN)],
+            &[("origin", SERVER_ORIGIN)],
         ];
         for guarded in guarded_cookies() {
             for headers in cases {
@@ -572,35 +561,21 @@ mod tests {
 
     #[tokio::test]
     async fn a_write_from_anywhere_else_carrying_the_cookie_is_refused() {
-        let cases: [&[(&str, &str)]; 7] = [
+        let cases: [&[(&str, &str)]; 6] = [
             // Another server behind the same relay.
-            &[
-                ("forwarded", FORWARDED),
-                ("sec-fetch-site", "same-site"),
-                ("origin", SIBLING_ORIGIN),
-            ],
-            &[
-                ("forwarded", FORWARDED),
-                ("sec-fetch-site", "cross-site"),
-                ("origin", SIBLING_ORIGIN),
-            ],
+            &[("sec-fetch-site", "same-site"), ("origin", SIBLING_ORIGIN)],
+            &[("sec-fetch-site", "cross-site"), ("origin", SIBLING_ORIGIN)],
             // A browser too old to send `Sec-Fetch-Site`.
-            &[("forwarded", FORWARDED), ("origin", SIBLING_ORIGIN)],
+            &[("origin", SIBLING_ORIGIN)],
             // A sandboxed page.
-            &[("forwarded", FORWARDED), ("origin", "null")],
+            &[("origin", "null")],
             // `Sec-Fetch-Site` and `Origin` must both agree.
             &[
-                ("forwarded", FORWARDED),
                 ("sec-fetch-site", "same-origin"),
                 ("origin", SIBLING_ORIGIN),
             ],
             // Not saying where it came from.
-            &[("forwarded", FORWARDED)],
-            // A `Forwarded` the served origin can't be read from.
-            &[
-                ("forwarded", "for=192.0.2.1;host=\"a/b\";proto=https"),
-                ("origin", SERVED_ORIGIN),
-            ],
+            &[],
         ];
         for guarded in guarded_cookies() {
             for headers in cases {
@@ -617,8 +592,8 @@ mod tests {
     #[tokio::test]
     async fn a_read_from_anywhere_else_passes_without_the_cookie_s_bearer() {
         let cases: [&[(&str, &str)]; 2] = [
-            &[("forwarded", FORWARDED), ("sec-fetch-site", "same-site")],
-            &[("forwarded", FORWARDED), ("origin", SIBLING_ORIGIN)],
+            &[("sec-fetch-site", "same-site")],
+            &[("origin", SIBLING_ORIGIN)],
         ];
         for guarded in guarded_cookies() {
             for headers in cases {
@@ -639,7 +614,7 @@ mod tests {
                 respond(
                     guarded.config.clone(),
                     Method::POST,
-                    &[("forwarded", FORWARDED), ("origin", SIBLING_ORIGIN)]
+                    &[("origin", SIBLING_ORIGIN)]
                 )
                 .await,
                 passed_without_a_bearer(),
@@ -657,7 +632,6 @@ mod tests {
                     &guarded,
                     Method::GET,
                     &[
-                        ("forwarded", FORWARDED),
                         ("sec-fetch-site", "same-origin"),
                         ("authorization", "Bearer its-own"),
                     ]
@@ -682,7 +656,6 @@ mod tests {
                     Method::POST,
                     &[
                         ("cookie", other.cookie.as_str()),
-                        ("forwarded", FORWARDED),
                         ("origin", SIBLING_ORIGIN),
                     ]
                 )
@@ -744,11 +717,7 @@ mod tests {
                     present_session_cookie_bearer,
                 )),
                 Method::GET,
-                &[
-                    ("cookie", &cookie),
-                    ("forwarded", FORWARDED),
-                    ("sec-fetch-site", "same-origin"),
-                ],
+                &[("cookie", &cookie), ("sec-fetch-site", "same-origin")],
             )
             .await;
             assert_eq!(
@@ -823,9 +792,8 @@ mod tests {
                 method.clone(),
                 &[
                     ("cookie", &cookies),
-                    ("forwarded", FORWARDED),
                     ("sec-fetch-site", "same-origin"),
-                    ("origin", SERVED_ORIGIN),
+                    ("origin", SERVER_ORIGIN),
                 ],
             )
             .await;
@@ -849,7 +817,7 @@ mod tests {
         )
     }
 
-    /// A request from the served origin asking for the Owner browser session
+    /// A request from the server's origin asking for the Owner browser session
     /// gets its bearer even with the FHIR web UI's cookie beside it.
     #[tokio::test]
     async fn asking_for_the_owner_browser_session_presents_it_over_the_fhir_ui_s() {
@@ -863,9 +831,8 @@ mod tests {
                 method.clone(),
                 &[
                     ("cookie", &cookies),
-                    ("forwarded", FORWARDED),
                     ("sec-fetch-site", "same-origin"),
-                    ("origin", SERVED_ORIGIN),
+                    ("origin", SERVER_ORIGIN),
                     ("wildflower-session", "owner-browser"),
                 ],
             )
@@ -919,7 +886,7 @@ mod tests {
         }
     }
 
-    /// The header still names a session only from the served origin: a write
+    /// The header still names a session only from the server's origin: a write
     /// from another server's page carrying either cookie is refused with it.
     #[tokio::test]
     async fn asking_for_the_owner_browser_session_keeps_the_write_guard() {
@@ -929,7 +896,6 @@ mod tests {
                     &guarded,
                     Method::POST,
                     &[
-                        ("forwarded", FORWARDED),
                         ("origin", SIBLING_ORIGIN),
                         ("wildflower-session", "owner-browser"),
                     ]

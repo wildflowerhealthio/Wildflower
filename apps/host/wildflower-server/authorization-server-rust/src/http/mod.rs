@@ -14,7 +14,7 @@ mod routes;
 mod state;
 mod wire_representations;
 
-pub(crate) use extractors::served_origin::ServedOrigin;
+pub(crate) use routes::oauth::device_page_url;
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // host's FHIR web UI session middleware uses it.
 pub use middleware::ensure_bearer_header;

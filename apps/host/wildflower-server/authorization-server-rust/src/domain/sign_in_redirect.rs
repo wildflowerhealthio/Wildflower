@@ -36,7 +36,7 @@ pub(crate) struct SignInDestinations {
 
 /// A `next` [`SignInDestinations`] allowed: the `Location` the sign-in
 /// answers with. A path on this server stays a path, so the browser stays on
-/// whichever origin it reached the server at.
+/// the server's origin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SignInRedirect(String);
 

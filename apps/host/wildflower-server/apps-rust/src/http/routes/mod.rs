@@ -139,26 +139,11 @@ mod tests {
         body["url"].as_str().expect("a url field").to_owned()
     }
 
-    /// A launch from a caller on this machine — `POST /apps/{id}`, no
-    /// `Forwarded` header.
+    /// A launch — `POST /apps/{id}`.
     fn post_launch(uri: &str) -> Request<Body> {
         Request::builder()
             .method("POST")
             .uri(uri)
-            .body(Body::empty())
-            .unwrap()
-    }
-
-    /// A launch as the trusted front would relay it — carries the `Forwarded`
-    /// header with the public host/proto (reads as a remote caller).
-    fn post_forwarded(uri: &str) -> Request<Body> {
-        Request::builder()
-            .method("POST")
-            .uri(uri)
-            .header(
-                "forwarded",
-                "for=192.0.2.1;host=demo.example.com;proto=https",
-            )
             .body(Body::empty())
             .unwrap()
     }
@@ -250,17 +235,15 @@ mod tests {
     }
 
     /// A launch whose caller lacks the `wildflower/launch` umbrella is `403` (the
-    /// `Scoped<AppLauncher>` extractor), from a caller on this machine and through
-    /// the front alike. The umbrella is a *known* scope, so the owner's
-    /// `wildflower/*.cruds` alone does NOT cover it.
+    /// `Scoped<AppLauncher>` extractor). The umbrella is a *known* scope, so the
+    /// owner's `wildflower/*.cruds` alone does NOT cover it.
     #[tokio::test]
     async fn launch_without_umbrella_scope_is_403() {
         let st = state();
         seed_plain(&st.store, "app-y");
-        for request in [post_launch("/apps/app-y"), post_forwarded("/apps/app-y")] {
-            let res = send_raw_scoped(&st, request, Some("wildflower/*.cruds")).await;
-            assert_eq!(res.status(), StatusCode::FORBIDDEN);
-        }
+        let res =
+            send_raw_scoped(&st, post_launch("/apps/app-y"), Some("wildflower/*.cruds")).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
     }
 
     /// The umbrella gate runs *before* any lookup or side-effect: an under-scoped
@@ -356,7 +339,7 @@ mod tests {
             Some("client-1"),
         );
 
-        let res = send_raw(&st, post_forwarded("/apps/smart-app")).await;
+        let res = send_raw(&st, post_launch("/apps/smart-app")).await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
             launch_url(res).await,
@@ -364,7 +347,7 @@ mod tests {
         );
         assert_eq!(minter.minted_for(), ["client-1"]);
 
-        send_raw(&st, post_forwarded("/apps/smart-app")).await;
+        send_raw(&st, post_launch("/apps/smart-app")).await;
         assert_eq!(minter.minted_for(), ["client-1", "client-1"]);
     }
 
@@ -380,7 +363,7 @@ mod tests {
             "https://app.example/launch?launch={launch}",
             None,
         );
-        let res = send_raw(&st, post_forwarded("/apps/plain-app")).await;
+        let res = send_raw(&st, post_launch("/apps/plain-app")).await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(launch_url(res).await, "https://app.example/launch?launch=");
         assert!(minter.minted_for().is_empty());
@@ -418,33 +401,29 @@ mod tests {
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    /// No launch sets a cookie, whoever calls.
+    /// No launch sets a cookie.
     #[tokio::test]
     async fn no_launch_sets_a_cookie() {
         let st = state();
         seed_plain(&st.store, "app-y");
-        for request in [post_forwarded("/apps/app-y"), post_launch("/apps/app-y")] {
-            let res = send_raw(&st, request).await;
-            assert_eq!(res.status(), StatusCode::OK);
-            assert!(res.headers().get("set-cookie").is_none());
-        }
+        let res = send_raw(&st, post_launch("/apps/app-y")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(res.headers().get("set-cookie").is_none());
     }
 
-    /// Every caller, on this machine or through the front, gets `200 { url }`
-    /// with `{origin}` resolved to the server's public origin.
+    /// A launch gets `200 { url }` with `{origin}` resolved to the server's
+    /// public origin.
     #[tokio::test]
-    async fn launch_answers_the_url_at_the_public_origin_for_every_caller() {
+    async fn launch_answers_the_url_at_the_public_origin() {
         let st = state();
         seed_plain(&st.store, "app-y");
         let expected = format!("https://app.example/y?iss={PUBLIC_ORIGIN}");
 
-        for request in [post_launch("/apps/app-y"), post_forwarded("/apps/app-y")] {
-            let res = send_raw(&st, request).await;
-            assert_eq!(res.status(), StatusCode::OK);
-            assert_eq!(launch_url(res).await, expected);
-        }
+        let res = send_raw(&st, post_launch("/apps/app-y")).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(launch_url(res).await, expected);
 
-        let res = send_raw(&st, post_forwarded("/apps/growth-chart")).await;
+        let res = send_raw(&st, post_launch("/apps/growth-chart")).await;
         assert_eq!(res.status(), StatusCode::OK);
         let url = launch_url(res).await;
         assert!(

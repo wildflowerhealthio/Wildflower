@@ -6,7 +6,8 @@
 //! (the authorization server, FHIR R4, OHIF, request log, apps, databases), gates
 //! them, and wraps the result for the **tunnel listener** in the CORS policy,
 //! the forwarded-request report and the tunnel front, which holds each request
-//! to the server's domain and writes its `Forwarded` header. It starts the
+//! to the server's domain. Every request is served at the server's origin,
+//! `https://<domain>`, which every reader takes from config. It starts the
 //! tunnel, which hands each visitor's stream to the tunnel listener in
 //! process, the device certificate, which the tunnel listener's TLS serves,
 //! and the reachability monitor. The server binds no port: it is reached only

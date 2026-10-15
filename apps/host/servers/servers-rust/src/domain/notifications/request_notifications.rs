@@ -216,7 +216,6 @@ mod tests {
         ForwardedRequest {
             received_at: std::time::SystemTime::UNIX_EPOCH,
             client_address: Some("192.0.2.1".to_owned()),
-            served_host: Some("demo.example.com".to_owned()),
             method: "GET".to_owned(),
             reduced_path: "/Patient".to_owned(),
             status: 200,

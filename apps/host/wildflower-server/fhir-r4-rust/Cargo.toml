@@ -37,7 +37,7 @@ helios-fhir = "=0.2.4"
 helios-ui = "=0.2.4"
 #   helios-audit       — audit sink trait (we use the null sink today)
 helios-audit = { version = "=0.2.4", default-features = false, features = ["R4"] }
-wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["served-origin"] }
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
 # Typed SMART scopes: the web UI's sign-in asks for `user/*.cruds`.
 wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 # `helios_auth::AuthProvider` is an `#[async_trait]`; implementing it needs the same

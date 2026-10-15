@@ -7,9 +7,8 @@ pub struct AuthorizationServerConfig {
     /// The server's origin, `https://<domain>`, as a typed [`Url`]. Every token
     /// this server mints carries its bare origin (via
     /// [`wildflowerhealthio_shared_structures::origin_string`]) as both `iss` and `aud`, and
-    /// the bearer gates accept only tokens that do, whichever origin a request
-    /// was served on. It is also the served origin of a request that carries
-    /// no `Forwarded` header. See `docs/Origins/Explanation.md`.
+    /// the bearer gates accept only tokens that do. Every request is served at
+    /// it. See `docs/Origins/Explanation.md`.
     pub server_origin: Url,
 
     /// The scopes the host app's client may be granted, as wire strings —

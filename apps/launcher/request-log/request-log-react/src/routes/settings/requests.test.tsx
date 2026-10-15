@@ -25,7 +25,6 @@ const loggedRequest = (
   receivedAt: `2026-07-01T12:0${id}:00Z`,
   clientId: 'lifting',
   address: '198.51.100.24',
-  servedHost: 'dev1.example.com',
   method: 'GET',
   path: '/Patient',
   status: 200,
@@ -377,13 +376,13 @@ describe('/settings/requests', () => {
     expect(requestQueries).toEqual(['auth=refused', 'auth=refused', 'cursor=3&auth=refused'])
     const lines = (await saved[0]?.text())?.trimEnd().split('\r\n')
     expect(lines?.[0]).toBe(
-      'received_at,client_id,client_name,access,address,served_host,method,path,status,refusal,response_bytes,duration_ms'
+      'received_at,client_id,client_name,access,address,method,path,status,refusal,response_bytes,duration_ms'
     )
     expect(lines?.slice(1)).toEqual([
-      '2026-07-01T12:04:00.000Z,,No client,refused,203.0.113.9,dev1.example.com,GET,/Patient,401,tokenRejected,2048,12',
-      '2026-07-01T12:03:00.000Z,unnamed-client,unnamed-client,authorized,198.51.100.24,dev1.example.com,GET,/authorization,200,,2048,12',
-      '2026-07-01T12:02:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,POST,/Observation,200,,2048,12',
-      '2026-07-01T12:01:00.000Z,,Open,public,198.51.100.24,dev1.example.com,GET,/.well-known,200,,2048,12',
+      '2026-07-01T12:04:00.000Z,,No client,refused,203.0.113.9,GET,/Patient,401,tokenRejected,2048,12',
+      '2026-07-01T12:03:00.000Z,unnamed-client,unnamed-client,authorized,198.51.100.24,GET,/authorization,200,,2048,12',
+      '2026-07-01T12:02:00.000Z,lifting,Lifting app,authorized,198.51.100.24,POST,/Observation,200,,2048,12',
+      '2026-07-01T12:01:00.000Z,,Open,public,198.51.100.24,GET,/.well-known,200,,2048,12',
     ])
   })
 })

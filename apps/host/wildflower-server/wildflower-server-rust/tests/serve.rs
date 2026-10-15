@@ -13,9 +13,10 @@
 //! goes through it, over TLS with the certificate cached for the server's
 //! domain: its connections are held to the server's domain by their SNI and
 //! their requests by their `Host`, are served as the public origin whatever
-//! `Forwarded` they carry, and name the visitor from a PROXY protocol v2
-//! header. The `/health` the reachability monitor asks through the relay is
-//! answered there, and logged but not reported to the host.
+//! `Forwarded` or spelling of the `Host` they carry, and name the visitor from
+//! a PROXY protocol v2 header. The `/health` the reachability monitor asks
+//! through the relay is answered there, and logged but not reported to the
+//! host.
 //!
 //! A SMART app's launch carries a `launch` the apps slice mints through
 //! the authorization server, which the app's `/oauth/authorize` consumes once.
@@ -391,20 +392,16 @@ fn proxy_header(source: &str) -> Vec<u8> {
     .expect("PROXY header")
 }
 
-/// The served host, visitor address and status of the request reported next.
-/// The report is sent before the response, so it is already queued once the
-/// response has been read.
+/// The visitor address and status of the request reported next. The report is
+/// sent before the response, so it is already queued once the response has
+/// been read.
 fn next_report(
     forwarded_request_rx: &mut mpsc::Receiver<ForwardedRequest>,
-) -> (Option<String>, Option<String>, u16) {
+) -> (Option<String>, u16) {
     let forwarded_request = forwarded_request_rx
         .try_recv()
         .expect("the request was reported");
-    (
-        forwarded_request.served_host,
-        forwarded_request.client_address,
-        forwarded_request.status,
-    )
+    (forwarded_request.client_address, forwarded_request.status)
 }
 
 /// `/health`'s status and its decoded health report, through the tunnel.
@@ -791,27 +788,27 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     // `start_serving`'s TLS handshakes sent no request.
     assert!(forwarded_request_rx.try_recv().is_err());
 
-    // The owner-gated `/apps` refuses a connection with no `Forwarded` and
-    // no bearer. It is reported as served at the domain, with no visitor
-    // address (no PROXY header).
+    // The owner-gated `/apps` refuses a request with no bearer. It is reported
+    // with no visitor address (no PROXY header).
     let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/apps", DOMAIN, ""))
         .await
         .expect("the tunnel listener answers");
     assert_eq!(status, 401);
     assert_eq!(
         next_report(&mut forwarded_request_rx),
-        (Some(DOMAIN.to_owned()), None, 401),
-        "a tunnel request is forwarded, for the domain"
+        (None, 401),
+        "a tunnel request is forwarded"
     );
 
-    // Discovery renders the public origin, even when the visitor sends a
-    // `Forwarded` of its own naming another host and scheme.
+    // Discovery renders the public origin, even when the visitor spells the
+    // domain another way and sends a `Forwarded` of its own naming another
+    // host and scheme.
     let (status, smart_configuration) = tunnel_exchange(
         &tunnel,
         None,
         &tunnel_get(
             "/.well-known/smart-configuration",
-            DOMAIN,
+            &format!("{}:443", DOMAIN.to_uppercase()),
             "Forwarded: for=203.0.113.9;host=evil.example.com;proto=http\r\n",
         ),
     )
@@ -826,8 +823,8 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     );
     assert_eq!(
         next_report(&mut forwarded_request_rx),
-        (Some(DOMAIN.to_owned()), None, 200),
-        "the visitor's `Forwarded` is replaced"
+        (None, 200),
+        "the visitor's `Forwarded` names no visitor"
     );
 
     // A TLS handshake naming another host fails, before any request.
@@ -890,7 +887,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         );
         assert_eq!(
             next_report(&mut forwarded_request_rx),
-            (Some(DOMAIN.to_owned()), None, expected_status)
+            (None, expected_status)
         );
     }
 
@@ -898,7 +895,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     // before HTTP.
     for (source, client_address) in [
         ("192.0.2.1:4711", "192.0.2.1"),
-        ("[2001:db8::1]:4711", "[2001:db8::1]"),
+        ("[2001:db8::1]:4711", "2001:db8::1"),
     ] {
         let (status, _) = tunnel_exchange(
             &tunnel,
@@ -910,11 +907,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         assert_eq!(status, 200);
         assert_eq!(
             next_report(&mut forwarded_request_rx),
-            (
-                Some(DOMAIN.to_owned()),
-                Some(client_address.to_owned()),
-                200
-            )
+            (Some(client_address.to_owned()), 200)
         );
     }
 

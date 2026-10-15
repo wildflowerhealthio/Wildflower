@@ -83,8 +83,8 @@ pub(crate) fn verify_request_claims(
     let Some(token) = try_bearer_token_from_headers(headers) else {
         return Err(Box::new(errors::unauthorized(RequestRefusal::MissingToken)));
     };
-    // The token must name the server's origin, whichever origin this request
-    // was served on. See `docs/Origins/Explanation.md`.
+    // The token must name the server's origin. See
+    // `docs/Origins/Explanation.md`.
     LiveTokenVerifier::from_state(state)
         .verify(token)
         .map_err(|e| Box::new(errors::verify_error_response(log_context, e)))

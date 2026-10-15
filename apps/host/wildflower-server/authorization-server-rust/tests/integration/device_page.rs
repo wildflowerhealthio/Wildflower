@@ -1,5 +1,5 @@
 //! The device verification page: `/oauth/device_authorization` sends the user
-//! to `/oauth/device` on the origin the device reached this server at, which
+//! to `/oauth/device` on the server's origin, which
 //! serves the page, and the page decides the request through the existing
 //! `/authorization/devices/{userCode}` API on the Owner browser's bearer, the
 //! token its session cookie holds. The cookie→bearer layer that presents that
@@ -8,9 +8,6 @@
 
 use crate::common::*;
 
-/// The origin the device reaches this server at in these tests.
-const DEVICE_FACING_ORIGIN: &str = "https://ruth.relay.example";
-
 /// The codes `/oauth/device_authorization` answers the test client with.
 struct DeviceAuthorization {
     device_code: String,
@@ -18,16 +15,14 @@ struct DeviceAuthorization {
     verification_uri_complete: String,
 }
 
-/// Start the device flow for the test client, forwarded from
-/// [`DEVICE_FACING_ORIGIN`].
+/// Start the device flow for the test client.
 async fn start_device_flow(g: &AuthorizationServer) -> DeviceAuthorization {
     let res = g
         .router
         .clone()
         .oneshot(build_request(
             Request::post("/oauth/device_authorization")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .header("forwarded", "host=ruth.relay.example;proto=https"),
+                .header("content-type", "application/x-www-form-urlencoded"),
             Body::from("client_id=integration-test-app&scope=system%2F*.cruds"),
         ))
         .await
@@ -83,16 +78,13 @@ async fn poll(g: &AuthorizationServer, device_code: &str) -> axum::response::Res
 }
 
 #[tokio::test]
-async fn verification_uri_complete_serves_the_device_page_on_the_device_facing_origin() {
+async fn verification_uri_complete_serves_the_device_page_on_the_server_origin() {
     let (g, _host_owner_token, db) = spin_up();
     seed_test_client(&db);
     let started = start_device_flow(&g).await;
 
     let page_url = Url::parse(&started.verification_uri_complete).expect("a URL");
-    assert_eq!(
-        page_url.origin().ascii_serialization(),
-        DEVICE_FACING_ORIGIN
-    );
+    assert_eq!(page_url.origin().ascii_serialization(), SERVER_ORIGIN);
     let res = g
         .router
         .clone()

@@ -1,7 +1,6 @@
 //! Who made a request the server answered, as the layer that authenticated or
 //! routed it knows it, and the record the server reports for each forwarded
-//! request: each one that came in through the tunnel, and each one a front run
-//! on this machine relayed.
+//! request: each one that came in through the tunnel.
 //!
 //! The authorization server bearer gates stamp a [`RequestCaller`] on a response's
 //! extensions, from the verified token, or a [`RequestRefusal`] on the `401`
@@ -37,8 +36,8 @@ pub enum RequestRefusal {
     Revoked,
 }
 
-/// One forwarded request, through the tunnel or relayed by a front run on this
-/// machine, reported after its response is ready.
+/// One forwarded request, through the tunnel, reported after its response is
+/// ready.
 ///
 /// It holds no record identifiers: the path is reduced to its route before it
 /// gets here, and the query string is dropped.
@@ -46,14 +45,10 @@ pub enum RequestRefusal {
 pub struct ForwardedRequest {
     /// When the request reached the server.
     pub received_at: SystemTime,
-    /// The visitor's address: `for=` of the last `Forwarded` element, which the
-    /// server's tunnel front or a trusted front writes (see `served_origin`).
-    /// `None` when that element names none, or names one that isn't
-    /// `host[:port]`-shaped.
+    /// The visitor's IP address, from the tunnel connection's PROXY header.
+    /// `None` when the connection had no header or the header named no
+    /// address.
     pub client_address: Option<String>,
-    /// The public `host[:port]` the visitor addressed, from the same element's
-    /// `host=`. `None` when the header doesn't resolve to a served origin.
-    pub served_host: Option<String>,
     /// The request method, e.g. `GET`.
     pub method: String,
     /// The request path reduced to its route, its first segment (`/authorization`,

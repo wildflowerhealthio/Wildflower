@@ -247,8 +247,7 @@ pub fn mint_token_naming(db: &TestDb, scopes: &[&str], issuer: &str, audience: &
     .expect("mint token")
 }
 
-/// `builder`'s request with `body`, to drive straight into the router. One
-/// without a `Forwarded` header is served at the server's origin.
+/// `builder`'s request with `body`, to drive straight into the router.
 pub fn build_request(builder: http::request::Builder, body: Body) -> Request<Body> {
     builder.body(body).expect("build request")
 }

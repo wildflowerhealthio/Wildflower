@@ -172,8 +172,7 @@ async fn the_delegation_router_is_on_the_public_origin() {
 }
 
 /// Discovery reports the server's origin as `issuer` (every token's `iss`),
-/// and its endpoint URLs are on that origin too, even for a request with no
-/// `Forwarded` header.
+/// and its endpoint URLs are on that origin too.
 #[tokio::test]
 async fn smart_discovery_reports_the_public_origin_as_issuer_and_endpoint_origin() {
     let (routers, _db) = build_routers();

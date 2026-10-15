@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use chrono::Duration;
+use url::Url;
 
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
@@ -28,7 +29,7 @@ const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 
 /// The codes a started device authorization hands the device — the RFC 8628
 /// §3.2 response minus the verification URIs, which the HTTP layer builds from
-/// the served origin.
+/// the authorizer's [`device_page`](DeviceAuthorizer::device_page).
 pub(crate) struct DeviceCodes {
     pub(crate) device_code: String,
     pub(crate) user_code: String,
@@ -59,16 +60,28 @@ impl From<AuthorizationServerError> for DeviceAuthorizationError {
 pub(crate) struct DeviceAuthorizer<S: GrantStore> {
     store: S,
     owner_approval: Arc<dyn OwnerApproval>,
+    device_page: Arc<Url>,
 }
 
 impl<S: GrantStore> DeviceAuthorizer<S> {
-    /// Build the authorizer over the store and the popup republish port, both
-    /// lifted from the state.
-    pub(crate) fn new(store: S, owner_approval: Arc<dyn OwnerApproval>) -> Self {
+    /// Build the authorizer over the store, the popup republish port, and the
+    /// server's device verification page, all lifted from the state.
+    pub(crate) fn new(
+        store: S,
+        owner_approval: Arc<dyn OwnerApproval>,
+        device_page: Arc<Url>,
+    ) -> Self {
         DeviceAuthorizer {
             store,
             owner_approval,
+            device_page,
         }
+    }
+
+    /// The server's device verification page, where the Owner enters a
+    /// started authorization's `user_code`: the RFC 8628 `verification_uri`.
+    pub(crate) fn device_page(&self) -> &Url {
+        &self.device_page
     }
 
     /// Check the requested scopes against the client's allowlist (coverage-
@@ -146,6 +159,12 @@ mod tests {
         authenticated_public_client, client, owned_scopes, FakeGrantStore, RecordingOwnerApproval,
     };
 
+    /// A device verification page for the authorizer under test; `start`
+    /// doesn't read it.
+    fn device_page() -> Arc<Url> {
+        Arc::new(Url::parse("https://dev1.example.com/oauth/device").expect("a URL"))
+    }
+
     fn authenticated(store: &FakeGrantStore) -> AuthenticatedClient {
         authenticated_public_client(store, client("app", &["patient/*.rs", "openid"]))
     }
@@ -157,7 +176,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let client = authenticated(&store);
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
-        let authorizer = DeviceAuthorizer::new(store, owner_approval.clone());
+        let authorizer = DeviceAuthorizer::new(store, owner_approval.clone(), device_page());
         let device_codes = authorizer
             .start(
                 &client,
@@ -196,7 +215,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let client = authenticated(&store);
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
-        let authorizer = DeviceAuthorizer::new(store, owner_approval.clone());
+        let authorizer = DeviceAuthorizer::new(store, owner_approval.clone(), device_page());
         assert!(matches!(
             authorizer.start(&client, owned_scopes(&["system/*.cruds"]), None),
             Err(DeviceAuthorizationError::ScopeNotAllowed)

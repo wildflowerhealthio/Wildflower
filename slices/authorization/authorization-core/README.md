@@ -72,8 +72,7 @@ and 90 days respectively). See the
   rather than rejected (the host app's client excepted). A request no standing
   grant covers redirects to the consent card below when the browser carries a
   live Owner browser session, and to the wait page otherwise, relative to
-  itself, so the browser stays on whichever origin it reached the
-  authorization server at.
+  itself, so the browser stays on the server's origin.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/authorize/:id/wait` — the **wait page**, served by the authorization server
