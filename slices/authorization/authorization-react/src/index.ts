@@ -8,6 +8,7 @@ export * as AuthorizationRouterContext from './router-context.ts'
 export {
   CLIENTS_QUERY_KEY,
   clientsQueryOptions,
+  deviceConsentMutationOptions,
   deviceConsentQueryOptions,
   GRANTS_QUERY_KEY,
   grantQueryOptions,
@@ -26,6 +27,9 @@ export {
   useRunAuthed,
   type ApproveOAuthPayload,
   type AppGrant,
+  type DeviceConsent,
+  type DeviceConsentDecision,
+  type DeviceConsentResult,
   type DeviceGrant,
   type Grant,
   type OAuthConsentDecision,
@@ -48,6 +52,19 @@ export {
   type PatientNameSearch,
 } from './screens/oauth-consent/oauth-consent-card.tsx'
 export type { PatientOptionsState } from './screens/oauth-consent/use-patient-options.ts'
+
+// The device-consent card and the code entry before it, for a surface that
+// sends the decision on its own session: the authorization server's device
+// page (`apps/host/wildflower-server/authorization-server-web`).
+export {
+  DeviceConsentCard,
+  type DeviceConsentCardProps,
+  type DeviceConsentMutation,
+} from './screens/pending-consent/device-consent-card.tsx'
+export {
+  DeviceCodeEntryForm,
+  type DeviceCodeEntryFormProps,
+} from './screens/device/device-code-entry-form.tsx'
 
 export { formatInstant } from './format-date.ts'
 

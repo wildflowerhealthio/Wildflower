@@ -544,7 +544,8 @@ async fn device_authorization_happy_path() {
     let body = "client_id=integration-test-app&scope=system%2F*.cruds";
     let req = loopback_request(
         Request::post("/oauth/device_authorization")
-            .header("content-type", "application/x-www-form-urlencoded"),
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("forwarded", "host=ruth.relay.example;proto=https"),
         Body::from(body),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -560,12 +561,11 @@ async fn device_authorization_happy_path() {
         serde_json::json!({
             "device_code": device_code,
             "user_code": user_code,
-            // On the hosted launcher, pointed back at this (loopback) server.
-            "verification_uri": format!(
-                "{LAUNCHER_BASE}authorization/devices?server=http%3A%2F%2F127.0.0.1"
-            ),
+            // This server's own device page, on the origin the device
+            // reached it at.
+            "verification_uri": "https://ruth.relay.example/oauth/device",
             "verification_uri_complete": format!(
-                "{LAUNCHER_BASE}authorization/devices?server=http%3A%2F%2F127.0.0.1&user_code={user_code}"
+                "https://ruth.relay.example/oauth/device?user_code={user_code}"
             ),
             "expires_in": 300,
             "interval": 5,

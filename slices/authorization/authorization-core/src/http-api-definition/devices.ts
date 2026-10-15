@@ -1,4 +1,5 @@
 import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
+import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
 import { RequireAuthMiddleware } from './require-auth.ts'
 
@@ -56,6 +57,11 @@ const httpApiGroup = HttpApiGroup.make('devices', { topLevel: false })
       .addSuccess(DeviceConsentResultSchema)
       .addError(DeviceConsentNotFoundSchema, { status: 404 })
   )
+  // Every endpoint here is scope-gated (`wildflower/AuthorizationRequest.r` to
+  // read, `.u` to decide), so the shared `403 InsufficientScope` is declared
+  // once at the group level: the generated client decodes it, naming the
+  // missing scopes.
+  .addError(InsufficientScopeSchema, { status: 403 })
   .middleware(RequireAuthMiddleware)
   .prefix('/authorization')
 

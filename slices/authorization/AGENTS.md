@@ -6,7 +6,7 @@ The slice is the TypeScript half every signing-in app shares: `authorization-cor
 
 ## Guardrails
 
-- **Page paths are duplicated TS ⇄ Rust by design**: `authorization-core/src/page-paths.ts` ⇄ `authorization-server-rust/src/domain/page_paths.rs`, drift-tested by `authorization-react/src/routes.test.tsx`. Changing a route means changing all three together — the drift test fails otherwise.
+- **Page paths have one source**: `authorization-core/src/page-paths.ts`, drift-tested against the route tree by `authorization-react/src/routes.test.tsx`. Changing a route means changing both together — the drift test fails otherwise.
 
 ## Traps
 

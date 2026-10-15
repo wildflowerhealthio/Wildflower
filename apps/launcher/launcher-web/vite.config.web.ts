@@ -18,7 +18,7 @@ export default defineConfig({
   },
   // The hosted dev server binds `launcher-dev`'s port from
   // `dev-app-ports.json`: the debug Tauri host links its launcher
-  // pages (the device-flow `verification_uri`, logout's landing, the 404 link)
+  // pages (logout's landing, the 404 link)
   // to the same port (`src-tauri/build.rs` reads that file too), so those
   // links land here and the OAuth redirect URI stays stable. The launcher has
   // no homescreen dev tile; `apps-rust/src/dev_seed.rs` reads only the keys

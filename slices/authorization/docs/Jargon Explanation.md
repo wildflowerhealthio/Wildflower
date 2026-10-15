@@ -345,13 +345,13 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    `scope`, and a `device_name` (see [Device name](#device-name)). Server
    creates a `flow='device_code'` `AuthorizationRequest` and returns
    `{ device_code, user_code, verification_uri, ... }`.
-   The verification URIs point at the hosted launcher
-   (`https://wildflowerhealth.io/launcher/authorization/devices?server=<origin>`,
-   the host's `launcher_base_url`), not at the server itself — the host
-   serves no UI of its own.
-2. Owner enters the `user_code` at `/authorization/devices` (or scans the QR
-   for `verification_uri_complete`) on a separate, already-Owner-authed
-   device — or answers it in the host's consent sheet, which the
+   The verification URIs are the server's own
+   [device page](#device-page), on the origin the device reached it at:
+   `https://<domain>/oauth/device`, and `…/oauth/device?user_code=<code>` for
+   `verification_uri_complete`.
+2. Owner confirms the `user_code` on the device page (typed, or filled in by
+   `verification_uri_complete`) in an [Owner browser](#owner-browser) — or
+   answers it in the host's consent sheet, which the
    [pending-consent queue](#pending-consent-queue) raises with no code entry.
 3. Owner reviews the request (device name + requested scopes) and approves via
    `POST /authorization/devices/:userCode/approve`. The Owner may add scopes beyond
@@ -475,6 +475,23 @@ client's callback (`code` + `state`, or `error=access_denied` + `state`), and
 the page leaves for it with `location.replace`, only for an `http:`/`https:`
 URL. A browser that can't read the request (`401`, `403`, or `404` once it is
 no longer pending) goes to the wait page instead.
+
+### Device page
+
+The RFC 8628 verification page: `/oauth/device` (`verification_uri`) and
+`/oauth/device?user_code=…` (`verification_uri_complete`), on the server's own
+origin, from the same **authorization pages** bundle and with the same headers
+as the [consent card](#consent-card). It has a code box, filled in from
+`user_code` when the URL carries one but sent only when the Owner presses
+Continue (RFC 8628 §5.4), so a phished link can't approve a code on its own.
+On the [Owner browser](#owner-browser)'s session it reads
+`GET /authorization/devices/{userCode}` and shows `authorization-react`'s
+`DeviceConsentCard`, which posts `/approve` or `/deny`; then it tells the Owner
+they can return to the device. It follows the API's answers rather than
+checking who is signed in: a `404` means no device is waiting with that code,
+and the Owner can enter another; a `401` or `403` means this browser can't
+decide the request, so the page says to approve it on the device running the
+server and leaves the request pending.
 
 ### Wildflower host app
 

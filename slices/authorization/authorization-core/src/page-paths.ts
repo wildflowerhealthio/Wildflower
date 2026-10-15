@@ -6,10 +6,7 @@
  *
  * @remarks
  * Each is a launcher-relative path; path params are percent-encoded — callers
- * MUST NOT re-encode. The absolute URLs a server hands a browser are built on
- * the Rust side (`authorization-server-rust`'s `domain/page_paths.rs`): the hosted
- * launcher's base plus this path, with `?server=<served origin>` naming the server
- * the page should talk back to.
+ * MUST NOT re-encode.
  */
 export namespace AuthorizationServerPaths {
   export const oauthConsentPath = (id: string): string =>

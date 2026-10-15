@@ -71,4 +71,42 @@ describe('DeviceCodeEntryForm', () => {
     // Assert
     expect(onSubmit).not.toHaveBeenCalled()
   })
+
+  test('starts from a normalized initial code and still waits for the owner to submit it', async () => {
+    // Arrange
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+    render(<DeviceCodeEntryForm onSubmit={onSubmit} initialCode="bcdf-ghjk" />)
+
+    // Assert — pre-filled, but never submitted on its own (RFC 8628 §5.4).
+    expect(screen.getByLabelText<HTMLInputElement>('Code').value).toBe('BCDF-GHJK')
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    // Assert
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith('BCDF-GHJK')
+  })
+
+  test('shows the error above Continue, and holds Continue while submitting', () => {
+    // Arrange / Act
+    render(
+      <DeviceCodeEntryForm
+        onSubmit={vi.fn()}
+        initialCode="BCDF-GHJK"
+        error="No such code."
+        submitting
+      />
+    )
+
+    // Assert
+    const alert = screen.getByRole('alert')
+    const continueButton = screen.getByRole('button', { name: 'Continue' })
+    expect(alert.textContent).toContain('No such code.')
+    expect(
+      alert.compareDocumentPosition(continueButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(continueButton.hasAttribute('disabled')).toBe(true)
+  })
 })

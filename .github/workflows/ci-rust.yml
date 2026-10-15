@@ -166,8 +166,9 @@ jobs:
       # the UI is tested by the TypeScript workflow.
       - name: Stub relay admin UI
         run: ./scripts/ci/stub-embedded-bundles.sh relay-admin-web
-      # wildflowerhealthio-authorization-server embeds the consent card's build
-      # the same way; a placeholder page is enough for its tests.
+      # wildflowerhealthio-authorization-server embeds the authorization pages'
+      # build (consent.html, device.html) the same way; placeholder pages are
+      # enough for its tests.
       - name: Stub authorization server pages
         run: ./scripts/ci/stub-embedded-bundles.sh authorization-server-web
 

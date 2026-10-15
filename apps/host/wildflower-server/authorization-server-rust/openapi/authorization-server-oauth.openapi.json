@@ -617,10 +617,12 @@
             "type": "string"
           },
           "verification_uri": {
-            "type": "string"
+            "type": "string",
+            "description": "This server's device verification page, `{origin}/oauth/device`."
           },
           "verification_uri_complete": {
-            "type": "string"
+            "type": "string",
+            "description": "The device verification page with the code filled in,\n`{origin}/oauth/device?user_code={user_code}`. The Owner still confirms\nthe code before the page reads the request."
           },
           "expires_in": {
             "type": "integer",

@@ -31,11 +31,12 @@ export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation } from '.
 export type { ClientSwitch, UpdateClientVariables } from './clients.ts'
 
 export {
+  deviceConsentMutationOptions,
   deviceConsentQueryOptions,
   useDeviceConsentMutation,
   useDeviceConsentQuery,
 } from './device-consent.ts'
-export type { DeviceConsent } from './device-consent.ts'
+export type { DeviceConsent, DeviceConsentDecision, DeviceConsentResult } from './device-consent.ts'
 
 export {
   oauthConsentMutationOptions,

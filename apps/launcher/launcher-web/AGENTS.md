@@ -95,8 +95,7 @@ the base opens a server's launcher.
   Manage access row (`session/manage-access-settings-item.ts`) links out to
   the `management_endpoint` the session's server advertises in its SMART
   configuration; no settings route manages access. The approval routes
-  (`/authorization/devices*`, `/authorization/oauth-consent/$id`) stay: they
-  are how a device or an app is approved. Tests: `route-tree.test.ts`,
+  (`/authorization/devices*`, `/authorization/oauth-consent/$id`) stay. Tests: `route-tree.test.ts`,
   `routes/settings.test.tsx`.
 
 ## References

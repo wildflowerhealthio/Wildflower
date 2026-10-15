@@ -1,0 +1,11 @@
+/*
+ * The device page around the code entry and the card: what it says when this
+ * browser can't decide the request, and once the Owner has decided.
+ */
+
+.device-page__message {
+  margin: var(--space-9) auto 0;
+  max-width: 560px;
+  text-align: center;
+  color: var(--color-neutral-4);
+}

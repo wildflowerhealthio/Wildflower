@@ -5,8 +5,8 @@ import launcherRs from '../../../../slices/shared-structures/shared-structures-r
 import { launcher_base_url as launcherBaseUrl } from '../../../host/host-app/tauri-shared-config.json'
 import { RETURN_TO_PARAM } from './sign-in.ts'
 
-// The Tauri host links every browser-facing launcher page (device-flow
-// `verification_uri`, logout's landing, the unmatched-route 404) to the
+// The Tauri host links every browser-facing launcher page (logout's landing,
+// the unmatched-route 404) to the
 // address in `tauri-shared-config.json` (a debug build, to the dev server on
 // `dev-app-ports.json`'s `launcher-dev` port). Rust can't read branding-core, so
 // the JSON repeats the published address; this pins the copy to its source.

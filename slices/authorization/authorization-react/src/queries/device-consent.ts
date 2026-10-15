@@ -3,6 +3,7 @@ import {
   useMutation,
   useQueryClient,
   useSuspenseQuery,
+  type UseMutationOptions,
   type UseMutationResult,
   type UseSuspenseQueryOptions,
   type UseSuspenseQueryResult,
@@ -41,9 +42,49 @@ const deviceConsentQueryOptions = (
 const useDeviceConsentQuery = (userCode: string): UseSuspenseQueryResult<DeviceConsent, Error> =>
   useSuspenseQuery(deviceConsentQueryOptions(useRunAuthed(), userCode))
 
+/** The Owner's decision on a device consent: approve with the granted scopes, or deny. */
+type DeviceConsentDecision =
+  | {
+      readonly kind: 'approve'
+      readonly userCode: string
+      readonly approvedScopes: readonly string[]
+      /** An adjusted device name (settings approver renaming the device); omitted keeps the stored one. */
+      readonly deviceName?: string
+      /** The launch patient a one-patient grant is bound to (JWT `patient` claim); omitted for all-patients. */
+      readonly patient?: string
+    }
+  | { readonly kind: 'deny'; readonly userCode: string }
+
 /**
- * `ApproveDeviceConsent` / `DenyDeviceConsent`. Returns the resulting
- * decision.
+ * `ApproveDeviceConsent` / `DenyDeviceConsent` over `runAuthed`, as mutation
+ * options: the decision's `mutationFn`, which resolves to the resulting
+ * decision. Shared by {@link useDeviceConsentMutation} and the authorization
+ * server's device page (`authorization-server-web`), which runs it on the
+ * Owner browser's session rather than the router's.
+ */
+const deviceConsentMutationOptions = (
+  runAuthed: RunAuthed
+): UseMutationOptions<DeviceConsentResult, Error, DeviceConsentDecision> => ({
+  mutationFn: (decision) =>
+    runAuthed(
+      Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
+        decision.kind === 'approve'
+          ? c.devices.ApproveDeviceConsent({
+              path: { userCode: decision.userCode },
+              payload: {
+                approvedScopes: [...decision.approvedScopes],
+                ...(decision.deviceName === undefined ? {} : { deviceName: decision.deviceName }),
+                ...(decision.patient === undefined ? {} : { patient: decision.patient }),
+              },
+            })
+          : c.devices.DenyDeviceConsent({ path: { userCode: decision.userCode } })
+      )
+    ),
+})
+
+/**
+ * {@link deviceConsentMutationOptions} on the router's authed runner. Returns
+ * the resulting decision.
  *
  * On success the consent screen unmounts (`onDone()` navigates away), so
  * invalidating this consent's own detail key
@@ -55,42 +96,21 @@ const useDeviceConsentQuery = (userCode: string): UseSuspenseQueryResult<DeviceC
 const useDeviceConsentMutation = (): UseMutationResult<
   DeviceConsentResult,
   Error,
-  | {
-      readonly kind: 'approve'
-      readonly userCode: string
-      readonly approvedScopes: readonly string[]
-      /** An adjusted device name (settings approver renaming the device); omitted keeps the stored one. */
-      readonly deviceName?: string
-      /** The launch patient a one-patient grant is bound to (JWT `patient` claim); omitted for all-patients. */
-      readonly patient?: string
-    }
-  | { readonly kind: 'deny'; readonly userCode: string }
+  DeviceConsentDecision
 > => {
-  const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (variables) =>
-      runAuthed(
-        Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
-          variables.kind === 'approve'
-            ? c.devices.ApproveDeviceConsent({
-                path: { userCode: variables.userCode },
-                payload: {
-                  approvedScopes: [...variables.approvedScopes],
-                  ...(variables.deviceName === undefined
-                    ? {}
-                    : { deviceName: variables.deviceName }),
-                  ...(variables.patient === undefined ? {} : { patient: variables.patient }),
-                },
-              })
-            : c.devices.DenyDeviceConsent({ path: { userCode: variables.userCode } })
-        )
-      ),
+    ...deviceConsentMutationOptions(useRunAuthed()),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: GRANTS_QUERY_KEY })
     },
   })
 }
 
-export { deviceConsentQueryOptions, useDeviceConsentMutation, useDeviceConsentQuery }
-export type { DeviceConsent }
+export {
+  deviceConsentMutationOptions,
+  deviceConsentQueryOptions,
+  useDeviceConsentMutation,
+  useDeviceConsentQuery,
+}
+export type { DeviceConsent, DeviceConsentDecision, DeviceConsentResult }

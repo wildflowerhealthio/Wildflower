@@ -1,14 +1,14 @@
 /*
  * Device-consent screen polish — the design-system "device authorization"
- * card treatment, layered onto the shared consent form body. Everything is
+ * card treatment, layered onto the device-consent card's body. Everything is
  * token-driven (no literal px / hex from the prototype): the pairing code
  * reads as a sunken, dashed "ticket stub"; an intro line sets the ask; the
- * application name sits a notch above body weight; the actions row pairs
- * Decline and Approve side by side; and a quiet mono footnote closes the card.
+ * application name sits a notch above body weight; a quiet mono footnote
+ * sits above the actions row, which pairs Decline and Approve side by side.
  *
- * The form renders inside the app's existing chrome (`.page` shell under a
- * `PageHeader`, or the Tauri consent `Dialog` body), so the inter-row rhythm
- * comes from that container's flex `gap` — these rules only skin the rows.
+ * The card renders inside its surface's chrome (a `.page` shell under a
+ * `PageHeader`), so the inter-row rhythm comes from that container's flex
+ * `gap` — these rules only skin the rows.
  */
 
 /* Lead line under the title: "A new device is requesting access…" — body
@@ -61,7 +61,7 @@
   flex: 1 1 0;
 }
 
-/* Closing reassurance line — quiet mono caption, centered. */
+/* Reassurance line above the decision — quiet mono caption, centered. */
 .footnote {
   margin: 0;
   font-family: var(--font-mono);

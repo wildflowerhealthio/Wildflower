@@ -18,7 +18,7 @@ in a slice because more than one product uses them (`slices/authorization`,
   [`slices/authorization`](../../../slices/authorization/AGENTS.md), is shared by
   every app that signs in.
 - [`authorization-server-web`](./authorization-server-web/AGENTS.md) — the
-  authorization pages (the consent card), a Vite build that
+  authorization pages (the consent card, the device page), a Vite build that
   `authorization-server-rust` embeds and serves on the server's own origin.
 - **`token-revocation-rust`** — the per-token denylist and per-subject epoch
   both enforcement points read: `authorization-server-rust`'s gate and

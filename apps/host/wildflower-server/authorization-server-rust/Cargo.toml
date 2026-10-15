@@ -81,9 +81,9 @@ url = { version = "2", features = ["serde"] }
 thiserror = "2"
 tokio = { workspace = true, features = ["sync", "macros"] }
 # Embeds the authorization pages' build
-# (`apps/host/wildflower-server/authorization-server-web/dist`): `consent.html`
-# and its hashed `assets/`, served at `/oauth/authorize/{id}/consent` and
-# `/oauth/assets/*`. `build.rs` reruns the build when it changes.
+# (`apps/host/wildflower-server/authorization-server-web/dist`): `consent.html`,
+# `device.html` and their hashed `assets/`, served at
+# `/oauth/authorize/{id}/consent`, `/oauth/device` and `/oauth/assets/*`. `build.rs` reruns the build when it changes.
 include_dir = "0.7"
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`),
