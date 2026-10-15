@@ -138,11 +138,8 @@ mod tests {
 
     #[test]
     fn route_url_keeps_percent_encoded_segments() {
-        let url = base("https://wildflowerhealth.io/launcher/").route_url(
-            "/settings/a%20b",
-            SERVER,
-            &[],
-        );
+        let url =
+            base("https://wildflowerhealth.io/launcher/").route_url("/settings/a%20b", SERVER, &[]);
         assert_eq!(url.path(), "/launcher/settings/a%20b");
         assert_eq!(
             url.path_segments().and_then(|mut s| s.next_back()),
