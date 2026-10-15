@@ -123,8 +123,8 @@ const buildDdinterFile = (rows: readonly DdinterCsvRow[], source: DdinterSource)
     if (!names.has(idA)) names.set(idA, nameA)
     if (!names.has(idB)) names.set(idB, nameB)
   }
-  const ids = [...names.keys()].toSorted((a, b) => a.localeCompare(b))
-  const indexOf = new Map(ids.map((id, index) => [id, index]))
+  const drugs = [...names].toSorted(([a], [b]) => a.localeCompare(b))
+  const indexOf = new Map(drugs.map(([id], index) => [id, index]))
 
   // One entry per unordered pair; a later row only replaces a more-severe one.
   const pairs = new Map<string, { readonly a: number; readonly b: number; severity: Severity }>()
@@ -143,7 +143,7 @@ const buildDdinterFile = (rows: readonly DdinterCsvRow[], source: DdinterSource)
 
   return {
     source,
-    drugs: ids.map((id) => [id, names.get(id) ?? id] as const),
+    drugs,
     pairs: [...pairs.values()]
       .map(({ a, b, severity }) => [a, b, severityToCode(severity)] as const)
       .toSorted(([a1, b1], [a2, b2]) => a1 - a2 || b1 - b2),

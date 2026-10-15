@@ -121,8 +121,7 @@ const DDINTER_HOME_URL = 'https://ddinter.scbdd.com/'
  *
  * @remarks
  * The path scheme (`/ddinter/drug-detail/<DDInter id>/`) is the one place the
- * site's URL layout is assumed; it was written from memory while the host was
- * unreachable, so verify it against a live page and change it here only.
+ * site's URL layout is assumed; change it here only.
  */
 const ddinterDrugUrl = (drug: CatalogDrug): string =>
   `${DDINTER_HOME_URL}ddinter/drug-detail/${encodeURIComponent(drug.id)}/`
