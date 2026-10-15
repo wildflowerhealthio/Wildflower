@@ -2,6 +2,8 @@
 //! each, "‹client› wants access to ‹domain›", withdrawn once the request is
 //! no longer the server's newest. A tap opens it on a phone; on the desktop,
 //! which reports no taps, the request opens at once in the default browser.
+//! A request the Owner's own browser made does neither (see
+//! [`ConsentNotificationCoalescer`]).
 
 use std::path::PathBuf;
 use std::sync::Arc;

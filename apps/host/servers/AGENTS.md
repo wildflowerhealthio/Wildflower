@@ -491,7 +491,12 @@ changing how servers run or what the host notifies about them.
   brings back the one before. `ConsentNotificationCoalescer` picks, from
   `UnitRunner`'s statuses, each server whose newest request is one it hasn't
   notified for, and the host posts "‹client› wants access to ‹domain›" under
-  `consent-request:<domain>`, replacing the server's last; on a phone the
+  `consent-request:<domain>`, replacing the server's last. A request made by
+  a browser signed in as the Owner (`requested_by_owner_browser`, which
+  `/oauth/authorize` records when it sends that browser to the consent card),
+  as one a launch opened, neither notifies nor opens: the Owner is already
+  looking at its consent card. It still counts as the server's newest, and
+  the server's page still shows it as the pending request. On a phone the
   host withdraws it once the request is no longer the server's newest
   (decided or expired, or another it notified for is newest again), or the
   server is removed. A tap opens it on a phone. A desktop can't click a

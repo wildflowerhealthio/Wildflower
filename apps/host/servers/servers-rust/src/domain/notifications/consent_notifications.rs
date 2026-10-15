@@ -97,6 +97,12 @@ const NOTIFIED_PER_SERVER: usize = 32;
 /// is decided doesn't notify again, nor does one still waiting when the
 /// server's run restarts.
 ///
+/// A request the Owner's own browser made (`requested_by_owner_browser`)
+/// never notifies: that browser already shows its consent card. It still
+/// counts as the server's newest, so it withdraws the server's notification
+/// for an older one, and counts as notified for, so it doesn't notify when it
+/// comes back either.
+///
 /// A server's notification stays while the request it announced is the
 /// server's newest; once another that notified before is newest, or nothing
 /// is pending, the server's notification is withdrawn, so it never announces
@@ -175,6 +181,12 @@ impl ConsentNotificationCoalescer {
                 notified.pop_front();
             }
             notified.push_back(pending_consent.key.clone());
+            if pending_consent.requested_by_owner_browser {
+                if self.announced.remove(unit_id).is_some() {
+                    changes.withdrawn.push(unit_id.as_str().to_owned());
+                }
+                continue;
+            }
             self.announced
                 .insert(unit_id.clone(), pending_consent.key.clone());
             changes.posted.push(ConsentRequest {
@@ -388,6 +400,55 @@ mod tests {
 
         let removed = coalescer.record(&statuses([]));
         assert_eq!(removed.withdrawn, [RUTH]);
+    }
+
+    fn oauth_from_owner_browser(id: &str) -> NewestPendingConsent {
+        NewestPendingConsent::OAuth {
+            id: id.to_owned(),
+            client_name: "Lifting".to_owned(),
+            requested_by_owner_browser: true,
+        }
+    }
+
+    #[test]
+    fn a_request_the_owner_s_browser_made_does_not_notify() {
+        let mut coalescer = ConsentNotificationCoalescer::new();
+        let changes = coalescer.record(&statuses([(
+            RUTH,
+            running_with(Some(oauth_from_owner_browser("a"))),
+        )]));
+        assert_eq!(changes, ConsentNotificationChanges::default());
+    }
+
+    #[test]
+    fn a_request_the_owner_s_browser_made_withdraws_an_older_notification() {
+        let mut coalescer = ConsentNotificationCoalescer::new();
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+
+        let newer = coalescer.record(&statuses([(
+            RUTH,
+            running_with(Some(oauth_from_owner_browser("b"))),
+        )]));
+        assert!(newer.posted.is_empty());
+        assert_eq!(newer.withdrawn, [RUTH]);
+    }
+
+    #[test]
+    fn a_request_the_owner_s_browser_made_does_not_notify_when_it_comes_back() {
+        let mut coalescer = ConsentNotificationCoalescer::new();
+        coalescer.record(&statuses([(
+            RUTH,
+            running_with(Some(oauth_from_owner_browser("a"))),
+        )]));
+        let newer = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("b"))))]));
+        assert_eq!(summary(&newer.posted), [(RUTH, oauth_key("b"))]);
+
+        let back = coalescer.record(&statuses([(
+            RUTH,
+            running_with(Some(oauth_from_owner_browser("a"))),
+        )]));
+        assert!(back.posted.is_empty());
+        assert_eq!(back.withdrawn, [RUTH], "b's notification goes");
     }
 
     #[test]

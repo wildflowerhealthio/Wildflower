@@ -410,7 +410,10 @@ it on a `watch` channel. The Tauri host carries each server's newest pending
 consent in the server's status, posts a notification ("‹client› wants access
 to ‹domain›") once for each request it hasn't notified for, and on the desktop,
 where a notification can't be clicked, opens the request at once. A request that comes back once a newer one is
-decided doesn't notify again. The base's server page shows it as a pending
+decided doesn't notify again. A code request made by a browser signed in as the
+Owner neither notifies nor opens: `/oauth/authorize` sent that browser to the
+consent card, and records it on the request (`requested_by_owner_browser`,
+carried on the newest pending consent). The base's server page shows it as a pending
 request; Open, a tap on the notification on a phone, or the notification
 itself on the desktop opens its page in a
 browser signed in as the Owner, with `then=back` (see `apps/host/servers`'s
