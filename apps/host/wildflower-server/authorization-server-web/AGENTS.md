@@ -41,7 +41,8 @@ Security Policy (below).
   `GET /authorization/devices/{userCode}` and shows the card, which posts
   `/approve` or `/deny`. A `404` keeps the code box with an error; a `401` or
   `403` says to approve the request on the device running the server and
-  leaves it pending.
+  leaves it pending. A request that expires before the decision shows
+  `ExpiredDeviceConsent`'s copy on the card.
 - `src/owner-browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.
   The browser's `__Host-owner_browser_session` cookie rides every same-origin

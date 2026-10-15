@@ -196,6 +196,22 @@ describe('DevicePage — deciding', () => {
       '/authorization/devices/WDJB-MJHT/deny',
     ])
   })
+
+  test('a request that expired before the decision says so, with the way out', async () => {
+    const holding = serverHolding('WDJB-MJHT', { status: 'approved' })
+    answer = (request) =>
+      request.method === 'POST'
+        ? { status: 404, body: { error: 'DeviceConsentNotFound', userCode: 'WDJB-MJHT' } }
+        : holding(request)
+    const { user } = renderPage('WDJB-MJHT')
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Approve' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'This device request has expired or was already decided. Start pairing again on the device to get a new code.'
+    )
+  })
 })
 
 describe('DevicePage — a browser that cannot decide here', () => {
