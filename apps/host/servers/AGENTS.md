@@ -438,10 +438,15 @@ changing how servers run or what the host notifies about them.
   `/oauth/device?user_code=…&then=back` (the sign-in takes a path on the
   server as `next`, not an absolute URL). `then=back` makes the page go back
   or close once decided, rather than follow the client's callback. The view
-  is a launch view. On a phone, whose in-app browser shows one view at a
-  time, an open while a launch view shows is refused (`viewShowing`), so the
-  view isn't replaced or joined; a desktop's views are default-browser tabs.
-  Further errors are `nothingPending` and the launch's.
+  is a launch view, opened over the views showing (`OpenMode::Stack`) rather
+  than replacing or joining them, so the page under it, as an app's waiting
+  for that consent, stays where it was: on iOS it shows over the top-most
+  view, on Android it opens a Custom Tab of its own, and a desktop opens a
+  default-browser tab. On iOS the base then waits on the run's
+  `ServerConsentWatcher` and closes the view once the request is decided or
+  expires, revealing the page under it, unless the user closed it first; a
+  Custom Tab and a desktop's tab can't be closed by the app. Further errors
+  are `nothingPending` and the launch's.
 - **Launching opens the launcher with a launch for any client, signed in.**
   `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
   once unless `ensure_launchable` passes for the server's status, the one
@@ -463,9 +468,10 @@ changing how servers run or what the host notifies about them.
   Authorization URL with `iss=https://<domain>` (`authorization_app_url`,
   any earlier `iss` dropped) through the same sign-in, with the same check,
   view and presence, and mints no launch. The page opens in the in-app browser
-  (`tauri-plugin-native-page-browser`), which shows one view at a time: on
-  iOS a launch replaces the view an earlier one opened, and on Android a
-  launch that arrives while that view is still opening joins it. Each view is reported to
+  (`tauri-plugin-native-page-browser`), replacing the views showing
+  (`OpenMode::Replace`): on iOS a launch replaces the views earlier opens
+  showed, and on Android a launch that arrives while an earlier view is still
+  opening joins it. Each view is reported to
   `TauriUnitRunner` under an id of its own (`launch-<n>`) until the browser
   reports it closed (on Android, as the app resumes from under it); on
   Android, where the view moves the app to the background, an open view keeps

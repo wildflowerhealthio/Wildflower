@@ -25,15 +25,20 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 /**
- * Arguments decoded from `invoke('plugin:native-page-browser|open', { url, events })`.
+ * Arguments decoded from
+ * `invoke('plugin:native-page-browser|open', { url, view, mode, events })`.
  * Keys match `OpenRequest`'s camelCase serde wire shape (see `models.rs`).
- * `events` is a Tauri `Channel<BrowserEvent>` that hears `{"event":"keptAlive"}`
- * when the view's browser keeps the app alive, and `{"event":"closed"}` once
- * this view is gone.
+ * `view` is the caller's name for the view, which `close` takes; a Custom Tab
+ * can't be closed, so nothing here reads it. `mode` is `models.rs` `OpenMode`:
+ * `"replace"` or `"stack"`. `events` is a Tauri `Channel<BrowserEvent>`
+ * that hears `{"event":"keptAlive"}` when the view's browser keeps the app
+ * alive, and `{"event":"closed"}` once this view is gone.
  */
 @InvokeArg
 class OpenArgs {
     lateinit var url: String
+    lateinit var view: String
+    lateinit var mode: String
     lateinit var events: Channel
 }
 
@@ -246,6 +251,12 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
             showing = page
             whenSessionReady { launch(page, invoke, Uri.parse(args.url)) }
         }
+    }
+
+    /** A Custom Tab can't be closed programmatically: rejects, whichever view it names. */
+    @Command
+    fun close(invoke: Invoke) {
+        invoke.reject("native-page-browser: a Custom Tab can't be closed by the app")
     }
 
     /** Launch `page`'s view of `url`, unless the host left while it waited for the session. */

@@ -21,18 +21,21 @@
 //! tap on its notification on a phone, or, on a desktop, which reports no
 //! taps, as its notification posts.
 //!
-//! All open in the in-app browser, [`LaunchBrowser`], which shows one view
-//! at a time: on iOS an open replaces the view an earlier one opened, and on
-//! Android an open that arrives while an earlier one's view is still opening
-//! joins that view. While a view is open it counts toward the `WhileOpen` run
-//! policy ([`LaunchPresence`]), until the browser reports it closed; on
-//! Android, a background session keeps the app alive under it until the
-//! browser reports it keeps the app alive itself. Each such view is a launch
-//! view, whichever page it opened. The outcome is logged by domain.
-//!
-//! On a phone, a consent doesn't open while a view the base opened still
-//! shows: it would replace that view (iOS) or join it (Android), and the
-//! request waits on the server's page instead.
+//! All open in the in-app browser, [`LaunchBrowser`]. A launch and the
+//! Authorization app replace the views showing: on iOS an open replaces the
+//! views earlier ones opened, and on Android an open that arrives while an
+//! earlier one's view is still opening joins that view. A consent stacks over
+//! them instead, so the page under it, as an app's waiting for that consent,
+//! stays where it was: on iOS it shows over the top-most view, and on Android
+//! it opens a Custom Tab of its own. On iOS the base closes the consent's
+//! view once its request is decided or expires, as the run's
+//! [`ServerConsentWatcher`] says, which reveals the page under it; a Custom
+//! Tab and a desktop's default-browser tab can't be closed by the app. While
+//! a view is open it counts toward the `WhileOpen` run policy
+//! ([`LaunchPresence`]), until the browser reports it closed; on Android, a
+//! background session keeps the app alive under it until the browser reports
+//! it keeps the app alive itself. Each such view is a launch view, whichever
+//! page it opened. The outcome is logged by domain.
 //!
 //! Opening any never changes the server's run policy: a server that isn't
 //! launchable answers at once, and the base waits for it to become so.
@@ -46,12 +49,15 @@ use std::sync::Arc;
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 use tauri_plugin_log::log;
-use tauri_plugin_native_page_browser::{BrowserEvent, NativePageBrowserExt, OpenRequest};
+use tauri_plugin_native_page_browser::{
+    BrowserEvent, CloseRequest, NativePageBrowserExt, OpenMode, OpenRequest,
+};
+use tokio::sync::Notify;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
-    LaunchError, ListedServer, PendingConsent, RegistryError, ServerDetail, ServerLaunchMinter,
-    ServerRecord, ServerRegistry, ServerSignInCodeMinter,
+    LaunchError, ListedServer, PendingConsent, RegistryError, ServerConsentWatcher, ServerDetail,
+    ServerLaunchMinter, ServerRecord, ServerRegistry, ServerSignInCodeMinter,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
@@ -111,16 +117,16 @@ pub async fn server_open_authorization_app(
 }
 
 /// Open the newest consent waiting on the server `domain` at its page, signed
-/// in as the Owner first, in the in-app browser: the server's pending request
-/// on its page in the base. Invoked as
+/// in as the Owner first, in the in-app browser, over the views showing: the
+/// server's pending request on its page in the base. Invoked as
 /// `invoke('server_open_pending_consent', { domain })`; answers with nothing
-/// once the browser is opening it.
+/// once the browser is opening it. On iOS its view closes once the request
+/// is decided or expires.
 ///
 /// # Errors
 ///
 /// The [`LaunchError`] that stopped it: the server isn't registered, isn't
-/// launchable now, has no consent waiting, or, on a phone, a view the base
-/// opened still shows; or the in-app browser failed.
+/// launchable now, or has no consent waiting; or the in-app browser failed.
 #[tauri::command]
 pub async fn server_open_pending_consent(
     app: AppHandle,
@@ -134,7 +140,7 @@ pub async fn server_open_pending_consent(
         domain,
         NativePageLaunchBrowser { app },
         servers.server_units.clone(),
-        REFUSE_CONSENT_WHILE_A_VIEW_SHOWS,
+        CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
     )
     .await
 }
@@ -168,7 +174,7 @@ pub async fn server_open_notified_consent(
         domain.to_owned(),
         NativePageLaunchBrowser { app },
         servers.server_units.clone(),
-        REFUSE_CONSENT_WHILE_A_VIEW_SHOWS,
+        CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
     )
     .await
 }
@@ -194,17 +200,17 @@ pub(crate) async fn open_notified_consent_on_desktop(
         domain,
         NativePageLaunchBrowser { app },
         server_units,
-        REFUSE_CONSENT_WHILE_A_VIEW_SHOWS,
+        CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
     )
     .await;
 }
 
-/// Whether a consent's open is refused while a view the base opened still
-/// shows: on a phone, whose in-app browser shows one view at a time, so the
-/// open would replace the view (iOS) or join it (Android). A desktop opens a
-/// tab of the default browser, which shows any number and never reports one
-/// closed.
-const REFUSE_CONSENT_WHILE_A_VIEW_SHOWS: bool = cfg!(any(target_os = "ios", target_os = "android"));
+/// Whether the base closes a consent's view once its request is decided or
+/// expires: on iOS, where the in-app browser can close the view it stacked
+/// over the page under it. A Custom Tab (Android) and a default-browser tab
+/// (desktop) can't be closed by the app, so there the page says the decision
+/// went through and the user leaves it.
+const CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED: bool = cfg!(target_os = "ios");
 
 /// Hears a launch's in-app browser view's events: that its browser keeps the
 /// app alive under it (Android), and that it is gone.
@@ -213,14 +219,17 @@ pub(crate) type LaunchViewEvents = Box<dyn Fn(BrowserEvent) + Send + Sync>;
 /// Where launches open: in the app, the native-page browser plugin's in-app
 /// browser; in the tests, a record of what was opened.
 pub(crate) trait LaunchBrowser: Send + Sync + 'static {
-    /// Open `url` in a view of the in-app browser. A view already showing is
-    /// replaced on iOS; on Android, where only a view still opening can show
-    /// while the app is in front, the open joins that view instead of opening
-    /// `url`. `view_events` hears [`BrowserEvent::Closed`] once the view is
-    /// gone: the user closed it, or, on iOS, a later open replaced it; and,
-    /// on Android, [`BrowserEvent::KeptAlive`] before that when the view's
-    /// browser keeps the app alive under it. It hears nothing on a desktop,
-    /// whose view is a default-browser tab, nor after an error.
+    /// Open `url` in a view of the in-app browser named `view`, beside the
+    /// views showing as `mode` says. [`OpenMode::Replace`] replaces them on
+    /// iOS; on Android, where only a view still opening can show while the
+    /// app is in front, it joins that view instead of opening `url`.
+    /// [`OpenMode::Stack`] shows over them on iOS, and opens a view of its
+    /// own on Android. `view_events` hears [`BrowserEvent::Closed`] once the
+    /// view is gone: the user closed it, or, on iOS, a later replacing open
+    /// or a [`close`](Self::close) closed it; and, on Android,
+    /// [`BrowserEvent::KeptAlive`] before that when the view's browser keeps
+    /// the app alive under it. It hears nothing on a desktop, whose view is a
+    /// default-browser tab, nor after an error.
     ///
     /// # Errors
     ///
@@ -229,8 +238,23 @@ pub(crate) trait LaunchBrowser: Send + Sync + 'static {
     fn open(
         &self,
         url: Url,
+        view: &str,
+        mode: OpenMode,
         view_events: LaunchViewEvents,
     ) -> impl Future<Output = Result<(), LaunchError>> + Send;
+
+    /// Close the view opened as `view`, with any view shown over it, each
+    /// hearing its [`BrowserEvent::Closed`]. A view already gone closes
+    /// nothing.
+    ///
+    /// # Errors
+    ///
+    /// The plugin's, on Android and a desktop, which can't close a view, or
+    /// on iOS while a view is still opening or closing.
+    fn close(
+        &self,
+        view: &str,
+    ) -> impl Future<Output = Result<(), tauri_plugin_native_page_browser::Error>> + Send;
 }
 
 /// Hears each launch's in-app browser view open and close, so an open view
@@ -243,8 +267,6 @@ pub(crate) trait LaunchPresence: Clone + Send + Sync + 'static {
     fn view_kept_alive(&self, view: &str);
     /// The launch view `view` closed.
     fn view_closed(&self, view: &str);
-    /// Whether a launch view is open: opened and not yet reported closed.
-    fn shows_a_view(&self) -> bool;
 }
 
 impl LaunchPresence for ServerUnits {
@@ -258,10 +280,6 @@ impl LaunchPresence for ServerUnits {
 
     fn view_closed(&self, view: &str) {
         self.launch_view_closed(view);
-    }
-
-    fn shows_a_view(&self) -> bool {
-        self.shows_a_launch_view()
     }
 }
 
@@ -300,7 +318,14 @@ async fn launch(
             &sign_in_code_minter.mint(),
             launch_url.as_str(),
         );
-        open_launch_view(&launch_browser, launch_presence, sign_in_url).await
+        open_launch_view(
+            &launch_browser,
+            launch_presence,
+            sign_in_url,
+            OpenMode::Replace,
+        )
+        .await?;
+        Ok(())
     }
     .await;
     match &result {
@@ -336,7 +361,14 @@ async fn open_authorization_app(
             &sign_in_code_minter.mint(),
             authorization_app_url.as_str(),
         );
-        open_launch_view(&launch_browser, launch_presence, sign_in_url).await
+        open_launch_view(
+            &launch_browser,
+            launch_presence,
+            sign_in_url,
+            OpenMode::Replace,
+        )
+        .await?;
+        Ok(())
     }
     .await;
     match &result {
@@ -349,12 +381,12 @@ async fn open_authorization_app(
 }
 
 /// Open the newest consent waiting on the server `domain` in `launch_browser`,
-/// at its page, signed in as the Owner, once the server's status in
-/// `statuses`, with its certificate state (its run's, or what its cache in
-/// `data_root` says), is launchable, and tell `launch_presence` its view is
-/// open until the browser reports it closed, as a launch does. With
-/// `refuse_while_a_view_shows`, a view `launch_presence` holds open refuses
-/// it.
+/// over the views showing, at its page, signed in as the Owner, once the
+/// server's status in `statuses`, with its certificate state (its run's, or
+/// what its cache in `data_root` says), is launchable, and tell
+/// `launch_presence` its view is open until the browser reports it closed, as
+/// a launch does. With `close_once_settled`, close its view once the run's
+/// [`ServerConsentWatcher`] says the request is decided or expired.
 async fn open_pending_consent(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,
@@ -362,26 +394,40 @@ async fn open_pending_consent(
     domain: String,
     launch_browser: impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
-    refuse_while_a_view_shows: bool,
+    close_once_settled: bool,
 ) -> Result<(), LaunchError> {
     let result = async {
         let server = listed_server(registry, data_root, statuses, domain.clone()).await?;
         let sign_in_code_minter = ServerSignInCodeMinter::of_launchable_server(&server.status)?;
+        let consent_watcher = ServerConsentWatcher::of_launchable_server(&server.status)?;
         let pending_consent =
             PendingConsent::of_run(&server.status.unit_status).ok_or_else(|| {
                 LaunchError::NothingPending {
                     domain: domain.clone(),
                 }
             })?;
-        if refuse_while_a_view_shows && launch_presence.shows_a_view() {
-            return Err(LaunchError::ViewShowing);
-        }
         let sign_in_url = wildflowerhealthio_servers::consent_sign_in_url(
             &server.record.public_origin(),
             &sign_in_code_minter.mint(),
             &pending_consent.key,
         );
-        open_launch_view(&launch_browser, launch_presence, sign_in_url).await
+        let launch_view = open_launch_view(
+            &launch_browser,
+            launch_presence,
+            sign_in_url,
+            OpenMode::Stack,
+        )
+        .await?;
+        if close_once_settled {
+            let settled = async move { consent_watcher.until_settled(pending_consent.key).await };
+            tokio::spawn(close_once_settled_view(
+                launch_browser,
+                settled,
+                launch_view,
+                domain.clone(),
+            ));
+        }
+        Ok(())
     }
     .await;
     match &result {
@@ -391,6 +437,33 @@ async fn open_pending_consent(
         }
     }
     result
+}
+
+/// Close `launch_view`, the view a consent on the server `domain` opened in,
+/// in `launch_browser` once `settled`, the run's
+/// [`ServerConsentWatcher`] waiting on the request, says it is decided or
+/// expired; stop waiting once the view closes first. The outcome is logged.
+async fn close_once_settled_view(
+    launch_browser: impl LaunchBrowser,
+    settled: impl Future<Output = Result<(), AuthorizationServerError>> + Send,
+    launch_view: LaunchView,
+    domain: String,
+) {
+    tokio::select! {
+        settled = settled => {
+            if let Err(error) = settled {
+                log::warn!("[servers] watching the consent opened on {domain} failed: {error}");
+                return;
+            }
+            match launch_browser.close(&launch_view.name).await {
+                Ok(()) => log::info!("[servers] closed the settled consent's view on {domain}"),
+                Err(error) => log::warn!(
+                    "[servers] closing the settled consent's view on {domain} failed: {error}"
+                ),
+            }
+        }
+        () = launch_view.closed.notified() => {}
+    }
 }
 
 /// The server `domain` as `servers.json` holds it, with its status in
@@ -412,36 +485,51 @@ async fn listed_server(
     Ok(ListedServer::new(record, unit_status, certificate))
 }
 
-/// Open `url` in a new view of `launch_browser`, open in `launch_presence`
-/// from before the open until the browser reports the view closed, or the
-/// open fails, and kept alive there once the browser reports that.
+/// Open `url` in a new view of `launch_browser`, beside the views showing as
+/// `mode` says, open in `launch_presence` from before the open until the
+/// browser reports the view closed, or the open fails, and kept alive there
+/// once the browser reports that.
 async fn open_launch_view(
     launch_browser: &impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
     url: Url,
-) -> Result<(), LaunchError> {
+    mode: OpenMode,
+) -> Result<LaunchView, LaunchError> {
     let view = next_launch_view();
+    let closed = Arc::new(Notify::new());
     // Before the open, so a close reported as the view opens finds it, and
     // a background session can start while the app is still in front.
     launch_presence.view_opened(&view);
     let view_events: LaunchViewEvents = {
         let launch_presence = launch_presence.clone();
         let view = view.clone();
+        let closed = Arc::clone(&closed);
         Box::new(move |event| match event {
             BrowserEvent::KeptAlive => launch_presence.view_kept_alive(&view),
-            BrowserEvent::Closed => launch_presence.view_closed(&view),
+            BrowserEvent::Closed => {
+                launch_presence.view_closed(&view);
+                closed.notify_one();
+            }
         })
     };
-    let opened = launch_browser.open(url, view_events).await;
-    if opened.is_err() {
+    if let Err(error) = launch_browser.open(url, &view, mode, view_events).await {
         launch_presence.view_closed(&view);
+        return Err(error);
     }
-    opened
+    Ok(LaunchView { name: view, closed })
+}
+
+/// A launch view the in-app browser opened: its name, which the browser
+/// closes it by, and a notice of its close.
+struct LaunchView {
+    name: String,
+    /// Notified, once, when the browser reports the view closed.
+    closed: Arc<Notify>,
 }
 
 /// A new launch view's id, `launch-<n>`: one per open, so a view a later
 /// open replaces (iOS), whose close is reported after the new view opened,
-/// closes under its own.
+/// closes under its own. The in-app browser names the view by it too.
 fn next_launch_view() -> String {
     static LAUNCH_VIEWS_OPENED: AtomicU64 = AtomicU64::new(0);
     format!(
@@ -471,7 +559,13 @@ struct NativePageLaunchBrowser {
 }
 
 impl LaunchBrowser for NativePageLaunchBrowser {
-    async fn open(&self, url: Url, view_events: LaunchViewEvents) -> Result<(), LaunchError> {
+    async fn open(
+        &self,
+        url: Url,
+        view: &str,
+        mode: OpenMode,
+        view_events: LaunchViewEvents,
+    ) -> Result<(), LaunchError> {
         let events = Channel::new(move |body| {
             view_events(body.deserialize()?);
             Ok(())
@@ -480,6 +574,8 @@ impl LaunchBrowser for NativePageLaunchBrowser {
             .native_page_browser()
             .open(OpenRequest {
                 url: url.to_string(),
+                view: view.to_owned(),
+                mode,
                 events,
             })
             .await
@@ -487,12 +583,22 @@ impl LaunchBrowser for NativePageLaunchBrowser {
                 reason: error.to_string(),
             })
     }
+
+    async fn close(&self, view: &str) -> Result<(), tauri_plugin_native_page_browser::Error> {
+        self.app
+            .native_page_browser()
+            .close(CloseRequest {
+                view: view.to_owned(),
+            })
+            .await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
     use std::sync::Mutex;
+    use std::time::Duration;
 
     use wildflowerhealthio_authorization_server::NewestPendingConsent;
     use wildflowerhealthio_rathole_settings::TunnelName;
@@ -513,38 +619,53 @@ mod tests {
     const LAUNCHER: &str = "https://launcher.example/app?theme=dark";
     const AUTHORIZATION: &str = "https://authorization.example/app/?theme=dark";
 
-    /// What an [`OneViewBrowser`] does with an open while a view shows.
+    /// Which phone a [`PhoneBrowser`] browses as.
     #[derive(Clone, Copy)]
-    enum WhileAViewShows {
-        /// iOS: report the showing view closed, then show the new one.
-        Replace,
-        /// Android: join the showing view, which is still opening, so its
-        /// close reports for both opens.
-        Join,
+    enum Phone {
+        /// A replacing open closes the showing views, top-most first, then
+        /// shows its own; a stacking one shows over them; a close closes a
+        /// view and the views over it.
+        Ios,
+        /// A replacing open joins the showing view, which is still opening, so
+        /// its close reports for both opens; a stacking one opens its own. The
+        /// base closes none.
+        Android,
     }
 
-    /// An in-app browser that shows one view at a time, as a phone's does.
+    /// An in-app browser as a phone's shows its views.
     #[derive(Clone)]
-    struct OneViewBrowser {
-        while_a_view_shows: WhileAViewShows,
+    struct PhoneBrowser {
+        phone: Phone,
         views: Arc<Mutex<BrowserViews>>,
     }
 
-    /// Each URL a [`OneViewBrowser`] opened, and how its showing view
-    /// reports its events: once for each open that opened or joined it, none
-    /// while no view shows.
+    /// Each URL a [`PhoneBrowser`] opened, and the views showing, bottom first.
     #[derive(Default)]
     struct BrowserViews {
         opened: Vec<Url>,
-        showing: Vec<LaunchViewEvents>,
+        showing: Vec<ShowingView>,
     }
 
-    impl OneViewBrowser {
-        /// A browser that does `while_a_view_shows` with an open while a view
-        /// shows.
-        fn new(while_a_view_shows: WhileAViewShows) -> Self {
+    /// A view a [`PhoneBrowser`] shows: its name, and how it reports its
+    /// events: once for each open that opened or joined it.
+    struct ShowingView {
+        name: String,
+        events: Vec<LaunchViewEvents>,
+    }
+
+    impl ShowingView {
+        fn report(&self, event: &BrowserEvent) {
+            for view_events in &self.events {
+                view_events(event.clone());
+            }
+        }
+    }
+
+    impl PhoneBrowser {
+        /// A browser that shows its views as `phone`'s does.
+        fn new(phone: Phone) -> Self {
             Self {
-                while_a_view_shows,
+                phone,
                 views: Arc::default(),
             }
         }
@@ -554,40 +675,79 @@ mod tests {
             self.views.lock().unwrap().opened.clone()
         }
 
-        /// The showing view's browser keeps the app alive under it.
-        fn keep_showing_alive(&self) {
+        /// The names of the views showing, bottom first.
+        fn showing(&self) -> Vec<String> {
             let views = self.views.lock().unwrap();
-            assert!(!views.showing.is_empty(), "a view is showing");
-            for view_events in &views.showing {
-                view_events(BrowserEvent::KeptAlive);
-            }
+            views.showing.iter().map(|view| view.name.clone()).collect()
         }
 
-        /// The user closes the showing view.
-        fn close_showing(&self) {
-            let showing = std::mem::take(&mut self.views.lock().unwrap().showing);
-            assert!(!showing.is_empty(), "a view is showing");
-            for view_events in showing {
-                view_events(BrowserEvent::Closed);
+        /// The top-most view's browser keeps the app alive under it.
+        fn keep_top_alive(&self) {
+            let views = self.views.lock().unwrap();
+            let top = views.showing.last().expect("a view is showing");
+            top.report(&BrowserEvent::KeptAlive);
+        }
+
+        /// The user closes the top-most view.
+        fn close_top(&self) {
+            let top = self.views.lock().unwrap().showing.pop();
+            top.expect("a view is showing")
+                .report(&BrowserEvent::Closed);
+        }
+
+        /// Close the views from `index` on, top-most first.
+        fn close_from(&self, index: usize) {
+            let closed: Vec<ShowingView> =
+                self.views.lock().unwrap().showing.drain(index..).collect();
+            for view in closed.iter().rev() {
+                view.report(&BrowserEvent::Closed);
             }
         }
     }
 
-    impl LaunchBrowser for OneViewBrowser {
-        async fn open(&self, url: Url, view_events: LaunchViewEvents) -> Result<(), LaunchError> {
-            let replaced = {
+    impl LaunchBrowser for PhoneBrowser {
+        async fn open(
+            &self,
+            url: Url,
+            view: &str,
+            mode: OpenMode,
+            view_events: LaunchViewEvents,
+        ) -> Result<(), LaunchError> {
+            {
                 let mut views = self.views.lock().unwrap();
-                if !views.showing.is_empty() {
-                    if let WhileAViewShows::Join = self.while_a_view_shows {
-                        views.showing.push(view_events);
-                        return Ok(());
-                    }
+                if let (Phone::Android, OpenMode::Replace, Some(opening)) =
+                    (self.phone, mode, views.showing.last_mut())
+                {
+                    opening.events.push(view_events);
+                    return Ok(());
                 }
-                views.opened.push(url);
-                std::mem::replace(&mut views.showing, vec![view_events])
-            };
-            for replaced_view_events in replaced {
-                replaced_view_events(BrowserEvent::Closed);
+            }
+            if let (Phone::Ios, OpenMode::Replace) = (self.phone, mode) {
+                self.close_from(0);
+            }
+            let mut views = self.views.lock().unwrap();
+            views.opened.push(url);
+            views.showing.push(ShowingView {
+                name: view.to_owned(),
+                events: vec![view_events],
+            });
+            Ok(())
+        }
+
+        async fn close(&self, view: &str) -> Result<(), tauri_plugin_native_page_browser::Error> {
+            assert!(
+                matches!(self.phone, Phone::Ios),
+                "the base closes no Custom Tab"
+            );
+            let index = self
+                .views
+                .lock()
+                .unwrap()
+                .showing
+                .iter()
+                .position(|showing| showing.name == view);
+            if let Some(index) = index {
+                self.close_from(index);
             }
             Ok(())
         }
@@ -597,10 +757,20 @@ mod tests {
     struct FailingBrowser;
 
     impl LaunchBrowser for FailingBrowser {
-        async fn open(&self, _: Url, _: LaunchViewEvents) -> Result<(), LaunchError> {
+        async fn open(
+            &self,
+            _: Url,
+            _: &str,
+            _: OpenMode,
+            _: LaunchViewEvents,
+        ) -> Result<(), LaunchError> {
             Err(LaunchError::OpeningBrowser {
                 reason: "no browser".to_owned(),
             })
+        }
+
+        async fn close(&self, _: &str) -> Result<(), tauri_plugin_native_page_browser::Error> {
+            unreachable!("nothing opened, so nothing closes")
         }
     }
 
@@ -643,10 +813,6 @@ mod tests {
             let mut views = self.0.lock().unwrap();
             assert!(views.open.remove(view), "{view}");
             views.kept_alive.remove(view);
-        }
-
-        fn shows_a_view(&self) -> bool {
-            !self.0.lock().unwrap().open.is_empty()
         }
     }
 
@@ -793,7 +959,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launchable_server_s_launcher_opens_at_its_launch_url_through_the_sign_in() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
 
         launch_launchable(&authorization_server, browser.clone(), &presence)
@@ -824,13 +990,13 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn closing_a_launch_s_view_ends_its_presence() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
             .unwrap();
 
-        browser.close_showing();
+        browser.close_top();
 
         assert!(presence.views().is_empty());
     }
@@ -838,17 +1004,17 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launch_view_its_browser_keeps_alive_is_kept_alive_until_it_closes() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Join);
+        let browser = PhoneBrowser::new(Phone::Android);
         let presence = OpenLaunchViews::default();
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
             .unwrap();
         assert!(presence.kept_alive_views().is_empty());
 
-        browser.keep_showing_alive();
+        browser.keep_top_alive();
 
         assert_eq!(presence.kept_alive_views(), presence.views());
-        browser.close_showing();
+        browser.close_top();
         assert!(presence.views().is_empty());
         assert!(presence.kept_alive_views().is_empty());
     }
@@ -856,7 +1022,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn on_ios_a_second_launch_replaces_the_first_s_view() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
@@ -877,14 +1043,14 @@ mod tests {
         let second_views = presence.views();
         assert_eq!(second_views.len(), 1, "only the second view is open");
         assert!(second_views.is_disjoint(&first_views));
-        browser.close_showing();
+        browser.close_top();
         assert!(presence.views().is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn on_android_a_second_launch_while_the_first_s_view_opens_joins_it() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Join);
+        let browser = PhoneBrowser::new(Phone::Android);
         let presence = OpenLaunchViews::default();
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
@@ -899,7 +1065,7 @@ mod tests {
         let second_views = presence.views();
         assert_eq!(second_views.len(), 2, "both launches' views are open");
         assert!(second_views.is_superset(&first_views));
-        browser.close_showing();
+        browser.close_top();
         assert!(presence.views().is_empty());
     }
 
@@ -917,7 +1083,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launchable_server_s_authorization_app_opens_pointed_at_it_through_the_sign_in() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
 
         open_launchable_authorization_app(&authorization_server, browser.clone(), &presence)
@@ -934,7 +1100,7 @@ mod tests {
         );
         assert_eq!(authorization_server.minted_launches(), 0, "no launch");
         assert_eq!(presence.views().len(), 1, "its view is open");
-        browser.close_showing();
+        browser.close_top();
         assert!(presence.views().is_empty());
     }
 
@@ -955,7 +1121,7 @@ mod tests {
     async fn a_server_that_isn_t_launchable_opens_no_authorization_app() {
         let authorization_server = test_authorization_server();
         let (data_root, registry) = registry();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
         let unreachable = running_with(&authorization_server, |detail| {
             detail.health = Some(ServerHealth::Unreachable {
@@ -1007,7 +1173,7 @@ mod tests {
         for (kind, change) in changes {
             let authorization_server = test_authorization_server();
             let (data_root, registry) = registry();
-            let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+            let browser = PhoneBrowser::new(Phone::Ios);
             let presence = OpenLaunchViews::default();
 
             let refused = launch(
@@ -1030,7 +1196,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_server_that_isn_t_launchable_opens_nothing() {
         let (data_root, registry) = registry();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
         let not_running: UnitStatuses<ServerDetail> =
             [(UnitId::new(DOMAIN), UnitStatus::never_run())].into();
@@ -1057,7 +1223,7 @@ mod tests {
     async fn a_server_that_isn_t_registered_is_refused() {
         let authorization_server = test_authorization_server();
         let (data_root, registry) = registry();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
 
         let refused = launch(
@@ -1094,13 +1260,13 @@ mod tests {
     }
 
     /// Open the consent waiting on the server [`DOMAIN`], whose statuses are
-    /// `statuses`, in `browser`, with `presence` hearing its view, refusing
-    /// while a view shows when `refuse_while_a_view_shows`.
+    /// `statuses`, in `browser`, with `presence` hearing its view, closing the
+    /// view once the request settles when `close_once_settled`.
     async fn open_consent(
         statuses: &UnitStatuses<ServerDetail>,
         browser: impl LaunchBrowser,
         presence: &OpenLaunchViews,
-        refuse_while_a_view_shows: bool,
+        close_once_settled: bool,
     ) -> Result<(), LaunchError> {
         let (data_root, registry) = registry();
         open_pending_consent(
@@ -1110,22 +1276,33 @@ mod tests {
             DOMAIN.to_owned(),
             browser,
             presence.clone(),
-            refuse_while_a_view_shows,
+            close_once_settled,
         )
         .await
+    }
+
+    /// Wait, up to five seconds, for `browser` to show `views`, bottom first.
+    async fn until_showing(browser: &PhoneBrowser, views: &[String]) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while browser.showing() != views {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("showing {:?}, not {views:?}", browser.showing()));
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn an_app_s_waiting_consent_opens_at_its_card_through_the_sign_in() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
 
         open_consent(
             &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
-            true,
+            false,
         )
         .await
         .unwrap();
@@ -1149,7 +1326,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_device_s_waiting_consent_opens_at_the_device_page_with_its_code() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
 
         open_consent(
             &launchable_waiting_on(
@@ -1161,7 +1338,7 @@ mod tests {
             ),
             browser.clone(),
             &OpenLaunchViews::default(),
-            true,
+            false,
         )
         .await
         .unwrap();
@@ -1179,7 +1356,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_server_with_nothing_waiting_opens_nothing() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
 
         let refused = open_consent(
@@ -1199,31 +1376,15 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn on_a_phone_a_consent_waits_while_a_launch_s_view_shows() {
+    async fn on_ios_a_consent_shows_over_a_launch_s_view_while_its_request_waits() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
             .unwrap();
-        let launch_views = presence.views();
+        authorization_server.park_consent("req-1");
 
-        let refused = open_consent(
-            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
-            browser.clone(),
-            &presence,
-            true,
-        )
-        .await;
-
-        assert!(
-            matches!(refused, Err(LaunchError::ViewShowing)),
-            "{refused:?}"
-        );
-        assert_eq!(browser.opened().len(), 1, "only the launch opened");
-        assert_eq!(presence.views(), launch_views, "the launch's view stays");
-
-        browser.close_showing();
         open_consent(
             &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
@@ -1232,13 +1393,119 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(browser.opened().len(), 2, "it opens once the view closed");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert_eq!(browser.opened().len(), 2);
+        assert_eq!(
+            browser.showing().into_iter().collect::<BTreeSet<_>>(),
+            presence.views(),
+            "the launch's view stays under the consent's"
+        );
+        assert_eq!(presence.views().len(), 2);
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn on_a_desktop_a_consent_opens_beside_a_launch_s_tab() {
+    async fn on_ios_a_settled_consent_s_view_closes_and_reveals_the_view_under_it() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let presence = OpenLaunchViews::default();
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let launch_view = browser.showing();
+
+        // "req-1" isn't pending on the authorization server: decided, as far
+        // as its watcher can tell.
+        open_consent(
+            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
+            browser.clone(),
+            &presence,
+            true,
+        )
+        .await
+        .unwrap();
+
+        until_showing(&browser, &launch_view).await;
+        assert_eq!(browser.opened().len(), 2, "the consent opened first");
+        assert_eq!(presence.views().len(), 1);
+    }
+
+    /// A consent's view opened over a launch's in `browser`, an iOS one, with
+    /// `presence` hearing both, and the launch's view.
+    async fn consent_over_a_launch(
+        browser: &PhoneBrowser,
+        presence: &OpenLaunchViews,
+    ) -> (LaunchView, String) {
+        let authorization_server = test_authorization_server();
+        launch_launchable(&authorization_server, browser.clone(), presence)
+            .await
+            .unwrap();
+        let [launch_view] = browser.showing().try_into().unwrap();
+        let consent_view = open_launch_view(
+            browser,
+            presence.clone(),
+            Url::parse(&format!("https://{DOMAIN}/oauth/sign-in")).unwrap(),
+            OpenMode::Stack,
+        )
+        .await
+        .unwrap();
+        (consent_view, launch_view)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_consent_s_view_closes_once_its_request_settles() {
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let presence = OpenLaunchViews::default();
+        let (consent_view, launch_view) = consent_over_a_launch(&browser, &presence).await;
+        let (settle, settled) = tokio::sync::oneshot::channel::<()>();
+        let closing = tokio::spawn(close_once_settled_view(
+            browser.clone(),
+            async move {
+                settled.await.unwrap();
+                Ok(())
+            },
+            consent_view,
+            DOMAIN.to_owned(),
+        ));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            browser.showing().len(),
+            2,
+            "it stays while the request waits"
+        );
+
+        settle.send(()).unwrap();
+        closing.await.unwrap();
+
+        assert_eq!(browser.showing(), [launch_view]);
+        assert_eq!(presence.views().len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_consent_s_view_the_user_closes_first_stops_the_wait() {
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let presence = OpenLaunchViews::default();
+        let (consent_view, launch_view) = consent_over_a_launch(&browser, &presence).await;
+        let closing = tokio::spawn(close_once_settled_view(
+            browser.clone(),
+            std::future::pending(),
+            consent_view,
+            DOMAIN.to_owned(),
+        ));
+
+        browser.close_top();
+
+        tokio::time::timeout(Duration::from_secs(5), closing)
+            .await
+            .expect("the wait stops")
+            .unwrap();
+        assert_eq!(browser.showing(), [launch_view], "the launch's view stays");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn on_android_a_consent_opens_a_view_of_its_own_over_a_launch_s() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Android);
         let presence = OpenLaunchViews::default();
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
@@ -1253,13 +1520,18 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(browser.opened().len(), 2);
+        assert_eq!(browser.opened().len(), 2, "the consent opened its own view");
+        assert_eq!(browser.showing().len(), 2);
+        assert_eq!(presence.views().len(), 2);
+        browser.close_top();
+        browser.close_top();
+        assert!(presence.views().is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_waiting_consent_on_a_server_that_isn_t_launchable_opens_nothing() {
         let authorization_server = test_authorization_server();
-        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let browser = PhoneBrowser::new(Phone::Ios);
         let statuses = running_with(&authorization_server, |detail| {
             detail.pending_consent = Some(oauth_consent("req-1"));
             detail.health = None;

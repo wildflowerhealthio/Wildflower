@@ -38,8 +38,9 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc"]
 chrono = { workspace = true, features = ["clock"] }
 # `sync` for the lock ordering registry writes with their pushes and
 # `TauriUnitRunner`'s statuses; `rt` for the commands' registry reads and
-# writes on a blocking thread.
-tokio = { workspace = true, features = ["rt", "sync"] }
+# writes on a blocking thread; `macros` for the wait on a consent's view,
+# until its request settles or the view closes.
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]

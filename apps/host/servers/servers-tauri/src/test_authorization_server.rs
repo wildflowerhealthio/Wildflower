@@ -3,9 +3,12 @@
 
 use tokio::sync::watch;
 use url::Url;
+use wildflowerhealthio_authorization_server::domain::authorization_request::{
+    AuthorizationRequest, StartCodeAuthorizationArgs,
+};
 use wildflowerhealthio_authorization_server::{
-    setup_authorization_server, AuthorizationServerConfig, LaunchContextMinter,
-    NewestPendingConsent, PendingConsentWatcher, SameDeviceSignInCodeMinter,
+    setup_authorization_server, AuthorizationServerConfig, GrantStore, LaunchContextMinter,
+    NewestPendingConsent, PendingConsentWatcher, SameDeviceSignInCodeMinter, SqliteGrantStore,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -33,6 +36,31 @@ impl TestAuthorizationServer {
         .lock()
         .query_row("SELECT COUNT(*) FROM launch_contexts", [], |row| row.get(0))
         .unwrap()
+    }
+
+    /// Park an app's authorization request under `id`, pending for five
+    /// minutes, as `/oauth/authorize` would.
+    pub(crate) fn park_consent(&self, id: &str) {
+        let pool = wildflowerhealthio_persistence::open_pool(
+            &self.database_dir.path().join(DATABASE_FILE),
+        )
+        .unwrap();
+        SqliteGrantStore::new(pool)
+            .unwrap()
+            .insert_authorization_request(&AuthorizationRequest::new_code_authorization(
+                StartCodeAuthorizationArgs {
+                    id: id.to_owned(),
+                    client_id: "lifting".to_owned(),
+                    requested_scopes: vec!["openid".to_owned()],
+                    code_challenge: "c".repeat(43),
+                    redirect_uri: Url::parse("https://lifting.example/callback").unwrap(),
+                    client_state: "state".to_owned(),
+                    pre_approved_scopes: Vec::new(),
+                    ttl: chrono::Duration::minutes(5),
+                    launch_context: None,
+                },
+            ))
+            .unwrap();
     }
 }
 
