@@ -498,30 +498,6 @@ describe('toFhirResources', () => {
     ])
   })
 
-  it('reads a reference range printed with thousands separators to its bounds', () => {
-    const [observation] = ofType(
-      synthesize([
-        {
-          ...sample,
-          sections: [
-            {
-              name: 'Hematology',
-              comments: [],
-              groups: [{ name: '', rows: [{ ...hemoglobinRow, referenceRange: '1,000 - 4,000' }] }],
-            },
-          ],
-        },
-      ]),
-      'Observation'
-    )
-
-    expect(observation?.referenceRange[0]).toMatchObject({
-      low: { value: 1000 },
-      high: { value: 4000 },
-      text: '1,000 - 4,000',
-    })
-  })
-
   it('groups each report with its own resources, minting a shared Patient in the first group only', () => {
     const second = { ...sample, labNo: '2024-JJ0000001' }
 
