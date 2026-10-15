@@ -1,7 +1,7 @@
 import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -47,6 +47,10 @@ const kindOf = (fileName: string): FormatKind | undefined => {
   if (fileName.startsWith('dcm-')) return 'dicom'
   return undefined
 }
+
+/** Every review key a format's result offers, in review order. */
+const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
+  DecodedFile.resources(result.decoded).map((resource) => resource.key)
 
 const fakeResource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
@@ -174,11 +178,11 @@ describe('readBatch', () => {
 })
 
 describe('redecodeFormat', () => {
-  it('property: only the changed format re-decodes; every other format keeps its reference', async () => {
+  it('property: only the changed format re-decodes, under its new settings and its old ids; every other format keeps its reference', async () => {
     await fc.assert(
       fc.asyncProperty(
         batchArbitrary(8),
-        fc.constantFrom<FormatKind>('har', 'lifelabs-pdf', 'dicom'),
+        fc.constantFrom(...formatKinds),
         async (picks, changed) => {
           const before = await Effect.runPromise(
             readBatch(fakeRegistry, defaultFormatSettings, picks)
@@ -190,10 +194,17 @@ describe('redecodeFormat', () => {
           for (const kind of formatKinds) {
             if (kind !== changed) {
               expect(after[kind]).toBe(before[kind])
-            } else if (after[kind].decoded.sections.length > 0) {
-              expect(after[kind].decoded.sections[0]?.title).toBe(
-                `${changed}:${JSON.stringify(settings[changed])}`
-              )
+              continue
+            }
+            // The ids the reviewer's selection is keyed by survive the re-decode.
+            expect(after[kind].id).toBe(before[kind].id)
+            expect(after[kind].files).toEqual(before[kind].files)
+            expect(after[kind].unreadableFiles.map((file) => file.id)).toEqual(
+              before[kind].unreadableFiles.map((file) => file.id)
+            )
+            expect(reviewKeys(after[kind])).toEqual(reviewKeys(before[kind]))
+            for (const section of after[kind].decoded.sections) {
+              expect(section.title).toBe(`${changed}:${JSON.stringify(settings[changed])}`)
             }
           }
           expect(after.unrecognizedFiles).toBe(before.unrecognizedFiles)

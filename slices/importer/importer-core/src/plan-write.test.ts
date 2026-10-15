@@ -1,5 +1,5 @@
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { type FormatDecode, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { FormatDecode, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -27,6 +27,16 @@ const formatResult = (keys: readonly string[]): FormatDecode.Result<string> => (
   unreadableFiles: [],
 })
 
+/** An `unreadableFiles` row for one broken pick. */
+const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
+  id: `har/0:${fileName}`,
+  title: fileName,
+  pickedFile: { id: `0:${fileName}`, fileName, bytes: new Uint8Array() },
+  error: new ParseResult.ParseError({
+    issue: new ParseResult.Type(Schema.Never.ast, 'x', 'unreadable'),
+  }),
+})
+
 describe('planFormatWrite', () => {
   it('should skip a format with only unreadable files as unreadable', () => {
     const result: FormatDecode.Result<string> = {
@@ -35,20 +45,39 @@ describe('planFormatWrite', () => {
       files: [{ id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() }],
       format: 'har',
       decoded: { sections: [], notes: [] },
-      unreadableFiles: [
-        {
-          id: 'broken',
-          title: 'broken.har',
-          pickedFile: { id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() },
-          error: new ParseResult.ParseError({
-            issue: new ParseResult.Type(Schema.Never.ast, 'x', 'unreadable'),
-          }),
-        },
-      ],
+      unreadableFiles: [unreadableFile('broken.har')],
     }
     expect(planFormatWrite(result, StagedImport.initial())).toEqual({
       _tag: 'skip',
       reason: 'unreadable',
+    })
+  })
+
+  it('should skip as nothing, not unreadable, when the review excluded every resource beside an unreadable file', () => {
+    const result: FormatDecode.Result<string> = {
+      ...formatResult(['a', 'b']),
+      unreadableFiles: [unreadableFile('broken.har')],
+    }
+    const selection = StagedImport.setResourcesIncluded(StagedImport.initial(), ['a', 'b'], false)
+    expect(planFormatWrite(result, selection)).toEqual({ _tag: 'skip', reason: 'nothing' })
+  })
+
+  it('should write the kept resources of a format beside its unreadable file', () => {
+    const result: FormatDecode.Result<string> = {
+      ...formatResult(['a', 'b']),
+      unreadableFiles: [unreadableFile('broken.har')],
+    }
+    const selection = StagedImport.toggleResource(StagedImport.initial(), 'a')
+    const plan = planFormatWrite(result, selection)
+    if (plan._tag !== 'write') throw new Error('expected a write')
+    expect(plan.resources.map((entry) => entry.id)).toEqual(['b'])
+    expect(plan.excluded).toBe(1)
+  })
+
+  it('should skip a format that claimed no files as nothing', () => {
+    expect(planFormatWrite(FormatDecode.emptyResult('har'), StagedImport.initial())).toEqual({
+      _tag: 'skip',
+      reason: 'nothing',
     })
   })
 
