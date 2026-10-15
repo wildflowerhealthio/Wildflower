@@ -17,7 +17,7 @@ interface SupplyDuration {
 // UCUM time codes and their spelled-out `unit` fallbacks -> a builder for the
 // matching `DateTime.add` part. Supply durations are almost always days, but
 // weeks/months are valid; an unrecognized or absent unit falls back to days
-// (see `supplyDurationToParts`). `Partial` keeps index access `Builder | undefined`.
+// (see `supplyDurationToParts`). `Partial` keeps index access `PartBuilder | undefined`.
 type PartBuilder = (amount: number) => Partial<DateTime.DateTime.PartsForMath>
 const UCUM_UNIT: Partial<Record<string, PartBuilder>> = {
   s: (n) => ({ seconds: n }),
@@ -53,16 +53,24 @@ const partBuilderFor = (
 ): PartBuilder | undefined =>
   key === null || key === undefined || !Object.hasOwn(table, key) ? undefined : table[key]
 
-/** The supply duration as `DateTime.add` parts, or `null` if unusable. */
+/**
+ * The supply duration as `DateTime.add` parts, its `value` rounded to a whole
+ * number of its unit.
+ *
+ * @returns `null` when `value` is absent, not finite, or rounds to less than
+ *   one unit
+ */
 const supplyDurationToParts = (
   supply: SupplyDuration
 ): Partial<DateTime.DateTime.PartsForMath> | null => {
   const { value } = supply
-  if (value === null || value === undefined || value <= 0) return null
+  if (value === null || value === undefined || !Number.isFinite(value)) return null
+  const amount = Math.round(value)
+  if (amount <= 0) return null
   const fromCode = partBuilderFor(UCUM_UNIT, supply.code)
   const fromUnit = partBuilderFor(SPELLED_UNIT, supply.unit?.toLowerCase())
   const build = fromCode ?? fromUnit ?? UCUM_UNIT.d
-  return build === undefined ? null : build(Math.round(value))
+  return build === undefined ? null : build(amount)
 }
 
 export { type PartBuilder, SPELLED_UNIT, type SupplyDuration, supplyDurationToParts, UCUM_UNIT }

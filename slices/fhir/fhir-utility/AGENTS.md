@@ -10,7 +10,7 @@ either a decoded resource or its own mirror of the same slot.
 - `supplyDurationToParts(supply)` — parse a `SupplyDuration` (`value` + UCUM
   `code` and/or spelled `unit`) into an Effect `DateTime.add` parts object.
   Rounded to an integer, day-fallback for an unknown or absent unit, `null`
-  for a non-positive or absent value. UCUM codes take precedence over the
+  for an absent or non-finite value or one that rounds below one unit. UCUM codes take precedence over the
   spelled unit when both are set.
 - `SupplyDuration` — the plain shape the parser reads: mirrors FHIR
   `MedicationRequest.dispenseRequest.expectedSupplyDuration` and

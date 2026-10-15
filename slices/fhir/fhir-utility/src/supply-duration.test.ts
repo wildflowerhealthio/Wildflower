@@ -39,6 +39,22 @@ describe('supplyDurationToParts', () => {
     )
   })
 
+  test('a value that is not finite, or rounds to less than one unit, yields null', () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(
+          fc.constantFrom(Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY),
+          fc.double({ min: Number.MIN_VALUE, max: 0.49, noNaN: true })
+        ),
+        fc.constantFrom(null, ...Object.keys(ucumParts)),
+        (value, code) => {
+          expect(supplyDurationToParts(supply({ code, value }))).toBeNull()
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   test('each UCUM code maps to its part, with the rounded value', () => {
     fc.assert(
       fc.property(
