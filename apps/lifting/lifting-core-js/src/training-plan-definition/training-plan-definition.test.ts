@@ -153,25 +153,46 @@ describe('TrainingPlanDefinition', () => {
     fc.assert(
       fc.property(
         trainingPlanDefinitionArb,
-        fc.integer({ min: 1, max: 5 }),
-        (trainingPlanDefinition, moreSets) => {
+        fc.constantFrom('sets', 'reps', 'progressionRule'),
+        (trainingPlanDefinition, redefinedPart) => {
           // Arrange
           const [firstTrainingPlanDefinitionDay] =
             TrainingPlanDefinition.daysOf(trainingPlanDefinition)
           const [trainingPlanDefinitionExercise] = TrainingPlanDefinition.Day.exercisesOf(
             firstTrainingPlanDefinitionDay
           )
+          const sets = TrainingPlanDefinition.Exercise.setsOf(trainingPlanDefinitionExercise)
+          const reps = TrainingPlanDefinition.Exercise.repsOf(trainingPlanDefinitionExercise)
+          const progressionRule = TrainingPlanDefinition.Exercise.progressionRuleOf(
+            trainingPlanDefinitionExercise
+          )
           const redefined = made(
             TrainingPlanDefinition.Exercise.make({
               exerciseConcept: TrainingPlanDefinition.Exercise.exerciseConceptOf(
                 trainingPlanDefinitionExercise
               ),
-              sets:
-                TrainingPlanDefinition.Exercise.setsOf(trainingPlanDefinitionExercise) + moreSets,
-              reps: TrainingPlanDefinition.Exercise.repsOf(trainingPlanDefinitionExercise),
-              progressionRule: TrainingPlanDefinition.Exercise.progressionRuleOf(
-                trainingPlanDefinitionExercise
-              ),
+              sets: redefinedPart === 'sets' ? sets + 1 : sets,
+              reps: redefinedPart === 'reps' ? reps + 1 : reps,
+              progressionRule:
+                redefinedPart === 'progressionRule'
+                  ? made(
+                      TrainingPlanDefinition.ProgressionRule.make({
+                        unit: TrainingPlanDefinition.ProgressionRule.unitOf(progressionRule),
+                        increment:
+                          TrainingPlanDefinition.ProgressionRule.incrementOf(progressionRule),
+                        failuresBeforeDeload:
+                          TrainingPlanDefinition.ProgressionRule.failuresBeforeDeloadOf(
+                            progressionRule
+                          ),
+                        deloadFraction:
+                          TrainingPlanDefinition.ProgressionRule.deloadFractionOf(progressionRule),
+                        minimumLoad:
+                          TrainingPlanDefinition.ProgressionRule.minimumLoadOf(progressionRule),
+                        loadStep:
+                          TrainingPlanDefinition.ProgressionRule.loadStepOf(progressionRule) + 1,
+                      })
+                    )
+                  : progressionRule,
             })
           )
           const extraTrainingPlanDefinitionDay = made(

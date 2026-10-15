@@ -34,8 +34,8 @@ const pounds = (value: number): Load.Type =>
  * press; 65 lb for the barbell row; 95 lb for the deadlift.
  *
  * @remarks
- * A lifter's first `ExerciseRequest`s: `ExerciseRequest.make` at each entry's
- * lift and load. A lifter starting elsewhere starts at their own loads.
+ * The `startingLoads` `ExerciseRequest.makeForEachExercise` takes to start
+ * the template. A lifter starting elsewhere starts at their own loads.
  */
 const STARTING_LOADS: { readonly [L in Lift]: Load.Type } = {
   squat: pounds(45),
