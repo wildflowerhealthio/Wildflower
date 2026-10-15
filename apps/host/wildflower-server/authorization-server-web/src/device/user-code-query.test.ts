@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vite-plus/test'
 
-import { userCodeOf } from './user-code-query.ts'
+import { userCodeOf, withoutUserCode } from './user-code-query.ts'
 
 describe('userCodeOf', () => {
   test('reads the user code the query names, percent-decoded', () => {
@@ -11,5 +11,16 @@ describe('userCodeOf', () => {
   test('is empty when the query names no code', () => {
     expect(userCodeOf('')).toBe('')
     expect(userCodeOf('?theme=dark')).toBe('')
+  })
+})
+
+describe('withoutUserCode', () => {
+  test('drops the user code and keeps the rest of the address', () => {
+    expect(withoutUserCode('https://ruth.relay.example/oauth/device?user_code=WDJB-MJHT')).toBe(
+      'https://ruth.relay.example/oauth/device'
+    )
+    expect(
+      withoutUserCode('https://ruth.relay.example/oauth/device?theme=dark&user_code=WDJB-MJHT#top')
+    ).toBe('https://ruth.relay.example/oauth/device?theme=dark#top')
   })
 })

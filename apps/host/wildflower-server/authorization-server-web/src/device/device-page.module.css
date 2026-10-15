@@ -1,6 +1,7 @@
 /*
  * The device page around the code entry and the card: what it says when this
- * browser can't decide the request, and once the Owner has decided.
+ * browser can't decide the request, when the request expired, and once the
+ * Owner has decided.
  */
 
 .device-page__message {
@@ -8,4 +9,10 @@
   max-width: 560px;
   text-align: center;
   color: var(--color-neutral-4);
+}
+
+.device-page__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-6);
 }

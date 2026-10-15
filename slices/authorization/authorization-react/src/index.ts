@@ -10,6 +10,7 @@ export {
   clientsQueryOptions,
   deviceConsentMutationOptions,
   deviceConsentQueryOptions,
+  ExpiredDeviceConsent,
   GRANTS_QUERY_KEY,
   grantQueryOptions,
   grantsQueryOptions,

@@ -6,6 +6,7 @@ import {
   DeviceCodeEntryForm,
   DeviceConsentCard,
   deviceConsentMutationOptions,
+  ExpiredDeviceConsent,
   type AuthorizationRouterContext,
   type DeviceConsent,
   type DeviceConsentMutation,
@@ -18,6 +19,7 @@ import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-c
 import { Effect, Match, Schema } from 'effect'
 import { useState, type JSX } from 'react'
 
+import { withoutUserCode } from './user-code-query.ts'
 import styles from './device-page.module.css'
 
 /** What the page says when this browser can't decide device requests. */
@@ -90,35 +92,47 @@ interface RequestViewParts {
   readonly codeEntry: JSX.Element
   readonly consentMutation: DeviceConsentMutation
   readonly onDone: (result: DeviceConsentResult) => void
+  /** Back to an empty code entry, once the request has expired. */
+  readonly onEnterNewCode: () => void
+}
+
+/**
+ * The page for a request this browser can decide: the card, or, once the
+ * decision has failed, where to decide instead (`401`, `403`) or that the
+ * request expired, with the way back to the code entry.
+ */
+const decidableView = (
+  consent: DeviceConsent,
+  { consentMutation, onDone, onEnterNewCode }: RequestViewParts
+): JSX.Element => {
+  const decisionError = unwrapFiberFailure(consentMutation.error)
+  if (isUndecidableHere(decisionError)) return <ApproveOnServer />
+  if (decisionError instanceof ExpiredDeviceConsent) {
+    return <ExpiredRequest expired={decisionError} onEnterNewCode={onEnterNewCode} />
+  }
+  return (
+    <DeviceConsentCard
+      key={consent.userCode}
+      consent={consent}
+      consentMutation={consentMutation}
+      onDone={onDone}
+    />
+  )
 }
 
 /**
  * The page before a decision, for the answer to the last confirmed code
  * (`undefined` before one): the code entry until a code names a request, then
- * the card, or where to decide instead. A decision that answers `401` or `403`
- * swaps the card for where to decide too.
+ * the card, or where to decide instead (see {@link decidableView}).
  */
-const requestView = (
-  found: DeviceLookup | undefined,
-  { codeEntry, consentMutation, onDone }: RequestViewParts
-): JSX.Element =>
+const requestView = (found: DeviceLookup | undefined, parts: RequestViewParts): JSX.Element =>
   found === undefined
-    ? codeEntry
+    ? parts.codeEntry
     : Match.value(found).pipe(
         Match.discriminatorsExhaustive('kind')({
-          decidable: ({ consent }) =>
-            isUndecidableHere(unwrapFiberFailure(consentMutation.error)) ? (
-              <ApproveOnServer />
-            ) : (
-              <DeviceConsentCard
-                key={consent.userCode}
-                consent={consent}
-                consentMutation={consentMutation}
-                onDone={onDone}
-              />
-            ),
+          decidable: ({ consent }) => decidableView(consent, parts),
           'undecidable-here': () => <ApproveOnServer />,
-          'unknown-code': () => codeEntry,
+          'unknown-code': () => parts.codeEntry,
         })
       )
 
@@ -156,10 +170,19 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
   })
   const consentMutation = useMutation(deviceConsentMutationOptions(runAuthed))
   const [decision, setDecision] = useState<DeviceConsentResult | null>(null)
+  // The code box's fill: the page's `user_code` until that code is spent.
+  const [prefilledUserCode, setPrefilledUserCode] = useState(initialUserCode)
+
+  const enterNewCode = (): void => {
+    lookup.reset()
+    consentMutation.reset()
+    setPrefilledUserCode('')
+    window.history.replaceState(window.history.state, '', withoutUserCode(window.location.href))
+  }
 
   const codeEntry = (
     <DeviceCodeEntryForm
-      initialCode={initialUserCode}
+      initialCode={prefilledUserCode}
       onSubmit={(userCode) => {
         lookup.mutate(userCode)
       }}
@@ -172,6 +195,7 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
     codeEntry,
     consentMutation,
     onDone: setDecision,
+    onEnterNewCode: enterNewCode,
   })
   return (
     <>
@@ -212,6 +236,23 @@ const SessionGate = ({ sessionQuery, children }: SessionGateProps): JSX.Element 
 /** Where to decide when this browser can't. */
 const ApproveOnServer = (): JSX.Element => (
   <p className={styles['device-page__message']}>{APPROVE_ON_SERVER}</p>
+)
+
+interface ExpiredRequestProps {
+  readonly expired: ExpiredDeviceConsent
+  readonly onEnterNewCode: () => void
+}
+
+/** A request that expired before the decision, and the way to a new code. */
+const ExpiredRequest = ({ expired, onEnterNewCode }: ExpiredRequestProps): JSX.Element => (
+  <>
+    <p className={styles['device-page__message']}>{expired.message}</p>
+    <div className={styles['device-page__actions']}>
+      <button type="button" className="button-2 filled" onClick={onEnterNewCode}>
+        Enter a new code
+      </button>
+    </div>
+  </>
 )
 
 /** What the page shows once the Owner has decided. */

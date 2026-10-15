@@ -31,6 +31,7 @@ export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation } from '.
 export type { ClientSwitch, UpdateClientVariables } from './clients.ts'
 
 export {
+  ExpiredDeviceConsent,
   deviceConsentMutationOptions,
   deviceConsentQueryOptions,
   useDeviceConsentMutation,

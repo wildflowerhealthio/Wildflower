@@ -238,20 +238,29 @@ describe('DevicePage — deciding', () => {
     ])
   })
 
-  test('a request that expired before the decision says so, with the way out', async () => {
+  test('a request that expired before the decision says so, and the Owner can enter a new code', async () => {
     const holding = serverHolding('WDJB-MJHT', { status: 'approved' })
     answer = (request) =>
       request.method === 'POST'
         ? { status: 404, body: { error: 'DeviceConsentNotFound', userCode: 'WDJB-MJHT' } }
         : holding(request)
+    window.history.replaceState(null, '', '/oauth/device?user_code=WDJB-MJHT')
     const { user } = renderPage('WDJB-MJHT')
 
     await user.click(await screen.findByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Approve' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'This device request has expired or was already decided. Start pairing again on the device to get a new code.'
-    )
+    expect(
+      await screen.findByText(
+        'This device request has expired or was already decided. Start pairing again on the device to get a new code.'
+      )
+    ).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Enter a new code' }))
+
+    expect((await screen.findByLabelText<HTMLInputElement>('Code')).value).toBe('')
+    expect(window.location.search).toBe('')
   })
 })
 
