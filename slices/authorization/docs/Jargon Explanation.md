@@ -496,7 +496,8 @@ running the server, and the host app runs on that device.
    call). A code is 256 random bits, single use, and valid for 60 seconds. The
    server keeps only its hash, in memory, so a restart drops it.
 2. The host app opens `https://<domain>/oauth/sign-in?code=…&next=…` in a
-   browser.
+   browser: for each launch, `next` is the launch URL, and for the server
+   card's Authorization, the server's Authorization app with `iss`.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
    proof) and mints a token through the ordinary minter, issued to the
    `wildflower-owner-browser` client (its `sub`) and holding the Owner's
@@ -506,7 +507,10 @@ running the server, and the host app runs on that device.
    `__Host-owner_browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
 
 `next` must be a path on the server (starting with `/`, not `//`), a URL under
-the hosted launcher, or a URL under the Wildflower Authorization app. Any other
+the hosted launcher or the Wildflower Authorization app, or a URL under the
+launcher or Authorization app the host opens for this server, from the
+server's record (the page itself, whatever its query, or a URL within it as a
+folder). Any other
 `next`, an unknown, spent or expired code, or a disabled
 `wildflower-owner-browser` client, gets a local error page with no cookie and
 no redirect; a refused `next` or a disabled client leaves the code unspent.

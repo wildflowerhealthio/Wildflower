@@ -1,12 +1,19 @@
 //! Launching a server's launcher: whether the server can be launched now
 //! ([`ensure_launchable`]) and the URL its launcher opens at
-//! ([`launch_url`]).
+//! ([`launch_url`]); the URL its Authorization app opens at
+//! ([`authorization_app_url`]); and the sign-in either opens through
+//! ([`sign_in_url`]).
 //!
 //! A SMART EHR launch hands the launcher two query parameters, and they are
 //! the only credentials the launched app gets: `iss`, the server's FHIR base,
 //! and `launch`, a value the server's authorization server minted for any client. The
-//! app's `/oauth/authorize` presents the `launch` and parks a consent the
-//! base's consent sheet answers.
+//! app's `/oauth/authorize` presents the `launch` and parks a consent, which
+//! the server's consent card answers in a browser signed in as the Owner, and
+//! the base's consent sheet otherwise.
+//!
+//! The base opens neither URL itself: it opens [`sign_in_url`], which signs
+//! the in-app browser in as the Owner with a one-time code and sends it on to
+//! the launch or Authorization URL.
 
 use url::{form_urlencoded, Url};
 use wildflowerhealthio_tunnel::TunnelState;
@@ -25,29 +32,65 @@ use crate::domain::{LaunchError, ServerDetail, ServerStatus};
 #[must_use]
 pub fn launch_url(launcher_url: &Url, public_origin: &Url, launch: &str) -> Url {
     let fhir_base = wildflowerhealthio_shared_structures::origin_string(public_origin);
-    let launch_params = form_urlencoded::Serializer::new(String::new())
-        .append_pair("iss", &fhir_base)
-        .append_pair("launch", launch)
+    with_query_params(launcher_url, &[("iss", &fhir_base), ("launch", launch)])
+}
+
+/// The URL a server's Authorization app opens at: `authorization_url` with
+/// `iss`, the server's FHIR base (its `public_origin`), appended to its
+/// query. Any `iss` the Authorization URL already carries is dropped; its
+/// other query parameters are kept as they are written, byte for byte, and so
+/// is its fragment.
+#[must_use]
+pub fn authorization_app_url(authorization_url: &Url, public_origin: &Url) -> Url {
+    let fhir_base = wildflowerhealthio_shared_structures::origin_string(public_origin);
+    with_query_params(authorization_url, &[("iss", &fhir_base)])
+}
+
+/// The URL that signs a browser in as the Owner on the server at
+/// `public_origin` with the same-device sign-in `code`, then sends it on to
+/// `next`: `https://<domain>/oauth/sign-in?code=…&next=…`.
+///
+/// # Panics
+///
+/// Never: an absolute path joined to an origin is a URL.
+#[must_use]
+pub fn sign_in_url(public_origin: &Url, code: &str, next: &Url) -> Url {
+    let mut url = public_origin
+        .join("/oauth/sign-in")
+        .expect("an absolute path joined to an origin is a URL");
+    url.query_pairs_mut()
+        .append_pair("code", code)
+        .append_pair("next", next.as_str());
+    url
+}
+
+/// `url` with `params` appended to its query, encoded, after its own
+/// parameters but those named as one of `params` is, which are dropped. Its
+/// other parameters are kept as they are written, byte for byte, and so is its
+/// fragment.
+fn with_query_params(url: &Url, params: &[(&str, &str)]) -> Url {
+    let appended = form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(params)
         .finish();
-    let query = launcher_url
+    let query = url
         .query()
         .into_iter()
         .flat_map(|query| query.split('&'))
-        .filter(|param| !param.is_empty() && !is_a_launch_param(param))
-        .chain([launch_params.as_str()])
+        .filter(|param| !param.is_empty() && !is_named_as_one_of(param, params))
+        .chain([appended.as_str()])
         .collect::<Vec<_>>()
         .join("&");
-    let mut url = launcher_url.clone();
+    let mut url = url.clone();
     url.set_query(Some(&query));
     url
 }
 
 /// Whether the query parameter `param`, one `name[=value]` of a query, is
-/// named `iss` or `launch` once its name is decoded.
-fn is_a_launch_param(param: &str) -> bool {
+/// named as one of `params` is once its name is decoded.
+fn is_named_as_one_of(param: &str, params: &[(&str, &str)]) -> bool {
     form_urlencoded::parse(param.as_bytes())
         .next()
-        .is_some_and(|(name, _)| name == "iss" || name == "launch")
+        .is_some_and(|(name, _)| params.iter().any(|(param_name, _)| name == *param_name))
 }
 
 /// The detail of the run of the server whose status is `status`, once the
@@ -199,6 +242,54 @@ mod tests {
         assert_eq!(
             url.query(),
             Some("a=b%20c&flag&iss=https%3A%2F%2Fruth.relay.example.com&launch=nonce-1")
+        );
+    }
+
+    #[test]
+    fn the_authorization_app_url_carries_the_server_s_fhir_base() {
+        assert_eq!(
+            authorization_app_url(
+                &launcher("https://wildflowerhealth.io/authorization/"),
+                &ruth_origin()
+            )
+            .as_str(),
+            "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.relay.example.com"
+        );
+    }
+
+    #[test]
+    fn the_authorization_app_url_keeps_its_query_and_fragment_and_replaces_its_iss() {
+        let url = authorization_app_url(
+            &launcher(
+                "https://manage.example/app?a=b%20c&iss=https://other.example&launch=kept#/grants",
+            ),
+            &ruth_origin(),
+        );
+        assert_eq!(
+            url.query(),
+            Some("a=b%20c&launch=kept&iss=https%3A%2F%2Fruth.relay.example.com")
+        );
+        assert_eq!(url.fragment(), Some("/grants"));
+    }
+
+    #[test]
+    fn the_sign_in_url_carries_the_code_and_where_to_go_next() {
+        let next = launch_url(
+            &launcher("https://launcher.example/app?theme=dark"),
+            &ruth_origin(),
+            "nonce-1",
+        );
+        let url = sign_in_url(&ruth_origin(), "code-1", &next);
+        assert_eq!(url.origin(), ruth_origin().origin());
+        assert_eq!(url.path(), "/oauth/sign-in");
+        assert_eq!(
+            url.query_pairs()
+                .map(|(name, value)| (name.into_owned(), value.into_owned()))
+                .collect::<Vec<_>>(),
+            [
+                ("code".to_owned(), "code-1".to_owned()),
+                ("next".to_owned(), next.to_string()),
+            ]
         );
     }
 

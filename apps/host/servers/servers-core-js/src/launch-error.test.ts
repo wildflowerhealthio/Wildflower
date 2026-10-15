@@ -5,7 +5,7 @@ import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import * as CertificateAuthority from './certificate-authority.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as LaunchError from './launch-error.ts'
-import { launchServer } from './server-commands.ts'
+import { launchServer, openServerAuthorizationApp } from './server-commands.ts'
 import * as ServerStatus from './server-status.ts'
 
 const decodeStatus = Schema.decodeUnknownSync(ServerStatus.Schema)
@@ -73,32 +73,39 @@ describe('CertificateAuthority.isBrowserTrusted', () => {
   )
 })
 
-describe('launchServer', () => {
-  it('should send server_launch the domain, and answer with nothing', async () => {
+describe.each([
+  { name: 'launchServer', open: launchServer, command: 'server_launch' },
+  {
+    name: 'openServerAuthorizationApp',
+    open: openServerAuthorizationApp,
+    command: 'server_open_authorization_app',
+  },
+])('$name', ({ open, command }) => {
+  it(`should send ${command} the domain, and answer with nothing`, async () => {
     // Arrange
     const seen: unknown[] = []
 
     // Act
     const exit = await Effect.runPromiseExit(
       Effect.provideService(
-        launchServer({ domain: 'ruth.relay.example.com' }),
+        open({ domain: 'ruth.relay.example.com' }),
         TauriInvoke,
-        (command, args) => {
-          seen.push({ command, args })
+        (name, args) => {
+          seen.push({ command: name, args })
           return Promise.resolve(null)
         }
       )
     )
 
     // Assert
-    expect(seen).toEqual([{ command: 'server_launch', args: { domain: 'ruth.relay.example.com' } }])
+    expect(seen).toEqual([{ command, args: { domain: 'ruth.relay.example.com' } }])
     expect(exit).toEqual(Exit.succeed(null))
   })
 
   it.each(golden.launchErrors)("should fail with the host's $kind refusal", async (error) => {
     // Act
     const exit = await Effect.runPromiseExit(
-      Effect.provideService(launchServer({ domain: 'ruth.relay.example.com' }), TauriInvoke, () =>
+      Effect.provideService(open({ domain: 'ruth.relay.example.com' }), TauriInvoke, () =>
         Promise.reject(error)
       )
     )

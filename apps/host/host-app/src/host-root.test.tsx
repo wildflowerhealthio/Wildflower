@@ -146,6 +146,7 @@ const renderHost = async ({
         listen: hostEvents.listen,
         backgroundServiceStartConfig: { serviceLabel: 'Servers', foregroundServiceType: 'none' },
         defaultLauncherUrl: 'https://wildflowerhealth.io/launcher/',
+        defaultAuthorizationUrl: 'https://wildflowerhealth.io/authorization/',
         telemetry: { dsn: '', app: 'host-app' },
         storage,
       }}

@@ -18,7 +18,8 @@
 //! command: Tauri rejects it with a plain string, ``invalid args
 //! `<parameter>` for command `<command>`: <reason>``. The values a user types
 //! (a claim code, the tunnel name, the token, a base URL, a rathole relay's
-//! settings, a launcher URL) are all taken as strings and checked by the
+//! settings, a launcher or Authorization URL) are all taken as strings and
+//! checked by the
 //! command, so a bad one is the command's own error; only a webview bug gets
 //! the plain string.
 
@@ -111,11 +112,12 @@ pub async fn server_set_run_policy(
     set_run_policy(&servers, domain, choice).await
 }
 
-/// Set the launcher a server opens apps from, and the ACME CA its certificates
-/// are ordered from; answers with nothing. Invoked as
-/// `invoke('server_update', { domain, launcherUrl, certificateAuthority })`.
-/// When a field a run reads changed, the server is pushed to `TauriUnitRunner`
-/// again, which replaces a run of the old record.
+/// Set the launcher a server opens apps from, the page its Authorization app
+/// opens at, and the ACME CA its certificates are ordered from; answers with
+/// nothing. Invoked as `invoke('server_update', { domain, launcherUrl,
+/// authorizationUrl, certificateAuthority })`. When a field a run reads
+/// changed, the server is pushed to `TauriUnitRunner` again, which replaces a
+/// run of the old record.
 ///
 /// # Errors
 ///
@@ -126,9 +128,17 @@ pub async fn server_update(
     servers: tauri::State<'_, ServersState>,
     domain: String,
     launcher_url: String,
+    authorization_url: String,
     certificate_authority: CertificateAuthority,
 ) -> Result<(), ServerChangeError> {
-    update(&servers, domain, launcher_url, certificate_authority).await
+    update(
+        &servers,
+        domain,
+        launcher_url,
+        authorization_url,
+        certificate_authority,
+    )
+    .await
 }
 
 /// Stop a server and delete it: once its run has ended and it is off the
@@ -200,6 +210,7 @@ async fn add<S: RelayClient>(
         relay,
         credentials,
         servers.default_launcher_url.clone(),
+        servers.default_authorization_url.clone(),
         relay_client,
         chrono::Utc::now(),
     )
@@ -280,6 +291,7 @@ async fn update(
     servers: &ServersState,
     domain: String,
     launcher_url: String,
+    authorization_url: String,
     certificate_authority: CertificateAuthority,
 ) -> Result<(), ServerChangeError> {
     let _registry_write = servers.registry_writes.lock().await;
@@ -289,6 +301,7 @@ async fn update(
             registry,
             &changed_domain,
             &launcher_url,
+            &authorization_url,
             certificate_authority,
         )
     })
@@ -491,9 +504,13 @@ mod tests {
             forwarded_request_tx,
         );
         let servers = ServersState::new(
-            Arc::new(JsonServerRegistry::in_data_root(data_root.path())),
+            Arc::new(JsonServerRegistry::in_data_root(
+                data_root.path(),
+                Url::parse("https://authorization.example.com/").unwrap(),
+            )),
             data_root.path().to_path_buf(),
             Url::parse("https://launcher.example.com/app").unwrap(),
+            Url::parse("https://authorization.example.com/").unwrap(),
             server_units,
         );
         (data_root, servers)
@@ -683,6 +700,10 @@ mod tests {
         assert_eq!(
             registered[0].launcher_url, servers.default_launcher_url,
             "a new server gets the app's default launcher"
+        );
+        assert_eq!(
+            registered[0].authorization_url, servers.default_authorization_url,
+            "a new server gets the app's default Authorization app"
         );
     }
 
@@ -1089,6 +1110,7 @@ mod tests {
             &servers,
             RATHOLE_DOMAIN.to_owned(),
             record.launcher_url.to_string(),
+            record.authorization_url.to_string(),
             record.certificate_authority,
         )
         .await
@@ -1101,19 +1123,28 @@ mod tests {
     async fn an_update_pushes_the_server_again_only_when_its_runs_read_the_change() {
         let runner = runner();
         let (_data_root, servers, run) = running_server(&runner).await;
-        let certificate_authority = servers.registry.read_all().unwrap()[0].certificate_authority;
-        let other_certificate_authority =
-            if certificate_authority == CertificateAuthority::LetsEncrypt {
-                CertificateAuthority::LetsEncryptStaging
-            } else {
-                CertificateAuthority::LetsEncrypt
-            };
+        let record = servers.registry.read_all().unwrap().remove(0);
+
+        update(
+            &servers,
+            RATHOLE_DOMAIN.to_owned(),
+            record.launcher_url.to_string(),
+            record.authorization_url.to_string(),
+            record.certificate_authority,
+        )
+        .await
+        .unwrap();
+        assert!(
+            !shutdown_of(&run).is_cancelled(),
+            "nothing a run reads changed"
+        );
 
         update(
             &servers,
             RATHOLE_DOMAIN.to_owned(),
             "http://localhost:5200/app".to_owned(),
-            certificate_authority,
+            record.authorization_url.to_string(),
+            record.certificate_authority,
         )
         .await
         .unwrap();
@@ -1124,25 +1155,8 @@ mod tests {
             "http://localhost:5200/app"
         );
         assert!(
-            !shutdown_of(&run).is_cancelled(),
-            "only the base reads the launcher"
-        );
-
-        update(
-            &servers,
-            RATHOLE_DOMAIN.to_owned(),
-            "http://localhost:5200/app".to_owned(),
-            other_certificate_authority,
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            servers.registry.read_all().unwrap()[0].certificate_authority,
-            other_certificate_authority
-        );
-        assert!(
             shutdown_of(&run).is_cancelled(),
-            "the certificate authority is a run's, so the run is replaced"
+            "the launcher is a run's, where its sign-in may send a browser, so the run is replaced"
         );
         status_on(&runner, |status| {
             status.is_some_and(|status| {
@@ -1294,6 +1308,7 @@ mod tests {
                 pending_consent: None,
                 consent_decider: None,
                 launch_minter: None,
+                sign_in_code_minter: None,
             }),
         };
 
@@ -1324,6 +1339,7 @@ mod tests {
         struct UpdateArgs {
             domain: String,
             launcher_url: String,
+            authorization_url: String,
             certificate_authority: CertificateAuthority,
         }
         assert!(
@@ -1336,6 +1352,7 @@ mod tests {
         assert!(serde_json::from_value::<UpdateArgs>(serde_json::json!({
             "domain": RATHOLE_DOMAIN,
             "launcherUrl": "http://localhost:5200/app",
+            "authorizationUrl": "http://localhost:5300/authorization/",
             "certificateAuthority": "letsEncryptStaging",
         }))
         .is_ok());

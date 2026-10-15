@@ -7,6 +7,7 @@ use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
 use crate::live_bindings::server_consent_decider::ServerConsentDecider;
 use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
+use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 
 /// A server's own status: `UnitRunner`'s `Detail` for a
 /// [`ServerUnit`](crate::ServerUnit). `UnitRunner` reports it in the server's
@@ -37,4 +38,9 @@ pub struct ServerDetail {
     /// A run always sets it; it is `None` only in a detail built without a
     /// server, as the domain's tests build theirs.
     pub launch_minter: Option<ServerLaunchMinter>,
+    /// How the host mints the codes it signs the in-app browser in as the
+    /// Owner with, before it opens a launch or the Authorization app there.
+    /// A run always sets it; it is `None` only in a detail built without a
+    /// server, as the domain's tests build theirs.
+    pub sign_in_code_minter: Option<ServerSignInCodeMinter>,
 }

@@ -40,6 +40,7 @@ export {
   addServer,
   launchServer,
   listServers,
+  openServerAuthorizationApp,
   removeServer,
   setServerCredentials,
   setServerRunPolicy,

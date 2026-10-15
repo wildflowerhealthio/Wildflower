@@ -32,7 +32,7 @@ const ACME_ACCOUNT_DIR_NAME: &str = "acme-account";
 const CERTIFICATES_DIR_NAME: &str = "certificates";
 
 /// One server: the relay it is reached through, the tunnel it holds there,
-/// and how it launches apps.
+/// and the apps the base opens for it.
 ///
 /// `Serialize` writes the token as a redaction marker (see [`TunnelToken`]),
 /// so serialising a record anywhere other than `servers.json` cannot leak it.
@@ -55,6 +55,10 @@ pub struct ServerRecord {
     /// and `launch` in its query. A new server gets the default launcher
     /// [`add_server`](crate::add_server) is given.
     pub launcher_url: Url,
+    /// The page the base opens this server's Wildflower Authorization app at,
+    /// with `iss` in its query. A new server gets the default Authorization
+    /// app [`add_server`](crate::add_server) is given.
+    pub authorization_url: Url,
     /// The ACME CA this server's certificates are ordered from. A new server
     /// gets
     /// [`DEFAULT_CERTIFICATE_AUTHORITY`](ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY).
@@ -133,10 +137,11 @@ impl ServerRecord {
     /// Whether a run of the server built from `other` could differ from one
     /// built from `self`: whether any field a run reads differs.
     ///
-    /// A run reads every field but two: the launcher URL, which only the base
-    /// reads to open apps, and the run policy, which says when the server
-    /// runs, not how, and reaches `UnitRunner` on its own. The certificate
-    /// authority is a run's: it is where the server's certificates come from.
+    /// A run reads every field but the run policy, which says when the server
+    /// runs, not how, and reaches `UnitRunner` on its own. The launcher and
+    /// Authorization URLs are a run's: its `/oauth/sign-in` may send a browser
+    /// on to them. The certificate authority is a run's: it is where the
+    /// server's certificates come from.
     #[must_use]
     pub fn run_inputs_differ(&self, other: &Self) -> bool {
         // Destructured, so a new field needs a decision here.
@@ -145,7 +150,8 @@ impl ServerRecord {
             tunnel_name,
             token,
             public_settings,
-            launcher_url: _,
+            launcher_url,
+            authorization_url,
             certificate_authority,
             run_policy: _,
         } = self;
@@ -153,6 +159,8 @@ impl ServerRecord {
             || *tunnel_name != other.tunnel_name
             || *token != other.token
             || *public_settings != other.public_settings
+            || *launcher_url != other.launcher_url
+            || *authorization_url != other.authorization_url
             || *certificate_authority != other.certificate_authority
     }
 }
@@ -289,6 +297,12 @@ pub(crate) mod tests {
         Url::parse("https://wildflowerhealth.io/launcher").unwrap()
     }
 
+    /// The Authorization app the fixtures' records have, and the default
+    /// Authorization app the tests give [`add_server`](crate::add_server).
+    pub(crate) fn authorization_url() -> Url {
+        Url::parse("https://wildflowerhealth.io/authorization/").unwrap()
+    }
+
     pub(crate) fn official_record(tunnel_name: &str) -> ServerRecord {
         ServerRecord {
             relay: RelayKind::WildflowerOfficial,
@@ -302,6 +316,7 @@ pub(crate) mod tests {
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
             launcher_url: launcher_url(),
+            authorization_url: authorization_url(),
             certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::Off,
         }
@@ -322,6 +337,7 @@ pub(crate) mod tests {
                 domain: "relay.example.com".to_owned(),
             },
             launcher_url: Url::parse("https://launcher.example.com/").unwrap(),
+            authorization_url: Url::parse("https://authorization.example.com/").unwrap(),
             certificate_authority: CertificateAuthority::LetsEncryptStaging,
             run_policy: RunPolicy::Off,
         }
@@ -370,24 +386,25 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn only_the_launcher_and_the_run_policy_are_not_run_inputs() {
+    fn only_the_run_policy_is_not_a_run_input() {
         let ruth = official_record("ruth");
-        for not_read_by_a_run in [
+        let not_read_by_a_run = ServerRecord {
+            run_policy: RunPolicy::Always,
+            ..ruth.clone()
+        };
+        assert!(!ruth.run_inputs_differ(&not_read_by_a_run));
+        let mut other_public_settings = ruth.public_settings.clone();
+        other_public_settings.public_key =
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned();
+        for read_by_a_run in [
             ServerRecord {
                 launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
                 ..ruth.clone()
             },
             ServerRecord {
-                run_policy: RunPolicy::Always,
+                authorization_url: Url::parse("http://localhost:5300/authorization/").unwrap(),
                 ..ruth.clone()
             },
-        ] {
-            assert!(!ruth.run_inputs_differ(&not_read_by_a_run));
-        }
-        let mut other_public_settings = ruth.public_settings.clone();
-        other_public_settings.public_key =
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_owned();
-        for read_by_a_run in [
             ServerRecord {
                 certificate_authority: CertificateAuthority::LetsEncryptStaging,
                 ..ruth.clone()

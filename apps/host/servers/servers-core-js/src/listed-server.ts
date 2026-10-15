@@ -17,9 +17,9 @@ type Relay = typeof RelaySchema.Type
 
 /**
  * One registered server as `servers_list` answers it: its domain, relay and
- * tunnel name, the launcher it opens apps from, the ACME CA its certificates
- * are ordered from, its run policy, its status on the host's unit runner, and
- * its certificate's state.
+ * tunnel name, the launcher it opens apps from, the page its Authorization app
+ * opens at, the ACME CA its certificates are ordered from, its run policy, its
+ * status on the host's unit runner, and its certificate's state.
  *
  * @remarks
  * The status is one the `server-status` event carries for the same domain,
@@ -31,6 +31,7 @@ const ListedServerSchema = Schema.Struct({
   relay: RelaySchema,
   tunnelName: Schema.String,
   launcherUrl: Schema.String,
+  authorizationUrl: Schema.String,
   certificateAuthority: CertificateAuthority.Schema,
   runPolicy: RunPolicy.Schema,
   status: ServerStatus.Schema,

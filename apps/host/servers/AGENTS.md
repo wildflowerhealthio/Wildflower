@@ -13,14 +13,16 @@ changing how servers run or what the host notifies about them.
   which checks a tunnel's credentials with its Wildflower relay, first
   redeeming a claim code for them when one was entered, through the
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
-  to a registered server: its run policy, its launcher and certificate source,
-  and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
+  to a registered server: its run policy, its launcher, Authorization app and
+  certificate source, and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
   `ServerDetail`, what its runs report (health, tunnel state and certificate
   state), its
   `ServerConsentDecider` included, through which the base reads and decides a
-  running server's consents, and its `ServerLaunchMinter`, through which it
-  mints a running server's launches; launching (`ensure_launchable`,
-  `launch_url`, `LaunchError`); `ServerStatus`, a server's status on `UnitRunner`
+  running server's consents, its `ServerLaunchMinter`, through which it
+  mints a running server's launches, and its `ServerSignInCodeMinter`, through
+  which it mints the codes that sign the in-app browser in as the server's
+  Owner; launching (`ensure_launchable`, `launch_url`,
+  `authorization_app_url`, `sign_in_url`, `LaunchError`); `ServerStatus`, a server's status on `UnitRunner`
   as the base receives it, and `ListedServer`, with the certificate state its
   run reported or its cache holds; `PendingConsent`, the oldest consent
   waiting on a server, with `PendingConsentTracker`; and the notification
@@ -37,7 +39,7 @@ changing how servers run or what the host notifies about them.
     `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, the
     consent commands' wire (`ConsentDetails`, `ConsentApproval`,
     `ApprovalOutcome`, `ConsentError`), launching (`ensure_launchable`,
-    `launch_url`, `LaunchError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
+    `launch_url`, `authorization_app_url`, `sign_in_url`, `LaunchError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
     `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`);
@@ -45,7 +47,8 @@ changing how servers run or what the host notifies about them.
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
     `ServerConsentDecider`, bound to `authorization-server-rust`'s `HostConsentDecider`;
-    and `ServerLaunchMinter`, bound to its `LaunchContextMinter`.
+    `ServerLaunchMinter`, bound to its `LaunchContextMinter`; and
+    `ServerSignInCodeMinter`, bound to its `SameDeviceSignInCodeMinter`.
     `tests/server_unit.rs` runs the real
     server through `UnitRunner`, its consents included.
 - **`servers-tauri`** — the host side. `host_servers`, called from the
@@ -58,16 +61,18 @@ changing how servers run or what the host notifies about them.
   `server_update` and `server_remove`, each writing the registry and then
   pushing what it wrote; and the consent commands, `pending_consents_list`,
   `server_consent_get`, `server_consent_approve` and `server_consent_deny`;
-  and `server_launch`, which opens a server's launcher in the in-app browser
-  behind the `LaunchBrowser` port, its view counting toward `WhileOpen`
-  through the `LaunchPresence` port. Only glue; every decision and
+  and `server_launch` and `server_open_authorization_app`, which open a
+  server's launcher and its Authorization app in the in-app browser, signed
+  in as the Owner, behind the `LaunchBrowser` port, each view counting toward
+  `WhileOpen` through the `LaunchPresence` port. Only glue; every decision and
   its tests are in `servers-rust`, except the commands' own order of write and
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core-js`** — the host commands the base calls, as Effects over the
   `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
   Schema: the server commands (`listServers`, `addServer`,
   `setServerCredentials`, `setServerRunPolicy`, `updateServer`,
-  `removeServer`, `launchServer`), the background session's recovery
+  `removeServer`, `launchServer`, `openServerAuthorizationApp`), the
+  background session's recovery
   (`enableBackgroundSessionRecovery`), the app's version and the notification
   permission, and the consent commands (`listPendingConsents`, `readConsent`,
   `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
@@ -93,7 +98,7 @@ changing how servers run or what the host notifies about them.
   `tauri-shared-config.json`; `ServersRouterContext`, the context the base's
   routes read, which `ServersRouterContext.make` builds, query cache included,
   from `invoke`, `@tauri-apps/api/event`'s `listen` and the default launcher
-  from `tauri-shared-config.json`; `BaseLayout`, the page shell with the
+  and Authorization app from `tauri-shared-config.json`; `BaseLayout`, the page shell with the
   consent sheet; and the route bucket `routes/_servers/`, which the app mounts
   under a pathless `_servers` layout whose component is `BaseLayout`:
   `/` the server list, `/servers/new` Add server, `/servers/$domain` a
@@ -110,16 +115,22 @@ changing how servers run or what the host notifies about them.
   if the host refuses (the refusal shows under the field); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
   running server isn't reachable, why its tunnel is reconnecting, or what to
-  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; Launch (`LaunchButton`); and
+  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; Launch (`LaunchButton`);
+  Authorization (`AuthorizationButton`), which opens the server's Wildflower
+  Authorization app through `server_open_authorization_app`, disabled while
+  the webview is offline or the host would refuse for what the status shows,
+  never starting a server; and
   Edit, which opens the server's page, kept current by the `server-status`
   event too: its domain with Copy, its status badge, when its run started, the
-  run-policy field and Launch, over three tabs in component state. Status holds the
+  run-policy field, and Launch with Authorization under it, each full width, over three tabs in component state. Status holds the
   host's last check of its connection (said to be from before, once the
   tunnel has dropped or been refused since), with its tunnel's connection to
   the relay while a run reports it (a failure once the relay refused the
   tunnel), or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
-  itself, with Refresh; its launcher, with Reset to the default launcher; and
+  itself, with Refresh; its launcher and its Authorization app, each with
+  Reset to default (`PageUrlForm`), named "Reset Launcher URL to default" and
+  "Reset Authorization Manager URL to default" for assistive technology; and
   its removal, said in full, behind a confirm that asks for the domain to be
   typed. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
   password field that starts empty, a `relayIdentityChanged` refusal shown
@@ -127,7 +138,7 @@ changing how servers run or what the host notifies about them.
   Certificate holds its certificate's state (its `certificate`): the status in words,
   shown as a failure only for `orderFailing` and `cacheUnreadable`, the
   certificate authority the server orders from (the record's, which Save
-  launcher saves unchanged), and the one the state is for (its `issuer`) when
+  Launcher URL and Save Authorization Manager URL save unchanged), and the one the state is for (its `issuer`) when
   that differs, the held certificate's validity and SHA-256 fingerprint, and
   the latest error, described by its kind, a rate limit's retry time saying
   so once it has passed (one timer, set for it). With no servers it says what
@@ -148,7 +159,13 @@ changing how servers run or what the host notifies about them.
   privacy note, and Start now or Start later (`whileOpen` or `off`), which
   opens its page. The claim code and the token are dropped from state once
   the host has added the server.
-  Launch opens the server's launcher through `server_launch`. It is
+  Launch and Authorization report their failures, the host's refusal or why
+  a wait gave up, through `onError`, and each start through `onActionStart`
+  (`useActionError`): the card, and the page's status, shows
+  the latest failure in one banner across it, above the buttons, until either
+  starts again. Launch's reasons stay above its own button.
+  Launch opens the server's launcher through `server_launch`, signed in as
+  the Owner. It is
   disabled, saying why: while the webview is offline (`navigator.onLine`),
   that launching needs a connection (the host commands themselves need none,
   so the base's query client runs them offline too:
@@ -239,6 +256,14 @@ changing how servers run or what the host notifies about them.
   `ServersRouterContext.make` (`defaultLauncherUrl`), so the server page offers Reset to
   default only while the saved launcher differs from it, compared as parsed
   URLs, and saves it through `server_update`.
+- **A new server opens the hosted Authorization app**, the
+  `authorization_app_base_url` in
+  `apps/host/host-app/tauri-shared-config.json`, in every build. The host
+  reads it at compile time and `add_server` gives it to each server it adds,
+  and `JsonServerRegistry` to each server it reads from a version 1 or 2
+  file; the app hands the same value to `ServersRouterContext.make`
+  (`defaultAuthorizationUrl`) for the server page's Reset to default, as it
+  does the launcher's.
 - **The token is a secret.** `TunnelToken`'s `Debug` and `Serialize` write
   `<redacted>`, and it has no `Deserialize`. `JsonServerRegistry`'s own file
   representation is the only place the token is written in full, and the file
@@ -340,12 +365,13 @@ changing how servers run or what the host notifies about them.
   command reaches is the `EnrolmentError` as `{"kind", "message"}`, and their
   logs name the domain, never a parameter. `EnteredCredentials`'s `Debug`
   prints neither the claim code nor the token. `servers_list` lists a server's
-  domain, relay, tunnel name, launcher, certificate authority, run policy,
-  status and certificate state, never its token or the relay's dial
+  domain, relay, tunnel name, launcher, Authorization app, certificate
+  authority, run policy, status and certificate state, never its token or the relay's dial
   settings.
 - **The change commands answer with `{kind, message}` too.**
   `server_set_run_policy` (`{domain, choice}`) answers with the run policy
-  stored, `server_update` (`{domain, launcherUrl, certificateAuthority}`) and
+  stored, `server_update` (`{domain, launcherUrl, authorizationUrl,
+  certificateAuthority}`) and
   `server_remove` (`{domain}`) with nothing; a failure is the
   `ServerChangeError`. `servers_list` answers an unreadable `servers.json`
   with its `RegistryError`, kind `registry`, which the base shows.
@@ -369,8 +395,9 @@ changing how servers run or what the host notifies about them.
   `server_set_run_policy` pushes only the policy (`set_unit_policy`).
   `server_update` pushes the record again only when
   `ServerRecord::run_inputs_differ` says a field a run reads changed: every
-  field but the launcher URL and the run policy. A new field needs a decision
-  there. Either pushes the whole record when `ServerUnits::holds` says
+  field but the run policy. The launcher and Authorization URLs are a run's:
+  its `/oauth/sign-in` may send a browser on to them. A new field needs a
+  decision there. Either pushes the whole record when `ServerUnits::holds` says
   `TauriUnitRunner` doesn't hold the server, as when `servers.json` was
   unreadable at launch.
 - **Stop, then delete.** `server_remove` awaits `TauriUnitRunner`'s
@@ -408,7 +435,7 @@ changing how servers run or what the host notifies about them.
   is remembered as a standing grant, as one in the launcher is. Errors are
   `{kind, message}`: `serverNotRunning`, `notPending`,
   `registrationNotAcknowledged` or `authorizationServer`.
-- **Launching opens the launcher with a launch for any client.**
+- **Launching opens the launcher with a launch for any client, signed in.**
   `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
   once unless `ensure_launchable` passes for the server's status, the one
   the base receives (its run is up, its `tunnel` neither `tokenRejected` nor
@@ -417,11 +444,18 @@ changing how servers run or what the host notifies about them.
   `certificate`, the run's or else the cache's, `noRenewalNeeded` or
   `renewalDue` and from a CA browsers trust,
   `CertificateAuthority::is_browser_trusted`), mints a launch through the `ServerLaunchMinter` in the
-  run's detail on a blocking thread, and opens `launch_url`: the launcher
+  run's detail on a blocking thread, and builds `launch_url`: the launcher
   URL with `iss=https://<domain>` and `launch` in its query, any
   earlier `iss` or `launch` dropped and its other parameters kept as
   written. The launch binds no OAuth client, so
-  any app can be a launcher. The launcher opens in the in-app browser
+  any app can be a launcher. It opens `sign_in_url`,
+  `https://<domain>/oauth/sign-in?code=…&next=<launch URL>`, with a
+  same-device sign-in code minted through the `ServerSignInCodeMinter` in
+  the run's detail, so the browser is signed in as the Owner and the launch's
+  own sign-in reaches the server's consent card rather than its wait page. `server_open_authorization_app` (`{domain}`) opens the record's
+  Authorization URL with `iss=https://<domain>` (`authorization_app_url`,
+  any earlier `iss` dropped) through the same sign-in, with the same check,
+  view and presence, and mints no launch. The page opens in the in-app browser
   (`tauri-plugin-native-page-browser`), which shows one view at a time: on
   iOS a launch replaces the view an earlier one opened, and on Android a
   launch that arrives while that view is still opening joins it. Each view is reported to
@@ -433,7 +467,7 @@ changing how servers run or what the host notifies about them.
   (`KeptAlive`, `launch_view_kept_alive`). It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
   `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from
-  Let's Encrypt's staging CA), `authorizationServer`, `openingLauncher`, or the registry's
+  Let's Encrypt's staging CA), `authorizationServer`, `openingBrowser`, or the registry's
   `notRegistered` or `registry`. The golden file pins the refusals the base
   shows and which CAs browsers trust.
 - **One `pending-consent` per change.** A run's authorization server publishes its
@@ -499,7 +533,7 @@ changing how servers run or what the host notifies about them.
   `whileOpen` when no registered server's policy wants it running, and `off`
   otherwise. An `off` policy or an `until` that has passed doesn't.
 - **Each change is one registry modify.** `set_run_policy`,
-  `update_server` (launcher URL and staging flag) and
+  `update_server` (launcher URL, Authorization URL and certificate authority) and
   `set_server_credentials` (token and `public_settings`) each edit only their
   own fields inside one `ServerRegistry::modify`, so a change made
   concurrently, such as a run policy set while a token is checked with the
@@ -514,18 +548,21 @@ changing how servers run or what the host notifies about them.
   A deletion that fails partway leaves the server registered with part of its
   folder, some databases or certificates possibly gone, and `Off`, so it
   doesn't run on what's left; retrying deletes the rest.
-- **A launcher URL is checked when entered.** `update_server` takes an
-  absolute `http` or `https` URL with a host and no credentials, or refuses it
-  as `ServerChangeError::InvalidLauncherUrl`.
+- **A launcher or Authorization URL is checked when entered.**
+  `update_server` takes an absolute `http` or `https` URL with a host and no
+  credentials for each, or refuses it as
+  `ServerChangeError::InvalidLauncherUrl` or `InvalidAuthorizationUrl`.
 - **`servers.json` is versioned.** The file is
-  `{"version": 2, "servers": [...]}`, its server fields `serde(remote)`
+  `{"version": 3, "servers": [...]}`, its server fields `serde(remote)`
   mirrors of `ServerRecord` and `PublicRatholeSettings` renamed to camelCase,
   which the compiler keeps in step with those types. A change to the stored
   shape bumps the version, with a migration from the previous one: a version
-  1 file, whose servers have a boolean `stagingCertificates`, is read with
-  each server's `certificateAuthority` (`true` is `letsEncryptStaging`,
-  `false` `letsEncrypt`) and written as version 2 by the next change. Any
-  other version this build doesn't read is
+  2 file, whose servers have no `authorizationUrl`, is read with the default
+  Authorization app as each server's; a version 1 file, whose servers have a
+  boolean `stagingCertificates`, is read with each server's
+  `certificateAuthority` (`true` is `letsEncryptStaging`, `false`
+  `letsEncrypt`), then as version 2. Either is written as version 3 by the
+  next change. Any other version this build doesn't read is
   `RegistryError::UnsupportedVersion`, and the file is neither read nor
   overwritten.
 - **Writes are atomic.** Every change writes the whole document to

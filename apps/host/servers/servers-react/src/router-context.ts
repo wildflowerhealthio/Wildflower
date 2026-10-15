@@ -49,6 +49,11 @@ interface RouterContext {
    */
   readonly defaultLauncherUrl: string
   /**
+   * The Authorization app the host gives a new server, from the app's
+   * `tauri-shared-config.json`, which the host reads too.
+   */
+  readonly defaultAuthorizationUrl: string
+  /**
    * The servers' pending start-and-launches, which every Launch of a server
    * reads, so a wait outlives the screen it began on.
    */
@@ -93,6 +98,12 @@ interface RouterContextInputs {
    */
   readonly defaultLauncherUrl: string
   /**
+   * The Authorization app the host gives a new server, from the app's
+   * `tauri-shared-config.json`, which the host reads too. The server page
+   * offers it as Reset to default.
+   */
+  readonly defaultAuthorizationUrl: string
+  /**
    * The client the base's own HTTP requests go through, such as a server's
    * `/health`. Defaults to the webview's `fetch`; tests pass a stub.
    */
@@ -114,6 +125,7 @@ const make = ({
   invoke,
   listen,
   defaultLauncherUrl,
+  defaultAuthorizationUrl,
   httpClient = FetchHttpClient.layer,
 }: RouterContextInputs): RouterContext => ({
   queryClient: new QueryClient({
@@ -131,6 +143,7 @@ const make = ({
   runHttpRequest: runHttpRequestWith(httpClient),
   listenToHostEvent: listen,
   defaultLauncherUrl,
+  defaultAuthorizationUrl,
   pendingLaunches: makeEmptyPendingLaunches(),
 })
 

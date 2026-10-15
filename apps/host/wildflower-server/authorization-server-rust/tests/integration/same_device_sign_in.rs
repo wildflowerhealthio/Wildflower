@@ -73,6 +73,16 @@ async fn the_browser_goes_on_to_an_allowed_next() {
             "https://authorization.test/authorization/?iss=https%3A%2F%2Fruth.relay.example",
             "https://authorization.test/authorization/?iss=https%3A%2F%2Fruth.relay.example",
         ),
+        // This server's own launcher and Authorization app, as its host
+        // configures them.
+        (
+            "https://apps.test/launcher?theme=dark&iss=https%3A%2F%2Fruth.relay.example&launch=n1",
+            "https://apps.test/launcher?theme=dark&iss=https%3A%2F%2Fruth.relay.example&launch=n1",
+        ),
+        (
+            "https://manage.test/authorization/?iss=https%3A%2F%2Fruth.relay.example",
+            "https://manage.test/authorization/?iss=https%3A%2F%2Fruth.relay.example",
+        ),
     ] {
         let code = g.same_device_sign_in_code_minter.mint();
         let res = sign_in(&g, &code, next).await;
@@ -96,6 +106,8 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
         "/\\evil.example",
         "https://evil.example/",
         "https://launcher.test/elsewhere/",
+        "https://apps.test/elsewhere",
+        "https://manage.test/",
         SERVER_ORIGIN,
         "",
     ] {

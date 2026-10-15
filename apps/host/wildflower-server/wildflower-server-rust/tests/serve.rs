@@ -89,6 +89,9 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             "https://authorization.test/authorization/",
         )
         .expect("authorization app base"),
+        launcher_url: Url::parse("https://launcher.test/launcher/").expect("launcher URL"),
+        authorization_url: Url::parse("https://authorization.test/authorization/")
+            .expect("authorization URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
         wildflower_host_app_client_id:

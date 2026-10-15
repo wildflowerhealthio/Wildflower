@@ -54,6 +54,9 @@ fn server_config(server_dir: PathBuf, loopback_base_url: Url) -> WildflowerServe
             "https://authorization.test/authorization/",
         )
         .expect("authorization app base"),
+        launcher_url: Url::parse("https://launcher.test/launcher/").expect("launcher URL"),
+        authorization_url: Url::parse("https://authorization.test/authorization/")
+            .expect("authorization URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
         wildflower_host_app_client_id:
@@ -211,6 +214,14 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         .expect("the run's detail holds its launch minter");
     let launch = tokio::task::block_in_place(|| launch_minter.mint()).expect("a launch");
     assert!(!launch.is_empty());
+    // And its sign-in code minter, which mints through the same run's
+    // authorization server.
+    let sign_in_code_minter = unit_runner.statuses()[&UnitId::from(DOMAIN)]
+        .detail
+        .as_ref()
+        .and_then(|detail| detail.sign_in_code_minter.clone())
+        .expect("the run's detail holds its sign-in code minter");
+    assert!(!sign_in_code_minter.mint().is_empty());
     let unit_status = unit_runner.statuses()[&UnitId::from(DOMAIN)].clone();
     // Unknown health is refused before the certificate is looked at, so a
     // run that hasn't reported one yet is given any.

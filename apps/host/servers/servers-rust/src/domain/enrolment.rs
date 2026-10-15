@@ -211,9 +211,9 @@ struct EnrolledTunnel {
 }
 
 /// Enrol a tunnel at `relay` with `credentials` and register the server, with
-/// `default_launcher_url`, the launcher the app gives a new server, and the
-/// default certificate authority
-/// ([`ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY`]). Its
+/// `default_launcher_url` and `default_authorization_url`, the launcher and
+/// Authorization app the app gives a new server, and the default certificate
+/// authority ([`ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY`]). Its
 /// [`run_policy`](ServerRecord::run_policy) is [`RunPolicy::WhileOpen`] when
 /// no registered server's policy wants it running at `now`, so the first
 /// server added runs, and [`RunPolicy::Off`] otherwise, so a later one doesn't
@@ -250,6 +250,7 @@ pub async fn add_server<S: RelayClient>(
     relay: EnteredRelay,
     credentials: EnteredCredentials,
     default_launcher_url: Url,
+    default_authorization_url: Url,
     relay_client: impl FnOnce(Url) -> Result<S, EnrolmentError>,
     now: DateTime<Utc>,
 ) -> Result<ServerRecord, EnrolmentError> {
@@ -316,6 +317,7 @@ pub async fn add_server<S: RelayClient>(
             token,
             public_settings,
             launcher_url: default_launcher_url,
+            authorization_url: default_authorization_url,
             certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
             // The user is enrolling, so the app is present: a `WhileOpen`
             // policy wants its server running.
@@ -620,7 +622,9 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::domain::fixtures::{launcher_url, official_record, token_credentials, TOKEN};
+    use crate::domain::fixtures::{
+        authorization_url, launcher_url, official_record, token_credentials, TOKEN,
+    };
     use crate::CertificateAuthority;
     use crate::JsonServerRegistry;
 
@@ -754,7 +758,10 @@ mod tests {
 
     fn registry() -> (tempfile::TempDir, Arc<dyn ServerRegistry>) {
         let data_root = tempfile::tempdir().unwrap();
-        let registry = Arc::new(JsonServerRegistry::in_data_root(data_root.path()));
+        let registry = Arc::new(JsonServerRegistry::in_data_root(
+            data_root.path(),
+            authorization_url(),
+        ));
         (data_root, registry)
     }
 
@@ -800,6 +807,7 @@ mod tests {
             relay,
             token_credentials("ruth", token),
             launcher_url(),
+            authorization_url(),
             relay_client.builder(),
             now(),
         )
@@ -819,6 +827,7 @@ mod tests {
                 code: code.to_owned(),
             },
             launcher_url(),
+            authorization_url(),
             relay_client.builder(),
             now(),
         )
@@ -850,6 +859,7 @@ mod tests {
                 token: TunnelToken::new(TOKEN),
                 public_settings: served_settings(),
                 launcher_url: launcher_url(),
+                authorization_url: authorization_url(),
                 certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
                 run_policy: RunPolicy::WhileOpen,
             }
@@ -1010,6 +1020,7 @@ mod tests {
                     code: code.to_owned(),
                 },
                 launcher_url(),
+                authorization_url(),
                 no_client,
                 now(),
             )
@@ -1034,6 +1045,7 @@ mod tests {
                 EnteredRelay::WildflowerOfficial,
                 token_credentials(tunnel_name, token),
                 launcher_url(),
+                authorization_url(),
                 no_client,
                 now(),
             )
@@ -1141,6 +1153,7 @@ mod tests {
                 token: TunnelToken::new(TOKEN),
                 public_settings: served_settings(),
                 launcher_url: launcher_url(),
+                authorization_url: authorization_url(),
                 certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
                 run_policy: RunPolicy::WhileOpen,
             }
@@ -1279,6 +1292,7 @@ mod tests {
             self_hosted_relay(None),
             token_credentials("ruth", TOKEN),
             launcher_url(),
+            authorization_url(),
             |relay_base| -> Result<FakeRelayClient, _> {
                 Err(EnrolmentError::RelayUnreachable {
                     relay_base,
@@ -1415,6 +1429,7 @@ mod tests {
             rathole_relay(),
             token_credentials("lab", "any-token"),
             launcher_url(),
+            authorization_url(),
             no_client,
             now(),
         )
@@ -1487,6 +1502,7 @@ mod tests {
             rathole_relay(),
             token_credentials("ruth", "any-token"),
             launcher_url(),
+            authorization_url(),
             no_client,
             now(),
         )
@@ -1501,6 +1517,7 @@ mod tests {
                 token: TunnelToken::new("any-token"),
                 public_settings: served_settings(),
                 launcher_url: launcher_url(),
+                authorization_url: authorization_url(),
                 certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
                 run_policy: RunPolicy::WhileOpen,
             }
@@ -1523,6 +1540,7 @@ mod tests {
                 },
                 token_credentials("ruth", TOKEN),
                 launcher_url(),
+                authorization_url(),
                 no_client,
                 now(),
             )
@@ -1775,6 +1793,7 @@ mod tests {
             rathole_relay(),
             token_credentials("ruth", "the-old-token"),
             launcher_url(),
+            authorization_url(),
             no_client,
             now(),
         )
@@ -1814,6 +1833,7 @@ mod tests {
             },
             token_credentials("ruth", TOKEN),
             launcher_url(),
+            authorization_url(),
             no_client,
             now(),
         )
@@ -1841,6 +1861,7 @@ mod tests {
                 },
                 token_credentials("ruth", TOKEN),
                 launcher_url(),
+                authorization_url(),
                 no_client,
                 now(),
             )
@@ -1871,6 +1892,7 @@ mod tests {
             },
             token_credentials("ruth", TOKEN),
             launcher_url(),
+            authorization_url(),
             relay_client.builder(),
             now(),
         )

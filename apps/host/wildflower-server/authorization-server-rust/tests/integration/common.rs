@@ -23,6 +23,14 @@ pub const LAUNCHER_BASE: &str = "https://launcher.test/launcher/";
 /// The hosted Wildflower Authorization app in these tests, likewise not the
 /// production address.
 pub const AUTHORIZATION_APP_BASE: &str = "https://authorization.test/authorization/";
+
+/// The page the host opens this server's launches in, its own launcher, which
+/// isn't under the hosted one.
+pub const LAUNCHER_URL: &str = "https://apps.test/launcher?theme=dark";
+
+/// The page the host opens this server's Authorization app at, which isn't
+/// under the hosted one.
+pub const AUTHORIZATION_URL: &str = "https://manage.test/authorization/";
 pub use chrono::{Duration, Utc};
 pub use serde_json::Value;
 pub use tower::ServiceExt;
@@ -83,6 +91,8 @@ pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
         launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
         authorization_app_base: AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE)
             .expect("AUTHORIZATION_APP_BASE is a valid URL"),
+        launcher_url: Url::parse(LAUNCHER_URL).expect("LAUNCHER_URL is a valid URL"),
+        authorization_url: Url::parse(AUTHORIZATION_URL).expect("AUTHORIZATION_URL is a valid URL"),
     };
     let (pending_consent_tx, pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);

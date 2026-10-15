@@ -2,7 +2,8 @@
 //!
 //! A server is a domain, a folder and an enrolment at a relay. Its
 //! [`ServerRecord`] holds the relay, the tunnel name and token there, what the
-//! relay's `GET /rathole` returned, the launcher apps open from, the ACME CA
+//! relay's `GET /rathole` returned, the launcher apps open from, the page its
+//! Wildflower Authorization app opens at, the ACME CA
 //! its certificates are ordered from, its [`CertificateAuthority`], and when
 //! the user wants it run, its [`RunPolicy`]. Its [`domain`](ServerRecord::domain),
 //! `<tunnel name>.<relay domain>`, is its only name: the registry key, the
@@ -31,7 +32,7 @@
 //! and replaces a rathole server's without a request.
 //!
 //! A registered server's run policy is set by [`set_run_policy`], its
-//! launcher and certificate authority by [`update_server`], and it is deleted,
+//! launcher, Authorization app and certificate authority by [`update_server`], and it is deleted,
 //! folder and all, by [`remove_server`]. Each changes only the server it
 //! names. The policy is `UnitRunner`'s [`RunPolicy`], stored in its wire
 //! shape; the app stores it here and pushes it to `UnitRunner`, which never
@@ -42,10 +43,13 @@
 //! run, and the unit reports its health and the oldest consent waiting on it
 //! ([`PendingConsent`]) as its [`ServerDetail`], with the
 //! [`ServerConsentDecider`] through which the base reads, approves and denies
-//! the run's consents in-process, and the [`ServerLaunchMinter`] through which
+//! the run's consents in-process, the [`ServerLaunchMinter`] through which
 //! it mints the launch it opens the server's launcher with, once
 //! [`ensure_launchable`] says the server can be launched, at its
-//! [`launch_url`]. What the host
+//! [`launch_url`], and the [`ServerSignInCodeMinter`] through which it mints
+//! the code that signs the in-app browser in as the Owner first, at its
+//! [`sign_in_url`]; the server's Authorization app opens the same way, at its
+//! [`authorization_app_url`]. What the host
 //! notifies about its servers is decided here too: the per-caller request
 //! notifications ([`RequestNotificationCoalescer`]) and the notifications for
 //! each stop of a server's run ([`StopNotificationCoalescer`]).
@@ -55,9 +59,9 @@
 //!    [`EnteredCredentials`], [`RelayIdentity`] and [`EnrolmentError`], and
 //!    the changes to a
 //!    registered server with [`RunPolicyChoice`] and [`ServerChangeError`];
-//!    [`ServerDetail`]; launching, with [`ensure_launchable`], [`launch_url`]
-//!    and [`LaunchError`]; [`PendingConsent`] with its [`ConsentKey`] and
-//!    [`PendingConsentTracker`]; the wire shapes the consent commands answer
+//!    [`ServerDetail`]; launching, with [`ensure_launchable`], [`launch_url`],
+//!    [`authorization_app_url`], [`sign_in_url`] and [`LaunchError`];
+//!    [`PendingConsent`] with its [`ConsentKey`] and [`PendingConsentTracker`]; the wire shapes the consent commands answer
 //!    in ([`ConsentDetails`], [`ApprovalOutcome`], [`ConsentError`]) and take
 //!    ([`ConsentApproval`]); and the [`notifications`](domain::notifications)
 //!    the host posts: [`LocalNotification`], the request coalescer and the
@@ -73,8 +77,9 @@
 //!    never sent.
 //!  - `live_bindings` — [`ServerUnit`], a server bound to
 //!    `wildflower-server-rust` as a unit `UnitRunner` runs, and
-//!    [`ServerConsentDecider`] and [`ServerLaunchMinter`], a run's consents
-//!    and launches bound to `authorization-server-rust`.
+//!    [`ServerConsentDecider`], [`ServerLaunchMinter`] and
+//!    [`ServerSignInCodeMinter`], a run's consents, launches and sign-in codes
+//!    bound to `authorization-server-rust`.
 
 pub mod domain;
 
@@ -91,16 +96,17 @@ pub use domain::notifications::stop_notifications::{
     ServerStop, StopCause, StopNotificationCoalescer,
 };
 pub use domain::{
-    add_server, ensure_launchable, launch_url, remove_server, set_run_policy,
-    set_server_credentials, update_server, ApprovalOutcome, CertificateAuthority, ConsentApproval,
-    ConsentDetails, ConsentError, ConsentKey, EnrolmentError, EnteredCredentials, EnteredRelay,
-    LaunchError, ListedServer, PendingConsent, PendingConsentChange, PendingConsentTracker,
-    Registration, RegistryError, RelayIdentity, RelayKind, RunPolicyChoice, ServerChangeError,
-    ServerDetail, ServerRecord, ServerStatus, ServerStatusTracker, ServerUpdate, TunnelToken,
-    SERVERS_DIR_NAME,
+    add_server, authorization_app_url, ensure_launchable, launch_url, remove_server,
+    set_run_policy, set_server_credentials, sign_in_url, update_server, ApprovalOutcome,
+    CertificateAuthority, ConsentApproval, ConsentDetails, ConsentError, ConsentKey,
+    EnrolmentError, EnteredCredentials, EnteredRelay, LaunchError, ListedServer, PendingConsent,
+    PendingConsentChange, PendingConsentTracker, Registration, RegistryError, RelayIdentity,
+    RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
+    ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_consent_decider::ServerConsentDecider;
 pub use live_bindings::server_launch_minter::ServerLaunchMinter;
+pub use live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 pub use live_bindings::server_unit::ServerUnit;
 pub use ports::{NewRecord, RegistryChange, RelayClient, ServerRegistry};
 pub use wildflowerhealthio_unit_runner::RunPolicy;
