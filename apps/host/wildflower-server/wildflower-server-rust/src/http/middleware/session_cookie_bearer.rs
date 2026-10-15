@@ -134,7 +134,9 @@ impl SessionCookie {
 /// server's origin, the only origin a request carrying it may come from.
 pub(crate) struct SessionCookieBearerConfig {
     pub(crate) session_cookie: SessionCookie,
-    pub(crate) server_origin: Url,
+    /// The server's bare origin, `https://<domain>`, spelled as a browser's
+    /// `Origin` header spells it ([`origin_string`]).
+    pub(crate) server_origin: String,
 }
 
 /// Wrap `router` in the layer once per session cookie: an Owner browser's,
@@ -150,6 +152,7 @@ pub(crate) fn present_session_cookie_bearers(
     ui_sessions: Arc<SessionStore>,
     server_origin: &Url,
 ) -> Router {
+    let server_origin = origin_string(server_origin);
     let session_cookie_bearer = |session_cookie| {
         axum::middleware::from_fn_with_state(
             Arc::new(SessionCookieBearerConfig {
@@ -229,7 +232,7 @@ pub(crate) async fn present_session_cookie_bearer(
 /// A write must send `Origin`: every browser does on a `POST`, including one
 /// too old to send `Sec-Fetch-Site`. A read needn't, since a browser leaves it
 /// off a same-origin `GET`.
-fn is_from_server_origin(method: &Method, headers: &HeaderMap, server_origin: &Url) -> bool {
+fn is_from_server_origin(method: &Method, headers: &HeaderMap, server_origin: &str) -> bool {
     if let Some(fetch_site) = headers.get("sec-fetch-site") {
         let is_same_origin = fetch_site.to_str().is_ok_and(|fetch_site| {
             fetch_site.eq_ignore_ascii_case("same-origin")
@@ -242,7 +245,7 @@ fn is_from_server_origin(method: &Method, headers: &HeaderMap, server_origin: &U
     match headers.get(header::ORIGIN) {
         Some(request_origin) => request_origin
             .to_str()
-            .is_ok_and(|request_origin| request_origin == origin_string(server_origin)),
+            .is_ok_and(|request_origin| request_origin == server_origin),
         None => method.is_safe(),
     }
 }
@@ -360,7 +363,7 @@ mod tests {
         fn owner_browser_config(&self) -> Arc<SessionCookieBearerConfig> {
             Arc::new(SessionCookieBearerConfig {
                 session_cookie: SessionCookie::OwnerBrowser(self.state.clone()),
-                server_origin: server_origin(),
+                server_origin: SERVER_ORIGIN.to_owned(),
             })
         }
     }
@@ -395,7 +398,7 @@ mod tests {
         GuardedCookie {
             config: Arc::new(SessionCookieBearerConfig {
                 session_cookie: SessionCookie::FhirUi(Arc::new(store_with_a_session())),
-                server_origin: server_origin(),
+                server_origin: SERVER_ORIGIN.to_owned(),
             }),
             cookie: "hfs_session=session-1".to_owned(),
             bearer: "Bearer session-token".to_owned(),

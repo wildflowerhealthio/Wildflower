@@ -18,7 +18,6 @@ use std::sync::Arc;
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use serde::Serialize;
-use url::Url;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 /// Launcher routes a browser opening this server most likely wants: the home
@@ -30,8 +29,9 @@ const APP_ENTRY_PATHS: [&str; 1] = ["/home"];
 pub(crate) struct NotFoundConfig {
     /// The hosted launcher the link opens.
     pub(crate) launcher_base: LauncherBase,
-    /// The server's origin, which the link points the launcher at.
-    pub(crate) server_origin: Url,
+    /// The server's bare origin, `https://<domain>`, which the link points the
+    /// launcher at.
+    pub(crate) server_origin: String,
 }
 
 /// Wire shape of the JSON `404` for a route no slice serves.
@@ -57,13 +57,12 @@ pub(crate) fn fallback(
 /// browser opening one of its [`APP_ENTRY_PATHS`], else the `404`, as HTML or
 /// JSON per the `Accept` header.
 fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &Uri) -> Response {
-    let server_origin = wildflowerhealthio_shared_structures::origin_string(&config.server_origin);
     let is_browser_navigation =
         (method == Method::GET || method == Method::HEAD) && accepts_html(headers);
     if is_browser_navigation && APP_ENTRY_PATHS.contains(&uri.path()) {
         let target = config
             .launcher_base
-            .route_url(uri.path(), &server_origin, &[]);
+            .route_url(uri.path(), &config.server_origin, &[]);
         return Redirect::to(target.as_str()).into_response();
     }
 
@@ -72,7 +71,7 @@ fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &
         .map_or_else(|| uri.path().to_owned(), |pq| pq.as_str().to_owned());
     let open_in_app = config
         .launcher_base
-        .open_url(&server_origin, &path)
+        .open_url(&config.server_origin, &path)
         .to_string();
 
     if accepts_html(headers) {
@@ -154,14 +153,13 @@ mod tests {
     use super::{escape_html, respond, NotFoundConfig};
     use axum::body::to_bytes;
     use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
-    use url::Url;
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     fn config() -> NotFoundConfig {
         NotFoundConfig {
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
                 .expect("valid base"),
-            server_origin: Url::parse("https://ruth.relay.example/").expect("valid origin"),
+            server_origin: "https://ruth.relay.example".to_owned(),
         }
     }
 

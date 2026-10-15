@@ -502,7 +502,7 @@ pub async fn set_up(
             fhir_routers.augmented_fhir_r4_router,
             Arc::new(not_found::NotFoundConfig {
                 launcher_base,
-                server_origin: public_origin.clone(),
+                server_origin: wildflowerhealthio_shared_structures::origin_string(&public_origin),
             }),
         ));
 
