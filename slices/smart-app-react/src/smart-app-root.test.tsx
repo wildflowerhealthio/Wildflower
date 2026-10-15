@@ -710,11 +710,11 @@ describe('SmartAppRoot telemetry consent', () => {
     expect(captureExceptionMock).not.toHaveBeenCalled()
   })
 
-  it('should report, not throw, a FHIR server URL that does not parse, and tag it as no host', async () => {
+  it('should report, without the URL, a FHIR server URL that does not parse, and tag it as no host', async () => {
     // Arrange
     initConsentedTelemetryMock.mockReturnValue(true)
     storeConsent({ crashReports: true, performance: false })
-    tokenExchangeMock.mockResolvedValue(clientConnectedTo('not a url'))
+    tokenExchangeMock.mockResolvedValue(clientConnectedTo('ruth.example'))
 
     // Act
     renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
@@ -724,7 +724,9 @@ describe('SmartAppRoot telemetry consent', () => {
       expect(captureExceptionMock).toHaveBeenCalledTimes(1)
     })
     const [reported, hint] = captureExceptionMock.mock.calls[0]
-    expect(reported instanceof Error ? reported.message : reported).toContain('not a url')
+    expect(reported instanceof Error ? reported.message : reported).toBe(
+      "The SMART handshake's FHIR server is not a URL"
+    )
     expect(hint).toStrictEqual({ tags: { source: 'fhir-server-host' } })
     expect(setFhirServerHostMock).toHaveBeenCalledWith(null)
   })

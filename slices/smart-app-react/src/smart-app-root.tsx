@@ -247,18 +247,16 @@ function SmartAppRoot({
   // connected to, as soon as that handshake completes on the shared client.
   // The callback runs inside the query cache's notification, so a server URL
   // that does not parse is reported rather than thrown there, and tagged as
-  // having no host.
+  // having no host. The report leaves the URL out: it can name the server
+  // in a shape no scrubbing recognizes, such as a bare hostname.
   useEffect(() => {
     if (!telemetryStarted) return undefined
     return whenSmartHandshakeReady(queryClient, (readyClient) => {
       const fhirServerUrl = URL.parse(readyClient.state.serverUrl)
       if (fhirServerUrl === null) {
-        Sentry.captureException(
-          new Error(
-            `The SMART handshake's FHIR server is not a URL: ${readyClient.state.serverUrl}`
-          ),
-          { tags: { source: 'fhir-server-host' } }
-        )
+        Sentry.captureException(new Error("The SMART handshake's FHIR server is not a URL"), {
+          tags: { source: 'fhir-server-host' },
+        })
       }
       setFhirServerHost(fhirServerUrl === null ? null : fhirServerUrl.host)
     })

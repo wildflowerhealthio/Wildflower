@@ -3056,6 +3056,51 @@ describe('Add server', () => {
     expect(invokesOf(host, 'server_add').map((invoke) => invoke.args?.['relay'])).toEqual([relay])
   })
 
+  it.each([
+    [
+      'a pinned self-hosted Wildflower relay',
+      {
+        baseUrl: 'https://relay.example.com',
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: golden.enteredRelays.selfHostedWildflowerPinned.pin.publicKey,
+      },
+      ['https://relay.example.com', 'relay.example.com:2333'],
+    ],
+    [
+      'a rathole relay',
+      {
+        rathole: true,
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: golden.enteredRelays.rathole.publicKey,
+        domain: 'relay.example.com',
+      },
+      ['relay.example.com:2333', 'relay.example.com'],
+    ],
+  ] as const)(
+    'should redact the hosts typed for %s from telemetry before server_add',
+    async (_, custom, hosts) => {
+      // Arrange
+      const user = userEvent.setup()
+      const host = renderAddServer()
+      await enterRelay(user, custom)
+      redactServerHostMock.mockClear()
+      let redactedBeforeAdd: readonly unknown[] = []
+      redactServerHostMock.mockImplementation(() => {
+        if (invokesOf(host, 'server_add').length === 0) {
+          redactedBeforeAdd = redactServerHostMock.mock.calls.map(([redacted]) => redacted)
+        }
+      })
+
+      // Act
+      await enterCredentials(user)
+
+      // Assert
+      await stepTitled('Server added')
+      expect(redactedBeforeAdd).toStrictEqual(hosts)
+      redactServerHostMock.mockReset()
+    }
+  )
+
   it('should lowercase the tunnel name and relay domain as they are typed', async () => {
     // Arrange
     const user = userEvent.setup()
