@@ -11,8 +11,8 @@ import { WEB_TRACE_SESSION_IDENTIFIER_SYSTEM } from './codec/systems.ts'
 /**
  * The vocabulary of a web trace: one recorded HTTP exchange, plus the
  * body/timing shapes it carries. Every other module in this package is a
- * translation to or from {@link TraceExchange} — the codec to FHIR, the
- * pseudonymizer to a redacted `TraceExchange`, the emitter to HAR.
+ * translation to or from {@link TraceExchange} — the codec to FHIR, and the
+ * provenance capture from a captured response.
  *
  * Field types for the sniffer-observed half (`requestId`, `url`, `status`,
  * `statusText`, `headers`) are taken from `browser-sniffer-core`'s
