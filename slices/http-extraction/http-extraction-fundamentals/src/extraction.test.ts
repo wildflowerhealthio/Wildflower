@@ -126,3 +126,22 @@ describe('Extraction.parseWith', () => {
     expect(parseCalls).toBe(0)
   })
 })
+
+describe('Extraction.findDuplicates', () => {
+  it('maps a repeated (url, method, body) to the first occurrence', () => {
+    const duplicates = Extraction.findDuplicates([
+      makeExtractionInput({ id: 'r1', url: 'https://x/alpha/1', body: '{}' }),
+      makeExtractionInput({ id: 'r2', url: 'https://x/alpha/1', body: '{}' }),
+    ])
+    expect([...duplicates]).toEqual([['r2', { id: 'r1', url: 'https://x/alpha/1' }]])
+  })
+
+  it('keeps the same url and body under different methods apart', () => {
+    const duplicates = Extraction.findDuplicates([
+      makeExtractionInput({ id: 'r1', method: Option.some('GET'), body: '{}' }),
+      makeExtractionInput({ id: 'r2', method: Option.some('POST'), body: '{}' }),
+      makeExtractionInput({ id: 'r3', method: Option.none(), body: '{}' }),
+    ])
+    expect(duplicates.size).toBe(0)
+  })
+})

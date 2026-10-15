@@ -13,13 +13,13 @@
  *      non-whitespace character), return it as-is. This keeps direct
  *      XHR captures (where the sniffer intercepts the actual response
  *      stream before any viewer wrap) on a fast path.
- *   2. Otherwise, look for `<pre>…</pre>`. The match is greedy — most
- *      viewers emit a single pre with the whole payload inside. We pick
- *      the *longest* match to avoid clipping at a JSON-string `</pre>`
- *      substring (unlikely in FHIR but cheap to guard).
- *   3. Decode the four HTML entities the viewers emit (`&lt;`, `&gt;`,
- *      `&quot;`, `&amp;`) — order matters: `&amp;` last so a literal
- *      `&amp;lt;` round-trips as `&lt;` not `<`.
+ *   2. Otherwise, look for `<pre>…</pre>`. Each match is lazy (it ends
+ *      at the first `</pre>`) — most viewers emit a single pre with the
+ *      whole payload inside, and when there are several we keep the
+ *      *longest*.
+ *   3. Decode the HTML entities the viewers emit (`&lt;`, `&gt;`,
+ *      `&quot;`, `&#x27;`, `&#39;`, `&amp;`) — order matters: `&amp;`
+ *      last so a literal `&amp;lt;` round-trips as `&lt;` not `<`.
  *   4. If neither path produces a JSON-looking string, return the
  *      original text so the downstream `Schema.decode(parseJson)` step
  *      surfaces a `ParseError` with a usable cause.

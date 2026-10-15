@@ -45,8 +45,9 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `parseWith(kind, response)` decodes one response, folding every outcome —
   resources, `parseError`, `bodyAbsent` — to data, over `Extraction.Input`s (an
   `HttpResponse.Data` + `bodyAbsent`). Infallible — failures are data, not
-  errors. It never persists. The batch runner (`runExtraction`, the four-way
-  `batches` / `unmatched` / `parseFailures` / `bodyAbsent` accounting) lives in
+  errors. It never persists. The batch runner (`runExtraction`, the five-way
+  `batches` / `unmatched` / `parseFailures` / `bodyAbsent` / `duplicates`
+  accounting) lives in
   `test-helpers`, not production — production reviews interactively over
   `recognize` / `parseWith` — as the executable reference model fixture suites
   (`har-importer-core`'s `decode-har.test.ts`) pin against.
@@ -75,7 +76,7 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
 `AnotherResponseKind` sample response kinds, the `echoResponseKind` provenance-asserting
 builders the `Extraction` suites route with, and `runExtraction`
 (`src/run-extraction.ts`) — the archive-runner reference model returning the
-four-way `ExtractionResult` accounting.
+five-way `ExtractionResult` accounting.
 
 ## Layering
 
