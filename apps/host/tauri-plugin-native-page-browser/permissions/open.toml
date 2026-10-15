@@ -16,8 +16,8 @@ desktop never sends one), and on Android a `keptAlive` before it when the view's
 browser keeps the app alive under the view. The caller names the view (`view`),
 for `close`, and says how it shows beside the views showing (`mode`): on iOS a
 `replace` open replaces them and reports each one's close, and a `stack` open
-presents over them; on Android a `replace` open arriving while a view is still
-opening joins it, a `stack` open launches its own, and one arriving while the
+presents over them; on Android a `replace` open arriving while a `replace` view
+is still opening joins it, a `stack` open launches its own, and one arriving while the
 app is in the background is rejected. The caller cannot script or navigate the
 open page. Non-`http(s)` URLs are rejected.
 """

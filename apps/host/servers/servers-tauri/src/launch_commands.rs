@@ -23,7 +23,7 @@
 //! All open in the in-app browser, [`LaunchBrowser`]. A launch and the
 //! Authorization app replace the views showing: on iOS an open replaces the
 //! views earlier ones opened, and on Android an open that arrives while an
-//! earlier one's view is still opening joins that view. A consent stacks over
+//! earlier replacing one's view is still opening joins that view. A consent stacks over
 //! them instead, so the page under it, as an app's waiting for that consent,
 //! stays where it was: on iOS it shows over the top-most view, and on Android
 //! it opens a Custom Tab of its own. On iOS the base closes the consent's
@@ -196,7 +196,8 @@ pub(crate) trait LaunchBrowser: Send + Sync + 'static {
     /// Open `url` in a view of the in-app browser named `view`, beside the
     /// views showing as `mode` says. [`OpenMode::Replace`] replaces them on
     /// iOS; on Android, where only a view still opening can show while the
-    /// app is in front, it joins that view instead of opening `url`.
+    /// app is in front, it joins that view, when a replacing open opened it,
+    /// instead of opening `url`.
     /// [`OpenMode::Stack`] shows over them on iOS, and opens a view of its
     /// own on Android. `view_events` hears [`BrowserEvent::Closed`] once the
     /// view is gone: the user closed it, or, on iOS, a later replacing open
@@ -628,9 +629,9 @@ mod tests {
         /// shows its own; a stacking one shows over them; a close closes a
         /// view and the views over it.
         Ios,
-        /// A replacing open joins the showing view, which is still opening, so
-        /// its close reports for both opens; a stacking one opens its own. The
-        /// base closes none.
+        /// A replacing open joins the top-most showing view, still opening,
+        /// that a replacing open opened, so its close reports for both opens;
+        /// any other open opens its own. The base closes none.
         Android,
     }
 
@@ -656,6 +657,8 @@ mod tests {
     struct ShowingView {
         name: String,
         events: Vec<LaunchViewEvents>,
+        /// A stacking open opened it.
+        stacked: bool,
     }
 
     impl ShowingView {
@@ -720,9 +723,11 @@ mod tests {
         ) -> Result<(), LaunchError> {
             {
                 let mut views = self.views.lock().unwrap();
-                if let (Phone::Android, OpenMode::Replace, Some(opening)) =
-                    (self.phone, mode, views.showing.last_mut())
-                {
+                if let (Phone::Android, OpenMode::Replace, Some(opening)) = (
+                    self.phone,
+                    mode,
+                    views.showing.last_mut().filter(|opening| !opening.stacked),
+                ) {
                     opening.events.push(view_events);
                     return Ok(());
                 }
@@ -735,6 +740,7 @@ mod tests {
             views.showing.push(ShowingView {
                 name: view.to_owned(),
                 events: vec![view_events],
+                stacked: mode == OpenMode::Stack,
             });
             Ok(())
         }
@@ -1534,6 +1540,28 @@ mod tests {
             .expect("the wait stops")
             .unwrap();
         assert_eq!(browser.showing(), [launch_view], "the launch's view stays");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn on_android_a_launch_while_a_consent_s_view_opens_opens_its_own() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Android);
+        let presence = OpenLaunchViews::default();
+        open_consent(
+            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
+            browser.clone(),
+            &presence,
+            false,
+        )
+        .await
+        .unwrap();
+
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+
+        assert_eq!(browser.opened().len(), 2, "the launch opened its own view");
+        assert_eq!(browser.showing().len(), 2);
     }
 
     #[tokio::test(flavor = "multi_thread")]

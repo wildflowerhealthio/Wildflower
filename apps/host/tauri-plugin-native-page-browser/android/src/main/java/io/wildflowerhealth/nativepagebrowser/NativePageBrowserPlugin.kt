@@ -60,9 +60,10 @@ class OpenArgs {
  * A Custom Tab can't be closed programmatically, so `close` rejects. An `open`
  * arriving while the host is in front can only find views still launching (a
  * second tap before the tab covers the host). A `replace` open joins the
- * latest of them instead of launching another, and resolves as that view's
- * `open` does; a `stack` open launches a view of its own, which shows over
- * them. `open` rejects while the host activity isn't in front: Android blocks
+ * latest of them, when a `replace` open launched it, instead of launching
+ * another, and resolves as that view's `open` does; over a `stack` open's
+ * view, it launches its own, so its URL opens. A `stack` open launches a view
+ * of its own, which shows over them. `open` rejects while the host activity isn't in front: Android blocks
  * activity starts from the background. Every other `open` launches its view
  * and resolves.
  *
@@ -107,9 +108,9 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
     /**
      * One view, from its `open` until its close, with the channel of each
      * `open` that launched or joined it, and the joined `open`s still waiting
-     * for the launch.
+     * for the launch. `stacked`: a `stack` open launched it.
      */
-    private class Page(events: Channel) {
+    private class Page(events: Channel, val stacked: Boolean) {
         private val eventChannels = mutableListOf(events)
         private val invokesAwaitingLaunch = mutableListOf<Invoke>()
 
@@ -248,12 +249,13 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
                 return@runOnUiThread
             }
             // The host is in front, so a showing view hasn't covered it yet.
+            val stacked = args.mode == MODE_STACK
             val launching = showing.lastOrNull()
-            if (launching != null && args.mode != MODE_STACK) {
+            if (launching != null && !stacked && !launching.stacked) {
                 launching.join(invoke, args.events)
                 return@runOnUiThread
             }
-            val page = Page(args.events)
+            val page = Page(args.events, stacked)
             showing.add(page)
             whenSessionReady { launch(page, invoke, Uri.parse(args.url)) }
         }

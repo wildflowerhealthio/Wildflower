@@ -32,8 +32,8 @@ pub struct OpenRequest {
     /// [`BrowserEvent::KeptAlive`] on Android; nothing on desktop or after an
     /// `Err`. On iOS a newer [`OpenMode::Replace`] `open`, or a `close` of
     /// this view or one under it, sends this view's `Closed`; on Android a
-    /// [`OpenMode::Replace`] `open` that joins a view still launching hears
-    /// that view's events.
+    /// [`OpenMode::Replace`] `open` that joins a view still launching (one a
+    /// `Replace` open launched) hears that view's events.
     pub events: Channel<BrowserEvent>,
 }
 
@@ -46,7 +46,8 @@ pub struct OpenRequest {
 pub enum OpenMode {
     /// One view at a time. On iOS the open closes the views showing, each
     /// reporting its `Closed`, before it presents its own. On Android it
-    /// joins a view still launching instead of launching another.
+    /// joins a view still launching that a `Replace` open launched instead of
+    /// launching another.
     Replace,
     /// Over the views showing, which stay under it. On iOS the view is
     /// presented over the top-most one; on Android it launches its own

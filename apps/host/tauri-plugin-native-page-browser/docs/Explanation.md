@@ -39,7 +39,7 @@ What an `open` does while a view is showing is its mode's, and differs by platfo
   - `close(view)` dismisses the view the caller named the same way, with every view over it, and sends each one's `Closed`. Dismissing a view dismisses whatever is presented over it, so closing a view under another closes both. A view already gone closes nothing, and `close` resolves.
   - An `open` or a `close` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
 - **Android** can't replace or close a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front, so `close` is rejected. A showing view covers the host, so an `open` from the app can only arrive while the views it finds are still launching (a second tap before the tab slides in), or after the host came back in front, which reports the views it was under closed (as a notification tap can bring it).
-  - A `replace` open that finds a view still launching joins the latest one instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events.
+  - A `replace` open whose latest view still launching is a `replace` open's joins it instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events. Over a `stack` open's view still launching, it launches its own, so its URL opens.
   - A `stack` open launches its own view, over any still launching. Each tab is an activity in the host's task, so closing the top one reveals the one under it, and the host resumes, reporting every view's `Closed`, only once the last is closed.
   - An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
 
@@ -108,7 +108,7 @@ apps/host/tauri-plugin-native-page-browser/
       ├─ iOS/Android: run_mobile_plugin_async("open", { url, view, mode, events }).await
       │     → iOS replace: dismiss the showing views, if any → channel.send({ event:"closed" }) on EACH one's channel
       │       iOS stack: present over the top-most view
-      │       Android: reject if the app is in the background; replace: join a view still launching;
+      │       Android: reject if the app is in the background; replace: join a replace view still launching;
       │                stack: launch another; wait up to 1 s for the Custom Tabs session
       │     → present SFSafariViewController / launch the Custom Tab (with the keep-alive extra)
       │     → Android: the browser binds KeepAliveService → channel.send({ event:"keptAlive" })

@@ -11,7 +11,7 @@
 //! showing views (sending `Closed` on each one's channel) before presenting
 //! the new one, and a `Stack` open presents it over them; `close` dismisses
 //! one view and those over it. On Android, where a Custom Tab can't be closed
-//! programmatically, a `Replace` open joins a view still launching, a `Stack`
+//! programmatically, a `Replace` open joins a `Replace` view still launching, a `Stack`
 //! open launches its own, either returns an error while the app is in the
 //! background, and `close` always returns one.
 
