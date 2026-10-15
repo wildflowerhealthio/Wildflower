@@ -162,7 +162,9 @@ and must stay out of the production bundle. Never imports `har-importer-core`,
   would drop them silently.
 - **A masked field is absent, not invented.** The anonymizer's `Xxx 00 0000`
   reads as no date of birth; a masked lab number that repeats is told apart by
-  the page footer and the date of service.
+  the page footer (each report starts at its own `Page 1 of N`). Reports that
+  share a lab number and date of service stay separate reports, never merged:
+  the later ones' ids add their repeat count (`reportOriginalId`).
 
 ## References
 

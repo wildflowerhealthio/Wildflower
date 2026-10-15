@@ -116,27 +116,28 @@ const sample: Report.Type = {
   ],
 }
 
+/** The lab number and date of service an anonymized export masks every report's to. */
+const MASKED_LAB_NO = '0000-XX0000000'
+const MASKED_DATE_OF_SERVICE = 'Xxx 00 0000 00:00'
+
 /**
- * Arrays of reports with pairwise-distinct identities (`reportOriginalId`).
- * A real decode can never hand the synthesis two reports with the same
- * identity — `Report.tryFromDocument` yields one report per `Lab No` (masked
- * ones told apart by footer and date of service) — so the multi-report
- * properties mirror that invariant rather than asserting over an input the
- * dialect cannot produce.
+ * Arrays of reports, some masked to the same lab number and date of service —
+ * the anonymized export whose reports print one shared key, which the
+ * synthesis must still keep apart.
  */
-const distinctReportsArbitrary = fc
-  .array(reportArbitrary, { minLength: 1, maxLength: 3 })
-  .map((reports) =>
-    reports.filter(
-      (report, index) =>
-        reports.findIndex((other) => reportOriginalId(other) === reportOriginalId(report)) === index
-    )
-  )
+const reportsArbitrary = fc.array(
+  fc
+    .tuple(reportArbitrary, fc.boolean())
+    .map(([report, masked]) =>
+      masked ? { ...report, labNo: MASKED_LAB_NO, dateOfService: MASKED_DATE_OF_SERVICE } : report
+    ),
+  { minLength: 1, maxLength: 3 }
+)
 
 describe('toFhirResources', () => {
   it('property: every row is one Observation the report lists, on the one Patient, and every id is unique', () => {
     fc.assert(
-      fc.property(distinctReportsArbitrary, (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const resources = synthesize(reports)
 
         const ids = resources.map((resource) => `${resource.resourceType}/${resource.id}`)
@@ -196,6 +197,24 @@ describe('toFhirResources', () => {
         expect(again).toEqual(first)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('keeps two reports printing the same lab number and date of service apart', () => {
+    const masked = { ...sample, labNo: MASKED_LAB_NO, dateOfService: MASKED_DATE_OF_SERVICE }
+
+    const resources = synthesize([masked, masked])
+
+    const reports = ofType(resources, 'DiagnosticReport')
+    expect(reports.map((report) => report.id)).toEqual([
+      reportOriginalId(masked, 0),
+      reportOriginalId(masked, 1),
+    ])
+    const observationIds = ofType(resources, 'Observation').map((observation) => observation.id)
+    expect(new Set(observationIds).size).toBe(observationIds.length)
+    // A document with no repeat keeps the plain key.
+    expect(ofType(synthesize([masked]), 'DiagnosticReport')[0]?.id).toBe(
+      reportOriginalId(masked, 0)
     )
   })
 
@@ -264,7 +283,7 @@ describe('toFhirResources', () => {
   it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer, resultsInterpreter', () => {
     const [report] = ofType(synthesize([sample]), 'DiagnosticReport')
 
-    expect(report?.id).toBe(reportOriginalId(sample))
+    expect(report?.id).toBe(reportOriginalId(sample, 0))
     expect(report?.status).toBe('final')
     expect(report?.identifier[0]).toMatchObject({
       system: new URL(LifeLabsIdentifierSystem.LabNumber),

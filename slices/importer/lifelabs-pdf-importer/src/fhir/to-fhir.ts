@@ -53,6 +53,11 @@ const decodeObservation = Schema.decodeUnknown(Observation.Schema)
  *   flattened groups are an order a writer can persist in, a reference never
  *   preceding its target; fails with a `ParseError` when a synthesized
  *   resource does not satisfy its `fhir-r4` schema
+ *
+ * @remarks
+ * Every report is its own `DiagnosticReport`, even when two print the same
+ * lab number and date of service: the later ones are keyed by their repeat
+ * count as well, so no two reports' resources share an id.
  */
 const toFhirResources = (
   reports: readonly Report.Type[],
@@ -62,6 +67,9 @@ const toFhirResources = (
     const { timeZone } = options
     const seenPatients = new Set<string>()
     const seenPractitioners = new Set<string>()
+    // How many reports so far print each lab-number-and-date key: the count
+    // tells a repeat of the key apart (see `reportOriginalId`).
+    const keyRepeats = new Map<string, number>()
     const groups: ReportResources[] = []
     for (const report of reports) {
       const resources: FhirResource[] = []
@@ -91,7 +99,10 @@ const toFhirResources = (
         resources.push(yield* decodePatient(patientWire(report)))
       }
 
-      const reportId = reportOriginalId(report)
+      const reportKey = reportOriginalId(report, 0)
+      const repeat = keyRepeats.get(reportKey) ?? 0
+      keyRepeats.set(reportKey, repeat + 1)
+      const reportId = repeat === 0 ? reportKey : reportOriginalId(report, repeat)
       const observations: Wire[] = []
       const observationIds: string[] = []
       let ordinal = 0
