@@ -15,6 +15,7 @@
 use std::sync::Arc;
 
 use tokio::sync::watch;
+use url::Url;
 
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
@@ -54,6 +55,12 @@ pub struct AuthorizationServerState {
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
     /// accepts. An `Arc<str>` so each capability built from the state shares it.
     pub(crate) server_origin: Arc<str>,
+    /// This server's device verification page, `https://<domain>/oauth/device`:
+    /// the RFC 8628 `verification_uri` `/oauth/device_authorization` hands
+    /// out, built once at [`crate::setup_authorization_server`]. An `Arc` so
+    /// each [`DeviceAuthorizer`](crate::domain::capabilities::oauth::DeviceAuthorizer)
+    /// built from the state shares it.
+    pub(crate) device_page: Arc<Url>,
     /// The Wildflower host app's `client_id`, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at
     /// [`crate::setup_authorization_server`] — the same id [`crate::seeding`] seeds the

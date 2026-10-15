@@ -265,6 +265,7 @@ pub fn setup_authorization_server(
         store: store.clone(),
         revocation_store: revocation_store.clone(),
         server_origin: server_origin.clone(),
+        device_page: Arc::new(http::device_page_url(&config.server_origin)),
         wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,

@@ -72,9 +72,11 @@ pub(crate) fn consent_page_location(request_id: &str) -> String {
 }
 
 /// The RFC 8628 `verification_uri` of the server at `server_origin`: the
-/// device verification page. Fails only when `server_origin` isn't a URL.
-pub(crate) fn device_page_url(server_origin: &str) -> Result<Url, url::ParseError> {
-    Url::parse(server_origin)?.join(&format!("{OAUTH_MOUNT}{DEVICE_PAGE_ROUTE}"))
+/// device verification page.
+pub(crate) fn device_page_url(server_origin: &Url) -> Url {
+    let mut device_page = server_origin.clone();
+    device_page.set_path(&format!("{OAUTH_MOUNT}{DEVICE_PAGE_ROUTE}"));
+    device_page
 }
 
 /// The RFC 8628 `verification_uri_complete` for `user_code`: `device_page`
@@ -286,7 +288,8 @@ mod tests {
 
     #[test]
     fn the_device_page_urls_are_on_the_server_origin_with_the_code_encoded() {
-        let device_page = device_page_url("https://ruth.relay.example:8443").expect("an origin");
+        let device_page =
+            device_page_url(&Url::parse("https://ruth.relay.example:8443").expect("an origin"));
         assert_eq!(
             device_page.as_str(),
             "https://ruth.relay.example:8443/oauth/device"

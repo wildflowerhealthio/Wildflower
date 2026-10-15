@@ -53,7 +53,11 @@ pub(crate) type LiveDeviceAuthorizer = DeviceAuthorizer<SqliteGrantStore>;
 impl FromState for LiveDeviceAuthorizer {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
         let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        DeviceAuthorizer::new(state.store.clone(), owner_approval)
+        DeviceAuthorizer::new(
+            state.store.clone(),
+            owner_approval,
+            state.device_page.clone(),
+        )
     }
 }
 
