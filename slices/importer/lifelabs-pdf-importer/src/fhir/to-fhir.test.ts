@@ -455,6 +455,27 @@ describe('toFhirResources', () => {
     expect(observation?.category[0]?.text).toBeNull()
   })
 
+  it('property: a report whose rows print a licence lists one performer per licence, none without', () => {
+    fc.assert(
+      fc.property(reportArbitrary, (report) => {
+        const printed = new Set(
+          report.sections.flatMap((section) =>
+            section.groups.flatMap((group) => group.rows.map((row) => row.labLicence))
+          )
+        )
+        printed.delete('')
+        fc.pre(printed.size > 0)
+
+        const [diagnosticReport] = ofType(synthesize([report]), 'DiagnosticReport')
+
+        expect(
+          diagnosticReport?.performer.map((performer) => performer.display?.split(' · ')[0])
+        ).toEqual([...printed].map((licence) => `Lab Lic. ${licence}`))
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
   it('lists the lab once as performer when rows above the first printed licence carry none', () => {
     const [report] = ofType(
       synthesize([

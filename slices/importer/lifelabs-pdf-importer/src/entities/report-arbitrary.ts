@@ -30,35 +30,75 @@ const printedDateTime = fc.constantFrom(
   ''
 )
 
+/** How one report's rows print their lab licence. */
+interface LicencePlan {
+  /** The licence each row draws. */
+  readonly licence: fc.Arbitrary<string>
+  /** How many of the report's first rows, in print order, print no licence. */
+  readonly unlicensedLeadingRows: fc.Arbitrary<number>
+}
+
 /**
- * A licence sequence for one report: none throughout, or a printed licence
- * that may switch between two labs but never back to none.
+ * A licence sequence for one report: none throughout; a printed licence that
+ * may switch between two labs but never back to none; or rows with no
+ * licence, then a licence from there on.
  */
-const licences: fc.Arbitrary<fc.Arbitrary<string>> = fc.constantFrom(
-  fc.constant(''),
-  fc.constant('#5687'),
-  fc.constantFrom('#5687', '#5407')
+const licencePlans: fc.Arbitrary<LicencePlan> = fc.constantFrom(
+  { licence: fc.constant(''), unlicensedLeadingRows: fc.constant(0) },
+  { licence: fc.constant('#5687'), unlicensedLeadingRows: fc.constant(0) },
+  { licence: fc.constantFrom('#5687', '#5407'), unlicensedLeadingRows: fc.constant(0) },
+  { licence: fc.constant('#5687'), unlicensedLeadingRows: fc.integer({ min: 1, max: 8 }) }
 )
+
+/** The sections with the licence cleared off their first `count` rows, in print order. */
+const withUnlicensedLeadingRows = (
+  sections: readonly Section.Type[],
+  count: number
+): readonly Section.Type[] => {
+  let remaining = count
+  return sections.map((section) => ({
+    ...section,
+    groups: section.groups.map((group) => ({
+      ...group,
+      rows: group.rows.map((row) => {
+        if (remaining === 0) return row
+        remaining -= 1
+        return { ...row, labLicence: '' }
+      }),
+    })),
+  }))
+}
 
 /** Consecutive sections must differ — a repeated heading reads as a page break. */
 const noConsecutiveDuplicates = (sections: readonly Section.Type[]): boolean =>
   sections.every((s, index) => index === 0 || sections[index - 1]?.name !== s.name)
 
-const arbitrary: fc.Arbitrary<Report.Type> = licences.chain((licence) =>
-  fc.record({
-    labNo: text(14),
-    referenceNumber: optionalText(14),
-    referringSiteId: optionalText(14),
-    patient: patientArbitrary,
-    orderedBy: optionalText(24),
-    copyTo: fc.array(text(24), { maxLength: 1 }),
-    dateOfService: printedDateTime,
-    reportedOn: printedDateTime,
-    lab: labArbitrary,
-    status: fc.constantFrom('FINAL RESULTS', ''),
-    pageNumbers: fc.constant([]),
-    sections: fc.array(sectionArbitrary(licence), { maxLength: 4 }).filter(noConsecutiveDuplicates),
-  })
+const arbitrary: fc.Arbitrary<Report.Type> = licencePlans.chain(
+  ({ licence, unlicensedLeadingRows }) =>
+    fc
+      .tuple(
+        fc.record({
+          labNo: text(14),
+          referenceNumber: optionalText(14),
+          referringSiteId: optionalText(14),
+          patient: patientArbitrary,
+          orderedBy: optionalText(24),
+          copyTo: fc.array(text(24), { maxLength: 1 }),
+          dateOfService: printedDateTime,
+          reportedOn: printedDateTime,
+          lab: labArbitrary,
+          status: fc.constantFrom('FINAL RESULTS', ''),
+          pageNumbers: fc.constant([]),
+          sections: fc
+            .array(sectionArbitrary(licence), { maxLength: 4 })
+            .filter(noConsecutiveDuplicates),
+        }),
+        unlicensedLeadingRows
+      )
+      .map(([report, count]) => ({
+        ...report,
+        sections: withUnlicensedLeadingRows(report.sections, count),
+      }))
 )
 
 export { arbitrary }
