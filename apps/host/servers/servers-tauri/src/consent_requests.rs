@@ -34,6 +34,9 @@ pub(crate) struct AppConsentRequestNotifier {
     /// The directory holding `servers.json` and each server's folder.
     pub(crate) data_root: PathBuf,
     pub(crate) server_units: ServerUnits,
+    /// `TauriUnitRunner`'s statuses, which a request not openable yet on the
+    /// desktop is opened again on as they change.
+    pub(crate) statuses_rx: watch::Receiver<UnitStatuses<ServerDetail>>,
 }
 
 impl ConsentRequestNotifier for AppConsentRequestNotifier {
@@ -69,8 +72,9 @@ pub(crate) async fn notify_consent_requests(
 /// Open `request` in the default browser, signed in as the Owner, as the
 /// server's page's Open does: a desktop can't click a notification
 /// (`tauri-plugin-notification` reports no taps there), so the request opens
-/// as it notifies. A server that can't open it now, as one not yet launchable,
-/// leaves it at the notification and the server's page; the open logs why.
+/// as it notifies. A server that can't open it now, as one not yet launchable
+/// at the app's start, opens it once it can, while it is still the server's
+/// newest request; each try logs its outcome.
 ///
 /// Desktop only: on a phone a tap on the notification opens the request.
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -81,6 +85,8 @@ fn open_on_desktop(notifier: &AppConsentRequestNotifier, request: &ConsentReques
         notifier.data_root.clone(),
         notifier.server_units.clone(),
         request.domain.clone(),
+        request.pending_consent.key.clone(),
+        notifier.statuses_rx.clone(),
     ));
 }
 

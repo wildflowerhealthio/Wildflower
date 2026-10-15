@@ -494,7 +494,9 @@ changing how servers run or what the host notifies about them.
   `consent-request:<domain>`, replacing the server's last. A desktop can't
   click a notification, so there the host also opens the request at once in
   the default browser, as the server's page's Open does; a server that can't
-  open it then leaves it at the notification and its page. A request already notified for, as when it
+  open it then, as one not launchable yet at the app's start, opens it on a
+  later status change once it can, while it is still the server's newest
+  request (`open_consent_once_openable`). A request already notified for, as when it
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run
   reports nothing pending, and keeps at most 32 meanwhile. The golden file

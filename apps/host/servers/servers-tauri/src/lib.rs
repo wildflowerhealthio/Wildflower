@@ -225,6 +225,7 @@ pub fn host_servers(
             registry: Arc::clone(&registry) as Arc<dyn ServerRegistry>,
             data_root: data_root.to_path_buf(),
             server_units: server_units.clone(),
+            statuses_rx: runner.subscribe(),
         },
         runner.subscribe(),
     ));
