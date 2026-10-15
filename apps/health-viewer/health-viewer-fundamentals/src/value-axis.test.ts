@@ -208,14 +208,26 @@ describe('ValueAxis.ticksFor', () => {
     )
   })
 
-  test('a requested count lands within one of the tick interval count', () => {
+  test('an axis niceDomain rounded is labelled at both its ends', () => {
     fc.assert(
-      fc.property(fc.integer({ min: 2, max: 10 }), (count) => {
-        const domain = ValueAxis.niceDomain(0, 100, count)
-        expect(ValueAxis.ticksFor(domain, count).length).toBeGreaterThanOrEqual(2)
-      }),
+      fc.property(
+        finite,
+        fc.double({ min: 1e-3, max: 1e6, noNaN: true }),
+        fc.integer({ min: 2, max: 10 }),
+        (low, width, count) => {
+          const domain = ValueAxis.niceDomain(low, low + width, count)
+          const ticks = ValueAxis.ticksFor(domain, count)
+          expect(ticks[0]).toBe(domain[0] + 0)
+          expect(ticks.at(-1)).toBe(domain[1] + 0)
+          expect(ticks.length - 1).toBeLessThanOrEqual(2 * count)
+        }
+      ),
       { numRuns: RUNS }
     )
+  })
+
+  test('a step too coarse for the bounds gives way to a finer one that meets them', () => {
+    expect(ValueAxis.ticksFor([-40, 80])).toEqual([-40, -20, 0, 20, 40, 60, 80])
   })
 
   test('round numbers come out round', () => {

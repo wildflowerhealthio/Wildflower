@@ -97,26 +97,75 @@ const MAX_TICKS = 64
 /** Default number of tick intervals an axis is rounded and labelled to. */
 const DEFAULT_TICK_COUNT = 5
 
+/** How far off a whole number, relative to its size, a quotient may land and still count as one. */
+const WHOLE_TOLERANCE = 1e-14
+
+/**
+ * `value / step`, snapped to the whole number it lies within float rounding
+ * of, so a bound computed as a multiple of `step` reads back as one.
+ */
+const stepsIn = (value: number, step: number): number => {
+  const quotient = value / step
+  const whole = Math.round(quotient)
+  return Math.abs(quotient - whole) <= Math.max(1, Math.abs(quotient)) * WHOLE_TOLERANCE
+    ? whole
+    : quotient
+}
+
+/**
+ * The tick step for `[low, high]`: the nice step for `count` intervals, or the
+ * largest finer nice step both bounds are multiples of, so the axis is
+ * labelled at its ends.
+ *
+ * @remarks
+ * {@link niceDomain} rounds to a step taken from the padded extent, and the
+ * rounding widens the domain past it, so the step this domain's own width
+ * suggests can be one nice step coarser and miss both bounds (`[-40, 80]`
+ * labelled only `0` and `50`). Finer steps are tried while they keep at most
+ * twice `count` intervals; a domain no such step divides keeps the coarse one.
+ */
+const stepFor = (low: number, high: number, count: number): number => {
+  const coarse = niceStep((high - low) / count)
+  const exponent = Math.floor(Math.log10(coarse))
+  const aligned = [exponent, exponent - 1]
+    .flatMap((power) => [5, 2, 1].map((multiplier) => multiplier * 10 ** power))
+    .find(
+      (step) =>
+        step <= coarse &&
+        (high - low) / step <= 2 * count &&
+        Number.isInteger(stepsIn(low, step)) &&
+        Number.isInteger(stepsIn(high, step))
+    )
+  return aligned ?? coarse
+}
+
 /**
  * The round values to label `domain` with.
  *
- * @returns Ascending ticks inside `domain`, always at least its two bounds
+ * @returns Ascending ticks inside `domain`: at least two, and both bounds
+ *   whenever they are round values themselves (as {@link niceDomain} makes
+ *   them); a collapsed domain's one value
  */
 const ticksFor = (domain: Domain, count: number = DEFAULT_TICK_COUNT): readonly number[] => {
   const [low, high] = domain
   if (!(high > low)) return [low]
-  const step = niceStep((high - low) / count)
+  const step = stepFor(low, high, count)
   // Indexed off the step rather than accumulated, so a fractional step (`0.1`)
-  // cannot drift a later tick off its round value.
-  const first = Math.ceil(low / step)
-  const last = Math.floor(high / step)
-  if (!Number.isFinite(first) || !Number.isFinite(last) || last - first > MAX_TICKS) {
+  // cannot drift a later tick off its round value. A bound that is a multiple
+  // of the step is its own tick, exactly.
+  const lowSteps = stepsIn(low, step)
+  const highSteps = stepsIn(high, step)
+  const first = Math.ceil(lowSteps)
+  const last = Math.floor(highSteps)
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last - first >= MAX_TICKS) {
     return [low, high]
   }
   const ticks: number[] = []
   // `+ 0` turns the `-0` a zero tick gets from a negative `first` (`-0 * step`)
   // into `0`, so no formatter downstream prints a signed zero.
   for (let index = first; index <= last; index += 1) ticks.push(index * step + 0)
+  if (first === lowSteps) ticks[0] = low + 0
+  if (last === highSteps) ticks[ticks.length - 1] = high + 0
   return ticks.length >= 2 ? ticks : [low, high]
 }
 
