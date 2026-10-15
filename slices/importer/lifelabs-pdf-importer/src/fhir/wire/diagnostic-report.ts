@@ -55,7 +55,13 @@ const diagnosticReportWire = (
       section.groups.flatMap((group) => group.rows.map((row) => row.labLicence))
     )
   )
-  const performer = [...licences].flatMap((licence) => performerWire(report, licence))
+  // Rows above the first printed licence carry none; their address-only
+  // performer is the same lab the licensed entries already name, so it is
+  // listed only when no row prints a licence at all.
+  const printed = [...licences].filter((licence) => licence !== '')
+  const performer = (printed.length > 0 ? printed : ['']).flatMap((licence) =>
+    performerWire(report, licence)
+  )
   if (performer.length > 0) wire['performer'] = performer
   const sectionComments = report.sections.flatMap((section) => section.comments)
   if (sectionComments.length > 0) wire['conclusion'] = sectionComments.join('\n')

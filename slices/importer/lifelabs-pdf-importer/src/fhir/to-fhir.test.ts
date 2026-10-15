@@ -436,6 +436,28 @@ describe('toFhirResources', () => {
     expect(observation?.category[0]?.text).toBeNull()
   })
 
+  it('lists the lab once as performer when rows above the first printed licence carry none', () => {
+    const [report] = ofType(
+      synthesize([
+        {
+          ...sample,
+          sections: [
+            {
+              name: 'Hematology',
+              comments: [],
+              groups: [{ name: '', rows: [{ ...hemoglobinRow, labLicence: '' }, hemoglobinRow] }],
+            },
+          ],
+        },
+      ]),
+      'DiagnosticReport'
+    )
+
+    expect(report?.performer.map((p) => p.display)).toEqual([
+      'Lab Lic. #5687 · 100 International Blvd., Toronto, Ontario, Canada M9W 6J6',
+    ])
+  })
+
   it('reads a reference range printed with thousands separators to its bounds', () => {
     const [observation] = ofType(
       synthesize([
