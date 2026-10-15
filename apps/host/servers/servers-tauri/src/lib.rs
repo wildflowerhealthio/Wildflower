@@ -66,10 +66,11 @@
 //!   once the same checks pass.
 //! - [`server_open_pending_consent`], invoked as
 //!   `invoke('server_open_pending_consent', { domain })`, opens the newest
-//!   consent waiting on the server at its page, `then=back`, through the same
-//!   sign-in, in the same in-app browser, once the same checks pass; on a
-//!   phone, not while a view the base opened still shows (see
-//!   [`wildflowerhealthio_servers::consent_sign_in_url`]).
+//!   consent waiting on the server at its page, `then=back` (see
+//!   [`wildflowerhealthio_servers::consent_sign_in_url`]), through the same
+//!   sign-in, in the same in-app browser, once the same checks pass, stacked
+//!   over the views showing rather than replacing them; on iOS the base
+//!   closes its view once the request is decided or expires.
 //!   [`server_open_notified_consent`], invoked as
 //!   `invoke('server_open_notified_consent', { notificationId })` for a
 //!   tapped notification, opens the consent of the server whose consent
