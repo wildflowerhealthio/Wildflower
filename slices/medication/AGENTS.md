@@ -50,7 +50,11 @@ catalog onto it.
 - `medication-calendar-core` — the pure calendar layer: the next-fill /
   exhaustion date math (`nextFillDate`, which reads a `SupplyDuration` from
   `slices/fhir/fhir-utility` — a supply duration is a FHIR concept, not a
-  calendar one), `deriveCalendarEvents` (pickup on the next-fill date with
+  calendar one — and returns an `Either` whose left is a
+  `NextFillDateFailure`: `fhir-utility`'s `UnusableSupplyDuration` cases
+  passed through, `AuthoredDateUnparseable` carrying the string, or
+  `NextFillDatePastRepresentableRange`; `medication-core`'s
+  `nextFillDateOf` reads any left as no date), `deriveCalendarEvents` (pickup on the next-fill date with
   repeats left; a renewal appointment one week before and a marker on the
   exhaustion day without; same-day events of one kind merge into a single
   fluently-titled event), and the Sunday-start 42-cell `monthGrid`. Pure
