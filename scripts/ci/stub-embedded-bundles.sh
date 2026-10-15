@@ -18,8 +18,9 @@
 #   authorization-server-web
 #            wildflowerhealthio-authorization-server embeds the authorization
 #            pages' build (apps/host/wildflower-server/authorization-server-web,
-#            `vp build`) with `include_dir!`. A bare consent.html stands in;
-#            the crate's own tests serve a build they define themselves.
+#            `vp build`) with `include_dir!`. A bare consent.html and
+#            device.html stand in; the crate's own tests serve a build they
+#            define themselves.
 #
 # The paths live here rather than inline in each workflow so ci-rust.yml and
 # rust-cache-warm.yml can't drift.
@@ -58,14 +59,19 @@ stub_relay_admin_web() {
 }
 
 stub_authorization_server_web() {
-  local out=apps/host/wildflower-server/authorization-server-web/dist/consent.html
-  mkdir -p "$(dirname "$out")"
-  {
-    echo '<!doctype html>'
-    echo '<!-- CI stub: the real page is the build of apps/host/wildflower-server/authorization-server-web. -->'
-    echo '<title>Approve access</title>'
-  } > "$out"
-  echo "stub-embedded-bundles: wrote $out"
+  local dist=apps/host/wildflower-server/authorization-server-web/dist
+  mkdir -p "$dist"
+  local page title out
+  for page in 'consent:Approve access' 'device:Authorize a device'; do
+    title="${page#*:}"
+    out="$dist/${page%%:*}.html"
+    {
+      echo '<!doctype html>'
+      echo '<!-- CI stub: the real page is the build of apps/host/wildflower-server/authorization-server-web. -->'
+      echo "<title>$title</title>"
+    } > "$out"
+    echo "stub-embedded-bundles: wrote $out"
+  done
 }
 
 case "$target" in

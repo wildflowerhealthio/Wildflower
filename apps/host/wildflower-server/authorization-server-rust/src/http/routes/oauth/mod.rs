@@ -20,6 +20,10 @@ use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
 
+/// Where [`page_router`] and [`openapi_router`] are mounted, so a URL built
+/// for one of their routes names the same prefix the router serves it under.
+pub(crate) const OAUTH_MOUNT: &str = "/oauth";
+
 /// The `/oauth/*` pages — the [`wait_page`] and its assets, the
 /// [`authorization_pages`] (the consent card) and theirs, and the Owner's
 /// [`sign_in`] — mounted under `/oauth` beside [`openapi_router`]. Kept out of

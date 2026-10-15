@@ -75,7 +75,7 @@ If the slice was at `/<slice>` before, the move is a **clean rename** — no red
 
 ## Variations
 
-- **Slice has externally-published URLs** (OAuth callbacks, redirect targets, RFC 8628 device flows): keep those routes at their original prefix; only the owner-facing landings move under `/settings/<slice>/`. Moving a published route would change the URL other parties already hold — for the device flow that URL is the `verification_uri`, which `authorization-server-rust`'s `domain/page_paths.rs` builds on the hosted launcher from the same route `authorization-core/page-paths.ts` names for the React router, so moving it would also touch Rust.
+- **Slice has externally-published URLs** (OAuth callbacks, redirect targets): keep those routes at their original prefix; only the owner-facing landings move under `/settings/<slice>/`. Moving a published route would change the URL other parties already hold.
 - **The screens live in another hosted app**: link out rather than mount. Access management is the Wildflower Authorization app (`apps/authorization/authorization-web`), so the launcher's settings screen has no access routes: its app-level Manage access row (`launcher-web`'s `session/manage-access-settings-item.ts`) is an `external` link to the `management_endpoint` the session's server advertises.
 - **Slice has multiple top-level items**: nothing forbids it. `<name>SettingsItemsFragment` is a `readonly SettingsItem[]`; declare as many entries as you need. Each should link into the slice's settings routes.
 - **Slice has no `*-react` package today**: the pattern is `-react`-scoped. Add a `-react` package first, then opt in.

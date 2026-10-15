@@ -7,6 +7,7 @@ import {
   Cause,
   DateTime,
   Effect,
+  Exit,
   Layer,
   Option,
   pipe,
@@ -20,7 +21,11 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
 import { EssentialClientDisableRefusal, useUpdateClientMutation } from './clients.ts'
-import { useDeviceConsentMutation } from './device-consent.ts'
+import {
+  ExpiredDeviceConsent,
+  foldExpiredDeviceConsent,
+  useDeviceConsentMutation,
+} from './device-consent.ts'
 import { useRevokeGrantMutation } from './grants.ts'
 import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
 
@@ -337,6 +342,31 @@ describe('foldExpiredConsent', () => {
     const transportFailure = Effect.fail(new Error('socket hang up'))
 
     await expect(Effect.runPromise(foldExpiredConsent(transportFailure))).rejects.toThrow(
+      'socket hang up'
+    )
+  })
+})
+
+describe('foldExpiredDeviceConsent', () => {
+  test('folds a DeviceConsentNotFound failure into ExpiredDeviceConsent with the way out', async () => {
+    // Arrange — the failure shape the server returns once the device request's
+    // TTL has passed, or it was decided elsewhere (both read as not-found).
+    const notFound = Effect.fail({ error: 'DeviceConsentNotFound', userCode: 'WDJB-MJHT' })
+
+    // Act
+    const exit = await Effect.runPromiseExit(foldExpiredDeviceConsent(notFound))
+
+    // Assert
+    expect(exit).toEqual(Exit.fail(new ExpiredDeviceConsent({ userCode: 'WDJB-MJHT' })))
+    expect(new ExpiredDeviceConsent({ userCode: 'WDJB-MJHT' }).message).toBe(
+      'This device request has expired or was already decided. Start pairing again on the device to get a new code.'
+    )
+  })
+
+  test('passes an unrelated failure through untouched', async () => {
+    const transportFailure = Effect.fail(new Error('socket hang up'))
+
+    await expect(Effect.runPromise(foldExpiredDeviceConsent(transportFailure))).rejects.toThrow(
       'socket hang up'
     )
   })

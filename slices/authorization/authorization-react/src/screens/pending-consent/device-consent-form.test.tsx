@@ -10,12 +10,12 @@ import type { DeviceConsent } from '../../queries/index.ts'
 import { DeviceConsentForm } from './device-consent-form.tsx'
 
 /**
- * `DeviceConsentForm` is the lifted, shared body of the public, in-settings, and
- * Tauri-modal consent surfaces; all the form's own logic lives here (the
- * expandable {@link ScopePicker} wiring, the device-name field, approve vs deny,
- * result handling). The scope-editing mechanics themselves are covered by
- * `scopes-react`'s `ScopePicker` tests, so this unit focuses on the form's
- * chrome, decision wiring, and the settings rename affordance.
+ * `DeviceConsentForm` is the `DeviceConsentCard` on the router's runner, so these
+ * tests cover the card's logic through it (the expandable {@link ScopePicker}
+ * wiring, the device-name field, approve vs deny, result handling). The
+ * scope-editing mechanics themselves are covered by `scopes-react`'s
+ * `ScopePicker` tests, so this unit focuses on the card's chrome and decision
+ * wiring.
  *
  * The form drives `useDeviceConsentMutation`, which reads `runAuthed` from router
  * context (`useRouteContext`) and runs through a real `useMutation`. Following the
@@ -36,27 +36,10 @@ vi.mock('@tanstack/react-router', () => ({
   }): unknown => select({ runAuthed: runAuthedStub }),
 }))
 
-/** The minimal FHIR Patient shape `usePatientOptions` reads. */
-type StubPatient = {
-  readonly id: string
-  readonly name: readonly { readonly given?: readonly string[]; readonly family?: string }[]
-}
-let patientResources: readonly StubPatient[] = []
-
-// The which-patient pill's data source — stubbed like oauth-consent-form.test.tsx,
-// defaulting to empty; per-test overrides via `patientResources`.
-vi.mock('@wildflowerhealthio/fhir-r4-react', () => ({
-  usePatientsQuery: (): { data: readonly StubPatient[]; isLoading: boolean } => ({
-    data: patientResources,
-    isLoading: false,
-  }),
-}))
-
 beforeEach(() => {
   runAuthedStub.mockReset()
   // Sensible default decision; each test overrides the first call.
   runAuthedStub.mockResolvedValue({ status: 'approved' })
-  patientResources = []
 })
 
 afterEach(() => {
@@ -79,11 +62,10 @@ describe('DeviceConsentForm', () => {
     expect(screen.queryByText('patient/Observation.rs')).toBeNull()
   })
 
-  test('withholds the whose-records selector and which-patient pill, even with patients', () => {
+  test('withholds the whose-records selector and which-patient pill', () => {
     // Device-auth is pinned to all-patients (the FHIR server's patient/ support is too weak
     // to offer a one-patient subject), so neither the selector nor the pill appears — even
-    // though the account has a pickable patient and the allowed set covers system/.
-    patientResources = [{ id: 'p-1', name: [{ given: ['Ada'], family: 'Lovelace' }] }]
+    // though the allowed set covers system/.
     renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), vi.fn())
 
     expect(screen.queryByRole('radio', { name: /Just one patient/ })).toBeNull()
@@ -114,7 +96,6 @@ describe('DeviceConsentForm', () => {
         )
       )
     )
-    patientResources = [{ id: 'p-1', name: [{ given: ['Ada'], family: 'Lovelace' }] }]
     const onDone = vi.fn()
     const { user } = renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), onDone)
 
@@ -180,6 +161,16 @@ describe('DeviceConsentForm', () => {
     // Assert — the real error is shown (not the denial copy), flow not done.
     expect((await screen.findByRole('alert')).textContent).toContain('Network unreachable')
     expect(onDone).not.toHaveBeenCalled()
+  })
+
+  test('says to approve only recognized devices above the decision', () => {
+    renderConsentForm(makeConsent(), vi.fn())
+
+    const footnote = screen.getByText('Only approve devices you recognize.')
+    expect(
+      footnote.compareDocumentPosition(screen.getByRole('button', { name: 'Decline' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 
   test('declines and finishes when the server records the denial', async () => {

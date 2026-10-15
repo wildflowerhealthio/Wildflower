@@ -3,11 +3,18 @@
 The **authorization pages**: the React pages the authorization server
 ([`authorization-server-rust`](../authorization-server-rust),
 `wildflowerhealthio-authorization-server`) embeds in its binary and serves on
-the server's own origin, so the address bar names the server being approved.
-Today that is the **consent card**, `consent.html`, served at
-`/oauth/authorize/{id}/consent`. The card itself is `authorization-react`'s
-`OAuthConsentCard`; this package composes it over the Owner browser's session.
-See "Consent card" in the
+the server's own origin, so the address bar names the server being approved:
+
+- the **consent card**, `consent.html`, served at
+  `/oauth/authorize/{id}/consent`. The card itself is `authorization-react`'s
+  `OAuthConsentCard`.
+- the **device page**, `device.html`, served at `/oauth/device`: the RFC 8628
+  `verification_uri`, and with `?user_code=` its `verification_uri_complete`.
+  The code box and the card are `authorization-react`'s `DeviceCodeEntryForm`
+  and `DeviceConsentCard`.
+
+This package composes them over the Owner browser's session. See "Consent
+card" and "Device page" in the
 [Jargon Explanation](../../../../slices/authorization/docs/Jargon%20Explanation.md).
 
 `apps/relay/relay-admin-web` is the template for the shape (a Vite build into
@@ -26,6 +33,23 @@ Security Policy (below).
   for the callback the decision's answer carries, only an http(s) one
   (`src/client-callback.ts`). A browser that can't read the consent (`401`,
   `403`, `404`) goes to the wait page.
+- `device.html` + `src/device/main.tsx` — the device page's entry: reads the
+  `user_code` from its query (`user-code-query.ts`) and mounts `DevicePage`
+  over the same runner.
+- `src/device/device-page.tsx` — on load reads `GET /authorization/session`:
+  with no session (`401`), or one whose scopes don't cover
+  `Devices.DEVICE_CONSENT_SCOPES` (authorization-core), it says to approve the
+  request on the device running the server and shows no code box. Otherwise
+  it fills the code box from `user_code` but reads no request until the Owner
+  presses Continue (RFC 8628 §5.4), then reads
+  `GET /authorization/devices/{userCode}` and shows the card, which posts
+  `/approve` or `/deny`. A `404` keeps the code box with an error; a `401` or
+  `403` on the read or the decision (the session ended or changed since load)
+  says to approve on the server too. The request stays pending in both cases.
+  A request that expires before the decision shows `ExpiredDeviceConsent`'s
+  copy in place of the card, then "Enter a new code", which goes back to an
+  empty code box and drops `user_code` from the address bar so a reload
+  doesn't refill it.
 - `src/owner-browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.
   The browser's `__Host-owner_browser_session` cookie rides every same-origin
@@ -59,8 +83,8 @@ Security Policy (below).
   first, or `scripts/ci/stub-embedded-bundles.sh authorization-server-web` for
   a placeholder. The crate's `build.rs` rebuilds it when `dist/` changes.
 - **The APIs are same-origin only.** `vp dev` serves the page with no server
-  behind it; the page's behaviour is covered by `consent-page.test.tsx` against
-  a stub server.
+  behind it; the pages' behaviour is covered by `consent-page.test.tsx` and
+  `device-page.test.tsx` against a stub server.
 
 ## References
 

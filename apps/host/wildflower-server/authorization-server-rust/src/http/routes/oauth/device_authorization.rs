@@ -4,14 +4,16 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::authorization_pages::{device_page_url, device_page_url_with_code};
 use super::device_name_hint::device_name_from_user_agent;
 use super::internal::TokenError;
 use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::domain::capabilities::oauth::DeviceAuthorizationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::http::extractors::{LauncherPages, Live};
+use crate::http::extractors::Live;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
+use crate::http::ServedOrigin;
 use crate::live_bindings::LiveDeviceAuthorizer;
 
 /// Body of an RFC 8628 device authorization request. Client credentials are
@@ -31,7 +33,11 @@ pub struct DeviceAuthorizationPayload {
 pub struct DeviceAuthorizationResponse {
     pub device_code: String,
     pub user_code: String,
+    /// This server's device verification page, `{origin}/oauth/device`.
     pub verification_uri: String,
+    /// The device verification page with the code filled in,
+    /// `{origin}/oauth/device?user_code={user_code}`. The Owner still confirms
+    /// the code before the page reads the request.
     pub verification_uri_complete: String,
     pub expires_in: i64,
     pub interval: i64,
@@ -61,7 +67,7 @@ impl IntoResponse for DeviceAuthorizationResponse {
 )]
 pub(super) async fn handle_device_authorization_request(
     authorizer: Live<LiveDeviceAuthorizer>,
-    pages: LauncherPages,
+    served_origin: ServedOrigin,
     headers: HeaderMap,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Response {
@@ -70,15 +76,15 @@ pub(super) async fn handle_device_authorization_request(
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok());
-    device_authorization(&authorizer, &pages, user_agent, request).into_response()
+    device_authorization(&authorizer, &served_origin, user_agent, request).into_response()
 }
 
 /// Parse the request, hand it to the [`LiveDeviceAuthorizer`], and frame the
-/// RFC 8628 §3.2 response with the hosted launcher's verification pages, surfacing every
-/// failure as a [`TokenError`].
+/// RFC 8628 §3.2 response with this server's device verification page on
+/// `served_origin`, surfacing every failure as a [`TokenError`].
 fn device_authorization(
     authorizer: &LiveDeviceAuthorizer,
-    pages: &LauncherPages,
+    served_origin: &str,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
@@ -105,6 +111,8 @@ fn device_authorization(
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .or_else(|| user_agent.and_then(device_name_from_user_agent));
+    let device_page = device_page_url(served_origin)
+        .map_err(|error| TokenError::internal("device page url", error))?;
     let device_codes = authorizer
         .start(&authenticated_client, requested_scopes, device_name)
         .map_err(|error| match error {
@@ -120,8 +128,9 @@ fn device_authorization(
         })?;
     Ok(DeviceAuthorizationResponse {
         device_code: device_codes.device_code,
-        verification_uri: pages.device_entry_url(),
-        verification_uri_complete: pages.device_entry_url_with_code(&device_codes.user_code),
+        verification_uri_complete: device_page_url_with_code(&device_page, &device_codes.user_code)
+            .into(),
+        verification_uri: device_page.into(),
         user_code: device_codes.user_code,
         expires_in: device_codes.expires_in,
         interval: device_codes.interval,

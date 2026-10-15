@@ -71,8 +71,7 @@ pub struct AuthorizationServerState {
     /// shared rather than reallocated when the state is cloned before the `Arc`
     /// wrap.
     pub(crate) wildflower_host_app_client_id: Arc<str>,
-    /// The hosted launcher [`page_paths`](crate::domain::page_paths) resolves the
-    /// browser-facing pages on, pinned from
+    /// The hosted launcher logout lands the browser on, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
     pub(crate) launcher_base: LauncherBase,
     /// Watch sender publishing the [`PendingConsentHead`] the host webview

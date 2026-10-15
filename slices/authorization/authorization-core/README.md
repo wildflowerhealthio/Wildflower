@@ -89,9 +89,15 @@ and 90 days respectively). See the
   authorization server embeds; its hashed assets are at `/oauth/assets/*`.
   See "Consent card" in the
   [Jargon Explanation](../docs/Jargon%20Explanation.md).
+- `/oauth/device` — the **device page**, the RFC 8628 verification page,
+  where an Owner browser confirms a device's code and decides the request
+  through `/authorization/devices/:userCode`. From the same bundle as the
+  consent card. See "Device page" in the
+  [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
-  `device_code` + `user_code` + verification URIs (under `/authorization/devices`
-  on the hosted launcher, carrying `?server=`).
+  `device_code` + `user_code` + verification URIs on the server's own origin
+  (`/oauth/device`, and `/oauth/device?user_code=` for
+  `verification_uri_complete`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.

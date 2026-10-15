@@ -3,10 +3,11 @@
 //! The launcher (`apps/launcher/launcher-web`'s `main-web` build) is published at a
 //! fixed address — `https://wildflowerhealth.io/launcher/` — and runs **cross-origin**
 //! to whichever Wildflower server its `?server=` query parameter names. Apart
-//! from the authorization server's `/authorize` wait page, a server serves no UI of its
-//! own, so every other browser-facing page it hands out (the device-flow
-//! `verification_uri`, logout's landing, the link on an unmatched route's `404`)
-//! is a URL on that hosted UI carrying `server=<the request's served origin>`.
+//! from the authorization server's own pages (the wait page, the consent card,
+//! the device page), a server serves no UI of its own, so every other
+//! browser-facing page it hands out (logout's landing, the link on an
+//! unmatched route's `404`) is a URL on that hosted UI carrying
+//! `server=<the request's served origin>`.
 //!
 //! [`LauncherBase`] is the one place those URLs are spelled. The host decides the
 //! base (from `tauri-shared-config.json`, switching to the local `main-web` dev
