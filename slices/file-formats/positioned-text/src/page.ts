@@ -3,12 +3,13 @@ import { Schema } from 'effect'
 import * as Run from './run.ts'
 
 /**
- * One page of extracted positioned text.
+ * One page of extracted positioned text, with a whole `pageNumber` and a
+ * finite `width` and `height` in the same units as its runs.
  */
 const PageSchema = Schema.Struct({
-  pageNumber: Schema.Number,
-  width: Schema.Number,
-  height: Schema.Number,
+  pageNumber: Schema.Int,
+  width: Schema.Finite,
+  height: Schema.Finite,
   runs: Schema.Array(Run.Schema),
 })
 
