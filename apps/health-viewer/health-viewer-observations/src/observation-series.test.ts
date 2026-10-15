@@ -303,6 +303,32 @@ describe('observationsToSeries', () => {
       })
     })
 
+    test("without text, a series is labelled by its keyed coding's display, not an earlier one", () => {
+      const withDisplay = (
+        system: string,
+        code: string,
+        display: string
+      ): (typeof CodeableConcept.Schema.Type)['coding'] =>
+        concept(system, code, null).coding.map((coding) => ({ ...coding, display }))
+      const { series } = observationsToSeries([
+        {
+          ...shell,
+          code: {
+            id: null,
+            extension: [],
+            coding: [
+              ...withDisplay('http://example.test/local', 'PANEL', 'Chemistry panel'),
+              ...withDisplay(LOINC_SYSTEM, '2339-0', 'Glucose [Mass/volume] in Blood'),
+            ],
+            text: null,
+          },
+          effectiveDateTime: at('2024-01-01T00:00:00Z'),
+          valueQuantity: quantity(5.4, 'mmol/L', null),
+        },
+      ])
+      expect(series[0].label).toBe('Glucose [Mass/volume] in Blood')
+    })
+
     test('a concept with no coding keys off its text, with a null system', () => {
       const { series } = observationsToSeries([
         {
@@ -469,6 +495,20 @@ describe('observationsToSeries', () => {
         },
       ])
       expect(series[0].category).toBe('vital-signs')
+    })
+    test("an HL7 observation-category coding wins over a server's own leading category", () => {
+      const { series } = observationsToSeries([
+        {
+          ...shell,
+          category: [
+            concept('urn:oid:1.2.840.114350.1.13.0.1.7.10.798268.30', 'Lab', 'Lab'),
+            concept(Observation.CATEGORY_SYSTEM, 'laboratory', null),
+          ],
+          effectiveDateTime: at('2024-01-01T00:00:00Z'),
+          valueQuantity: quantity(5.4, 'mmol/L', null),
+        },
+      ])
+      expect(series[0].category).toBe('laboratory')
     })
   })
 
