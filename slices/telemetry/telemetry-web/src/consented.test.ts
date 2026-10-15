@@ -320,6 +320,28 @@ describe('server host redaction', () => {
     expect(sentTransaction?.transaction).toBe('connect {host}')
   })
 
+  test('replaces a server host learnt after an event was sent', async () => {
+    const { initConsentedTelemetry, redactServerHost } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+    redactServerHost('ruth.example')
+    const options = sentryInitOptions()
+    const naming = {
+      type: undefined,
+      exception: { values: [{ type: 'Error', value: 'ruth.example and other.example' }] },
+    }
+
+    const before = await options.beforeSend?.(naming, {})
+    redactServerHost('other.example')
+    const after = await options.beforeSend?.(naming, {})
+
+    expect(before?.exception?.values?.[0]?.value).toBe('{host} and other.example')
+    expect(after?.exception?.values?.[0]?.value).toBe('{host} and {host}')
+  })
+
   test('replaces the page’s own host in a stack frame', async () => {
     vi.stubGlobal('location', { host: 'my-server.example' })
     try {

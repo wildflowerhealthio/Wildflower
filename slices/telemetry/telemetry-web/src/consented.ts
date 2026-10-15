@@ -1,7 +1,9 @@
 import {
   anonymizeHost,
+  type HostRedactor,
   isTelemetryEnabled,
   makeEffectTracerLayer,
+  makeHostRedactor,
   scrubEvent,
   type TelemetryConfig,
   type TelemetryConsent,
@@ -93,6 +95,19 @@ const hostsToRedact = (): readonly string[] =>
   typeof location === 'undefined' ? [...serverHosts] : [...serverHosts, location.host]
 
 /**
+ * The redactor for {@link hostsToRedact}, built on first use and rebuilt only
+ * when {@link redactServerHost} learns a new host, rather than for every
+ * event.
+ */
+let hostRedactor: HostRedactor | undefined
+
+/** {@link hostRedactor}, built if no event has needed it since the hosts last changed. */
+const currentHostRedactor = (): HostRedactor => {
+  hostRedactor ??= makeHostRedactor(hostsToRedact())
+  return hostRedactor
+}
+
+/**
  * The Effect tracer layer for the tracer provider a consent registered, or
  * `undefined` while no answer has registered one. {@link consentedTelemetryLayer}
  * provides it.
@@ -117,9 +132,11 @@ const sentryOptionsFor = (initialConsent: TelemetryConsent): InitSentryWebOption
   dataCollection: PERSONAL_DATA_OFF,
   integrations: initialConsent.performance ? [Sentry.browserTracingIntegration()] : [],
   beforeSend: (errorEvent) =>
-    latestConsent?.crashReports === true ? scrubEvent(errorEvent, hostsToRedact()) : null,
+    latestConsent?.crashReports === true ? scrubEvent(errorEvent, currentHostRedactor()) : null,
   beforeSendTransaction: (transactionEvent) =>
-    latestConsent?.performance === true ? scrubEvent(transactionEvent, hostsToRedact()) : null,
+    latestConsent?.performance === true
+      ? scrubEvent(transactionEvent, currentHostRedactor())
+      : null,
 })
 
 /**
@@ -185,17 +202,22 @@ const consentedTelemetryLayer: Layer.Layer<never> = Layer.suspend(() =>
  * stack frames' script URLs, messages, exception messages, breadcrumbs, span
  * descriptions, the transaction name, tags, `extra` and contexts.
  *
- * @param host - A server's host, with or without a port, or its `http(s)`
- *   origin; matched case-insensitively, with any port and any subdomains
+ * @param host - A server's host, with or without a port, or an `http(s)` URL
+ *   on it (its origin, a FHIR base URL); matched case-insensitively, with any
+ *   port and any subdomains. A value that names no host, such as a path, is
+ *   ignored
  *
  * @remarks
  * For the hosts an app learns at run time: `setFhirServerHost` redacts the
- * FHIR server's, and the Tauri host's base each server's domain. Every
+ * FHIR server's, the launcher each server it signs in to or is pointed at,
+ * and the Tauri host's base each server's domain. Every
  * `*.relay.wildflowerhealth.io` host and the page's own are redacted without
  * it. A kept host (`localhost`, `wildflowerhealth.io`, …) stays as written.
  */
 const redactServerHost = (host: string): void => {
+  if (serverHosts.has(host)) return
   serverHosts.add(host)
+  hostRedactor = undefined
 }
 
 /** The {@link FHIR_SERVER_HOST_TAG} value for `fhirServerHost` (see {@link setFhirServerHost}). */

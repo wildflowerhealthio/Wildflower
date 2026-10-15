@@ -1,4 +1,5 @@
-import { anonymizeHost, HOST_PLACEHOLDER } from './anonymize-url.ts'
+import { RegExp as EffectRegExp } from 'effect'
+import { HOST_PLACEHOLDER, redactableHostname } from './anonymize-url.ts'
 
 /**
  * Replaces the hosts that name a user's server wherever they stand in text:
@@ -40,36 +41,42 @@ const LABEL_END = '(?![a-z0-9-])'
 /** An optional port, replaced along with the host. */
 const OPTIONAL_PORT = '(?::\\d+)?'
 
+/** A port, which marks a single-label host standing on its own as one. */
+const PORT = ':\\d+'
+
+/**
+ * Preceded by what starts a URL's authority: `//`, JSON-escaped (`\\/\\/`) or
+ * percent-encoded any number of times (`%2F%2F`, `%252F%252F`), or by the
+ * `@` that ends its credentials, encoded or not.
+ */
+const AFTER_AUTHORITY_START = '(?<=//|\\\\/\\\\/|%(?:25)*2f%(?:25)*2f|@|%(?:25)*40)'
+
 /**
  * Every subdomain of the relay, at any depth: a relay tunnel is named after
  * the server it carries. The relay's own host is not one.
  */
 const RELAY_TUNNEL_HOSTS = `${SUBDOMAIN_LABELS}+relay\\.wildflowerhealth\\.io`
 
-/** `text` with every character a regular expression reads as syntax escaped. */
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 /**
- * The hostname of `host` (a host with an optional port, or an `http(s)`
- * origin) as the URL parser reads it, lower-cased and without a trailing dot
- * (`ruth.example.` names `ruth.example`); `undefined` for input it
- * rejects and for a kept host (`localhost`, `tauri.localhost`,
- * `wildflowerhealth.io`), which telemetry reports as written.
+ * Whether `hostname` is a single label (`fhir`, a docker-compose service
+ * name), which is an ordinary word too.
  */
-const redactableHostname = (host: string): string | undefined => {
-  if (!anonymizeHost(host).endsWith(HOST_PLACEHOLDER)) return undefined
-  const origin = URL.parse(/^https?:/i.test(host) ? host : `http://${host}`)
-  const hostname = origin?.hostname.replace(/\.$/, '')
-  return hostname === '' ? undefined : hostname
-}
+const isSingleLabel = (hostname: string): boolean => /^[a-z0-9-]+$/.test(hostname)
+
+/** A regular expression alternation of `hostnames`, each escaped. */
+const alternationOf = (hostnames: readonly string[]): string =>
+  `(?:${hostnames.map(EffectRegExp.escape).join('|')})`
+
+/** Replaces the server hosts in a text with `{host}` (see {@link makeHostRedactor}). */
+type HostRedactor = (text: string) => string
 
 /**
  * A function that replaces every relay tunnel host, and every one of
  * `hostsToRedact`, in a text with {@link HOST_PLACEHOLDER}.
  *
- * @param hostsToRedact - Hosts (with or without a port) or `http(s)` origins
- *   the app is known to use; kept hosts and input the URL parser rejects are
- *   ignored
+ * @param hostsToRedact - Hosts (with or without a port) or `http(s)` URLs
+ *   the app is known to use; kept hosts and input that names no host (a path
+ *   such as `/fhir`) are ignored
  *
  * @remarks
  * Hosts are matched case-insensitively, on label boundaries, with any
@@ -78,21 +85,37 @@ const redactableHostname = (host: string): string | undefined => {
  * `https://API.Ruth.Example:8443/x` becomes `https://{host}/x`, while
  * `xruth.example` stays. Longer hosts are tried first.
  *
+ * A single-label host (`fhir`) is an ordinary word too, so it is replaced only
+ * where it reads as a host: at the start of a URL's authority
+ * (`http://fhir:8080/x`, `user@fhir`) or with a port (`fhir:8080`). The word
+ * alone (`FHIR R4`) and identifiers built on it (`fhir_server_host`) stay.
+ *
  * Idempotent: a redacted text redacts to itself.
  */
-const makeHostRedactor = (hostsToRedact: Iterable<string>): ((text: string) => string) => {
+const makeHostRedactor = (hostsToRedact: Iterable<string>): HostRedactor => {
   const knownHostnames = [
     ...new Set([...hostsToRedact].flatMap((host) => redactableHostname(host) ?? [])),
   ].toSorted((left, right) => right.length - left.length)
-  const knownHosts =
-    knownHostnames.length === 0
+  const multiLabelHostnames = knownHostnames.filter((hostname) => !isSingleLabel(hostname))
+  const singleLabelHostnames = knownHostnames.filter(isSingleLabel)
+  const multiLabelHosts = [
+    RELAY_TUNNEL_HOSTS,
+    ...(multiLabelHostnames.length === 0
       ? []
-      : [`${SUBDOMAIN_LABELS}*(?:${knownHostnames.map(escapeRegExp).join('|')})`]
-  const hosts = new RegExp(
-    `${LABEL_START}(?:${[RELAY_TUNNEL_HOSTS, ...knownHosts].join('|')})${OPTIONAL_PORT}${LABEL_END}`,
-    'gi'
-  )
+      : [`${SUBDOMAIN_LABELS}*${alternationOf(multiLabelHostnames)}`]),
+  ]
+  const hostMatches = [
+    `${LABEL_START}(?:${multiLabelHosts.join('|')})${OPTIONAL_PORT}`,
+    ...(singleLabelHostnames.length === 0
+      ? []
+      : [
+          `${AFTER_AUTHORITY_START}${alternationOf(singleLabelHostnames)}${OPTIONAL_PORT}`,
+          `${LABEL_START}${alternationOf(singleLabelHostnames)}${PORT}`,
+        ]),
+  ]
+  const hosts = new RegExp(`(?:${hostMatches.join('|')})${LABEL_END}`, 'gi')
   return (text) => text.replace(hosts, HOST_PLACEHOLDER)
 }
 
+export type { HostRedactor }
 export { makeHostRedactor }

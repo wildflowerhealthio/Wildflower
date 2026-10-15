@@ -13,6 +13,7 @@ import {
 } from '@wildflowerhealthio/authorization-react'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { AuthedUntil, AuthStateProvider } from '@wildflowerhealthio/react-kitchen-sink'
+import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import * as fc from 'fast-check'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -27,6 +28,16 @@ import {
 } from '../sign-in.ts'
 import { SIGNED_IN_SERVER_KEY } from '../web-entry.ts'
 import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
+
+// Which server hosts the landing redacts from telemetry; the rest of the
+// module stays real.
+const { redactServerHostMock } = vi.hoisted(() => ({
+  redactServerHostMock: vi.fn<typeof TelemetryWeb.redactServerHost>(),
+}))
+vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
+  ...(await importOriginal<typeof TelemetryWeb>()),
+  redactServerHost: redactServerHostMock,
+}))
 
 /**
  * The landing page is the whole entry point for `main-web` — the only screen an
@@ -43,6 +54,7 @@ describe('Landing', () => {
     cleanup()
     window.sessionStorage.clear()
     vi.unstubAllGlobals()
+    redactServerHostMock.mockClear()
   })
 
   test('offers the server picker but no sign-in until a server is chosen', async () => {
@@ -77,6 +89,20 @@ describe('Landing', () => {
       expect(signIn.left).toEqual(['http://127.0.0.1:8080/oauth/authorize?x=1'])
     })
     expect(signIn.started).toEqual(['http://127.0.0.1:8080'])
+  })
+
+  test('redacts the server it signs in to from telemetry before starting', async () => {
+    // Arrange — a custom-domain server, which no fixed rule redacts.
+    const signIn = recordingSignIn(pendingStart)
+
+    // Act
+    await mountLanding('/?server=https%3A%2F%2Fruth.example', { signIn: signIn.stub })
+
+    // Assert
+    await waitFor(() => {
+      expect(signIn.started).toEqual(['https://ruth.example'])
+    })
+    expect(redactServerHostMock).toHaveBeenCalledWith('https://ruth.example')
   })
 
   test('signs in straight away to the server this tab last signed in to', async () => {

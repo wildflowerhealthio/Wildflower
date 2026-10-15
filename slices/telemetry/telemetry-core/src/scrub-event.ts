@@ -1,5 +1,5 @@
 import { anonymizeHost, anonymizeUrl, anonymizeUrlsInText } from './anonymize-url.ts'
-import { makeHostRedactor } from './redact-hosts.ts'
+import { type HostRedactor, makeHostRedactor } from './redact-hosts.ts'
 
 /**
  * Runs every URL a telemetry event carries through {@link anonymizeUrl}, and
@@ -22,8 +22,7 @@ type UrlBearingRecord = Readonly<Record<string, unknown>>
  * breadcrumbs, and Effect's HTTP client spans, put the request URL; `url.path`
  * is its path on browser page-load and Effect HTTP client spans; `from` and
  * `to` are a navigation breadcrumb's pages; `referer` is the request header
- * Sentry reports with an event; `code.filepath` is the script a long
- * animation frame span blames. The `.url` suffix covers the rest of the SDK's
+ * Sentry reports with an event. The `.url` suffix covers the rest of the SDK's
  * URL attributes, such as the page-load span's `lcp.url`.
  */
 const URL_KEYS: ReadonlySet<string> = new Set([
@@ -33,7 +32,6 @@ const URL_KEYS: ReadonlySet<string> = new Set([
   'from',
   'to',
   'referer',
-  'code.filepath',
 ])
 
 /**
@@ -54,12 +52,12 @@ const HOST_KEYS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Keys whose string value is free text that can carry a URL, compared
- * case-insensitively: `browser.script.invoker` is the script URL on a long
- * animation frame span blaming a script, and a name such as
- * `IMG#avatar.onload` otherwise.
+ * Keys whose string value names a script, compared case-insensitively:
+ * `code.filepath` is the script a long animation frame span blames, and
+ * `browser.script.invoker` is its URL too when the span blames a script,
+ * and a name such as `IMG#avatar.onload` otherwise.
  */
-const URL_IN_TEXT_KEYS: ReadonlySet<string> = new Set(['browser.script.invoker'])
+const SCRIPT_KEYS: ReadonlySet<string> = new Set(['code.filepath', 'browser.script.invoker'])
 
 /** Keys that carry a URL's query string or fragment on their own; dropped outright. */
 const DROPPED_KEYS: ReadonlySet<string> = new Set([
@@ -147,14 +145,11 @@ interface ScrubbableEvent {
   readonly extra?: Readonly<Record<string, unknown>>
 }
 
-/** Replaces the server hosts in a text with `{host}` (see {@link makeHostRedactor}). */
-type HostRedactor = (text: string) => string
-
 /** Whether the value under `lowerCaseKey` is a host. */
 const isHostKey = (lowerCaseKey: string): boolean => HOST_KEYS.has(lowerCaseKey)
 
-/** Whether the value under `lowerCaseKey` is free text that can carry a URL. */
-const isUrlInTextKey = (lowerCaseKey: string): boolean => URL_IN_TEXT_KEYS.has(lowerCaseKey)
+/** Whether the value under `lowerCaseKey` names a script. */
+const isScriptKey = (lowerCaseKey: string): boolean => SCRIPT_KEYS.has(lowerCaseKey)
 
 /**
  * `value` with `redactHosts` applied to every string in it, at any depth of
@@ -206,7 +201,24 @@ const scrubText = (text: string, redactHosts: HostRedactor): string =>
   redactHosts(anonymizeUrlsInText(text))
 
 /**
- * `record` with the value under every URL, host or URL-in-text key anonymized,
+ * `script` (a script's URL, or the name of what ran it) reported as a stack
+ * frame reports its script: an `http(s)` URL keeps its path and file name, so
+ * the span still says which bundle is slow, and loses its query string,
+ * fragment and credentials, and the server hosts in it are replaced. A URL of
+ * any other scheme (`blob:`, `data:`) is anonymized (see
+ * {@link anonymizeUrl}); a name that is not a URL keeps everything but its
+ * server hosts.
+ */
+const scrubScript = (script: string, redactHosts: HostRedactor): string => {
+  const url = URL.parse(script)
+  if (url === null) return redactHosts(script)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return anonymizeUrl(script)
+  return redactHosts(`${url.protocol}//${url.host}${url.pathname}`)
+}
+
+/**
+ * `record` with the value under every URL or host key anonymized, the script
+ * under every script key scrubbed (see `scrubScript`),
  * the value under every dropped key cleared to `undefined`, which the SDK
  * leaves out of what it sends, and the server hosts in every other key and
  * value replaced.
@@ -225,8 +237,8 @@ const scrubUrlBearingRecord = (
       if (isHostKey(lowerCaseKey) && typeof value === 'string') {
         return [key, anonymizeHost(value)]
       }
-      if (isUrlInTextKey(lowerCaseKey) && typeof value === 'string') {
-        return [key, scrubText(value, redactHosts)]
+      if (isScriptKey(lowerCaseKey) && typeof value === 'string') {
+        return [key, scrubScript(value, redactHosts)]
       }
       return [redactHosts(key), redactHostsInValue(value, redactHosts)]
     })
@@ -331,15 +343,17 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  * names replaced.
  *
  * @typeParam E - The SDK's event type; every other field passes through
- * @param hostsToRedact - The hosts the app is known to use (its own origin's,
- *   its servers'), as hosts or origins; see {@link makeHostRedactor}
+ * @param redactHosts - Replaces the hosts the app is known to use (its own
+ *   origin's, its servers'), built once by {@link makeHostRedactor} and kept
+ *   while those hosts stay the same; relay tunnels alone by default
  * @returns A copy of `event` in which:
  *   - `request.url`, and a `Referer` request header, are anonymized, and
  *     `request.query_string` is cleared
  *   - each breadcrumb's and span's URL-valued data (`url`, `url.full`,
- *     `url.path`, `from`, `to`, `code.filepath`, and every key ending in
- *     `.url`) is anonymized, the URLs in `browser.script.invoker` too, its
- *     host-valued data (`server.address`, `url.domain`, `http.host`,
+ *     `url.path`, `from`, `to`, and every key ending in `.url`) is
+ *     anonymized, its script-valued data (`code.filepath`,
+ *     `browser.script.invoker`) keeps only the scheme, host and path of an
+ *     `http(s)` URL, its host-valued data (`server.address`, `url.domain`, `http.host`,
  *     `net.peer.name`) reduced to a kept host or `{host}`, and its query and
  *     fragment keys (`http.query`, `url.query`, …) and HTTP header attributes
  *     cleared
@@ -350,8 +364,8 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  *   - in all of the above, in each stack frame's `filename`, `abs_path` and
  *     `module`, each debug image's `code_file`, and every other string in
  *     breadcrumb and span data, tags, `extra` and contexts, every relay
- *     tunnel host (`*.relay.wildflowerhealth.io`) and every one of
- *     `hostsToRedact` is replaced with `{host}`, the rest of the text kept as
+ *     tunnel host (`*.relay.wildflowerhealth.io`) and every host
+ *     `redactHosts` knows is replaced with `{host}`, the rest of the text kept as
  *     written
  *
  * @remarks
@@ -369,63 +383,56 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  */
 const scrubEvent = <E extends ScrubbableEvent>(
   event: E,
-  hostsToRedact: Iterable<string> = []
-): E => {
-  const redactHosts = makeHostRedactor(hostsToRedact)
-  return {
-    ...event,
-    ...(event.message === undefined ? {} : { message: scrubText(event.message, redactHosts) }),
-    ...(event.logentry === undefined
-      ? {}
-      : { logentry: scrubLogEntry(event.logentry, redactHosts) }),
-    ...(event.transaction === undefined
-      ? {}
-      : { transaction: scrubText(event.transaction, redactHosts) }),
-    ...(event.request === undefined ? {} : { request: scrubRequest(event.request, redactHosts) }),
-    ...(event.breadcrumbs === undefined
-      ? {}
-      : {
-          breadcrumbs: event.breadcrumbs.map((breadcrumb) =>
-            scrubBreadcrumb(breadcrumb, redactHosts)
+  redactHosts: HostRedactor = makeHostRedactor([])
+): E => ({
+  ...event,
+  ...(event.message === undefined ? {} : { message: scrubText(event.message, redactHosts) }),
+  ...(event.logentry === undefined ? {} : { logentry: scrubLogEntry(event.logentry, redactHosts) }),
+  ...(event.transaction === undefined
+    ? {}
+    : { transaction: scrubText(event.transaction, redactHosts) }),
+  ...(event.request === undefined ? {} : { request: scrubRequest(event.request, redactHosts) }),
+  ...(event.breadcrumbs === undefined
+    ? {}
+    : {
+        breadcrumbs: event.breadcrumbs.map((breadcrumb) =>
+          scrubBreadcrumb(breadcrumb, redactHosts)
+        ),
+      }),
+  ...(event.spans === undefined
+    ? {}
+    : { spans: event.spans.map((span) => scrubSpan(span, redactHosts)) }),
+  ...(event.contexts === undefined
+    ? {}
+    : {
+        contexts: redactHostsInRecord(
+          event.contexts.trace === undefined
+            ? event.contexts
+            : { ...event.contexts, trace: scrubSpan(event.contexts.trace, redactHosts) },
+          redactHosts
+        ),
+      }),
+  ...(event.exception?.values === undefined
+    ? {}
+    : {
+        exception: {
+          ...event.exception,
+          values: event.exception.values.map((exception) => scrubException(exception, redactHosts)),
+        },
+      }),
+  ...(event.debug_meta?.images === undefined
+    ? {}
+    : {
+        debug_meta: {
+          ...event.debug_meta,
+          images: event.debug_meta.images.map((image) =>
+            redactHostsUnder(image, ['code_file'], redactHosts)
           ),
-        }),
-    ...(event.spans === undefined
-      ? {}
-      : { spans: event.spans.map((span) => scrubSpan(span, redactHosts)) }),
-    ...(event.contexts === undefined
-      ? {}
-      : {
-          contexts: redactHostsInRecord(
-            event.contexts.trace === undefined
-              ? event.contexts
-              : { ...event.contexts, trace: scrubSpan(event.contexts.trace, redactHosts) },
-            redactHosts
-          ),
-        }),
-    ...(event.exception?.values === undefined
-      ? {}
-      : {
-          exception: {
-            ...event.exception,
-            values: event.exception.values.map((exception) =>
-              scrubException(exception, redactHosts)
-            ),
-          },
-        }),
-    ...(event.debug_meta?.images === undefined
-      ? {}
-      : {
-          debug_meta: {
-            ...event.debug_meta,
-            images: event.debug_meta.images.map((image) =>
-              redactHostsUnder(image, ['code_file'], redactHosts)
-            ),
-          },
-        }),
-    ...(event.tags === undefined ? {} : { tags: redactHostsInRecord(event.tags, redactHosts) }),
-    ...(event.extra === undefined ? {} : { extra: redactHostsInRecord(event.extra, redactHosts) }),
-  }
-}
+        },
+      }),
+  ...(event.tags === undefined ? {} : { tags: redactHostsInRecord(event.tags, redactHosts) }),
+  ...(event.extra === undefined ? {} : { extra: redactHostsInRecord(event.extra, redactHosts) }),
+})
 
 export type { ScrubbableEvent }
 export { scrubEvent }

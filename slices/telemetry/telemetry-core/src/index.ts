@@ -12,7 +12,6 @@ export {
   anonymizeHost,
   anonymizeUrl,
   anonymizeUrlsInText,
-  HOST_PLACEHOLDER,
   INVALID_URL_PLACEHOLDER,
   RESOURCE_ID_PLACEHOLDER,
   VERSION_ID_PLACEHOLDER,
@@ -26,5 +25,7 @@ export {
   writeConsent,
 } from './consent.ts'
 export { telemetryConfigFor } from './consented-config.ts'
+export type { HostRedactor } from './redact-hosts.ts'
+export { makeHostRedactor } from './redact-hosts.ts'
 export type { ScrubbableEvent } from './scrub-event.ts'
 export { scrubEvent } from './scrub-event.ts'

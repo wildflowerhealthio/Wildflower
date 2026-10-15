@@ -9,6 +9,8 @@
  * does not know costs readability rather than leaking.
  */
 
+import { FHIR_RESOURCE_TYPES } from './fhir-resource-types.ts'
+
 /** What {@link anonymizeUrl} reports for input it cannot read as a URL. */
 const INVALID_URL_PLACEHOLDER = '{invalid-url}'
 
@@ -88,16 +90,11 @@ const decodeAsciiOctets = (segment: string): string =>
   )
 
 /**
- * Whether `segment` is shaped like a FHIR resource type: an uppercase letter,
- * a lowercase letter, then letters only (`Patient`, `MedicationRequest`).
- *
- * @remarks
- * Every FHIR R4 resource type has this shape; FHIR ids cannot (they allow
- * digits, `-` and `.`, and those that are letters only rarely lead with an
- * uppercase letter followed by a lowercase one). Base-path segments such as
- * `R4` or `FHIR` fail it, so the segment after them is not taken for an id.
+ * Whether `segment` is a FHIR resource type (`Patient`, `MedicationRequest`),
+ * one of {@link FHIR_RESOURCE_TYPES}. Base-path segments such as `R4` or
+ * `FHIR` are not, so the segment after them is not taken for an id.
  */
-const isResourceTypeSegment = (segment: string): boolean => /^[A-Z][a-z][A-Za-z]*$/.test(segment)
+const isResourceTypeSegment = (segment: string): boolean => FHIR_RESOURCE_TYPES.has(segment)
 
 /**
  * Whether `segment` names a FHIR operation (`$everything`,
@@ -138,8 +135,8 @@ const isReadableSegment = (segment: string): boolean =>
  *
  * @remarks
  * An operation or interaction stays wherever it stands. Otherwise the segment
- * after `_history` becomes `{vid}` and the segment after anything shaped like
- * a resource type becomes `{id}`, whatever its own shape, since a FHIR id can
+ * after `_history` becomes `{vid}` and the segment after a resource type
+ * becomes `{id}`, whatever its own shape, since a FHIR id can
  * be a plain word. Any other segment stays only if it is readable (see
  * `isReadableSegment`) and becomes `{id}` if not.
  *
@@ -210,12 +207,11 @@ const asPathRelativeReference = (relativePath: string): string =>
  * subdomains included, becomes {@link HOST_PLACEHOLDER} and its port is
  * dropped.
  *
- * In the path, the segment after one shaped like a FHIR resource type becomes
+ * In the path, the segment after a FHIR resource type becomes
  * `{id}`, and the segment after `_history` becomes `{vid}`. Every other
  * segment stays only if it is shaped like a fixed route word (`servers`,
- * `oauth-consent`, `.well-known`), a FHIR resource type, operation
- * (`$everything`) or interaction (`_search`), or a FHIR base-path name (`R4`,
- * `FHIR`); anything else — a domain, a UUID, a number, a user code, a file
+ * `oauth-consent`, `.well-known`), or is a FHIR resource type, operation
+ * (`$everything`), interaction (`_search`) or base-path name (`R4`, `FHIR`); anything else — a domain, a UUID, a number, a user code, a file
  * name — becomes `{id}`. So
  * `https://fhir.example/r4/Patient/123/_history/2?x=1` becomes
  * `https://{host}/r4/Patient/{id}/_history/{vid}`,
@@ -252,6 +248,33 @@ const anonymizeUrl = (url: string): string => {
 }
 
 /**
+ * `host` read by the URL parser: an `http(s)` URL as written, anything else
+ * as a host with an optional port (`fhir.example:8443`). `undefined` for input
+ * the parser rejects, and for a non-URL holding anything but a host — a path,
+ * a query, credentials or whitespace — so `/fhir` or `api/fhir` is never read
+ * as the host `fhir` or `api`.
+ */
+const parseHost = (host: string): URL | undefined => {
+  if (/^https?:/i.test(host)) return URL.parse(host) ?? undefined
+  if (!/^[^/\\?#@\s]+$/.test(host)) return undefined
+  return URL.parse(`http://${host}`) ?? undefined
+}
+
+/**
+ * The hostname of `host` (see `parseHost`), lower-cased and without a
+ * trailing dot (`ruth.example.` names `ruth.example`), when telemetry
+ * replaces it; `undefined` for a kept hostname (`localhost`,
+ * `tauri.localhost`, `wildflowerhealth.io`), which telemetry reports as
+ * written, and for input that names no host.
+ */
+const redactableHostname = (host: string): string | undefined => {
+  const hostname = parseHost(host)?.hostname.replace(/\.$/, '')
+  return hostname === undefined || hostname === '' || KEPT_HOSTNAMES.has(hostname)
+    ? undefined
+    : hostname
+}
+
+/**
  * `host` reduced as {@link anonymizeUrl} reduces a URL's host, for the
  * telemetry fields that carry a host on its own.
  *
@@ -265,12 +288,11 @@ const anonymizeUrl = (url: string): string => {
  * Idempotent: an anonymized host anonymizes to itself.
  */
 const anonymizeHost = (host: string): string => {
-  if (/^https?:/i.test(host) && URL.canParse(host)) {
-    const origin = new URL(host)
-    return `${origin.protocol}//${anonymizeParsedHost(origin)}`
-  }
-  if (!URL.canParse(`//${host}`, RELATIVE_REFERENCE_BASE)) return HOST_PLACEHOLDER
-  return anonymizeParsedHost(new URL(`//${host}`, RELATIVE_REFERENCE_BASE))
+  const parsed = parseHost(host)
+  if (parsed === undefined) return HOST_PLACEHOLDER
+  return /^https?:/i.test(host)
+    ? `${parsed.protocol}//${anonymizeParsedHost(parsed)}`
+    : anonymizeParsedHost(parsed)
 }
 
 /**
@@ -281,20 +303,36 @@ const anonymizeHost = (host: string): string => {
 const isUrlToken = (token: string): boolean => /^https?:/i.test(token) || /[/?#]/.test(token)
 
 /**
+ * A whitespace-delimited token split into the punctuation prose wraps a URL
+ * in — opening brackets and quotes in front; closing brackets, quotes and
+ * sentence punctuation behind — and the token inside it. Braces are not
+ * punctuation here, since they belong to this module's placeholders, and
+ * neither is `?`, which `anonymizeUrl` drops with the query it starts.
+ */
+const WRAPPED_TOKEN = /^([(<["'`]*)(.*?)([)>\]"'`.,;:!]*)$/s
+
+/** `token` with its URL anonymized, inside whatever punctuation wraps it. */
+const anonymizeWrappedToken = (token: string): string => {
+  const [, opening = '', inner = '', closing = ''] = WRAPPED_TOKEN.exec(token) ?? []
+  return isUrlToken(inner) ? `${opening}${anonymizeUrl(inner)}${closing}` : token
+}
+
+/**
  * `text` with every token that is meant as a URL (see `isUrlToken`) run
  * through {@link anonymizeUrl}.
  *
  * @remarks
  * For the free text telemetry carries URLs in: span descriptions
- * (`GET https://fhir.example/Patient/123`) and transaction names
- * (`/Patient/123`). Tokens are split on whitespace, which is kept as written;
- * everything that is not a URL stays as written too.
+ * (`GET https://fhir.example/Patient/123`), transaction names
+ * (`/Patient/123`), and messages. Tokens are split on whitespace, which is
+ * kept as written, and read without the punctuation around them, which is
+ * kept too: `(https://wildflowerhealth.io/servers).` stays as written.
+ * Everything that is not a URL stays as written. Anything else with a `/` in
+ * it is read as a path, so a date such as `10/15/2026` reports
+ * `{id}/{id}/{id}`: a date in a message can be a birth date.
  */
 const anonymizeUrlsInText = (text: string): string =>
-  text
-    .split(/(\s+)/)
-    .map((token) => (isUrlToken(token) ? anonymizeUrl(token) : token))
-    .join('')
+  text.split(/(\s+)/).map(anonymizeWrappedToken).join('')
 
 export {
   anonymizeHost,
@@ -302,6 +340,7 @@ export {
   anonymizeUrlsInText,
   HOST_PLACEHOLDER,
   INVALID_URL_PLACEHOLDER,
+  redactableHostname,
   RESOURCE_ID_PLACEHOLDER,
   VERSION_ID_PLACEHOLDER,
 }

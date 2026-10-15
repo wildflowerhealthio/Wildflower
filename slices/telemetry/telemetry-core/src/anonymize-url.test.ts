@@ -10,6 +10,7 @@ import {
   RESOURCE_ID_PLACEHOLDER,
   VERSION_ID_PLACEHOLDER,
 } from './anonymize-url.ts'
+import { FHIR_RESOURCE_TYPES } from './fhir-resource-types.ts'
 
 const resourceTypeArb = fc.constantFrom(
   'Patient',
@@ -19,17 +20,17 @@ const resourceTypeArb = fc.constantFrom(
   'DocumentReference'
 )
 
-/** Whether `segment` is shaped like a FHIR resource type (`Patient`). */
-const isResourceTypeShaped = (segment: string): boolean => /^[A-Z][a-z][A-Za-z]*$/.test(segment)
+/** Whether `segment` is a FHIR resource type (`Patient`). */
+const isResourceType = (segment: string): boolean => FHIR_RESOURCE_TYPES.has(segment)
 
 /**
  * A FHIR id (`[A-Za-z0-9\-.]{1,64}`), less the two the URL parser resolves as
- * dot segments and the ones shaped like a resource type, which the
- * "type-shaped id" example covers.
+ * dot segments and resource types' names, which the "resource type's name as
+ * an id" example covers.
  */
 const resourceIdArb = fc
   .stringMatching(/^[A-Za-z0-9\-.]{1,64}$/)
-  .filter((id) => id !== '.' && id !== '..' && !isResourceTypeShaped(id))
+  .filter((id) => id !== '.' && id !== '..' && !isResourceType(id))
 
 /** A FHIR base-path segment: lowercase route words and version tags such as `R4`. */
 const basePathSegmentArb = fc.oneof(
@@ -58,7 +59,7 @@ const expectedOrigin = (origin: string): string => {
  */
 const isReadableShaped = (segment: string): boolean =>
   /^\.?[a-z]+(-[a-z]+)*$/.test(segment) ||
-  isResourceTypeShaped(segment) ||
+  isResourceType(segment) ||
   /^[$_][a-z]+(-[a-z]+)*$/.test(segment) ||
   ['fhir', 'r4', 'r4b', 'r5', 'stu3', 'dstu2', 'baser4', 'baser4b', 'baser5', 'basedstu3'].includes(
     segment.toLowerCase()
@@ -180,7 +181,7 @@ describe('anonymizeUrl', () => {
     )
   })
 
-  test('property: replaces every segment after a resource-type-shaped one, and every other unreadable one', () => {
+  test('property: replaces every segment after a resource type, and every other unreadable one', () => {
     fc.assert(
       fc.property(
         originArb,
@@ -203,7 +204,7 @@ describe('anonymizeUrl', () => {
           pathSegments.forEach((segment, index) => {
             const previous = pathSegments[index - 1]
             if (
-              (previous !== undefined && isResourceTypeShaped(previous)) ||
+              (previous !== undefined && isResourceType(previous)) ||
               !isReadableShaped(segment)
             ) {
               expect(decodeURIComponent(anonymizedSegments[index] ?? '')).toBe(
@@ -257,9 +258,14 @@ describe('anonymizeUrl', () => {
       expected: 'https://{host}/r4/Patient/',
     },
     {
-      label: 'a resource-type-shaped id, at the cost of the segment after it',
-      url: 'https://fhir.example/r4/Patient/Abc/Observation',
+      label: "a resource type's name as an id, at the cost of the segment after it",
+      url: 'https://fhir.example/r4/Patient/Observation/Abc',
       expected: 'https://{host}/r4/Patient/{id}/{id}',
+    },
+    {
+      label: 'a capitalized name that is not a resource type',
+      url: 'https://fhir.example/users/Johnsmith',
+      expected: 'https://{host}/users/{id}',
     },
     {
       label: 'credentials in the authority',
@@ -442,7 +448,9 @@ describe('anonymizeHost', () => {
       host: 'https://wildflowerhealth.io',
       expected: 'https://wildflowerhealth.io',
     },
-    { label: 'a kept host with a path behind it', host: 'localhost/secret', expected: 'localhost' },
+    { label: 'a kept host with a path behind it', host: 'localhost/secret', expected: '{host}' },
+    { label: 'a root-relative path', host: '/fhir', expected: '{host}' },
+    { label: 'a path-relative path', host: 'api/fhir/r4', expected: '{host}' },
     { label: 'the placeholder', host: '{host}', expected: '{host}' },
     { label: 'the placeholder origin', host: 'https://{host}', expected: 'https://{host}' },
     { label: 'an origin that does not parse', host: 'https://', expected: '{host}' },
@@ -486,10 +494,26 @@ describe('anonymizeUrlsInText', () => {
     )
   })
 
+  test('reads a URL without the punctuation around it, and keeps the punctuation', () => {
+    expect(
+      anonymizeUrlsInText(
+        'see (https://wildflowerhealth.io/servers). Then "https://ruth.example/Patient/1", or <Patient/2>!'
+      )
+    ).toBe(
+      'see (https://wildflowerhealth.io/servers). Then "https://{host}/Patient/{id}", or <Patient/{id}>!'
+    )
+  })
+
+  test('replaces a date, which reads as a path', () => {
+    expect(anonymizeUrlsInText('Invalid birth date 10/15/2026.')).toBe(
+      'Invalid birth date {id}/{id}/{id}.'
+    )
+  })
+
   test('property: leaves text without URL tokens as written', () => {
     fc.assert(
       fc.property(
-        fc.array(fc.string().filter((token) => !/\s|[/?#]|^https?:/i.test(token))),
+        fc.array(fc.string().filter((token) => !/\s|[/?#]|^[(<["'`]*https?:/i.test(token))),
         (tokens) => {
           const text = tokens.join(' ')
 

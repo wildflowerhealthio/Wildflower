@@ -119,9 +119,9 @@ describe('makeHostRedactor', () => {
   )
 
   test('tries the longer host first', () => {
-    const redactHosts = makeHostRedactor(['example', 'ruth.example'])
+    const redactHosts = makeHostRedactor(['ruth.example', 'ruth.example.org'])
 
-    expect(redactHosts('ruth.example:8443 and example')).toBe('{host} and {host}')
+    expect(redactHosts('ruth.example.org:8443 and ruth.example')).toBe('{host} and {host}')
   })
 
   test('ignores kept hosts and input it cannot read as a host', () => {
@@ -131,6 +131,50 @@ describe('makeHostRedactor', () => {
       'localhost:8080 wildflowerhealth.io a b'
     )
   })
+
+  test('ignores a path, which names no host', () => {
+    const text = '/api/fhir/r4 and fhir'
+
+    expect(makeHostRedactor(['/fhir', 'fhir/r4', 'api/fhir/r4'])(text)).toBe(text)
+  })
+
+  test.each([
+    {
+      case: 'at the start of a URL’s authority',
+      text: 'GET http://FHIR:8080/fhir/Patient',
+      redacted: 'GET http://{host}/fhir/Patient',
+    },
+    {
+      case: 'without a port at the start of a URL’s authority',
+      text: 'http://fhir/metadata',
+      redacted: 'http://{host}/metadata',
+    },
+    { case: 'after credentials', text: 'admin@fhir', redacted: 'admin@{host}' },
+    {
+      case: 'with a port',
+      text: 'Could not reach fhir:8080.',
+      redacted: 'Could not reach {host}.',
+    },
+    {
+      case: 'in a percent-encoded URL',
+      text: 'iss=http%3A%2F%2Ffhir%3A8080%2Ffhir',
+      redacted: 'iss=http%3A%2F%2F{host}%3A8080%2Ffhir',
+    },
+    {
+      case: 'in a JSON-escaped URL',
+      text: '{"iss":"http:\\/\\/fhir\\/r4"}',
+      redacted: '{"iss":"http:\\/\\/{host}\\/r4"}',
+    },
+  ])('replaces a single-label host $case', ({ text, redacted }) => {
+    expect(makeHostRedactor(['fhir:8080'])(text)).toBe(redacted)
+  })
+
+  test.each(['FHIR R4', 'fhir_server_host', 'the fhir server', '/api/fhir/r4', 'fhir-r4'])(
+    'leaves the single-label host as a word in %s',
+    (text) => {
+      expect(makeHostRedactor(['fhir:8080'])(text)).toBe(text)
+    }
+  )
 
   test('escapes the host it is given', () => {
     expect(makeHostRedactor(['ruth.example'])('ruthxexample')).toBe('ruthxexample')

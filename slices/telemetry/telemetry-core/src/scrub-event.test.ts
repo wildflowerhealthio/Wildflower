@@ -2,6 +2,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 import { anonymizeHost, anonymizeUrl } from './anonymize-url.ts'
+import { makeHostRedactor } from './redact-hosts.ts'
 import { type ScrubbableEvent, scrubEvent } from './scrub-event.ts'
 
 interface SampleBreadcrumb {
@@ -110,6 +111,9 @@ const transactionEventCarrying = (url: string): SampleTransactionEvent => ({
 const FHIR_URL = 'https://fhir.example/r4/Patient/123/_history/2?_format=json#top'
 const ANONYMIZED_FHIR_URL = 'https://{host}/r4/Patient/{id}/_history/{vid}'
 const ANONYMIZED_FHIR_PATH = '/r4/Patient/{id}/_history/{vid}'
+
+/** Whether `text` ends in punctuation prose can follow a URL with. */
+const endsInPunctuation = (text: string): boolean => /[)>\]"'`.,;:!]$/.test(text)
 
 describe('scrubEvent', () => {
   test('anonymizes every URL an error event carries and keeps the rest', () => {
@@ -244,8 +248,8 @@ describe('scrubEvent', () => {
     })
   })
 
-  test('reduces the script a long animation frame span blames to its shape', () => {
-    const scriptUrl = 'https://ruth.relay.wildflowerhealth.io/assets/index-BfXk2c1a.js'
+  test('reports the script a long animation frame span blames as a stack frame does', () => {
+    const scriptUrl = 'https://ruth.relay.wildflowerhealth.io/assets/index-BfXk2c1a.js?v=1#top'
     const event = {
       spans: [
         {
@@ -267,12 +271,28 @@ describe('scrubEvent', () => {
           op: 'ui.long-animation-frame',
           description: 'Main UI thread blocked',
           data: {
-            'browser.script.invoker': 'https://{host}/assets/{id}',
+            'browser.script.invoker': 'https://{host}/assets/index-BfXk2c1a.js',
             'browser.script.invoker_type': 'classic-script',
-            'code.filepath': 'https://{host}/assets/{id}',
+            'code.filepath': 'https://{host}/assets/index-BfXk2c1a.js',
             'code.function': 'render',
           },
         },
+      ],
+    })
+  })
+
+  test('keeps the name of what ran a script, and anonymizes a script URL of another scheme', () => {
+    const event = {
+      spans: [
+        { data: { 'browser.script.invoker': 'IMG#avatar.onload' } },
+        { data: { 'code.filepath': 'blob:https://ruth.example/0b7c3a2e-1f4d' } },
+      ],
+    }
+
+    expect(scrubEvent(event)).toStrictEqual({
+      spans: [
+        { data: { 'browser.script.invoker': 'IMG#avatar.onload' } },
+        { data: { 'code.filepath': '{invalid-url}' } },
       ],
     })
   })
@@ -304,7 +324,7 @@ describe('scrubEvent', () => {
       },
     }
 
-    expect(scrubEvent(event, ['ruth.example'])).toStrictEqual({
+    expect(scrubEvent(event, makeHostRedactor(['ruth.example']))).toStrictEqual({
       exception: {
         values: [
           {
@@ -378,7 +398,7 @@ describe('scrubEvent', () => {
       contexts: { react: { componentStack: 'at App (https://ruth.example/assets/a.js:3:4)' } },
     }
 
-    expect(scrubEvent(event, ['ruth.example'])).toStrictEqual({
+    expect(scrubEvent(event, makeHostRedactor(['ruth.example']))).toStrictEqual({
       message: 'Could not reach {host}',
       logentry: {
         message: 'GET %s failed on %s',
@@ -420,7 +440,7 @@ describe('scrubEvent', () => {
       contexts: { 'ruth.example': { state: 'stopped' } },
     }
 
-    expect(scrubEvent(event, ['ruth.example'])).toStrictEqual({
+    expect(scrubEvent(event, makeHostRedactor(['ruth.example']))).toStrictEqual({
       breadcrumbs: [
         {
           category: 'console',
@@ -446,7 +466,7 @@ describe('scrubEvent', () => {
       ],
     }
 
-    expect(scrubEvent(event, ['https://ruth.example:8443'])).toStrictEqual({
+    expect(scrubEvent(event, makeHostRedactor(['https://ruth.example:8443']))).toStrictEqual({
       transaction: 'connect {host}',
       contexts: { trace: { description: 'boot {host}', data: {} } },
       spans: [
@@ -474,7 +494,7 @@ describe('scrubEvent', () => {
           breadcrumbs: [{ message: `retry ${host}.` }],
         }
 
-        const scrubbed = scrubEvent(event, [host])
+        const scrubbed = scrubEvent(event, makeHostRedactor([host]))
 
         expect(scrubbed).toStrictEqual({
           message: 'lost {host}',
@@ -488,7 +508,7 @@ describe('scrubEvent', () => {
           },
           breadcrumbs: [{ message: 'retry {host}.' }],
         })
-        expect(scrubEvent(scrubbed, [host])).toStrictEqual(scrubbed)
+        expect(scrubEvent(scrubbed, makeHostRedactor([host]))).toStrictEqual(scrubbed)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -530,36 +550,44 @@ describe('scrubEvent', () => {
 
   test('property: every reported URL is the anonymized URL', () => {
     fc.assert(
-      fc.property(fc.webUrl({ withQueryParameters: true, withFragments: true }), (url) => {
-        const anonymizedUrl = anonymizeUrl(url)
-        const anonymizedPath = anonymizeUrl(new URL(url).pathname)
-        const errorEvent = scrubEvent(errorEventCarrying(url))
-        const transactionEvent = scrubEvent(transactionEventCarrying(url))
+      fc.property(
+        // A span description and a transaction name are prose too, and a URL
+        // or path ending in punctuation reads as one followed by it (see
+        // anonymizeUrlsInText's tests).
+        fc
+          .webUrl({ withQueryParameters: true, withFragments: true })
+          .filter((url) => !endsInPunctuation(url) && !endsInPunctuation(new URL(url).pathname)),
+        (url) => {
+          const anonymizedUrl = anonymizeUrl(url)
+          const anonymizedPath = anonymizeUrl(new URL(url).pathname)
+          const errorEvent = scrubEvent(errorEventCarrying(url))
+          const transactionEvent = scrubEvent(transactionEventCarrying(url))
 
-        expect([
-          errorEvent.request.url,
-          errorEvent.request.headers.Referer,
-          errorEvent.breadcrumbs[0]?.data?.url,
-          errorEvent.breadcrumbs[1]?.data?.from,
-          errorEvent.breadcrumbs[1]?.data?.to,
-          transactionEvent.request.url,
-          transactionEvent.contexts.trace.data['url.full'],
-          transactionEvent.contexts.trace.data['lcp.url'],
-          transactionEvent.spans[0]?.data['http.url'],
-          transactionEvent.spans[0]?.data.url,
-          transactionEvent.spans[0]?.data['url.full'],
-          transactionEvent.spans[1]?.data['url.full'],
-        ]).toStrictEqual(Array.from({ length: 12 }, () => anonymizedUrl))
-        expect([
-          transactionEvent.transaction,
-          transactionEvent.contexts.trace.data['url.path'],
-          transactionEvent.spans[1]?.data['url.path'],
-        ]).toStrictEqual(Array.from({ length: 3 }, () => anonymizedPath))
-        expect(transactionEvent.spans[0]?.description).toBe(`GET ${anonymizedUrl}`)
-        expect(transactionEvent.spans[1]?.data['server.address']).toBe(
-          anonymizeHost(new URL(url).origin)
-        )
-      }),
+          expect([
+            errorEvent.request.url,
+            errorEvent.request.headers.Referer,
+            errorEvent.breadcrumbs[0]?.data?.url,
+            errorEvent.breadcrumbs[1]?.data?.from,
+            errorEvent.breadcrumbs[1]?.data?.to,
+            transactionEvent.request.url,
+            transactionEvent.contexts.trace.data['url.full'],
+            transactionEvent.contexts.trace.data['lcp.url'],
+            transactionEvent.spans[0]?.data['http.url'],
+            transactionEvent.spans[0]?.data.url,
+            transactionEvent.spans[0]?.data['url.full'],
+            transactionEvent.spans[1]?.data['url.full'],
+          ]).toStrictEqual(Array.from({ length: 12 }, () => anonymizedUrl))
+          expect([
+            transactionEvent.transaction,
+            transactionEvent.contexts.trace.data['url.path'],
+            transactionEvent.spans[1]?.data['url.path'],
+          ]).toStrictEqual(Array.from({ length: 3 }, () => anonymizedPath))
+          expect(transactionEvent.spans[0]?.description).toBe(`GET ${anonymizedUrl}`)
+          expect(transactionEvent.spans[1]?.data['server.address']).toBe(
+            anonymizeHost(new URL(url).origin)
+          )
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
