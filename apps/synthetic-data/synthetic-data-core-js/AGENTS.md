@@ -64,8 +64,9 @@ namespace's name, a union of cases is `Any`, and a value's file codec is a
   `PickedFile.isSourceFile` claims for one of `SOURCE_FILE_IMPORTERS`, its
   inline data as an `Attachment` its `Resource` links. Ids are kept, so every
   `meta.source` still resolves. Fails with `UnplaceableResource` for a
-  resource with no FHIR id, a source file with no data or a title that is not
-  a plain file name, or a `meta.source` naming a source file not laid out
+  resource with no FHIR id, a source file with no data, a `url` beside its
+  data, data not in the canonical base64 its bytes encode to, or a title that
+  is not a plain file name, or a `meta.source` naming a source file not laid out
   with it (`MetaSource.makeReference`), and with `ConflictingFiles` for two
   entries at one path that are not written as the same file, also across the
   lists `merge` joins.
