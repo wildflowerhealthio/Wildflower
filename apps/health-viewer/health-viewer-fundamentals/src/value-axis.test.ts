@@ -226,6 +226,43 @@ describe('ValueAxis.ticksFor', () => {
     )
   })
 
+  test('an all-negative axis niceDomain rounded is labelled at both its ends, in whole steps', () => {
+    fc.assert(
+      fc.property(
+        // A drawable all-negative axis: `low` below zero, and a width that is
+        // a real fraction of its magnitude, so `high` stays at or below zero.
+        fc.double({ min: 1e-3, max: 1e6, noNaN: true }),
+        fc.double({ min: 1e-3, max: 1, noNaN: true }),
+        fc.integer({ min: 2, max: 10 }),
+        (lowMagnitude, widthFraction, count) => {
+          const low = -lowMagnitude
+          const high = low + lowMagnitude * widthFraction
+          const domain = ValueAxis.niceDomain(low, high, count)
+          const ticks = ValueAxis.ticksFor(domain, count)
+          expect(ticks[0]).toBe(domain[0] + 0)
+          expect(ticks.at(-1)).toBe(domain[1] + 0)
+          const step = ticks[1] - ticks[0]
+          for (const [index, tick] of ticks.entries()) {
+            if (index > 0) expect(tick).toBeGreaterThan(ticks[index - 1])
+            const stepsFromZero = tick / step
+            const roundingError = Math.abs(stepsFromZero - Math.round(stepsFromZero))
+            expect(roundingError).toBeLessThan(Math.max(1, Math.abs(stepsFromZero)) * 1e-9)
+          }
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('an all-negative axis is labelled at both its ends', () => {
+    expect(ValueAxis.ticksFor([-80, -40])).toEqual([-80, -70, -60, -50, -40])
+  })
+
+  test('a negative bound half a step off a tick is not snapped onto one', () => {
+    // `-125` is `-2.5` steps of `50`, which `Math.round` takes to `-2`.
+    expect(ValueAxis.ticksFor([-125, 0])).toEqual([-100, -50, 0])
+  })
+
   test('a step too coarse for the bounds gives way to a finer one that meets them', () => {
     expect(ValueAxis.ticksFor([-40, 80])).toEqual([-40, -20, 0, 20, 40, 60, 80])
   })
