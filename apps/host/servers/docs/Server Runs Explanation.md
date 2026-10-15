@@ -30,8 +30,28 @@ Explanation). While the app is open, servers run in-process with no foreground
 service. When it moves to the background, the session starts and every server
 whose policy wants it running (`always` and `until` included) keeps serving for
 the 2-minute grace period, then stops (`PolicyInactive`), and the session ends
-as no longer needed. When the app comes back, the servers run again. iOS and
-desktop use `AsLongAsNeeded`.
+as no longer needed. When the app comes back, the servers run again.
+
+**On iOS, every server shares one background window, and they all stop when
+it ends.** iOS ends its background time itself, so the host builds
+`TauriUnitRunner` with `BackgroundSessionLength::AsLongAsNeeded`: the one
+background session, for every server at once, runs while any server's policy
+wants it running, the app in the foreground included. When the app moves to the
+background, iOS gives that session its background time, typically about 30
+seconds, and the plugin stops the session with `PlatformExpiration` just
+before it runs out (see Plugin fork below). Every server still running stops
+then, together (`SessionEndedByPlatform`), and each posts its own "Wildflower
+server paused". That window is usually shorter than the 2-minute grace
+period, so a `whileOpen` server stops with the rest; only an `until` whose
+deadline passes inside the window stops before it (`PolicyInactive`). When the
+app reopens, it is present again, and each server runs again if its own policy
+wants it running: `always` and `whileOpen` do, `until` only while its deadline
+is ahead, and `off` stays stopped. A `BGTask` iOS launches later starts the
+session again: the servers whose policy wants them running serve inside it,
+until it expires the same way.
+
+**On a desktop, the session lasts while any server should run.** The host uses
+`AsLongAsNeeded` there too, and no platform time limit ends the session.
 
 ## Packages
 
