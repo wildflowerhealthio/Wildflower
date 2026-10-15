@@ -33,8 +33,10 @@ only it composes. Rust-only, no `-core`.
     report, the tunnel front and, outermost so even a `421` is readable
     cross-origin, CORS. The front answers `421` (unreported) unless every
     host the request names (each `Host`, and the request target's authority)
-    is the server's domain. Every request is served at the public origin,
-    which every reader takes from config; nothing reads `Forwarded`. The
+    is the server's domain, and drops every `Forwarded` and `X-Forwarded-*`
+    header, so neither the layers inside nor HFS see a visitor-supplied one.
+    Every request is served at the public origin, which every reader takes
+    from config. The
     visitor's address rides the request as its `TunnelVisitor` connect info,
     which the forwarded-request report reads. `WildflowerServer` holds the tunnel's
     daemon, so it dials for exactly as long as the server serves.

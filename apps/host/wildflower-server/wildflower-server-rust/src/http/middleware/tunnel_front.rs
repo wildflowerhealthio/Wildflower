@@ -1,10 +1,11 @@
 //! The tunnel listener's front: the layer of the tunnel router, outside all
-//! but CORS, that holds each tunnel request to the server's domain. Every
-//! request inside it is served at the server's origin, `https://<domain>`.
+//! but CORS, that holds each tunnel request to the server's domain and drops
+//! the forwarding headers the visitor wrote. Every request inside it is served
+//! at the server's origin, `https://<domain>`.
 
 use axum::extract::{Request, State};
-use axum::http::header::HOST;
-use axum::http::StatusCode;
+use axum::http::header::{FORWARDED, HOST};
+use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use url::Url;
@@ -14,7 +15,8 @@ use wildflowerhealthio_tunnel::public_origin_url;
 const MISDIRECTED_BODY: &str = "request host is not this server's domain";
 
 /// Answer a request on the tunnel listener whose host isn't the server's
-/// domain `421 Misdirected Request`, and pass every other one on.
+/// domain `421 Misdirected Request`, and pass every other one on without its
+/// forwarding headers.
 ///
 /// # Remarks
 ///
@@ -28,15 +30,32 @@ const MISDIRECTED_BODY: &str = "request host is not this server's domain";
 /// host. A request with no host names no origin this server answers as, and is
 /// refused the same way. Nothing inside reads the request's host for its
 /// origin: every reader takes the server's configured origin.
+///
+/// A `Forwarded` or `X-Forwarded-*` header is the visitor's own claim about a
+/// proxy that never handled the request, so it is dropped here, and no layer
+/// inside, nor HFS, sees a visitor-supplied one.
 pub(crate) async fn refuse_misdirected_requests(
     State(public_origin): State<Url>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
     if !names_only_public_origin(&request, &public_origin) {
         return (StatusCode::MISDIRECTED_REQUEST, MISDIRECTED_BODY).into_response();
     }
+    remove_forwarding_headers(request.headers_mut());
     next.run(request).await
+}
+
+/// Remove every `Forwarded` and `X-Forwarded-*` header from `headers`.
+fn remove_forwarding_headers(headers: &mut HeaderMap) {
+    let forwarding_header_names: Vec<_> = headers
+        .keys()
+        .filter(|name| *name == FORWARDED || name.as_str().starts_with("x-forwarded-"))
+        .cloned()
+        .collect();
+    for name in forwarding_header_names {
+        headers.remove(name);
+    }
 }
 
 /// Whether `request` names a host, and every host it names is
@@ -81,6 +100,28 @@ mod tests {
                 refuse_misdirected_requests,
             ),
         )
+    }
+
+    /// A router behind the layer, for the server at [`DOMAIN`], whose
+    /// handler answers the names of the forwarding headers it received.
+    fn forwarding_header_echo_router() -> Router {
+        Router::new()
+            .route(
+                "/",
+                get(|headers: HeaderMap| async move {
+                    let mut forwarding_header_names: Vec<_> = headers
+                        .keys()
+                        .map(|name| name.as_str())
+                        .filter(|name| *name == "forwarded" || name.starts_with("x-forwarded-"))
+                        .collect();
+                    forwarding_header_names.sort_unstable();
+                    forwarding_header_names.join(",")
+                }),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                public_origin_url(DOMAIN).expect("public origin"),
+                refuse_misdirected_requests,
+            ))
     }
 
     /// A tunnel request for the request target `uri`, with `headers`.
@@ -193,5 +234,31 @@ mod tests {
                 "{headers:?}"
             );
         }
+    }
+
+    /// The visitor's `Forwarded` and `X-Forwarded-*` headers never reach the
+    /// layers inside.
+    #[tokio::test]
+    async fn forwarding_headers_are_dropped() {
+        let request = tunnel_request(&[
+            ("host", DOMAIN),
+            (
+                "forwarded",
+                "for=192.0.2.1;host=dev2.example.com;proto=http",
+            ),
+            ("forwarded", "for=192.0.2.2"),
+            ("x-forwarded-for", "192.0.2.1"),
+            ("x-forwarded-host", "dev2.example.com"),
+            ("x-forwarded-proto", "http"),
+        ]);
+        let response = forwarding_header_echo_router()
+            .oneshot(request)
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        assert_eq!(body.as_ref(), b"");
     }
 }

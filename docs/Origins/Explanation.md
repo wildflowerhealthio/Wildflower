@@ -37,9 +37,9 @@ public origin the server builds from its domain at startup
 it from there, never from the request: the authorization server's redirects
 and device verification URI, FHIR R4's links, the apps slice's launch URLs,
 the unmatched-route `404`'s link to the launcher, and the host the request
-log records. A request's `Host` and any `Forwarded` it carries name no
-origin. A slice's router driven directly, as its tests do, is answered the
-same way.
+log records. A request's `Host` names no origin, and the tunnel front drops
+any `Forwarded` it carries. A slice's router driven directly, as its tests
+do, is answered the same way.
 
 ### The tunnel front
 
@@ -50,7 +50,9 @@ every host the request names (each `Host` header, and the request target's
 authority, which HTTP/2 carries) with the server's domain, as `https` origins
 (so case and a spelled-out `:443` don't matter). A request naming another
 host, or none, is answered `421 Misdirected Request`, before the request log
-sees it. Every other request passes on unchanged.
+sees it. Every other request passes on without its `Forwarded` and
+`X-Forwarded-*` headers, which are the visitor's own claims, so no layer
+inside, nor HFS, sees a visitor-supplied one.
 
 ### The visitor's address
 
