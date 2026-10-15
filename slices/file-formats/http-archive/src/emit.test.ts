@@ -28,6 +28,7 @@ import responseSchema from 'har-schema/lib/response.json' with { type: 'json' }
 import timingsSchema from 'har-schema/lib/timings.json' with { type: 'json' }
 import { describe, expect, test } from 'vite-plus/test'
 
+import { HTTP_METHODS } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { noTimings } from '@wildflowerhealthio/web-trace-core'
 import type { TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import {
@@ -256,6 +257,21 @@ describe('emitHarFromLog', () => {
     const archive = emitHarFromLog(logOf())
     expect(archive.log.creator.name).toBe(CREATOR_NAME)
     expect(archive.log.entries[0]?.request.comment).toBe(DROPPED_REQUEST_ON_IMPORT_COMMENT)
+  })
+
+  test('property: request.method is the entry’s own method, UNKNOWN included', () => {
+    const [entry] = logOf().entries
+    expect(entry).toBeDefined()
+    if (entry === undefined) {
+      return
+    }
+    fc.assert(
+      fc.property(fc.constantFrom(...HTTP_METHODS, 'UNKNOWN' as const), (method) => {
+        const archive = emitHarFromLog({ version: '1.2', entries: [{ ...entry, method }] })
+        expect(archive.log.entries[0]?.request.method).toBe(method)
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
   })
 
   test('creatorName names a different producer on log.creator', () => {

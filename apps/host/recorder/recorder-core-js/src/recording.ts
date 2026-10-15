@@ -43,6 +43,7 @@ type Cancelled = Schema.Schema.Type<typeof CancelledMessage>
  */
 interface InFlight {
   readonly url: string
+  readonly method: HttpArchive.Entry['method']
   readonly status: number
   readonly statusText: string
   readonly headers: readonly (readonly [string, string])[]
@@ -160,6 +161,7 @@ class Recording {
     }
     this.#inFlight.set(message.id, {
       url: message.url,
+      method: HttpArchive.methodOf(message.method),
       status: message.status,
       statusText: message.statusText,
       headers: message.headers,
@@ -214,9 +216,11 @@ class Recording {
    * @param message - The sniffer's `ResponseFinished`
    *
    * @remarks
-   * `method` is `'UNKNOWN'` and no request headers or body are carried: the
-   * recorder is response-side only and states what it did not see rather than
-   * guessing (request-side capture is #440). The id is positional, from
+   * `method` is the verb the sniffer observed at `ResponseStart`, through
+   * `HttpArchive.methodOf` (`'UNKNOWN'` for one outside the seven recognized
+   * verbs). No request headers or body are carried: the sniffer does not
+   * capture them, and the recorder states what it did not see rather than
+   * guessing (the rest of request-side capture is #440). The id is positional, from
    * `HttpArchive.ENTRY_ID_PREFIX`, so it means the same thing whether an
    * archive was read or recorded.
    */
@@ -230,7 +234,7 @@ class Recording {
     this.#entries.push({
       id,
       url: record.url,
-      method: 'UNKNOWN',
+      method: record.method,
       status: record.status,
       statusText: record.statusText,
       headers: record.headers,

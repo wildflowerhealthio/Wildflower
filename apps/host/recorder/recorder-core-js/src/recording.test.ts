@@ -1,3 +1,4 @@
+import type { HttpArchive } from '@wildflowerhealthio/http-archive'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { contentTypeOf } from '@wildflowerhealthio/web-trace-core/capture'
 import { DateTime, Encoding } from 'effect'
@@ -14,6 +15,7 @@ import { MAX_BODY_BYTES, Recording } from './recording.ts'
 interface Exchange {
   readonly id: string
   readonly url: string
+  readonly method: HttpArchive.Entry['method']
   readonly status: number
   readonly statusText: string
   readonly contentType: string
@@ -44,8 +46,12 @@ const OMITTED_CONTENT_TYPES = [
   'application/javascript',
 ] as const
 
+/** The seven verbs the sniffer reports and an entry records as themselves. */
+const RECOGNIZED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
+
 const exchangeArbitrary: fc.Arbitrary<Omit<Exchange, 'id'>> = fc.record({
   url: fc.webUrl(),
+  method: fc.constantFrom(...RECOGNIZED_METHODS),
   status: fc.integer({ min: 0, max: 1000 }),
   statusText: fc.string(),
   contentType: fc.constantFrom(...KEPT_CONTENT_TYPES, ...OMITTED_CONTENT_TYPES),
@@ -119,7 +125,7 @@ const record = (
             _tag: 'ResponseStart',
             id: exchange.id,
             url: exchange.url,
-            method: 'GET',
+            method: exchange.method,
             status: exchange.status,
             statusText: exchange.statusText,
             headers: [['content-type', exchange.contentType]],
@@ -188,7 +194,7 @@ const startOf = (exchange: Exchange) =>
     _tag: 'ResponseStart',
     id: exchange.id,
     url: exchange.url,
-    method: 'GET',
+    method: exchange.method,
     status: exchange.status,
     statusText: exchange.statusText,
     headers: [['content-type', exchange.contentType]] as const,
@@ -211,6 +217,7 @@ describe('Recording', () => {
     const exchange: Exchange = {
       id: 'req-0',
       url: 'https://portal.example.org/api/v2/patients',
+      method: 'POST',
       status: 200,
       statusText: 'OK',
       contentType: 'application/json',
@@ -237,7 +244,7 @@ describe('Recording', () => {
       {
         id: 'har-entry-0',
         url: 'https://portal.example.org/api/v2/patients',
-        method: 'UNKNOWN',
+        method: 'POST',
         status: 200,
         statusText: 'OK',
         headers: [['content-type', 'application/json']],
@@ -273,6 +280,7 @@ describe('Recording', () => {
     const exchange: Exchange = {
       id: 'req-0',
       url: 'https://portal.example.org/x',
+      method: 'GET',
       status: 200,
       statusText: 'OK',
       contentType: 'application/json',
@@ -296,6 +304,7 @@ describe('Recording', () => {
     const exchange: Exchange = {
       id: 'req-0',
       url: 'https://portal.example.org/large-payload',
+      method: 'GET',
       status: 200,
       statusText: 'OK',
       contentType: 'application/json',
@@ -334,6 +343,7 @@ describe('Recording', () => {
     const exchange: Exchange = {
       id: 'req-0',
       url: 'https://portal.example.org/large-payload',
+      method: 'GET',
       status: 200,
       statusText: 'OK',
       contentType: 'application/json',
@@ -363,6 +373,7 @@ describe('Recording', () => {
     const exchange: Exchange = {
       id: 'req-0',
       url: 'https://portal.example.org/favicon',
+      method: 'GET',
       status: 200,
       statusText: 'OK',
       contentType: 'application/octet-stream',
@@ -394,6 +405,36 @@ describe('Recording', () => {
     expect(recording.entries()).not.toBe(recording.entries())
   })
 
+  it('should record a verb as Fetch sends it, and one it does not recognize as UNKNOWN', () => {
+    // Arrange — the wire's `method` is what the page passed to fetch/XHR, so
+    // its case and its vocabulary are the page's.
+    const at = DateTime.unsafeMake('2026-09-13T14:02:11Z')
+    const recording = Recording.empty()
+    const sent = ['post', 'BREW', 'patch'] as const
+
+    // Act
+    sent.forEach((method, index) => {
+      const id = `req-${index}`
+      recording.onResponseStart(
+        {
+          _tag: 'ResponseStart',
+          id,
+          url: 'https://portal.example.org/api',
+          method,
+          status: 200,
+          statusText: 'OK',
+          headers: [['content-type', 'application/json']],
+        },
+        at
+      )
+      recording.onResponseFinished({ _tag: 'ResponseFinished', id })
+    })
+
+    // Assert — Fetch uppercases `post` before sending but sends `patch` as
+    // written, which is not the PATCH verb.
+    expect(recording.entries().map((entry) => entry.method)).toEqual(['POST', 'UNKNOWN', 'UNKNOWN'])
+  })
+
   it('should settle exactly the finished, kept responses — in settle order, bytes intact', () => {
     fc.assert(
       fc.property(sessionArbitrary, ({ events }) => {
@@ -407,7 +448,7 @@ describe('Recording', () => {
           expected.map((exchange, index) => ({
             id: `har-entry-${index}`,
             url: exchange.url,
-            method: 'UNKNOWN',
+            method: exchange.method,
             status: exchange.status,
             statusText: exchange.statusText,
             headers: [['content-type', exchange.contentType]],
@@ -476,6 +517,7 @@ describe('Recording', () => {
           const exchange: Exchange = {
             id: 'req-0',
             url: 'https://portal.example.org/blob',
+            method: 'GET',
             status: 200,
             statusText: 'OK',
             contentType: 'application/octet-stream',

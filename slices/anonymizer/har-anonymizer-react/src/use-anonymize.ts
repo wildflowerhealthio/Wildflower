@@ -111,7 +111,7 @@ const describeSettings = (settings: AnonymizeSettings): string => {
     overrides.length === 0
       ? 'no per-path overrides'
       : overrides.map(([path, decision]) => `${path}=${decision}`).join('; ')
-  return `Anonymized: ${carveOut}; ${uris}; ${overrideNote}. Request method, request headers and request body were dropped at import — the projection carries the response half only. Pseudonyms are stable within this archive only — a fresh salt is minted per anonymize, so two anonymized archives of one source cannot be linked.`
+  return `Anonymized: ${carveOut}; ${uris}; ${overrideNote}. Request headers and request body were dropped at import — the projection carries the request method and the response half only. Pseudonyms are stable within this archive only — a fresh salt is minted per anonymize, so two anonymized archives of one source cannot be linked.`
 }
 
 /**

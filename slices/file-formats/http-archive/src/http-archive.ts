@@ -3,6 +3,7 @@ import { Either, Encoding, ParseResult, Schema } from 'effect'
 import { HeadersWire } from '@wildflowerhealthio/browser-sniffer-core'
 
 import {
+  type HarMethodValue,
   HarMethodValueSchema,
   isHttpMethod,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
@@ -36,6 +37,41 @@ import { Har, type HarBody, type HarEntry, NOT_MEASURED } from './har.ts'
  * synthesizes `har-entry-<index>` ids from this definition, not a copy.
  */
 const ENTRY_ID_PREFIX = 'har-entry-'
+
+/**
+ * The verbs a request method is matched to case-insensitively, as the Fetch
+ * standard's method normalization does before a request is sent.
+ *
+ * @remarks
+ * `PATCH` is deliberately absent: Fetch sends a lowercase `patch` as written,
+ * so it is a different method on the wire.
+ */
+const CASE_NORMALIZED_METHODS: ReadonlySet<string> = new Set([
+  'DELETE',
+  'GET',
+  'HEAD',
+  'OPTIONS',
+  'POST',
+  'PUT',
+])
+
+/**
+ * The {@link Entry.method} a request verb is recorded as.
+ *
+ * @param method - The verb as a HAR or a capture stated it
+ * @returns The verb, case-normalized as Fetch sends it, or `'UNKNOWN'` when it
+ *   is not one of the seven recognized verbs
+ *
+ * @remarks
+ * Exported so a producer that builds a {@link Log} without reading an archive
+ * (the Recorder, from the sniffer's `ResponseStart.method`) applies the same
+ * rule an import does.
+ */
+const methodOf = (method: string): HarMethodValue => {
+  const upper = method.toUpperCase()
+  const sent = CASE_NORMALIZED_METHODS.has(upper) ? upper : method
+  return isHttpMethod(sent) ? sent : 'UNKNOWN'
+}
 
 /** Why a re-encoded archive has no request side, stated in the file itself. */
 const DROPPED_REQUEST_COMMENT =
@@ -139,7 +175,7 @@ const projectionOf = (entry: HarEntry, index: number): typeof Entry.Encoded => {
     // absent). Anything outside the seven recognized verbs is normalized to
     // `'UNKNOWN'` at this one boundary so the projection's schema can be a
     // closed literal union without failing the file over a foreign verb.
-    method: isHttpMethod(entry.request.method) ? entry.request.method : 'UNKNOWN',
+    method: methodOf(entry.request.method),
     status: entry.response.status,
     statusText: entry.response.statusText,
     headers: entry.response.headers,
@@ -240,4 +276,4 @@ const LogFromHarJson = Schema.parseJson(LogFromHar).annotations({
   description: 'The entries an import replays, carried as the text of a .har file.',
 })
 
-export { ENTRY_ID_PREFIX, type Entry, type Log, LogFromHarJson }
+export { ENTRY_ID_PREFIX, type Entry, type Log, LogFromHarJson, methodOf }

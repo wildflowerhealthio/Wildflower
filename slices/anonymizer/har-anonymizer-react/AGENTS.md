@@ -94,10 +94,11 @@ An adapter. Depends on `har-anonymizer-core` (the redactor),
   pseudonymize a format it cannot parse, and shipping one unredacted is not an
   option. `droppedBodyCount` surfaces the difference. An anonymize that
   quietly dropped a body would misrepresent what the source held.
-- **The manifest states that request method, headers and body were dropped.**
-  True for a DevTools/extension export where they existed: the projection
-  `HttpArchive.Log` carries the response half only, and the archive's
-  `log.comment` says the same via `describeSettings`.
+- **The manifest states that request headers and body were dropped.** True
+  for a DevTools/extension export where they existed: the projection
+  `HttpArchive.Log` carries the request method and the response half only, and
+  the archive's `log.comment` says the same via `describeSettings`. The method
+  is not sensitive, so `emitHarFromLog` writes each entry's own.
 - **The archive is encoded before it is stringified.** `emitHarFromLog` builds
   the _decoded_ form of the `Har` schema — instants are `DateTime`s, bodies
   are a tagged union — so `harBlob` runs `Schema.encodeSync(Har)` first. A
@@ -129,9 +130,9 @@ behaviour to document.
   file finds nothing whether or not it was redacted). Also a
   DevTools-shaped archive with request method, request headers and a request
   body, decoded through `HttpArchive.LogFromHarJson` and passed through the
-  panel, asserting the downloaded archive has no request side (method
-  `UNKNOWN`, no headers) and none of the request-side or response-side
-  captured leaf values survive.
+  panel, asserting the downloaded archive keeps the source's request method
+  but no request headers or body, and none of the request-side or
+  response-side captured leaf values survive.
 - `redaction-preview.test.ts` — the same "the preview is the pseudonymizer's
   own output" properties, over `HttpArchive.Log` inputs.
 - `download-har.test.ts` — `anonymizedFileName` sanitisation and the

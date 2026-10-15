@@ -3,6 +3,7 @@ import { DateTime, Effect, Encoding, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { HTTP_METHODS } from '@wildflowerhealthio/http-extraction-fundamentals'
 import type { TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import {
   arbitraries,
@@ -412,5 +413,42 @@ describe('bad input fails as a ParseError, never as a throw', () => {
     )
     expect(version).toBe('1.1')
     expect(entries.length).toBe(1)
+  })
+})
+
+describe('methodOf', () => {
+  test('property: each recognized verb records as itself', () => {
+    fc.assert(
+      fc.property(fc.constantFrom(...HTTP_METHODS), (method) => {
+        expect(HttpArchive.methodOf(method)).toBe(method)
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
+  })
+
+  test('a lowercase verb Fetch normalizes records uppercased; a lowercase patch does not', () => {
+    expect(HttpArchive.methodOf('post')).toBe('POST')
+    expect(HttpArchive.methodOf('Get')).toBe('GET')
+    // Fetch sends `patch` as written, so it is not the PATCH verb.
+    expect(HttpArchive.methodOf('patch')).toBe('UNKNOWN')
+  })
+
+  test('property: anything that is not a recognized verb records as UNKNOWN', () => {
+    fc.assert(
+      fc.property(
+        fc
+          .string()
+          .filter(
+            (method) =>
+              !HTTP_METHODS.some(
+                (verb) => verb === method || verb.toLowerCase() === method.toLowerCase()
+              )
+          ),
+        (method) => {
+          expect(HttpArchive.methodOf(method)).toBe('UNKNOWN')
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
