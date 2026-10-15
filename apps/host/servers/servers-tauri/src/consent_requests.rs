@@ -1,48 +1,30 @@
 //! Notifying each new consent waiting on the servers: a notification for
-//! each, "‹client› wants access to ‹domain›", and on the desktop the request
-//! opened at once in the default browser, since a desktop can't click the
-//! notification.
-
-use std::path::PathBuf;
-use std::sync::Arc;
+//! each, "‹client› wants access to ‹domain›". A tap opens it on a phone; a
+//! desktop, which reports no taps, opens it from the server's page.
 
 use tauri::AppHandle;
 use tauri_plugin_log::log;
 use tokio::sync::watch;
-use wildflowerhealthio_servers::{
-    ConsentNotificationCoalescer, ConsentRequest, ServerDetail, ServerRegistry,
-};
+use wildflowerhealthio_servers::{ConsentNotificationCoalescer, ConsentRequest, ServerDetail};
 use wildflowerhealthio_tauri_unit_runner::UnitStatuses;
 
 use crate::notifications::post_notification;
-use crate::ServerUnits;
 
-/// Where a consent request is announced: in the app, a posted notification
-/// and, on the desktop, the request opened; in the tests, a record of the
-/// requests announced.
+/// Where a consent request is announced: in the app, a posted notification;
+/// in the tests, a record of the requests announced.
 pub(crate) trait ConsentRequestNotifier: Send + 'static {
     /// Announce `request`.
     fn notify(&self, request: &ConsentRequest);
 }
 
-/// The app's [`ConsentRequestNotifier`]: the notification plugin, and on the
-/// desktop the default browser, which opens the request as the server's
-/// page's Open does.
+/// The app's [`ConsentRequestNotifier`]: the notification plugin.
 pub(crate) struct AppConsentRequestNotifier {
     pub(crate) app: AppHandle,
-    pub(crate) registry: Arc<dyn ServerRegistry>,
-    /// The directory holding `servers.json` and each server's folder.
-    pub(crate) data_root: PathBuf,
-    pub(crate) server_units: ServerUnits,
-    /// `TauriUnitRunner`'s statuses, which a request not openable yet on the
-    /// desktop is opened again on as they change.
-    pub(crate) statuses_rx: watch::Receiver<UnitStatuses<ServerDetail>>,
 }
 
 impl ConsentRequestNotifier for AppConsentRequestNotifier {
     fn notify(&self, request: &ConsentRequest) {
         post_notification(&self.app, &request.notification());
-        open_on_desktop(self, request);
     }
 }
 
@@ -68,31 +50,6 @@ pub(crate) async fn notify_consent_requests(
         }
     }
 }
-
-/// Open `request` in the default browser, signed in as the Owner, as the
-/// server's page's Open does: a desktop can't click a notification
-/// (`tauri-plugin-notification` reports no taps there), so the request opens
-/// as it notifies. A server that can't open it now, as one not yet launchable
-/// at the app's start, opens it once it can, while it is still the server's
-/// newest request; each try logs its outcome.
-///
-/// Desktop only: on a phone a tap on the notification opens the request.
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn open_on_desktop(notifier: &AppConsentRequestNotifier, request: &ConsentRequest) {
-    tauri::async_runtime::spawn(crate::launch_commands::open_notified_consent_on_desktop(
-        notifier.app.clone(),
-        Arc::clone(&notifier.registry),
-        notifier.data_root.clone(),
-        notifier.server_units.clone(),
-        request.domain.clone(),
-        request.pending_consent.key.clone(),
-        notifier.statuses_rx.clone(),
-    ));
-}
-
-/// Mobile builds open nothing: see the desktop variant.
-#[cfg(any(target_os = "ios", target_os = "android"))]
-fn open_on_desktop(_notifier: &AppConsentRequestNotifier, _request: &ConsentRequest) {}
 
 #[cfg(test)]
 mod tests {
