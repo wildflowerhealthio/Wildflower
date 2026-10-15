@@ -16,7 +16,7 @@ import {
 } from '@wildflowerhealthio/authorization-react'
 import { basenameOf, restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
-import { consentedTelemetryLayer } from '@wildflowerhealthio/telemetry-web'
+import { consentedTelemetryLayer, redactServerHost } from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
 import type { JSX } from 'react'
 import './styles/global.css'
@@ -32,7 +32,12 @@ import {
   signInEnvironment,
   unsentEhrLaunch,
 } from './sign-in.ts'
-import { ehrLaunchIn, searchAfterReturnLeg, SIGNED_IN_SERVER_KEY } from './web-entry.ts'
+import {
+  chosenServerUrl,
+  ehrLaunchIn,
+  searchAfterReturnLeg,
+  SIGNED_IN_SERVER_KEY,
+} from './web-entry.ts'
 
 addOsColorSchemeListener()
 
@@ -142,6 +147,20 @@ const bootApp = async (): Promise<JSX.Element> => {
   const settledSearch = searchAfterArrivingLaunch(arrivalSearch)
   if (settledSearch !== arrivalSearch) replaceSearch(settledSearch)
   const arrivingEhrLaunch = ehrLaunchIn(arrivalSearch)
+
+  // Every server this load names is one the reader chose, so its host is
+  // redacted from telemetry wherever an event names it: the one signed in to,
+  // the one a failed sign-in was to, the one the launch was opened for, and
+  // the one the landing is pointed at. The landing redacts any other it signs
+  // in to.
+  for (const serverUrl of [
+    session?.serverUrl,
+    completed.tag === 'Failed' ? completed.problem.serverUrl : undefined,
+    arrivingEhrLaunch?.serverUrl,
+    chosenServerUrl(window.location.search, window.sessionStorage),
+  ]) {
+    if (serverUrl !== undefined) redactServerHost(serverUrl)
+  }
 
   return buildAppTree({
     history: createBrowserHistory(),

@@ -33,21 +33,24 @@ interface CaptureHint {
 // the module boundary is where it is stubbed: each test reads back whether, and
 // with what, the root started telemetry and reported. The rest of the module
 // stays real, so the config the root builds is the one an app would get.
-const { initConsentedTelemetryMock, setFhirServerHostMock, captureExceptionMock } = vi.hoisted(
-  () => ({
-    initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
-    setFhirServerHostMock: vi.fn<typeof TelemetryWeb.setFhirServerHost>(),
-    captureExceptionMock: vi.fn<(exception: unknown, hint?: CaptureHint) => string>(
-      () => 'event-id'
-    ),
-  })
-)
+const {
+  initConsentedTelemetryMock,
+  setFhirServerHostMock,
+  redactServerHostMock,
+  captureExceptionMock,
+} = vi.hoisted(() => ({
+  initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
+  setFhirServerHostMock: vi.fn<typeof TelemetryWeb.setFhirServerHost>(),
+  redactServerHostMock: vi.fn<typeof TelemetryWeb.redactServerHost>(),
+  captureExceptionMock: vi.fn<(exception: unknown, hint?: CaptureHint) => string>(() => 'event-id'),
+}))
 vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => {
   const actual = await importOriginal<typeof TelemetryWeb>()
   return {
     ...actual,
     initConsentedTelemetry: initConsentedTelemetryMock,
     setFhirServerHost: setFhirServerHostMock,
+    redactServerHost: redactServerHostMock,
     Sentry: { captureException: captureExceptionMock },
   }
 })
@@ -710,11 +713,11 @@ describe('SmartAppRoot telemetry consent', () => {
     expect(captureExceptionMock).not.toHaveBeenCalled()
   })
 
-  it('should report, not throw, a FHIR server URL that does not parse, and tag no host', async () => {
+  it('should report, without the URL, a FHIR server URL that does not parse, redact it, and tag it as no host', async () => {
     // Arrange
     initConsentedTelemetryMock.mockReturnValue(true)
     storeConsent({ crashReports: true, performance: false })
-    tokenExchangeMock.mockResolvedValue(clientConnectedTo('not a url'))
+    tokenExchangeMock.mockResolvedValue(clientConnectedTo('ruth.example'))
 
     // Act
     renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
@@ -724,9 +727,12 @@ describe('SmartAppRoot telemetry consent', () => {
       expect(captureExceptionMock).toHaveBeenCalledTimes(1)
     })
     const [reported, hint] = captureExceptionMock.mock.calls[0]
-    expect(reported instanceof Error ? reported.message : reported).toContain('not a url')
+    expect(reported instanceof Error ? reported.message : reported).toBe(
+      "The SMART handshake's FHIR server is not a URL"
+    )
     expect(hint).toStrictEqual({ tags: { source: 'fhir-server-host' } })
-    expect(setFhirServerHostMock).not.toHaveBeenCalled()
+    expect(setFhirServerHostMock).toHaveBeenCalledWith(null)
+    expect(redactServerHostMock).toHaveBeenCalledExactlyOnceWith('ruth.example')
   })
 
   it('should report a render error in the connect menu, keeping the page around it', () => {

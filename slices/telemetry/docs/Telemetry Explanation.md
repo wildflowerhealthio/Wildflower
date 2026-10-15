@@ -15,14 +15,42 @@ Both switches report to the same Sentry project, so the DSN stays while either i
 
 ## URLs are reduced to their shape
 
-Every event either switch sends passes through `scrubEvent`, which runs each URL it carries (the request URL and `Referer`, fetch and navigation breadcrumbs, span attributes such as `url.full`, `url.path` and `lcp.url`, span descriptions, the transaction name) through `anonymizeUrl`, and drops the span attributes that carry a query string, a fragment or an HTTP header. `anonymizeUrl` keeps the origin and the FHIR base path, drops the query string, fragment and credentials, and replaces the segment after a resource type with `{id}` and the segment after `_history` with `{vid}`. Relative references keep their form, so `Observation?patient=1` becomes `Observation`:
+Every event either switch sends passes through `scrubEvent`, which runs each URL it carries (the request URL and `Referer`, fetch and navigation breadcrumbs, span attributes such as `url.full`, `url.path` and `lcp.url`, span descriptions, the transaction name) through `anonymizeUrl`, runs the span attributes that carry a host on its own (`server.address`, `url.domain`, `http.host`, `net.peer.name`) through `anonymizeHost`, and drops the span attributes that carry a query string, a fragment or an HTTP header. `anonymizeUrl` drops the query string, fragment and credentials, and keeps the scheme, the host and the path only where they cannot carry data. Relative references keep their form, so `Observation?patient=1` becomes `Observation`:
 
 ```text
 https://fhir.example/r4/Patient/123/_history/2?_format=json
-https://fhir.example/r4/Patient/{id}/_history/{vid}
+https://{host}/r4/Patient/{id}/_history/{vid}
+
+http://tauri.localhost/servers/android-emu.relay.wildflowerhealth.io
+http://tauri.localhost/servers/{id}
 ```
 
-A resource type is recognized by shape (an uppercase then a lowercase letter, letters only), not from a list. The rule errs towards replacing too much: a segment after anything shaped like a resource type becomes `{id}`, so an id that happens to look like one costs the next segment its name rather than letting the id after it through.
+Both the host and the path are allowlists, so a shape the anonymizer does not know is replaced rather than reported:
+
+- **Hosts.** The host and port stay only when the hostname is `localhost`, `tauri.localhost` or `wildflowerhealth.io`, the apex that serves the hosted apps. Every other host, the apex's subdomains included (a relay tunnel, a personal server), becomes `{host}` and loses its port, since a server's name is the user's choice.
+- **Path segments.** The segment after `_history` becomes `{vid}`, and the segment after a resource type becomes `{id}` whatever its own shape, since a FHIR id can be a plain word. Any other segment stays only if it is a lowercase route word, hyphens allowed (`servers`, `oauth-consent`, `.well-known`), a resource type, an operation or interaction (`$everything`, `_search`: a `$` or `_` and lowercase words), or one of a short list of FHIR base-path names (`FHIR`, `R4`, `R4B`, `R5`, `STU3`, `DSTU2`, `baseR4`, …). Everything else becomes `{id}`: domains, UUIDs, numbers, user codes, file names.
+
+A resource type is recognized from the list of every resource type FHIR R4, R4B and R5 define (`telemetry-core`'s `fhir-resource-types.ts`), so a capitalized name or user id (`/users/Johnsmith`) is not kept for looking like one. The rules err towards replacing too much: a segment after a resource type becomes `{id}`, so an id that happens to be a resource type's name costs the next segment its name rather than letting the id after it through. What still passes is an id shaped like a lowercase route word where no resource type precedes it, such as `john-smith` in a route the app names its records by.
+
+The same pass covers free text: the event's message and `logentry` (its message and string parameters), each exception's message, and each breadcrumb's message have the URLs in them anonymized like span descriptions, so `Failed to fetch dynamically imported module: https://ruth.example/assets/Chart-abc.js` reports `https://{host}/assets/{id}`. A URL is read without the brackets, quotes and sentence punctuation around it, which stay, so `(https://wildflowerhealth.io/servers).` stays as written. Any other word with a `/`, `?` or `#` in it is read as a path too, which errs towards replacing too much: `Invalid date 10/15/2026` reports `Invalid date {id}/{id}/{id}`, since a date in a message can be a birth date.
+
+## Server hosts are replaced wherever they stand
+
+A stack frame names the script it ran in by URL, and an app served from a user's server or relay tunnel loads its scripts from that server: `https://android-emu.relay.wildflowerhealth.io/assets/index-abc.js`. `scrubEvent` replaces only the host in each frame's `filename`, `abs_path` and `module`, and in each debug image's `code_file`, with `{host}`, keeping the path and file name: `https://{host}/assets/index-abc.js`. Running these through `anonymizeUrl` would turn the bundle's file name into `{id}`. A long animation frame span's `code.filepath` and `browser.script.invoker`, which name the script it blames, are reported the same way, with the script URL's query string and fragment dropped as well.
+
+A server's host can also stand outside any URL: `Could not reach ruth.example:8443`, a console breadcrumb's arguments, a React component stack in `extra` or contexts. After the URL pass, `scrubEvent` replaces the same hosts with `{host}` in the message and `logentry`, exception messages, breadcrumb messages, every string in breadcrumb and span data that is not already a URL or host attribute, span descriptions, the transaction name, tags, `extra` and contexts, at any depth, in object keys as well as values.
+
+Source maps still resolve. The site's builds carry debug IDs (see below), and the SDK lists each script a frame ran in as a debug image, with the frame's path as its `code_file` and the script's debug ID. Sentry pairs a frame with its image by that path and finds the map by the debug ID, never by URL; the frame and the image are rewritten alike, so the pairing holds.
+
+The hosts replaced are matched case-insensitively, with any port and any subdomains in front, on label boundaries (`ruth.example` does not match `xruth.example` or `ruth.examples`), by `telemetry-core`'s `makeHostRedactor`. A single-label host such as a docker-compose service name (`fhir`) is an ordinary word too, so it is replaced only where it reads as a host: at the start of a URL's authority (`http://fhir:8080/x`, `user@fhir`) or with a port (`fhir:8080`); the word alone (`FHIR R4`) and identifiers built on it (`fhir_server_host`) stay. A dot after the host ends it, so `ruth.example.status` reports `{host}.status`, and so does a longer host such as `ruth.example.org`. A match also starts right after an escape, so a host in a percent-encoded URL (`iss=https%3A%2F%2Fruth.example`, encoded once or more) or after a backslash escape (`\nruth.example`) is replaced too. The hosts are:
+
+- every relay tunnel, `*.relay.wildflowerhealth.io` at any depth;
+- the page's own host;
+- the hosts the app has learnt at run time through `telemetry-web`'s `redactServerHost`: `setFhirServerHost` passes the FHIR server's host; the launcher passes the server a page load signs in to, was opened for or is pointed at, and each server the landing signs in to; and the Tauri host's base passes each server's domain each time it reads the server list, the hosts typed into Add server's relay settings before it adds the server, and the added server's domain once it is added. A SMART app's FHIR server URL that does not parse is passed as written, which redacts a bare hostname; a value that names no host, such as a path (`/fhir`), is ignored.
+
+`telemetry-web` builds the redactor once and rebuilds it only when `redactServerHost` learns a new host.
+
+Kept hosts (`localhost`, `tauri.localhost`, `wildflowerhealth.io`) stay as written.
 
 ## Consent lives in the origin's storage
 
@@ -52,9 +80,11 @@ The site deploys (`deploy-github-pages.yml` for `production`, `pr-preview.yml` f
 
 Every event carries tags set on the SDK's global scope: `app` (the app's id); in the SMART apps `launch` (`launching` on the launch page that authorizes a launch the URL carries, `standalone` on the connect page, `launched` in the app a completed SMART launch opened; an EHR launch and a standalone one return to the same page with the same callback, so the tag does not tell them apart) and `fhir_server_host`, set with `setFhirServerHost` once the app knows which FHIR server it is connected to; in the launcher `entry` (`main-web`).
 
+`fhir_server_host` carries the host reduced by `anonymizeHost`, so it says what kind of server the app reached without naming it: `localhost:8080` for a kept host, `{host}` for any other, `{empty}` for an empty host (Sentry drops a tag whose value is empty), and `{null}` when the FHIR server URL has no host to read. An event from before the handshake completes has no `fhir_server_host` tag at all.
+
 ## The SMART apps
 
-The SMART apps get all of this from `smart-app-react`'s `SmartAppRoot`, which takes the app's DSN and id as its `telemetry` prop. The gate wraps both of its branches, so the consent dialog comes before the connect page and before the launched app. On an answer it starts telemetry through `useConsentedTelemetryStart`; once Sentry runs it tags the FHIR server's host when the app's SMART handshake completes, and reports the launch failure the page arrived with (`source: launch-error`) from the hook's `onFirstStart`, so once. A `CrashReportingBoundary` around the launched app and another around the connect menu report render crashes, and the query cache of the page's one `QueryClient` reports failed reads (`source: query`), through `Sentry.captureException`, which does nothing while the SDK has not been initialized. A failed SMART handshake is not reported as a failed read: the app sends it back to the connect page, where it is reported as the launch failure the page arrived with. A FHIR server URL that does not parse is reported (`source: fhir-server-host`) instead of tagged. The status control sits at the end of the brand bar in the launched app and above the footer on the connect page.
+The SMART apps get all of this from `smart-app-react`'s `SmartAppRoot`, which takes the app's DSN and id as its `telemetry` prop. The gate wraps both of its branches, so the consent dialog comes before the connect page and before the launched app. On an answer it starts telemetry through `useConsentedTelemetryStart`; once Sentry runs it tags the FHIR server's host when the app's SMART handshake completes, and reports the launch failure the page arrived with (`source: launch-error`) from the hook's `onFirstStart`, so once. A `CrashReportingBoundary` around the launched app and another around the connect menu report render crashes, and the query cache of the page's one `QueryClient` reports failed reads (`source: query`), through `Sentry.captureException`, which does nothing while the SDK has not been initialized. A failed SMART handshake is not reported as a failed read: the app sends it back to the connect page, where it is reported as the launch failure the page arrived with. A FHIR server URL that does not parse is reported (`source: fhir-server-host`), without the URL, which no scrubbing would recognize as one, and tagged `{null}`. The status control sits at the end of the brand bar in the launched app and above the footer on the connect page.
 
 The apps keep the plain `FetchHttpClient.layer`.
 

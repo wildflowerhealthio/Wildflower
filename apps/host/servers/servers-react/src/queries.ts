@@ -32,7 +32,8 @@ import {
   setServerRunPolicy,
   updateServer,
 } from '@wildflowerhealthio/servers-core-js'
-import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
+import { redactServerHost } from '@wildflowerhealthio/telemetry-web'
+import { DateTime, Effect, Either, Match, Option, type ParseResult, Schema } from 'effect'
 import { useEffect } from 'react'
 
 import type { ListenToHostEvent, RunHostCommand, RunHttpRequest } from './router-context.ts'
@@ -46,6 +47,10 @@ const SERVERS_QUERY_KEY = ['servers', 'list'] as const
 /**
  * The servers on this device, each with its status on the host's unit
  * runner; {@link useServerStatusEvents} keeps the statuses current.
+ *
+ * @remarks
+ * Each listed server's domain is redacted from telemetry
+ * (`redactServerHost`), so an error naming it reports `{host}` instead.
  */
 const serversQueryOptions = (
   runHostCommand: RunHostCommand
@@ -57,7 +62,11 @@ const serversQueryOptions = (
 > =>
   queryOptions({
     queryKey: SERVERS_QUERY_KEY,
-    queryFn: () => runHostCommand(listServers),
+    queryFn: async () => {
+      const servers = await runHostCommand(listServers)
+      for (const server of servers) redactServerHost(server.domain)
+      return servers
+    },
   })
 
 /** A change to the cached server list, or `undefined` when the list can't take it. */
@@ -152,6 +161,22 @@ const useServerStatusEvents = (listenToHostEvent: ListenToHostEvent): void => {
 }
 
 /**
+ * The hosts the user typed into `relay`: a self-hosted relay's base URL, the
+ * address a rathole client dials, and a rathole relay's domain, which every
+ * server domain on it ends in.
+ */
+const enteredRelayHosts = (relay: EnteredRelay.Type): readonly string[] =>
+  Match.value(relay).pipe(
+    Match.withReturnType<readonly string[]>(),
+    Match.when({ kind: 'wildflowerOfficial' }, () => []),
+    Match.when({ kind: 'selfHostedWildflower' }, ({ baseUrl, pin }) =>
+      pin === undefined ? [baseUrl] : [baseUrl, pin.remoteAddr]
+    ),
+    Match.when({ kind: 'rathole' }, ({ remoteAddr, domain }) => [remoteAddr, domain]),
+    Match.exhaustive
+  )
+
+/**
  * Adds a server, answering with its domain, then reads the server list again,
  * the cached list included while no page shows it, before the mutation
  * settles.
@@ -162,6 +187,13 @@ const useServerStatusEvents = (listenToHostEvent: ListenToHostEvent): void => {
  * without it. The mutation holds the claim code or the token among its
  * variables, so they are dropped from the mutation cache as soon as nothing
  * observes it (`gcTime: 0`); a caller resets it once the server is added.
+ *
+ * The hosts the user typed into the relay are redacted from telemetry
+ * (`redactServerHost`) before the host is asked, so a refusal that names one
+ * reports `{host}` instead, and the added server's domain as soon as the host
+ * answers with it, which a self-hosted relay need not name under its own
+ * host; a server on the Wildflower relay is a `*.relay.wildflowerhealth.io`
+ * host, which telemetry always redacts.
  */
 const useAddServer = (
   runHostCommand: RunHostCommand
@@ -175,7 +207,12 @@ const useAddServer = (
 > => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (enrolment) => runHostCommand(addServer(enrolment)),
+    mutationFn: async (enrolment) => {
+      for (const host of enteredRelayHosts(enrolment.relay)) redactServerHost(host)
+      const domain = await runHostCommand(addServer(enrolment))
+      redactServerHost(domain)
+      return domain
+    },
     gcTime: 0,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: SERVERS_QUERY_KEY, refetchType: 'all' }),

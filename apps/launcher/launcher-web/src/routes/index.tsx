@@ -12,6 +12,7 @@ import {
   useAuthStateSubscribable,
 } from '@wildflowerhealthio/react-kitchen-sink'
 import { ConnectMenu } from '@wildflowerhealthio/smart-app-react'
+import { redactServerHost } from '@wildflowerhealthio/telemetry-web'
 import { type JSX, useEffect } from 'react'
 
 import type { RouterContext } from '../router-context.ts'
@@ -223,8 +224,12 @@ function Landing({
    *
    * The first sign-in to the `ehrLaunch` server carries its launch (the sign-in
    * on arrival, unless the server was blocked), making it an EHR launch.
+   *
+   * The server's host is redacted from telemetry first, so a discovery or
+   * sign-in failure that names it reports `{host}`.
    */
   const connect = (targetUrl: string): Promise<string | undefined> => {
+    redactServerHost(targetUrl)
     rememberServer(targetUrl)
     return signIn.start(targetUrl, ehrLaunch?.takeFor(targetUrl)).then((started) => {
       if (started.tag === 'Failed') return started.reason

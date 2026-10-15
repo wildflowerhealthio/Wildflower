@@ -38,7 +38,7 @@ const consentWith = (switches: {
 }): TelemetryConsent => ({ version: 1, decidedAt: '2026-09-29T12:00:00.000Z', ...switches })
 
 const FHIR_URL = 'https://fhir.example/r4/Patient/123?_format=json'
-const ANONYMIZED_FHIR_URL = 'https://fhir.example/r4/Patient/{id}'
+const ANONYMIZED_FHIR_URL = 'https://{host}/r4/Patient/{id}'
 
 const errorEvent: ErrorEvent = {
   type: undefined,
@@ -250,13 +250,154 @@ describe('initConsentedTelemetry', () => {
   })
 })
 
+describe('server host redaction', () => {
+  /** An error event thrown from `scriptUrl`, with the debug image the SDK lists for it. */
+  const errorEventThrownFrom = (scriptUrl: string): ErrorEvent => ({
+    type: undefined,
+    exception: { values: [{ type: 'Error', stacktrace: { frames: [{ filename: scriptUrl }] } }] },
+    debug_meta: { images: [{ type: 'sourcemap', code_file: scriptUrl, debug_id: 'd1' }] },
+  })
+
+  /** The script URL of the one frame, and the code file of the one debug image, `event` sends. */
+  const sentScriptUrls = (event: ErrorEvent | null | undefined): readonly unknown[] => [
+    event?.exception?.values?.[0]?.stacktrace?.frames?.[0]?.filename,
+    event?.debug_meta?.images?.[0]?.code_file,
+  ]
+
+  const startCrashReports = async (): Promise<typeof Consented> => {
+    const consented = await importConsented()
+    consented.initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+    return consented
+  }
+
+  test.each([
+    { case: 'a host it was told to redact', redact: 'ruth.example', host: 'Ruth.Example:8443' },
+    { case: 'the FHIR server’s host', fhirServerHost: 'fhir.example:8443', host: 'fhir.example' },
+    { case: 'a relay tunnel', host: 'android-emu.relay.wildflowerhealth.io' },
+  ])('replaces $case in a stack frame, keeping the script’s path', async (example) => {
+    const { redactServerHost, setFhirServerHost } = await startCrashReports()
+    if (example.redact !== undefined) redactServerHost(example.redact)
+    if (example.fhirServerHost !== undefined) setFhirServerHost(example.fhirServerHost)
+
+    const sent = await sentryInitOptions().beforeSend?.(
+      errorEventThrownFrom(`https://${example.host}/assets/index-abc.js`),
+      {}
+    )
+
+    expect(sentScriptUrls(sent)).toStrictEqual([
+      'https://{host}/assets/index-abc.js',
+      'https://{host}/assets/index-abc.js',
+    ])
+  })
+
+  test('replaces a server host in an error’s message and a transaction’s name', async () => {
+    const { initConsentedTelemetry, redactServerHost } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    redactServerHost('ruth.example')
+    const options = sentryInitOptions()
+
+    const sentError = await options.beforeSend?.(
+      {
+        type: undefined,
+        exception: { values: [{ type: 'Error', value: 'ruth.example is down' }] },
+      },
+      {}
+    )
+    const sentTransaction = await options.beforeSendTransaction?.(
+      { type: 'transaction', transaction: 'connect Ruth.Example:8443' },
+      {}
+    )
+
+    expect(sentError?.exception?.values?.[0]?.value).toBe('{host} is down')
+    expect(sentTransaction?.transaction).toBe('connect {host}')
+  })
+
+  test('replaces a server host learnt after an event was sent', async () => {
+    const { initConsentedTelemetry, redactServerHost } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+    redactServerHost('ruth.example')
+    const options = sentryInitOptions()
+    const naming = {
+      type: undefined,
+      exception: { values: [{ type: 'Error', value: 'ruth.example and other.example' }] },
+    }
+
+    const before = await options.beforeSend?.(naming, {})
+    redactServerHost('other.example')
+    const after = await options.beforeSend?.(naming, {})
+
+    expect(before?.exception?.values?.[0]?.value).toBe('{host} and other.example')
+    expect(after?.exception?.values?.[0]?.value).toBe('{host} and {host}')
+  })
+
+  test('replaces the page’s own host in a stack frame', async () => {
+    vi.stubGlobal('location', { host: 'my-server.example' })
+    try {
+      await startCrashReports()
+
+      const sent = await sentryInitOptions().beforeSend?.(
+        errorEventThrownFrom('https://my-server.example/launcher/assets/index-abc.js'),
+        {}
+      )
+
+      expect(sentScriptUrls(sent)).toStrictEqual([
+        'https://{host}/launcher/assets/index-abc.js',
+        'https://{host}/launcher/assets/index-abc.js',
+      ])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test.each([
+    'https://wildflowerhealth.io/launcher/assets/index-abc.js',
+    'https://other.example/assets/index-abc.js',
+  ])('keeps a stack frame on %s, a kept host or one it was not told about', async (scriptUrl) => {
+    await startCrashReports()
+
+    const sent = await sentryInitOptions().beforeSend?.(errorEventThrownFrom(scriptUrl), {})
+
+    expect(sentScriptUrls(sent)).toStrictEqual([scriptUrl, scriptUrl])
+  })
+})
+
 describe('setFhirServerHost', () => {
-  test('tags later events with the FHIR server host', async () => {
+  test.each([
+    { case: 'a host', host: 'fhir.example:8443', tag: '{host}' },
+    { case: 'a kept host', host: 'localhost:8080', tag: 'localhost:8080' },
+    { case: 'an empty host', host: '', tag: '{empty}' },
+    { case: 'no host (null)', host: null, tag: '{null}' },
+    { case: 'no host (undefined)', host: undefined, tag: '{null}' },
+  ])('tags later events with $case as $tag', async ({ host, tag }) => {
     const { setFhirServerHost } = await importConsented()
 
-    setFhirServerHost('fhir.example:8443')
+    setFhirServerHost(host)
 
-    expect(setTagMock).toHaveBeenCalledWith('fhir_server_host', 'fhir.example:8443')
+    expect(setTagMock).toHaveBeenCalledExactlyOnceWith('fhir_server_host', tag)
+  })
+
+  test('sets no tag while it is not called', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+
+    expect(setTagMock).not.toHaveBeenCalled()
   })
 })
 

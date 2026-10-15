@@ -28,12 +28,14 @@ import { BaseUnderTest, type BaseUnderTestProps } from './test-utils/base-under-
 
 // Starting the SDK is the collaborator whose every touch the gate controls, so
 // the module boundary is where it is stubbed; the rest stays real.
-const { initConsentedTelemetryMock } = vi.hoisted(() => ({
+const { initConsentedTelemetryMock, redactServerHostMock } = vi.hoisted(() => ({
   initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
+  redactServerHostMock: vi.fn<typeof TelemetryWeb.redactServerHost>(),
 }))
 vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: initConsentedTelemetryMock,
+  redactServerHost: redactServerHostMock,
 }))
 
 const BASE_DSN = 'https://key@sentry.example/12'
@@ -271,6 +273,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   initConsentedTelemetryMock.mockClear()
+  redactServerHostMock.mockReset()
   for (const [method, descriptor] of dialogMethodDescriptors) {
     if (descriptor === undefined) Reflect.deleteProperty(HTMLDialogElement.prototype, method)
     else Object.defineProperty(HTMLDialogElement.prototype, method, descriptor)
@@ -467,6 +470,21 @@ describe('the server list', () => {
     })
     return host
   }
+
+  it("should redact each listed server's domain from telemetry", async () => {
+    // Arrange
+    redactServerHostMock.mockClear()
+
+    // Act
+    renderListed(golden.listedServers)
+
+    // Assert
+    await waitFor(() => {
+      expect(redactServerHostMock.mock.calls).toStrictEqual(
+        golden.listedServers.map((server) => [server.domain])
+      )
+    })
+  })
 
   it('should say what a server is, and offer Add server, when there are none', async () => {
     // Act
@@ -3188,6 +3206,68 @@ describe('Add server', () => {
     // Assert
     await stepTitled('Server added')
     expect(invokesOf(host, 'server_add').map((invoke) => invoke.args?.['relay'])).toEqual([relay])
+  })
+
+  it.each([
+    [
+      'a pinned self-hosted Wildflower relay',
+      {
+        baseUrl: 'https://relay.example.com',
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: golden.enteredRelays.selfHostedWildflowerPinned.pin.publicKey,
+      },
+      ['https://relay.example.com', 'relay.example.com:2333'],
+    ],
+    [
+      'a rathole relay',
+      {
+        rathole: true,
+        remoteAddr: 'relay.example.com:2333',
+        publicKey: golden.enteredRelays.rathole.publicKey,
+        domain: 'relay.example.com',
+      },
+      ['relay.example.com:2333', 'relay.example.com'],
+    ],
+  ] as const)(
+    'should redact the hosts typed for %s from telemetry before server_add',
+    async (_, custom, hosts) => {
+      // Arrange
+      const user = userEvent.setup()
+      const host = renderAddServer()
+      await enterRelay(user, custom)
+      redactServerHostMock.mockClear()
+      let redactedBeforeAdd: readonly unknown[] = []
+      redactServerHostMock.mockImplementation(() => {
+        if (invokesOf(host, 'server_add').length === 0) {
+          redactedBeforeAdd = redactServerHostMock.mock.calls.map(([redacted]) => redacted)
+        }
+      })
+
+      // Act
+      await enterCredentials(user)
+
+      // Assert
+      await stepTitled('Server added')
+      expect(redactedBeforeAdd).toStrictEqual(hosts)
+    }
+  )
+
+  it("should redact the added server's domain from telemetry once the host answers with it", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer({ add: () => Promise.resolve('ruth.self-hosted.example') })
+    await enterRelay(user, {
+      baseUrl: 'https://relay.example.com',
+      remoteAddr: 'relay.example.com:2333',
+      publicKey: golden.enteredRelays.selfHostedWildflowerPinned.pin.publicKey,
+    })
+
+    // Act
+    await enterCredentials(user)
+
+    // Assert
+    await stepTitled('Server added')
+    expect(redactServerHostMock).toHaveBeenCalledWith('ruth.self-hosted.example')
   })
 
   it('should lowercase the tunnel name and relay domain as they are typed', async () => {
