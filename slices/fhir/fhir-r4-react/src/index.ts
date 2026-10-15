@@ -10,7 +10,6 @@ export { useFhirR4ResourcesRuntimeLayer } from './router-context.ts'
 export {
   patientsQueryOptions,
   PATIENTS_QUERY_KEY,
-  usePatientsQuery,
   useRunAuthed,
   type PatientResource,
   type RunAuthed,

@@ -28,7 +28,7 @@ const RETURN_TO_PARAM: &str = "returnTo";
 /// The root URL of the hosted launcher, e.g. `https://wildflowerhealth.io/launcher/`.
 ///
 /// Always stored with a trailing slash, so a launcher route resolves *under*
-/// the base (`…/launcher/` + `authorization/devices`) rather than replacing its last
+/// the base (`…/launcher/` + `settings/requests`) rather than replacing its last
 /// segment, which is what [`Url::join`] does to a base without one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LauncherBase(Url);
@@ -51,7 +51,7 @@ impl LauncherBase {
 
     /// The launcher page at `route`, pointed at `server_origin`.
     ///
-    /// `route` is an origin-relative launcher path (`/authorization/devices`) whose
+    /// `route` is an origin-relative launcher path (`/settings/requests`) whose
     /// segments are already percent-encoded; it is resolved under the base.
     /// `server` comes first in the query, then `extra_query` in order.
     #[must_use]
@@ -125,25 +125,25 @@ mod tests {
     #[test]
     fn route_url_resolves_under_the_base_with_server_first() {
         let url = base("https://wildflowerhealth.io/launcher").route_url(
-            "/authorization/devices",
+            "/settings/requests",
             SERVER,
-            &[("user_code", "ABCD-EFGH")],
+            &[("client", "lifting")],
         );
         assert_eq!(
             url.as_str(),
-            "https://wildflowerhealth.io/launcher/authorization/devices\
-             ?server=http%3A%2F%2F127.0.0.1%3A8080&user_code=ABCD-EFGH"
+            "https://wildflowerhealth.io/launcher/settings/requests\
+             ?server=http%3A%2F%2F127.0.0.1%3A8080&client=lifting"
         );
     }
 
     #[test]
     fn route_url_keeps_percent_encoded_segments() {
         let url = base("https://wildflowerhealth.io/launcher/").route_url(
-            "/authorization/devices/a%20b",
+            "/settings/a%20b",
             SERVER,
             &[],
         );
-        assert_eq!(url.path(), "/launcher/authorization/devices/a%20b");
+        assert_eq!(url.path(), "/launcher/settings/a%20b");
         assert_eq!(
             url.path_segments().and_then(|mut s| s.next_back()),
             Some("a%20b")
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn open_url_round_trips_server_and_return_to() {
-        let return_to = "/settings/tunnel?tab=a&b=c#frag";
+        let return_to = "/settings/requests?tab=a&b=c#frag";
         let url = base("https://wildflowerhealth.io/launcher").open_url(SERVER, return_to);
         assert_eq!(url.path(), "/launcher/");
         let pairs: Vec<(String, String)> = url.query_pairs().into_owned().collect();

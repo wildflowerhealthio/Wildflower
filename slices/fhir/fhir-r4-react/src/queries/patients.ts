@@ -1,16 +1,10 @@
-import {
-  queryOptions,
-  useQuery,
-  type UseQueryOptions,
-  type UseQueryResult,
-} from '@tanstack/react-query'
+import { queryOptions, type UseQueryOptions } from '@tanstack/react-query'
 import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import type { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, type Schema } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
 import { PATIENTS_QUERY_KEY } from './keys.ts'
-import { useRunAuthed } from './use-run-authed.ts'
 
 /**
  * A decoded `Patient` resource as returned in the `Patient.SearchByGet`
@@ -22,13 +16,7 @@ type PatientResource = Schema.Schema.Type<typeof Patient.Schema>
 
 /**
  * Fetches the patient list (FHIR `Patient` search) and flattens the
- * bundle to the resource rows. Shared by call sites that read the patient
- * picker (`authorization-react`'s `usePatientOptions`).
- *
- * `useQuery`-shaped (not `useSuspenseQuery`): the only consumer gates the
- * read on a runtime `enabled` flag (the picker only matters when the
- * SMART app requested a `patient/*` scope), and a suspense query can't be
- * conditionally disabled from the same component. The list is keyed under
+ * bundle to the resource rows. The list is keyed under
  * {@link PATIENTS_QUERY_KEY}.
  */
 const patientsQueryOptions = (
@@ -57,13 +45,5 @@ const patientsQueryOptions = (
       ),
   })
 
-/**
- * Reads the patient list. `enabled` gates the read off when no patient
- * picker is needed (no `patient/*` scope requested); while disabled the
- * query never fires and `data` stays `undefined`.
- */
-const usePatientsQuery = (enabled: boolean): UseQueryResult<readonly PatientResource[], Error> =>
-  useQuery({ ...patientsQueryOptions(useRunAuthed()), enabled })
-
-export { patientsQueryOptions, usePatientsQuery }
+export { patientsQueryOptions }
 export type { PatientResource }
