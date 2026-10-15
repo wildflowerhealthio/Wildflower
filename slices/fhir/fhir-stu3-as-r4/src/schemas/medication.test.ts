@@ -4,7 +4,11 @@ import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { CodeableConcept, Extension } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  CodeableConcept,
+  Extension,
+  IdentifierAndReference,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import { Medication as R4Medication } from '@wildflowerhealthio/fhir-r4/resources'
 
 import * as Medication from './medication.ts'
@@ -20,6 +24,8 @@ const sample: typeof Medication.Schema.Type = {
   modifierExtension: [],
   text: null,
   code: null,
+  status: null,
+  manufacturer: null,
   form: null,
 }
 
@@ -41,7 +47,7 @@ describe('Stu3Medication', () => {
       code: {
         coding: [{ system: 'http://schema.carebook.com/v1/fhir/CodeSystem/din', code: '02241497' }],
       },
-      manufacturerOnlyOnR4: 'ignored',
+      isBrand: false,
       extension: [
         { url: 'http://schemas.carebook.com/v1/fhir/medication-strength', valueString: '10 mg' },
       ],
@@ -73,12 +79,14 @@ const r4ToStu3ToR4 = (r4: typeof R4Medication.Schema.Type): void => {
   expect(back).toSchemaEqual(Schema.typeSchema(R4Medication.Schema), r4)
 }
 
-// Explicitly constructs the safe R4 subset: only `code` / `form` / extensions
-// are populated; the R4-only slots (`identifier`, `status`, `manufacturer`,
-// `amount`, `ingredient`, `batch`) stay at their `empty` defaults.
+// Explicitly constructs the safe R4 subset: only `code` / `status` /
+// `manufacturer` / `form` / extensions are populated; the unmodelled slots
+// (`identifier`, `amount`, `ingredient`, `batch`) stay at their `empty` defaults.
 const safeR4Medication: fc.Arbitrary<typeof R4Medication.Schema.Type> = fc
   .record({
     code: Arbitrary.make(Schema.NullOr(CodeableConcept.Schema)),
+    status: Arbitrary.make(Schema.NullOr(Medication.StatusSchema)),
+    manufacturer: Arbitrary.make(Schema.NullOr(IdentifierAndReference.ReferenceSchema)),
     form: Arbitrary.make(Schema.NullOr(CodeableConcept.Schema)),
     extension: Arbitrary.make(
       Schema.Array(Extension.Schema).pipe(AnnotateArrayWithArbitrary({ maxLength: 2 }))
@@ -92,6 +100,8 @@ describe('Medication.R4FromStu3Schema', () => {
       fc.property(
         fc.record({
           code: Arbitrary.make(Schema.NullOr(CodeableConcept.Schema)),
+          status: Arbitrary.make(Schema.NullOr(Medication.StatusSchema)),
+          manufacturer: Arbitrary.make(Schema.NullOr(IdentifierAndReference.ReferenceSchema)),
           form: Arbitrary.make(Schema.NullOr(CodeableConcept.Schema)),
         }),
         (over) => stu3ToR4ToStu3({ ...sample, ...over })
@@ -104,8 +114,23 @@ describe('Medication.R4FromStu3Schema', () => {
     fc.assert(fc.property(safeR4Medication, r4ToStu3ToR4), { numRuns: numRunsFor({ base: 50 }) })
   })
 
-  test('encoding an R4-only field (status) back to STU3 fails', () => {
-    const withStatus: typeof R4Medication.Schema.Type = { ...R4Medication.empty, status: 'active' }
-    expect(Either.isLeft(Schema.encodeEither(Medication.R4FromStu3Schema)(withStatus))).toBe(true)
+  test('decoding to R4 keeps the STU3 status and manufacturer', () => {
+    const r4 = Schema.decodeUnknownSync(Medication.R4FromStu3Schema)({
+      resourceType: 'Medication',
+      id: 'med-status',
+      status: 'inactive',
+      manufacturer: { display: 'Apotex Inc.' },
+    })
+
+    expect(r4.status).toBe('inactive')
+    expect(r4.manufacturer?.display).toBe('Apotex Inc.')
+  })
+
+  test('encoding an R4-only field (amount) back to STU3 fails', () => {
+    const withAmount: typeof R4Medication.Schema.Type = {
+      ...R4Medication.empty,
+      amount: { id: null, extension: [], numerator: null, denominator: null },
+    }
+    expect(Either.isLeft(Schema.encodeEither(Medication.R4FromStu3Schema)(withAmount))).toBe(true)
   })
 })

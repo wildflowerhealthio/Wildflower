@@ -6,27 +6,40 @@ import {
   mutableEncoded,
 } from '@wildflowerhealthio/kitchen-sink/schema'
 
-import { CodeableConcept, DomainResource } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  CodeableConcept,
+  DomainResource,
+  IdentifierAndReference,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import { Medication as R4Medication } from '@wildflowerhealthio/fhir-r4/resources'
 
 /**
  * Just-enough STU3 `Medication`, as it appears in `MedicationRequest.contained`.
- * Only the fields the dialect emits are modelled — `code`, `form`, and the
- * DomainResource extension array (where the dialect places `strength` /
- * `description`). Unknown fields are ignored on decode (Effect's default
- * excess-property behaviour), keeping the schema lenient per the epic's scope.
+ * Only the fields the dialect emits are modelled — `code`, `status`,
+ * `manufacturer`, `form`, and the DomainResource extension array (where the
+ * dialect places `strength` / `description`). Unknown fields are ignored on
+ * decode (Effect's default excess-property behaviour), keeping the schema
+ * lenient per the epic's scope.
  *
- * The STU3 wire shapes for these datatypes are identical to R4, so the clean
+ * The STU3 wire shapes for these fields are identical to R4, so the clean
  * STU3 value is already structurally an R4 `Medication` for the shared fields;
- * {@link R4FromStu3Schema} is a near-identity that only defaults the R4-only
- * slots (`status`, `manufacturer`, `amount`, `ingredient`, `batch`).
+ * {@link R4FromStu3Schema} is a near-identity that only defaults the slots this
+ * schema does not model (`identifier`, `amount`, `ingredient`, `batch`).
  */
+/**
+ * FHIR STU3 `Medication.status` value set: active | inactive | entered-in-error.
+ * Identical members to R4, so it maps through unchanged.
+ */
+const StatusSchema = Schema.Literal('active', 'inactive', 'entered-in-error')
+
 const MedicationStruct = Schema.extend(
   Schema.Struct({ resourceType: Schema.Literal('Medication') }),
   mutableEncoded(
     StructNoContext({
       ...DomainResource.fields,
       code: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
+      status: OrNullAsOptional(StatusSchema),
+      manufacturer: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
       form: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
     })
   )
@@ -37,7 +50,7 @@ type Type = typeof MedicationStruct.Type
 const MedicationSchema: Schema.Schema<Type, typeof MedicationStruct.Encoded, never> =
   MedicationStruct
 
-/** STU3 `Medication` → decoded R4 `Medication` (defaults the R4-only slots). */
+/** STU3 `Medication` → decoded R4 `Medication` (defaults the unmodelled slots). */
 const toR4 = (source: Type): typeof R4Medication.Schema.Type => ({
   ...R4Medication.empty,
   id: source.id,
@@ -49,6 +62,8 @@ const toR4 = (source: Type): typeof R4Medication.Schema.Type => ({
   extension: source.extension,
   modifierExtension: source.modifierExtension,
   code: source.code,
+  status: source.status,
+  manufacturer: source.manufacturer,
   form: source.form,
 })
 
@@ -58,8 +73,6 @@ const toR4 = (source: Type): typeof R4Medication.Schema.Type => ({
  */
 const unrepresentableField = (r4: typeof R4Medication.Schema.Type): string | null => {
   if (r4.identifier.length > 0) return 'Medication.identifier'
-  if (r4.status !== null) return 'Medication.status'
-  if (r4.manufacturer !== null) return 'Medication.manufacturer'
   if (r4.amount !== null) return 'Medication.amount'
   if (r4.ingredient.length > 0) return 'Medication.ingredient'
   if (r4.batch !== null) return 'Medication.batch'
@@ -78,6 +91,8 @@ const fromR4 = (r4: typeof R4Medication.Schema.Type): Type => ({
   extension: r4.extension,
   modifierExtension: r4.modifierExtension,
   code: r4.code,
+  status: r4.status,
+  manufacturer: r4.manufacturer,
   form: r4.form,
 })
 
@@ -107,4 +122,4 @@ const R4FromStu3Schema: Schema.Schema<
   },
 })
 
-export { MedicationSchema as Schema, R4FromStu3Schema, type Type }
+export { MedicationSchema as Schema, R4FromStu3Schema, StatusSchema, type Type }
