@@ -499,9 +499,9 @@ const RelayAndTunnel = ({
 
 /**
  * The server's certificate for its domain: its status; the CA the server
- * orders from, its record's, which Save launcher and Save Authorization save
- * unchanged, and, when the certificate state is for another CA (`issuer`), as
- * before a changed CA takes effect, the CA the state is for; the certificate
+ * orders from, its record's, which Save Launcher URL and Save Authorization
+ * Manager URL save unchanged, and, when the certificate state is for another
+ * CA (`issuer`), as before a changed CA takes effect, the CA the state is for; the certificate
  * held, with when it is valid and its fingerprint; and the run's latest error
  * since it last deployed one, `retryHasPassed` saying whether a rate limit's
  * retry time has passed.
@@ -589,12 +589,12 @@ const PAGE_URL_COPY: Readonly<
   launcherUrl: {
     label: 'Launcher',
     description: "The page this server's apps are launched from.",
-    saveLabel: 'Save launcher',
+    saveLabel: 'Save Launcher URL',
   },
   authorizationUrl: {
     label: 'Authorization',
     description: 'The Wildflower Authorization app this server opens.',
-    saveLabel: 'Save Authorization',
+    saveLabel: 'Save Authorization Manager URL',
   },
 }
 

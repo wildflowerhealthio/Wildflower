@@ -2112,7 +2112,7 @@ describe('the server page', () => {
     // Act
     await user.clear(await screen.findByLabelText('Launcher'))
     await user.type(screen.getByLabelText('Launcher'), 'https://launcher.example.com/')
-    await user.click(screen.getByRole('button', { name: 'Save launcher' }))
+    await user.click(screen.getByRole('button', { name: 'Save Launcher URL' }))
     await openTab('Certificate')
 
     // Assert
@@ -2329,7 +2329,7 @@ describe('the server page', () => {
       answers: { server_update: () => Promise.resolve(null) },
     })
     const field = await screen.findByLabelText('Launcher')
-    const save = screen.getByRole('button', { name: 'Save launcher' })
+    const save = screen.getByRole('button', { name: 'Save Launcher URL' })
     expect(save).toHaveProperty('disabled', true)
 
     // Act
@@ -2360,7 +2360,7 @@ describe('the server page', () => {
       answers: { server_update: () => Promise.resolve(null) },
     })
     const field = await screen.findByLabelText('Authorization')
-    const save = screen.getByRole('button', { name: 'Save Authorization' })
+    const save = screen.getByRole('button', { name: 'Save Authorization Manager URL' })
     expect(field).toHaveProperty('value', 'http://localhost:5300/authorization/')
     expect(save).toHaveProperty('disabled', true)
 
@@ -2401,7 +2401,7 @@ describe('the server page', () => {
     // Act
     await user.clear(field)
     await user.type(field, 'ftp://authorization.example.com/')
-    await user.click(screen.getByRole('button', { name: 'Save Authorization' }))
+    await user.click(screen.getByRole('button', { name: 'Save Authorization Manager URL' }))
 
     // Assert
     const form = await formOf('Authorization')
