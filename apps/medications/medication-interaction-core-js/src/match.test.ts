@@ -50,6 +50,17 @@ describe('matchCatalogDrugs', () => {
     expect(matches.map((match) => match.drug.name)).toEqual(['Oxymetazoline (nasal)'])
     expect(matches[0]?.confidence).toBe('partial')
   })
+
+  it('should still partial-match when the name also names the qualifier', () => {
+    // "Insulin inhalation" is more specific than "Insulin", so it must not
+    // resolve to fewer drugs: the shared "insulin" sits outside the
+    // parentheses, and "inhalation" naming the route does not drop the match.
+    const matches = matchCatalogDrugs('Insulin inhalation', catalog)
+    expect(matches.map((match) => match.drug.name)).toEqual([
+      'Insulin human (inhalation, rapid acting)',
+    ])
+    expect(matches[0]?.confidence).toBe('partial')
+  })
 })
 
 // Helpers
@@ -63,6 +74,7 @@ const catalog = decodeDdinterFile({
     ['DDInter4', 'Iron sucrose'],
     ['DDInter5', 'Insulin human (zinc)'],
     ['DDInter6', 'Oxymetazoline (nasal)'],
+    ['DDInter7', 'Insulin human (inhalation, rapid acting)'],
   ],
   pairs: [],
 })
