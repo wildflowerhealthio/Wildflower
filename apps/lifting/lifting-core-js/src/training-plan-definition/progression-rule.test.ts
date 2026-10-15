@@ -36,6 +36,19 @@ const breakPart: {
 }
 const PARAMETERS = Record.keys(breakPart)
 
+/** Each parameter moved to another in-range value. */
+const changePart: { readonly [Part in keyof RuleInput]: (input: RuleInput) => RuleInput } = {
+  unit: (input) => ({ ...input, unit: input.unit === 'kg' ? '[lb_av]' : 'kg' }),
+  increment: (input) => ({ ...input, increment: input.increment + 1 }),
+  failuresBeforeDeload: (input) => ({
+    ...input,
+    failuresBeforeDeload: input.failuresBeforeDeload + 1,
+  }),
+  deloadFraction: (input) => ({ ...input, deloadFraction: input.deloadFraction / 2 }),
+  minimumLoad: (input) => ({ ...input, minimumLoad: input.minimumLoad + 1 }),
+  loadStep: (input) => ({ ...input, loadStep: input.loadStep + 1 }),
+}
+
 describe('TrainingPlanDefinition.ProgressionRule', () => {
   it('should read back every parameter of every rule it makes, through the wire', () => {
     fc.assert(
@@ -138,6 +151,42 @@ describe('TrainingPlanDefinition.ProgressionRule', () => {
           )
         ).toEqual(['url'])
       }),
+      { numRuns: RUNS }
+    )
+  })
+})
+
+describe('TrainingPlanDefinition.ProgressionRule.isAlike', () => {
+  it('should find a rule alike to itself read back through the wire', () => {
+    fc.assert(
+      fc.property(progressionRuleArb, (progressionRule) => {
+        expect(
+          TrainingPlanDefinition.ProgressionRule.isAlike({
+            firstProgressionRule: progressionRule,
+            laterProgressionRule: throughWire(WireProgressionRule, progressionRule),
+          })
+        ).toBe(true)
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('should find a rule unlike one with any single parameter changed', () => {
+    fc.assert(
+      fc.property(
+        progressionRuleInputArb,
+        fc.constantFrom(...Record.keys(changePart)),
+        (input, changed) => {
+          expect(
+            TrainingPlanDefinition.ProgressionRule.isAlike({
+              firstProgressionRule: made(TrainingPlanDefinition.ProgressionRule.make(input)),
+              laterProgressionRule: made(
+                TrainingPlanDefinition.ProgressionRule.make(changePart[changed](input))
+              ),
+            })
+          ).toBe(false)
+        }
+      ),
       { numRuns: RUNS }
     )
   })
