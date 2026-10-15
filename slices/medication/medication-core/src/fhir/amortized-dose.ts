@@ -24,7 +24,8 @@ type ValuedQuantity = typeof Quantity.Schema.Type & { readonly value: number }
  * dispensed unit — a value of 1, in no unit or in `dispensedUnit`.
  *
  * @returns `null` for a Medication with no ingredient or several, a strength
- *   with no numerator value, or a denominator other than one dispensed unit
+ *   with no positive numerator value, or a denominator other than one
+ *   dispensed unit
  */
 const strengthPerDispensedUnitOf = (
   medication: FhirMedication.Type,
@@ -34,7 +35,7 @@ const strengthPerDispensedUnitOf = (
   if (onlyIngredient === undefined || otherIngredients.length > 0) return null
   const numerator = onlyIngredient.strength?.numerator ?? null
   const denominator = onlyIngredient.strength?.denominator ?? null
-  if (numerator === null || numerator.value === null) return null
+  if (numerator === null || numerator.value === null || numerator.value <= 0) return null
   if (denominator === null || denominator.value !== 1) return null
   const denominatorUnit = unitOrCodeOf(denominator)
   if (denominatorUnit !== null && denominatorUnit !== dispensedUnit) return null

@@ -182,6 +182,24 @@ describe('amortizedDoseOf', () => {
     })
   })
 
+  test('stays in dispensed units for a strength with a zero or negative numerator', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -1000, max: 0 }), (strengthAmount) => {
+        expect(
+          amortizedDoseOf(
+            requestWithSupply(thirtyCapsulesOverThirtyDays, [
+              medicationWithStrength({
+                numerator: { value: strengthAmount, unit: 'mg' },
+                denominator: { value: 1 },
+              }),
+            ])
+          )
+        ).toMatchObject({ amount: 1, unit: 'capsule' })
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
   test('stays in dispensed units for a Medication with no ingredient or several', () => {
     const tenMilligramsPerUnit = {
       itemCodeableConcept: { text: 'Drug' },

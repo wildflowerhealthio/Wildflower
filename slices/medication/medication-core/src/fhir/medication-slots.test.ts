@@ -26,6 +26,35 @@ describe('containedMedicationOf', () => {
     )
   })
 
+  it('should find none when the #id reference names no contained Medication', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.stringMatching(/^[a-z][a-z0-9-]{0,8}$/), { minLength: 2, maxLength: 4 }),
+        ([danglingId = '', ...containedIds]) => {
+          const request = decode({
+            ...base,
+            medicationReference: { reference: `#${danglingId}` },
+            contained: containedIds.map((id) => ({ resourceType: 'Medication', id })),
+          })
+          expect(containedMedicationOf(request)).toBeNull()
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should pick the first contained Medication when the reference is external', () => {
+    const request = decode({
+      ...base,
+      medicationReference: { reference: 'Medication/remote' },
+      contained: [
+        { resourceType: 'Medication', id: 'first' },
+        { resourceType: 'Medication', id: 'second' },
+      ],
+    })
+    expect(containedMedicationOf(request)?.id).toBe('first')
+  })
+
   it('should skip contained entries that are not Medications', () => {
     const request = decode({
       ...base,
