@@ -158,13 +158,14 @@ const isUrlInTextKey = (lowerCaseKey: string): boolean => URL_IN_TEXT_KEYS.has(l
 
 /**
  * `value` with `redactHosts` applied to every string in it, at any depth of
- * arrays and plain objects; any other value as it was.
+ * arrays and plain objects, object keys included; any other value as it was.
  *
  * @remarks
  * For the values whose shape the event does not fix: breadcrumb and span data
- * under keys that are not URLs or hosts (a console breadcrumb's `arguments`),
- * tags, `extra`, and contexts (a React component stack names each
- * component's script by URL). The SDK has already normalized them to JSON.
+ * under keys that are not URLs or hosts (a console breadcrumb's `arguments`,
+ * which can hold a record keyed by server domain), tags, `extra`, and
+ * contexts (a React component stack names each component's script by URL).
+ * The SDK has already normalized them to JSON.
  */
 const redactHostsInValue = (value: unknown, redactHosts: HostRedactor): unknown => {
   if (typeof value === 'string') return redactHosts(value)
@@ -176,23 +177,25 @@ const redactHostsInValue = (value: unknown, redactHosts: HostRedactor): unknown 
     value !== null &&
     Object.getPrototypeOf(value) === Object.prototype
   ) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, redactHostsInValue(item, redactHosts)])
-    )
+    return redactHostsInRecord(value, redactHosts)
   }
   return value
 }
 
-/** `record` with {@link redactHostsInValue} applied to each of its values. */
-const redactHostsInRecord = <R extends Readonly<Record<string, unknown>>>(
-  record: R,
+/**
+ * `record` with {@link redactHostsInValue} applied to each of its keys and
+ * values. Two keys that redact alike keep the later one's value.
+ */
+const redactHostsInRecord = (
+  record: object,
   redactHosts: HostRedactor
-): R => ({
-  ...record,
-  ...Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [key, redactHostsInValue(value, redactHosts)])
-  ),
-})
+): Readonly<Record<string, unknown>> =>
+  Object.fromEntries(
+    Object.entries(record).map(([key, value]: readonly [string, unknown]) => [
+      redactHosts(key),
+      redactHostsInValue(value, redactHosts),
+    ])
+  )
 
 /**
  * `text` with the URLs in it anonymized (see `anonymizeUrlsInText`), then the
@@ -205,15 +208,14 @@ const scrubText = (text: string, redactHosts: HostRedactor): string =>
 /**
  * `record` with the value under every URL, host or URL-in-text key anonymized,
  * the value under every dropped key cleared to `undefined`, which the SDK
- * leaves out of what it sends, and the server hosts in every other value
- * replaced.
+ * leaves out of what it sends, and the server hosts in every other key and
+ * value replaced.
  */
-const scrubUrlBearingRecord = <R extends UrlBearingRecord>(
-  record: R,
+const scrubUrlBearingRecord = (
+  record: UrlBearingRecord,
   redactHosts: HostRedactor
-): R => ({
-  ...record,
-  ...Object.fromEntries(
+): UrlBearingRecord =>
+  Object.fromEntries(
     Object.entries(record).map(([key, value]): readonly [string, unknown] => {
       const lowerCaseKey = key.toLowerCase()
       if (isDroppedKey(lowerCaseKey)) return [key, undefined]
@@ -226,10 +228,9 @@ const scrubUrlBearingRecord = <R extends UrlBearingRecord>(
       if (isUrlInTextKey(lowerCaseKey) && typeof value === 'string') {
         return [key, scrubText(value, redactHosts)]
       }
-      return [key, redactHostsInValue(value, redactHosts)]
+      return [redactHosts(key), redactHostsInValue(value, redactHosts)]
     })
-  ),
-})
+  )
 
 const scrubRequest = <R extends ScrubbableRequest>(request: R, redactHosts: HostRedactor): R => ({
   ...request,

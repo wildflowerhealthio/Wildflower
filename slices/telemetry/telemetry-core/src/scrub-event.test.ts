@@ -406,6 +406,34 @@ describe('scrubEvent', () => {
     })
   })
 
+  test('replaces server hosts in the keys of breadcrumb data, span data, tags, extra and contexts', () => {
+    const event = {
+      breadcrumbs: [
+        {
+          category: 'console',
+          data: { arguments: [{ 'ruth.example': 'running', other: ['ruth.example'] }] },
+        },
+      ],
+      spans: [{ data: { 'ruth.example.status': 'up', 'url.full': 'https://ruth.example/r4' } }],
+      tags: { 'lab.relay.wildflowerhealth.io': 'up' },
+      extra: { 'Ruth.Example:8443': { 'api.ruth.example': 1 } },
+      contexts: { 'ruth.example': { state: 'stopped' } },
+    }
+
+    expect(scrubEvent(event, ['ruth.example'])).toStrictEqual({
+      breadcrumbs: [
+        {
+          category: 'console',
+          data: { arguments: [{ '{host}': 'running', other: ['{host}'] }] },
+        },
+      ],
+      spans: [{ data: { '{host}.status': 'up', 'url.full': 'https://{host}/r4' } }],
+      tags: { '{host}': 'up' },
+      extra: { '{host}': { '{host}': 1 } },
+      contexts: { '{host}': { state: 'stopped' } },
+    })
+  })
+
   test('replaces server hosts left in span descriptions, span data and the transaction name', () => {
     const event = {
       transaction: 'connect ruth.example',
