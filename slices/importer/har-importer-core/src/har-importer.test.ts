@@ -208,6 +208,67 @@ describe('harImporter.decode', () => {
     )
   })
 
+  it('should note each duplicate, unparseable, and body-less response exactly once', async () => {
+    const duplicatePatientUrl = `${ROOT}/Patient/pat-8?_format=json`
+    const unparseableUrl = `${ROOT}/Patient/pat-9?_format=json`
+    const bodylessUrl = `${ROOT}/Patient/pat-10?_format=json`
+    const fhirJson: readonly (readonly [string, string])[] = [
+      ['content-type', 'application/fhir+json'],
+    ]
+    const decoded = (
+      await readOne({
+        id: '0:accounting.har',
+        fileName: 'accounting.har',
+        bytes: harBytesOf(
+          [
+            {
+              url: duplicatePatientUrl,
+              body: storedJson({ resourceType: 'Patient', id: 'pat-8' }),
+            },
+            {
+              url: duplicatePatientUrl,
+              body: storedJson({ resourceType: 'Patient', id: 'pat-8' }),
+            },
+            {
+              url: unparseableUrl,
+              body: storedJson({ resourceType: 'Patient', id: 'pat-9', gender: 42 }),
+            },
+            {
+              url: bodylessUrl,
+              body: {
+                _tag: 'SkippedBody',
+                contentType: 'application/fhir+json',
+                size: 118,
+                hash: ANY_HASH,
+                reason: 'Content type outside the allowlist',
+              } satisfies TraceBody,
+            },
+          ].map(({ url, body }, index) =>
+            traceExchange({
+              requestId: `req-${index}`,
+              url,
+              headers: fhirJson,
+              body,
+              startedAtMillis: CAPTURE_FLOOR + index * 1000,
+            })
+          )
+        ),
+      })
+    ).decoded
+
+    expect(
+      extractedSections(decoded.sections).map((section) => [
+        section.title,
+        section.resources.length,
+      ])
+    ).toEqual([[duplicatePatientUrl, 1]])
+    expect(decoded.notes).toEqual([
+      `Duplicate of an earlier response — not imported: ${duplicatePatientUrl}`,
+      `Could not be parsed and will not import: ${unparseableUrl}`,
+      `The archive captured no response body: ${bodylessUrl}`,
+    ])
+  })
+
   it("should list a pick's minted source file as its own first section", async () => {
     const decoded = (await readOne(pickedHar())).decoded
     const sourceSection = decoded.sections[0]

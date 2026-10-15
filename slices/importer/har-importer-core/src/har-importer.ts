@@ -86,8 +86,9 @@ const sourceFileFormat = {
  *
  * @remarks
  * No `groupBy` — a HAR stands alone, so every pick is its own set — and no
- * `source file`: a captured browsing session is an engineering artifact, and
- * filing it under a patient would put it in `Patient/$everything`.
+ * `linkSourceFile`: a captured browsing session is an engineering artifact, so
+ * its source file is stored exactly as minted rather than filed under a patient,
+ * where it would land in `Patient/$everything`.
  */
 const harImporter: FileImporter.Type<HarSettings, typeof format> = {
   format,
