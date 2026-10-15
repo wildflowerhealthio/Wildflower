@@ -710,7 +710,7 @@ describe('SmartAppRoot telemetry consent', () => {
     expect(captureExceptionMock).not.toHaveBeenCalled()
   })
 
-  it('should report, not throw, a FHIR server URL that does not parse, and tag no host', async () => {
+  it('should report, not throw, a FHIR server URL that does not parse, and tag it as no host', async () => {
     // Arrange
     initConsentedTelemetryMock.mockReturnValue(true)
     storeConsent({ crashReports: true, performance: false })
@@ -726,7 +726,7 @@ describe('SmartAppRoot telemetry consent', () => {
     const [reported, hint] = captureExceptionMock.mock.calls[0]
     expect(reported instanceof Error ? reported.message : reported).toContain('not a url')
     expect(hint).toStrictEqual({ tags: { source: 'fhir-server-host' } })
-    expect(setFhirServerHostMock).not.toHaveBeenCalled()
+    expect(setFhirServerHostMock).toHaveBeenCalledWith(null)
   })
 
   it('should report a render error in the connect menu, keeping the page around it', () => {

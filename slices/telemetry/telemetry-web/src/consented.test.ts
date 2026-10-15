@@ -251,12 +251,30 @@ describe('initConsentedTelemetry', () => {
 })
 
 describe('setFhirServerHost', () => {
-  test('tags later events with the FHIR server host', async () => {
+  test.each([
+    { case: 'a host', host: 'fhir.example:8443', tag: '{host}' },
+    { case: 'a kept host', host: 'localhost:8080', tag: 'localhost:8080' },
+    { case: 'an empty host', host: '', tag: '{empty}' },
+    { case: 'no host (null)', host: null, tag: '{null}' },
+    { case: 'no host (undefined)', host: undefined, tag: '{null}' },
+  ])('tags later events with $case as $tag', async ({ host, tag }) => {
     const { setFhirServerHost } = await importConsented()
 
-    setFhirServerHost('fhir.example:8443')
+    setFhirServerHost(host)
 
-    expect(setTagMock).toHaveBeenCalledWith('fhir_server_host', 'fhir.example:8443')
+    expect(setTagMock).toHaveBeenCalledExactlyOnceWith('fhir_server_host', tag)
+  })
+
+  test('sets no tag while it is not called', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+
+    expect(setTagMock).not.toHaveBeenCalled()
   })
 })
 

@@ -246,7 +246,8 @@ function SmartAppRoot({
   // Once Sentry runs, tag its events with the FHIR server the app's handshake
   // connected to, as soon as that handshake completes on the shared client.
   // The callback runs inside the query cache's notification, so a server URL
-  // that does not parse is reported rather than thrown there.
+  // that does not parse is reported rather than thrown there, and tagged as
+  // having no host.
   useEffect(() => {
     if (!telemetryStarted) return undefined
     return whenSmartHandshakeReady(queryClient, (readyClient) => {
@@ -258,9 +259,8 @@ function SmartAppRoot({
           ),
           { tags: { source: 'fhir-server-host' } }
         )
-        return
       }
-      setFhirServerHost(fhirServerUrl.host)
+      setFhirServerHost(fhirServerUrl === null ? null : fhirServerUrl.host)
     })
   }, [telemetryStarted, queryClient])
 

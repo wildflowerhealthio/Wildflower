@@ -1,4 +1,5 @@
 import {
+  anonymizeHost,
   isTelemetryEnabled,
   makeEffectTracerLayer,
   scrubEvent,
@@ -40,6 +41,15 @@ interface InitConsentedTelemetryOptions {
 
 /** The Sentry tag {@link setFhirServerHost} sets. */
 const FHIR_SERVER_HOST_TAG = 'fhir_server_host'
+
+/**
+ * The {@link FHIR_SERVER_HOST_TAG} value for an empty host. Sentry drops a tag
+ * whose value is empty, which would read as never set.
+ */
+const EMPTY_FHIR_SERVER_HOST = '{empty}'
+
+/** The {@link FHIR_SERVER_HOST_TAG} value for a FHIR server with no host to read. */
+const NO_FHIR_SERVER_HOST = '{null}'
 
 /**
  * What the SDK collects beyond the event itself: nothing that identifies the
@@ -153,14 +163,29 @@ const consentedTelemetryLayer: Layer.Layer<never> = Layer.suspend(() =>
     : Layer.empty
 )
 
+/** The {@link FHIR_SERVER_HOST_TAG} value for `fhirServerHost` (see {@link setFhirServerHost}). */
+const fhirServerHostTagValue = (fhirServerHost: string | null | undefined): string => {
+  if (fhirServerHost === null || fhirServerHost === undefined) return NO_FHIR_SERVER_HOST
+  if (fhirServerHost === '') return EMPTY_FHIR_SERVER_HOST
+  return anonymizeHost(fhirServerHost)
+}
+
 /**
  * Tag every event reported from now on with the host of the FHIR server the
- * app is connected to.
+ * app is connected to, reduced by `anonymizeHost`.
  *
- * @param fhirServerHost - The host (with port, if any) of the FHIR base URL
+ * @param fhirServerHost - The host (with port, if any) of the FHIR base URL,
+ *   or `null` or `undefined` when the app has a FHIR server but no host to
+ *   read from it
+ *
+ * @remarks
+ * The tag tells four cases apart: a kept host as written (`localhost:8080`),
+ * any other host as `{host}`, an empty host as {@link EMPTY_FHIR_SERVER_HOST},
+ * no host as {@link NO_FHIR_SERVER_HOST}; and no tag at all while this has not
+ * been called.
  */
-const setFhirServerHost = (fhirServerHost: string): void => {
-  Sentry.getGlobalScope().setTag(FHIR_SERVER_HOST_TAG, fhirServerHost)
+const setFhirServerHost = (fhirServerHost: string | null | undefined): void => {
+  Sentry.getGlobalScope().setTag(FHIR_SERVER_HOST_TAG, fhirServerHostTagValue(fhirServerHost))
 }
 
 export type { InitConsentedTelemetryOptions, TelemetryTags }
