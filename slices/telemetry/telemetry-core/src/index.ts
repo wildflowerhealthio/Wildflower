@@ -9,8 +9,10 @@ export type {
 export { configFromEnv, isOtlpEnabled, isSentryEnabled, isTelemetryEnabled } from './config.ts'
 export { mergeConfig } from './merge-config.ts'
 export {
+  anonymizeHost,
   anonymizeUrl,
   anonymizeUrlsInText,
+  HOST_PLACEHOLDER,
   INVALID_URL_PLACEHOLDER,
   RESOURCE_ID_PLACEHOLDER,
   VERSION_ID_PLACEHOLDER,

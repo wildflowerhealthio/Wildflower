@@ -38,7 +38,7 @@ const consentWith = (switches: {
 }): TelemetryConsent => ({ version: 1, decidedAt: '2026-09-29T12:00:00.000Z', ...switches })
 
 const FHIR_URL = 'https://fhir.example/r4/Patient/123?_format=json'
-const ANONYMIZED_FHIR_URL = 'https://fhir.example/r4/Patient/{id}'
+const ANONYMIZED_FHIR_URL = 'https://{host}/r4/Patient/{id}'
 
 const errorEvent: ErrorEvent = {
   type: undefined,

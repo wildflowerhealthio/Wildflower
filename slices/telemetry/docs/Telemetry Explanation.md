@@ -15,14 +15,22 @@ Both switches report to the same Sentry project, so the DSN stays while either i
 
 ## URLs are reduced to their shape
 
-Every event either switch sends passes through `scrubEvent`, which runs each URL it carries (the request URL and `Referer`, fetch and navigation breadcrumbs, span attributes such as `url.full`, `url.path` and `lcp.url`, span descriptions, the transaction name) through `anonymizeUrl`, and drops the span attributes that carry a query string, a fragment or an HTTP header. `anonymizeUrl` keeps the origin and the FHIR base path, drops the query string, fragment and credentials, and replaces the segment after a resource type with `{id}` and the segment after `_history` with `{vid}`. Relative references keep their form, so `Observation?patient=1` becomes `Observation`:
+Every event either switch sends passes through `scrubEvent`, which runs each URL it carries (the request URL and `Referer`, fetch and navigation breadcrumbs, span attributes such as `url.full`, `url.path` and `lcp.url`, span descriptions, the transaction name) through `anonymizeUrl`, runs the span attributes that carry a host on its own (`server.address`, `url.domain`, `http.host`, `net.peer.name`) through `anonymizeHost`, and drops the span attributes that carry a query string, a fragment or an HTTP header. `anonymizeUrl` drops the query string, fragment and credentials, and keeps the scheme, the host and the path only where they cannot carry data. Relative references keep their form, so `Observation?patient=1` becomes `Observation`:
 
 ```text
 https://fhir.example/r4/Patient/123/_history/2?_format=json
-https://fhir.example/r4/Patient/{id}/_history/{vid}
+https://{host}/r4/Patient/{id}/_history/{vid}
+
+http://tauri.localhost/servers/android-emu.relay.wildflowerhealth.io
+http://tauri.localhost/servers/{id}
 ```
 
-A resource type is recognized by shape (an uppercase then a lowercase letter, letters only), not from a list. The rule errs towards replacing too much: a segment after anything shaped like a resource type becomes `{id}`, so an id that happens to look like one costs the next segment its name rather than letting the id after it through.
+Both the host and the path are allowlists, so a shape the anonymizer does not know is replaced rather than reported:
+
+- **Hosts.** The host and port stay only when the hostname is `localhost`, `tauri.localhost` or `wildflowerhealth.io`, the apex that serves the hosted apps. Every other host, the apex's subdomains included (a relay tunnel, a personal server), becomes `{host}` and loses its port, since a server's name is the user's choice.
+- **Path segments.** The segment after `_history` becomes `{vid}`, and the segment after a resource type becomes `{id}` whatever its own shape, since a FHIR id can be a plain word. Any other segment stays only if it is a lowercase route word, hyphens allowed (`servers`, `oauth-consent`, `.well-known`), a resource type, an operation or interaction (`$everything`, `_search`: a `$` or `_` and lowercase words), or one of a short list of FHIR base-path names (`FHIR`, `R4`, `R4B`, `R5`, `STU3`, `DSTU2`, `baseR4`, …). Everything else becomes `{id}`: domains, UUIDs, numbers, user codes, file names.
+
+A resource type is recognized by shape (an uppercase then a lowercase letter, letters only), not from a list. The rules err towards replacing too much: a segment after anything shaped like a resource type becomes `{id}`, so an id that happens to look like one costs the next segment its name rather than letting the id after it through. What still passes is an id shaped like a route word or a resource type where no resource type precedes it, such as a lowercase name in a route the app names its records by.
 
 ## Consent lives in the origin's storage
 

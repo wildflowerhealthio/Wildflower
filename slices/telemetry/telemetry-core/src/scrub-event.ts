@@ -1,8 +1,9 @@
-import { anonymizeUrl, anonymizeUrlsInText } from './anonymize-url.ts'
+import { anonymizeHost, anonymizeUrl, anonymizeUrlsInText } from './anonymize-url.ts'
 
 /**
- * Runs every URL a telemetry event carries through {@link anonymizeUrl} before
- * the event leaves the browser. Typed structurally over the fields it reads, so
+ * Runs every URL a telemetry event carries through {@link anonymizeUrl}, and
+ * every host it carries on its own through {@link anonymizeHost}, before the
+ * event leaves the browser. Typed structurally over the fields it reads, so
  * this package names no Sentry type: `telemetry-web` hands it Sentry's error
  * and transaction events.
  */
@@ -29,6 +30,23 @@ const URL_KEYS: ReadonlySet<string> = new Set([
   'from',
   'to',
   'referer',
+])
+
+/**
+ * Keys whose string value is a host, a hostname or an origin, compared
+ * case-insensitively.
+ *
+ * @remarks
+ * `server.address` is the request's host on Sentry's fetch/XHR spans and its
+ * origin on Effect's HTTP client spans; `url.domain` is the hostname on the
+ * SDK's other client spans; `http.host` and `net.peer.name` are the older
+ * conventions' names for the same.
+ */
+const HOST_KEYS: ReadonlySet<string> = new Set([
+  'server.address',
+  'url.domain',
+  'http.host',
+  'net.peer.name',
 ])
 
 /** Keys that carry a URL's query string or fragment on their own; dropped outright. */
@@ -83,8 +101,11 @@ interface ScrubbableEvent {
   readonly contexts?: { readonly trace?: ScrubbableSpan }
 }
 
+/** Whether the value under `lowerCaseKey` is a host. */
+const isHostKey = (lowerCaseKey: string): boolean => HOST_KEYS.has(lowerCaseKey)
+
 /**
- * `record` with the value under every URL key anonymized and the value under
+ * `record` with the value under every URL or host key anonymized and the value under
  * every dropped key cleared to `undefined`, which the SDK leaves out of what it
  * sends.
  */
@@ -96,6 +117,9 @@ const scrubUrlBearingRecord = <R extends UrlBearingRecord>(record: R): R => ({
       if (isDroppedKey(lowerCaseKey)) return [[key, undefined]]
       if (isUrlKey(lowerCaseKey) && typeof value === 'string') {
         return [[key, anonymizeUrl(value)]]
+      }
+      if (isHostKey(lowerCaseKey) && typeof value === 'string') {
+        return [[key, anonymizeHost(value)]]
       }
       return []
     })
@@ -129,7 +153,9 @@ const scrubSpan = <S extends ScrubbableSpan>(span: S): S => ({
  *     `request.query_string` is cleared
  *   - each breadcrumb's and span's URL-valued data (`url`, `url.full`,
  *     `url.path`, `from`, `to`, and every key ending in `.url`) is
- *     anonymized, and its query and fragment keys (`http.query`,
+ *     anonymized, its host-valued data (`server.address`, `url.domain`,
+ *     `http.host`, `net.peer.name`) reduced to a kept host or `{host}`, and
+ *     its query and fragment keys (`http.query`,
  *     `url.query`, …) and HTTP header attributes cleared
  *   - each span description, the trace context's, and the transaction name
  *     have the URLs in them anonymized

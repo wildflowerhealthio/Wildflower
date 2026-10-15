@@ -1,7 +1,7 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
-import { anonymizeUrl } from './anonymize-url.ts'
+import { anonymizeHost, anonymizeUrl } from './anonymize-url.ts'
 import { type ScrubbableEvent, scrubEvent } from './scrub-event.ts'
 
 interface SampleBreadcrumb {
@@ -108,7 +108,7 @@ const transactionEventCarrying = (url: string): SampleTransactionEvent => ({
 })
 
 const FHIR_URL = 'https://fhir.example/r4/Patient/123/_history/2?_format=json#top'
-const ANONYMIZED_FHIR_URL = 'https://fhir.example/r4/Patient/{id}/_history/{vid}'
+const ANONYMIZED_FHIR_URL = 'https://{host}/r4/Patient/{id}/_history/{vid}'
 const ANONYMIZED_FHIR_PATH = '/r4/Patient/{id}/_history/{vid}'
 
 describe('scrubEvent', () => {
@@ -173,7 +173,7 @@ describe('scrubEvent', () => {
             'url.query': undefined,
             'http.request.header.accept': undefined,
             'http.response.header.location': undefined,
-            'server.address': 'https://fhir.example',
+            'server.address': 'https://{host}',
           },
         },
         {
@@ -184,6 +184,74 @@ describe('scrubEvent', () => {
         },
       ],
     })
+  })
+
+  test('reduces a relay-hosted server page and its requests to their shape', () => {
+    const pageUrl = 'http://tauri.localhost/servers/android-emu.relay.wildflowerhealth.io'
+    const event = {
+      transaction: '/servers/android-emu.relay.wildflowerhealth.io',
+      breadcrumbs: [
+        {
+          category: 'navigation',
+          data: { from: '/servers', to: '/servers/android-emu.relay.wildflowerhealth.io' },
+        },
+        { category: 'navigation', data: { from: pageUrl, to: 'http://tauri.localhost/' } },
+      ],
+      spans: [
+        {
+          op: 'http.client',
+          description:
+            'GET https://android-emu.relay.wildflowerhealth.io/fhir/Patient/8a1f2b3c/$everything',
+          data: {
+            url: 'https://android-emu.relay.wildflowerhealth.io/fhir/Patient/8a1f2b3c/$everything',
+            'server.address': 'android-emu.relay.wildflowerhealth.io',
+            'url.domain': 'android-emu.relay.wildflowerhealth.io',
+          },
+        },
+        {
+          op: 'http.client',
+          description: 'http.client GET',
+          data: { 'server.address': 'https://ruth.example:8443', 'server.port': 8443 },
+        },
+      ],
+    }
+
+    expect(scrubEvent(event)).toStrictEqual({
+      transaction: '/servers/{id}',
+      breadcrumbs: [
+        { category: 'navigation', data: { from: '/servers', to: '/servers/{id}' } },
+        {
+          category: 'navigation',
+          data: { from: 'http://tauri.localhost/servers/{id}', to: 'http://tauri.localhost/' },
+        },
+      ],
+      spans: [
+        {
+          op: 'http.client',
+          description: 'GET https://{host}/fhir/Patient/{id}/$everything',
+          data: {
+            url: 'https://{host}/fhir/Patient/{id}/$everything',
+            'server.address': '{host}',
+            'url.domain': '{host}',
+          },
+        },
+        {
+          op: 'http.client',
+          description: 'http.client GET',
+          data: { 'server.address': 'https://{host}', 'server.port': 8443 },
+        },
+      ],
+    })
+  })
+
+  test('keeps a kept host in a host attribute', () => {
+    const event = {
+      spans: [
+        { data: { 'server.address': 'localhost:5173', 'url.domain': 'wildflowerhealth.io' } },
+      ],
+    }
+
+    expect(scrubEvent(event)).toStrictEqual(event)
   })
 
   test('leaves an event without URL-bearing fields as it was', () => {
@@ -238,6 +306,9 @@ describe('scrubEvent', () => {
           transactionEvent.spans[1]?.data['url.path'],
         ]).toStrictEqual(Array.from({ length: 3 }, () => anonymizedPath))
         expect(transactionEvent.spans[0]?.description).toBe(`GET ${anonymizedUrl}`)
+        expect(transactionEvent.spans[1]?.data['server.address']).toBe(
+          anonymizeHost(new URL(url).origin)
+        )
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
