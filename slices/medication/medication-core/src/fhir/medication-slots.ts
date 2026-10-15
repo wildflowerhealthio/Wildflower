@@ -56,18 +56,23 @@ const hasId =
  *
  * @returns The contained Medication a `#id` `medicationReference` points at, or
  *   the first contained Medication when the reference is absent or external;
- *   `null` when none decodes.
+ *   `null` when none decodes, or when a `#id` reference names none of them.
  *
  * @remarks
  * An entry that does not decode as an R4 `Medication` is skipped, not fatal.
+ * A `#id` reference that names no contained Medication does not fall back to
+ * the first one: that Medication is not the drug the request names, so its
+ * DIN, description and strength would be read onto the wrong drug.
  */
 const containedMedicationOf = (request: MedicationRequest.Type): FhirMedication.Type | null => {
   const medications = Arr.filterMap(request.contained, asContainedMedication)
   return pipe(
     Option.fromNullable(medicationReferenceOf(request)?.reference),
     Option.flatMap(IdentifierAndReference.fragmentIdOf),
-    Option.flatMap((containedId) => Arr.findFirst(medications, hasId(containedId))),
-    Option.orElse(() => Arr.head(medications)),
+    Option.match({
+      onNone: () => Arr.head(medications),
+      onSome: (containedId) => Arr.findFirst(medications, hasId(containedId)),
+    }),
     Option.getOrNull
   )
 }
