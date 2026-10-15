@@ -6,10 +6,9 @@
 //! its policy turns it off, it stops with the detail cleared. Turned back on,
 //! the next run sets up over the same folder, so the previous run let go of
 //! its databases, and runs again. Its detail holds the run's launch minter,
-//! and a server whose health is unknown isn't launchable. A consent waiting in
-//! its authorization server is the run's detail, and is read and decided
-//! through the `ServerConsentDecider` the run's detail holds until the run
-//! ends.
+//! and a server whose health is unknown isn't launchable. The oldest consent
+//! waiting in its authorization server is the run's detail, named for the
+//! client that asks, until the run ends.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,8 +21,7 @@ use wildflowerhealthio_authorization_server::domain::authorization_request::{
 };
 use wildflowerhealthio_authorization_server::{GrantStore, PendingConsentHead, SqliteGrantStore};
 use wildflowerhealthio_servers::{
-    ApprovalOutcome, ConsentApproval, ConsentDetails, ConsentError, ConsentKey, LaunchError,
-    RunPolicy, ServerConsentDecider, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
+    LaunchError, RunPolicy, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -309,7 +307,7 @@ fn park_device_requests(server_dir: &std::path::Path, count: usize) -> Vec<Strin
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_host() {
+async fn a_running_servers_oldest_consent_is_its_detail_named_for_its_client() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let user_codes = park_device_requests(server_dir.path(), 2);
     let server = server_in_a_folder_on_a_runner(server_dir);
@@ -319,10 +317,13 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     })
     .await;
 
+    // The host app's client is seeded as the run sets its server up, so the
+    // head carries its registered name.
     let first = PendingConsentHead::Device {
         user_code: user_codes[0].clone(),
+        client_name: "Wildflower Host".to_owned(),
     };
-    wait_for(unit_runner, "reporting the first request", |status| {
+    wait_for(unit_runner, "reporting the oldest request", |status| {
         status
             .detail
             .as_ref()
@@ -330,78 +331,11 @@ async fn a_running_servers_consents_are_its_detail_and_are_decided_through_the_h
     })
     .await;
 
-    let decider = ServerConsentDecider::of_running_server(&unit_runner.statuses(), DOMAIN)
-        .expect("the run's detail holds its decider");
-    let first_key = ConsentKey::Device {
-        user_code: user_codes[0].clone(),
-    };
-    let details =
-        tokio::task::block_in_place(|| decider.read(&first_key)).expect("the first request");
-    let ConsentDetails::Device {
-        user_code,
-        client_id,
-        requested_scopes,
-        ..
-    } = details
-    else {
-        panic!("a device request reads as one: {details:?}");
-    };
-    assert_eq!(user_code, user_codes[0]);
-    assert_eq!(
-        client_id,
-        wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
-    );
-    assert_eq!(requested_scopes, ["openid"]);
-
-    let outcome = tokio::task::block_in_place(|| {
-        decider.approve(
-            ConsentApproval::Device {
-                user_code: user_codes[0].clone(),
-                approved_scopes: vec!["openid".to_owned()],
-                patient: None,
-            },
-            chrono::Utc::now(),
-        )
-    });
-    assert_eq!(outcome, Ok(ApprovalOutcome::Approved));
-    let second = PendingConsentHead::Device {
-        user_code: user_codes[1].clone(),
-    };
-    wait_for(unit_runner, "reporting the second request", |status| {
-        status
-            .detail
-            .as_ref()
-            .is_some_and(|detail| detail.pending_consent.as_ref() == Some(&second))
-    })
-    .await;
-
-    let second_key = ConsentKey::Device {
-        user_code: user_codes[1].clone(),
-    };
-    tokio::task::block_in_place(|| decider.deny(&second_key)).expect("deny the second request");
-    wait_for(unit_runner, "reporting nothing waiting", |status| {
-        status
-            .detail
-            .as_ref()
-            .is_some_and(|detail| detail.pending_consent.is_none())
-    })
-    .await;
-    assert_eq!(
-        tokio::task::block_in_place(|| decider.deny(&second_key)),
-        Err(ConsentError::NotPending)
-    );
-
     unit_runner.set_unit_policy(&UnitId::from(DOMAIN), RunPolicy::Off);
-    wait_for(unit_runner, "stopped", |status| {
+    wait_for(unit_runner, "stopped with its detail cleared", |status| {
         matches!(status.run_state, RunState::Stopped { last_stop: Some(_) })
+            && status.detail.is_none()
     })
     .await;
-    assert_eq!(
-        ServerConsentDecider::of_running_server(&unit_runner.statuses(), DOMAIN).err(),
-        Some(ConsentError::ServerNotRunning {
-            domain: DOMAIN.to_owned()
-        }),
-        "a stopped server's consents are out of reach"
-    );
     unit_runner.remove_unit(&UnitId::from(DOMAIN)).await;
 }

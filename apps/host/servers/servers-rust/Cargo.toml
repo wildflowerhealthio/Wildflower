@@ -64,8 +64,7 @@ wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflo
 # notifications count, and `HealthStatus`, which a server's status carries.
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["health-check"] }
 # The head of a run's pending-consent queue, which its detail carries, and
-# `HostConsentDecider`, through which the base's commands read, approve and
-# deny a running server's consents in-process. Tauri-free.
+# the launch and sign-in code minters the host mints through. Tauri-free.
 wildflowerhealthio-authorization-server = { path = "../../wildflower-server/authorization-server-rust" }
 # `public_origin_url`, a server's `https://<domain>` origin, the one its run
 # serves and its authorization server issues tokens for, which a launch names as `iss`;

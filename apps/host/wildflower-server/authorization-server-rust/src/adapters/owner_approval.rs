@@ -30,8 +30,8 @@ impl OwnerApproval for AuthorizationServerState {
     ///
     /// Uses `send_if_modified` so a transition that leaves the head
     /// unchanged (e.g. denying a non-head request) does not produce a
-    /// spurious `pending-consent` event — the host's window-focus path only wakes
-    /// on real head changes.
+    /// spurious change of the server's status — the host notifies only on real
+    /// head changes.
     ///
     /// On a DB-read failure the watch is *cleared* to `None`: the
     /// popup closing on a transient query failure is strictly better

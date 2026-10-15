@@ -15,19 +15,19 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher, Authorization app and
   certificate source, and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
-  `ServerDetail`, what its runs report (health, tunnel state and certificate
-  state), its
-  `ServerConsentDecider` included, through which the base reads and decides a
-  running server's consents, its `ServerLaunchMinter`, through which it
-  mints a running server's launches, and its `ServerSignInCodeMinter`, through
-  which it mints the codes that sign the in-app browser in as the server's
-  Owner; launching (`ensure_launchable`, `launch_url`,
-  `authorization_app_url`, `sign_in_url`, `LaunchError`); `ServerStatus`, a server's status on `UnitRunner`
-  as the base receives it, and `ListedServer`, with the certificate state its
-  run reported or its cache holds; `PendingConsent`, the oldest consent
-  waiting on a server, with `PendingConsentTracker`; and the notification
-  decisions: the per-caller request coalescer and the stop notification for
-  each new stop of a server's run.
+  `ServerDetail`, what its runs report (health, tunnel state, certificate
+  state and the oldest consent waiting), its `ServerLaunchMinter` included,
+  through which the host mints a running server's launches, and its
+  `ServerSignInCodeMinter`, through which it mints the codes that sign the
+  browser in as the server's Owner; launching (`ensure_launchable`,
+  `launch_url`, `authorization_app_url`, `sign_in_url`,
+  `consent_sign_in_url`, `LaunchError`); `ServerStatus`, a server's status on
+  `UnitRunner` as the base receives it, and `ListedServer`, with the
+  certificate state its run reported or its cache holds; `PendingConsent`,
+  the oldest consent waiting on a server, named by its `ConsentKey`; and the
+  notification decisions: the per-caller request coalescer, the stop
+  notification for each new stop of a server's run, and the consent
+  notification for each request that comes to a server's head.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
@@ -36,50 +36,48 @@ changing how servers run or what the host notifies about them.
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, the
     certificate state's wire shape (`certificate_state_wire`),
-    `PendingConsent` with `ConsentKey` and `PendingConsentTracker`, the
-    consent commands' wire (`ConsentDetails`, `ConsentApproval`,
-    `ApprovalOutcome`, `ConsentError`), launching (`ensure_launchable`,
-    `launch_url`, `authorization_app_url`, `sign_in_url`, `LaunchError`), and `notifications/` (`LocalNotification` with its `fnv1a` id hash, `RequestNotificationCoalescer`,
-    `StopNotificationCoalescer` with `ServerStop` and `StopCause`); `ports/` the
+    `PendingConsent` with `ConsentKey`, launching (`ensure_launchable`,
+    `launch_url`, `authorization_app_url`, `sign_in_url`,
+    `consent_sign_in_url`, `LaunchError`), and `notifications/`
+    (`LocalNotification` with its `fnv1a` id hash,
+    `RequestNotificationCoalescer`, `StopNotificationCoalescer` with
+    `ServerStop` and `StopCause`, and `ConsentNotificationCoalescer` with
+    `ConsentRequest` and `server_of_consent_notification`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`);
     `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
-    `ServerConsentDecider`, bound to `authorization-server-rust`'s `HostConsentDecider`;
-    `ServerLaunchMinter`, bound to its `LaunchContextMinter`; and
-    `ServerSignInCodeMinter`, bound to its `SameDeviceSignInCodeMinter`.
-    `tests/server_unit.rs` runs the real
-    server through `UnitRunner`, its consents included.
+    `ServerLaunchMinter`, bound to `authorization-server-rust`'s
+    `LaunchContextMinter`; and `ServerSignInCodeMinter`, bound to its
+    `SameDeviceSignInCodeMinter`. `tests/server_unit.rs` runs the real
+    server through `UnitRunner`, the consent waiting on it included.
 - **`servers-tauri`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
-  `ServerUnits::push`, emits the `server-status` event, posts the stop and
-  request notifications, emits the `pending-consent` event and brings the
-  desktop window forward for a new consent (`raise_main_window`), and manages
-  the commands' `ServersState`. The base's Tauri commands: `servers_list`,
-  `server_add`, `server_set_credentials`, `server_set_run_policy`,
-  `server_update` and `server_remove`, each writing the registry and then
-  pushing what it wrote; and the consent commands, `pending_consents_list`,
-  `server_consent_get`, `server_consent_approve` and `server_consent_deny`;
-  and `server_launch` and `server_open_authorization_app`, which open a
-  server's launcher and its Authorization app in the in-app browser, signed
-  in as the Owner, behind the `LaunchBrowser` port, each view counting toward
-  `WhileOpen` through the `LaunchPresence` port. Only glue; every decision and
+  `ServerUnits::push`, emits the `server-status` event, posts the stop,
+  request and consent notifications, bringing the desktop window forward with
+  each consent's (`raise_main_window`), and manages the commands'
+  `ServersState`. The base's Tauri commands: `servers_list`, `server_add`,
+  `server_set_credentials`, `server_set_run_policy`, `server_update` and
+  `server_remove`, each writing the registry and then pushing what it wrote;
+  and `server_launch`, `server_open_authorization_app`,
+  `server_open_pending_consent` and `server_open_notified_consent`, which open
+  a server's launcher, its Authorization app and the consent waiting on it in
+  the in-app browser, signed in as the Owner, behind the `LaunchBrowser` port,
+  each view counting toward `WhileOpen` through the `LaunchPresence` port. Only glue; every decision and
   its tests are in `servers-rust`, except the commands' own order of write and
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core-js`** — the host commands the base calls, as Effects over the
   `TauriInvoke` port (`invokeHostCommand`), each answer decoded by an Effect
   Schema: the server commands (`listServers`, `addServer`,
   `setServerCredentials`, `setServerRunPolicy`, `updateServer`,
-  `removeServer`, `launchServer`, `openServerAuthorizationApp`), the
-  background session's recovery
-  (`enableBackgroundSessionRecovery`), the app's version and the notification
-  permission, and the consent commands (`listPendingConsents`, `readConsent`,
-  `approveConsent`, `denyConsent`); and the wire's namespaces, `ListedServer`,
-  `ServerStatus` (with the `server-status` event's name and decoder),
-  `RunPolicy`, `RunPolicyChoice`, `PendingConsent` (with the
-  `pending-consent` event's), `ConsentKey`, `ConsentDetails`,
-  `ConsentApproval`, `ApprovalOutcome`, `EnteredRelay` and
+  `removeServer`, `launchServer`, `openServerAuthorizationApp`,
+  `openPendingConsent`, `openNotifiedConsent`), the background session's
+  recovery (`enableBackgroundSessionRecovery`), and the app's version and the
+  notification permission; and the wire's namespaces, `ListedServer`,
+  `ServerStatus` (with the `server-status` event's name and decoder, and
+  `pendingConsentOf`), `RunPolicy`, `RunPolicyChoice`, `PendingConsent`, the
+  consent waiting first on a server, `EnteredRelay` and
   `EnteredCredentials`, `server_add`'s relay and credentials, each a
   `Schema` and its `Type` with getters; and `LaunchError`'s
   `statusRefusalOf`, the refusal `server_launch` answers from a status, with
@@ -93,13 +91,14 @@ changing how servers run or what the host notifies about them.
 - **`servers-react`** — the base, as pieces `apps/host/host-app` composes
   into its one router, as `launcher-web` composes the launcher's packages:
   `BaseGate`, the base's telemetry consent gate, then the background
-  session's recovery, around the whole app, with `@tauri-apps/api/core`'s
-  `invoke` and the background service's start config from
-  `tauri-shared-config.json`; `ServersRouterContext`, the context the base's
+  session's recovery and the opening of the consent a tapped consent
+  notification announced, around the whole app, with `@tauri-apps/api/core`'s
+  `invoke` and `addPluginListener`, and the background service's start config
+  from `tauri-shared-config.json`; `ServersRouterContext`, the context the base's
   routes read, which `ServersRouterContext.make` builds, query cache included,
   from `invoke`, `@tauri-apps/api/event`'s `listen` and the default launcher
-  and Authorization app from `tauri-shared-config.json`; `BaseLayout`, the page shell with the
-  consent sheet; and the route bucket `routes/_servers/`, which the app mounts
+  and Authorization app from `tauri-shared-config.json`; `BaseLayout`, the page shell;
+  and the route bucket `routes/_servers/`, which the app mounts
   under a pathless `_servers` layout whose component is `BaseLayout`:
   `/` the server list, `/servers/new` Add server, `/servers/$domain` a
   server's page and `/settings` Host Settings, for the app on this device rather than any one
@@ -122,7 +121,10 @@ changing how servers run or what the host notifies about them.
   never starting a server; and
   Edit, which opens the server's page, kept current by the `server-status`
   event too: its domain with Copy, its status badge, when its run started, the
-  run-policy field, and Launch with Authorization under it, each full width, over three tabs in component state. Status holds the
+  run-policy field, and Launch with Authorization under it, each full width;
+  while a consent waits on the server, a Pending request row, "‹client› wants
+  access.", with Open (`server_open_pending_consent`), the host's refusal
+  taking the row's text; over three tabs in component state. Status holds the
   host's last check of its connection (said to be from before, once the
   tunnel has dropped or been refused since), with its tunnel's connection to
   the relay while a run reports it (a failure once the relay refused the
@@ -191,13 +193,10 @@ changing how servers run or what the host notifies about them.
   context's `pendingLaunches`, a store keyed by domain, so it carries on
   when Edit opens the server's page, whose Launch shows the same wait.
   Launching never changes an active policy or extends an `until`.
-  Over every screen, `ConsentSheet` asks about the consents waiting on the
-  running servers, one server at a time, with where it stands in the queue ("1
-  of 3"), kept current by the `pending-consent` event: the server's domain, the
-  app or device and where it asks from, the access in plain words through
-  `scopes-react`'s `ScopePicker`, the patient when the access is for one, and
-  Deny or Allow. An approval that granted nothing is a denial, which the sheet
-  says until it is closed or the next consent is answered.
+  The base decides no consent itself: Open, and a tap on a consent
+  notification on a phone, open the server's own consent page in a browser
+  signed in as the Owner. The host app's shell opens a server's page when a
+  consent comes to wait first on it.
 
 ## Rules
 
@@ -409,9 +408,12 @@ changing how servers run or what the host notifies about them.
   pending consent's head included), camelCase, each optional member left out
   when absent:
   `{domain, runState, lastStop?: {reason, platformReason?, error?,
-  stoppedAt}, runningSince?, health?, tunnel?, certificate}`, `tunnel`
-  `{kind}` of `connecting`, `connected`, `tokenRejected` or `tunnelUnknown`,
-  or `{kind: "reconnecting", error}`, and `certificate` always there. A removed server gets no event; the
+  stoppedAt}, runningSince?, health?, tunnel?, certificate,
+  pendingConsent?}`, `tunnel` `{kind}` of `connecting`, `connected`,
+  `tokenRejected` or `tunnelUnknown`, or `{kind: "reconnecting", error}`,
+  `certificate` always there, and `pendingConsent` `{kind: "device",
+  userCode, clientName}` or `{kind: "oauth", id, clientName}` while a
+  consent waits. A removed server gets no event; the
   base drops a server once `servers_list` no longer lists it, and reads the
   list again after `server_remove` and for a status of a server it doesn't
   list. `servers-wire-golden.json` pins the list and the event, and the
@@ -425,16 +427,21 @@ changing how servers run or what the host notifies about them.
   `subscribe_stops()`'s; nothing in these packages tracks runs itself.
   A run's health, tunnel state and certificate state go out through
   `ctx.set_detail`, and `UnitRunner` clears them.
-- **Consents are decided in-process.** A run puts a `ServerConsentDecider`
-  over its authorization server's `HostConsentDecider` in every `ServerDetail` it sets,
-  and `UnitRunner` clears the detail when the run ends, so the consent
-  commands, which look the decider up in `statuses()`, reach only a running
-  server and answer `serverNotRunning` otherwise. They call the capabilities behind `/authorization/devices/{userCode}`
-  and `/authorization/oauth-consents/{id}` with the Owner's grant, on a
-  blocking thread: no HTTP, and no owner bearer in the webview. An approval
-  is remembered as a standing grant, as one in the launcher is. Errors are
-  `{kind, message}`: `serverNotRunning`, `notPending`,
-  `registrationNotAcknowledged` or `authorizationServer`.
+- **Consents are decided on the server's own pages.** The base never decides
+  one: `server_open_pending_consent` (`{domain}`) opens the consent waiting
+  first on a server, and `server_open_notified_consent`
+  (`{notificationId}`) the one a tapped consent notification is for
+  (`server_of_consent_notification`; any other notification opens nothing).
+  Each checks the server as `server_launch` does, then opens
+  `consent_sign_in_url`: `/oauth/sign-in` with a same-device sign-in code,
+  `next` the path `/oauth/authorize/{id}/consent?then=back` or
+  `/oauth/device?user_code=…&then=back` (the sign-in takes a path on the
+  server as `next`, not an absolute URL). `then=back` makes the page go back
+  or close once decided, rather than follow the client's callback. The view
+  is a launch view. On a phone, whose in-app browser shows one view at a
+  time, an open while a launch view shows is refused (`viewShowing`), so the
+  view isn't replaced or joined; a desktop's views are default-browser tabs.
+  Further errors are `nothingPending` and the launch's.
 - **Launching opens the launcher with a launch for any client, signed in.**
   `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
   once unless `ensure_launchable` passes for the server's status, the one
@@ -470,15 +477,16 @@ changing how servers run or what the host notifies about them.
   Let's Encrypt's staging CA), `authorizationServer`, `openingBrowser`, or the registry's
   `notRegistered` or `registry`. The golden file pins the refusals the base
   shows and which CAs browsers trust.
-- **One `pending-consent` per change.** A run's authorization server publishes its
-  queue's head on the run's own channel; the run sets it as
-  `ServerDetail::pending_consent`. `PendingConsentTracker` picks the servers
-  whose head changed from `UnitRunner`'s statuses, and the host emits
-  `{domain, head?}` to the `main` webview, `head` left out once nothing waits,
-  as when the run ends; on the desktop it brings the window forward when a
-  server that had nothing waiting gets a consent. `pending_consents_list`
-  answers with every head on start. The golden file pins the event, the
-  keys, the details, the approvals, the outcomes and the errors.
+- **One notification per request at the head.** A run's authorization
+  server publishes its queue's head, named for the client that asks, on the
+  run's own channel; the run sets it as `ServerDetail::pending_consent`, and
+  the server's status carries it as `pendingConsent`. `ConsentNotificationCoalescer`
+  picks, from `UnitRunner`'s statuses, each server whose head became a request
+  it hasn't notified for, and the host posts "‹client› wants access to
+  ‹domain›" under `consent-request:<domain>`; on the desktop it brings the
+  window forward too. A head already notified for, as after a run restarts,
+  doesn't notify again, nor do the requests behind it. The golden file pins
+  the head's wire shape.
 - **A certificate's state is its run's, or its cache's.** Every
   `ServerStatus`, in the `server-status` event and in `servers_list`,
   carries one. While a run has reported one
@@ -575,8 +583,9 @@ changing how servers run or what the host notifies about them.
   serves the Recorder tab alone. A command the base
   calls is granted to the `main` webview in
   `apps/host/host-app/src-tauri/capabilities/default.json`; the server
-  commands through the app-defined `allow-server-enrolment`,
-  `allow-server-consents` and `allow-server-management` permissions.
+  commands through the app-defined `allow-server-enrolment` and
+  `allow-server-management` permissions, and the notification taps through
+  `notification:allow-register-listener`.
 - **The server page reads `/health` itself.** While a server runs, its page
   reads `https://<domain>/health` with `servers-core-js`'s `readServerHealth`,
   through the router context's `runHttpRequest` (`FetchHttpClient.layer` in

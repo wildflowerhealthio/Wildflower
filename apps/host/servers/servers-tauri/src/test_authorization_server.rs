@@ -1,11 +1,11 @@
 //! [`TestAuthorizationServer`]: a server's authorization server over a temporary database, for
-//! the commands' tests to read, decide and mint through.
+//! the commands' tests to mint through.
 
 use tokio::sync::watch;
 use url::Url;
 use wildflowerhealthio_authorization_server::{
-    setup_authorization_server, AuthorizationServerConfig, HostConsentDecider, LaunchContextMinter,
-    PendingConsentHead, SameDeviceSignInCodeMinter, SqliteGrantStore,
+    setup_authorization_server, AuthorizationServerConfig, LaunchContextMinter, PendingConsentHead,
+    SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -16,10 +16,8 @@ pub(crate) const DOMAIN: &str = "ruth.relay.example.com";
 /// An authorization server over a temporary database, the way a server's run sets one
 /// up, with what the test reads it through.
 pub(crate) struct TestAuthorizationServer {
-    pub(crate) consent_decider: HostConsentDecider,
     pub(crate) launch_context_minter: LaunchContextMinter,
     pub(crate) same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
-    pub(crate) store: SqliteGrantStore,
     _pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     database_dir: tempfile::TempDir,
 }
@@ -50,7 +48,7 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
     .unwrap();
     let (pending_consent_tx, pending_consent_rx) = watch::channel(None);
     let authorization_server = setup_authorization_server(
-        pool.clone(),
+        pool,
         revocation_store,
         &AuthorizationServerConfig {
             server_origin: Url::parse(&format!("https://{DOMAIN}")).unwrap(),
@@ -71,10 +69,8 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
     )
     .unwrap();
     TestAuthorizationServer {
-        consent_decider: HostConsentDecider::new(authorization_server.state),
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
-        store: SqliteGrantStore::new(pool).unwrap(),
         _pending_consent_rx: pending_consent_rx,
         database_dir,
     }

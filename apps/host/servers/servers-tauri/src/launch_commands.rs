@@ -1,6 +1,7 @@
 //! The launch commands: the base opens a server's launcher, an app, as a SMART
-//! EHR launch against the server, or the server's Wildflower Authorization
-//! app, each signed in as the Owner. The launcher's and the Authorization
+//! EHR launch against the server, the server's Wildflower Authorization
+//! app, or the consent waiting first on the server, each signed in as the
+//! Owner. The launcher's and the Authorization
 //! app's URLs come from the server's record; the server must be launchable
 //! now, by the status the base receives
 //! ([`ensure_launchable`](wildflowerhealthio_servers::ensure_launchable)). For
@@ -13,9 +14,13 @@
 //! [`sign_in_url`](wildflowerhealthio_servers::sign_in_url) with a one-time
 //! code the same authorization server mints ([`ServerSignInCodeMinter`]),
 //! which signs the browser in as the Owner and sends it on, so the launch's
-//! own sign-in reaches the server's consent card.
+//! own sign-in reaches the server's consent card. A consent asked from
+//! another browser or device opens the same way at its page, with `then=back`
+//! ([`consent_sign_in_url`](wildflowerhealthio_servers::consent_sign_in_url)),
+//! once the server is launchable: from the server's page in the base, or from
+//! a tap on its notification on a phone.
 //!
-//! Both open in the in-app browser, [`LaunchBrowser`], which shows one view
+//! All open in the in-app browser, [`LaunchBrowser`], which shows one view
 //! at a time: on iOS an open replaces the view an earlier one opened, and on
 //! Android an open that arrives while an earlier one's view is still opening
 //! joins that view. While a view is open it counts toward the `WhileOpen` run
@@ -24,7 +29,11 @@
 //! browser reports it keeps the app alive itself. Each such view is a launch
 //! view, whichever page it opened. The outcome is logged by domain.
 //!
-//! Opening either never changes the server's run policy: a server that isn't
+//! On a phone, a consent doesn't open while a view the base opened still
+//! shows: it would replace that view (iOS) or join it (Android), and the
+//! request waits on the server's page instead.
+//!
+//! Opening any never changes the server's run policy: a server that isn't
 //! launchable answers at once, and the base waits for it to become so.
 //! Every failure answers as `{kind, message}`, a [`LaunchError`].
 
@@ -40,8 +49,8 @@ use tauri_plugin_native_page_browser::{BrowserEvent, NativePageBrowserExt, OpenR
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
-    LaunchError, ListedServer, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord,
-    ServerRegistry, ServerSignInCodeMinter,
+    LaunchError, ListedServer, PendingConsent, RegistryError, ServerDetail, ServerLaunchMinter,
+    ServerRecord, ServerRegistry, ServerSignInCodeMinter,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
@@ -100,6 +109,76 @@ pub async fn server_open_authorization_app(
     .await
 }
 
+/// Open the consent waiting first on the server `domain` at its page, signed
+/// in as the Owner first, in the in-app browser: the server's pending request
+/// on its page in the base. Invoked as
+/// `invoke('server_open_pending_consent', { domain })`; answers with nothing
+/// once the browser is opening it.
+///
+/// # Errors
+///
+/// The [`LaunchError`] that stopped it: the server isn't registered, isn't
+/// launchable now, has no consent waiting, or, on a phone, a view the base
+/// opened still shows; or the in-app browser failed.
+#[tauri::command]
+pub async fn server_open_pending_consent(
+    app: AppHandle,
+    servers: tauri::State<'_, ServersState>,
+    domain: String,
+) -> Result<(), LaunchError> {
+    open_pending_consent(
+        Arc::clone(&servers.registry),
+        &servers.data_root,
+        &servers.server_units.statuses(),
+        domain,
+        NativePageLaunchBrowser { app },
+        servers.server_units.clone(),
+        REFUSE_CONSENT_WHILE_A_VIEW_SHOWS,
+    )
+    .await
+}
+
+/// Open the consent a tapped notification announced, as
+/// [`server_open_pending_consent`] opens a server's: the notification the
+/// plugin posted under `notificationId`, as its tap reports it. Invoked as
+/// `invoke('server_open_notified_consent', { notificationId })`; answers with
+/// nothing, opening nothing, for a notification that isn't a consent's.
+///
+/// # Errors
+///
+/// As [`server_open_pending_consent`] for the server the notification is for.
+#[tauri::command]
+pub async fn server_open_notified_consent(
+    app: AppHandle,
+    servers: tauri::State<'_, ServersState>,
+    notification_id: i32,
+) -> Result<(), LaunchError> {
+    let statuses = servers.server_units.statuses();
+    let Some(domain) = wildflowerhealthio_servers::server_of_consent_notification(
+        notification_id,
+        statuses.keys().map(UnitId::as_str),
+    ) else {
+        return Ok(());
+    };
+    open_pending_consent(
+        Arc::clone(&servers.registry),
+        &servers.data_root,
+        &statuses,
+        domain.to_owned(),
+        NativePageLaunchBrowser { app },
+        servers.server_units.clone(),
+        REFUSE_CONSENT_WHILE_A_VIEW_SHOWS,
+    )
+    .await
+}
+
+/// Whether a consent's open is refused while a view the base opened still
+/// shows: on a phone, whose in-app browser shows one view at a time, so the
+/// open would replace the view (iOS) or join it (Android). A desktop opens a
+/// tab of the default browser, which shows any number and never reports one
+/// closed.
+const REFUSE_CONSENT_WHILE_A_VIEW_SHOWS: bool = cfg!(any(target_os = "ios", target_os = "android"));
+
 /// Hears a launch's in-app browser view's events: that its browser keeps the
 /// app alive under it (Android), and that it is gone.
 pub(crate) type LaunchViewEvents = Box<dyn Fn(BrowserEvent) + Send + Sync>;
@@ -137,6 +216,8 @@ pub(crate) trait LaunchPresence: Clone + Send + Sync + 'static {
     fn view_kept_alive(&self, view: &str);
     /// The launch view `view` closed.
     fn view_closed(&self, view: &str);
+    /// Whether a launch view is open: opened and not yet reported closed.
+    fn shows_a_view(&self) -> bool;
 }
 
 impl LaunchPresence for ServerUnits {
@@ -150,6 +231,10 @@ impl LaunchPresence for ServerUnits {
 
     fn view_closed(&self, view: &str) {
         self.launch_view_closed(view);
+    }
+
+    fn shows_a_view(&self) -> bool {
+        self.shows_a_launch_view()
     }
 }
 
@@ -186,7 +271,7 @@ async fn launch(
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
             &sign_in_code_minter.mint(),
-            &launch_url,
+            launch_url.as_str(),
         );
         open_launch_view(&launch_browser, launch_presence, sign_in_url).await
     }
@@ -222,7 +307,7 @@ async fn open_authorization_app(
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
             &sign_in_code_minter.mint(),
-            &authorization_app_url,
+            authorization_app_url.as_str(),
         );
         open_launch_view(&launch_browser, launch_presence, sign_in_url).await
     }
@@ -231,6 +316,51 @@ async fn open_authorization_app(
         Ok(()) => log::info!("[servers] opened the Authorization app of {domain}"),
         Err(error) => {
             log::warn!("[servers] opening the Authorization app of {domain} failed: {error}");
+        }
+    }
+    result
+}
+
+/// Open the consent waiting first on the server `domain` in `launch_browser`,
+/// at its page, signed in as the Owner, once the server's status in
+/// `statuses`, with its certificate state (its run's, or what its cache in
+/// `data_root` says), is launchable, and tell `launch_presence` its view is
+/// open until the browser reports it closed, as a launch does. With
+/// `refuse_while_a_view_shows`, a view `launch_presence` holds open refuses
+/// it.
+async fn open_pending_consent(
+    registry: Arc<dyn ServerRegistry>,
+    data_root: &Path,
+    statuses: &UnitStatuses<ServerDetail>,
+    domain: String,
+    launch_browser: impl LaunchBrowser,
+    launch_presence: impl LaunchPresence,
+    refuse_while_a_view_shows: bool,
+) -> Result<(), LaunchError> {
+    let result = async {
+        let server = listed_server(registry, data_root, statuses, domain.clone()).await?;
+        let sign_in_code_minter = ServerSignInCodeMinter::of_launchable_server(&server.status)?;
+        let pending_consent =
+            PendingConsent::of_run(&server.status.unit_status).ok_or_else(|| {
+                LaunchError::NothingPending {
+                    domain: domain.clone(),
+                }
+            })?;
+        if refuse_while_a_view_shows && launch_presence.shows_a_view() {
+            return Err(LaunchError::ViewShowing);
+        }
+        let sign_in_url = wildflowerhealthio_servers::consent_sign_in_url(
+            &server.record.public_origin(),
+            &sign_in_code_minter.mint(),
+            &pending_consent.key,
+        );
+        open_launch_view(&launch_browser, launch_presence, sign_in_url).await
+    }
+    .await;
+    match &result {
+        Ok(()) => log::info!("[servers] opened the consent waiting on {domain}"),
+        Err(error) => {
+            log::warn!("[servers] opening the consent waiting on {domain} failed: {error}");
         }
     }
     result
@@ -337,6 +467,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Mutex;
 
+    use wildflowerhealthio_authorization_server::PendingConsentHead;
     use wildflowerhealthio_rathole_settings::TunnelName;
     use wildflowerhealthio_servers::{
         CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerRecord, TunnelToken,
@@ -485,6 +616,10 @@ mod tests {
             assert!(views.open.remove(view), "{view}");
             views.kept_alive.remove(view);
         }
+
+        fn shows_a_view(&self) -> bool {
+            !self.0.lock().unwrap().open.is_empty()
+        }
     }
 
     /// A registry in a fresh folder holding the server [`DOMAIN`], whose
@@ -538,7 +673,6 @@ mod tests {
                 last_error: None,
             }),
             pending_consent: None,
-            consent_decider: None,
             launch_minter: Some(ServerLaunchMinter::new(
                 authorization_server.launch_context_minter.clone(),
             )),
@@ -601,6 +735,12 @@ mod tests {
     /// Where `opened`, the server [`DOMAIN`]'s `/oauth/sign-in` with a minted
     /// code, sends the browser once it has signed it in.
     fn next_after_sign_in(opened: &Url) -> Url {
+        Url::parse(&next_of_sign_in(opened)).unwrap()
+    }
+
+    /// The `next` of `opened`, the server [`DOMAIN`]'s `/oauth/sign-in` with
+    /// a minted code, as written.
+    fn next_of_sign_in(opened: &Url) -> String {
         assert_eq!(
             opened.origin(),
             Url::parse(&format!("https://{DOMAIN}")).unwrap().origin()
@@ -616,7 +756,7 @@ mod tests {
         assert_eq!(code_name, "code");
         assert!(!code.is_empty(), "a minted code: {opened}");
         assert_eq!(next_name, "next");
-        Url::parse(next).unwrap()
+        next.clone()
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -902,5 +1042,210 @@ mod tests {
         assert_eq!(refused.map_err(|error| error.kind()), Err("notRegistered"));
         assert!(browser.opened().is_empty());
         assert!(presence.views().is_empty());
+    }
+
+    /// The servers' statuses with the server launchable over
+    /// `authorization_server`, `head` waiting first on it.
+    fn launchable_waiting_on(
+        authorization_server: &TestAuthorizationServer,
+        head: PendingConsentHead,
+    ) -> UnitStatuses<ServerDetail> {
+        running_with(authorization_server, |detail| {
+            detail.pending_consent = Some(head);
+        })
+    }
+
+    fn oauth_head(id: &str) -> PendingConsentHead {
+        PendingConsentHead::OAuth {
+            id: id.to_owned(),
+            client_name: "Lifting".to_owned(),
+        }
+    }
+
+    /// Open the consent waiting on the server [`DOMAIN`], whose statuses are
+    /// `statuses`, in `browser`, with `presence` hearing its view, refusing
+    /// while a view shows when `refuse_while_a_view_shows`.
+    async fn open_consent(
+        statuses: &UnitStatuses<ServerDetail>,
+        browser: impl LaunchBrowser,
+        presence: &OpenLaunchViews,
+        refuse_while_a_view_shows: bool,
+    ) -> Result<(), LaunchError> {
+        let (data_root, registry) = registry();
+        open_pending_consent(
+            registry,
+            data_root.path(),
+            statuses,
+            DOMAIN.to_owned(),
+            browser,
+            presence.clone(),
+            refuse_while_a_view_shows,
+        )
+        .await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_app_s_waiting_consent_opens_at_its_card_through_the_sign_in() {
+        let authorization_server = test_authorization_server();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let presence = OpenLaunchViews::default();
+
+        open_consent(
+            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            browser.clone(),
+            &presence,
+            true,
+        )
+        .await
+        .unwrap();
+
+        let opened = browser.opened();
+        let [sign_in_url] = opened.as_slice() else {
+            panic!("one consent opens: {opened:?}");
+        };
+        assert_eq!(
+            next_of_sign_in(sign_in_url),
+            "/oauth/authorize/req-1/consent?then=back"
+        );
+        assert_eq!(
+            presence.views().len(),
+            1,
+            "its view counts as a launch view"
+        );
+        assert_eq!(authorization_server.minted_launches(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_device_s_waiting_consent_opens_at_the_device_page_with_its_code() {
+        let authorization_server = test_authorization_server();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+
+        open_consent(
+            &launchable_waiting_on(
+                &authorization_server,
+                PendingConsentHead::Device {
+                    user_code: "ABCD-EFGH".to_owned(),
+                    client_name: "Pebble".to_owned(),
+                },
+            ),
+            browser.clone(),
+            &OpenLaunchViews::default(),
+            true,
+        )
+        .await
+        .unwrap();
+
+        let opened = browser.opened();
+        let [sign_in_url] = opened.as_slice() else {
+            panic!("one consent opens: {opened:?}");
+        };
+        assert_eq!(
+            next_of_sign_in(sign_in_url),
+            "/oauth/device?user_code=ABCD-EFGH&then=back"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_server_with_nothing_waiting_opens_nothing() {
+        let authorization_server = test_authorization_server();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let presence = OpenLaunchViews::default();
+
+        let refused = open_consent(
+            &launchable(&authorization_server),
+            browser.clone(),
+            &presence,
+            true,
+        )
+        .await;
+
+        assert!(
+            matches!(&refused, Err(LaunchError::NothingPending { domain }) if domain == DOMAIN),
+            "{refused:?}"
+        );
+        assert!(browser.opened().is_empty());
+        assert!(presence.views().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn on_a_phone_a_consent_waits_while_a_launch_s_view_shows() {
+        let authorization_server = test_authorization_server();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let presence = OpenLaunchViews::default();
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let launch_views = presence.views();
+
+        let refused = open_consent(
+            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            browser.clone(),
+            &presence,
+            true,
+        )
+        .await;
+
+        assert!(
+            matches!(refused, Err(LaunchError::ViewShowing)),
+            "{refused:?}"
+        );
+        assert_eq!(browser.opened().len(), 1, "only the launch opened");
+        assert_eq!(presence.views(), launch_views, "the launch's view stays");
+
+        browser.close_showing();
+        open_consent(
+            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            browser.clone(),
+            &presence,
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(browser.opened().len(), 2, "it opens once the view closed");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn on_a_desktop_a_consent_opens_beside_a_launch_s_tab() {
+        let authorization_server = test_authorization_server();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let presence = OpenLaunchViews::default();
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+
+        open_consent(
+            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            browser.clone(),
+            &presence,
+            false,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(browser.opened().len(), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_waiting_consent_on_a_server_that_isn_t_launchable_opens_nothing() {
+        let authorization_server = test_authorization_server();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let statuses = running_with(&authorization_server, |detail| {
+            detail.pending_consent = Some(oauth_head("req-1"));
+            detail.health = None;
+        });
+
+        let refused = open_consent(
+            &statuses,
+            browser.clone(),
+            &OpenLaunchViews::default(),
+            true,
+        )
+        .await;
+
+        assert!(
+            matches!(&refused, Err(LaunchError::NotYetProbed { domain }) if domain == DOMAIN),
+            "{refused:?}"
+        );
+        assert!(browser.opened().is_empty());
     }
 }

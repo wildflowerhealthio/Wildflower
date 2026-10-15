@@ -73,15 +73,13 @@ pub struct AuthorizationServerState {
     /// The hosted launcher logout lands the browser on, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
     pub(crate) launcher_base: LauncherBase,
-    /// Watch sender publishing the [`PendingConsentHead`] the host webview
-    /// surfaces in its popup. Handlers whose write may change the head call the
+    /// Watch sender publishing the [`PendingConsentHead`] the host notifies
+    /// and the base shows on the server's page. Handlers whose write may change the head call the
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
     pub(crate) owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
-    /// The Owner's grant, [`crate::OWNER_SCOPES`] — the approving authority
-    /// when the host decides a consent in-process through
-    /// [`HostConsentDecider`](crate::HostConsentDecider), and what an Owner
-    /// browser's session holds.
+    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what an Owner browser's
+    /// session holds, the authority it decides consents with.
     pub(crate) owner_grant: wildflowerhealthio_scopes::Grant,
     /// The outstanding same-device sign-in codes: minted in-process by the
     /// [`SameDeviceSignInCodeMinter`](crate::SameDeviceSignInCodeMinter)

@@ -12,8 +12,8 @@
     "background-service:allow-configure-recovery",
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission",
+    "notification:allow-register-listener",
     "allow-server-enrolment",
-    "allow-server-consents",
     "allow-server-management",
     "allow-recorder"
   ]

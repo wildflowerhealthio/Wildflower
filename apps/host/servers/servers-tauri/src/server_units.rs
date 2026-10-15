@@ -3,7 +3,8 @@
 //! units, and how a launch's in-app browser view counts toward their
 //! `WhileOpen` run policy.
 
-use std::sync::Arc;
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::mpsc;
 use wildflowerhealthio_servers::{ServerDetail, ServerRecord, ServerUnit};
@@ -27,6 +28,8 @@ pub struct ServerUnits {
     runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
     forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
+    /// The launch views opened and not yet reported closed.
+    open_launch_views: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl ServerUnits {
@@ -43,6 +46,7 @@ impl ServerUnits {
             runner,
             server_config,
             forwarded_request_tx,
+            open_launch_views: Arc::default(),
         }
     }
 
@@ -104,6 +108,7 @@ impl ServerUnits {
     /// keeps the app present for the servers' `WhileOpen` run policy where the
     /// view moves the app to the background.
     pub fn launch_view_opened(&self, view: &str) {
+        self.lock_open_launch_views().insert(view.to_owned());
         self.runner.browser_view_opened(view);
     }
 
@@ -115,6 +120,23 @@ impl ServerUnits {
 
     /// The in-app browser view `view`, a launch's, closed.
     pub fn launch_view_closed(&self, view: &str) {
+        self.lock_open_launch_views().remove(view);
         self.runner.browser_view_closed(view);
+    }
+
+    /// Whether a launch's in-app browser view is open: opened and not yet
+    /// reported closed. A desktop's views, default-browser tabs, are never
+    /// reported closed.
+    #[must_use]
+    pub fn shows_a_launch_view(&self) -> bool {
+        !self.lock_open_launch_views().is_empty()
+    }
+
+    /// The open launch views, locked. Each holder only inserts, removes or
+    /// reads, so a holder that panicked left the set whole.
+    fn lock_open_launch_views(&self) -> MutexGuard<'_, BTreeSet<String>> {
+        self.open_launch_views
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }

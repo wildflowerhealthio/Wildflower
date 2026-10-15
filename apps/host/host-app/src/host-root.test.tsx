@@ -1,5 +1,5 @@
 import { createMemoryHistory, type RouterHistory } from '@tanstack/react-router'
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import type { ServersRouterContext } from '@wildflowerhealthio/servers-react'
@@ -71,7 +71,6 @@ const HOST_ANSWERS: Readonly<Record<string, unknown>> = {
   'plugin:notification|is_permission_granted': true,
   'plugin:app|version': '0.4.0',
   servers_list: [],
-  pending_consents_list: [],
   recorder_save_folder: recorderGolden.commands.recorder_save_folder,
 }
 
@@ -144,6 +143,7 @@ const renderHost = async ({
       base={{
         invoke,
         listen: hostEvents.listen,
+        listenToNotificationTaps: () => Promise.reject(new Error('no notification taps here')),
         backgroundServiceStartConfig: { serviceLabel: 'Servers', foregroundServiceType: 'none' },
         defaultLauncherUrl: 'https://wildflowerhealth.io/launcher/',
         defaultAuthorizationUrl: 'https://wildflowerhealth.io/authorization/',
@@ -260,19 +260,16 @@ describe('HostRoot', () => {
     expect(recorder.sentTags).toEqual(['Open'])
   })
 
-  it('should navigate to the base when a consent comes to wait on a server', async () => {
+  it("should navigate to a server's page when a consent comes to wait first on it", async () => {
     // Arrange
     const hostEvents = fakeHostEvents()
-    const history = await renderHost({ hostEvents })
-    const user = userEvent.setup()
-    await user.click(await screen.findByRole('link', { name: 'Host Settings' }))
-    await user.click(linkOf('Recorder'))
+    const history = await renderHost({ path: '/recorder', hostEvents })
     await screen.findByRole('heading', { name: 'Recorder' })
-    const [waiting, , cleared] = serversGolden.pendingConsents
+    const { runningAndReachable, runningWithAPendingConsent } = serversGolden.serverStatuses
 
-    // Act — a server with nothing waiting any more leaves the Recorder showing.
+    // Act — a status with nothing waiting leaves the Recorder showing.
     act(() => {
-      hostEvents.emit('pending-consent', cleared)
+      hostEvents.emit('server-status', runningAndReachable)
     })
 
     // Assert
@@ -280,12 +277,22 @@ describe('HostRoot', () => {
 
     // Act
     act(() => {
-      hostEvents.emit('pending-consent', waiting)
+      hostEvents.emit('server-status', runningWithAPendingConsent)
     })
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Host Settings' })).toBeDefined()
-    expect(history.location.pathname).toBe('/settings')
+    await waitFor(() => {
+      expect(history.location.pathname).toBe(`/servers/${runningWithAPendingConsent.domain}`)
+    })
+
+    // Act — the same request again, once the user has moved on, doesn't.
+    await userEvent.setup().click(linkOf('Recorder'))
+    act(() => {
+      hostEvents.emit('server-status', runningWithAPendingConsent)
+    })
+
+    // Assert
+    expect(history.location.pathname).toBe('/recorder')
   })
 
   it('should say so on the Recorder page when the recorder cannot connect, and still show the base', async () => {

@@ -225,9 +225,10 @@ async fn authorize_publishes_the_parked_request_as_the_consent_head() {
     assert_eq!(
         pending_consent_head(&db),
         Some(PendingConsentHead::OAuth {
-            id: request_id.clone()
+            id: request_id.clone(),
+            client_name: "Integration Test Client".to_owned(),
         }),
-        "the popup must be showing the request the browser was just parked on",
+        "the head must be the request the browser was just parked on, named for its client",
     );
 }
 

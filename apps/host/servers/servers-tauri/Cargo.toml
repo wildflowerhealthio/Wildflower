@@ -12,7 +12,7 @@ publish.workspace = true
 anyhow.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
-# Posting the stop and request notifications.
+# Posting the stop, request and consent notifications.
 tauri-plugin-notification = "2"
 # Opening a server's launcher in the in-app browser, and hearing its view close.
 tauri-plugin-native-page-browser = { path = "../../tauri-plugin-native-page-browser" }
@@ -51,8 +51,8 @@ workspace = true
 
 [dev-dependencies]
 async-trait = "0.1"
-# An authorization server over a temporary database, whose consents the consent commands'
-# tests decide.
+# An authorization server over a temporary database, which the launch
+# commands' tests mint through.
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 wildflowerhealthio-token-revocation = { path = "../../wildflower-server/token-revocation-rust" }
 serde.workspace = true

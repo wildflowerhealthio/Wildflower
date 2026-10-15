@@ -16,7 +16,7 @@ use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    HostConsentDecider, SameDeviceSignInCodeMinter,
+    SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -82,8 +82,6 @@ pub struct WildflowerServer {
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
-    /// How the host's Owner decides the server's pending consents.
-    consent_decider_for_host: HostConsentDecider,
     /// Runs the FHIR API's bulk `$export` jobs and deletes expired ones, for
     /// as long as the server serves.
     bulk_export_worker: BulkExportWorker,
@@ -109,13 +107,6 @@ impl WildflowerServer {
     #[must_use]
     pub fn same_device_sign_in_code_minter(&self) -> SameDeviceSignInCodeMinter {
         self.same_device_sign_in_code_minter.clone()
-    }
-
-    /// How the host reads, approves and denies the server's pending consents
-    /// in-process as its Owner, with no token.
-    #[must_use]
-    pub fn consent_decider_for_host(&self) -> &HostConsentDecider {
-        &self.consent_decider_for_host
     }
 
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
@@ -314,7 +305,6 @@ pub async fn set_up(
         observers.pending_consent_tx,
     )
     .context("failed to set up the authorization server")?;
-    let consent_decider_for_host = HostConsentDecider::new(authorization_server.state.clone());
 
     // The FHIR API carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
@@ -562,7 +552,6 @@ pub async fn set_up(
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
         device_certificate,
-        consent_decider_for_host,
         bulk_export_worker: fhir_routers.bulk_export_worker,
     })
 }

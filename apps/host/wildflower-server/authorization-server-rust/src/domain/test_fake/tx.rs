@@ -126,12 +126,29 @@ impl GrantTx for FakeGrantTx<'_> {
             })
             .collect();
         pending.sort_by_key(|r| r.requested_at);
-        Ok(pending.first().and_then(|r| match r.grant_type {
-            GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id: r.id.clone() }),
-            GrantType::DeviceCode => r
-                .user_code
-                .clone()
-                .map(|user_code| PendingConsentHead::Device { user_code }),
+        Ok(pending.first().and_then(|r| {
+            // Mirrors the SQL left join: a client with no registration is
+            // named by its `client_id`.
+            let client_name = self
+                .store
+                .clients
+                .borrow()
+                .get(&r.client_id)
+                .map_or_else(|| r.client_id.clone(), |client| client.name.clone());
+            match r.grant_type {
+                GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth {
+                    id: r.id.clone(),
+                    client_name,
+                }),
+                GrantType::DeviceCode => {
+                    r.user_code
+                        .clone()
+                        .map(|user_code| PendingConsentHead::Device {
+                            user_code,
+                            client_name,
+                        })
+                }
+            }
         }))
     }
 

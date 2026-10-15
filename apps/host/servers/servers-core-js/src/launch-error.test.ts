@@ -5,7 +5,7 @@ import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import * as CertificateAuthority from './certificate-authority.ts'
 import { HostCommandFailed, TauriInvoke } from './host-commands.ts'
 import * as LaunchError from './launch-error.ts'
-import { launchServer, openServerAuthorizationApp } from './server-commands.ts'
+import { launchServer, openPendingConsent, openServerAuthorizationApp } from './server-commands.ts'
 import * as ServerStatus from './server-status.ts'
 
 const decodeStatus = Schema.decodeUnknownSync(ServerStatus.Schema)
@@ -79,6 +79,11 @@ describe.each([
     name: 'openServerAuthorizationApp',
     open: openServerAuthorizationApp,
     command: 'server_open_authorization_app',
+  },
+  {
+    name: 'openPendingConsent',
+    open: openPendingConsent,
+    command: 'server_open_pending_consent',
   },
 ])('$name', ({ open, command }) => {
   it(`should send ${command} the domain, and answer with nothing`, async () => {

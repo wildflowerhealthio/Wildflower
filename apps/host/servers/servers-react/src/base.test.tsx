@@ -98,7 +98,6 @@ const fakeHost = (answers: Readonly<Record<string, () => Promise<unknown>>>): Fa
 /** The answers every host gives that a test doesn't change. */
 const steadyAnswers = {
   'plugin:background-service|configure_recovery': () => Promise.resolve(null),
-  pending_consents_list: () => Promise.resolve([]),
 } as const
 
 /**
@@ -148,6 +147,28 @@ const fakeEvents = (): FakeEvents => {
       for (const listener of listeners) {
         if (listener.event === event) listener.handler({ payload })
       }
+    },
+  }
+}
+
+/** Notification taps a test makes, and the listeners the base has up. */
+interface FakeTaps {
+  readonly listen: BaseUnderTestProps['listenToNotificationTaps']
+  /** Deliver `tap` to every listener. */
+  readonly tap: (tap: unknown) => void
+}
+
+const fakeTaps = (): FakeTaps => {
+  const handlers = new Set<(tap: unknown) => void>()
+  return {
+    listen: (handler) => {
+      handlers.add(handler)
+      return Promise.resolve(() => {
+        handlers.delete(handler)
+      })
+    },
+    tap: (tap) => {
+      for (const handler of handlers) handler(tap)
     },
   }
 }
@@ -203,18 +224,21 @@ const renderBase = ({
   storage,
   path = '/',
   events = fakeEvents(),
+  taps = fakeTaps(),
   httpClient = fakeHealth(() => Response.json({ status: 'pass' })).layer,
 }: {
   readonly invoke: Context.Tag.Service<TauriInvoke>
   readonly storage: ConsentStorage
   readonly path?: string
   readonly events?: FakeEvents
+  readonly taps?: FakeTaps
   readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
 }): RenderResult =>
   render(
     <BaseUnderTest
       invoke={invoke}
       listen={events.listen}
+      listenToNotificationTaps={taps.listen}
       backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
       defaultLauncherUrl={DEFAULT_LAUNCHER_URL}
       defaultAuthorizationUrl={DEFAULT_AUTHORIZATION_URL}
@@ -363,6 +387,55 @@ describe('the background session recovery', () => {
         args: { enabled: true, config: BACKGROUND_SERVICE_START_CONFIG },
       })
     })
+  })
+})
+
+describe('a tapped notification', () => {
+  it('should ask the host to open the consent it announced', async () => {
+    // Arrange
+    const host = hostWith({
+      answers: { server_open_notified_consent: () => Promise.resolve(null) },
+    })
+    const taps = fakeTaps()
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      taps,
+    })
+    await screen.findByText('No servers yet')
+
+    // Act
+    act(() => {
+      taps.tap({ actionId: 'tap', notification: { id: 1_534_013_825, title: 'Access request' } })
+    })
+
+    // Assert
+    await waitFor(() => {
+      expect(host.seen).toContainEqual({
+        command: 'server_open_notified_consent',
+        args: { notificationId: 1_534_013_825 },
+      })
+    })
+  })
+
+  it('should open nothing for a tap that does not decode', async () => {
+    // Arrange
+    const host = hostWith()
+    const taps = fakeTaps()
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      taps,
+    })
+    await screen.findByText('No servers yet')
+
+    // Act
+    act(() => {
+      taps.tap({ notification: {} })
+    })
+
+    // Assert
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_open_notified_consent')
   })
 })
 
@@ -1817,6 +1890,84 @@ describe('the server page', () => {
 
   /** The page's status hero. */
   const hero = (): Promise<HTMLElement> => screen.findByRole('region', { name: 'Status' })
+
+  describe('a pending request', () => {
+    it('should list the client waiting on the server, and open it', async () => {
+      // Arrange
+      const user = userEvent.setup()
+      const host = renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses.runningWithAPendingConsent),
+        answers: { server_open_pending_consent: () => Promise.resolve(null) },
+      })
+      await hero()
+      const access = sectionTitled('Access')
+
+      // Act
+      await user.click(within(access).getByRole('button', { name: 'Open' }))
+
+      // Assert
+      expect(access.textContent).toContain('Pending request')
+      expect(access.textContent).toContain('Lifting wants access.')
+      expect(host.seen.filter(({ command }) => command === 'server_open_pending_consent')).toEqual([
+        { command: 'server_open_pending_consent', args: { domain: 'ruth.relay.example.com' } },
+      ])
+    })
+
+    it("should say why the host didn't open it, in place of who waits", async () => {
+      // Arrange
+      const user = userEvent.setup()
+      const nothingPending = golden.launchErrors[8]
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses.runningWithAPendingConsent),
+        answers: { server_open_pending_consent: () => Promise.reject(nothingPending) },
+      })
+      await hero()
+
+      // Act
+      await user.click(within(sectionTitled('Access')).getByRole('button', { name: 'Open' }))
+
+      // Assert
+      await waitFor(() => {
+        expect(sectionTitled('Access').textContent).toContain(nothingPending.message)
+      })
+      expect(sectionTitled('Access').textContent).not.toContain('Lifting wants access.')
+    })
+
+    it('should not show for a server with nothing waiting', async () => {
+      // Arrange
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses.runningAndReachable),
+      })
+
+      // Act
+      await hero()
+
+      // Assert
+      expect(screen.queryByRole('heading', { name: 'Access' })).toBeNull()
+    })
+
+    it("should show once the server's status carries a request", async () => {
+      // Arrange
+      const events = fakeEvents()
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: listedWithRuthStatus(golden.serverStatuses.runningAndReachable),
+        events,
+      })
+      await hero()
+
+      // Act
+      act(() => {
+        events.emit('server-status', golden.serverStatuses.runningWithAPendingConsent)
+      })
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Access' })).toBeDefined()
+    })
+  })
 
   /** The section of the list or form titled `title`. */
   const sectionTitled = (title: string): HTMLElement => {

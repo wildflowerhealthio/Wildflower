@@ -17,6 +17,7 @@ import {
   launchServer,
   ListedServer,
   listServers,
+  openPendingConsent,
   openServerAuthorizationApp,
   type NotificationPermission,
   readAppVersion,
@@ -299,6 +300,21 @@ const useOpenServerAuthorizationApp = (
   })
 
 /**
+ * Opens the consent waiting first on a server at its page, signed in as its
+ * Owner.
+ *
+ * @remarks
+ * Nothing is written to the cache: once the Owner decides, the server's next
+ * `server-status` event carries its queue's new head.
+ */
+const useOpenPendingConsent = (
+  runHostCommand: RunHostCommand
+): UseMutationResult<null, HostCommandError, { readonly domain: string }> =>
+  useMutation({
+    mutationFn: (server) => runHostCommand(openPendingConsent(server)),
+  })
+
+/**
  * `servers` with the server `domain`'s launcher set to `launcherUrl` and its
  * Authorization app to `authorizationUrl`.
  */
@@ -439,6 +455,7 @@ export {
   serversQueryOptions,
   useAddServer,
   useLaunchServer,
+  useOpenPendingConsent,
   useOpenServerAuthorizationApp,
   useRemoveServer,
   useRequestNotificationPermission,

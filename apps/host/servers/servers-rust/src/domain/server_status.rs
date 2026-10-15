@@ -23,15 +23,17 @@
 //!           | {"kind": "unreachable", "error": "…"},
 //!   "tunnel": {"kind": "connecting" | "connected" | "tokenRejected" | "tunnelUnknown"}
 //!           | {"kind": "reconnecting", "error": "…"},
-//!   "certificate": <the run's certificate state, or else the cache's>
+//!   "certificate": <the run's certificate state, or else the cache's>,
+//!   "pendingConsent": <the oldest consent waiting on the server>
 //! }
 //! ```
 //!
 //! `lastStop` is there only while the run state is `stopped`, and only once
 //! the server has run; `platformReason` only for `sessionEndedByPlatform`;
 //! `runningSince` only while `running`; `health` and `tunnel` each only while
-//! a run has reported it. `certificate` is always there, written as
-//! [`certificate_state_wire`](crate::domain::certificate_state_wire) says:
+//! a run has reported it; and `pendingConsent`, written as [`PendingConsent`]
+//! says, only while a consent waits on the run. `certificate` is always there,
+//! written as [`certificate_state_wire`](crate::domain::certificate_state_wire) says:
 //! the state the run reported, while it has reported one, or else what the
 //! server's certificate cache says.
 
@@ -47,7 +49,7 @@ use wildflowerhealthio_unit_runner::{
 use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
 use crate::domain::certificate_state_wire::CertificateStateWire;
-use crate::domain::ServerDetail;
+use crate::domain::{PendingConsent, ServerDetail};
 
 /// One server's status on `UnitRunner`: `UnitRunner`'s [`UnitStatus`] for the
 /// unit whose id is the server's `domain`, with its certificate's state.
@@ -98,6 +100,8 @@ pub(crate) struct ServerStatusWire<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     tunnel: Option<TunnelStateWire<'a>>,
     certificate: CertificateStateWire<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pending_consent: Option<PendingConsent>,
 }
 
 impl<'a> ServerStatusWire<'a> {
@@ -129,6 +133,7 @@ impl<'a> ServerStatusWire<'a> {
                 .and_then(|detail| detail.tunnel.as_ref())
                 .map(TunnelStateWire::of),
             certificate: CertificateStateWire::of(certificate),
+            pending_consent: PendingConsent::of_run(unit_status),
         }
     }
 }
@@ -315,6 +320,8 @@ pub(crate) mod tests {
         CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
     };
 
+    use wildflowerhealthio_authorization_server::PendingConsentHead;
+
     use super::*;
     use crate::domain::{CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError};
 
@@ -351,7 +358,6 @@ pub(crate) mod tests {
                     last_error: None,
                 }),
                 pending_consent: None,
-                consent_decider: None,
                 launch_minter: None,
                 sign_in_code_minter: None,
             }),
@@ -399,6 +405,18 @@ pub(crate) mod tests {
         };
         vec![
             ("runningAndReachable", status(running_and_reachable())),
+            (
+                "runningWithAPendingConsent",
+                status({
+                    let mut waiting = running_and_reachable();
+                    waiting.detail.as_mut().unwrap().pending_consent =
+                        Some(PendingConsentHead::OAuth {
+                            id: "req-1".to_owned(),
+                            client_name: "Lifting".to_owned(),
+                        });
+                    waiting
+                }),
+            ),
             (
                 "runningAndReachableOnStaging",
                 status({
@@ -454,7 +472,6 @@ pub(crate) mod tests {
                             }),
                         }),
                         pending_consent: None,
-                        consent_decider: None,
                         launch_minter: None,
                         sign_in_code_minter: None,
                     }),
@@ -479,7 +496,6 @@ pub(crate) mod tests {
                             }),
                         }),
                         pending_consent: None,
-                        consent_decider: None,
                         launch_minter: None,
                         sign_in_code_minter: None,
                     }),
@@ -502,7 +518,6 @@ pub(crate) mod tests {
                             }),
                         }),
                         pending_consent: None,
-                        consent_decider: None,
                         launch_minter: None,
                         sign_in_code_minter: None,
                     }),
@@ -525,7 +540,6 @@ pub(crate) mod tests {
                             }),
                         }),
                         pending_consent: None,
-                        consent_decider: None,
                         launch_minter: None,
                         sign_in_code_minter: None,
                     }),

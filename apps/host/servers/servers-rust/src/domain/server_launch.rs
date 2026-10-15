@@ -1,26 +1,28 @@
 //! Launching a server's launcher: whether the server can be launched now
 //! ([`ensure_launchable`]) and the URL its launcher opens at
 //! ([`launch_url`]); the URL its Authorization app opens at
-//! ([`authorization_app_url`]); and the sign-in either opens through
-//! ([`sign_in_url`]).
+//! ([`authorization_app_url`]); the sign-in either opens through
+//! ([`sign_in_url`]); and the sign-in that opens the consent waiting on the
+//! server at its page ([`consent_sign_in_url`]).
 //!
 //! A SMART EHR launch hands the launcher two query parameters, and they are
 //! the only credentials the launched app gets: `iss`, the server's FHIR base,
 //! and `launch`, a value the server's authorization server minted for any client. The
 //! app's `/oauth/authorize` presents the `launch` and parks a consent, which
-//! the server's consent card answers in a browser signed in as the Owner, and
-//! the base's consent sheet otherwise.
+//! the server's consent card answers in a browser signed in as the Owner. A
+//! consent asked from another browser or device is opened at its page by the
+//! base, signed in the same way.
 //!
-//! The base opens neither URL itself: it opens [`sign_in_url`], which signs
-//! the in-app browser in as the Owner with a one-time code and sends it on to
-//! the launch or Authorization URL.
+//! The base opens none of these URLs itself: it opens [`sign_in_url`], which
+//! signs the browser in as the Owner with a one-time code and sends it on to
+//! the launch, Authorization or consent URL.
 
-use url::{form_urlencoded, Url};
+use url::{form_urlencoded, Position, Url};
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::RunState;
 use wildflowerhealthio_wildflower_server::{CertificateStatus, ServerHealth};
 
-use crate::domain::{LaunchError, ServerDetail, ServerStatus};
+use crate::domain::{ConsentKey, LaunchError, ServerDetail, ServerStatus};
 
 /// The URL a server's launcher opens at: `launcher_url` with `iss`, the
 /// server's FHIR base (its `public_origin`, as
@@ -54,14 +56,54 @@ pub fn authorization_app_url(authorization_url: &Url, public_origin: &Url) -> Ur
 ///
 /// Never: an absolute path joined to an origin is a URL.
 #[must_use]
-pub fn sign_in_url(public_origin: &Url, code: &str, next: &Url) -> Url {
+pub fn sign_in_url(public_origin: &Url, code: &str, next: &str) -> Url {
     let mut url = public_origin
         .join("/oauth/sign-in")
         .expect("an absolute path joined to an origin is a URL");
     url.query_pairs_mut()
         .append_pair("code", code)
-        .append_pair("next", next.as_str());
+        .append_pair("next", next);
     url
+}
+
+/// The URL that signs a browser in as the Owner on the server at
+/// `public_origin` with the same-device sign-in `code`, then sends it on to
+/// the page that decides the consent `consent`, with `then=back`, so the page
+/// goes back, or closes, once it is decided, rather than sending the browser
+/// on to the client: the browser or device that asked finishes the flow.
+///
+/// The page is a path on the server, the one kind of `next` the sign-in
+/// allows on its own origin: `/oauth/authorize/{id}/consent?then=back` for
+/// an app's authorization request, `/oauth/device?user_code=…&then=back` for
+/// a device's.
+///
+/// # Panics
+///
+/// Never: an absolute path joined to an origin is a URL.
+#[must_use]
+pub fn consent_sign_in_url(public_origin: &Url, code: &str, consent: &ConsentKey) -> Url {
+    let mut page = public_origin
+        .join("/oauth/")
+        .expect("an absolute path joined to an origin is a URL");
+    match consent {
+        ConsentKey::OAuth { id } => {
+            page.path_segments_mut()
+                .expect("a URL joined to an origin has path segments")
+                .pop_if_empty()
+                .extend(["authorize", id, "consent"]);
+            page.query_pairs_mut().append_pair("then", "back");
+        }
+        ConsentKey::Device { user_code } => {
+            page.path_segments_mut()
+                .expect("a URL joined to an origin has path segments")
+                .pop_if_empty()
+                .push("device");
+            page.query_pairs_mut()
+                .append_pair("user_code", user_code)
+                .append_pair("then", "back");
+        }
+    }
+    sign_in_url(public_origin, code, &page[Position::BeforePath..])
 }
 
 /// `url` with `params` appended to its query, encoded, after its own
@@ -279,7 +321,7 @@ mod tests {
             &ruth_origin(),
             "nonce-1",
         );
-        let url = sign_in_url(&ruth_origin(), "code-1", &next);
+        let url = sign_in_url(&ruth_origin(), "code-1", next.as_str());
         assert_eq!(url.origin(), ruth_origin().origin());
         assert_eq!(url.path(), "/oauth/sign-in");
         assert_eq!(
@@ -291,6 +333,48 @@ mod tests {
                 ("next".to_owned(), next.to_string()),
             ]
         );
+    }
+
+    /// The `next` the sign-in `url` sends the browser on to.
+    fn next_of(url: &Url) -> String {
+        url.query_pairs()
+            .find_map(|(name, value)| (name == "next").then(|| value.into_owned()))
+            .expect("a next")
+    }
+
+    #[test]
+    fn an_app_s_consent_opens_at_its_card_on_the_server_then_goes_back() {
+        let url = consent_sign_in_url(
+            &ruth_origin(),
+            "code-1",
+            &ConsentKey::OAuth {
+                id: "req/1 ?".to_owned(),
+            },
+        );
+        assert_eq!(url.origin(), ruth_origin().origin());
+        assert_eq!(url.path(), "/oauth/sign-in");
+        assert_eq!(
+            url.query_pairs()
+                .next()
+                .map(|(name, value)| (name.into_owned(), value.into_owned())),
+            Some(("code".to_owned(), "code-1".to_owned()))
+        );
+        assert_eq!(
+            next_of(&url),
+            "/oauth/authorize/req%2F1%20%3F/consent?then=back"
+        );
+    }
+
+    #[test]
+    fn a_device_s_consent_opens_at_the_device_page_with_its_code_then_goes_back() {
+        let url = consent_sign_in_url(
+            &ruth_origin(),
+            "code-1",
+            &ConsentKey::Device {
+                user_code: "ABCD-EFGH".to_owned(),
+            },
+        );
+        assert_eq!(next_of(&url), "/oauth/device?user_code=ABCD-EFGH&then=back");
     }
 
     /// The status of [`RUTH`] whose `unit_status` is given, with its run's

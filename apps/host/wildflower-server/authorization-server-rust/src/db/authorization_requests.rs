@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
+use crate::db::clients::clients;
 use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
@@ -39,6 +40,8 @@ diesel::table! {
         launch_bound_patient -> Nullable<Text>,
     }
 }
+
+diesel::allow_tables_to_appear_in_same_query!(authorization_requests, clients);
 
 // The request `status` discriminant, stored as its strum wire string. Only the
 // authorization request binds it, so its mapping lives here.
@@ -195,10 +198,15 @@ pub(super) fn pending_authorization_request_by_user_code(
 /// applied to the whole query: a code row legitimately has no `user_code` (it is
 /// keyed by `id`), while a device row without one is a malformed half-row that
 /// would float to the head with no key the consent fetch could resolve.
+///
+/// The client's name comes from its registration through a left join: a
+/// client trusted on first use has none until the Owner approves it, and is
+/// named by its `client_id`, as the consent card names it.
 pub(super) fn oldest_pending_consent_head(
     conn: &mut SqliteConnection,
 ) -> Result<Option<PendingConsentHead>, AuthorizationServerError> {
     authorization_requests::table
+        .left_join(clients::table.on(clients::client_id.eq(authorization_requests::client_id)))
         .filter(authorization_requests::status.eq(RequestStatus::Pending))
         .filter(authorization_requests::expires_at.gt(Utc::now()))
         .filter(
@@ -213,8 +221,10 @@ pub(super) fn oldest_pending_consent_head(
             authorization_requests::grant_type,
             authorization_requests::id,
             authorization_requests::user_code,
+            authorization_requests::client_id,
+            clients::name.nullable(),
         ))
-        .first::<(GrantType, String, Option<String>)>(conn)
+        .first::<HeadRow>(conn)
         .optional()
         .map_err(|e| {
             AuthorizationServerError::infrastructure("oldest_pending_consent_head failed", e)
@@ -222,18 +232,25 @@ pub(super) fn oldest_pending_consent_head(
         .map(|row| row.and_then(head_from_row))
 }
 
-/// Build the head from the three selected columns. The `None` arm is
+/// The columns [`oldest_pending_consent_head`] selects: the grant type, the
+/// request id, its `user_code`, its `client_id` and the registered client's
+/// name, if it has a registration.
+type HeadRow = (GrantType, String, Option<String>, String, Option<String>);
+
+/// Build the head from the selected columns. The `None` arm is
 /// unreachable through [`oldest_pending_consent_head`]'s `WHERE`; reaching it
 /// means the filter drifted, and dropping the head keeps the popup closed rather
 /// than opening it on a key nothing can fetch.
 fn head_from_row(
-    (grant_type, id, user_code): (GrantType, String, Option<String>),
+    (grant_type, id, user_code, client_id, registered_name): HeadRow,
 ) -> Option<PendingConsentHead> {
+    let client_name = registered_name.unwrap_or(client_id);
     match grant_type {
-        GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id }),
-        GrantType::DeviceCode => {
-            user_code.map(|user_code| PendingConsentHead::Device { user_code })
-        }
+        GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id, client_name }),
+        GrantType::DeviceCode => user_code.map(|user_code| PendingConsentHead::Device {
+            user_code,
+            client_name,
+        }),
     }
 }
 
@@ -704,12 +721,36 @@ mod tests {
         assert_eq!(after.status, RequestStatus::Expired);
     }
 
+    /// The client every device request these tests insert is from.
+    const UNREGISTERED_CLIENT_ID: &str = "device-client";
+
+    /// The head of a device request from the unregistered test client, named
+    /// by its `client_id`.
+    fn unregistered_device_head(user_code: &str) -> PendingConsentHead {
+        PendingConsentHead::Device {
+            user_code: user_code.to_string(),
+            client_name: UNREGISTERED_CLIENT_ID.to_string(),
+        }
+    }
+
+    /// The client every code request these tests insert is from.
+    const UNREGISTERED_CODE_CLIENT_ID: &str = "code-client";
+
+    /// The head of a code request from its unregistered test client, named by
+    /// its `client_id`.
+    fn unregistered_code_head(id: &str) -> PendingConsentHead {
+        PendingConsentHead::OAuth {
+            id: id.to_string(),
+            client_name: UNREGISTERED_CODE_CLIENT_ID.to_string(),
+        }
+    }
+
     fn device_request(id: &str, user_code: &str, status: RequestStatus) -> AuthorizationRequest {
         let now = Utc::now();
         AuthorizationRequest {
             id: id.to_string(),
             grant_type: GrantType::DeviceCode,
-            client_id: "device-client".to_string(),
+            client_id: UNREGISTERED_CLIENT_ID.to_string(),
             requested_scopes: vec!["openid".to_string()],
             code_challenge: None,
             code_challenge_method: None,
@@ -735,7 +776,7 @@ mod tests {
         AuthorizationRequest {
             id: id.to_string(),
             grant_type: GrantType::AuthorizationCode,
-            client_id: "code-client".to_string(),
+            client_id: UNREGISTERED_CODE_CLIENT_ID.to_string(),
             code_challenge: Some("c".repeat(43)),
             code_challenge_method: Some("S256".to_string()),
             redirect_uri: Some(
@@ -778,9 +819,7 @@ mod tests {
 
         assert_eq!(
             store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::Device {
-                user_code: "AAA-111".to_string()
-            })
+            Some(unregistered_device_head("AAA-111"))
         );
 
         // A code-flow row with an older requested_at *does* take the head: the
@@ -794,9 +833,7 @@ mod tests {
             .expect("insert code row");
         assert_eq!(
             store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::OAuth {
-                id: "code-older".to_string()
-            })
+            Some(unregistered_code_head("code-older"))
         );
 
         // Denying the head promotes the next pending row — across flows.
@@ -805,9 +842,7 @@ mod tests {
             .expect("deny code row");
         assert_eq!(
             store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::Device {
-                user_code: "AAA-111".to_string()
-            })
+            Some(unregistered_device_head("AAA-111"))
         );
 
         store
@@ -815,9 +850,7 @@ mod tests {
             .expect("deny older");
         assert_eq!(
             store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::Device {
-                user_code: "BBB-222".to_string()
-            })
+            Some(unregistered_device_head("BBB-222"))
         );
 
         // Denying the last pending row leaves no head.
@@ -884,8 +917,43 @@ mod tests {
         // The malformed row is older, so only the guard keeps it off the head.
         assert_eq!(
             store.oldest_pending_consent_head().expect("query"),
+            Some(unregistered_code_head("code-1"))
+        );
+    }
+
+    // The head names the client that asks: its registered name once it has a
+    // registration, its `client_id` until then, as the consent card does.
+    #[test]
+    fn oldest_pending_consent_head_names_a_registered_client_by_its_name() {
+        use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        store
+            .insert_authorization_request(&code_request("code-1", RequestStatus::Pending))
+            .expect("insert code row");
+        assert_eq!(
+            store.oldest_pending_consent_head().expect("query"),
+            Some(unregistered_code_head("code-1"))
+        );
+
+        store
+            .upsert_client(&Client {
+                client_id: UNREGISTERED_CODE_CLIENT_ID.to_string(),
+                name: "Lifting".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![],
+                allowed_scopes: vec!["openid".to_string()],
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+            })
+            .expect("register the client");
+        assert_eq!(
+            store.oldest_pending_consent_head().expect("query"),
             Some(PendingConsentHead::OAuth {
-                id: "code-1".to_string()
+                id: "code-1".to_string(),
+                client_name: "Lifting".to_string(),
             })
         );
     }

@@ -1,6 +1,7 @@
 //! Posting what [`wildflowerhealthio_servers`] decides to notify about the servers: each
 //! caller's requests through the tunnels, and each stop of a server's run
-//! `TauriUnitRunner` reports.
+//! `TauriUnitRunner` reports; [`post_notification`] posts the consent
+//! requests too.
 
 use std::time::Instant;
 
@@ -82,7 +83,7 @@ pub(crate) async fn post_stop_notifications<R: Runtime>(
 
 /// Post `notification`. A failure is logged: the notification is the end of
 /// the line, with nothing further to report it to.
-fn post_notification<R: Runtime>(app: &AppHandle<R>, notification: &LocalNotification) {
+pub(crate) fn post_notification<R: Runtime>(app: &AppHandle<R>, notification: &LocalNotification) {
     let Some(notifications) = app.try_state::<Notification<R>>() else {
         log::warn!(
             "[servers] the notification plugin is not registered; {} not posted",

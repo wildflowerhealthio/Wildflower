@@ -54,16 +54,6 @@ pub use seeding::seed_dev_app_clients;
 pub use domain::pending_consent::PendingConsentHead;
 pub use domain::{GrantStore, GrantTx};
 
-// The pending consents as the host's Owner reads and decides them in-process
-// (`HostConsentDecider`, built from `AuthorizationServer::state`), and the shapes it
-// reads and decides them in.
-pub use domain::capabilities::{
-    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
-    OAuthConsentView,
-};
-pub use domain::client_registration::ClientRegistrationVerdict;
-pub use live_bindings::HostConsentDecider;
-
 // Re-exported so the host can name the pool type at the `setup_authorization_server`
 // call site without a direct diesel dependency; the canonical home is
 // persistence-rust (apps and request-log re-export it the same way).
@@ -120,9 +110,9 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The Owner's scopes: the authority the Owner approves consents with (in the
-/// launcher, or in-process through [`HostConsentDecider`]), what an Owner
-/// browser's session holds, and the Owner-browser client's `allowed_scopes`.
+/// The Owner's scopes: the authority the Owner approves consents with, what an
+/// Owner browser's session holds, and the Owner-browser client's
+/// `allowed_scopes`.
 /// An approval can't delegate a resource scope these don't cover.
 ///
 /// [`WILDFLOWER_WIDEST_SCOPES`] (the owner *identity*) plus `wildflower/launch`,
@@ -214,9 +204,9 @@ pub struct AuthorizationServer {
 ///  - publishes the current head of the pending consent queue — device-code
 ///    and authorization-code requests share one FIFO slot — on
 ///    `owner_approval_tx`. On the Tauri host, the server's run
-///    reports it as its detail, from which the host emits the base's
-///    `pending-consent` event and brings the desktop window forward when
-///    the server gets one. Seeding at boot means a request that was pending
+///    reports it as its detail, which the base's server status carries and
+///    from which the host notifies each request that comes to the head.
+///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,

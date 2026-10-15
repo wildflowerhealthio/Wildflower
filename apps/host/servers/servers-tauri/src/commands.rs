@@ -1306,7 +1306,6 @@ mod tests {
                     ..run_certificate
                 }),
                 pending_consent: None,
-                consent_decider: None,
                 launch_minter: None,
                 sign_in_code_minter: None,
             }),
