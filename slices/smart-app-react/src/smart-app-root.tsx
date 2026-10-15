@@ -12,7 +12,7 @@ import {
   useConsentedTelemetryStart,
   useTelemetryConsentControls,
 } from '@wildflowerhealthio/telemetry-react'
-import { Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
+import { redactServerHost, Sentry, setFhirServerHost } from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 
@@ -247,13 +247,15 @@ function SmartAppRoot({
   // connected to, as soon as that handshake completes on the shared client.
   // The callback runs inside the query cache's notification, so a server URL
   // that does not parse is reported rather than thrown there, and tagged as
-  // having no host. The report leaves the URL out: it can name the server
-  // in a shape no scrubbing recognizes, such as a bare hostname.
+  // having no host. The report leaves the URL out, and the URL is redacted as
+  // written: it can name the server in a shape no URL scrubbing recognizes,
+  // such as a bare hostname.
   useEffect(() => {
     if (!telemetryStarted) return undefined
     return whenSmartHandshakeReady(queryClient, (readyClient) => {
       const fhirServerUrl = URL.parse(readyClient.state.serverUrl)
       if (fhirServerUrl === null) {
+        redactServerHost(readyClient.state.serverUrl)
         Sentry.captureException(new Error("The SMART handshake's FHIR server is not a URL"), {
           tags: { source: 'fhir-server-host' },
         })

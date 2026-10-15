@@ -38,15 +38,15 @@ The same pass covers free text: the event's message and `logentry` (its message 
 
 A stack frame names the script it ran in by URL, and an app served from a user's server or relay tunnel loads its scripts from that server: `https://android-emu.relay.wildflowerhealth.io/assets/index-abc.js`. `scrubEvent` replaces only the host in each frame's `filename`, `abs_path` and `module`, and in each debug image's `code_file`, with `{host}`, keeping the path and file name: `https://{host}/assets/index-abc.js`. Running these through `anonymizeUrl` would turn the bundle's file name into `{id}`.
 
-A server's host can also stand outside any URL: `Could not reach ruth.example:8443`, a console breadcrumb's arguments, a React component stack in `extra` or contexts. After the URL pass, `scrubEvent` replaces the same hosts with `{host}` in the message and `logentry`, exception messages, breadcrumb messages, every string in breadcrumb and span data that is not already a URL or host attribute, span descriptions, the transaction name, tags, `extra` and contexts, at any depth.
+A server's host can also stand outside any URL: `Could not reach ruth.example:8443`, a console breadcrumb's arguments, a React component stack in `extra` or contexts. After the URL pass, `scrubEvent` replaces the same hosts with `{host}` in the message and `logentry`, exception messages, breadcrumb messages, every string in breadcrumb and span data that is not already a URL or host attribute, span descriptions, the transaction name, tags, `extra` and contexts, at any depth, in object keys as well as values.
 
 Source maps still resolve. The site's builds carry debug IDs (see below), and the SDK lists each script a frame ran in as a debug image, with the frame's path as its `code_file` and the script's debug ID. Sentry pairs a frame with its image by that path and finds the map by the debug ID, never by URL; the frame and the image are rewritten alike, so the pairing holds.
 
-The hosts replaced are matched case-insensitively, with any port and any subdomains in front, on label boundaries (`ruth.example` does not match `xruth.example.org`), by `telemetry-core`'s `makeHostRedactor`:
+The hosts replaced are matched case-insensitively, with any port and any subdomains in front, on label boundaries (`ruth.example` does not match `xruth.example` or `ruth.examples`), by `telemetry-core`'s `makeHostRedactor`. A dot after the host ends it, so `ruth.example.status` reports `{host}.status`, and so does a longer host such as `ruth.example.org`. A match also starts right after an escape, so a host in a percent-encoded URL (`iss=https%3A%2F%2Fruth.example`, encoded once or more) or after a backslash escape (`\nruth.example`) is replaced too. The hosts are:
 
 - every relay tunnel, `*.relay.wildflowerhealth.io` at any depth;
 - the page's own host;
-- the hosts the app has learnt at run time through `telemetry-web`'s `redactServerHost`: `setFhirServerHost` passes the FHIR server's host, and the Tauri host's base passes each server's domain each time it reads the server list, and the hosts typed into Add server's relay settings before it adds the server.
+- the hosts the app has learnt at run time through `telemetry-web`'s `redactServerHost`: `setFhirServerHost` passes the FHIR server's host, and the Tauri host's base passes each server's domain each time it reads the server list, the hosts typed into Add server's relay settings before it adds the server, and the added server's domain once it is added; a SMART app's FHIR server URL that does not parse is passed as written.
 
 Kept hosts (`localhost`, `tauri.localhost`, `wildflowerhealth.io`) stay as written.
 

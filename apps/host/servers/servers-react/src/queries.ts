@@ -189,8 +189,10 @@ const enteredRelayHosts = (relay: EnteredRelay.Type): readonly string[] =>
  *
  * The hosts the user typed into the relay are redacted from telemetry
  * (`redactServerHost`) before the host is asked, so a refusal that names one
- * reports `{host}` instead; a server on the Wildflower relay is a
- * `*.relay.wildflowerhealth.io` host, which telemetry always redacts.
+ * reports `{host}` instead, and the added server's domain as soon as the host
+ * answers with it, which a self-hosted relay need not name under its own
+ * host; a server on the Wildflower relay is a `*.relay.wildflowerhealth.io`
+ * host, which telemetry always redacts.
  */
 const useAddServer = (
   runHostCommand: RunHostCommand
@@ -204,9 +206,11 @@ const useAddServer = (
 > => {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (enrolment) => {
+    mutationFn: async (enrolment) => {
       for (const host of enteredRelayHosts(enrolment.relay)) redactServerHost(host)
-      return runHostCommand(addServer(enrolment))
+      const domain = await runHostCommand(addServer(enrolment))
+      redactServerHost(domain)
+      return domain
     },
     gcTime: 0,
     onSuccess: () =>

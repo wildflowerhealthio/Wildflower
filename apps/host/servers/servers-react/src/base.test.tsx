@@ -249,6 +249,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   initConsentedTelemetryMock.mockClear()
+  redactServerHostMock.mockReset()
   for (const [method, descriptor] of dialogMethodDescriptors) {
     if (descriptor === undefined) Reflect.deleteProperty(HTMLDialogElement.prototype, method)
     else Object.defineProperty(HTMLDialogElement.prototype, method, descriptor)
@@ -3097,9 +3098,26 @@ describe('Add server', () => {
       // Assert
       await stepTitled('Server added')
       expect(redactedBeforeAdd).toStrictEqual(hosts)
-      redactServerHostMock.mockReset()
     }
   )
+
+  it("should redact the added server's domain from telemetry once the host answers with it", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderAddServer({ add: () => Promise.resolve('ruth.self-hosted.example') })
+    await enterRelay(user, {
+      baseUrl: 'https://relay.example.com',
+      remoteAddr: 'relay.example.com:2333',
+      publicKey: golden.enteredRelays.selfHostedWildflowerPinned.pin.publicKey,
+    })
+
+    // Act
+    await enterCredentials(user)
+
+    // Assert
+    await stepTitled('Server added')
+    expect(redactServerHostMock).toHaveBeenCalledWith('ruth.self-hosted.example')
+  })
 
   it('should lowercase the tunnel name and relay domain as they are typed', async () => {
     // Arrange
