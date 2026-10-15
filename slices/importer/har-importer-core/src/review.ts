@@ -45,8 +45,6 @@ interface PreviewedResponse<K, TParsed> {
   readonly outcome: PreviewedOutcome<TParsed>
 }
 
-const DUPLICATE_PICK: Option.Option<string> = Option.none()
-
 /**
  * The candidate one response resolves to: its top-specificity candidate among
  * the enabled kinds, or none when every matching kind is disabled (or nothing
@@ -82,7 +80,7 @@ const preview = <TParsed>(
         >({
           ref: recognized.ref,
           recognized,
-          pickKindName: DUPLICATE_PICK,
+          pickKindName: Option.none(),
           outcome: { _tag: 'duplicate', of: duplicateOf },
         })
       }
