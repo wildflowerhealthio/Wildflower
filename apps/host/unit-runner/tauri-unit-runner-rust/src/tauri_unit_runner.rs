@@ -138,4 +138,15 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     pub fn subscribe_stops(&self) -> broadcast::Receiver<RunStopped> {
         self.unit_runner.subscribe_stops()
     }
+
+    /// The app's returns to the foreground: each time it becomes present
+    /// after being absent, the statuses, as of that moment, of the units whose
+    /// run carries on across the return. A run the return restarts, as every
+    /// running unit's on iOS, doesn't carry on. The receiver holds no units
+    /// until the first return; a slow reader sees the latest return, not
+    /// every one.
+    #[must_use]
+    pub fn subscribe_returns(&self) -> watch::Receiver<UnitStatuses<D>> {
+        self.unit_runner.subscribe_returns()
+    }
 }

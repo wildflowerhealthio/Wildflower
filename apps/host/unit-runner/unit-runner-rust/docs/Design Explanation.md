@@ -148,7 +148,13 @@ matters to a reader that acts on stops, such as one that notifies: each run's
 stop once, as a `RunStopped` with the unit id, the `RunStop` its status now
 holds, and whether the run had announced running. It is a broadcast
 `RUN_STOPS_CAPACITY` (64) deep; a reader that falls further behind is told how
-many stops it missed.
+many stops it missed. `subscribe_returns()` reports each return to the
+foreground, when the app becomes present after being absent (not when it leaves
+the background on Android): the statuses, as of that moment and before any run
+the return starts, of the units whose run carries on across it, in progress and
+not asked to stop. A run the host restarts for the return, as the Tauri host
+does every running unit's on iOS, doesn't carry on. A slow reader sees the
+latest return.
 
 A new unit is `Stopped` with no last stop until its first run.
 

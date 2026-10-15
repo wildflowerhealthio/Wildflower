@@ -57,6 +57,9 @@ pub struct UnitRunner<D> {
     timings: RunnerTimings,
     background_session_length: BackgroundSessionLength,
     session_demand_tx: watch::Sender<SessionDemand>,
+    /// The statuses, as the app last returned to the foreground, of the units
+    /// whose run carried on (see [`subscribe_returns`](Self::subscribe_returns)).
+    returns_tx: watch::Sender<UnitStatuses<D>>,
     /// Wakes the wall-clock ticker when the next deadline moves.
     pub(super) next_start_and_stop_runs_moved: Notify,
 }
@@ -125,6 +128,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             timings,
             background_session_length,
             session_demand_tx: watch::Sender::new(SessionDemand::default()),
+            returns_tx: watch::Sender::new(UnitStatuses::new()),
             next_start_and_stop_runs_moved: Notify::new(),
         });
         unit_runner
@@ -170,6 +174,19 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     #[must_use]
     pub fn subscribe_stops(&self) -> broadcast::Receiver<RunStopped> {
         self.status_publisher.subscribe_stops()
+    }
+
+    /// The app's returns to the foreground: each time it becomes
+    /// [`Presence::Present`] after being absent, the statuses, as of that
+    /// moment, of the units whose run carries on across the return: in
+    /// progress and not asked to stop, as a host asks each running unit to
+    /// before it reports a return that breaks them
+    /// ([`restart_running_units`](Self::restart_running_units)). A unit whose
+    /// run doesn't carry on is left out. The receiver holds no units until the
+    /// first return; a slow reader sees the latest return, not every one.
+    #[must_use]
+    pub fn subscribe_returns(&self) -> watch::Receiver<UnitStatuses<D>> {
+        self.returns_tx.subscribe()
     }
 
     pub(crate) fn subscribe_session_demand(&self) -> watch::Receiver<SessionDemand> {
@@ -292,11 +309,18 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// The app's `presence` now. Becoming [`Presence::Present`] clears an end
     /// of the background session by the platform, and starts every unit's
     /// restarts over, so a unit waiting out its restart delay starts at once.
+    /// Becoming present after being absent is a return to the foreground,
+    /// which [`subscribe_returns`](Self::subscribe_returns) reports before any
+    /// run it starts.
     pub fn set_app_presence(self: &Arc<Self>, presence: Presence) {
         let mut state = self.lock_state();
         let now = self.clock.now();
-        match state.app_presence.update(presence, now) {
-            PresenceChange::BecamePresent => {
+        let change = state.app_presence.update(presence, now);
+        if change == PresenceChange::BecamePresent {
+            self.publish_return_locked(&state);
+        }
+        match change {
+            PresenceChange::BecamePresent | PresenceChange::LeftTheBackground => {
                 state.session_ledger.clear_ended_by_platform();
                 for entry in state.units.values_mut() {
                     entry.start_restarts_over();
@@ -305,6 +329,20 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             PresenceChange::BecameAbsent | PresenceChange::Unchanged => {}
         }
         self.start_and_stop_runs_per_policy_locked(&mut state);
+    }
+
+    /// Report a return to the foreground: the statuses of the units whose run
+    /// is in progress and not asked to stop.
+    fn publish_return_locked(&self, state: &UnitRunnerState<D>) {
+        let mut carried_on = self.status_publisher.snapshot();
+        carried_on.retain(|unit_id, _| {
+            state
+                .units
+                .get(unit_id)
+                .and_then(|entry| entry.current_run.as_ref())
+                .is_some_and(|run| !run.stop_requested())
+        });
+        self.returns_tx.send_replace(carried_on);
     }
 
     /// Restart every unit that should be running: each run in progress

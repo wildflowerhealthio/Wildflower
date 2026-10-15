@@ -102,6 +102,7 @@
 
 mod commands;
 mod consent_requests;
+mod consent_views;
 mod launch_commands;
 mod notifications;
 mod pending_consent_badge;
@@ -235,6 +236,7 @@ pub fn host_servers(
         },
         pending_consent_badge::AppIconBadge { app: app.clone() },
         runner.subscribe(),
+        runner.subscribe_returns(),
     ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),

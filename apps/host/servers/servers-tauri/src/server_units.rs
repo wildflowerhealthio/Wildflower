@@ -1,13 +1,15 @@
 //! [`ServerUnits`]: the one place a server's record becomes a unit on the
 //! unit runner, the way the servers commands change and read the servers'
-//! units, and how a launch's in-app browser view counts toward their
-//! `WhileOpen` run policy.
+//! units, how a launch's in-app browser view counts toward their
+//! `WhileOpen` run policy, and the consents showing in those views.
 
 use std::sync::Arc;
 
 use wildflowerhealthio_servers::{ServerDetail, ServerRecord, ServerUnit};
 use wildflowerhealthio_tauri_unit_runner::{RunPolicy, TauriUnitRunner, UnitId, UnitStatuses};
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
+
+use crate::consent_views::ConsentViews;
 
 /// Builds the config a server's run reads from its record: what the host
 /// derives at build time, from its platform paths and from the record. Called
@@ -21,6 +23,8 @@ pub type ServerConfigBuilder =
 pub struct ServerUnits {
     runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
+    /// The consents showing in a launch view, shared by every way one opens.
+    consent_views: ConsentViews,
 }
 
 impl ServerUnits {
@@ -31,6 +35,7 @@ impl ServerUnits {
         Self {
             runner,
             server_config,
+            consent_views: ConsentViews::default(),
         }
     }
 
@@ -100,5 +105,11 @@ impl ServerUnits {
     /// The in-app browser view `view`, a launch's, closed.
     pub fn launch_view_closed(&self, view: &str) {
         self.runner.browser_view_closed(view);
+    }
+
+    /// The consents showing in a launch view, or opening in one, so each
+    /// shows in one view however many ways open it at once.
+    pub(crate) fn consent_views(&self) -> &ConsentViews {
+        &self.consent_views
     }
 }

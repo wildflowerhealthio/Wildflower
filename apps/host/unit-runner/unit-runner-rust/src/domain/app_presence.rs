@@ -39,9 +39,13 @@ impl Presence {
 /// How the app's presence changed with an update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PresenceChange {
-    /// The app is [`Presence::Present`] now, and wasn't before: it was absent,
-    /// or present in the background.
+    /// The app was absent and is [`Presence::Present`] now: it returned to the
+    /// foreground, or its first window opened.
     BecamePresent,
+    /// The app was [`Presence::PresentInBackground`] and is
+    /// [`Presence::Present`] now: on Android, the in-app browser views over it
+    /// closed, or their browsers keep it alive under them.
+    LeftTheBackground,
     /// The app was present and is absent now; the grace period starts.
     BecameAbsent,
     /// No change.
@@ -79,10 +83,10 @@ impl AppPresence {
             }
             (true, true) | (false, false) => {}
         }
-        if presence == Presence::Present && previous_presence != Presence::Present {
-            PresenceChange::BecamePresent
-        } else {
-            PresenceChange::Unchanged
+        match (previous_presence, presence) {
+            (Presence::Absent, Presence::Present) => PresenceChange::BecamePresent,
+            (Presence::PresentInBackground, Presence::Present) => PresenceChange::LeftTheBackground,
+            _ => PresenceChange::Unchanged,
         }
     }
 
@@ -178,7 +182,7 @@ mod tests {
         assert_eq!(presence.grace_ends_at(), None);
         assert_eq!(
             presence.update(Presence::Present, instant(20)),
-            PresenceChange::BecamePresent,
+            PresenceChange::LeftTheBackground,
             "back in the foreground"
         );
     }
