@@ -187,15 +187,24 @@ const findExtension = (
 const identifierValue = (resource: FhirR4.DocumentReference, system: string): string | undefined =>
   resource.identifier?.find((identifier) => identifier.system === system)?.value
 
+/**
+ * Reads the response headers back as `(name, value)` pairs, in wire order.
+ *
+ * @remarks
+ * A header entry missing its name or value is handed on with the hole in it,
+ * not dropped: `HeadersWire` rejects it, so a damaged entry fails the decode
+ * rather than turning into a capture that silently lacks a header the response
+ * carried.
+ */
 const readHeaders = (
   content: FhirR4.DocumentReferenceContent
-): readonly (readonly [string, string])[] =>
-  (findExtension(content.extension, RESPONSE_HEADERS_EXTENSION)?.extension ?? []).flatMap(
-    (header) => {
-      const name = findExtension(header.extension, RESPONSE_HEADER_NAME_EXTENSION)?.valueString
-      const value = findExtension(header.extension, RESPONSE_HEADER_VALUE_EXTENSION)?.valueString
-      return name === undefined || value === undefined ? [] : [[name, value] as const]
-    }
+): readonly (readonly [string | undefined, string | undefined])[] =>
+  (findExtension(content.extension, RESPONSE_HEADERS_EXTENSION)?.extension ?? []).map(
+    (header) =>
+      [
+        findExtension(header.extension, RESPONSE_HEADER_NAME_EXTENSION)?.valueString,
+        findExtension(header.extension, RESPONSE_HEADER_VALUE_EXTENSION)?.valueString,
+      ] as const
   )
 
 /**

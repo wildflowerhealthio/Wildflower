@@ -19,15 +19,19 @@ import { UCUM_MILLISECOND_CODE, UCUM_SYSTEM } from './systems.ts'
  * length, so neither converts to a `Duration` without inventing a calendar.
  * A trace timing is never expressed in months anyway — rejecting them is
  * better than picking an average.
+ *
+ * A `Map` rather than an object literal: the code is read off the resource, and
+ * an object lookup would answer `constructor` or `toString` with a prototype
+ * method instead of "no such unit".
  */
-const UCUM_TIME_CODES: Readonly<Record<string, Duration.Duration>> = {
-  ms: Duration.millis(1),
-  s: Duration.seconds(1),
-  min: Duration.minutes(1),
-  h: Duration.hours(1),
-  d: Duration.days(1),
-  wk: Duration.weeks(1),
-}
+const UCUM_TIME_CODES: ReadonlyMap<string, Duration.Duration> = new Map([
+  ['ms', Duration.millis(1)],
+  ['s', Duration.seconds(1)],
+  ['min', Duration.minutes(1)],
+  ['h', Duration.hours(1)],
+  ['d', Duration.days(1)],
+  ['wk', Duration.weeks(1)],
+])
 
 /**
  * A `Duration`, read from and written as a FHIR R4 `Duration` (a UCUM
@@ -43,7 +47,9 @@ const UCUM_TIME_CODES: Readonly<Record<string, Duration.Duration>> = {
  * this encoding, a hand-edited resource — is read in the unit it actually
  * states, and one stating a unit this cannot convert fails rather than being
  * quietly read as milliseconds. That failure mode is the whole reason this is a
- * schema and not a `.value` lookup.
+ * schema and not a `.value` lookup. A negative value fails too: an elapsed time
+ * cannot be negative, and `Duration.millis` would silently clamp it to zero —
+ * a measurement nobody took.
  */
 const DurationFromFhirDuration: Schema.Schema<Duration.Duration, FhirR4.Duration> =
   Schema.transformOrFail(FhirDuration.Schema, Schema.DurationFromSelf, {
@@ -55,12 +61,17 @@ const DurationFromFhirDuration: Schema.Schema<Duration.Duration, FhirR4.Duration
       if (value === null || value === undefined) {
         return ParseResult.fail(new ParseResult.Type(ast, quantity, 'Duration has no value'))
       }
+      if (value < 0) {
+        return ParseResult.fail(
+          new ParseResult.Type(ast, quantity, `Duration is negative: ${value}`)
+        )
+      }
       if (system !== undefined && system !== UCUM_SYSTEM) {
         return ParseResult.fail(
           new ParseResult.Type(ast, quantity, `Duration unit system is not UCUM: ${system}`)
         )
       }
-      const unit = code === undefined ? undefined : UCUM_TIME_CODES[code]
+      const unit = code === undefined ? undefined : UCUM_TIME_CODES.get(code)
       if (unit === undefined) {
         return ParseResult.fail(
           new ParseResult.Type(

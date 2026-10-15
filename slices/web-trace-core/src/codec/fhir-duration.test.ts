@@ -72,13 +72,26 @@ describe('DurationFromFhirDuration', () => {
   test.each(['mo', 'a'])(
     '%s has no fixed length, so it is rejected rather than averaged',
     async (code) => {
-      expect(UCUM_TIME_CODES[code]).toBeUndefined()
+      expect(UCUM_TIME_CODES.has(code)).toBe(false)
       expect(await failureOf({ value: 1, code, system: UCUM_SYSTEM })).toContain(code)
     }
   )
 
   test('an unrecognized unit fails instead of being read as milliseconds', async () => {
     expect(await failureOf({ value: 5, code: 'furlong', system: UCUM_SYSTEM })).toContain('furlong')
+  })
+
+  // The code comes off the resource, so a name every object answers to must
+  // read as "no such unit", not as a prototype method handed to `Duration`.
+  test.each(['constructor', 'toString', '__proto__'])(
+    '%s is not a unit, and fails as a parse error rather than a defect',
+    async (code) => {
+      expect(await failureOf({ value: 1, code, system: UCUM_SYSTEM })).toContain(code)
+    }
+  )
+
+  test('a negative duration fails rather than being clamped to zero', async () => {
+    expect(await failureOf({ value: -5, code: 'ms', system: UCUM_SYSTEM })).toContain('negative')
   })
 
   test('a duration with no unit code fails — the number alone means nothing', async () => {

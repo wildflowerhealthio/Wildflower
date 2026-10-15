@@ -221,6 +221,40 @@ describe('TraceExchange ⇄ DocumentReference', () => {
     }
   })
 
+  test('a header entry missing its value fails to decode rather than being dropped', async () => {
+    const resource = await Effect.runPromise(
+      toDocumentReference(traceExchange({ headers: [['Set-Cookie', 'sid=abc']] }))
+    )
+    const content = resource.content[0]
+    const outcome = await Effect.runPromise(
+      Effect.either(
+        fromDocumentReference({
+          ...resource,
+          content: [
+            {
+              ...content,
+              extension: content?.extension.map((extension) =>
+                extension.url === RESPONSE_HEADERS_EXTENSION
+                  ? {
+                      ...extension,
+                      extension: extension.extension.map((header) => ({
+                        ...header,
+                        extension: header.extension.filter(
+                          (part) => part.url !== RESPONSE_HEADER_VALUE_EXTENSION
+                        ),
+                      })),
+                    }
+                  : extension
+              ),
+            },
+          ],
+        })
+      )
+    )
+    expect(outcome._tag).toBe('Left')
+    if (outcome._tag === 'Left') expect(outcome.left._tag).toBe('ParseError')
+  })
+
   test('a decode failure names the offending resource, so a failing page says which one', async () => {
     const exchange = traceExchange()
     const resource = await Effect.runPromise(toDocumentReference(exchange))
