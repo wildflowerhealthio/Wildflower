@@ -85,7 +85,7 @@ const decodeSettings = (settings: unknown): Settings => {
   if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) {
     throw new Error('Settings must be a JSON object')
   }
-  const weights: unknown = (settings as { readonly weights?: unknown }).weights
+  const weights: unknown = 'weights' in settings ? settings.weights : undefined
   if (!Array.isArray(weights) || weights.length !== PEOPLE.length) {
     throw new Error(`Settings field weights must hold a row for each of ${PEOPLE.length} people`)
   }
@@ -135,13 +135,11 @@ const configurationUrl = (pageUrl: string, settings: Settings): string =>
  */
 const toWatchMessage = (settings: Settings): WatchMessage => {
   const bytes: Array<number> = []
-  for (let person = 0; person < settings.weights.length; person++) {
-    const row = settings.weights[person] ?? []
-    for (let exercise = 0; exercise < row.length; exercise++) {
-      const weight = row[exercise] ?? 0
+  settings.weights.forEach((row) => {
+    row.forEach((weight) => {
       bytes.push(weight & 0xff, (weight >> 8) & 0xff)
-    }
-  }
+    })
+  })
   return { Weights: bytes }
 }
 
