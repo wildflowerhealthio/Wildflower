@@ -1,4 +1,4 @@
-import { Match } from 'effect'
+import { RegExp as EffectRegExp, Match } from 'effect'
 
 import { Document } from '@wildflowerhealthio/positioned-text'
 
@@ -10,18 +10,20 @@ interface SubstitutionRule {
   readonly text: string
 }
 
-const isUpperLetter = (ch: string): boolean => /^\p{Lu}$/u.test(ch)
-const isLowerLetter = (ch: string): boolean => /^\p{Ll}$/u.test(ch)
+const isUpperLetter = (ch: string): boolean => /^[\p{Lu}\p{Lt}]$/u.test(ch)
+const isOtherLetter = (ch: string): boolean => /^\p{L}$/u.test(ch)
 const isDigit = (ch: string): boolean => /^\p{N}$/u.test(ch)
 
 /**
- * Class-preserving same-length mask: uppercase → X, lowercase → x, digit → 0,
- * everything else (punctuation, whitespace) kept verbatim. Idempotent by
- * construction (X → X, x → x, 0 → 0). Unicode-aware via `\p{}` categories.
+ * Class-preserving same-length mask: uppercase and titlecase → X, every other
+ * letter (lowercase, and caseless scripts such as CJK, Arabic, Hebrew) → x,
+ * digit → 0, everything else (punctuation, whitespace, marks, symbols) kept
+ * verbatim. Idempotent by construction (X → X, x → x, 0 → 0). Unicode-aware
+ * via `\p{}` categories.
  */
 const maskChar = Match.type<string>().pipe(
   Match.when(isUpperLetter, () => 'X'),
-  Match.when(isLowerLetter, () => 'x'),
+  Match.when(isOtherLetter, () => 'x'),
   Match.when(isDigit, () => '0'),
   Match.orElse((ch) => ch)
 )
@@ -38,27 +40,22 @@ interface SubstitutionResult {
   readonly ruleMatches: readonly RuleMatch[]
 }
 
-const replaceAllCaseInsensitive = (
+/**
+ * Mask every case-insensitive occurrence of `needle` in `text`. The match is
+ * found in `text` itself (a `u`-flag regex, simple case folding), never on a
+ * lowercased copy: `toLowerCase` can change a string's length (`İ` → `i̇`), so
+ * offsets found in a lowercased copy would mask the wrong characters of the
+ * original.
+ */
+const maskAllCaseInsensitive = (
   text: string,
   needle: string
 ): { readonly result: string; readonly count: number } => {
-  const needleLower = needle.toLowerCase()
-  let result = ''
-  let searchFrom = 0
   let count = 0
-
-  const textLower = text.toLowerCase()
-
-  while (searchFrom <= text.length - needleLower.length) {
-    const foundAt = textLower.indexOf(needleLower, searchFrom)
-    if (foundAt === -1) break
-    result += text.slice(searchFrom, foundAt)
-    result += maskSameLength(text.slice(foundAt, foundAt + needleLower.length))
+  const result = text.replace(new RegExp(EffectRegExp.escape(needle), 'giu'), (match) => {
     count += 1
-    searchFrom = foundAt + needleLower.length
-  }
-
-  result += text.slice(searchFrom)
+    return maskSameLength(match)
+  })
   return { result, count }
 }
 
@@ -73,14 +70,14 @@ const applySubstitutions = (
 ): SubstitutionResult =>
   rules.reduce<SubstitutionResult>(
     (acc, rule) => {
-      // An empty needle matches at every position — guard it out (it would loop
-      // forever in replaceAllCaseInsensitive) and record a zero count.
+      // An empty needle matches at every position — guard it out and record a
+      // zero count rather than one match per position.
       if (rule.text === '') {
         return { ...acc, ruleMatches: [...acc.ruleMatches, { ruleId: rule.id, count: 0 }] }
       }
       let count = 0
       const document = Document.mapText(acc.document, (text) => {
-        const replaced = replaceAllCaseInsensitive(text, rule.text)
+        const replaced = maskAllCaseInsensitive(text, rule.text)
         count += replaced.count
         return replaced.result
       })

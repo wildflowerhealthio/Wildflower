@@ -93,8 +93,14 @@ describe('maskSameLength', () => {
     expect(maskSameLength('٧')).toBe('0')
   })
 
-  it('should keep CJK ideographs verbatim', () => {
-    expect(maskSameLength('漢字')).toBe('漢字')
+  it('should mask letters of caseless scripts to x', () => {
+    expect(maskSameLength('王小明')).toBe('xxx')
+    expect(maskSameLength('محمد')).toBe('xxxx')
+    expect(maskSameLength('דוד')).toBe('xxx')
+  })
+
+  it('should mask titlecase letters to X', () => {
+    expect(maskSameLength('ǅ')).toBe('X')
   })
 
   it('should keep emoji verbatim', () => {
@@ -175,6 +181,45 @@ describe('applySubstitutions', () => {
       { ruleId: 'r1', count: 1 },
       { ruleId: 'r2', count: 1 },
     ])
+  })
+
+  it('should mask the matched text when lowercasing an earlier character changes its length', () => {
+    // Arrange — 'İ' lowercases to two UTF-16 units, shifting every later offset
+    const doc = docWith('İ JOHN SMITH')
+    const rules = [{ id: 'r1', text: 'john' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('İ XXXX SMITH')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 1 }])
+  })
+
+  it('should mask a matched name written in a caseless script', () => {
+    // Arrange
+    const doc = docWith('Patient: 王小明')
+    const rules = [{ id: 'r1', text: '王小明' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('Patient: xxx')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 1 }])
+  })
+
+  it('should match rule text containing regex metacharacters literally', () => {
+    // Arrange
+    const doc = docWith('Dr. Smith (MD) DrX Smith')
+    const rules = [{ id: 'r1', text: 'Dr. Smith (MD)' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('Xx. Xxxxx (XX) DrX Smith')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 1 }])
   })
 
   it('should report zero matches for rules that do not appear', () => {

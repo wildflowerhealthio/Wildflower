@@ -10,8 +10,9 @@ pure data and functions.
 ## Shape
 
 - `src/substitution.ts` — **`SubstitutionRule`** (`{ id, text }`),
-  **`maskSameLength`** (class-preserving: `A→X`, `a→x`, digit→`0`,
-  punctuation/space kept; idempotent), **`applySubstitutions`** (doc × rules →
+  **`maskSameLength`** (class-preserving: `A→X`, every other letter
+  (lowercase or caseless script)→`x`, digit→`0`, punctuation/space kept;
+  idempotent), **`applySubstitutions`** (doc × rules →
   `{ document, ruleMatches }` — case-insensitive literal, global, within-run
   only, rules applied in order over the previous result).
 - `src/anonymized-json-file-name.ts` — **`anonymizedJsonFileName`**
