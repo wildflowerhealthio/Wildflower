@@ -258,6 +258,9 @@ pub fn run() {
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        // The OS the app runs on, which the base reads once to tell a phone
+        // from a desktop.
+        .plugin(tauri_plugin_os::init())
         // Native web view, presenting external URLs with native chrome
         // and document-start JS injection — the native counterpart to the
         // browser-sniffer WebviewWindow path, which stays in place. iOS uses a

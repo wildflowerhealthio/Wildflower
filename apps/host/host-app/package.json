@@ -21,6 +21,7 @@
     "@tauri-apps/api": "catalog:",
     "@tauri-apps/plugin-fs": "catalog:",
     "@tauri-apps/plugin-opener": "catalog:",
+    "@tauri-apps/plugin-os": "catalog:",
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
     "@wildflowerhealthio/effect-messaging-core": "workspace:*",

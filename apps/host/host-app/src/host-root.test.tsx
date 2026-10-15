@@ -115,6 +115,7 @@ const renderHost = async ({
     <HostRoot
       base={{
         invoke,
+        platform: 'desktop',
         listen: listenToNoHostEvent,
         listenToNotificationTaps: () => Promise.reject(new Error('no notification taps here')),
         backgroundServiceStartConfig: { serviceLabel: 'Servers', foregroundServiceType: 'none' },

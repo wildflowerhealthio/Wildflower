@@ -1,6 +1,6 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient } from '@tanstack/react-query'
-import { TauriInvoke } from '@wildflowerhealthio/servers-core-js'
+import { type HostPlatform, TauriInvoke } from '@wildflowerhealthio/servers-core-js'
 import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import { Cause, type Context, Effect, Exit, type Layer } from 'effect'
 
@@ -39,6 +39,8 @@ interface RouterContext {
   readonly queryClient: QueryClient
   /** How a route reaches the host. */
   readonly runHostCommand: RunHostCommand
+  /** The kind of device the host runs on. */
+  readonly platform: HostPlatform.Type
   /** How a route makes an HTTP request from the webview. */
   readonly runHttpRequest: RunHttpRequest
   /** How a route hears the host's events. */
@@ -89,6 +91,11 @@ const runHttpRequestWith =
 interface RouterContextInputs {
   /** How the base calls the host: `invoke` from `@tauri-apps/api/core`. */
   readonly invoke: Context.Tag.Service<TauriInvoke>
+  /**
+   * The kind of device the host runs on, from the OS the app reads once:
+   * `platform()` from `@tauri-apps/plugin-os`.
+   */
+  readonly platform: HostPlatform.Type
   /** How the base hears the host's events: `listen` from `@tauri-apps/api/event`. */
   readonly listen: ListenToHostEvent
   /**
@@ -123,6 +130,7 @@ interface RouterContextInputs {
  */
 const make = ({
   invoke,
+  platform,
   listen,
   defaultLauncherUrl,
   defaultAuthorizationUrl,
@@ -140,6 +148,7 @@ const make = ({
     }),
   }),
   runHostCommand: runHostCommandWith(invoke),
+  platform,
   runHttpRequest: runHttpRequestWith(httpClient),
   listenToHostEvent: listen,
   defaultLauncherUrl,

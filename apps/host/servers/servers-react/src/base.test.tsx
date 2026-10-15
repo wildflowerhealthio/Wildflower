@@ -11,7 +11,7 @@ import {
 import userEvent from '@testing-library/user-event'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import type { TauriInvoke } from '@wildflowerhealthio/servers-core-js'
+import type { HostPlatform, TauriInvoke } from '@wildflowerhealthio/servers-core-js'
 import {
   type ConsentStorage,
   type TelemetryConsent,
@@ -225,6 +225,7 @@ const renderBase = ({
   invoke,
   storage,
   path = '/',
+  platform = 'desktop',
   events = fakeEvents(),
   taps = fakeTaps(),
   httpClient = fakeHealth(() => Response.json({ status: 'pass' })).layer,
@@ -232,6 +233,7 @@ const renderBase = ({
   readonly invoke: Context.Tag.Service<TauriInvoke>
   readonly storage: ConsentStorage
   readonly path?: string
+  readonly platform?: HostPlatform.Type
   readonly events?: FakeEvents
   readonly taps?: FakeTaps
   readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
@@ -239,6 +241,7 @@ const renderBase = ({
   render(
     <BaseUnderTest
       invoke={invoke}
+      platform={platform}
       listen={events.listen}
       listenToNotificationTaps={taps.listen}
       backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
@@ -461,11 +464,16 @@ describe('the server list', () => {
     golden.listedServers[1],
   ]
 
-  const renderListed = (servers: readonly unknown[], events = fakeEvents()): FakeHost => {
+  const renderListed = (
+    servers: readonly unknown[],
+    events = fakeEvents(),
+    platform: HostPlatform.Type = 'desktop'
+  ): FakeHost => {
     const host = hostWith({ servers: () => Promise.resolve(servers) })
     renderBase({
       invoke: host.invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
+      platform,
       events,
     })
     return host
@@ -582,7 +590,7 @@ describe('the server list', () => {
   it.each([
     [{ kind: 'off' }, /^Off$/],
     [{ kind: 'whileOpen' }, /^On while Wildflower is open$/],
-    [{ kind: 'until', at: '2999-01-01T00:00:00Z' }, /^On until \S/],
+    [{ kind: 'until', at: '2999-01-01T00:00:00Z' }, /^On for \d+ h — until \S/],
     [{ kind: 'until', at: '2026-10-06T17:42:00Z' }, /^Ended at \S/],
     [{ kind: 'always' }, /^Always on$/],
   ] as const)('should say when a server runs for the policy %j', async (runPolicy, expected) => {
@@ -609,7 +617,7 @@ describe('the server list', () => {
     expect(runPolicyOf('lab.rathole.example.com').shown).toBe('Off')
   })
 
-  it('should show an until that has passed as ended, and one ahead as until', async () => {
+  it('should show an until that has passed as ended, and one ahead as on', async () => {
     // Act
     renderListed(golden.listedServers)
 
@@ -623,8 +631,86 @@ describe('the server list', () => {
 
     // Assert
     await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
-    expect(runPolicyOf('ruth.relay.example.com').shown).toMatch(/^On until /)
+    expect(runPolicyOf('ruth.relay.example.com').shown).toMatch(/^On for /)
   })
+
+  it("should say a live until's time left, rounded up, and its deadline, and that it ended once the deadline passes", async () => {
+    // Arrange
+    const now = Date.parse('2026-10-15T17:00:00Z')
+    const deadline = DateTime.unsafeMake(now + 61 * 60_000)
+    const until = `until ${formatInstant(deadline)}`
+    /** The text of the field on Ruth's card. */
+    const fieldText = (): string | null =>
+      within(serverRow('ruth.relay.example.com')).getByText(/^(On for|Ended at) /, {
+        selector: 'span',
+      }).textContent
+    /** Move the clock on by `millis`, and let the field tick. */
+    const advance = (millis: number): void => {
+      act(() => {
+        vi.advanceTimersByTime(millis)
+      })
+    }
+    vi.useFakeTimers({ shouldAdvanceTime: true, now })
+    try {
+      // Act
+      renderListed(listedWithRuthPolicy({ kind: 'until', at: DateTime.formatIso(deadline) }))
+
+      // Assert
+      await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+      expect(fieldText()).toBe(`On for 2 h — ${until}`)
+      expect(runPolicyOf('ruth.relay.example.com').shown).toBe(`On for 2 h — ${until}`)
+
+      // Act
+      advance(2 * 60_000)
+
+      // Assert
+      expect(fieldText()).toBe(`On for 59 min — ${until}`)
+
+      // Act
+      advance(58 * 60_000 + 30_000)
+
+      // Assert
+      expect(fieldText()).toBe(`On for 1 min — ${until}`)
+
+      // Act
+      advance(30_000)
+
+      // Assert
+      expect(fieldText()).toBe(`Ended at ${formatInstant(deadline)}`)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    ['ios', { kind: 'always' }, true],
+    ['android', { kind: 'always' }, true],
+    ['ios', { kind: 'until', at: '2999-01-01T00:00:00Z' }, true],
+    ['android', { kind: 'until', at: '2999-01-01T00:00:00Z' }, true],
+    ['ios', { kind: 'until', at: '2026-10-06T17:42:00Z' }, false],
+    ['android', { kind: 'whileOpen' }, false],
+    ['ios', { kind: 'off' }, false],
+    ['desktop', { kind: 'always' }, false],
+    ['desktop', { kind: 'until', at: '2999-01-01T00:00:00Z' }, false],
+  ] as const)(
+    'on %s, for the policy %j, should show the phone note above the field: %s',
+    async (platform, runPolicy, shown) => {
+      // Act
+      renderListed(listedWithRuthPolicy(runPolicy), fakeEvents(), platform)
+
+      // Assert
+      await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+      const note = within(serverRow('ruth.relay.example.com')).queryByText(
+        'On a phone, the server keeps running only while Wildflower is open, plus a short grace after you leave.'
+      )
+      expect(note !== null).toBe(shown)
+      if (note === null) return
+      expect(
+        note.compareDocumentPosition(runPolicyOf('ruth.relay.example.com').control) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).not.toBe(0)
+    }
+  )
 
   it("should show the host's error when it can't read the servers, and read them again on retry", async () => {
     // Arrange
@@ -856,10 +942,12 @@ describe('the server list', () => {
 
     // Assert
     await waitFor(() => {
-      expect(runPolicyOf('lab.rathole.example.com').shown).toMatch(/^On until /)
+      expect(runPolicyOf('lab.rathole.example.com').shown).toMatch(/^On for 1 h — until /)
     })
     expect(
-      within(serverRow('lab.rathole.example.com')).getByText(/^On until \S/, { selector: 'span' })
+      within(serverRow('lab.rathole.example.com')).getByText(/^On for 1 h — until \S/, {
+        selector: 'span',
+      })
     ).toBeDefined()
     expect(runPolicyOf('lab.rathole.example.com').control.disabled).toBe(true)
     expect(runPolicyOf('ruth.relay.example.com').control.disabled).toBe(false)
