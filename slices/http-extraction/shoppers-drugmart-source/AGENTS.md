@@ -32,14 +32,18 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/portal-url.ts` — the API's URLs: `SHOPPERS_API_BASE_URL` and the
   three XHR builders `customerUrlOf`, `prescriptionStatusUrlOf` and
   `prescriptionHistoryUrlOf`. The response kinds build their matchers from
-  `SHOPPERS_API_BASE_URL`, so a built URL is one exactly one kind recognizes
+  `SHOPPERS_API_BASE_URL`, through `portalGetMatcher` (no verb but `GET` —
+  a request whose method the archive dropped, as every Recorder capture's
+  is, still matches), so a built URL is one exactly one kind recognizes
   (`portal-url.test.ts` pins that).
 - The payload schemas, exported for a producer to type its bodies as their
   `.Encoded`: `CustomerPayload` and `SourcePatient` (the customers body and one
   managed person), `SourcePrescription` and `SourceDispense` (the status body
   and one of its dispenses), `HistoryPayload` and `SourceHistoryDispense` (the
   history body and one entry). Lenient: only the ids each kind keys by are
-  required, and each list is decoded entry by entry.
+  required, and each list is decoded entry by entry. A managed person that
+  does not decode, and a dispense with no `dispenseId`, drop-and-count; a
+  dispense that does not decode fails the parse.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
   (`ShoppersIdentifierSystem`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`). There is no
   Shoppers DIN system — DINs use the canonical `CanadianCodingSystem.Din`.

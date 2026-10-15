@@ -17,7 +17,7 @@ import {
 } from 'effect'
 
 import { dateTimeOf, decodesAsDateTime, firstDateTime } from '../dates.ts'
-import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
+import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import {
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,
@@ -85,7 +85,7 @@ const SourceDispense = Schema.Struct({
 type SourceDispense = typeof SourceDispense.Type
 
 const decodePrescription = Schema.decode(Schema.parseJson(SourcePrescription))
-const decodeSourceDispense = Schema.decodeUnknownOption(SourceDispense)
+const decodeSourceDispense = Schema.decodeUnknown(SourceDispense)
 const decodeRequest = Schema.decodeUnknown(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
@@ -305,19 +305,6 @@ const dispenseWire = (
 }
 
 /**
- * One raw `dispenses` entry as its `MedicationDispense` wire — `None` when it
- * does not decode as a {@link SourceDispense} or has no `dispenseId`, so the
- * caller can count it as dropped.
- */
-const dispenseWireFrom =
-  (rx: SourcePrescription, medication: Record<string, unknown> | undefined) =>
-  (raw: unknown): Option.Option<Record<string, unknown>> =>
-    pipe(
-      decodeSourceDispense(raw),
-      Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense, rx, medication)))
-    )
-
-/**
  * The exact prescription-status XHR URL (`prescriptionStatusUrlOf`), anchored
  * and pinned to {@link SHOPPERS_API_BASE_URL} + full path with an optional
  * query; only the `<uuid>` path parameter and query vary. Disjoint from the
@@ -331,7 +318,8 @@ const prescriptionStatusUrl = new RegExp(
  * Entity for one Shoppers prescription XHR: the `prescription-status` payload the
  * dashboard fires once **per prescription**. Each is one bespoke JSON object
  * synthesized into one **`MedicationRequest`** plus one **`MedicationDispense`**
- * per `dispenses` entry (one with no `dispenseId` drops-and-logs). **No
+ * per `dispenses` entry (one with no `dispenseId` drops-and-logs; one that
+ * does not decode as a {@link SourceDispense} fails the parse). **No
  * `Patient`** — the subject records come from {@link CustomerResponseKind}, so a
  * run where that XHR fails leaves these `subject` references dangling (tolerated;
  * not FK-enforced).
@@ -339,7 +327,10 @@ const prescriptionStatusUrl = new RegExp(
 const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionResponseKind',
-    tryRecognize: recognizePortal(prescriptionStatusUrl, SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(
+      portalGetMatcher(prescriptionStatusUrl),
+      SHOPPERS_DRUGMART_SYSTEM
+    ),
     parse: (response) =>
       Effect.gen(function* () {
         const rx = yield* decodePrescription(extractJson(response.text()))
@@ -347,13 +338,18 @@ const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> 
         const medication = medicationWire(rx)
         const request = yield* decodeRequest(requestWire(rx, medication))
 
-        const rawDispenses = flattenDispenses(rx.dispenses ?? [])
-        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom(rx, medication))
-        const dropped = rawDispenses.length - dispenseWires.length
+        const sourceDispenses = yield* Effect.forEach(
+          flattenDispenses(rx.dispenses ?? []),
+          (rawDispense) => decodeSourceDispense(rawDispense)
+        )
+        const dispenseWires = Arr.filterMap(sourceDispenses, (dispense) =>
+          Option.fromNullable(dispenseWire(dispense, rx, medication))
+        )
+        const dropped = sourceDispenses.length - dispenseWires.length
         const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
         if (dropped > 0) {
           yield* Effect.logInfo(
-            `PrescriptionResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
+            `PrescriptionResponseKind: dropped ${dropped} of ${sourceDispenses.length} dispense entries with no dispenseId`
           )
         }
 

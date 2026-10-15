@@ -240,6 +240,21 @@ describe('PrescriptionHistoryResponseKind', () => {
       ])
     })
 
+    it('fails with ParseError when a dispense with a dispenseId does not decode', () => {
+      // Arrange — a fill whose quantity the portal sent as a string.
+      const payload = {
+        dispenses: [{ prescriptionId: 'rx-uuid-1', dispenseId: 'disp-9', quantityDispensed: '30' }],
+      }
+
+      // Act
+      const result = Effect.runSync(
+        Effect.either(PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(payload))))
+      )
+
+      // Assert — the fill is not silently lost from the history.
+      expect(result).toMatchObject({ _tag: 'Left', left: { _tag: 'ParseError' } })
+    })
+
     it('emits nothing for an empty dispenses array', () => {
       expect(parse({ dispenses: [] })).toStrictEqual([])
     })

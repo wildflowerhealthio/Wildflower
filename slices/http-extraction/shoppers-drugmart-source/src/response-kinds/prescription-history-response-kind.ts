@@ -17,7 +17,7 @@ import {
 } from 'effect'
 
 import { decodesAsDateTime } from '../dates.ts'
-import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
+import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import {
   ShoppersIdentifierSystem,
   shoppersStoreDisplay,
@@ -36,8 +36,9 @@ const SourceStore = Schema.Struct({
 /**
  * One dispense record in the history payload's flat `dispenses` array.
  * `dispenseId` keys the emitted resource, `prescriptionId` links it to its request;
- * both optional so a malformed entry drops-and-counts. `din` is **per-dispense**
- * (differs across fills).
+ * both optional: an entry with no `dispenseId` drops-and-counts, and one with no
+ * `prescriptionId` links to no request. `din` is **per-dispense** (differs
+ * across fills).
  * */
 const SourceHistoryDispense = Schema.Struct({
   prescriptionId: Schema.optional(Schema.String),
@@ -60,7 +61,7 @@ const HistoryPayload = Schema.Struct({
 
 const decodeHistory = Schema.decode(Schema.parseJson(HistoryPayload))
 const decodeCustomerId = Schema.decodeUnknown(Schema.NonEmptyString)
-const decodeSourceHistoryDispense = Schema.decodeUnknownOption(SourceHistoryDispense)
+const decodeSourceHistoryDispense = Schema.decodeUnknown(SourceHistoryDispense)
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
 /**
@@ -158,19 +159,6 @@ const dispenseWire = (
 }
 
 /**
- * One raw history entry as its `MedicationDispense` wire — `None` when it does
- * not decode as a {@link SourceHistoryDispense} or has no `dispenseId`, so the
- * caller can count it as dropped.
- */
-const dispenseWireFrom =
-  (customerId: string) =>
-  (raw: unknown): Option.Option<Record<string, unknown>> =>
-    pipe(
-      decodeSourceHistoryDispense(raw),
-      Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense, customerId)))
-    )
-
-/**
  * The exact prescription-history XHR URL (`prescriptionHistoryUrlOf`), anchored
  * and pinned to {@link SHOPPERS_API_BASE_URL} + full path; the required
  * `?…customerId=` query matches the API XHR but not the user-facing page.
@@ -190,25 +178,30 @@ const historyUrl = new RegExp(
  * latest fill also appears in the status feed under the same `dispenseId`,
  * which names the person; the source's `mergeResources` combines the two
  * copies wherever one extraction holds both (`merge-resources.ts`). A
- * dispense with no `dispenseId` drops-and-counts via `Effect.logInfo`; a URL
- * with no `customerId` fails the parse.
+ * dispense with no `dispenseId` drops-and-counts via `Effect.logInfo`; one
+ * that does not decode as a {@link SourceHistoryDispense}, or a URL with no
+ * `customerId`, fails the parse.
  */
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionHistoryResponseKind',
-    tryRecognize: recognizePortal(historyUrl, SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(portalGetMatcher(historyUrl), SHOPPERS_DRUGMART_SYSTEM),
     parse: (response) =>
       Effect.gen(function* () {
         const customerId = yield* customerIdOf(response.url)
         const { dispenses: raw } = yield* decodeHistory(extractJson(response.text()))
 
-        const rawDispenses = raw ?? []
-        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom(customerId))
-        const dropped = rawDispenses.length - dispenseWires.length
+        const sourceDispenses = yield* Effect.forEach(raw ?? [], (rawDispense) =>
+          decodeSourceHistoryDispense(rawDispense)
+        )
+        const dispenseWires = Arr.filterMap(sourceDispenses, (dispense) =>
+          Option.fromNullable(dispenseWire(dispense, customerId))
+        )
+        const dropped = sourceDispenses.length - dispenseWires.length
         const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
         if (dropped > 0) {
           yield* Effect.logInfo(
-            `PrescriptionHistoryResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
+            `PrescriptionHistoryResponseKind: dropped ${dropped} of ${sourceDispenses.length} dispense entries with no dispenseId`
           )
         }
 

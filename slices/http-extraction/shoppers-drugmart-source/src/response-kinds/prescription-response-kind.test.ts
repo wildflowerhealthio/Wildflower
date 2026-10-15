@@ -413,6 +413,19 @@ describe('PrescriptionResponseKind', () => {
       expect(byType(result, 'MedicationRequest')).toStrictEqual([expectedRequest])
     })
 
+    it('fails with ParseError when a dispense with a dispenseId does not decode', () => {
+      // Arrange — a fill whose quantity the portal sent as a string.
+      const json = prescriptionJson({}, [
+        { dispenseId: 'disp-1', quantityDispensed: '30', status: 'COMPLETE' },
+      ])
+
+      // Act
+      const result = runParse(makeResponse(json))
+
+      // Assert — the fill is not silently lost from the prescription.
+      expectLeftToEqual(result, expect.objectContaining({ _tag: 'ParseError' }))
+    })
+
     it('emits just the MedicationRequest when there are no dispenses', () => {
       const result = parse(prescriptionJson({}, []))
       expect(result).toStrictEqual([expectedRequest])

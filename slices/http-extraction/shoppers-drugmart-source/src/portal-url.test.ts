@@ -1,3 +1,4 @@
+import type { HttpMethod } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
@@ -22,7 +23,7 @@ const KINDS = {
 /** The kinds that recognize `url`, by name. */
 const recognizersOf = (url: string): readonly string[] =>
   Object.entries(KINDS).flatMap(([name, kind]) =>
-    Option.isSome(kind.tryRecognize(url, Option.none())) ? [name] : []
+    Option.isSome(kind.tryRecognize(url, Option.some('GET'))) ? [name] : []
   )
 
 /** Any id the portal could key a URL by, reserved URL characters included. */
@@ -72,5 +73,23 @@ describe('portal URLs', () => {
       }),
       { numRuns: RUNS }
     )
+  })
+
+  describe('portalGetMatcher', () => {
+    const id = 'a7353645-83bf-4371-8b87-486b3d5b9802'
+
+    it.each([
+      { kind: CustomerResponseKind, url: customerUrlOf(id) },
+      { kind: PrescriptionResponseKind, url: prescriptionStatusUrlOf(id) },
+      { kind: PrescriptionHistoryResponseKind, url: prescriptionHistoryUrlOf(id) },
+    ])("claims a GET of $kind.name's URL and no other verb", ({ kind, url }) => {
+      const recognizes = (method: Option.Option<HttpMethod>): boolean =>
+        Option.isSome(kind.tryRecognize(url, method))
+      expect(recognizes(Option.some('GET'))).toBe(true)
+      expect(recognizes(Option.some('PUT'))).toBe(false)
+      expect(recognizes(Option.some('OPTIONS'))).toBe(false)
+      // The Recorder writes every method as UNKNOWN, which the archive drops.
+      expect(recognizes(Option.none())).toBe(true)
+    })
   })
 })

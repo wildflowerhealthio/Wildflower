@@ -13,7 +13,7 @@ import {
   RegExp as EffectRegExp,
   Schema,
 } from 'effect'
-import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
+import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 
@@ -203,7 +203,7 @@ const customerUrl = new RegExp(
 const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
   {
     name: 'CustomerResponseKind',
-    tryRecognize: recognizePortal(customerUrl, SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(portalGetMatcher(customerUrl), SHOPPERS_DRUGMART_SYSTEM),
     parse: (response) =>
       Effect.gen(function* () {
         const { customer } = yield* decodeCustomer(extractJson(response.text()))
