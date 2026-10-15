@@ -1157,9 +1157,6 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../../global/react-tundraish
-      '@wildflowerhealthio/scopes-core':
-        specifier: workspace:*
-        version: link:../../../../slices/scopes/scopes-core
       '@wildflowerhealthio/scopes-react':
         specifier: workspace:*
         version: link:../../../../slices/scopes/scopes-react

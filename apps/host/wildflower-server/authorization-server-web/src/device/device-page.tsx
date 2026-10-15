@@ -14,7 +14,6 @@ import {
 } from '@wildflowerhealthio/authorization-react'
 import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
 import { AsyncErrorView, PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
-import { Grant, Scope } from '@wildflowerhealthio/scopes-core'
 import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Effect, Match, Schema } from 'effect'
 import { useState, type JSX } from 'react'
@@ -44,31 +43,30 @@ type DeviceLookup =
   /** No pending request has the code: mistyped, decided, or expired. */
   | { readonly kind: 'unknown-code' }
 
+/** Whether a failed request means this browser isn't signed in (`401`). */
+const isSignedOut = (error: unknown): boolean =>
+  error instanceof HttpApiError.Unauthorized ||
+  (error instanceof HttpClientError.ResponseError && error.response.status === 401)
+
 /**
- * Whether a failed read means this browser can't decide the request here: it
- * isn't signed in (`401`), or its session can't read device consents (`403`).
+ * Whether a failed request means this browser can't decide the request here:
+ * it isn't signed in (`401`), or its session can't read or decide device
+ * consents (`403`).
  */
 const isUndecidableHere = (error: unknown): boolean =>
-  error instanceof HttpApiError.Unauthorized ||
-  (error instanceof HttpClientError.ResponseError && error.response.status === 401) ||
-  isInsufficientScopeBody(error)
-
-/** The scopes the device routes need, as a grant to check a session against. */
-const deviceConsentGrant = Grant.parse(Devices.DEVICE_CONSENT_SCOPES)
+  isSignedOut(error) || isInsufficientScopeBody(error)
 
 /**
- * Whether this browser's session can read and decide device requests here:
- * `GET /authorization/session` (authN-only) answers its scopes, which must
- * cover {@link Devices.DEVICE_CONSENT_SCOPES}. No session (`401`) can't.
+ * Whether this browser is signed in here: `GET /authorization/session`
+ * (authN-only) answers, or `401`s without a session. Whether the session may
+ * decide device requests is the device routes' answer, on the code's read.
  */
-const sessionDecidesDevices: Effect.Effect<boolean, unknown, AuthorizationServerHttpApiClient> =
+const sessionSignedIn: Effect.Effect<boolean, unknown, AuthorizationServerHttpApiClient> =
   Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
     client['access-management'].GetSession()
   ).pipe(
-    Effect.map((session) =>
-      Scope.MultiScope.within(deviceConsentGrant, Grant.parse(session.scopes))
-    ),
-    Effect.catchIf(isUndecidableHere, () => Effect.succeed(false))
+    Effect.as(true),
+    Effect.catchIf(isSignedOut, () => Effect.succeed(false))
   )
 
 /** The pending device request `userCode` names, as a {@link DeviceLookup}. */
@@ -145,16 +143,16 @@ const requestView = (found: DeviceLookup | undefined, parts: RequestViewParts): 
  * @remarks
  * Everything goes through `runAuthed` on the Owner browser's session. What the
  * page shows follows the API's answers, not who the session is. On load it
- * reads the session's scopes: with none (`401`), or without the device
- * routes' scopes, it says to approve the request on the device running the
- * server and shows no code box. The same holds if a code's read, or the
- * decision, answers `401` or `403` later (the session can end in between).
- * Either way the request stays pending.
+ * checks only that this browser is signed in: without a session (`401`) it
+ * says to approve the request on the device running the server and shows no
+ * code box. The same holds if a code's read, or the decision, answers `401`
+ * or `403` (the session can end in between, or lack the device routes'
+ * scopes). Either way the request stays pending.
  */
 const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Element => {
   const sessionQuery = useQuery({
     queryKey: ['device-page', 'session'],
-    queryFn: () => runAuthed(sessionDecidesDevices),
+    queryFn: () => runAuthed(sessionSignedIn),
     // One read for the page's life: a refetch on focus could swap an open
     // card for another view and lose the Owner's draft. The read is the
     // page's first; a retry only delays the answer.
@@ -210,19 +208,19 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
 }
 
 interface SessionGateProps {
-  /** Whether this browser's session can decide device requests here. */
+  /** Whether this browser is signed in here. */
   readonly sessionQuery: {
     readonly data: boolean | undefined
     readonly isError: boolean
     readonly error: unknown
   }
-  /** The page for a session that can. */
+  /** The page for a signed-in browser. */
   readonly children: JSX.Element
 }
 
 /**
- * The page once the session is known to decide device requests here, or why
- * not. Only the first answer gates: once there is one, a later failed read
+ * The page once this browser is known to be signed in, or where to decide
+ * instead. Only the first answer gates: once there is one, a later failed read
  * leaves the page as it is.
  */
 const SessionGate = ({ sessionQuery, children }: SessionGateProps): JSX.Element => {
@@ -230,7 +228,7 @@ const SessionGate = ({ sessionQuery, children }: SessionGateProps): JSX.Element 
   if (sessionQuery.isError) {
     return <AsyncErrorView error={sessionQuery.error} title="Device authorization" />
   }
-  return <PageLoading message="Checking your session…" />
+  return <PageLoading message="Checking whether you're signed in…" />
 }
 
 /** Where to decide when this browser can't. */

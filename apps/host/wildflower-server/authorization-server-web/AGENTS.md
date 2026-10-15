@@ -36,16 +36,15 @@ Security Policy (below).
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` from its query (`user-code-query.ts`) and mounts `DevicePage`
   over the same runner.
-- `src/device/device-page.tsx` — on load reads `GET /authorization/session`:
-  with no session (`401`), or one whose scopes don't cover
-  `Devices.DEVICE_CONSENT_SCOPES` (authorization-core), it says to approve the
-  request on the device running the server and shows no code box. Otherwise
-  it fills the code box from `user_code` but reads no request until the Owner
+- `src/device/device-page.tsx` — on load reads `GET /authorization/session`
+  only to learn whether this browser is signed in: with no session (`401`) it
+  says to approve the request on the device running the server and shows no
+  code box. Otherwise it fills the code box from `user_code` but reads no request until the Owner
   presses Continue (RFC 8628 §5.4), then reads
   `GET /authorization/devices/{userCode}` and shows the card, which posts
   `/approve` or `/deny`. A `404` keeps the code box with an error; a `401` or
-  `403` on the read or the decision (the session ended or changed since load)
-  says to approve on the server too. The request stays pending in both cases.
+  `403` on the read or the decision (the session ended since load, or lacks
+  the device routes' scopes) says to approve on the server too. The request stays pending in both cases.
   A request that expires before the decision shows `ExpiredDeviceConsent`'s
   copy in place of the card, then "Enter a new code", which goes back to an
   empty code box and drops `user_code` from the address bar so a reload

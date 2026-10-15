@@ -265,22 +265,34 @@ describe('DevicePage — deciding', () => {
 })
 
 describe('DevicePage — a browser that cannot decide here', () => {
-  test.each([
-    ['no session', () => ({ status: 401, body: {} })],
-    ['a session without the device scopes', serverHolding('WDJB-MJHT', {}, ['openid'])],
-  ] as const)(
-    '%s is told to approve on the server on load, with no code box and no device calls',
-    async (_case, server) => {
-      answer = server
-      renderPage('WDJB-MJHT')
+  test('a browser with no session is told to approve on the server on load, with no code box and no device calls', async () => {
+    answer = () => ({ status: 401, body: {} })
+    renderPage('WDJB-MJHT')
 
-      expect(
-        await screen.findByText('Approve this on the device running your server.')
-      ).toBeDefined()
-      expect(screen.queryByLabelText('Code')).toBeNull()
-      expect(seen.map((request) => request.path)).toEqual([SESSION_PATH])
-    }
-  )
+    expect(await screen.findByText('Approve this on the device running your server.')).toBeDefined()
+    expect(screen.queryByLabelText('Code')).toBeNull()
+    expect(seen.map((request) => request.path)).toEqual([SESSION_PATH])
+  })
+
+  test('a session without the device scopes gets the code box, and the read it cannot make says to approve on the server', async () => {
+    const holding = serverHolding('WDJB-MJHT', {}, ['openid'])
+    answer = (request) =>
+      request.path === SESSION_PATH
+        ? holding(request)
+        : {
+            status: 403,
+            body: {
+              error: 'InsufficientScope',
+              missingScopes: ['wildflower/AuthorizationRequest.r'],
+            },
+          }
+    const { user } = renderPage('WDJB-MJHT')
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText('Approve this on the device running your server.')).toBeDefined()
+    expect(decisions()).toEqual([])
+  })
 
   test.each([
     ['ended', 401, {}],
