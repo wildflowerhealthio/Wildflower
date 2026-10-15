@@ -15,9 +15,7 @@ Wildflower Authorization allows an authorized **Owner** on one device to
 issue **Grants** to OAuth Clients (registered in the
 [`clients`](#client) table) requesting access on a separate device,
 allowing them to access data in a system. The host browser bootstraps
-onto a fresh deployment via the RFC 8628 device authorization flow; a
-direct-loopback caller on the host's own machine is instead presented with a
-host-minted token (see [bootstrap URL](#bootstrap-url)).
+onto a fresh deployment via the RFC 8628 device authorization flow.
 
 ## Roles
 
@@ -334,7 +332,7 @@ writes, and turns each into a bearer token ahead of the gate
 (`wildflower-server-rust`'s `session_cookie_bearer`); with both, `hfs_session`
 wins, unless the page asks for the Owner browser's session with
 `Wildflower-Session: owner-browser` (see [Owner browser](#owner-browser)). Every
-other caller, direct-loopback or relayed, attaches its own bearer: the launcher
+other caller attaches its own bearer: the launcher
 its in-memory one.
 
 ### Device flow (RFC 8628)

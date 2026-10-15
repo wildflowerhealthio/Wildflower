@@ -29,6 +29,17 @@ the tunnel like any remote app. So while the relay can't be reached (the
 device offline, the relay down), nothing can reach the server. That holds in
 development too.
 
+### Any rathole server can carry the tunnel
+
+The device dials out to its relay as a rathole client and holds its own
+certificate, so the relay needs no Wildflower code, only rathole's protocol.
+A stock rathole server carries one device's tunnel
+([Stock Rathole Server How-To](../Relay/Stock%20Rathole%20Server%20How-To.md));
+wildflower-relay carries many devices under one domain
+([Deploying How-To](../../apps/relay/docs/Deploying%20How-To.md)). Either way
+the server answers the same: on its tunnel listener, at `https://<domain>`.
+Only the visitor's address differs (see [The visitor's address](#the-visitors-address)).
+
 ## One origin
 
 Every request is served at the server's origin, `https://<domain>`, the

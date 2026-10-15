@@ -11,6 +11,16 @@ web page and the template that launches it. Whether it is a
 reaches the patient's data; every app reaches the FHIR server at the server's
 public origin.
 
+The homescreen is the server's **launcher**, a web page (the hosted
+`launcher-web` at <https://wildflowerhealth.io/launcher> unless the server's
+record names another), never a page the server serves. The base opens it with
+an EHR launch: the host mints a `launch` through the server's authorization
+server and opens the server's launcher URL with `iss`, the server's FHIR base,
+and that `launch` in its query (`launch_url` in `servers-rust`), in the in-app
+browser, signed in as the Owner with a one-time code. The launcher then
+launches the server's apps over the network like any other caller (see
+[Auth posture and the remote trust boundary](#auth-posture-and-the-remote-trust-boundary)).
+
 An app's assets are served from its own origin, never the host's. Growth Chart,
 Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
 Medications (`medications`), the Server Docs
