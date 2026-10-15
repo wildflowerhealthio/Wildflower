@@ -413,17 +413,78 @@ describe('PrescriptionResponseKind', () => {
       expect(byType(result, 'MedicationRequest')).toStrictEqual([expectedRequest])
     })
 
-    it('fails with ParseError when a dispense with a dispenseId does not decode', () => {
-      // Arrange — a fill whose quantity the portal sent as a string.
+    it('drops an undecodable dispense, still emitting its siblings and the request', () => {
+      // Arrange — beside the base fill: one whose quantity the portal sent as a
+      // string, a null entry, and an entry that is not an object.
       const json = prescriptionJson({}, [
-        { dispenseId: 'disp-1', quantityDispensed: '30', status: 'COMPLETE' },
+        {
+          dispenseId: 'disp-1',
+          quantityDispensed: 30,
+          status: 'COMPLETE',
+          dispenseDate: '2026-01-10T00:00:00Z',
+        },
+        { dispenseId: 'disp-9', quantityDispensed: '30', status: 'COMPLETE' },
+        null,
+        'disp-10',
       ])
 
       // Act
-      const result = runParse(makeResponse(json))
+      const result = parse(json)
 
-      // Assert — the fill is not silently lost from the prescription.
-      expectLeftToEqual(result, expect.objectContaining({ _tag: 'ParseError' }))
+      // Assert
+      expect(result).toStrictEqual([expectedRequest, expectedDispense])
+    })
+
+    it('property: an optional field sent as null reads as absent', () => {
+      const prescriptionKeys = [
+        'prescriptionNumber',
+        'brandName',
+        'chemicalName',
+        'numFillsLeft',
+        'prescriberName',
+        'status',
+        'din',
+        'direction',
+        'refillQuantity',
+        'expiryDate',
+        'lastFillDate',
+        'storeId',
+        'expired',
+        'archived',
+        'renewable',
+        'previousPrescription',
+      ] as const
+      const dispenseKeys = ['quantityDispensed', 'status', 'dispenseDate'] as const
+      const baseDispense = {
+        dispenseId: 'disp-1',
+        quantityDispensed: 30,
+        status: 'COMPLETE',
+        dispenseDate: '2026-01-10T00:00:00Z',
+      }
+      /** `keys` all set to `value` (`undefined` keys are left out of the JSON). */
+      const allSetTo = (
+        keys: readonly string[],
+        value: null | undefined
+      ): Record<string, null | undefined> => Object.fromEntries(keys.map((key) => [key, value]))
+
+      fc.assert(
+        fc.property(
+          fc.subarray([...prescriptionKeys]),
+          fc.subarray([...dispenseKeys]),
+          (nulledKeys, nulledDispenseKeys) => {
+            const payloadWith = (value: null | undefined): string =>
+              prescriptionJson(allSetTo(nulledKeys, value), [
+                { ...baseDispense, ...allSetTo(nulledDispenseKeys, value) },
+              ])
+            expect(parse(payloadWith(null))).toStrictEqual(parse(payloadWith(undefined)))
+          }
+        ),
+        { numRuns: numRunsFor({ base: 50 }) }
+      )
+    })
+
+    it('reads a null dispenses list as no dispenses', () => {
+      expect(parse(prescriptionJson({}, null))).toStrictEqual([expectedRequest])
     })
 
     it('emits just the MedicationRequest when there are no dispenses', () => {

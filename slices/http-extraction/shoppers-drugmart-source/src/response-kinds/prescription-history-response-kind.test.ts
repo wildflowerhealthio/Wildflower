@@ -7,7 +7,7 @@ import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { type HttpResponse, Specificity } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Logger, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -240,19 +240,94 @@ describe('PrescriptionHistoryResponseKind', () => {
       ])
     })
 
-    it('fails with ParseError when a dispense with a dispenseId does not decode', () => {
-      // Arrange — a fill whose quantity the portal sent as a string.
+    it('drops and counts an undecodable dispense, still emitting its siblings', () => {
+      // Arrange — beside a good fill: one whose quantity the portal sent as a
+      // string, a null entry, an entry that is not an object, and one with no
+      // dispenseId.
       const payload = {
-        dispenses: [{ prescriptionId: 'rx-uuid-1', dispenseId: 'disp-9', quantityDispensed: '30' }],
+        dispenses: [
+          { prescriptionId: 'rx-uuid-1', dispenseId: 'disp-8', quantityDispensed: '30' },
+          null,
+          'disp-10',
+          { prescriptionId: 'rx-uuid-1', dispenseId: null, quantityDispensed: 5 },
+          { prescriptionId: 'rx-uuid-1', dispenseId: 'disp-9', din: '51480840' },
+        ],
       }
+      const logged: unknown[] = []
+      const capturingLogger = Logger.make(({ message }) => {
+        logged.push(message)
+      })
 
       // Act
       const result = Effect.runSync(
-        Effect.either(PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(payload))))
+        PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(payload))).pipe(
+          Effect.provide(Logger.replace(Logger.defaultLogger, capturingLogger))
+        )
       )
 
-      // Assert — the fill is not silently lost from the history.
-      expect(result).toMatchObject({ _tag: 'Left', left: { _tag: 'ParseError' } })
+      // Assert — only the decodable entry with a dispenseId survives, and the
+      // four others are counted.
+      expect(result.map((resource) => resource.id)).toStrictEqual(['disp-9'])
+      expect(logged).toStrictEqual([
+        [
+          'PrescriptionHistoryResponseKind: dropped 4 of 5 dispense entries (3 undecodable, 1 with no dispenseId)',
+        ],
+      ])
+    })
+
+    it('property: an optional field sent as null reads as absent', () => {
+      const dispenseKeys = [
+        'prescriptionId',
+        'prescriptionNumber',
+        'dispenseDate',
+        'chemicalName',
+        'brandName',
+        'quantityDispensed',
+        'din',
+        'store',
+      ] as const
+      const storeKeys = ['id', 'storeName'] as const
+      const first = {
+        prescriptionId: 'rx-uuid-1',
+        dispenseId: 'disp-1',
+        prescriptionNumber: 9534360,
+        dispenseDate: '2033-05-13',
+        chemicalName: 'Amoxicillin 500mg',
+        brandName: 'Amoxil',
+        quantityDispensed: 30,
+        din: '51480840',
+        store: { id: 9000, storeName: 'SDM Pharmacy #9000' },
+      }
+      const second = { prescriptionId: 'rx-uuid-1', dispenseId: 'disp-2' }
+      /** `keys` all set to `value` (`undefined` keys are left out of the JSON). */
+      const allSetTo = (
+        keys: readonly string[],
+        value: null | undefined
+      ): Record<string, null | undefined> => Object.fromEntries(keys.map((key) => [key, value]))
+
+      fc.assert(
+        fc.property(
+          fc.subarray([...dispenseKeys]),
+          fc.subarray([...storeKeys]),
+          (nulledKeys, nulledStoreKeys) => {
+            const payloadWith = (value: null | undefined): unknown => ({
+              dispenses: [
+                { ...first, ...allSetTo(nulledKeys, value) },
+                {
+                  ...second,
+                  store: { id: 9000, storeName: 'SDM', ...allSetTo(nulledStoreKeys, value) },
+                },
+              ],
+            })
+            expect(parse(payloadWith(null))).toStrictEqual(parse(payloadWith(undefined)))
+          }
+        ),
+        { numRuns: numRunsFor({ base: 50 }) }
+      )
+    })
+
+    it('emits nothing for a null dispenses list', () => {
+      expect(parse({ dispenses: null })).toStrictEqual([])
     })
 
     it('emits nothing for an empty dispenses array', () => {

@@ -46,7 +46,8 @@ const prescriptionHistoryUrlOf = (customerId: string): string =>
 
 /**
  * A matcher for one portal XHR: a request for a URL `url` matches unless its
- * method is known and is not `GET`, yielding the portal origin as its root.
+ * method is known and is not `GET`, yielding {@link SHOPPERS_API_BASE_URL},
+ * the base every portal XHR is served under, as its root.
  *
  * @remarks
  * The portal only reads these URLs, so another verb at the same URL (a
@@ -60,7 +61,7 @@ const portalGetMatcher =
   (candidateUrl, method) =>
     url.test(candidateUrl) &&
     Option.match(method, { onNone: () => true, onSome: (verb) => verb === 'GET' })
-      ? Option.some(SHOPPERS_PORTAL_ORIGIN)
+      ? Option.some(SHOPPERS_API_BASE_URL)
       : Option.none()
 
 export {

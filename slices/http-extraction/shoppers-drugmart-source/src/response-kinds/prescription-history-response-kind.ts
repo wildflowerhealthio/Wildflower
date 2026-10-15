@@ -17,6 +17,7 @@ import {
 } from 'effect'
 
 import { decodesAsDateTime } from '../dates.ts'
+import { DecodableEntries } from '../lenient-schemas.ts'
 import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import {
   ShoppersIdentifierSystem,
@@ -26,42 +27,46 @@ import {
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
-/** The dispensing store as a history entry carries it (all parts optional). */
+/** The dispensing store as a history entry carries it (all parts optional; `null` reads as absent). */
 const SourceStore = Schema.Struct({
   // Lenient on string vs number — the portal's typing of the store id is unconfirmed.
-  id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  storeName: Schema.optional(Schema.String),
+  id: Schema.optionalWith(Schema.Union(Schema.String, Schema.Number), { nullable: true }),
+  storeName: Schema.optionalWith(Schema.String, { nullable: true }),
 })
 
 /**
  * One dispense record in the history payload's flat `dispenses` array.
  * `dispenseId` keys the emitted resource, `prescriptionId` links it to its request;
  * both optional: an entry with no `dispenseId` drops-and-counts, and one with no
- * `prescriptionId` links to no request. `din` is **per-dispense** (differs
- * across fills).
+ * `prescriptionId` links to no request. Every field reads `null` as absent.
+ * `din` is **per-dispense** (differs across fills).
  * */
 const SourceHistoryDispense = Schema.Struct({
-  prescriptionId: Schema.optional(Schema.String),
-  dispenseId: Schema.optional(Schema.String),
-  prescriptionNumber: Schema.optional(Schema.Number),
-  dispenseDate: Schema.optional(Schema.String),
-  chemicalName: Schema.optional(Schema.String),
-  brandName: Schema.optional(Schema.String),
-  quantityDispensed: Schema.optional(Schema.Number),
-  din: Schema.optional(Schema.String),
-  store: Schema.optional(SourceStore),
+  prescriptionId: Schema.optionalWith(Schema.String, { nullable: true }),
+  dispenseId: Schema.optionalWith(Schema.String, { nullable: true }),
+  prescriptionNumber: Schema.optionalWith(Schema.Number, { nullable: true }),
+  dispenseDate: Schema.optionalWith(Schema.String, { nullable: true }),
+  chemicalName: Schema.optionalWith(Schema.String, { nullable: true }),
+  brandName: Schema.optionalWith(Schema.String, { nullable: true }),
+  quantityDispensed: Schema.optionalWith(Schema.Number, { nullable: true }),
+  din: Schema.optionalWith(Schema.String, { nullable: true }),
+  store: Schema.optionalWith(SourceStore, { nullable: true }),
 })
 
 type SourceHistoryDispense = typeof SourceHistoryDispense.Type
 
-/** `{ "dispenses": [ … ] }` — the whole history payload. */
+/**
+ * `{ "dispenses": [ … ] }` — the whole history payload. `dispenses` decodes
+ * entry by entry ({@link DecodableEntries}): an entry that is not a
+ * {@link SourceHistoryDispense} is counted, not decoded, and never fails the
+ * payload. A `null` list reads as absent.
+ */
 const HistoryPayload = Schema.Struct({
-  dispenses: Schema.optional(Schema.Array(Schema.Unknown)),
+  dispenses: Schema.optionalWith(DecodableEntries(SourceHistoryDispense), { nullable: true }),
 })
 
 const decodeHistory = Schema.decode(Schema.parseJson(HistoryPayload))
 const decodeCustomerId = Schema.decodeUnknown(Schema.NonEmptyString)
-const decodeSourceHistoryDispense = Schema.decodeUnknown(SourceHistoryDispense)
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
 /**
@@ -178,9 +183,11 @@ const historyUrl = new RegExp(
  * latest fill also appears in the status feed under the same `dispenseId`,
  * which names the person; the source's `mergeResources` combines the two
  * copies wherever one extraction holds both (`merge-resources.ts`). A
- * dispense with no `dispenseId` drops-and-counts via `Effect.logInfo`; one
- * that does not decode as a {@link SourceHistoryDispense}, or a URL with no
- * `customerId`, fails the parse.
+ * dispense entry that does not decode as a {@link SourceHistoryDispense} (a
+ * `quantityDispensed` sent as a string, say, or an entry that is not an
+ * object), and one with no `dispenseId` (absent or `null`), drops-and-counts
+ * via `Effect.logInfo`; its siblings are still emitted. A URL with no
+ * `customerId` fails the parse.
  */
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
@@ -189,19 +196,17 @@ const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirRes
     parse: (response) =>
       Effect.gen(function* () {
         const customerId = yield* customerIdOf(response.url)
-        const { dispenses: raw } = yield* decodeHistory(extractJson(response.text()))
+        const { dispenses: entries } = yield* decodeHistory(extractJson(response.text()))
+        const { decoded, undecodable } = entries ?? { decoded: [], undecodable: 0 }
 
-        const sourceDispenses = yield* Effect.forEach(raw ?? [], (rawDispense) =>
-          decodeSourceHistoryDispense(rawDispense)
-        )
-        const dispenseWires = Arr.filterMap(sourceDispenses, (dispense) =>
+        const dispenseWires = Arr.filterMap(decoded, (dispense) =>
           Option.fromNullable(dispenseWire(dispense, customerId))
         )
-        const dropped = sourceDispenses.length - dispenseWires.length
+        const withoutId = decoded.length - dispenseWires.length
         const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
-        if (dropped > 0) {
+        if (undecodable + withoutId > 0) {
           yield* Effect.logInfo(
-            `PrescriptionHistoryResponseKind: dropped ${dropped} of ${sourceDispenses.length} dispense entries with no dispenseId`
+            `PrescriptionHistoryResponseKind: dropped ${undecodable + withoutId} of ${undecodable + decoded.length} dispense entries (${undecodable} undecodable, ${withoutId} with no dispenseId)`
           )
         }
 
