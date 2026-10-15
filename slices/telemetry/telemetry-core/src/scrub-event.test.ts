@@ -346,6 +346,126 @@ describe('scrubEvent', () => {
     })
   })
 
+  test('scrubs the free text an error event carries, and replaces server hosts in the rest', () => {
+    const event = {
+      message: 'Could not reach Ruth.Example:8443',
+      logentry: {
+        message: 'GET %s failed on %s',
+        params: ['https://ruth.example/fhir/Patient/123', 'lab.relay.wildflowerhealth.io', 3],
+      },
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            value:
+              'Failed to fetch dynamically imported module: https://android-emu.relay.wildflowerhealth.io/assets/Chart-abc.js',
+          },
+          {
+            type: 'Error',
+            value: 'ruth.example refused api.ruth.example; xruth.example.org is fine',
+          },
+        ],
+      },
+      breadcrumbs: [
+        {
+          category: 'console',
+          message: 'connecting to ruth.example/fhir/Patient/123',
+          data: { arguments: ['connecting to', { server: 'RUTH.EXAMPLE' }], logger: 'console' },
+        },
+      ],
+      tags: { app: 'launcher-web', server: 'ruth.example', attempts: 2 },
+      extra: { componentStack: '\n    at Chart (https://ruth.example/assets/index-abc.js:1:2)' },
+      contexts: { react: { componentStack: 'at App (https://ruth.example/assets/a.js:3:4)' } },
+    }
+
+    expect(scrubEvent(event, ['ruth.example'])).toStrictEqual({
+      message: 'Could not reach {host}',
+      logentry: {
+        message: 'GET %s failed on %s',
+        params: ['https://{host}/fhir/Patient/{id}', '{host}', 3],
+      },
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            value: 'Failed to fetch dynamically imported module: https://{host}/assets/{id}',
+          },
+          { type: 'Error', value: '{host} refused {host}; xruth.example.org is fine' },
+        ],
+      },
+      breadcrumbs: [
+        {
+          category: 'console',
+          message: 'connecting to {id}/fhir/Patient/{id}',
+          data: { arguments: ['connecting to', { server: '{host}' }], logger: 'console' },
+        },
+      ],
+      tags: { app: 'launcher-web', server: '{host}', attempts: 2 },
+      extra: { componentStack: '\n    at Chart (https://{host}/assets/index-abc.js:1:2)' },
+      contexts: { react: { componentStack: 'at App (https://{host}/assets/a.js:3:4)' } },
+    })
+  })
+
+  test('replaces server hosts left in span descriptions, span data and the transaction name', () => {
+    const event = {
+      transaction: 'connect ruth.example',
+      contexts: { trace: { description: 'boot ruth.relay.wildflowerhealth.io', data: {} } },
+      spans: [
+        {
+          description: 'resolve ruth.example:8443',
+          data: { 'rpc.service': 'ruth.example', 'url.full': 'https://ruth.example/r4' },
+        },
+      ],
+    }
+
+    expect(scrubEvent(event, ['https://ruth.example:8443'])).toStrictEqual({
+      transaction: 'connect {host}',
+      contexts: { trace: { description: 'boot {host}', data: {} } },
+      spans: [
+        {
+          description: 'resolve {host}',
+          data: { 'rpc.service': '{host}', 'url.full': 'https://{host}/r4' },
+        },
+      ],
+    })
+  })
+
+  test('property: a server host is replaced wherever it stands, and scrubbing again changes nothing', () => {
+    fc.assert(
+      fc.property(fc.domain(), (host) => {
+        const event = {
+          message: `lost ${host}`,
+          exception: {
+            values: [
+              {
+                value: `${host.toUpperCase()}:8443 timed out`,
+                stacktrace: { frames: [{ filename: `https://${host}/assets/index-abc.js` }] },
+              },
+            ],
+          },
+          breadcrumbs: [{ message: `retry ${host}.` }],
+        }
+
+        const scrubbed = scrubEvent(event, [host])
+
+        expect(scrubbed).toStrictEqual({
+          message: 'lost {host}',
+          exception: {
+            values: [
+              {
+                value: '{host} timed out',
+                stacktrace: { frames: [{ filename: 'https://{host}/assets/index-abc.js' }] },
+              },
+            ],
+          },
+          breadcrumbs: [{ message: 'retry {host}.' }],
+        })
+        expect(scrubEvent(scrubbed, [host])).toStrictEqual(scrubbed)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   test('keeps a kept host in a host attribute', () => {
     const event = {
       spans: [

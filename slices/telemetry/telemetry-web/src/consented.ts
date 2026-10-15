@@ -182,7 +182,8 @@ const consentedTelemetryLayer: Layer.Layer<never> = Layer.suspend(() =>
 /**
  * Replace `host` with `{host}` wherever an event sent from now on names it
  * outside a URL field (which `scrubEvent` anonymizes whatever its host): in
- * stack frames' script URLs and their debug images.
+ * stack frames' script URLs, messages, exception messages, breadcrumbs, span
+ * descriptions, the transaction name, tags, `extra` and contexts.
  *
  * @param host - A server's host, with or without a port, or its `http(s)`
  *   origin; matched case-insensitively, with any port and any subdomains

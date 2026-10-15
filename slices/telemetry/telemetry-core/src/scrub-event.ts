@@ -4,8 +4,8 @@ import { makeHostRedactor } from './redact-hosts.ts'
 /**
  * Runs every URL a telemetry event carries through {@link anonymizeUrl}, and
  * every host it carries on its own through {@link anonymizeHost}, and
- * replaces the server hosts in its stack frames, before the event leaves the
- * browser. Typed structurally over the fields it reads, so
+ * replaces the server hosts it names anywhere else, before the event leaves
+ * the browser. Typed structurally over the fields it reads, so
  * this package names no Sentry type: `telemetry-web` hands it Sentry's error
  * and transaction events.
  */
@@ -95,6 +95,7 @@ interface ScrubbableRequest {
 
 /** A breadcrumb: what happened before the event, fetches and navigations among it. */
 interface ScrubbableBreadcrumb {
+  readonly message?: string
   readonly data?: UrlBearingRecord
 }
 
@@ -114,8 +115,12 @@ interface ScrubbableStackFrame {
   readonly module?: string
 }
 
-/** An exception an error event reports, with the stack it was thrown from. */
+/**
+ * An exception an error event reports: its message, and the stack it was
+ * thrown from.
+ */
 interface ScrubbableException {
+  readonly value?: string
   readonly stacktrace?: { readonly frames?: readonly ScrubbableStackFrame[] }
 }
 
@@ -129,13 +134,17 @@ interface ScrubbableDebugImage {
 
 /** The fields of a telemetry event {@link scrubEvent} rewrites. */
 interface ScrubbableEvent {
+  readonly message?: string
+  readonly logentry?: { readonly message?: string; readonly params?: readonly unknown[] }
   readonly transaction?: string
   readonly request?: ScrubbableRequest
   readonly breadcrumbs?: readonly ScrubbableBreadcrumb[]
   readonly spans?: readonly ScrubbableSpan[]
-  readonly contexts?: { readonly trace?: ScrubbableSpan }
+  readonly contexts?: Readonly<Record<string, unknown>> & { readonly trace?: ScrubbableSpan }
   readonly exception?: { readonly values?: readonly ScrubbableException[] }
   readonly debug_meta?: { readonly images?: readonly ScrubbableDebugImage[] }
+  readonly tags?: Readonly<Record<string, unknown>>
+  readonly extra?: Readonly<Record<string, unknown>>
 }
 
 /** Replaces the server hosts in a text with `{host}` (see {@link makeHostRedactor}). */
@@ -148,46 +157,108 @@ const isHostKey = (lowerCaseKey: string): boolean => HOST_KEYS.has(lowerCaseKey)
 const isUrlInTextKey = (lowerCaseKey: string): boolean => URL_IN_TEXT_KEYS.has(lowerCaseKey)
 
 /**
- * `record` with the value under every URL, host or URL-in-text key anonymized
- * and the value under every dropped key cleared to `undefined`, which the SDK
- * leaves out of what it sends.
+ * `value` with `redactHosts` applied to every string in it, at any depth of
+ * arrays and plain objects; any other value as it was.
+ *
+ * @remarks
+ * For the values whose shape the event does not fix: breadcrumb and span data
+ * under keys that are not URLs or hosts (a console breadcrumb's `arguments`),
+ * tags, `extra`, and contexts (a React component stack names each
+ * component's script by URL). The SDK has already normalized them to JSON.
  */
-const scrubUrlBearingRecord = <R extends UrlBearingRecord>(record: R): R => ({
+const redactHostsInValue = (value: unknown, redactHosts: HostRedactor): unknown => {
+  if (typeof value === 'string') return redactHosts(value)
+  if (Array.isArray(value)) {
+    return value.map((item: unknown) => redactHostsInValue(item, redactHosts))
+  }
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.getPrototypeOf(value) === Object.prototype
+  ) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, redactHostsInValue(item, redactHosts)])
+    )
+  }
+  return value
+}
+
+/** `record` with {@link redactHostsInValue} applied to each of its values. */
+const redactHostsInRecord = <R extends Readonly<Record<string, unknown>>>(
+  record: R,
+  redactHosts: HostRedactor
+): R => ({
   ...record,
   ...Object.fromEntries(
-    Object.entries(record).flatMap(([key, value]): (readonly [string, unknown])[] => {
+    Object.entries(record).map(([key, value]) => [key, redactHostsInValue(value, redactHosts)])
+  ),
+})
+
+/**
+ * `text` with the URLs in it anonymized (see `anonymizeUrlsInText`), then the
+ * server hosts left in it replaced: for the free text an event carries, such
+ * as an exception's message.
+ */
+const scrubText = (text: string, redactHosts: HostRedactor): string =>
+  redactHosts(anonymizeUrlsInText(text))
+
+/**
+ * `record` with the value under every URL, host or URL-in-text key anonymized,
+ * the value under every dropped key cleared to `undefined`, which the SDK
+ * leaves out of what it sends, and the server hosts in every other value
+ * replaced.
+ */
+const scrubUrlBearingRecord = <R extends UrlBearingRecord>(
+  record: R,
+  redactHosts: HostRedactor
+): R => ({
+  ...record,
+  ...Object.fromEntries(
+    Object.entries(record).map(([key, value]): readonly [string, unknown] => {
       const lowerCaseKey = key.toLowerCase()
-      if (isDroppedKey(lowerCaseKey)) return [[key, undefined]]
+      if (isDroppedKey(lowerCaseKey)) return [key, undefined]
       if (isUrlKey(lowerCaseKey) && typeof value === 'string') {
-        return [[key, anonymizeUrl(value)]]
+        return [key, anonymizeUrl(value)]
       }
       if (isHostKey(lowerCaseKey) && typeof value === 'string') {
-        return [[key, anonymizeHost(value)]]
+        return [key, anonymizeHost(value)]
       }
       if (isUrlInTextKey(lowerCaseKey) && typeof value === 'string') {
-        return [[key, anonymizeUrlsInText(value)]]
+        return [key, scrubText(value, redactHosts)]
       }
-      return []
+      return [key, redactHostsInValue(value, redactHosts)]
     })
   ),
 })
 
-const scrubRequest = <R extends ScrubbableRequest>(request: R): R => ({
+const scrubRequest = <R extends ScrubbableRequest>(request: R, redactHosts: HostRedactor): R => ({
   ...request,
   ...(request.url === undefined ? {} : { url: anonymizeUrl(request.url) }),
   ...(request.query_string === undefined ? {} : { query_string: undefined }),
-  ...(request.headers === undefined ? {} : { headers: scrubUrlBearingRecord(request.headers) }),
+  ...(request.headers === undefined
+    ? {}
+    : { headers: scrubUrlBearingRecord(request.headers, redactHosts) }),
 })
 
-const scrubBreadcrumb = <B extends ScrubbableBreadcrumb>(breadcrumb: B): B => ({
+const scrubBreadcrumb = <B extends ScrubbableBreadcrumb>(
+  breadcrumb: B,
+  redactHosts: HostRedactor
+): B => ({
   ...breadcrumb,
-  ...(breadcrumb.data === undefined ? {} : { data: scrubUrlBearingRecord(breadcrumb.data) }),
+  ...(breadcrumb.message === undefined
+    ? {}
+    : { message: scrubText(breadcrumb.message, redactHosts) }),
+  ...(breadcrumb.data === undefined
+    ? {}
+    : { data: scrubUrlBearingRecord(breadcrumb.data, redactHosts) }),
 })
 
-const scrubSpan = <S extends ScrubbableSpan>(span: S): S => ({
+const scrubSpan = <S extends ScrubbableSpan>(span: S, redactHosts: HostRedactor): S => ({
   ...span,
-  ...(span.description === undefined ? {} : { description: anonymizeUrlsInText(span.description) }),
-  ...(span.data === undefined ? {} : { data: scrubUrlBearingRecord(span.data) }),
+  ...(span.description === undefined
+    ? {}
+    : { description: scrubText(span.description, redactHosts) }),
+  ...(span.data === undefined ? {} : { data: scrubUrlBearingRecord(span.data, redactHosts) }),
 })
 
 /**
@@ -208,33 +279,59 @@ const redactHostsUnder = <O extends object>(
 })
 
 /**
- * `exception` with the server host in each stack frame's script URL replaced.
+ * `exception` with its message scrubbed (see {@link scrubText}) and the server
+ * host in each stack frame's script URL replaced.
  *
  * @remarks
- * Only the host is replaced: the path and file name stay, so the frame still
- * reads as the bundle it ran in.
+ * In a frame only the host is replaced: the path and file name stay, so the
+ * frame still reads as the bundle it ran in.
  */
 const scrubException = <X extends ScrubbableException>(
   exception: X,
   redactHosts: HostRedactor
 ): X => {
   const frames = exception.stacktrace?.frames
-  if (frames === undefined) return exception
   return {
     ...exception,
-    stacktrace: {
-      ...exception.stacktrace,
-      frames: frames.map((frame) =>
-        redactHostsUnder(frame, ['filename', 'abs_path', 'module'], redactHosts)
-      ),
-    },
+    ...(exception.value === undefined ? {} : { value: scrubText(exception.value, redactHosts) }),
+    ...(frames === undefined
+      ? {}
+      : {
+          stacktrace: {
+            ...exception.stacktrace,
+            frames: frames.map((frame) =>
+              redactHostsUnder(frame, ['filename', 'abs_path', 'module'], redactHosts)
+            ),
+          },
+        }),
   }
 }
 
+/** `logentry` with its message and every string parameter scrubbed (see {@link scrubText}). */
+const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
+  logentry: L,
+  redactHosts: HostRedactor
+): L => ({
+  ...logentry,
+  ...(logentry.message === undefined ? {} : { message: scrubText(logentry.message, redactHosts) }),
+  ...(logentry.params === undefined
+    ? {}
+    : {
+        params: logentry.params.map((param) =>
+          typeof param === 'string'
+            ? scrubText(param, redactHosts)
+            : redactHostsInValue(param, redactHosts)
+        ),
+      }),
+})
+
 /**
- * `event` with every URL it carries anonymized.
+ * `event` with every URL it carries anonymized, and every server host it
+ * names replaced.
  *
  * @typeParam E - The SDK's event type; every other field passes through
+ * @param hostsToRedact - The hosts the app is known to use (its own origin's,
+ *   its servers'), as hosts or origins; see {@link makeHostRedactor}
  * @returns A copy of `event` in which:
  *   - `request.url`, and a `Referer` request header, are anonymized, and
  *     `request.query_string` is cleared
@@ -245,19 +342,21 @@ const scrubException = <X extends ScrubbableException>(
  *     `net.peer.name`) reduced to a kept host or `{host}`, and its query and
  *     fragment keys (`http.query`, `url.query`, …) and HTTP header attributes
  *     cleared
- *   - each span description, the trace context's, and the transaction name
- *     have the URLs in them anonymized
- *   - each stack frame's `filename`, `abs_path` and `module`, and each debug
- *     image's `code_file`, have every relay tunnel host
- *     (`*.relay.wildflowerhealth.io`) and every one of `hostsToRedact`
- *     replaced with `{host}`, the rest of the script URL kept as written
- *
- * @param hostsToRedact - The hosts the app is known to use (its own origin's,
- *   its servers'), as hosts or origins; see {@link makeHostRedactor}
+ *   - the free text — the message and `logentry` (its message and string
+ *     parameters), each exception's message, each breadcrumb's message, each
+ *     span description, the trace context's, and the transaction name — has
+ *     the URLs in it anonymized
+ *   - in all of the above, in each stack frame's `filename`, `abs_path` and
+ *     `module`, each debug image's `code_file`, and every other string in
+ *     breadcrumb and span data, tags, `extra` and contexts, every relay
+ *     tunnel host (`*.relay.wildflowerhealth.io`) and every one of
+ *     `hostsToRedact` is replaced with `{host}`, the rest of the text kept as
+ *     written
  *
  * @remarks
  * Pure and field-by-field: every rewrite copies the object it changes, so the
- * SDK's own event is left as it was.
+ * SDK's own event is left as it was. Idempotent: a scrubbed event scrubs to
+ * itself.
  *
  * Stack frames keep their source maps: the site's builds carry debug IDs
  * (`.github/actions/sentry-sourcemaps`), and the SDK lists each frame's script
@@ -274,17 +373,34 @@ const scrubEvent = <E extends ScrubbableEvent>(
   const redactHosts = makeHostRedactor(hostsToRedact)
   return {
     ...event,
+    ...(event.message === undefined ? {} : { message: scrubText(event.message, redactHosts) }),
+    ...(event.logentry === undefined
+      ? {}
+      : { logentry: scrubLogEntry(event.logentry, redactHosts) }),
     ...(event.transaction === undefined
       ? {}
-      : { transaction: anonymizeUrlsInText(event.transaction) }),
-    ...(event.request === undefined ? {} : { request: scrubRequest(event.request) }),
+      : { transaction: scrubText(event.transaction, redactHosts) }),
+    ...(event.request === undefined ? {} : { request: scrubRequest(event.request, redactHosts) }),
     ...(event.breadcrumbs === undefined
       ? {}
-      : { breadcrumbs: event.breadcrumbs.map(scrubBreadcrumb) }),
-    ...(event.spans === undefined ? {} : { spans: event.spans.map(scrubSpan) }),
-    ...(event.contexts?.trace === undefined
+      : {
+          breadcrumbs: event.breadcrumbs.map((breadcrumb) =>
+            scrubBreadcrumb(breadcrumb, redactHosts)
+          ),
+        }),
+    ...(event.spans === undefined
       ? {}
-      : { contexts: { ...event.contexts, trace: scrubSpan(event.contexts.trace) } }),
+      : { spans: event.spans.map((span) => scrubSpan(span, redactHosts)) }),
+    ...(event.contexts === undefined
+      ? {}
+      : {
+          contexts: redactHostsInRecord(
+            event.contexts.trace === undefined
+              ? event.contexts
+              : { ...event.contexts, trace: scrubSpan(event.contexts.trace, redactHosts) },
+            redactHosts
+          ),
+        }),
     ...(event.exception?.values === undefined
       ? {}
       : {
@@ -305,6 +421,8 @@ const scrubEvent = <E extends ScrubbableEvent>(
             ),
           },
         }),
+    ...(event.tags === undefined ? {} : { tags: redactHostsInRecord(event.tags, redactHosts) }),
+    ...(event.extra === undefined ? {} : { extra: redactHostsInRecord(event.extra, redactHosts) }),
   }
 }
 

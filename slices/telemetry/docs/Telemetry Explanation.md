@@ -32,9 +32,13 @@ Both the host and the path are allowlists, so a shape the anonymizer does not kn
 
 A resource type is recognized by shape (an uppercase then a lowercase letter, letters only), not from a list. The rules err towards replacing too much: a segment after anything shaped like a resource type becomes `{id}`, so an id that happens to look like one costs the next segment its name rather than letting the id after it through. What still passes is an id shaped like a route word or a resource type where no resource type precedes it, such as a lowercase name in a route the app names its records by.
 
+The same pass covers free text: the event's message and `logentry` (its message and string parameters), each exception's message, and each breadcrumb's message have the URLs in them anonymized like span descriptions, so `Failed to fetch dynamically imported module: https://ruth.example/assets/Chart-abc.js` reports `https://{host}/assets/{id}`.
+
 ## Server hosts are replaced wherever they stand
 
 A stack frame names the script it ran in by URL, and an app served from a user's server or relay tunnel loads its scripts from that server: `https://android-emu.relay.wildflowerhealth.io/assets/index-abc.js`. `scrubEvent` replaces only the host in each frame's `filename`, `abs_path` and `module`, and in each debug image's `code_file`, with `{host}`, keeping the path and file name: `https://{host}/assets/index-abc.js`. Running these through `anonymizeUrl` would turn the bundle's file name into `{id}`.
+
+A server's host can also stand outside any URL: `Could not reach ruth.example:8443`, a console breadcrumb's arguments, a React component stack in `extra` or contexts. After the URL pass, `scrubEvent` replaces the same hosts with `{host}` in the message and `logentry`, exception messages, breadcrumb messages, every string in breadcrumb and span data that is not already a URL or host attribute, span descriptions, the transaction name, tags, `extra` and contexts, at any depth.
 
 Source maps still resolve. The site's builds carry debug IDs (see below), and the SDK lists each script a frame ran in as a debug image, with the frame's path as its `code_file` and the script's debug ID. Sentry pairs a frame with its image by that path and finds the map by the debug ID, never by URL; the frame and the image are rewritten alike, so the pairing holds.
 

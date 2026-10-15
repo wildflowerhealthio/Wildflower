@@ -294,6 +294,32 @@ describe('server host redaction', () => {
     ])
   })
 
+  test('replaces a server host in an error’s message and a transaction’s name', async () => {
+    const { initConsentedTelemetry, redactServerHost } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    redactServerHost('ruth.example')
+    const options = sentryInitOptions()
+
+    const sentError = await options.beforeSend?.(
+      {
+        type: undefined,
+        exception: { values: [{ type: 'Error', value: 'ruth.example is down' }] },
+      },
+      {}
+    )
+    const sentTransaction = await options.beforeSendTransaction?.(
+      { type: 'transaction', transaction: 'connect Ruth.Example:8443' },
+      {}
+    )
+
+    expect(sentError?.exception?.values?.[0]?.value).toBe('{host} is down')
+    expect(sentTransaction?.transaction).toBe('connect {host}')
+  })
+
   test('replaces the page’s own host in a stack frame', async () => {
     vi.stubGlobal('location', { host: 'my-server.example' })
     try {
