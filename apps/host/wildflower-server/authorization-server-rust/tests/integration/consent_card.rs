@@ -15,7 +15,7 @@ const REQUESTED_SCOPES: &str = "patient%2FObservation.rs%20openid";
 async fn authorize_with_cookie(g: &AuthorizationServer, cookie: &str) -> axum::response::Response {
     g.router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!(
                 "/oauth/authorize?{}",
                 authorize_query("test-app", REQUESTED_SCOPES)
@@ -51,7 +51,7 @@ async fn decide(
 ) -> axum::response::Response {
     g.router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post(format!(
                 "/authorization/oauth-consents/{request_id}/{decision}"
             ))
@@ -68,7 +68,7 @@ async fn status_of(g: &AuthorizationServer, request_id: &str) -> Value {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize/{request_id}")),
             Body::empty(),
         ))
@@ -209,7 +209,7 @@ async fn a_scope_that_was_not_requested_is_not_granted() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(format!(
@@ -281,7 +281,7 @@ async fn the_consent_card_is_locked_down_and_uncached() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/oauth/authorize/req-1/consent"),
             Body::empty(),
         ))

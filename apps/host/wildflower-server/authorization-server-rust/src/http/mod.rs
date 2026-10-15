@@ -1,6 +1,6 @@
 //! The authorization server's HTTP layer — everything axum-shaped lives under this
-//! module. The only crate-facing surface is [`router`], the two layerable gates
-//! ([`authorization_server_auth_middleware`], [`require_loopback_peer_middleware`]), and
+//! module. The only crate-facing surface is [`router`], the layerable bearer gate
+//! ([`authorization_server_auth_middleware`]), and
 //! [`AuthorizationServerState`]; the handler and middleware files are private
 //! implementation detail behind the route table.
 
@@ -18,12 +18,8 @@ pub(crate) use extractors::served_origin::ServedOrigin;
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // host's FHIR web UI session middleware uses it.
 pub use middleware::ensure_bearer_header;
-// The two layerable gates the host composes its routers from. Each lives beside
-// the handler it wraps, in `middleware/`.
-pub use middleware::{
-    authorization_server_auth_middleware, require_loopback_peer_middleware,
-    AuthorizationServerAuthMiddleware, RequireLoopbackPeerMiddleware,
-};
+// The layerable bearer gate the host composes its router from, in `middleware/`.
+pub use middleware::{authorization_server_auth_middleware, AuthorizationServerAuthMiddleware};
 pub(crate) use owner_browser_session_cookie::owner_browser_session_set_cookie;
 pub use owner_browser_session_cookie::{
     owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
@@ -68,11 +64,8 @@ fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
 /// Build the authorization server's public HTTP surface. Routes live at
 /// `/.well-known/jwks.json`, `/oauth/*`, and `/authorization/*` (authenticated
 /// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
-/// `.merge()`s. This router carries **no** loopback-peer gate of its own, so
-/// the host decides per listener: its loopback listener wraps the whole merged
-/// surface in [`require_loopback_peer_middleware`], and its tunnel listener
-/// serves `/oauth/*` and `/authorization/*` to remote visitors, behind the same
-/// bearer and session gates.
+/// `.merge()`s. The host's tunnel listener serves it to remote visitors,
+/// behind these bearer and session gates.
 pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     let (documented, _spec) = documented_public_router().split_for_parts();
     let (clients, _spec) = routes::clients::openapi_router().split_for_parts();

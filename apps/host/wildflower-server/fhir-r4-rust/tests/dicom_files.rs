@@ -13,7 +13,6 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
 use wildflowerhealthio_scope_capabilities::ScopeClaims;
-use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -37,15 +36,10 @@ fn build_router() -> (Router, TempDb) {
     ));
     std::fs::create_dir_all(&dir).expect("create temp dir");
 
-    let runtime = ServerRuntimeConfig {
-        loopback_base_url: "http://127.0.0.1:8080".parse().expect("parse loopback url"),
-        server_dir: dir.clone(),
-    };
     let config = FhirR4Config {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
         bulk_export_dir: dir.join("fhir-exports"),
-        jwks_url: None,
         search_parameter_data_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
         public_origin: "https://dev1.example.com"
             .parse()
@@ -57,12 +51,11 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse the authorization app base"),
     };
 
-    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(
-        &runtime,
         &config,
-        revocation_store,
-        ui_sessions(&runtime, &config),
+        // No verifier: HFS auth is off.
+        None,
+        ui_sessions(&config),
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),
     )
@@ -100,7 +93,7 @@ async fn get_file(router: &Router, id: &str) -> (StatusCode, Vec<u8>, Option<Str
         .method("GET")
         .uri(format!("/api/dicom/files/{id}"))
         // The handler requires a bearer token, which it forwards onto its
-        // in-process HFS sub-request. HFS auth is off here (`jwks_url: None`),
+        // in-process HFS sub-request. HFS auth is off here (no verifier),
         // so the value is inert — only its presence matters.
         .header("authorization", "Bearer test-token")
         .body(Body::empty())
@@ -238,13 +231,9 @@ async fn request_without_a_bearer_token_yields_403() {
 }
 
 /// The web UI's session store `setup_fhir_r4` takes, as the host builds it.
-fn ui_sessions(
-    runtime: &ServerRuntimeConfig,
-    config: &FhirR4Config,
-) -> std::sync::Arc<helios_auth::SessionStore> {
+fn ui_sessions(config: &FhirR4Config) -> std::sync::Arc<helios_auth::SessionStore> {
     std::sync::Arc::new(helios_auth::SessionStore::new(ui_login_config(
         &config.public_origin,
-        runtime.loopback_base_url_ref(),
         "fhir-ui-client",
     )))
 }

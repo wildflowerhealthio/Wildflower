@@ -3,11 +3,11 @@
 
 use crate::common::*;
 
-/// A loopback `GET` of `path`.
+/// A `GET` of `path`, served at the server's origin.
 async fn get(g: &AuthorizationServer, path: &str) -> axum::response::Response {
     g.router
         .clone()
-        .oneshot(loopback_request(Request::get(path), Body::empty()))
+        .oneshot(build_request(Request::get(path), Body::empty()))
         .await
         .expect("oneshot")
 }
@@ -22,8 +22,7 @@ fn header<'a>(res: &'a axum::response::Response, name: &str) -> &'a str {
 
 /// A parked request is sent to the wait page beside the endpoint it asked,
 /// named relatively, so the browser stays on whichever origin it reached the
-/// authorization server at — loopback, or a forwarded public one — and no launcher
-/// address is involved.
+/// authorization server at, and no launcher address is involved.
 #[tokio::test]
 async fn a_parked_request_waits_beside_the_authorize_endpoint_on_the_origin_it_used() {
     let (g, _owner_token, _db) = spin_up();
@@ -32,7 +31,7 @@ async fn a_parked_request_waits_beside_the_authorize_endpoint_on_the_origin_it_u
     let forwarded = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!(
                 "/oauth/authorize?{}",
                 authorize_query("ghost", "read")

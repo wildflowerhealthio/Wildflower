@@ -21,8 +21,8 @@ in a slice because more than one product uses them (`slices/authorization`,
   authorization pages (the consent card, the device page), a Vite build that
   `authorization-server-rust` embeds and serves on the server's own origin.
 - **`token-revocation-rust`** — the per-token denylist and per-subject epoch
-  both enforcement points read: `authorization-server-rust`'s gate and
-  `fhir-r4-rust`'s `JtiCache`. Neither of those depends on the other.
+  `authorization-server-rust`'s token verifier enforces, behind its gates and
+  `fhir-r4-rust`'s bearer auth alike.
 - **`fhir-r4-rust`** — the embedded HFS FHIR R4 server, served at the root on FHIR paths;
   its deltas from stock HFS are in its
   [Capability Statement](./fhir-r4-rust/docs/Capability%20Statement.md). The

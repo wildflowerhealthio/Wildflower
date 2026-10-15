@@ -1,15 +1,10 @@
-pub use std::net::SocketAddr;
-
 pub use axum::body::{to_bytes, Body};
-pub use axum::extract::ConnectInfo;
 pub use axum::http::{Request, StatusCode};
 pub use tokio::sync::watch;
 pub use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AuthorizationServer, AuthorizationServerConfig,
     OWNER_BROWSER_CLIENT_ID, WILDFLOWER_HOST_APP_CLIENT_ID,
 };
-
-pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
 
 /// The server's origin: the `iss` and `aud` of every token it mints, and the
 /// only ones its bearer gates accept.
@@ -81,7 +76,6 @@ pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
     // `store_handle` clones it to reach the same database.
     let pool = wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
     let config = AuthorizationServerConfig {
-        loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
@@ -253,12 +247,10 @@ pub fn mint_token_naming(db: &TestDb, scopes: &[&str], issuer: &str, audience: &
     .expect("mint token")
 }
 
-pub fn loopback_request(builder: http::request::Builder, body: Body) -> Request<Body> {
-    let mut req = builder.body(body).expect("build request");
-    req.extensions_mut().insert(ConnectInfo::<SocketAddr>(
-        "127.0.0.1:54321".parse().unwrap(),
-    ));
-    req
+/// `builder`'s request with `body`, to drive straight into the router. One
+/// without a `Forwarded` header is served at the server's origin.
+pub fn build_request(builder: http::request::Builder, body: Body) -> Request<Body> {
+    builder.body(body).expect("build request")
 }
 
 pub async fn body_json(body: Body) -> Value {
@@ -286,7 +278,7 @@ pub async fn post_form(
     path: &str,
     body: &'static str,
 ) -> axum::response::Response {
-    let req = loopback_request(
+    let req = build_request(
         Request::post(path).header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
     );
@@ -408,7 +400,7 @@ pub fn authorize_query(client_id: &str, scope_query: &str) -> String {
 pub async fn get_authorize(router: &axum::Router, query: &str) -> axum::response::Response {
     router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -441,7 +433,7 @@ pub fn parked_request_id(res: &axum::response::Response) -> String {
 /// The pending request id a wait-page `Location` (`authorize/{id}/wait`,
 /// relative to `/oauth/authorize`) names: the segment before `wait`.
 pub fn polling_request_id(wait_page_location: &str) -> String {
-    let url = Url::parse(LOOPBACK_ORIGIN)
+    let url = Url::parse(SERVER_ORIGIN)
         .and_then(|origin| origin.join("/oauth/authorize"))
         .and_then(|authorize| authorize.join(wait_page_location))
         .expect("the wait-page location resolves");
@@ -459,7 +451,7 @@ pub async fn get_oauth_consent(
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/authorization/oauth-consents/{request_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -480,7 +472,7 @@ pub async fn approve_oauth_consent(
 ) -> axum::response::Response {
     g.router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post(format!(
                 "/authorization/oauth-consents/{request_id}/approve"
             ))
@@ -517,7 +509,7 @@ pub async fn authorize_and_approve(
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -531,7 +523,7 @@ pub async fn authorize_and_approve(
         .expect("location")
         .to_string();
     let request_id = polling_request_id(&polling);
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post(format!(
             "/authorization/oauth-consents/{request_id}/approve"
         ))
@@ -617,7 +609,7 @@ pub async fn post_form_with_authorization(
     body: String,
     authorization: &str,
 ) -> axum::response::Response {
-    let req = loopback_request(
+    let req = build_request(
         Request::post(path)
             .header("content-type", "application/x-www-form-urlencoded")
             .header("authorization", authorization),
@@ -705,7 +697,7 @@ pub fn jti_of(token: &str) -> String {
 /// The smallest owner-gated call — used as a "does this token still
 /// authenticate?" probe against the gate.
 pub fn owner_grants_probe(token: &str) -> Request<Body> {
-    loopback_request(
+    build_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
@@ -715,7 +707,7 @@ pub fn owner_grants_probe(token: &str) -> Request<Body> {
 
 /// Build an owner-authenticated `POST /authorization/revocations` with a JSON body.
 pub fn owner_revocation_request(token: &str, body: Value) -> Request<Body> {
-    loopback_request(
+    build_request(
         Request::post("/authorization/revocations")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}"))
@@ -733,7 +725,7 @@ pub async fn patch_client(
 ) -> axum::response::Response {
     g.router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::patch(format!("/authorization/clients/{client_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {token}"))
@@ -816,7 +808,7 @@ pub async fn sign_in(g: &AuthorizationServer, code: &str, next: &str) -> axum::r
     );
     g.router
         .clone()
-        .oneshot(loopback_request(Request::get(uri), Body::empty()))
+        .oneshot(build_request(Request::get(uri), Body::empty()))
         .await
         .expect("oneshot")
 }

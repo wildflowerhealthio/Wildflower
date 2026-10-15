@@ -46,10 +46,7 @@ async fn an_unknown_code_signs_nobody_in() {
     assert_refused(
         g.router
             .clone()
-            .oneshot(loopback_request(
-                Request::get("/oauth/sign-in"),
-                Body::empty(),
-            ))
+            .oneshot(build_request(Request::get("/oauth/sign-in"), Body::empty()))
             .await
             .expect("oneshot"),
         "no code",
@@ -175,7 +172,7 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
         let router = g.router.clone();
         async move {
             router
-                .oneshot(loopback_request(
+                .oneshot(build_request(
                     Request::get("/authorization/session")
                         .header("authorization", format!("Bearer {token}")),
                     Body::empty(),

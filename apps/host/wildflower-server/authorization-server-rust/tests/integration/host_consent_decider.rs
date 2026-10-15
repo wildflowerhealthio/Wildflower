@@ -114,7 +114,7 @@ async fn the_host_reads_approves_and_denies_device_requests() {
         let res = g
             .router
             .clone()
-            .oneshot(loopback_request(
+            .oneshot(build_request(
                 Request::post("/oauth/device_authorization")
                     .header("content-type", "application/x-www-form-urlencoded"),
                 Body::from("client_id=integration-test-app&scope=system%2F*.cruds"),

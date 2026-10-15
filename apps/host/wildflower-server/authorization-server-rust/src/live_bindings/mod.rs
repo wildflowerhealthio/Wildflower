@@ -16,6 +16,9 @@
 //! - [`SameDeviceSignInCodeMinter`] is the in-process mint of the one-time codes
 //!   `/oauth/sign-in` signs a browser in as the Owner with, handed out the
 //!   same way, to the host.
+//! - [`InProcessTokenVerifier`] is the token verifier both authN gates run,
+//!   handed out the same way, for the host's FHIR server to verify bearers
+//!   with in-process.
 //! - [`HostConsentDecider`] is the consent capabilities bound to the host
 //!   Owner's grant, for the host to decide consents in-process.
 //! - The remaining modules hold one binding each (the `/authorization` ones implement
@@ -33,6 +36,7 @@ mod consents_reader;
 mod grants_reader;
 mod grants_revoker;
 mod host_consent_decider;
+mod in_process_token_verifier;
 mod launch_context_minter;
 mod oauth_front_door;
 mod same_device_sign_in_code_minter;
@@ -50,6 +54,7 @@ pub(crate) use consents_reader::LiveConsentReader;
 pub(crate) use grants_reader::LiveGrantsReader;
 pub(crate) use grants_revoker::LiveGrantsRevoker;
 pub use host_consent_decider::HostConsentDecider;
+pub use in_process_token_verifier::InProcessTokenVerifier;
 pub use launch_context_minter::LaunchContextMinter;
 pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,

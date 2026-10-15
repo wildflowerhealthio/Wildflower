@@ -1,99 +1,139 @@
-//! Bridge between our JWKS-URL config and the
+//! HFS's bearer auth over the host's access-token verifier: the
+//! [`AccessTokenVerifier`] port the host fills in process, the provider that
+//! turns a verified token into HFS's [`Principal`], and the
 //! `(AuthConfig, AuthMiddlewareState)` pair HFS's
 //! [`helios_rest::create_app_with_auth`] expects.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use helios_audit::{sinks::NullSink, AuditSink, ExclusionFilter};
 use helios_auth::error::AuthError;
-use helios_auth::{
-    AuthConfig, AuthProvider, JwksBearerAuthProvider, JwksCache, Principal, SessionStore,
-};
+use helios_auth::{AuthConfig, AuthProvider, Principal, ScopeSet, SessionStore};
 use helios_rest::AuthMiddlewareState;
-use wildflowerhealthio_token_revocation::RevocationStore;
 
-/// The FHIR-side revocation enforcement point: wraps helios's JWKS validator
-/// and rejects a validated token iff its `jti` is on the shared denylist. It
-/// never stores, so a multi-use authorization server bearer passes on every call. Only the
-/// per-`jti` half — `Principal` has no `iat`, so the epoch half stays with
-/// the authorization server's `BearerGate`, which runs first. See "Token revocation on the
-/// FHIR path" in `docs/Capability Statement.md`.
-struct RevocationCheckingProvider<P> {
-    inner: P,
-    store: RevocationStore,
+/// What a verified access token says about its bearer, as far as HFS reads
+/// it: who the token was issued to, by whom, until when, and with which
+/// scopes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedAccessToken {
+    /// The client the token was issued to (`sub`).
+    pub subject: String,
+    /// The origin that issued it (`iss`).
+    pub issuer: String,
+    /// Its id (`jti`), when it carries one.
+    pub jti: Option<String>,
+    /// When it expires (`exp`).
+    pub expires_at: DateTime<Utc>,
+    /// Its space-separated SMART scopes (`scope`), when it carries any.
+    pub scope: Option<String>,
+}
+
+/// Why an access token wasn't verified.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccessTokenVerifyError {
+    /// The token doesn't pass: a bad signature, expired, naming another
+    /// server, revoked. The bearer is unauthenticated.
+    Rejected(String),
+    /// The verifier couldn't decide, its keys or revocation records being
+    /// unreadable. The request fails rather than admit the token.
+    VerifierFailed(String),
+}
+
+/// Verifies this server's access tokens, in process: signature, expiry,
+/// `iss` and `aud` both the server's origin, and revocation. The host
+/// implements it over its authorization server's own verifier, so HFS
+/// applies exactly the policy the authorization server's gates do.
+pub trait AccessTokenVerifier: Send + Sync + 'static {
+    /// Verify `token`, the bearer's raw JWT.
+    ///
+    /// # Errors
+    ///
+    /// [`AccessTokenVerifyError::Rejected`] for a token that doesn't pass,
+    /// [`AccessTokenVerifyError::VerifierFailed`] when it can't be checked.
+    fn verify(&self, token: &str) -> Result<VerifiedAccessToken, AccessTokenVerifyError>;
+}
+
+/// HFS's bearer provider: hands the bearer to [`AccessTokenVerifier`] and
+/// maps a verified token to HFS's [`Principal`]. A rejected token is an
+/// authentication failure; a verifier that can't decide is an internal error,
+/// so the request is refused, never admitted.
+struct VerifyingBearerProvider {
+    verifier: Arc<dyn AccessTokenVerifier>,
 }
 
 #[async_trait]
-impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
+impl AuthProvider for VerifyingBearerProvider {
     async fn authenticate(&self, authorization_header: &str) -> Result<Principal, AuthError> {
-        let principal = self.inner.authenticate(authorization_header).await?;
-        let Some(jti) = principal.jti.as_deref() else {
-            return Ok(principal);
-        };
-        // A store read failure fails closed — an internal error rejects the
-        // request rather than admit a possibly revoked token.
-        let revoked = self
-            .store
-            .is_revoked_by_jti(jti)
-            .map_err(|e| AuthError::InternalError(format!("revocation store read failed: {e}")))?;
-        if revoked {
-            return Err(AuthError::ValidationError("token revoked".to_string()));
-        }
-        Ok(principal)
+        let token = authorization_header
+            .strip_prefix("Bearer ")
+            .filter(|token| !token.is_empty())
+            .ok_or_else(|| {
+                AuthError::InvalidTokenFormat(
+                    "Authorization header must be `Bearer <token>`".to_owned(),
+                )
+            })?;
+        let verified = self.verifier.verify(token).map_err(|error| match error {
+            AccessTokenVerifyError::Rejected(reason) => AuthError::ValidationError(reason),
+            AccessTokenVerifyError::VerifierFailed(error) => AuthError::InternalError(error),
+        })?;
+        Ok(principal(verified))
     }
 
     fn name(&self) -> &str {
-        self.inner.name()
+        "access-token-verifier"
     }
 }
 
-/// Translate an optional JWKS URL into the `(AuthConfig, auth_state)`
-/// pair HFS's `create_app_with_auth` expects. `None` leaves HFS auth off.
+/// HFS's principal for a verified token. HFS reads its subject, issuer and
+/// scopes; it carries no tenant (FHIR is served at a fixed root) and no other
+/// claims, which HFS doesn't read.
+fn principal(verified: VerifiedAccessToken) -> Principal {
+    Principal {
+        subject: verified.subject,
+        issuer: verified.issuer,
+        tenant_id: None,
+        scopes: verified
+            .scope
+            .as_deref()
+            .map_or_else(ScopeSet::empty, ScopeSet::parse),
+        jti: verified.jti,
+        expires_at: verified.expires_at,
+        custom_claims: serde_json::Map::new(),
+    }
+}
+
+/// Translate the optional verifier into the `(AuthConfig, auth_state)` pair
+/// HFS's `create_app_with_auth` expects. `None` leaves HFS auth off.
 ///
-/// `expected_issuer` and `expected_audience` are both `server_origin`, the bare
-/// origin every token this server mints names as its `iss` and `aud`: HFS
-/// checks both (helios-auth matches `aud` exactly when set), so a token another
-/// server minted is refused here as well as at the authorization server's gate. See
-/// `docs/Origins/Explanation.md`.
-/// The JWKS cache is *not* initial-fetched: the authorization server's HTTP listener isn't
-/// bound yet when this runs, so a blocking fetch would deadlock. HFS's
-/// `JwksCache` supports lazy fetching — the first request that needs a signing
-/// key triggers a fetch then.
-///
-/// `revocation_store` is the shared denylist the host wires into both this and
-/// the authorization server; the returned provider consults it per validated token (see
-/// [`RevocationCheckingProvider`]).
+/// `server_origin` is the bare origin every token this server mints names as
+/// its `iss` and `aud`; HFS's config records it, and the verifier checks it.
+/// See `docs/Origins/Explanation.md`.
 ///
 /// `ui_sessions` is the web UI's session store: HFS treats a same-site request
 /// carrying its session cookie and no `Authorization` as the session's bearer.
 pub(crate) fn build_auth(
-    jwks_url: Option<&str>,
-    revocation_store: RevocationStore,
+    verifier: Option<Arc<dyn AccessTokenVerifier>>,
     server_origin: &str,
     ui_sessions: Arc<SessionStore>,
 ) -> (AuthConfig, Option<Arc<AuthMiddlewareState>>) {
-    let Some(jwks_url) = jwks_url else {
+    let Some(verifier) = verifier else {
         return (AuthConfig::default(), None);
     };
 
+    // No `jwks_url`: HFS's own JWKS validator isn't used, the provider below
+    // is.
     let config = AuthConfig {
         enabled: true,
-        jwks_url: Some(jwks_url.to_string()),
         expected_issuer: Some(server_origin.to_string()),
         expected_audience: Some(server_origin.to_string()),
         ..AuthConfig::default()
     };
 
-    let jwks_cache = Arc::new(JwksCache::new(jwks_url, config.jwks_min_refresh_interval));
-    let provider = RevocationCheckingProvider {
-        inner: JwksBearerAuthProvider::new(jwks_cache, &config),
-        store: revocation_store,
-    };
     let audit_sink: Arc<dyn AuditSink> = Arc::new(NullSink);
-
     let state = Arc::new(AuthMiddlewareState {
-        provider: Arc::new(provider),
+        provider: Arc::new(VerifyingBearerProvider { verifier }),
         config: Arc::new(config.clone()),
         audit_sink,
         audit_source_observer: "fhir-r4-rust".to_string(),
@@ -108,229 +148,146 @@ pub(crate) fn build_auth(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_auth, RevocationCheckingProvider};
-    use async_trait::async_trait;
-    use axum::routing::get;
-    use axum::{Json, Router};
+    use std::sync::{Arc, Mutex};
+
     use helios_auth::error::AuthError;
-    use helios_auth::{AuthProvider, Principal, ScopeSet};
-    use wildflowerhealthio_authorization_server::crypto_util::public_jwk::PublicJwk;
-    use wildflowerhealthio_authorization_server::domain::signing_key::SigningKey;
-    use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
-    use wildflowerhealthio_token_revocation::RevocationStore;
+    use helios_auth::AuthProvider;
+
+    use super::{build_auth, AccessTokenVerifier, AccessTokenVerifyError, VerifiedAccessToken};
 
     /// This server's origin.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
-    /// Another server's origin.
-    const OTHER_ORIGIN: &str = "https://lab.relay.example";
 
     /// The web UI's session store, for this server.
-    fn sessions() -> std::sync::Arc<helios_auth::SessionStore> {
+    fn sessions() -> Arc<helios_auth::SessionStore> {
         let origin = url::Url::parse(SERVER_ORIGIN).expect("origin");
-        let loopback = url::Url::parse("http://127.0.0.1:8080").expect("loopback");
-        std::sync::Arc::new(helios_auth::SessionStore::new(crate::ui_login_config(
+        Arc::new(helios_auth::SessionStore::new(crate::ui_login_config(
             &origin,
-            &loopback,
             "fhir-ui-client",
         )))
     }
 
-    fn store() -> RevocationStore {
-        RevocationStore::open_in_memory().expect("open in-memory revocation store")
+    /// A verifier that answers every token the same way, recording the tokens
+    /// it was handed.
+    struct FixedVerifier {
+        answer: Result<VerifiedAccessToken, AccessTokenVerifyError>,
+        tokens: Mutex<Vec<String>>,
     }
 
-    /// Stands in for helios's JWKS validator: accepts any header and hands back
-    /// a principal carrying the configured `jti`.
-    struct StubProvider {
-        jti: Option<String>,
+    impl AccessTokenVerifier for FixedVerifier {
+        fn verify(&self, token: &str) -> Result<VerifiedAccessToken, AccessTokenVerifyError> {
+            self.tokens.lock().expect("tokens").push(token.to_owned());
+            self.answer.clone()
+        }
     }
 
-    #[async_trait]
-    impl AuthProvider for StubProvider {
-        async fn authenticate(&self, _authorization_header: &str) -> Result<Principal, AuthError> {
-            Ok(Principal {
-                subject: "patient-1".to_string(),
-                issuer: SERVER_ORIGIN.to_string(),
-                tenant_id: None,
-                scopes: ScopeSet::empty(),
-                jti: self.jti.clone(),
-                expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
-                custom_claims: serde_json::Map::new(),
-            })
-        }
+    fn fixed(answer: Result<VerifiedAccessToken, AccessTokenVerifyError>) -> Arc<FixedVerifier> {
+        Arc::new(FixedVerifier {
+            answer,
+            tokens: Mutex::new(Vec::new()),
+        })
+    }
 
-        fn name(&self) -> &str {
-            "stub"
+    fn verified() -> VerifiedAccessToken {
+        VerifiedAccessToken {
+            subject: "app".to_owned(),
+            issuer: SERVER_ORIGIN.to_owned(),
+            jti: Some("jti-1".to_owned()),
+            expires_at: chrono::DateTime::from_timestamp(2_000_000_000, 0).expect("a time"),
+            scope: Some("patient/*.rs openid".to_owned()),
         }
+    }
+
+    /// HFS's provider as `build_auth` configures it, over `verifier`.
+    fn provider_over(verifier: Arc<FixedVerifier>) -> Arc<dyn AuthProvider> {
+        let (_config, state) = build_auth(Some(verifier), SERVER_ORIGIN, sessions());
+        state.expect("auth is on with a verifier").provider.clone()
     }
 
     #[test]
-    fn jwks_url_none_leaves_hfs_auth_off() {
-        let (config, state) = build_auth(None, store(), SERVER_ORIGIN, sessions());
+    fn no_verifier_leaves_hfs_auth_off() {
+        let (config, state) = build_auth(None, SERVER_ORIGIN, sessions());
         assert!(
             !config.enabled,
-            "HFS auth must be disabled when no JWKS URL is configured"
+            "HFS auth must be disabled without a verifier"
         );
-        assert!(
-            state.is_none(),
-            "no AuthMiddlewareState should be built without a JWKS URL"
-        );
+        assert!(state.is_none());
     }
 
     #[test]
-    fn jwks_url_some_enables_auth_pinned_to_the_server_origin() {
-        let url = "http://127.0.0.1:8080/.well-known/jwks.json";
-        let (config, state) = build_auth(Some(url), store(), SERVER_ORIGIN, sessions());
+    fn a_verifier_enables_auth_pinned_to_the_server_origin() {
+        let (config, state) = build_auth(Some(fixed(Ok(verified()))), SERVER_ORIGIN, sessions());
 
         assert!(config.enabled);
-        assert_eq!(config.jwks_url.as_deref(), Some(url));
+        assert_eq!(config.jwks_url, None, "HFS fetches no JWKS");
         // `iss` = `aud` = the server's origin; see `docs/Origins/Explanation.md`.
         assert_eq!(config.expected_issuer.as_deref(), Some(SERVER_ORIGIN));
         assert_eq!(config.expected_audience.as_deref(), Some(SERVER_ORIGIN));
-        let state = state.expect("auth state");
         assert!(
-            state.sessions.is_some(),
+            state.expect("auth state").sessions.is_some(),
             "HFS must take a signed-in UI session as its bearer"
         );
     }
 
-    /// HFS's own validator as `build_auth` configures it for [`SERVER_ORIGIN`],
-    /// fetching its keys from a local JWKS endpoint that publishes `key`.
-    async fn hfs_provider_trusting(key: &SigningKey) -> std::sync::Arc<dyn AuthProvider> {
-        let jwks = serde_json::json!({ "keys": [PublicJwk::from(key)] });
-        let router = Router::new().route(
-            "/.well-known/jwks.json",
-            get(move || {
-                let jwks = jwks.clone();
-                async move { Json(jwks) }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind a JWKS listener");
-        let jwks_url = format!(
-            "http://{}/.well-known/jwks.json",
-            listener.local_addr().expect("JWKS listener address")
-        );
-        tokio::spawn(async move { axum::serve(listener, router).await });
-        let (_config, state) = build_auth(Some(&jwks_url), store(), SERVER_ORIGIN, sessions());
-        state.expect("auth is on with a JWKS URL").provider.clone()
-    }
-
-    /// An authorization server token signed by `key` naming `issuer` and `audience`.
-    fn bearer(key: &SigningKey, issuer: &str, audience: &str) -> String {
-        let token = mint_access_token(
-            key,
-            &NewJwtArgs {
-                client_id: "app",
-                scopes: &["patient/*.rs".to_owned()],
-                ttl: chrono::Duration::minutes(5),
-                issuer,
-                audience: Some(audience),
-                patient: None,
-            },
-        )
-        .expect("mint");
-        format!("Bearer {token}")
-    }
-
-    /// HFS accepts a token whose `iss` and `aud` are this server's origin, and
-    /// refuses one another server minted — even signed with a key this server
-    /// trusts — and one naming another server as only its issuer or audience.
+    /// The bearer's token goes to the verifier, and a verified token becomes
+    /// a principal with its subject, issuer, `jti`, expiry and scopes.
     #[tokio::test]
-    async fn hfs_accepts_only_tokens_naming_this_server_as_iss_and_aud() {
-        let key = SigningKey::generate().expect("generate a signing key");
-        let provider = hfs_provider_trusting(&key).await;
-
-        let principal = provider
-            .authenticate(&bearer(&key, SERVER_ORIGIN, SERVER_ORIGIN))
+    async fn a_verified_token_becomes_its_principal() {
+        let verifier = fixed(Ok(verified()));
+        let principal = provider_over(verifier.clone())
+            .authenticate("Bearer the-token")
             .await
-            .expect("a token for this server is accepted");
-        assert_eq!(principal.issuer, SERVER_ORIGIN);
+            .expect("a verified token is accepted");
 
-        for (issuer, audience) in [
-            (OTHER_ORIGIN, OTHER_ORIGIN),
-            (OTHER_ORIGIN, SERVER_ORIGIN),
-            (SERVER_ORIGIN, OTHER_ORIGIN),
-        ] {
+        assert_eq!(*verifier.tokens.lock().expect("tokens"), ["the-token"]);
+        assert_eq!(principal.subject, "app");
+        assert_eq!(principal.issuer, SERVER_ORIGIN);
+        assert_eq!(principal.jti.as_deref(), Some("jti-1"));
+        assert_eq!(principal.expires_at, verified().expires_at);
+        assert_eq!(principal.scopes.raw(), ["patient/*.rs", "openid"]);
+        assert_eq!(principal.tenant_id, None);
+        assert!(principal.custom_claims.is_empty());
+    }
+
+    /// A rejected token is an authentication failure.
+    #[tokio::test]
+    async fn a_rejected_token_is_unauthenticated() {
+        let rejected = fixed(Err(AccessTokenVerifyError::Rejected(
+            "token revoked".to_owned(),
+        )));
+        assert!(matches!(
+            provider_over(rejected).authenticate("Bearer t").await,
+            Err(AuthError::ValidationError(reason)) if reason == "token revoked"
+        ));
+    }
+
+    /// A verifier that can't decide refuses the request as an internal error,
+    /// never admitting the token.
+    #[tokio::test]
+    async fn a_verifier_failure_fails_closed() {
+        let failing = fixed(Err(AccessTokenVerifyError::VerifierFailed(
+            "key store unavailable".to_owned(),
+        )));
+        assert!(matches!(
+            provider_over(failing).authenticate("Bearer t").await,
+            Err(AuthError::InternalError(_))
+        ));
+    }
+
+    /// Anything but a non-empty `Bearer` token is refused before the verifier.
+    #[tokio::test]
+    async fn a_header_without_a_bearer_token_is_refused_unverified() {
+        let verifier = fixed(Ok(verified()));
+        let provider = provider_over(verifier.clone());
+        for header in ["Basic abc", "Bearer ", ""] {
             assert!(
                 matches!(
-                    provider.authenticate(&bearer(&key, issuer, audience)).await,
-                    Err(AuthError::ValidationError(_))
+                    provider.authenticate(header).await,
+                    Err(AuthError::InvalidTokenFormat(_))
                 ),
-                "iss {issuer}, aud {audience} must be refused"
+                "{header:?}"
             );
         }
-    }
-
-    /// The HFS-side multi-use guard: a live `jti` passes on *every* call (the
-    /// provider never stores, so it doesn't turn a multi-use bearer single-use),
-    /// and a revoked `jti` is rejected.
-    #[tokio::test]
-    async fn revocation_provider_is_multi_use_and_denylist_aware() {
-        let store = store();
-        let provider = RevocationCheckingProvider {
-            inner: StubProvider {
-                jti: Some("live-jti".to_string()),
-            },
-            store: store.clone(),
-        };
-
-        // A live jti is admitted on repeated calls — NOT single-use.
-        for _ in 0..3 {
-            let principal = provider
-                .authenticate("Bearer t")
-                .await
-                .expect("a live token must pass on every FHIR request");
-            assert_eq!(principal.jti.as_deref(), Some("live-jti"));
-        }
-        // Once revoked, the same jti is rejected.
-        let exp = chrono::Utc::now() + chrono::Duration::hours(1);
-        store.revoke_jti("live-jti", exp, "test").expect("revoke");
-        assert!(
-            provider.authenticate("Bearer t").await.is_err(),
-            "a revoked token must be rejected by the HFS provider"
-        );
-    }
-
-    /// A token without a `jti` has no revocation handle, so the denylist can't
-    /// name it; it passes through (the gate's epoch check still covers it).
-    #[tokio::test]
-    async fn revocation_provider_admits_a_token_without_jti() {
-        let provider = RevocationCheckingProvider {
-            inner: StubProvider { jti: None },
-            store: store(),
-        };
-        let principal = provider
-            .authenticate("Bearer t")
-            .await
-            .expect("a jti-less token is not on any denylist");
-        assert!(principal.jti.is_none());
-    }
-
-    /// A store that can't answer must reject, never admit a possibly revoked
-    /// token.
-    #[tokio::test]
-    async fn revocation_provider_fails_closed_when_the_store_read_fails() {
-        let conn = wildflowerhealthio_persistence::Connection::open_in_memory().expect("open");
-        let store = RevocationStore::new(conn.clone()).expect("migrate");
-        conn.lock()
-            .execute("DROP TABLE revoked_jtis", [])
-            .expect("drop the denylist table");
-        let provider = RevocationCheckingProvider {
-            inner: StubProvider {
-                jti: Some("any-jti".to_string()),
-            },
-            store,
-        };
-
-        let err = provider
-            .authenticate("Bearer t")
-            .await
-            .expect_err("an unreadable store must reject the token");
-        assert!(
-            matches!(err, AuthError::InternalError(_)),
-            "expected InternalError, got {err:?}"
-        );
+        assert!(verifier.tokens.lock().expect("tokens").is_empty());
     }
 }

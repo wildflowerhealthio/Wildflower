@@ -24,7 +24,7 @@ async fn start_device_flow(g: &AuthorizationServer) -> DeviceAuthorization {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/device_authorization")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("forwarded", "host=ruth.relay.example;proto=https"),
@@ -61,7 +61,7 @@ async fn device_consent_request(
     };
     g.router
         .clone()
-        .oneshot(loopback_request(builder, Body::from(body)))
+        .oneshot(build_request(builder, Body::from(body)))
         .await
         .expect("oneshot")
 }
@@ -70,7 +70,7 @@ async fn device_consent_request(
 async fn poll(g: &AuthorizationServer, device_code: &str) -> axum::response::Response {
     g.router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(format!(
@@ -96,7 +96,7 @@ async fn verification_uri_complete_serves_the_device_page_on_the_device_facing_o
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!(
                 "{}?{}",
                 page_url.path(),

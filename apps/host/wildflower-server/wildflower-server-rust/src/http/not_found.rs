@@ -31,9 +31,9 @@ const APP_ENTRY_PATHS: [&str; 1] = ["/home"];
 pub(crate) struct NotFoundConfig {
     /// The hosted launcher the link opens.
     pub(crate) launcher_base: LauncherBase,
-    /// The loopback base URL, the served origin of an unforwarded request (see
+    /// The server's origin, the served origin of an unforwarded request (see
     /// [`served_base_url_for`]).
-    pub(crate) loopback_base_url: Url,
+    pub(crate) server_origin: Url,
 }
 
 /// Wire shape of the JSON `404` for a route no slice serves.
@@ -61,9 +61,8 @@ pub(crate) fn fallback(
 /// browser opening one of its [`APP_ENTRY_PATHS`], else the `404`, as HTML or
 /// JSON per the `Accept` header.
 fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &Uri) -> Response {
-    // Resolved per request, like every other served-origin consumer: over the
-    // tunnel the links must name the public origin, not loopback.
-    let served_origin = served_base_url_for(headers, &config.loopback_base_url)
+    // Resolved per request, like every other served-origin consumer.
+    let served_origin = served_base_url_for(headers, &config.server_origin)
         .map(|served| wildflowerhealthio_shared_structures::origin_string(&served));
     let is_browser_navigation =
         (method == Method::GET || method == Method::HEAD) && accepts_html(headers);
@@ -178,7 +177,7 @@ mod tests {
         NotFoundConfig {
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
                 .expect("valid base"),
-            loopback_base_url: Url::parse("http://127.0.0.1:8080/").expect("valid loopback"),
+            server_origin: Url::parse("https://ruth.relay.example/").expect("valid origin"),
         }
     }
 
@@ -210,7 +209,7 @@ mod tests {
                 "error": "RouteNotFound",
                 "path": "/settings/requests?tab=a",
                 "openInApp": "https://launcher.test/launcher/\
-                    ?server=http%3A%2F%2F127.0.0.1%3A8080\
+                    ?server=https%3A%2F%2Fruth.relay.example\
                     &returnTo=%2Fsettings%2Frequests%3Ftab%3Da",
             })
         );
@@ -233,7 +232,7 @@ mod tests {
             .is_some_and(|v| v.starts_with("text/html")));
         let html = body_text(response).await;
         assert!(html.contains(
-            "href=\"https://launcher.test/launcher/?server=http%3A%2F%2F127.0.0.1%3A8080&amp;returnTo=%2Fsettings%2Frequests\""
+            "href=\"https://launcher.test/launcher/?server=https%3A%2F%2Fruth.relay.example&amp;returnTo=%2Fsettings%2Frequests\""
         ));
     }
 
@@ -297,7 +296,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         assert_eq!(
             location(&response),
-            "https://launcher.test/launcher/home?server=http%3A%2F%2F127.0.0.1%3A8080"
+            "https://launcher.test/launcher/home?server=https%3A%2F%2Fruth.relay.example"
         );
     }
 

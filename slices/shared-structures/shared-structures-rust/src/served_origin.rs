@@ -1,46 +1,37 @@
 //! Forwarding-header provenance — `request_provenance` and the typed
 //! [`served_base_url_for`], the single source of truth for a request's served
-//! base URL (loopback vs. the forwarded public base URL). Consumers —
+//! base URL (the forwarded public base URL, or the caller's when unforwarded).
+//! Consumers —
 //! The authorization server's token/discovery URLs and apps-rust's launch redirect — resolve
 //! through it so they can't drift. See `docs/Origins/Explanation.md` for the
 //! model; this module owns the parsing contract and validation below.
 //!
 //! ## Who writes the header
 //!
-//! The server has two listeners, and the header reaches a handler from one of
-//! two writers:
+//! The server listens only on its tunnel listener, and that listener's front
+//! (`wildflower-server-rust`'s `stamp_tunnel_forwarded`) writes the header on
+//! every request, replacing whatever the visitor sent: `for=` the visitor's
+//! address from the connection's PROXY header (left out when there is none),
+//! `host=` the server's domain once the request's `Host` names it,
+//! `proto=https`. A request with no header is one driven straight into a
+//! router, as the slices' own tests do; it is answered as the base URL the
+//! caller passes (the server's origin).
 //!
-//! - **The tunnel listener's front** (`wildflower-server-rust`'s
-//!   `stamp_tunnel_forwarded`) writes it on every request through the tunnel,
-//!   replacing whatever the visitor sent: `for=` the visitor's address from the
-//!   connection's PROXY header (left out when there is none), `host=` the
-//!   server's domain once the request's `Host` names it, `proto=https`.
-//! - **A trusted front run on this machine** (nginx) relays remote callers to
-//!   the loopback listener, as below.
+//! ## The element read
 //!
-//! A direct caller on the loopback listener sends none.
-//!
-//! ## The nginx contract
-//!
-//! The trusted front (nginx) appends its hop to any inbound `Forwarded` chain
-//! and tacks the public `host`/`proto` onto that trailing element:
-//!
-//! ```nginx
-//! proxy_set_header Forwarded "$proxy_add_forwarded;host=$http_host;proto=$scheme";
-//! ```
-//!
-//! `$proxy_add_forwarded` expands to the (nginx-validated) inbound chain plus a
-//! fresh `for=<remote_addr>` element for this hop, and the `;host=…;proto=…`
-//! lands on that element. So the host and scheme we trust are always in the
-//! **last** forwarded-element — any client-supplied elements sit to its left.
-//! We read `host` and `proto` from that last element and ignore the rest of the
-//! chain (trust comes from the listener the request arrived on, not from the
+//! The header is read as RFC 7239 writes it, the shape a proxy that appends
+//! its hop to any inbound chain produces (nginx's
+//! `proxy_set_header Forwarded "$proxy_add_forwarded;host=$http_host;proto=$scheme"`):
+//! the host and scheme we trust are always in the **last**
+//! forwarded-element, and any client-supplied elements sit to its left. We read
+//! `host` and `proto` from that last element and ignore the rest of the chain
+//! (trust comes from the listener the request arrived on, not from the
 //! header).
 //! The element's `for` is read too, by [`forwarded_client_address`], as the
 //! visitor's address the request log records; no trust derives from it. Both
 //! `host` and `proto` are load-bearing: a `Forwarded` header
 //! missing (or carrying an invalid) `host` **or** `proto` is rejected (the
-//! caller `500`s), never defaulted — the trusted front always emits both.
+//! caller `500`s), never defaulted — the front always emits both.
 //!
 //! ## Validation
 //!
@@ -112,14 +103,14 @@ pub fn request_provenance(headers: &HeaderMap) -> Option<RequestProvenance> {
 
 /// The base URL a given request expects its answer to come from. Forwarded
 /// requests resolve to the `{proto}://{host}` from the `Forwarded` header;
-/// loopback requests (**no** `Forwarded` header) fall back to
-/// `loopback_base_url`. A forwarded request whose header fails validation
-/// returns `None` (the caller `500`s), never a loopback fallback — see
-/// [`request_provenance`].
-pub fn served_base_url_for(headers: &HeaderMap, loopback_base_url: &Url) -> Option<Url> {
+/// requests with **no** `Forwarded` header fall back to
+/// `unforwarded_base_url`, which the server passes as its own origin. A
+/// forwarded request whose header fails validation returns `None` (the caller
+/// `500`s), never the fallback — see [`request_provenance`].
+pub fn served_base_url_for(headers: &HeaderMap, unforwarded_base_url: &Url) -> Option<Url> {
     match request_provenance(headers)? {
         RequestProvenance::Forwarded { base_url } => Some(base_url),
-        RequestProvenance::Loopback => Some(loopback_base_url.clone()),
+        RequestProvenance::Loopback => Some(unforwarded_base_url.clone()),
     }
 }
 
@@ -231,7 +222,7 @@ mod tests {
     use super::*;
     use axum::http::{HeaderName, HeaderValue};
 
-    fn loopback() -> Url {
+    fn unforwarded() -> Url {
         url("http://127.0.0.1:5173")
     }
 
@@ -261,7 +252,7 @@ mod tests {
         // nginx's exact `for=$remote_addr;proto=$scheme;host=$host` order.
         let h = forwarded("for=192.0.2.1;proto=http;host=emr.example.com");
         assert_eq!(
-            served_base_url_for(&h, &loopback()),
+            served_base_url_for(&h, &unforwarded()),
             Some(url("http://emr.example.com")),
         );
     }
@@ -269,14 +260,14 @@ mod tests {
     #[test]
     fn forwarded_origin_fails_without_a_proto_param() {
         let h = forwarded("for=192.0.2.1;host=emr.example.com");
-        assert_eq!(served_base_url_for(&h, &loopback()), None,);
+        assert_eq!(served_base_url_for(&h, &unforwarded()), None,);
     }
 
     #[test]
-    fn no_forwarded_header_falls_back_to_the_loopback_base_url() {
+    fn no_forwarded_header_falls_back_to_the_unforwarded_base_url() {
         assert_eq!(
-            served_base_url_for(&HeaderMap::new(), &loopback()),
-            Some(loopback()),
+            served_base_url_for(&HeaderMap::new(), &unforwarded()),
+            Some(unforwarded()),
         );
     }
 
@@ -285,7 +276,7 @@ mod tests {
         // Present header, no `host` param → forwarded but unresolvable → `None`.
         let h = forwarded("for=192.0.2.1;proto=https");
         assert_eq!(request_provenance(&h), None);
-        assert_eq!(served_base_url_for(&h, &loopback()), None);
+        assert_eq!(served_base_url_for(&h, &unforwarded()), None);
         assert!(is_forwarded(&h));
     }
 
@@ -309,7 +300,7 @@ mod tests {
         // RFC 7239 parameter names are case-insensitive.
         let h = forwarded("Proto=https;Host=demo.example.com");
         assert_eq!(
-            served_base_url_for(&h, &loopback()),
+            served_base_url_for(&h, &unforwarded()),
             Some(url("https://demo.example.com")),
         );
     }
@@ -323,7 +314,7 @@ mod tests {
             "for=203.0.113.9;host=spoof.example.com, for=192.0.2.1;host=real.example.com;proto=https",
         );
         assert_eq!(
-            served_base_url_for(&h, &loopback()),
+            served_base_url_for(&h, &unforwarded()),
             Some(url("https://real.example.com")),
         );
     }
@@ -336,7 +327,7 @@ mod tests {
         // not a missing param. The header is present, so `is_forwarded`.
         let h = forwarded("host=:8080;proto=https");
         assert_eq!(request_provenance(&h), None);
-        assert_eq!(served_base_url_for(&h, &loopback()), None);
+        assert_eq!(served_base_url_for(&h, &unforwarded()), None);
         assert!(is_forwarded(&h));
     }
 
@@ -370,7 +361,7 @@ mod tests {
         // Empty `host` would render `Location: https://` (no authority) → rejected.
         let h = forwarded("proto=https;host=");
         assert_eq!(request_provenance(&h), None);
-        assert_eq!(served_base_url_for(&h, &loopback()), None);
+        assert_eq!(served_base_url_for(&h, &unforwarded()), None);
         assert!(is_forwarded(&h));
     }
 
@@ -414,7 +405,7 @@ mod tests {
                 None,
                 "expected rejection (not loopback) for {bad:?}",
             );
-            assert_eq!(served_base_url_for(&h, &loopback()), None);
+            assert_eq!(served_base_url_for(&h, &unforwarded()), None);
             assert!(
                 is_forwarded(&h),
                 "still forwarded (header present) for {bad:?}"
@@ -491,7 +482,7 @@ mod tests {
         // never defaulted to https and never rescued by a later valid `proto`.
         // Keeps `javascript:`/`file:` out of a `Location` the browser follows.
         let h = forwarded("proto=javascript;host=demo.example.com;proto=https");
-        assert_eq!(served_base_url_for(&h, &loopback()), None);
+        assert_eq!(served_base_url_for(&h, &unforwarded()), None);
     }
 
     #[test]
@@ -501,17 +492,17 @@ mod tests {
         // quoted (the RFC-compliant form, which we unquote).
         let with_port = forwarded("for=192.0.2.1;host=demo.example.com:8443;proto=https");
         assert_eq!(
-            served_base_url_for(&with_port, &loopback()),
+            served_base_url_for(&with_port, &unforwarded()),
             Some(url("https://demo.example.com:8443")),
         );
         let ipv6_unquoted = forwarded("host=[::1]:8080;proto=http");
         assert_eq!(
-            served_base_url_for(&ipv6_unquoted, &loopback()),
+            served_base_url_for(&ipv6_unquoted, &unforwarded()),
             Some(url("http://[::1]:8080")),
         );
         let ipv6_quoted = forwarded("host=\"[::1]:8080\";proto=http");
         assert_eq!(
-            served_base_url_for(&ipv6_quoted, &loopback()),
+            served_base_url_for(&ipv6_quoted, &unforwarded()),
             Some(url("http://[::1]:8080")),
         );
     }

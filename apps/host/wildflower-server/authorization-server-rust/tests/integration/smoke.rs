@@ -3,7 +3,7 @@ use crate::common::*;
 #[tokio::test]
 async fn jwks_endpoint_returns_seeded_key() {
     let (g, _owner_token, _db) = spin_up();
-    let req = loopback_request(Request::get("/.well-known/jwks.json"), Body::empty());
+    let req = build_request(Request::get("/.well-known/jwks.json"), Body::empty());
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
     let body = body_json(res.into_body()).await;
@@ -71,7 +71,7 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
 #[tokio::test]
 async fn access_grants_without_auth_returns_401() {
     let (g, _owner_token, _db) = spin_up();
-    let req = loopback_request(Request::get("/authorization/grants"), Body::empty());
+    let req = build_request(Request::get("/authorization/grants"), Body::empty());
     let res = g.router.oneshot(req).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
@@ -79,7 +79,7 @@ async fn access_grants_without_auth_returns_401() {
 #[tokio::test]
 async fn access_grants_with_owner_token_returns_empty_list() {
     let (g, owner_token, _db) = spin_up();
-    let req = loopback_request(
+    let req = build_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}")),
@@ -92,13 +92,13 @@ async fn access_grants_with_owner_token_returns_empty_list() {
 }
 
 /// An Owner token authenticates on a FORWARDED (tunnel-origin) request
-/// too, where the served origin is the tunnel public host, not loopback: its
+/// too, where the served origin is the forwarded host, not the server's: its
 /// `iss` and `aud` are the server's origin, checked against the server's
 /// configuration rather than the request.
 #[tokio::test]
 async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
     let (g, owner_token, _db) = spin_up();
-    let req = loopback_request(
+    let req = build_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header(
@@ -112,8 +112,8 @@ async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
     assert_eq!(res.status(), StatusCode::OK);
 }
 
-/// `GET /authorization/grants` with `token`, over loopback or relayed through the
-/// tunnel.
+/// `GET /authorization/grants` with `token`, with no `Forwarded` or relayed
+/// through the tunnel.
 async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: bool) -> StatusCode {
     let mut builder = Request::get("/authorization/grants")
         .header("host", "127.0.0.1")
@@ -121,7 +121,7 @@ async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: b
     if forwarded {
         builder = builder.header("forwarded", "host=ruth.relay.example;proto=https");
     }
-    let req = loopback_request(builder, Body::empty());
+    let req = build_request(builder, Body::empty());
     g.router
         .clone()
         .oneshot(req)
@@ -131,9 +131,9 @@ async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: b
 }
 
 /// A token minted for this server is accepted whichever origin the request was
-/// served on: over loopback and relayed through the tunnel alike.
+/// served on: with no `Forwarded` and relayed through the tunnel alike.
 #[tokio::test]
-async fn a_token_for_this_server_passes_over_loopback_and_the_tunnel() {
+async fn a_token_for_this_server_passes_with_and_without_a_forwarded_header() {
     let (g, _owner_token, db) = spin_up();
     let owner_scopes: Vec<String> = wildflowerhealthio_authorization_server::owner_scopes();
     let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
@@ -178,7 +178,7 @@ async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
     let (g, owner_token, _db) = spin_up();
-    let req = loopback_request(
+    let req = build_request(
         Request::get("/authorization/grants/nope")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}")),

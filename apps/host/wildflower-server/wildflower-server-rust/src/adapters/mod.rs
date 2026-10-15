@@ -3,6 +3,8 @@
 //! here rather than in either slice. Mirrors `authorization-server-rust`'s `adapters/`.
 //! The server's own certificate, over rustls-acme, is here too.
 //!
+//! - [`access_token_verifier`] — fhir-r4's `AccessTokenVerifier`, from the
+//!   authorization server's token verifier.
 //! - [`acme_certificate`] — the tunnel listener's device certificate, ordered
 //!   from an ACME CA and renewed by rustls-acme, and the state a run publishes
 //!   and a stopped server's cache holds.
@@ -15,6 +17,7 @@
 //! - [`launch_context_minter`] — apps' `LaunchContextMinter`, from the authorization server's
 //!   launch contexts.
 
+pub(crate) mod access_token_verifier;
 pub(crate) mod acme_certificate;
 pub(crate) mod app_launch_scopes;
 pub(crate) mod certificate_history;

@@ -542,7 +542,7 @@ doesn't sign the browser out. One session is revoked by its token's `jti`;
 every Owner browser is signed out by revoking the `wildflower-owner-browser`
 subject. A request whose cookie holds an expired or revoked token is served as
 if the cookie weren't sent, and the response clears it. The cookie needs
-`https`, so it works on `https://<domain>` and not on the loopback listener.
+`https`, as the server's origin, `https://<domain>`, is.
 `/oauth/authorize` reads the cookie too: a parked request from an Owner
 browser goes to the [consent card](#consent-card) rather than the
 [wait page](#wait-page).

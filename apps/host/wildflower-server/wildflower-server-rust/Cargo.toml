@@ -6,7 +6,7 @@ publish.workspace = true
 
 # The Wildflower server: `serve` composes every server slice (the authorization server, FHIR R4,
 # OHIF, tunnel, request log, apps, databases) into the API and serves
-# it on the loopback port and the tunnel listener, over TLS with a certificate
+# it on the tunnel listener, its only listener, over TLS with a certificate
 # it orders itself, until its shutdown token is cancelled, with its `/health` and the reachability monitor that reads it
 # through the public origin. No `tauri` dependency —
 # the Tauri host hands in its native adapters as trait objects — so it compiles
@@ -28,13 +28,12 @@ tower-http.workspace = true
 # fhir-r4-rust and the middleware that presents a session's bearer to the gate.
 # Exact-pinned with the other HFS crates (see fhir-r4-rust's Cargo.toml).
 helios-auth = "=0.2.4"
-# `net` binds the loopback listener; `sync` carries the host's
-# pending-consent, server-health and certificate `watch` channels and the
-# tunnel's visitor streams; `time` and `macros` pace and bound the reachability
+# `sync` carries the host's pending-consent, server-health and certificate
+# `watch` channels and the tunnel's visitor streams; `time` and `macros` pace and bound the reachability
 # monitor's probes and the `/health` checks, wait for a certificate's renewal
 # and expiry, and bound a tunnel connection's PROXY header, which `io-util`
 # reads.
-tokio = { workspace = true, features = ["net", "rt", "sync", "time", "macros", "io-util"] }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros", "io-util"] }
 # The PROXY protocol v2 header ahead of a tunnel connection (see
 # `src/http/tunnel_listener/proxy_header.rs`).
 ppp.workspace = true
@@ -69,7 +68,7 @@ pem = "4"
 # The certificate history file (see `src/adapters/certificate_history.rs`).
 serde_json.workspace = true
 tracing = "0.1"
-# Typed loopback base URL handed to the slices' configs and the 404 fallback.
+# The server's typed origin, handed to the slices' configs and the 404 fallback.
 url = "2"
 # The reachability monitor's `/health` probe. `rustls-tls` (no openssl) matches
 # the project's openssl avoidance; `json` decodes the health report. reqwest is already
@@ -117,9 +116,13 @@ wildflowerhealthio-wildflower-server = { path = ".", features = ["test-support"]
 wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust", features = [
   "proxy-header",
 ] }
-# The loopback port `tests/serve.rs`'s server binds, clear of other tests'
-# sockets.
-wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust" }
+# `tests/serve.rs`'s HTTP/1.1 client, over a TLS stream into the tunnel
+# listener. Already in the tree via axum and reqwest.
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http = "1"
+http-body-util.workspace = true
+bytes = "1"
 # A throwaway data root for the `serve` lifecycle test.
 tempfile = "3"
 # Reads the FHIR web UI's settings back out of the health data's sqlite file.

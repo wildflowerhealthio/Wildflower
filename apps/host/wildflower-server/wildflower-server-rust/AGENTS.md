@@ -1,7 +1,7 @@
 # AGENTS.md — apps/host/wildflower-server/wildflower-server-rust
 
-The **Wildflower server**: the API the Tauri host runs, served on a loopback
-port and on the tunnel. Part of the host app, `apps/host/`, in the
+The **Wildflower server**: the API the Tauri host runs, served only on the
+tunnel, at `https://<domain>`. Part of the host app, `apps/host/`, in the
 [`wildflower-server/`](../AGENTS.md) group beside the server slices' crates
 only it composes. Rust-only, no `-core`.
 
@@ -10,41 +10,34 @@ only it composes. Rust-only, no `-core`.
 - **`wildflower-server-rust`** — `set_up(config, host, observers)` opens the
   host's databases, sets up every server slice (the authorization server, FHIR R4, OHIF,
   request log, apps, databases), gates them into one inner router, starts the
-  tunnel and the reachability monitor, and binds the loopback port;
-  `WildflowerServer::serve(shutdown)` serves both listeners until `shutdown` is
-  cancelled. It derives the server's public origin from its domain once
+  tunnel and the reachability monitor, and binds no port;
+  `WildflowerServer::serve(shutdown)` serves the tunnel listener until
+  `shutdown` is cancelled. It derives the server's public origin from its domain once
   and hands it to fhir-r4-rust (HFS's `base_url`), apps (every launch's origin) and the
   tunnel front. The root fallback is here too (`http/root_fallback.rs`): a request
   no slice route claims goes to the FHIR API when `fhir-r4-rust`'s
   `is_fhir_r4_route` says it is FHIR's, and gets the unmatched-route `404`
   otherwise.
-  - **Two listeners, two routers.** Each listener serves its own router,
-    built from the one inner router:
-    - The **loopback listener** (the bound loopback port) serves the local
-      clients and a front run on this machine. Its router adds the
-      loopback-peer gate, CORS and the forwarded-request report. A request
-      with no `Forwarded` is a direct-local caller and presents its own bearer
-      like any other; one a front relayed carries the front's `Forwarded`.
-    - The **tunnel listener** serves the tunnel. The tunnel has no route on
-      the server and binds no port: its rathole client hands each visitor's
-      stream over in process, on a channel `set_up` creates. Each stream runs
-      its opening handshake on a task of its own
-      (`handshake_tunnel_connection`), at most 64 at once, the rest waiting on
-      the channel: its PROXY protocol v2 header, when it opens with the whole
-      signature, is read for the visitor's address, then its TLS is accepted,
-      both under one 5 s timeout. A
-      malformed or late header, a failed or late handshake, or an SNI naming
-      another host closes the connection; a TLS-ALPN-01 validation handshake
-      (ALPN `acme-tls/1`) is answered and closed. The tunnel router adds the forwarded-request report, the
-      tunnel front and, outermost so even a `421` is readable cross-origin,
-      CORS, and never the loopback-peer gate. The front drops any inbound `Forwarded`, answers
-      `421` (unreported) unless every host the request names (each `Host`, and
-      the request target's authority) is the server's domain, and writes
-      `Forwarded: for=<visitor>;host="<domain>";proto=https` (no `for`
-      without a PROXY address), so every served-origin reader treats the
-      request as forwarded, at the public origin. `WildflowerServer` holds
-      the tunnel's daemon, so it dials for exactly as long as the server
-      serves.
+  - **One listener.** The **tunnel listener** is the server's only listener,
+    so while the relay can't be reached nothing can reach the server, in
+    development too. The tunnel has no route on the server and binds no
+    port: its rathole client hands each visitor's stream over in process, on
+    a channel `set_up` creates. Each stream runs its opening handshake on a
+    task of its own (`handshake_tunnel_connection`), at most 64 at once, the
+    rest waiting on the channel: its PROXY protocol v2 header, when it opens
+    with the whole signature, is read for the visitor's address, then its
+    TLS is accepted, both under one 5 s timeout. A malformed or late header,
+    a failed or late handshake, or an SNI naming another host closes the
+    connection; a TLS-ALPN-01 validation handshake (ALPN `acme-tls/1`) is
+    answered and closed. The tunnel router adds the forwarded-request
+    report, the tunnel front and, outermost so even a `421` is readable
+    cross-origin, CORS. The front drops any inbound `Forwarded`, answers
+    `421` (unreported) unless every host the request names (each `Host`, and
+    the request target's authority) is the server's domain, and writes
+    `Forwarded: for=<visitor>;host="<domain>";proto=https` (no `for` without
+    a PROXY address), so every served-origin reader treats the request as
+    forwarded, at the public origin. `WildflowerServer` holds the tunnel's
+    daemon, so it dials for exactly as long as the server serves.
   - **The device certificate** (`adapters/acme_certificate.rs`) is
     the tunnel listener's certificate for the server's domain, from
     rustls-acme over TLS-ALPN-01, the CA reaching the device through the
@@ -222,8 +215,7 @@ only it composes. Rust-only, no `-core`.
   crate follows.
 - [Server Runs Explanation](../../servers/docs/Server%20Runs%20Explanation.md)
   — how the host runs, restarts and watches each server, as a `ServerUnit`.
-- [Origins Explanation](../../../../docs/Origins/Explanation.md) — the two listeners,
-  and loopback vs forwarded served origins, which the 404 and HFS's base URL
-  resolve per request.
+- [Origins Explanation](../../../../docs/Origins/Explanation.md) — the one
+  listener, and the served origin the 404 resolves per request.
 - [Shared Diesel Pool Explanation](../../../../docs/Persistence/Shared%20Diesel%20Pool%20Explanation.md)
   — the pool `set_up` builds and shares across the diesel-backed slices.

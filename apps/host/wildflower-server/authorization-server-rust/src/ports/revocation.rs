@@ -35,13 +35,10 @@ pub(crate) trait Revocation: Send + Sync + 'static {
 /// tested against a stub. Errors are stringified for the same reason as
 /// [`Revocation`]'s.
 ///
-/// This is one of two enforcement points over the shared store. The token
-/// verifier behind the authorization server's bearer gate runs the full check here (the
-/// per-`jti` denylist and the per-subject epoch). `fhir-r4-rust`'s
-/// `RevocationCheckingProvider` re-checks the `jti` denylist alone inside HFS,
-/// because helios's `Principal` carries no `iat`; the gate runs first on every
-/// FHIR request, so the epoch half is still enforced there. Both fail
-/// closed on a store error.
+/// The token verifier runs the full check here (the per-`jti` denylist and the
+/// per-subject epoch), behind the authorization server's gates and, through
+/// [`InProcessTokenVerifier`](crate::InProcessTokenVerifier), HFS's bearer
+/// auth. It fails closed on a store error.
 pub(crate) trait RevocationCheck: Send + Sync + 'static {
     /// Whether the token identified by `jti` (denylisted individually) or
     /// issued to `subject` at `issued_at` (before the subject's revocation

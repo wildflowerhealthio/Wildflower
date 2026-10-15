@@ -11,7 +11,7 @@ use crate::common::*;
 async fn access_grants_list_with_grant_read_scope_returns_200() {
     let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
@@ -28,7 +28,7 @@ async fn access_grants_list_with_wildflower_wildcard_returns_200() {
     // holds the Wildflower wildcard still passes the per-resource gate.
     let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/*.cruds"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
@@ -45,7 +45,7 @@ async fn access_grants_delete_with_only_read_scope_returns_403_missing_delete() 
     // even a non-existent id is a 403, never a 404.
     let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::delete("/authorization/grants/any-id")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
@@ -67,7 +67,7 @@ async fn access_grants_delete_with_grant_delete_scope_passes_the_gate() {
     // missing grant as a 404 — proving the gate admitted the request (not a 403).
     let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.d"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::delete("/authorization/grants/nope")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
@@ -83,7 +83,7 @@ async fn access_revocations_requires_token_delete_scope() {
     let (g, _owner_token, db) = spin_up();
     // A `Grant.r` token can't revoke tokens — 403 naming `wildflower/Token.d`.
     let under_scoped = mint_scoped_token(&db, &["wildflower/Grant.r"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/authorization/revocations")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {under_scoped}"))
@@ -99,7 +99,7 @@ async fn access_revocations_requires_token_delete_scope() {
 
     // A `Token.d` token clears the gate and the subject epoch bump succeeds.
     let authorized = mint_scoped_token(&db, &["wildflower/Token.d"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/authorization/revocations")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {authorized}"))
@@ -116,7 +116,7 @@ async fn access_logout_is_self_service_any_valid_bearer() {
     // logs itself out (303 redirect), because it only needs authN.
     let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["wildflower/Grant.r"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/authorization/logout")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
@@ -134,7 +134,7 @@ async fn access_session_reports_the_callers_own_scopes_without_an_admin_scope() 
     // from a 403, whom a scope gate would lock out of reading their own scopes.
     let (g, _owner_token, db) = spin_up();
     let token = mint_scoped_token(&db, &["patient/Observation.rs", "wildflower/Grant.r"]);
-    let req = loopback_request(
+    let req = build_request(
         Request::get("/authorization/session")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {token}")),
@@ -154,7 +154,7 @@ async fn access_session_without_a_token_is_401_not_an_empty_scope_list() {
     // a 401 — never a 200 with `[]`, which the device-login screen would read as
     // "this session holds nothing" rather than "there is no session".
     let (g, _owner_token, _db) = spin_up();
-    let req = loopback_request(
+    let req = build_request(
         Request::get("/authorization/session").header("host", "127.0.0.1"),
         Body::empty(),
     );

@@ -1,7 +1,6 @@
-//! The forwarded-request report, on both listeners' routers: after each
+//! The forwarded-request report, on the tunnel listener's router: after each
 //! forwarded request (every request through the tunnel, whose `Forwarded` the
-//! tunnel front writes, and each one a front run on this machine relayed to
-//! the loopback listener) report what it was and who made it to the host and
+//! tunnel front writes) report what it was and who made it to the host and
 //! to the request-log slice; a `/health` check goes to the request log only.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
@@ -40,8 +39,8 @@ pub(crate) struct ForwardedRequestSenders {
 }
 
 /// Report a [`ForwardedRequest`] on both of `forwarded_request_senders` once
-/// the response to a forwarded request is ready. A loopback request is not
-/// reported. A forwarded `GET /health` ([`HEALTH_PATH`]) goes to the request
+/// the response to a forwarded request is ready. A request with no
+/// `Forwarded` header is not reported. A forwarded `GET /health` ([`HEALTH_PATH`]) goes to the request
 /// log but not the host: the reachability monitor asks it through the relay at
 /// the start of every run, and a health check is nobody using the server.
 ///
@@ -320,7 +319,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_loopback_request_is_not_reported() {
+    async fn an_unforwarded_request_is_not_reported() {
         let (senders, mut host_rx, mut request_log_rx) = senders(4);
         let request = Request::get("/Patient/123")
             .body(Body::empty())
@@ -334,7 +333,7 @@ mod tests {
             assert_eq!(
                 receiver.try_recv(),
                 Err(mpsc::error::TryRecvError::Empty),
-                "a loopback request must not be reported"
+                "an unforwarded request must not be reported"
             );
         }
     }

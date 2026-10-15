@@ -526,9 +526,8 @@ changing how servers run or what the host notifies about them.
   write a policy.
 - **No cap on running servers.** `set_run_policy` changes only the server it
   names; every other server keeps its policy, so several can want their
-  servers running at once. They all bind the one loopback port, so a second
-  server run fails and `UnitRunner` retries it, backing off to every 5
-  minutes; nothing guards against that.
+  servers running at once. A server binds no port, so they run side by
+  side, each reached through its own tunnel.
 - **A new server runs if nothing else does.** `add_server` gives a new server
   `whileOpen` when no registered server's policy wants it running, and `off`
   otherwise. An `off` policy or an `until` that has passed doesn't.

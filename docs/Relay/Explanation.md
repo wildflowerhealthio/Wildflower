@@ -33,7 +33,7 @@ browser / app ──TLS──► relay :443 ── reads the ClientHello's SNI o
    certificate from Let's Encrypt over TLS-ALPN-01, whose validation
    handshakes arrive through the relay like any other visitor.
 
-The [Origins Explanation](../Origins/Explanation.md#two-listeners) covers the
+The [Origins Explanation](../Origins/Explanation.md#one-listener) covers the
 tunnel listener, and how its tunnel front writes `Forwarded` for the rest of
 the server.
 

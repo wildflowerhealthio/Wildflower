@@ -84,7 +84,7 @@ pub(crate) fn verify_request_claims(
         return Err(Box::new(errors::unauthorized(RequestRefusal::MissingToken)));
     };
     // The token must name the server's origin, whichever origin this request
-    // was served on (loopback or the tunnel). See `docs/Origins/Explanation.md`.
+    // was served on. See `docs/Origins/Explanation.md`.
     LiveTokenVerifier::from_state(state)
         .verify(token)
         .map_err(|e| Box::new(errors::verify_error_response(log_context, e)))

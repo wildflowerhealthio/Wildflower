@@ -76,11 +76,10 @@ pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
     owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
-    require_loopback_peer_middleware, AuthorizationServerAuthMiddleware, AuthorizationServerState,
-    RequireLoopbackPeerMiddleware, OWNER_BROWSER_SESSION_COOKIE,
+    AuthorizationServerAuthMiddleware, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
     OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
-pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter};
+pub use live_bindings::{InProcessTokenVerifier, LaunchContextMinter, SameDeviceSignInCodeMinter};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
@@ -201,6 +200,10 @@ pub struct AuthorizationServer {
     /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
     /// Owner with — for the host, in-process.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
+    /// Verifies access tokens as the authorization server's own gates do —
+    /// for the host's FHIR server, which verifies each bearer through it
+    /// in-process.
+    pub in_process_token_verifier: InProcessTokenVerifier,
 }
 
 /// Build the authorization-server-rust HTTP surface over the host-owned diesel
@@ -226,15 +229,14 @@ pub struct AuthorizationServer {
 ///    SMART App Launch `launch` value through, which `/oauth/authorize` then
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
-///    same-device sign-in code through, which `/oauth/sign-in` then redeems.
+///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
+///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
+///    each bearer through, in-process.
 ///
 /// Every token this server mints carries the server's origin
 /// ([`AuthorizationServerConfig::server_origin`]) as both `iss` and `aud`, and
 /// the bearer gates accept no other. See
 /// `docs/Origins/Explanation.md`.
-///
-/// The whole surface is gated by the loopback middleware — non-loopback
-/// peers receive 403 before any handler runs.
 ///
 /// `revocation_store` is the shared token-revocation store the host builds once
 /// on the shared database and threads into both this setup and fhir-r4-rust's HFS
@@ -262,7 +264,7 @@ pub fn setup_authorization_server(
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
-        loopback_base_url: config.loopback_base_url.clone(),
+        server_base_url: config.server_origin.clone(),
         server_origin: server_origin.clone(),
         wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
@@ -290,6 +292,7 @@ pub fn setup_authorization_server(
     spawn_revocation_purge(revocation_store);
     let router = http::router(state.clone());
     let launch_context_minter = LaunchContextMinter::new(state.store.clone());
+    let in_process_token_verifier = InProcessTokenVerifier::new(&state);
     let same_device_sign_in_code_minter =
         SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
     Ok(AuthorizationServer {
@@ -297,6 +300,7 @@ pub fn setup_authorization_server(
         state,
         launch_context_minter,
         same_device_sign_in_code_minter,
+        in_process_token_verifier,
     })
 }
 
