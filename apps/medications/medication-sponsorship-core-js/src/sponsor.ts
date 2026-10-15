@@ -25,7 +25,7 @@ const SponsoredDrug = Schema.Struct({
   id: Schema.String,
   /** Plain-text brand / trade name, marks stripped (e.g. `"Abilify"`). */
   brandName: Schema.String,
-  /** Generic / ingredient name (e.g. `"aripiprazole"`). May be empty. */
+  /** Plain-text generic / ingredient name (e.g. `"aripiprazole"`). May be empty. */
   genericName: Schema.String,
   /** Provinces where the program covers this drug (expanded; never empty-means-all). */
   provinces: Schema.Array(Province),
