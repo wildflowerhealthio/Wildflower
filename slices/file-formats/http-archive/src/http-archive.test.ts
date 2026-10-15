@@ -227,7 +227,7 @@ const readWritten = Schema.decodeUnknownSync(
               headers: Schema.Array(Schema.Unknown),
               comment: Schema.String,
             }),
-            response: Schema.Struct({ content: Schema.Unknown }),
+            response: Schema.Struct({ content: Schema.Unknown, bodySize: Schema.Number }),
             timings: Schema.Struct({
               send: Schema.Number,
               wait: Schema.Number,
@@ -285,6 +285,14 @@ describe('writing an archive back', () => {
       encoding: 'base64',
     })
     expect(read(write(once)).entries[0]?.body).toEqual(utf8.encode('hi'))
+  })
+
+  test('an absent body is written as an unknown size, not as an empty response', () => {
+    const absent = read(harEntry({ content: { size: 4096, mimeType: 'image/png' } }))
+    expect(readWritten(write(absent)).log.entries[0]?.response.bodySize).toBe(-1)
+
+    const stored = read(harEntry({ content: { size: 2, mimeType: 'text/plain', text: 'hi' } }))
+    expect(readWritten(write(stored)).log.entries[0]?.response.bodySize).toBe(2)
   })
 
   test('what an import did not carry is written as the spec says "not observed", with a reason', () => {

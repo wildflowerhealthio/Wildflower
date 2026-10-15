@@ -7,6 +7,7 @@ import {
   isHttpMethod,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { contentTypeOf } from '@wildflowerhealthio/web-trace-core/capture'
+import { CREATOR_NAME } from './emit.ts'
 import { Har, type HarBody, type HarEntry, NOT_MEASURED } from './har.ts'
 
 /**
@@ -178,7 +179,9 @@ const harEntryOf = (entry: Entry): typeof HarEntry.Type => ({
     },
     redirectURL: '',
     headersSize: NOT_MEASURED,
-    bodySize: entry.body.length,
+    // An absent body's size is unknown, which HAR states as -1; 0 would claim
+    // the response was empty.
+    bodySize: entry.bodyAbsent ? NOT_MEASURED : entry.body.length,
   },
   cache: {},
   timings: {
@@ -212,7 +215,7 @@ const LogFromHar = Schema.transformOrFail(Har, Log, {
     ParseResult.succeed({
       log: {
         version: log.version,
-        creator: { name: 'Wildflower Web Trace', version: '0' },
+        creator: { name: CREATOR_NAME, version: '0' },
         entries: log.entries.map(harEntryOf),
       },
     }),

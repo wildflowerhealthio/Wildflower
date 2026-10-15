@@ -229,6 +229,14 @@ interface EmitHarFromLogOptions {
 const DROPPED_REQUEST_ON_IMPORT_COMMENT =
   'Only the response half was carried through the anonymizer: the URL is the request, and any method, request headers or request body the source archive held were dropped at import. They are absent rather than guessed.'
 
+/**
+ * Why an {@link HttpArchive.Entry} written by {@link emitHarFromLog} has no
+ * body. The log says only that none was carried — not why, nor how large it
+ * was — so this states exactly that, whichever producer wrote the archive.
+ */
+const ABSENT_BODY_COMMENT =
+  'No body was carried for this response, and its size is not known: content.size is 0 and bodySize is -1, the spec’s "not available", rather than a claim that the response was empty.'
+
 const bodyOfEntry = (entry: HttpArchive.Entry): HarBody =>
   entry.bodyAbsent
     ? { _tag: 'HarNoBody' }
@@ -261,15 +269,11 @@ const entryFromArchiveEntry = (entry: HttpArchive.Entry, requestComment: string)
       // The one content fact an entry still holds: its own headers say it.
       mimeType: contentTypeOf(entry.headers),
       body: bodyOfEntry(entry),
-      ...(entry.bodyAbsent
-        ? {
-            comment: `${SKIPPED_BODY_COMMENT} Reason: non-JSON body dropped at the redaction boundary`,
-          }
-        : {}),
+      ...(entry.bodyAbsent ? { comment: ABSENT_BODY_COMMENT } : {}),
     },
     redirectURL: '',
     headersSize: NOT_MEASURED,
-    bodySize: entry.body.length,
+    bodySize: entry.bodyAbsent ? NOT_MEASURED : entry.body.length,
   },
   cache: {},
   timings: { send: NOT_MEASURED, wait: NOT_MEASURED, receive: NOT_MEASURED },
@@ -288,8 +292,9 @@ const entryFromArchiveEntry = (entry: HttpArchive.Entry, requestComment: string)
  * The HAR-native counterpart to {@link emitHar}. Entries come out in the order
  * given — a HAR read is already sorted or is a DevTools export that is not, and
  * a re-sort would misreport what the source said. Nothing unobserved is
- * guessed: `request.method` is `UNKNOWN`, timings are `-1`, and a dropped body
- * is a `HarNoBody` with the archive stating why in the entry `comment`.
+ * guessed: `request.method` is `UNKNOWN`, timings are `-1`, and an absent body
+ * is a `HarNoBody` with a `bodySize` of `-1` and an {@link ABSENT_BODY_COMMENT}
+ * saying its size is not known.
  *
  * The anonymizer's re-encode and the Recorder's live capture share this
  * emitter, differing only in `creatorName` and `requestComment`; both default
@@ -347,6 +352,7 @@ const harToJson = (
 const harFromJson = Schema.decodeUnknown(HarFromJson)
 
 export {
+  ABSENT_BODY_COMMENT,
   CREATOR_NAME,
   DROPPED_REQUEST_ON_IMPORT_COMMENT,
   type EmitHarFromLogOptions,
