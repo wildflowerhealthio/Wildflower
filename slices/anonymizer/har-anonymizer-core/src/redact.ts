@@ -359,27 +359,15 @@ const isJsonObject = (value: unknown): value is Record<string, unknown> =>
 const isPlainDecimal = (text: string): boolean => /^-?\d+(\.\d+)?$/.test(text)
 
 /**
- * Counts the distinct values seen at each path, then decides which paths export
- * verbatim.
+ * The decision rules {@link buildRedactionPolicy} and {@link buildPolicyForLog}
+ * share, run over whatever leaves `walk` feeds the counting visitor.
  *
- * @param exchanges - Every exchange in the export, raw
+ * @param walk - Runs the counting visitor over every leaf of the export
  * @param options - Salt, threshold, and any per-path overrides
- * @returns A policy to pass to every {@link redactExchange} call for this export
- *
- * @remarks
- * The carve-out exists because pure pseudonymization turns `"status": "active"`
- * into noise. A status code or a unit enum is not PHI, and it is exactly what an
- * `HttpResponseKind` branches on — so a path whose values across the session
- * number at most the threshold is left alone.
- *
- * There are **two** verbatim rules, decided independently: the code carve-out
- * is shape-gated then counted, {@link isNamespaceUri} is shape-gated and not
- * counted. The URI rule is tested first, so a hidden `system` field reports
- * `namespaceUrisOff` rather than the `notCode` it would always land on — the
- * two have different fixes.
+ * @returns A policy for the rewriting pass over the same leaves
  */
-const buildRedactionPolicy = (
-  exchanges: readonly TraceExchange[],
+const decidePolicy = (
+  walk: (counting: LeafVisitor<never>) => Effect.Effect<unknown>,
   options: RedactionOptions
 ): Effect.Effect<RedactionPolicy, WebCryptoUnavailable> =>
   Effect.gen(function* () {
@@ -399,7 +387,7 @@ const buildRedactionPolicy = (
       visitString: (path, value) => Effect.sync(() => record(path, value)),
       visitJsonLeaf: (path, value) => Effect.sync(() => record(path, value)),
     }
-    for (const exchange of exchanges) yield* mapExchangeLeaves(exchange, counting)
+    yield* walk(counting)
 
     const stats: readonly PathStat[] = [...seen].map(([path, values]) => {
       const override = overrides[path]
@@ -449,6 +437,35 @@ const buildRedactionPolicy = (
       usedFakes: new Set<string>(),
     }
   })
+
+/**
+ * Counts the distinct values seen at each path, then decides which paths export
+ * verbatim.
+ *
+ * @param exchanges - Every exchange in the export, raw
+ * @param options - Salt, threshold, and any per-path overrides
+ * @returns A policy to pass to every {@link redactExchange} call for this export
+ *
+ * @remarks
+ * The carve-out exists because pure pseudonymization turns `"status": "active"`
+ * into noise. A status code or a unit enum is not PHI, and it is exactly what an
+ * `HttpResponseKind` branches on — so a path whose values across the session
+ * number at most the threshold is left alone.
+ *
+ * There are **two** verbatim rules, decided independently: the code carve-out
+ * is shape-gated then counted, {@link isNamespaceUri} is shape-gated and not
+ * counted. The URI rule is tested first, so a hidden `system` field reports
+ * `namespaceUrisOff` rather than the `notCode` it would always land on — the
+ * two have different fixes.
+ */
+const buildRedactionPolicy = (
+  exchanges: readonly TraceExchange[],
+  options: RedactionOptions
+): Effect.Effect<RedactionPolicy, WebCryptoUnavailable> =>
+  decidePolicy(
+    (counting) => Effect.forEach(exchanges, (exchange) => mapExchangeLeaves(exchange, counting)),
+    options
+  )
 
 /**
  * Assigns — or recalls — the pseudonym for one original string.
@@ -623,6 +640,24 @@ const pseudonymizeNumber = (
   })
 
 /**
+ * The rewriting visitor {@link redactExchange} and {@link redactEntry} share,
+ * so a trace and an archive entry are rewritten by the same rules.
+ */
+const redactionVisitor = (policy: RedactionPolicy): LeafVisitor<RedactionError> => ({
+  visitString: (path, value) =>
+    value === '' || policy.isVerbatim(path)
+      ? Effect.succeed(value)
+      : pseudonymizeString(policy, value, 0),
+  visitJsonLeaf: (path, value) => {
+    if (value === null || typeof value === 'boolean' || value === '') return Effect.succeed(value)
+    if (policy.isVerbatim(path)) return Effect.succeed(value)
+    return typeof value === 'number'
+      ? pseudonymizeNumber(policy, value, 0)
+      : pseudonymizeString(policy, value, 0)
+  },
+})
+
+/**
  * Rewrites one exchange against a policy.
  *
  * @param policy - The export's policy from {@link buildRedactionPolicy}
@@ -638,22 +673,8 @@ const pseudonymizeNumber = (
 const redactExchange = (
   policy: RedactionPolicy,
   exchange: TraceExchange
-): Effect.Effect<TraceExchange, RedactionError> => {
-  const visitor: LeafVisitor<RedactionError> = {
-    visitString: (path, value) =>
-      value === '' || policy.isVerbatim(path)
-        ? Effect.succeed(value)
-        : pseudonymizeString(policy, value, 0),
-    visitJsonLeaf: (path, value) => {
-      if (value === null || typeof value === 'boolean' || value === '') return Effect.succeed(value)
-      if (policy.isVerbatim(path)) return Effect.succeed(value)
-      return typeof value === 'number'
-        ? pseudonymizeNumber(policy, value, 0)
-        : pseudonymizeString(policy, value, 0)
-    },
-  }
-  return mapExchangeLeaves(exchange, visitor)
-}
+): Effect.Effect<TraceExchange, RedactionError> =>
+  mapExchangeLeaves(exchange, redactionVisitor(policy))
 
 /**
  * Rewrites a whole session against a policy, in order.
@@ -667,25 +688,6 @@ const redactSession = (
   exchanges: readonly TraceExchange[]
 ): Effect.Effect<readonly TraceExchange[], RedactionError> =>
   Effect.forEach(exchanges, (exchange) => redactExchange(policy, exchange))
-
-/**
- * The visitor {@link redactEntry} and {@link buildPolicyForLog}'s rewriting
- * pass share — {@link buildRedactionPolicy}'s counter reuses the same shape
- * with `Effect.sync` visitors, so the two passes cannot see different paths.
- */
-const redactionVisitor = (policy: RedactionPolicy): LeafVisitor<RedactionError> => ({
-  visitString: (path, value) =>
-    value === '' || policy.isVerbatim(path)
-      ? Effect.succeed(value)
-      : pseudonymizeString(policy, value, 0),
-  visitJsonLeaf: (path, value) => {
-    if (value === null || typeof value === 'boolean' || value === '') return Effect.succeed(value)
-    if (policy.isVerbatim(path)) return Effect.succeed(value)
-    return typeof value === 'number'
-      ? pseudonymizeNumber(policy, value, 0)
-      : pseudonymizeString(policy, value, 0)
-  },
-})
 
 /**
  * Rewrites one archive entry against a policy.
@@ -738,66 +740,10 @@ const buildPolicyForLog = (
   log: HttpArchive.Log,
   options: RedactionOptions
 ): Effect.Effect<RedactionPolicy, WebCryptoUnavailable> =>
-  Effect.gen(function* () {
-    const threshold = options.enumThreshold ?? DEFAULT_ENUM_THRESHOLD
-    const carveOut = options.enumCarveOut ?? true
-    const namespaceUris = options.namespaceUris ?? true
-    const overrides = options.overrides ?? {}
-
-    const seen = new Map<string, Set<string>>()
-    const record = <A extends JsonLeaf>(path: string, value: A): A => {
-      const values = seen.get(path) ?? new Set<string>()
-      values.add(typeof value === 'string' ? value : JSON.stringify(value))
-      seen.set(path, values)
-      return value
-    }
-    const counting: LeafVisitor<never> = {
-      visitString: (path, value) => Effect.sync(() => record(path, value)),
-      visitJsonLeaf: (path, value) => Effect.sync(() => record(path, value)),
-    }
-    for (const entry of log.entries) yield* mapEntryLeaves(entry, counting)
-
-    const stats: readonly PathStat[] = [...seen].map(([path, values]) => {
-      const override = overrides[path]
-      if (override !== undefined) {
-        return {
-          path,
-          distinctValues: values.size,
-          verbatim: override === 'verbatim',
-          decidedBy: 'override',
-        }
-      }
-      if (isNamespaceUriPath([...values])) {
-        return {
-          path,
-          distinctValues: values.size,
-          verbatim: namespaceUris,
-          decidedBy: namespaceUris ? 'namespaceUri' : 'namespaceUrisOff',
-        }
-      }
-      if (!carveOut) {
-        return { path, distinctValues: values.size, verbatim: false, decidedBy: 'disabled' }
-      }
-      if (![...values].every(isCodeToken)) {
-        return { path, distinctValues: values.size, verbatim: false, decidedBy: 'notCode' }
-      }
-      return {
-        path,
-        distinctValues: values.size,
-        verbatim: values.size <= threshold,
-        decidedBy: 'threshold',
-      }
-    })
-    const verbatimPaths = new Set(stats.filter((stat) => stat.verbatim).map((stat) => stat.path))
-
-    return {
-      stats,
-      isVerbatim: (path: string): boolean => verbatimPaths.has(path),
-      key: yield* importExportKey(options.salt),
-      assignments: new Map<string, string>(),
-      usedFakes: new Set<string>(),
-    }
-  })
+  decidePolicy(
+    (counting) => Effect.forEach(log.entries, (entry) => mapEntryLeaves(entry, counting)),
+    options
+  )
 
 export {
   buildPolicyForLog,
