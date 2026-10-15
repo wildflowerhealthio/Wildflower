@@ -95,7 +95,7 @@ const decodeAsciiOctets = (segment: string): string =>
  * Every FHIR R4 resource type has this shape; FHIR ids cannot (they allow
  * digits, `-` and `.`, and those that are letters only rarely lead with an
  * uppercase letter followed by a lowercase one). Base-path segments such as
- * `R4` or `FHIR` fail it, so they stay as written.
+ * `R4` or `FHIR` fail it, so the segment after them is not taken for an id.
  */
 const isResourceTypeSegment = (segment: string): boolean => /^[A-Z][a-z][A-Za-z]*$/.test(segment)
 

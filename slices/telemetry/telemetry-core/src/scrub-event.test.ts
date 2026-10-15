@@ -244,6 +244,39 @@ describe('scrubEvent', () => {
     })
   })
 
+  test('reduces the script a long animation frame span blames to its shape', () => {
+    const scriptUrl = 'https://ruth.relay.wildflowerhealth.io/assets/index-BfXk2c1a.js'
+    const event = {
+      spans: [
+        {
+          op: 'ui.long-animation-frame',
+          description: 'Main UI thread blocked',
+          data: {
+            'browser.script.invoker': scriptUrl,
+            'browser.script.invoker_type': 'classic-script',
+            'code.filepath': scriptUrl,
+            'code.function': 'render',
+          },
+        },
+      ],
+    }
+
+    expect(scrubEvent(event)).toStrictEqual({
+      spans: [
+        {
+          op: 'ui.long-animation-frame',
+          description: 'Main UI thread blocked',
+          data: {
+            'browser.script.invoker': 'https://{host}/assets/{id}',
+            'browser.script.invoker_type': 'classic-script',
+            'code.filepath': 'https://{host}/assets/{id}',
+            'code.function': 'render',
+          },
+        },
+      ],
+    })
+  })
+
   test('keeps a kept host in a host attribute', () => {
     const event = {
       spans: [

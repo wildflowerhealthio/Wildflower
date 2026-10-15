@@ -20,8 +20,9 @@ type UrlBearingRecord = Readonly<Record<string, unknown>>
  * breadcrumbs, and Effect's HTTP client spans, put the request URL; `url.path`
  * is its path on browser page-load and Effect HTTP client spans; `from` and
  * `to` are a navigation breadcrumb's pages; `referer` is the request header
- * Sentry reports with an event. The `.url` suffix covers the rest of the
- * SDK's URL attributes, such as the page-load span's `lcp.url`.
+ * Sentry reports with an event; `code.filepath` is the script a long
+ * animation frame span blames. The `.url` suffix covers the rest of the SDK's
+ * URL attributes, such as the page-load span's `lcp.url`.
  */
 const URL_KEYS: ReadonlySet<string> = new Set([
   'url',
@@ -30,6 +31,7 @@ const URL_KEYS: ReadonlySet<string> = new Set([
   'from',
   'to',
   'referer',
+  'code.filepath',
 ])
 
 /**
@@ -48,6 +50,14 @@ const HOST_KEYS: ReadonlySet<string> = new Set([
   'http.host',
   'net.peer.name',
 ])
+
+/**
+ * Keys whose string value is free text that can carry a URL, compared
+ * case-insensitively: `browser.script.invoker` is the script URL on a long
+ * animation frame span blaming a script, and a name such as
+ * `IMG#avatar.onload` otherwise.
+ */
+const URL_IN_TEXT_KEYS: ReadonlySet<string> = new Set(['browser.script.invoker'])
 
 /** Keys that carry a URL's query string or fragment on their own; dropped outright. */
 const DROPPED_KEYS: ReadonlySet<string> = new Set([
@@ -104,10 +114,13 @@ interface ScrubbableEvent {
 /** Whether the value under `lowerCaseKey` is a host. */
 const isHostKey = (lowerCaseKey: string): boolean => HOST_KEYS.has(lowerCaseKey)
 
+/** Whether the value under `lowerCaseKey` is free text that can carry a URL. */
+const isUrlInTextKey = (lowerCaseKey: string): boolean => URL_IN_TEXT_KEYS.has(lowerCaseKey)
+
 /**
- * `record` with the value under every URL or host key anonymized and the value under
- * every dropped key cleared to `undefined`, which the SDK leaves out of what it
- * sends.
+ * `record` with the value under every URL, host or URL-in-text key anonymized
+ * and the value under every dropped key cleared to `undefined`, which the SDK
+ * leaves out of what it sends.
  */
 const scrubUrlBearingRecord = <R extends UrlBearingRecord>(record: R): R => ({
   ...record,
@@ -120,6 +133,9 @@ const scrubUrlBearingRecord = <R extends UrlBearingRecord>(record: R): R => ({
       }
       if (isHostKey(lowerCaseKey) && typeof value === 'string') {
         return [[key, anonymizeHost(value)]]
+      }
+      if (isUrlInTextKey(lowerCaseKey) && typeof value === 'string') {
+        return [[key, anonymizeUrlsInText(value)]]
       }
       return []
     })
@@ -152,11 +168,12 @@ const scrubSpan = <S extends ScrubbableSpan>(span: S): S => ({
  *   - `request.url`, and a `Referer` request header, are anonymized, and
  *     `request.query_string` is cleared
  *   - each breadcrumb's and span's URL-valued data (`url`, `url.full`,
- *     `url.path`, `from`, `to`, and every key ending in `.url`) is
- *     anonymized, its host-valued data (`server.address`, `url.domain`,
- *     `http.host`, `net.peer.name`) reduced to a kept host or `{host}`, and
- *     its query and fragment keys (`http.query`,
- *     `url.query`, …) and HTTP header attributes cleared
+ *     `url.path`, `from`, `to`, `code.filepath`, and every key ending in
+ *     `.url`) is anonymized, the URLs in `browser.script.invoker` too, its
+ *     host-valued data (`server.address`, `url.domain`, `http.host`,
+ *     `net.peer.name`) reduced to a kept host or `{host}`, and its query and
+ *     fragment keys (`http.query`, `url.query`, …) and HTTP header attributes
+ *     cleared
  *   - each span description, the trace context's, and the transaction name
  *     have the URLs in them anonymized
  *
