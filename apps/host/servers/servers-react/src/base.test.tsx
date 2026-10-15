@@ -28,12 +28,14 @@ import { BaseUnderTest, type BaseUnderTestProps } from './test-utils/base-under-
 
 // Starting the SDK is the collaborator whose every touch the gate controls, so
 // the module boundary is where it is stubbed; the rest stays real.
-const { initConsentedTelemetryMock } = vi.hoisted(() => ({
+const { initConsentedTelemetryMock, redactServerHostMock } = vi.hoisted(() => ({
   initConsentedTelemetryMock: vi.fn<typeof TelemetryWeb.initConsentedTelemetry>(() => false),
+  redactServerHostMock: vi.fn<typeof TelemetryWeb.redactServerHost>(),
 }))
 vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: initConsentedTelemetryMock,
+  redactServerHost: redactServerHostMock,
 }))
 
 const BASE_DSN = 'https://key@sentry.example/12'
@@ -394,6 +396,21 @@ describe('the server list', () => {
     })
     return host
   }
+
+  it("should redact each listed server's domain from telemetry", async () => {
+    // Arrange
+    redactServerHostMock.mockClear()
+
+    // Act
+    renderListed(golden.listedServers)
+
+    // Assert
+    await waitFor(() => {
+      expect(redactServerHostMock.mock.calls).toStrictEqual(
+        golden.listedServers.map((server) => [server.domain])
+      )
+    })
+  })
 
   it('should say what a server is, and offer Add server, when there are none', async () => {
     // Act

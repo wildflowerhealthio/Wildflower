@@ -31,6 +31,7 @@ import {
   setServerRunPolicy,
   updateServer,
 } from '@wildflowerhealthio/servers-core-js'
+import { redactServerHost } from '@wildflowerhealthio/telemetry-web'
 import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
 import { useEffect } from 'react'
 
@@ -45,6 +46,10 @@ const SERVERS_QUERY_KEY = ['servers', 'list'] as const
 /**
  * The servers on this device, each with its status on the host's unit
  * runner; {@link useServerStatusEvents} keeps the statuses current.
+ *
+ * @remarks
+ * Each listed server's domain is redacted from telemetry
+ * (`redactServerHost`), so an error naming it reports `{host}` instead.
  */
 const serversQueryOptions = (
   runHostCommand: RunHostCommand
@@ -56,7 +61,11 @@ const serversQueryOptions = (
 > =>
   queryOptions({
     queryKey: SERVERS_QUERY_KEY,
-    queryFn: () => runHostCommand(listServers),
+    queryFn: async () => {
+      const servers = await runHostCommand(listServers)
+      for (const server of servers) redactServerHost(server.domain)
+      return servers
+    },
   })
 
 /** A change to the cached server list, or `undefined` when the list can't take it. */

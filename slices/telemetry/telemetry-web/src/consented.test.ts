@@ -250,6 +250,81 @@ describe('initConsentedTelemetry', () => {
   })
 })
 
+describe('server host redaction', () => {
+  /** An error event thrown from `scriptUrl`, with the debug image the SDK lists for it. */
+  const errorEventThrownFrom = (scriptUrl: string): ErrorEvent => ({
+    type: undefined,
+    exception: { values: [{ type: 'Error', stacktrace: { frames: [{ filename: scriptUrl }] } }] },
+    debug_meta: { images: [{ type: 'sourcemap', code_file: scriptUrl, debug_id: 'd1' }] },
+  })
+
+  /** The script URL of the one frame, and the code file of the one debug image, `event` sends. */
+  const sentScriptUrls = (event: ErrorEvent | null | undefined): readonly unknown[] => [
+    event?.exception?.values?.[0]?.stacktrace?.frames?.[0]?.filename,
+    event?.debug_meta?.images?.[0]?.code_file,
+  ]
+
+  const startCrashReports = async (): Promise<typeof Consented> => {
+    const consented = await importConsented()
+    consented.initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+    return consented
+  }
+
+  test.each([
+    { case: 'a host it was told to redact', redact: 'ruth.example', host: 'Ruth.Example:8443' },
+    { case: 'the FHIR server’s host', fhirServerHost: 'fhir.example:8443', host: 'fhir.example' },
+    { case: 'a relay tunnel', host: 'android-emu.relay.wildflowerhealth.io' },
+  ])('replaces $case in a stack frame, keeping the script’s path', async (example) => {
+    const { redactServerHost, setFhirServerHost } = await startCrashReports()
+    if (example.redact !== undefined) redactServerHost(example.redact)
+    if (example.fhirServerHost !== undefined) setFhirServerHost(example.fhirServerHost)
+
+    const sent = await sentryInitOptions().beforeSend?.(
+      errorEventThrownFrom(`https://${example.host}/assets/index-abc.js`),
+      {}
+    )
+
+    expect(sentScriptUrls(sent)).toStrictEqual([
+      'https://{host}/assets/index-abc.js',
+      'https://{host}/assets/index-abc.js',
+    ])
+  })
+
+  test('replaces the page’s own host in a stack frame', async () => {
+    vi.stubGlobal('location', { host: 'my-server.example' })
+    try {
+      await startCrashReports()
+
+      const sent = await sentryInitOptions().beforeSend?.(
+        errorEventThrownFrom('https://my-server.example/launcher/assets/index-abc.js'),
+        {}
+      )
+
+      expect(sentScriptUrls(sent)).toStrictEqual([
+        'https://{host}/launcher/assets/index-abc.js',
+        'https://{host}/launcher/assets/index-abc.js',
+      ])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  test.each([
+    'https://wildflowerhealth.io/launcher/assets/index-abc.js',
+    'https://other.example/assets/index-abc.js',
+  ])('keeps a stack frame on %s, a kept host or one it was not told about', async (scriptUrl) => {
+    await startCrashReports()
+
+    const sent = await sentryInitOptions().beforeSend?.(errorEventThrownFrom(scriptUrl), {})
+
+    expect(sentScriptUrls(sent)).toStrictEqual([scriptUrl, scriptUrl])
+  })
+})
+
 describe('setFhirServerHost', () => {
   test.each([
     { case: 'a host', host: 'fhir.example:8443', tag: '{host}' },

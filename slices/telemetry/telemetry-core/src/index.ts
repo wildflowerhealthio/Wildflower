@@ -26,5 +26,6 @@ export {
   writeConsent,
 } from './consent.ts'
 export { telemetryConfigFor } from './consented-config.ts'
+export { makeHostRedactor } from './redact-hosts.ts'
 export type { ScrubbableEvent } from './scrub-event.ts'
 export { scrubEvent } from './scrub-event.ts'

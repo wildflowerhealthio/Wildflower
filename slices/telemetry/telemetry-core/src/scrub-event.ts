@@ -1,9 +1,11 @@
 import { anonymizeHost, anonymizeUrl, anonymizeUrlsInText } from './anonymize-url.ts'
+import { makeHostRedactor } from './redact-hosts.ts'
 
 /**
  * Runs every URL a telemetry event carries through {@link anonymizeUrl}, and
- * every host it carries on its own through {@link anonymizeHost}, before the
- * event leaves the browser. Typed structurally over the fields it reads, so
+ * every host it carries on its own through {@link anonymizeHost}, and
+ * replaces the server hosts in its stack frames, before the event leaves the
+ * browser. Typed structurally over the fields it reads, so
  * this package names no Sentry type: `telemetry-web` hands it Sentry's error
  * and transaction events.
  */
@@ -102,6 +104,29 @@ interface ScrubbableSpan {
   readonly data?: UrlBearingRecord
 }
 
+/**
+ * A stack frame of an error event: `filename` and `abs_path` are the URL of
+ * the script it ran in, and `module` can be.
+ */
+interface ScrubbableStackFrame {
+  readonly filename?: string
+  readonly abs_path?: string
+  readonly module?: string
+}
+
+/** An exception an error event reports, with the stack it was thrown from. */
+interface ScrubbableException {
+  readonly stacktrace?: { readonly frames?: readonly ScrubbableStackFrame[] }
+}
+
+/**
+ * A debug image of an error event: the SDK lists each script a stack frame
+ * ran in as one, with the frame's `abs_path` or `filename` as its `code_file`.
+ */
+interface ScrubbableDebugImage {
+  readonly code_file?: string
+}
+
 /** The fields of a telemetry event {@link scrubEvent} rewrites. */
 interface ScrubbableEvent {
   readonly transaction?: string
@@ -109,7 +134,12 @@ interface ScrubbableEvent {
   readonly breadcrumbs?: readonly ScrubbableBreadcrumb[]
   readonly spans?: readonly ScrubbableSpan[]
   readonly contexts?: { readonly trace?: ScrubbableSpan }
+  readonly exception?: { readonly values?: readonly ScrubbableException[] }
+  readonly debug_meta?: { readonly images?: readonly ScrubbableDebugImage[] }
 }
+
+/** Replaces the server hosts in a text with `{host}` (see {@link makeHostRedactor}). */
+type HostRedactor = (text: string) => string
 
 /** Whether the value under `lowerCaseKey` is a host. */
 const isHostKey = (lowerCaseKey: string): boolean => HOST_KEYS.has(lowerCaseKey)
@@ -161,6 +191,47 @@ const scrubSpan = <S extends ScrubbableSpan>(span: S): S => ({
 })
 
 /**
+ * `object` with the string under each of `keys` passed through `redactHosts`.
+ */
+const redactHostsUnder = <O extends object>(
+  object: O,
+  keys: readonly (keyof O)[],
+  redactHosts: HostRedactor
+): O => ({
+  ...object,
+  ...Object.fromEntries(
+    keys.flatMap((key) => {
+      const value = object[key]
+      return typeof value === 'string' ? [[key, redactHosts(value)]] : []
+    })
+  ),
+})
+
+/**
+ * `exception` with the server host in each stack frame's script URL replaced.
+ *
+ * @remarks
+ * Only the host is replaced: the path and file name stay, so the frame still
+ * reads as the bundle it ran in.
+ */
+const scrubException = <X extends ScrubbableException>(
+  exception: X,
+  redactHosts: HostRedactor
+): X => {
+  const frames = exception.stacktrace?.frames
+  if (frames === undefined) return exception
+  return {
+    ...exception,
+    stacktrace: {
+      ...exception.stacktrace,
+      frames: frames.map((frame) =>
+        redactHostsUnder(frame, ['filename', 'abs_path', 'module'], redactHosts)
+      ),
+    },
+  }
+}
+
+/**
  * `event` with every URL it carries anonymized.
  *
  * @typeParam E - The SDK's event type; every other field passes through
@@ -176,25 +247,66 @@ const scrubSpan = <S extends ScrubbableSpan>(span: S): S => ({
  *     cleared
  *   - each span description, the trace context's, and the transaction name
  *     have the URLs in them anonymized
+ *   - each stack frame's `filename`, `abs_path` and `module`, and each debug
+ *     image's `code_file`, have every relay tunnel host
+ *     (`*.relay.wildflowerhealth.io`) and every one of `hostsToRedact`
+ *     replaced with `{host}`, the rest of the script URL kept as written
+ *
+ * @param hostsToRedact - The hosts the app is known to use (its own origin's,
+ *   its servers'), as hosts or origins; see {@link makeHostRedactor}
  *
  * @remarks
  * Pure and field-by-field: every rewrite copies the object it changes, so the
  * SDK's own event is left as it was.
+ *
+ * Stack frames keep their source maps: the site's builds carry debug IDs
+ * (`.github/actions/sentry-sourcemaps`), and the SDK lists each frame's script
+ * as a debug image whose `code_file` is the frame's `abs_path` or `filename`.
+ * Sentry pairs a frame with its image by that path and finds the map by the
+ * image's debug ID, never by URL; frame and image are rewritten alike, so the
+ * pairing holds. Running the URL through {@link anonymizeUrl} instead would
+ * turn the bundle's file name into `{id}`.
  */
-const scrubEvent = <E extends ScrubbableEvent>(event: E): E => ({
-  ...event,
-  ...(event.transaction === undefined
-    ? {}
-    : { transaction: anonymizeUrlsInText(event.transaction) }),
-  ...(event.request === undefined ? {} : { request: scrubRequest(event.request) }),
-  ...(event.breadcrumbs === undefined
-    ? {}
-    : { breadcrumbs: event.breadcrumbs.map(scrubBreadcrumb) }),
-  ...(event.spans === undefined ? {} : { spans: event.spans.map(scrubSpan) }),
-  ...(event.contexts?.trace === undefined
-    ? {}
-    : { contexts: { ...event.contexts, trace: scrubSpan(event.contexts.trace) } }),
-})
+const scrubEvent = <E extends ScrubbableEvent>(
+  event: E,
+  hostsToRedact: Iterable<string> = []
+): E => {
+  const redactHosts = makeHostRedactor(hostsToRedact)
+  return {
+    ...event,
+    ...(event.transaction === undefined
+      ? {}
+      : { transaction: anonymizeUrlsInText(event.transaction) }),
+    ...(event.request === undefined ? {} : { request: scrubRequest(event.request) }),
+    ...(event.breadcrumbs === undefined
+      ? {}
+      : { breadcrumbs: event.breadcrumbs.map(scrubBreadcrumb) }),
+    ...(event.spans === undefined ? {} : { spans: event.spans.map(scrubSpan) }),
+    ...(event.contexts?.trace === undefined
+      ? {}
+      : { contexts: { ...event.contexts, trace: scrubSpan(event.contexts.trace) } }),
+    ...(event.exception?.values === undefined
+      ? {}
+      : {
+          exception: {
+            ...event.exception,
+            values: event.exception.values.map((exception) =>
+              scrubException(exception, redactHosts)
+            ),
+          },
+        }),
+    ...(event.debug_meta?.images === undefined
+      ? {}
+      : {
+          debug_meta: {
+            ...event.debug_meta,
+            images: event.debug_meta.images.map((image) =>
+              redactHostsUnder(image, ['code_file'], redactHosts)
+            ),
+          },
+        }),
+  }
+}
 
 export type { ScrubbableEvent }
 export { scrubEvent }

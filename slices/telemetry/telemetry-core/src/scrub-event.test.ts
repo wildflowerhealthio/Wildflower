@@ -277,6 +277,75 @@ describe('scrubEvent', () => {
     })
   })
 
+  test('replaces only the host in a stack frame’s script URL, and in its debug image alike', () => {
+    const relayScript = 'https://android-emu.relay.wildflowerhealth.io/assets/index-BfXk2c1a.js'
+    const serverScript = 'https://Ruth.Example:8443/assets/vendor-9a8b7c.js'
+    const event = {
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            stacktrace: {
+              frames: [
+                { filename: relayScript, function: 'render', lineno: 1, colno: 2 },
+                { filename: serverScript, abs_path: serverScript, module: serverScript },
+                { filename: 'http://tauri.localhost/assets/index-1.js' },
+                { filename: 'https://xruth.example.org/a.js' },
+              ],
+            },
+          },
+        ],
+      },
+      debug_meta: {
+        images: [
+          { type: 'sourcemap', code_file: relayScript, debug_id: 'd1' },
+          { type: 'sourcemap', code_file: serverScript, debug_id: 'd2' },
+        ],
+      },
+    }
+
+    expect(scrubEvent(event, ['ruth.example'])).toStrictEqual({
+      exception: {
+        values: [
+          {
+            type: 'TypeError',
+            stacktrace: {
+              frames: [
+                {
+                  filename: 'https://{host}/assets/index-BfXk2c1a.js',
+                  function: 'render',
+                  lineno: 1,
+                  colno: 2,
+                },
+                {
+                  filename: 'https://{host}/assets/vendor-9a8b7c.js',
+                  abs_path: 'https://{host}/assets/vendor-9a8b7c.js',
+                  module: 'https://{host}/assets/vendor-9a8b7c.js',
+                },
+                { filename: 'http://tauri.localhost/assets/index-1.js' },
+                { filename: 'https://xruth.example.org/a.js' },
+              ],
+            },
+          },
+        ],
+      },
+      debug_meta: {
+        images: [
+          {
+            type: 'sourcemap',
+            code_file: 'https://{host}/assets/index-BfXk2c1a.js',
+            debug_id: 'd1',
+          },
+          {
+            type: 'sourcemap',
+            code_file: 'https://{host}/assets/vendor-9a8b7c.js',
+            debug_id: 'd2',
+          },
+        ],
+      },
+    })
+  })
+
   test('keeps a kept host in a host attribute', () => {
     const event = {
       spans: [

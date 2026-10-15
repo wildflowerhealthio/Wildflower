@@ -78,6 +78,21 @@ const PERSONAL_DATA_OFF: NonNullable<InitSentryWebOptions['dataCollection']> = {
 let latestConsent: TelemetryConsent | undefined
 
 /**
+ * The hosts of the servers this page is known to talk to, which every event
+ * it sends has replaced with `{host}`; see {@link redactServerHost}.
+ */
+const serverHosts = new Set<string>()
+
+/**
+ * The hosts every event has replaced with `{host}`: {@link serverHosts}, and
+ * the page's own, which names the server when the page is served from one.
+ * Kept hosts among them (`localhost`, `wildflowerhealth.io`, …) stay as
+ * written.
+ */
+const hostsToRedact = (): readonly string[] =>
+  typeof location === 'undefined' ? [...serverHosts] : [...serverHosts, location.host]
+
+/**
  * The Effect tracer layer for the tracer provider a consent registered, or
  * `undefined` while no answer has registered one. {@link consentedTelemetryLayer}
  * provides it.
@@ -95,15 +110,16 @@ let consentedEffectTracerLayer: Layer.Layer<never> | undefined
  * added only when `initialConsent` has `performance`; nothing adds session
  * replay or profiling. Each hook drops the events its switch does not cover in
  * {@link latestConsent} — error events without `crashReports`, transactions
- * without `performance` — and anonymizes the URLs in the ones it sends.
+ * without `performance` — and anonymizes the URLs in the ones it sends, with
+ * the hosts {@link hostsToRedact} names as they stand when the event is sent.
  */
 const sentryOptionsFor = (initialConsent: TelemetryConsent): InitSentryWebOptions => ({
   dataCollection: PERSONAL_DATA_OFF,
   integrations: initialConsent.performance ? [Sentry.browserTracingIntegration()] : [],
   beforeSend: (errorEvent) =>
-    latestConsent?.crashReports === true ? scrubEvent(errorEvent) : null,
+    latestConsent?.crashReports === true ? scrubEvent(errorEvent, hostsToRedact()) : null,
   beforeSendTransaction: (transactionEvent) =>
-    latestConsent?.performance === true ? scrubEvent(transactionEvent) : null,
+    latestConsent?.performance === true ? scrubEvent(transactionEvent, hostsToRedact()) : null,
 })
 
 /**
@@ -163,6 +179,24 @@ const consentedTelemetryLayer: Layer.Layer<never> = Layer.suspend(() =>
     : Layer.empty
 )
 
+/**
+ * Replace `host` with `{host}` wherever an event sent from now on names it
+ * outside a URL field (which `scrubEvent` anonymizes whatever its host): in
+ * stack frames' script URLs and their debug images.
+ *
+ * @param host - A server's host, with or without a port, or its `http(s)`
+ *   origin; matched case-insensitively, with any port and any subdomains
+ *
+ * @remarks
+ * For the hosts an app learns at run time: `setFhirServerHost` redacts the
+ * FHIR server's, and the Tauri host's base each server's domain. Every
+ * `*.relay.wildflowerhealth.io` host and the page's own are redacted without
+ * it. A kept host (`localhost`, `wildflowerhealth.io`, …) stays as written.
+ */
+const redactServerHost = (host: string): void => {
+  serverHosts.add(host)
+}
+
 /** The {@link FHIR_SERVER_HOST_TAG} value for `fhirServerHost` (see {@link setFhirServerHost}). */
 const fhirServerHostTagValue = (fhirServerHost: string | null | undefined): string => {
   if (fhirServerHost === null || fhirServerHost === undefined) return NO_FHIR_SERVER_HOST
@@ -172,7 +206,8 @@ const fhirServerHostTagValue = (fhirServerHost: string | null | undefined): stri
 
 /**
  * Tag every event reported from now on with the host of the FHIR server the
- * app is connected to, reduced by `anonymizeHost`.
+ * app is connected to, reduced by `anonymizeHost`, and redact the host
+ * wherever else the events name it (see {@link redactServerHost}).
  *
  * @param fhirServerHost - The host (with port, if any) of the FHIR base URL,
  *   or `null` or `undefined` when the app has a FHIR server but no host to
@@ -185,8 +220,9 @@ const fhirServerHostTagValue = (fhirServerHost: string | null | undefined): stri
  * been called.
  */
 const setFhirServerHost = (fhirServerHost: string | null | undefined): void => {
+  if (typeof fhirServerHost === 'string') redactServerHost(fhirServerHost)
   Sentry.getGlobalScope().setTag(FHIR_SERVER_HOST_TAG, fhirServerHostTagValue(fhirServerHost))
 }
 
 export type { InitConsentedTelemetryOptions, TelemetryTags }
-export { consentedTelemetryLayer, initConsentedTelemetry, setFhirServerHost }
+export { consentedTelemetryLayer, initConsentedTelemetry, redactServerHost, setFhirServerHost }

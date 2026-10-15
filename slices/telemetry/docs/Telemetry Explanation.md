@@ -32,6 +32,20 @@ Both the host and the path are allowlists, so a shape the anonymizer does not kn
 
 A resource type is recognized by shape (an uppercase then a lowercase letter, letters only), not from a list. The rules err towards replacing too much: a segment after anything shaped like a resource type becomes `{id}`, so an id that happens to look like one costs the next segment its name rather than letting the id after it through. What still passes is an id shaped like a route word or a resource type where no resource type precedes it, such as a lowercase name in a route the app names its records by.
 
+## Server hosts are replaced wherever they stand
+
+A stack frame names the script it ran in by URL, and an app served from a user's server or relay tunnel loads its scripts from that server: `https://android-emu.relay.wildflowerhealth.io/assets/index-abc.js`. `scrubEvent` replaces only the host in each frame's `filename`, `abs_path` and `module`, and in each debug image's `code_file`, with `{host}`, keeping the path and file name: `https://{host}/assets/index-abc.js`. Running these through `anonymizeUrl` would turn the bundle's file name into `{id}`.
+
+Source maps still resolve. The site's builds carry debug IDs (see below), and the SDK lists each script a frame ran in as a debug image, with the frame's path as its `code_file` and the script's debug ID. Sentry pairs a frame with its image by that path and finds the map by the debug ID, never by URL; the frame and the image are rewritten alike, so the pairing holds.
+
+The hosts replaced are matched case-insensitively, with any port and any subdomains in front, on label boundaries (`ruth.example` does not match `xruth.example.org`), by `telemetry-core`'s `makeHostRedactor`:
+
+- every relay tunnel, `*.relay.wildflowerhealth.io` at any depth;
+- the page's own host;
+- the hosts the app has learnt at run time through `telemetry-web`'s `redactServerHost`: `setFhirServerHost` passes the FHIR server's host, and the Tauri host's base passes each server's domain each time it reads the server list.
+
+Kept hosts (`localhost`, `tauri.localhost`, `wildflowerhealth.io`) stay as written.
+
 ## Consent lives in the origin's storage
 
 The answer is one versioned record in `localStorage` under `wildflower.telemetry-consent`, holding both switches, the copy version of the dialog that was answered, and when. Storage is per origin, so every app served from one origin shares one answer, and a dev server on its own port asks on its own.
