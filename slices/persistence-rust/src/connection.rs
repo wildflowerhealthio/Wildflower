@@ -13,7 +13,7 @@ pub type DbResult<T> = Result<T, rusqlite::Error>;
 /// connection that holds a transaction open indefinitely will still time out
 /// (that's the case WAL would address — deliberately not enabled, so a surprise
 /// shutdown leaves a plain rollback-journal db with nothing to recover).
-const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Thin sync wrapper around a single `rusqlite::Connection`. Serializes access
 /// through a mutex and is cheap to clone (an `Arc`), so the Tauri app can open
@@ -72,6 +72,8 @@ impl Connection {
         })
     }
 
+    /// Lock the shared connection for the caller's exclusive use, blocking until
+    /// any other holder releases it.
     pub fn lock(&self) -> MutexGuard<'_, rusqlite::Connection> {
         self.conn.lock()
     }

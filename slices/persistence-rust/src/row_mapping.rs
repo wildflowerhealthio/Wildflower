@@ -55,3 +55,53 @@ macro_rules! sql_row {
         concat!(stringify!($first) $(, ", ", stringify!($rest))*)
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    use crate::{build_insert_sql, JsonColumn};
+
+    #[derive(Debug, PartialEq)]
+    struct Client {
+        client_id: String,
+        name: String,
+        scopes: JsonColumn<Vec<String>>,
+    }
+
+    sql_row!(Client {
+        client_id,
+        name,
+        scopes
+    });
+
+    /// The generated `ALL_COLS`, named params and `TryFrom<&Row>` agree on one
+    /// field list, so a row inserted through `build_insert_sql` reads back
+    /// through `SELECT ALL_COLS` unchanged.
+    #[test]
+    fn round_trips_a_row_through_the_generated_impls() {
+        assert_eq!(ALL_COLS, "client_id, name, scopes");
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE clients (client_id TEXT PRIMARY KEY, name TEXT NOT NULL, scopes TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        let client = Client {
+            client_id: "lifting".to_string(),
+            name: "Lifting".to_string(),
+            scopes: JsonColumn(vec!["openid".to_string()]),
+        };
+        let params = make_named_sql_params(&client);
+        conn.execute(&build_insert_sql("clients", &params), params.as_slice())
+            .unwrap();
+
+        let read: Client = conn
+            .query_row(&format!("SELECT {ALL_COLS} FROM clients"), [], |row| {
+                Client::try_from(row)
+            })
+            .unwrap();
+        assert_eq!(read, client);
+    }
+}

@@ -3,9 +3,11 @@
 //!
 //! The Tauri app opens one shared rusqlite [`Connection`](crate::Connection) and
 //! builds one [`DieselPool`] on the SAME database file, then hands the pool to
-//! every diesel-backed slice (apps, the authorization server and the request log). The pool's connections are additional openers onto that one file —
-//! SQLite permits multiple connections per file — and the per-connection pragmas below mirror
-//! [`Connection::configured`](crate::Connection) so a diesel connection behaves
+//! every diesel-backed slice (apps, the authorization server and the request
+//! log). The pool's connections are additional openers onto that one file —
+//! SQLite permits multiple connections per file — and the per-connection pragmas
+//! below mirror [`Connection::configured`](crate::Connection) so a diesel
+//! connection behaves
 //! identically to the rusqlite one under contention. See
 //! `docs/Persistence/Shared Diesel Pool Explanation.md` for the cross-slice
 //! picture the diesel-backed slices share.
@@ -17,6 +19,8 @@ use anyhow::Context;
 use diesel::connection::SimpleConnection;
 use diesel::r2d2::{self, ConnectionManager, CustomizeConnection, Pool};
 use diesel::sqlite::SqliteConnection;
+
+use crate::connection::BUSY_TIMEOUT;
 
 /// The app-wide r2d2 pool of diesel `SqliteConnection`s. `Clone` (it wraps an
 /// `Arc`), so it's cheap to hand into each slice's state.
@@ -47,13 +51,17 @@ struct PragmaCustomizer;
 
 impl CustomizeConnection<SqliteConnection, r2d2::Error> for PragmaCustomizer {
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), r2d2::Error> {
-        // - `busy_timeout` (5s, matching this crate's `BUSY_TIMEOUT`) so a write
-        //   rides out brief contention — from the rusqlite connection or another
-        //   pooled connection — instead of failing instantly with `SQLITE_BUSY`.
+        // - `busy_timeout` ([`BUSY_TIMEOUT`], the rusqlite connection's value)
+        //   so a write rides out brief contention — from the rusqlite connection
+        //   or another pooled connection — instead of failing instantly with
+        //   `SQLITE_BUSY`.
         // - `foreign_keys = ON`, which SQLite defaults OFF per connection — set
         //   outside any transaction.
-        conn.batch_execute("PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;")
-            .map_err(r2d2::Error::QueryError)
+        conn.batch_execute(&format!(
+            "PRAGMA busy_timeout = {}; PRAGMA foreign_keys = ON;",
+            BUSY_TIMEOUT.as_millis()
+        ))
+        .map_err(r2d2::Error::QueryError)
     }
 }
 
@@ -113,9 +121,9 @@ fn build_pool(database_url: &str, max_size: u32) -> anyhow::Result<DieselPool> {
         // Fail an exhausted-pool checkout fast rather than blocking the async
         // worker for r2d2's 30 s default: every store method calls the
         // synchronous `pool.get()` inside an axum handler, so a stuck checkout
-        // pins a tokio worker. 5 s matches the single-writer `busy_timeout`, so
+        // pins a tokio worker. Matching the single-writer `busy_timeout` means
         // a checkout only outlives the contention it's waiting on by a hair.
-        .connection_timeout(std::time::Duration::from_secs(5))
+        .connection_timeout(BUSY_TIMEOUT)
         .connection_customizer(Box::new(PragmaCustomizer))
         .build(ConnectionManager::<SqliteConnection>::new(database_url))
         .with_context(|| format!("failed to build diesel connection pool for {database_url}"))
@@ -144,8 +152,8 @@ mod tests {
     }
 
     /// Every checked-out connection has the pragmas the customizer applies —
-    /// `busy_timeout = 5000` and `foreign_keys = ON` — so it matches the
-    /// rusqlite `Connection`'s configuration.
+    /// `busy_timeout` = [`BUSY_TIMEOUT`] and `foreign_keys = ON` — so it matches
+    /// the rusqlite `Connection`'s configuration.
     #[test]
     fn applies_pragmas_on_acquire() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -156,7 +164,7 @@ mod tests {
                 &mut conn,
                 "SELECT timeout AS value FROM pragma_busy_timeout()"
             ),
-            5000,
+            i64::try_from(BUSY_TIMEOUT.as_millis()).expect("timeout fits i64"),
         );
         assert_eq!(
             scalar(
