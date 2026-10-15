@@ -1,9 +1,9 @@
-//! [`PendingConsent`], the oldest consent waiting on a server as the base
+//! [`PendingConsent`], the newest consent waiting on a server as the base
 //! receives it in the server's status, and the [`ConsentKey`] that names it.
 //!
-//! A server's authorization server keeps one queue of the consents waiting for
-//! the Owner, device-code and authorization-code requests together, oldest
-//! first; its head is the run's [`ServerDetail::pending_consent`](crate::ServerDetail).
+//! A server's authorization server publishes the newest of the consents
+//! waiting for the Owner, device-code and authorization-code requests alike,
+//! as the run's [`ServerDetail::pending_consent`](crate::ServerDetail).
 //! On the wire, camelCase:
 //!
 //! ```json
@@ -12,7 +12,7 @@
 //! ```
 
 use serde::Serialize;
-use wildflowerhealthio_authorization_server::PendingConsentHead;
+use wildflowerhealthio_authorization_server::NewestPendingConsent;
 use wildflowerhealthio_unit_runner::UnitStatus;
 
 use crate::domain::ServerDetail;
@@ -37,7 +37,7 @@ pub enum ConsentKey {
     },
 }
 
-/// The oldest consent waiting on a server: which request, and the name of the
+/// The newest consent waiting on a server: which request, and the name of the
 /// client that asks.
 ///
 /// `Serialize` writes the camelCase shape the [module docs](self) give.
@@ -53,7 +53,7 @@ pub struct PendingConsent {
 }
 
 impl PendingConsent {
-    /// The consent waiting first on the server whose status is `unit_status`,
+    /// The newest consent waiting on the server whose status is `unit_status`,
     /// while a run reports one.
     #[must_use]
     pub fn of_run(unit_status: &UnitStatus<ServerDetail>) -> Option<Self> {
@@ -66,17 +66,17 @@ impl PendingConsent {
     }
 }
 
-impl From<PendingConsentHead> for PendingConsent {
-    fn from(head: PendingConsentHead) -> Self {
-        match head {
-            PendingConsentHead::Device {
+impl From<NewestPendingConsent> for PendingConsent {
+    fn from(newest: NewestPendingConsent) -> Self {
+        match newest {
+            NewestPendingConsent::Device {
                 user_code,
                 client_name,
             } => Self {
                 key: ConsentKey::Device { user_code },
                 client_name,
             },
-            PendingConsentHead::OAuth { id, client_name } => Self {
+            NewestPendingConsent::OAuth { id, client_name } => Self {
                 key: ConsentKey::OAuth { id },
                 client_name,
             },
@@ -91,11 +91,11 @@ mod tests {
 
     #[test]
     fn the_wire_is_as_the_golden_file_says() {
-        let device = PendingConsent::from(PendingConsentHead::Device {
+        let device = PendingConsent::from(NewestPendingConsent::Device {
             user_code: "ABCD-EFGH".to_owned(),
             client_name: "Lifting".to_owned(),
         });
-        let oauth = PendingConsent::from(PendingConsentHead::OAuth {
+        let oauth = PendingConsent::from(NewestPendingConsent::OAuth {
             id: "req-1".to_owned(),
             client_name: "app-client-id".to_owned(),
         });

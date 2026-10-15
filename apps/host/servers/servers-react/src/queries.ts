@@ -300,12 +300,12 @@ const useOpenServerAuthorizationApp = (
   })
 
 /**
- * Opens the consent waiting first on a server at its page, signed in as its
+ * Opens the newest consent waiting on a server at its page, signed in as its
  * Owner.
  *
  * @remarks
  * Nothing is written to the cache: once the Owner decides, the server's next
- * `server-status` event carries its queue's new head.
+ * `server-status` event carries the newest still waiting.
  */
 const useOpenPendingConsent = (
   runHostCommand: RunHostCommand

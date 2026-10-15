@@ -24,7 +24,7 @@
 //!   "tunnel": {"kind": "connecting" | "connected" | "tokenRejected" | "tunnelUnknown"}
 //!           | {"kind": "reconnecting", "error": "…"},
 //!   "certificate": <the run's certificate state, or else the cache's>,
-//!   "pendingConsent": <the oldest consent waiting on the server>
+//!   "pendingConsent": <the newest consent waiting on the server>
 //! }
 //! ```
 //!
@@ -320,7 +320,7 @@ pub(crate) mod tests {
         CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
     };
 
-    use wildflowerhealthio_authorization_server::PendingConsentHead;
+    use wildflowerhealthio_authorization_server::NewestPendingConsent;
 
     use super::*;
     use crate::domain::{CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError};
@@ -410,7 +410,7 @@ pub(crate) mod tests {
                 status({
                     let mut waiting = running_and_reachable();
                     waiting.detail.as_mut().unwrap().pending_consent =
-                        Some(PendingConsentHead::OAuth {
+                        Some(NewestPendingConsent::OAuth {
                             id: "req-1".to_owned(),
                             client_name: "Lifting".to_owned(),
                         });

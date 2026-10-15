@@ -14,11 +14,11 @@
 //!   runs;
 //! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
 //!   status on `TauriUnitRunner` changed, with its certificate's state (its
-//!   run's, or what its cache says) and the oldest consent waiting on it;
+//!   run's, or what its cache says) and the newest consent waiting on it;
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, the per-caller notifications for the
-//!   requests the servers' tunnels relay, and a notification for each consent
-//!   that comes to wait first on a server, bringing the desktop window
+//!   requests the servers' tunnels relay, and a notification for each new consent
+//!   waiting on a server, bringing the desktop window
 //!   forward with it;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
@@ -67,8 +67,8 @@
 //!   URL with `iss`, through the same sign-in, in the same in-app browser,
 //!   once the same checks pass.
 //! - [`server_open_pending_consent`], invoked as
-//!   `invoke('server_open_pending_consent', { domain })`, opens the consent
-//!   waiting first on the server at its page, `then=back`, through the same
+//!   `invoke('server_open_pending_consent', { domain })`, opens the newest
+//!   consent waiting on the server at its page, `then=back`, through the same
 //!   sign-in, in the same in-app browser, once the same checks pass; on a
 //!   phone, not while a view the base opened still shows (see
 //!   [`wildflowerhealthio_servers::consent_sign_in_url`]).

@@ -117,8 +117,8 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
                 ttl: DEVICE_AUTHORIZATION_TTL,
             });
         self.store.insert_authorization_request(&request)?;
-        // A fresh pending row may have just become the head of the consent
-        // queue; republish so the host webview popup picks it up.
+        // A fresh pending row is now the newest pending consent; republish so
+        // the host notifies it.
         self.owner_approval.republish_active();
         Ok(DeviceCodes {
             device_code,

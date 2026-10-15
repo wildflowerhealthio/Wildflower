@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tokio::sync::{mpsc, watch};
 use url::Url;
-use wildflowerhealthio_authorization_server::PendingConsentHead;
+use wildflowerhealthio_authorization_server::NewestPendingConsent;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
@@ -96,10 +96,10 @@ pub struct ServerObservers {
     /// renewal falls due or it expires. `None` until the run's certificate
     /// starts; the run publishes nothing after it stops.
     pub certificate_tx: watch::Sender<Option<CertificateState>>,
-    /// The head of the server's pending-consent queue, published by
-    /// the authorization server as the run starts and after each change to the queue, for
-    /// as long as the server runs.
-    pub pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
+    /// The server's newest pending consent, published by the authorization
+    /// server as the run starts and after each change to its pending consents,
+    /// for as long as the server runs.
+    pub pending_consent_tx: watch::Sender<Option<NewestPendingConsent>>,
     /// Each forwarded request (every request through the tunnel), reported by
     /// the forwarded-request layer after its response is ready (see
     /// `forwarded_request_layer`). A full channel drops the report rather than

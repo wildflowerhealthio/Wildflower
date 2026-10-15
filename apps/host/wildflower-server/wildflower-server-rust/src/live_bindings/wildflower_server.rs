@@ -296,8 +296,8 @@ pub async fn set_up(
         }
     }
 
-    // `setup_authorization_server` publishes the head of its pending-consent
-    // queue on the host's channel.
+    // `setup_authorization_server` publishes its newest pending consent on the
+    // host's channel.
     let authorization_server = setup_authorization_server(
         diesel_pool.clone(),
         revocation_store,

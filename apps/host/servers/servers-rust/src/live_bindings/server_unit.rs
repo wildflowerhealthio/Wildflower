@@ -1,7 +1,7 @@
 //! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
 
 use tokio::sync::{mpsc, watch};
-use wildflowerhealthio_authorization_server::PendingConsentHead;
+use wildflowerhealthio_authorization_server::NewestPendingConsent;
 use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};
@@ -48,12 +48,12 @@ impl Unit for ServerUnit {
 
     /// Set the server up, announce it running, and serve it until
     /// `UnitRunner` stops the run. Its health, its tunnel's state, its
-    /// certificate's state, the head of its pending-consent queue, and the
+    /// certificate's state, its newest pending consent, and the
     /// [`ServerLaunchMinter`] and [`ServerSignInCodeMinter`] over its
     /// authorization server go out as the run's [`ServerDetail`].
     ///
-    /// The run's authorization server publishes its queue's head on a channel of the
-    /// run's own, so each server's head is its own.
+    /// The run's authorization server publishes its newest pending consent on
+    /// a channel of the run's own, so each server's is its own.
     async fn run(self, ctx: RunContext<ServerDetail>) -> anyhow::Result<()> {
         let (server_health_tx, server_health_rx) = watch::channel(None);
         let (tunnel_state_tx, tunnel_state_rx) = watch::channel(None);
@@ -103,7 +103,7 @@ struct DetailSources {
 /// The channels a run's detail is read from, each watched until its own
 /// sender drops, its last value staying in the detail: the reachability
 /// monitor drops its sender once it stops, and the tunnel daemon its own once
-/// the relay refuses the tunnel; the certificate's and the head's live as long
+/// the relay refuses the tunnel; the certificate's and the pending consent's live as long
 /// as the server.
 struct DetailChannels {
     /// The run's reachability monitor's health.
@@ -112,8 +112,8 @@ struct DetailChannels {
     tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
     /// The run's certificate's state.
     certificate_rx: watch::Receiver<Option<CertificateState>>,
-    /// The head of the run's authorization server's pending-consent queue.
-    pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    /// The run's authorization server's newest pending consent.
+    pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
     health_open: bool,
     tunnel_open: bool,
     certificate_open: bool,
@@ -124,7 +124,7 @@ impl DetailChannels {
         server_health_rx: watch::Receiver<Option<ServerHealth>>,
         tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
         certificate_rx: watch::Receiver<Option<CertificateState>>,
-        pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+        pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
     ) -> Self {
         Self {
             server_health_rx,
@@ -138,9 +138,9 @@ impl DetailChannels {
     }
 
     /// Wait for the health, the tunnel state, the certificate state or the
-    /// head to change, or for the sender of one of the first three to drop,
-    /// after which that one is no longer watched. `false` once the head's
-    /// sender drops, which ends the run's report.
+    /// pending consent to change, or for the sender of one of the first three
+    /// to drop, after which that one is no longer watched. `false` once the
+    /// pending consent's sender drops, which ends the run's report.
     async fn changed(&mut self) -> bool {
         tokio::select! {
             changed = self.server_health_rx.changed(), if self.health_open => {
@@ -161,11 +161,10 @@ impl DetailChannels {
 }
 
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
-/// run's health, its tunnel's state, its certificate's state, the head of its
-/// authorization server's pending-consent queue, its launch minter and its
-/// sign-in code minter into the detail, now and each
-/// time the health, the tunnel state, the certificate state or the head
-/// changes. The task dies with the run's runtime, and `UnitRunner` clears the
+/// run's health, its tunnel's state, its certificate's state, its
+/// authorization server's newest pending consent, its launch minter and its
+/// sign-in code minter into the detail, now and each time the health, the
+/// tunnel state, the certificate state or the pending consent changes. The task dies with the run's runtime, and `UnitRunner` clears the
 /// detail when the run ends.
 async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
     loop {
@@ -198,7 +197,8 @@ mod tests {
     const WAKE: Duration = Duration::from_millis(100);
 
     #[tokio::test]
-    async fn the_tunnel_state_is_watched_after_the_health_closes_and_until_the_head_closes() {
+    async fn the_tunnel_state_is_watched_after_the_health_closes_and_until_the_pending_consent_closes(
+    ) {
         // Arrange
         let (server_health_tx, server_health_rx) = watch::channel(None);
         let (tunnel_state_tx, tunnel_state_rx) = watch::channel(None);
@@ -248,7 +248,7 @@ mod tests {
             "with the health and the tunnel closed, the report waits"
         );
 
-        // Act / Assert: the certificate still wakes it, and the head's close ends it.
+        // Act / Assert: the certificate still wakes it, and the pending consent's close ends it.
         certificate_tx.send_replace(None);
         assert!(timeout(WAKE, channels.changed()).await.unwrap());
         drop(pending_consent_tx);

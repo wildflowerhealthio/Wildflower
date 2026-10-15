@@ -16,7 +16,7 @@ changing how servers run or what the host notifies about them.
   to a registered server: its run policy, its launcher, Authorization app and
   certificate source, and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
   `ServerDetail`, what its runs report (health, tunnel state, certificate
-  state and the oldest consent waiting), its `ServerLaunchMinter` included,
+  state and the newest consent waiting), its `ServerLaunchMinter` included,
   through which the host mints a running server's launches, and its
   `ServerSignInCodeMinter`, through which it mints the codes that sign the
   browser in as the server's Owner; launching (`ensure_launchable`,
@@ -24,10 +24,10 @@ changing how servers run or what the host notifies about them.
   `consent_sign_in_url`, `LaunchError`); `ServerStatus`, a server's status on
   `UnitRunner` as the base receives it, and `ListedServer`, with the
   certificate state its run reported or its cache holds; `PendingConsent`,
-  the oldest consent waiting on a server, named by its `ConsentKey`; and the
+  the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the per-caller request coalescer, the stop
   notification for each new stop of a server's run, and the consent
-  notification for each request that comes to a server's head.
+  notification for each new request waiting on a server.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
@@ -77,7 +77,7 @@ changing how servers run or what the host notifies about them.
   notification permission; and the wire's namespaces, `ListedServer`,
   `ServerStatus` (with the `server-status` event's name and decoder, and
   `pendingConsentOf`), `RunPolicy`, `RunPolicyChoice`, `PendingConsent`, the
-  consent waiting first on a server, `EnteredRelay` and
+  newest consent waiting on a server, `EnteredRelay` and
   `EnteredCredentials`, `server_add`'s relay and credentials, each a
   `Schema` and its `Type` with getters; and `LaunchError`'s
   `statusRefusalOf`, the refusal `server_launch` answers from a status, with
@@ -405,7 +405,7 @@ changing how servers run or what the host notifies about them.
   it, with the `Off` policy `remove_server` stored first.
 - **One `server-status` per change.** The host emits a server's
   `ServerStatus` to the `main` webview whenever its `UnitStatus` changes (its
-  pending consent's head included), camelCase, each optional member left out
+  newest pending consent included), camelCase, each optional member left out
   when absent:
   `{domain, runState, lastStop?: {reason, platformReason?, error?,
   stoppedAt}, runningSince?, health?, tunnel?, certificate,
@@ -477,16 +477,20 @@ changing how servers run or what the host notifies about them.
   Let's Encrypt's staging CA), `authorizationServer`, `openingBrowser`, or the registry's
   `notRegistered` or `registry`. The golden file pins the refusals the base
   shows and which CAs browsers trust.
-- **One notification per request at the head.** A run's authorization
-  server publishes its queue's head, named for the client that asks, on the
-  run's own channel; the run sets it as `ServerDetail::pending_consent`, and
-  the server's status carries it as `pendingConsent`. `ConsentNotificationCoalescer`
-  picks, from `UnitRunner`'s statuses, each server whose head became a request
-  it hasn't notified for, and the host posts "‹client› wants access to
-  ‹domain›" under `consent-request:<domain>`; on the desktop it brings the
-  window forward too. A head already notified for, as after a run restarts,
-  doesn't notify again, nor do the requests behind it. The golden file pins
-  the head's wire shape.
+- **One notification per request, newest first.** A run's authorization
+  server publishes its newest pending consent, named for the client that
+  asks, on the run's own channel; the run sets it as
+  `ServerDetail::pending_consent`, and the server's status carries it as
+  `pendingConsent`. Requests stack: a new one takes over, and deciding it
+  brings back the one before. `ConsentNotificationCoalescer` picks, from
+  `UnitRunner`'s statuses, each server whose newest request is one it hasn't
+  notified for, and the host posts "‹client› wants access to ‹domain›" under
+  `consent-request:<domain>`, replacing the server's last; on the desktop it
+  brings the window forward too. A request already notified for, as when it
+  comes back once a newer one is decided or after a run restarts, doesn't
+  notify again. A server forgets the requests it notified for once its run
+  reports nothing pending, and keeps at most 32 meanwhile. The golden file
+  pins the wire shape.
 - **A certificate's state is its run's, or its cache's.** Every
   `ServerStatus`, in the `server-status` event and in `servers_list`,
   carries one. While a run has reported one

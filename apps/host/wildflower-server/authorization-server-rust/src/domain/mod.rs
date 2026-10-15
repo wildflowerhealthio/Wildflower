@@ -64,9 +64,9 @@ pub mod oauth_error_kind;
 // memory as hashes, and where a sign-in may send the browser next.
 pub(crate) mod same_device_sign_in_codes;
 pub(crate) mod sign_in_redirect;
-// The head of the single pending-consent queue the host notifies —
-// device-code and authorization-code requests share one FIFO slot, so the head
-// carries whichever key its consent page reads by.
+// The newest pending consent the host notifies — device-code and
+// authorization-code requests alike, so it carries whichever key its consent
+// page reads by.
 pub mod pending_consent;
 pub mod refresh_token;
 // The retention windows for the three accumulating tables plus the sweep that

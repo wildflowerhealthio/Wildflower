@@ -157,7 +157,7 @@ const openServerAuthorizationApp = ({
   invokeHostCommand('server_open_authorization_app', Schema.Null, { domain })
 
 /**
- * Open the consent waiting first on the server `domain` at its page, in the
+ * Open the newest consent waiting on the server `domain` at its page, in the
  * in-app browser (the default browser on a desktop), signed in as the
  * server's Owner first. The page goes back, or closes, once the Owner has
  * decided. Answers once the browser is opening it.

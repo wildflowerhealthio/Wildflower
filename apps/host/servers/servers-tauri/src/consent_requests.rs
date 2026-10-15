@@ -1,4 +1,4 @@
-//! Notifying the consents that come to wait first on the servers: a
+//! Notifying each new consent waiting on the servers: a
 //! notification for each, "‹client› wants access to ‹domain›", and on the
 //! desktop the base's window brought forward, so the server's page, where its
 //! pending request opens, can be reached at once.
@@ -35,7 +35,8 @@ impl<R: Runtime> ConsentRequestNotifier for AppConsentRequestNotifier<R> {
 
 /// Announce each consent request through `notifier`, every time
 /// `TauriUnitRunner`'s statuses change, as [`ConsentNotificationCoalescer`]
-/// decides: once per request that comes to wait first on a server.
+/// decides: once per request, when it is a server's newest waiting and the
+/// server hasn't notified for it.
 pub(crate) async fn notify_consent_requests(
     notifier: impl ConsentRequestNotifier,
     mut statuses: watch::Receiver<UnitStatuses<ServerDetail>>,
@@ -90,7 +91,7 @@ fn raise_main_window<R: Runtime>(_app: &AppHandle<R>) {}
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use wildflowerhealthio_authorization_server::PendingConsentHead;
+    use wildflowerhealthio_authorization_server::NewestPendingConsent;
     use wildflowerhealthio_servers::ConsentKey;
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
@@ -125,14 +126,14 @@ mod tests {
         }
     }
 
-    /// The servers' statuses with [`RUTH`] running, the request `head`
-    /// waiting first there, if any.
-    fn ruth_waiting_on(head: Option<&str>) -> UnitStatuses<ServerDetail> {
+    /// The servers' statuses with [`RUTH`] running, the request `newest`
+    /// the newest waiting there, if any.
+    fn ruth_waiting_on(newest: Option<&str>) -> UnitStatuses<ServerDetail> {
         let detail = ServerDetail {
             health: None,
             tunnel: None,
             certificate: None,
-            pending_consent: head.map(|id| PendingConsentHead::OAuth {
+            pending_consent: newest.map(|id| NewestPendingConsent::OAuth {
                 id: id.to_owned(),
                 client_name: "Lifting".to_owned(),
             }),
@@ -167,7 +168,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn each_new_head_is_announced_once_and_a_head_seen_before_is_not() {
+    async fn each_new_request_is_announced_once_and_one_seen_before_is_not() {
         let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(Some("a")));
         let recorded = RecordedRequests::default();
         let notifying = tokio::spawn(notify_consent_requests(recorded.clone(), statuses_rx));
@@ -176,12 +177,11 @@ mod tests {
         }
         assert_eq!(recorded.keys(), [oauth("a")]);
 
-        // The run restarts with the same request first: nothing new.
-        send_and_let_it_read(&statuses_tx, ruth_waiting_on(None)).await;
-        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
-        assert_eq!(recorded.count(), 1);
-        // The request is decided and the next one comes to the head.
+        // A newer request arrives, and is decided: "a" comes back, but was
+        // announced already.
         send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("b"))).await;
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
+        assert_eq!(recorded.count(), 2);
         drop(statuses_tx);
         notifying.await.unwrap();
 

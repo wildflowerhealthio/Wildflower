@@ -70,7 +70,7 @@ describe('ServerStatus', () => {
     expect(ServerStatus.lastStopOf(status)).toEqual(Option.none())
   })
 
-  it('should decode the consent waiting first on a running server', () => {
+  it('should decode the newest consent waiting on a running server', () => {
     // Act
     const status = decode(golden.serverStatuses.runningWithAPendingConsent)
 

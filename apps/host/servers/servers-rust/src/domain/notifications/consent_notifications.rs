@@ -4,7 +4,7 @@
 //! of `UnitRunner`'s statuses; and [`server_of_consent_notification`], the
 //! server a tapped notification is for.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use wildflowerhealthio_unit_runner::{UnitId, UnitStatuses};
 
@@ -16,7 +16,8 @@ use crate::domain::{ConsentKey, PendingConsent, ServerDetail};
 /// instead of stacking, and never another server's.
 pub const CONSENT_REQUEST_NOTIFICATION_ID_PREFIX: &str = "consent-request:";
 
-/// A consent that became the oldest waiting on the server `domain`.
+/// A consent that became the newest waiting on the server `domain`, and that
+/// the server hasn't notified for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsentRequest {
     /// The server's domain, its unit id.
@@ -70,18 +71,33 @@ fn consent_notification_of(domain: &str) -> LocalNotification {
     }
 }
 
+/// How many of the requests it notified for a server remembers while some
+/// request stays pending on it, past which it forgets the earliest.
+///
+/// A request lives five minutes, so a server forgets one it notified for only
+/// after this many newer requests in that time; the forgotten one notifies
+/// again only if it is still pending once every one of those is decided.
+const NOTIFIED_PER_SERVER: usize = 32;
+
 /// Decides which of the servers' waiting consents notify, fed `UnitRunner`'s
 /// statuses each time they change, whose unit ids are the servers' domains.
 ///
-/// A server notifies when the head of its queue becomes a request it hasn't
-/// notified for, once per request: a head already notified for doesn't notify
-/// again, as when the server's run restarts with the same request waiting,
-/// and the requests queued behind the head don't notify until they reach it.
-/// A server that is removed is forgotten.
+/// A server's status carries its newest pending request, so its requests
+/// stack: a new one takes over, and deciding it brings back the one before.
+/// A server notifies once per request, when that request is newest and the
+/// server hasn't notified for it: a request that comes back once a newer one
+/// is decided doesn't notify again, nor does one still waiting when the
+/// server's run restarts.
+///
+/// A server remembers the requests it notified for until its run reports
+/// nothing pending, since then each of them is decided or expired and none
+/// can come back, keeping at most [`NOTIFIED_PER_SERVER`] meanwhile. A run
+/// that isn't reporting, as while it stops or starts, leaves them as they
+/// are. A server that is removed is forgotten.
 #[derive(Debug, Default)]
 pub struct ConsentNotificationCoalescer {
-    /// The key of the last request each server notified for.
-    last_notified: BTreeMap<UnitId, ConsentKey>,
+    /// The keys of the requests each server notified for, earliest first.
+    notified: BTreeMap<UnitId, VecDeque<ConsentKey>>,
 }
 
 impl ConsentNotificationCoalescer {
@@ -93,17 +109,25 @@ impl ConsentNotificationCoalescer {
 
     /// The requests in `statuses` that notify, in domain order.
     pub fn record(&mut self, statuses: &UnitStatuses<ServerDetail>) -> Vec<ConsentRequest> {
-        self.last_notified
+        self.notified
             .retain(|unit_id, _| statuses.contains_key(unit_id));
         statuses
             .iter()
             .filter_map(|(unit_id, unit_status)| {
-                let pending_consent = PendingConsent::of_run(unit_status)?;
-                if self.last_notified.get(unit_id) == Some(&pending_consent.key) {
+                let detail = unit_status.detail.as_ref()?;
+                let Some(newest) = detail.pending_consent.clone() else {
+                    self.notified.remove(unit_id);
+                    return None;
+                };
+                let pending_consent = PendingConsent::from(newest);
+                let notified = self.notified.entry(unit_id.clone()).or_default();
+                if notified.contains(&pending_consent.key) {
                     return None;
                 }
-                self.last_notified
-                    .insert(unit_id.clone(), pending_consent.key.clone());
+                if notified.len() == NOTIFIED_PER_SERVER {
+                    notified.pop_front();
+                }
+                notified.push_back(pending_consent.key.clone());
                 Some(ConsentRequest {
                     domain: unit_id.as_str().to_owned(),
                     pending_consent,
@@ -115,13 +139,13 @@ impl ConsentNotificationCoalescer {
 
 #[cfg(test)]
 mod tests {
-    use wildflowerhealthio_authorization_server::PendingConsentHead;
+    use wildflowerhealthio_authorization_server::NewestPendingConsent;
     use wildflowerhealthio_unit_runner::{RunState, UnitStatus};
 
     use super::*;
     use crate::domain::server_status::tests::{LAB, RUTH};
 
-    fn running_with(pending_consent: Option<PendingConsentHead>) -> UnitStatus<ServerDetail> {
+    fn running_with(pending_consent: Option<NewestPendingConsent>) -> UnitStatus<ServerDetail> {
         UnitStatus {
             run_state: RunState::Running,
             running_since: None,
@@ -136,15 +160,15 @@ mod tests {
         }
     }
 
-    fn oauth(id: &str) -> PendingConsentHead {
-        PendingConsentHead::OAuth {
+    fn oauth(id: &str) -> NewestPendingConsent {
+        NewestPendingConsent::OAuth {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
         }
     }
 
-    fn device(user_code: &str) -> PendingConsentHead {
-        PendingConsentHead::Device {
+    fn device(user_code: &str) -> NewestPendingConsent {
+        NewestPendingConsent::Device {
             user_code: user_code.to_owned(),
             client_name: "Pebble".to_owned(),
         }
@@ -171,8 +195,14 @@ mod tests {
         ConsentKey::OAuth { id: id.to_owned() }
     }
 
+    fn device_key(user_code: &str) -> ConsentKey {
+        ConsentKey::Device {
+            user_code: user_code.to_owned(),
+        }
+    }
+
     #[test]
-    fn a_new_head_notifies_once() {
+    fn a_new_request_notifies_once() {
         let mut coalescer = ConsentNotificationCoalescer::new();
         let first = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),
@@ -188,24 +218,36 @@ mod tests {
     }
 
     #[test]
-    fn the_next_head_notifies_once_the_first_is_decided() {
+    fn a_newer_request_notifies_while_the_earlier_one_waits() {
         let mut coalescer = ConsentNotificationCoalescer::new();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
 
-        let next = coalescer.record(&statuses([(RUTH, running_with(Some(device("CODE"))))]));
-        assert_eq!(
-            summary(&next),
-            [(
-                RUTH,
-                ConsentKey::Device {
-                    user_code: "CODE".to_owned()
-                }
-            )]
-        );
+        let newer = coalescer.record(&statuses([(RUTH, running_with(Some(device("CODE"))))]));
+        assert_eq!(summary(&newer), [(RUTH, device_key("CODE"))]);
     }
 
     #[test]
-    fn a_head_seen_before_a_restart_does_not_notify_again() {
+    fn a_request_that_comes_back_once_a_newer_one_is_decided_does_not_notify_again() {
+        let mut coalescer = ConsentNotificationCoalescer::new();
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("b"))))]));
+
+        let back = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        assert!(back.is_empty());
+    }
+
+    #[test]
+    fn a_request_never_newest_before_notifies_when_it_comes_back() {
+        let mut coalescer = ConsentNotificationCoalescer::new();
+        // "a" was requested first, but "b" came before the server reported.
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("b"))))]));
+
+        let back = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        assert_eq!(summary(&back), [(RUTH, oauth_key("a"))]);
+    }
+
+    #[test]
+    fn a_request_seen_before_a_restart_does_not_notify_again() {
         let mut coalescer = ConsentNotificationCoalescer::new();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
         assert!(coalescer
@@ -214,6 +256,34 @@ mod tests {
 
         let restarted = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
         assert!(restarted.is_empty());
+    }
+
+    #[test]
+    fn nothing_pending_forgets_the_requests_notified_for() {
+        let mut coalescer = ConsentNotificationCoalescer::new();
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        coalescer.record(&statuses([(RUTH, running_with(None))]));
+
+        // A decided or expired request never comes back; this one stands in
+        // to show the server forgot it.
+        let again = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        assert_eq!(summary(&again), [(RUTH, oauth_key("a"))]);
+    }
+
+    #[test]
+    fn a_server_forgets_its_earliest_request_past_its_limit() {
+        let mut coalescer = ConsentNotificationCoalescer::new();
+        for index in 0..=NOTIFIED_PER_SERVER {
+            coalescer.record(&statuses([(
+                RUTH,
+                running_with(Some(oauth(&index.to_string()))),
+            )]));
+        }
+
+        let kept = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("1"))))]));
+        assert!(kept.is_empty());
+        let forgotten = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("0"))))]));
+        assert_eq!(summary(&forgotten), [(RUTH, oauth_key("0"))]);
     }
 
     #[test]
@@ -227,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn each_server_notifies_for_its_own_head() {
+    fn each_server_notifies_for_its_own_request() {
         let mut coalescer = ConsentNotificationCoalescer::new();
         let requests = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),

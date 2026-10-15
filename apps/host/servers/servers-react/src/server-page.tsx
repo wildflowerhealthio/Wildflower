@@ -665,7 +665,7 @@ const DangerZone = ({
 }
 
 /**
- * The consent waiting first on the server, `pendingConsent`: who asks, and
+ * The newest consent waiting on the server, `pendingConsent`: who asks, and
  * Open, which opens it at its page in a browser signed in as the Owner. The
  * host's refusal to open it, or the browser's failure, takes the row's text,
  * until Open is pressed again.
@@ -718,7 +718,7 @@ type Tab = (typeof TABS)[number]['id']
 
 /**
  * A server's page, `/servers/$domain`, opened by its card's Edit: its
- * status, with when it runs, and the consent waiting first on it, if any,
+ * status, with when it runs, and the newest consent waiting on it, if any,
  * over three tabs. Status holds its connection,
  * its `/health` report while it runs, its launcher, its Authorization app and
  * its removal; Relay, its relay and tunnel, with a new tunnel token;

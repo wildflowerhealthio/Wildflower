@@ -4,10 +4,10 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 
-/// Mark request `request_id` denied and republish the active consent head — the
-/// shared tail of every deny path (explicit deny + a nothing-granted approve).
-/// The head query spans both grant flows, so a code-flow deny moves it just as a
-/// device deny does.
+/// Mark request `request_id` denied and republish the newest pending consent —
+/// the shared tail of every deny path (explicit deny + a nothing-granted
+/// approve). The query spans both grant flows, so a code-flow deny moves it
+/// just as a device deny does.
 ///
 /// The deny applies only to a still-pending request: when another surface
 /// decided it first (or it expired) between the caller's load and this write,

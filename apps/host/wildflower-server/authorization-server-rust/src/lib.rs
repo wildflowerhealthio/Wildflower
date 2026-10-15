@@ -51,7 +51,7 @@ pub use seeding::seed_dev_app_clients;
 // `SqliteGrantStore` adapter. `GrantStore` is the transaction seam
 // (and carries the standalone-convenience default methods); `GrantTx` is
 // the primitive contract a composed transaction hands out.
-pub use domain::pending_consent::PendingConsentHead;
+pub use domain::pending_consent::NewestPendingConsent;
 pub use domain::{GrantStore, GrantTx};
 
 // Re-exported so the host can name the pool type at the `setup_authorization_server`
@@ -169,10 +169,10 @@ const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from
 /// says.
 const RETENTION_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// How often the background reaper re-runs the popup-head query so the
-/// watch channel drops a row whose `expires_at` has passed without any
+/// How often the background reaper re-runs the newest-pending-consent query
+/// so the watch channel drops a row whose `expires_at` has passed without any
 /// HTTP mutation arriving to trigger a republish. Picked well under the
-/// 5-minute `DEVICE_AUTHORIZATION_TTL` so a freshly-expired head clears
+/// 5-minute `DEVICE_AUTHORIZATION_TTL` so a freshly-expired request clears
 /// within seconds; the query itself is a single indexed `LIMIT 1` and the
 /// watch sender suppresses no-op publishes.
 const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
@@ -201,11 +201,11 @@ pub struct AuthorizationServer {
 /// other diesel-backed slices ride). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, essential-client seed), and:
 ///
-///  - publishes the current head of the pending consent queue — device-code
-///    and authorization-code requests share one FIFO slot — on
-///    `owner_approval_tx`. On the Tauri host, the server's run
-///    reports it as its detail, which the base's server status carries and
-///    from which the host notifies each request that comes to the head.
+///  - publishes the newest pending consent — device-code and
+///    authorization-code requests alike — on `owner_approval_tx`. On the
+///    Tauri host, the server's run reports it as its detail, which the base's
+///    server status carries and from which the host notifies each new
+///    request.
 ///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
@@ -239,7 +239,7 @@ pub fn setup_authorization_server(
     pool: DieselPool,
     revocation_store: RevocationStore,
     config: &AuthorizationServerConfig,
-    owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
+    owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
 ) -> anyhow::Result<AuthorizationServer> {
     let store = seeding::open_and_seed_store(
         pool,
@@ -269,10 +269,10 @@ pub fn setup_authorization_server(
             config.authorization_url.clone(),
         )),
     });
-    // Seed the popup head from SQLite so a request that was pending
-    // across an app restart still drives the modal on first webview
-    // load — the `watch` value itself doesn't survive the process, but
-    // the row does.
+    // Seed the newest pending consent from SQLite so a request that was
+    // pending across an app restart is reported in the run's first detail —
+    // the `watch` value itself doesn't survive the process, but the row
+    // does.
     ports::OwnerApproval::republish_active(state.as_ref());
     spawn_device_consent_reaper(state.clone());
     // Reclaim the authorization server rows past their retention window: once at startup, then
@@ -368,13 +368,13 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
     });
 }
 
-/// Spawn the background reaper that periodically re-runs the popup-head
-/// query. Mutation-driven republishing alone leaves the watch advertising
-/// a `user_code` whose row has expired in the meantime — without this
-/// task, an idle host stays stuck on the now-expired head until some
-/// unrelated handler happens to write. The reaper drops the stale head
-/// within `DEVICE_CONSENT_REAPER_INTERVAL`, and `send_if_modified`
-/// suppresses ticks that leave the head unchanged so an idle queue
+/// Spawn the background reaper that periodically re-runs the
+/// newest-pending-consent query. Mutation-driven republishing alone leaves
+/// the watch advertising a request whose row has expired in the meantime —
+/// without this task, an idle host stays stuck on the now-expired request
+/// until some unrelated handler happens to write. The reaper drops the stale
+/// request within `DEVICE_CONSENT_REAPER_INTERVAL`, and `send_if_modified`
+/// suppresses ticks that leave it unchanged so an idle server
 /// publishes nothing.
 fn spawn_device_consent_reaper(state: Arc<AuthorizationServerState>) {
     tokio::spawn(async move {

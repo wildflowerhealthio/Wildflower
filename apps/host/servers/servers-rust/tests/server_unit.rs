@@ -1,12 +1,12 @@
 //! The real server as a unit: a `ServerUnit` run through `UnitRunner`, with no
 //! platform bound (units run without a background session). It comes up
 //! `Running`, reports its tunnel's state as the run's detail but no health
-//! while its tunnel isn't connected, and leaves another server's head on the
-//! host's pending-consent channel alone while nothing of its own waits. Once
+//! while its tunnel isn't connected, and leaves another server's pending consent
+//! on the host's pending-consent channel alone while nothing of its own waits. Once
 //! its policy turns it off, it stops with the detail cleared. Turned back on,
 //! the next run sets up over the same folder, so the previous run let go of
 //! its databases, and runs again. Its detail holds the run's launch minter,
-//! and a server whose health is unknown isn't launchable. The oldest consent
+//! and a server whose health is unknown isn't launchable. The newest consent
 //! waiting in its authorization server is the run's detail, named for the
 //! client that asks, until the run ends.
 
@@ -19,7 +19,7 @@ use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
-use wildflowerhealthio_authorization_server::{GrantStore, PendingConsentHead, SqliteGrantStore};
+use wildflowerhealthio_authorization_server::{GrantStore, NewestPendingConsent, SqliteGrantStore};
 use wildflowerhealthio_servers::{
     LaunchError, RunPolicy, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
@@ -263,9 +263,9 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
 
 /// Wait in the authorization server's database in `server_dir` for the
 /// Owner's answer to `count` device requests from the host app's client, as a
-/// device pairing with the server leaves them, and answer with the codes their
-/// user would type, oldest first. The server isn't running, so it reads them
-/// as its run starts.
+/// device pairing with the server leaves them, each requested after the one
+/// before, and answer with the codes their user would type, oldest first. The
+/// server isn't running, so it reads them as its run starts.
 fn park_device_requests(server_dir: &std::path::Path, count: usize) -> Vec<String> {
     // The server's shared database (`WILDFLOWER_DB` in `set_up`); opening the
     // store runs its migrations, as the run would.
@@ -307,7 +307,7 @@ fn park_device_requests(server_dir: &std::path::Path, count: usize) -> Vec<Strin
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_running_servers_oldest_consent_is_its_detail_named_for_its_client() {
+async fn a_running_servers_newest_consent_is_its_detail_named_for_its_client() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let user_codes = park_device_requests(server_dir.path(), 2);
     let server = server_in_a_folder_on_a_runner(server_dir);
@@ -318,16 +318,16 @@ async fn a_running_servers_oldest_consent_is_its_detail_named_for_its_client() {
     .await;
 
     // The host app's client is seeded as the run sets its server up, so the
-    // head carries its registered name.
-    let first = PendingConsentHead::Device {
-        user_code: user_codes[0].clone(),
+    // newest request carries its registered name.
+    let newest = NewestPendingConsent::Device {
+        user_code: user_codes[1].clone(),
         client_name: "Wildflower Host".to_owned(),
     };
-    wait_for(unit_runner, "reporting the oldest request", |status| {
+    wait_for(unit_runner, "reporting the newest request", |status| {
         status
             .detail
             .as_ref()
-            .is_some_and(|detail| detail.pending_consent.as_ref() == Some(&first))
+            .is_some_and(|detail| detail.pending_consent.as_ref() == Some(&newest))
     })
     .await;
 

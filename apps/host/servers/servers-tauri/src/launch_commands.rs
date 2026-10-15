@@ -1,6 +1,6 @@
 //! The launch commands: the base opens a server's launcher, an app, as a SMART
 //! EHR launch against the server, the server's Wildflower Authorization
-//! app, or the consent waiting first on the server, each signed in as the
+//! app, or the newest consent waiting on the server, each signed in as the
 //! Owner. The launcher's and the Authorization
 //! app's URLs come from the server's record; the server must be launchable
 //! now, by the status the base receives
@@ -109,7 +109,7 @@ pub async fn server_open_authorization_app(
     .await
 }
 
-/// Open the consent waiting first on the server `domain` at its page, signed
+/// Open the newest consent waiting on the server `domain` at its page, signed
 /// in as the Owner first, in the in-app browser: the server's pending request
 /// on its page in the base. Invoked as
 /// `invoke('server_open_pending_consent', { domain })`; answers with nothing
@@ -321,7 +321,7 @@ async fn open_authorization_app(
     result
 }
 
-/// Open the consent waiting first on the server `domain` in `launch_browser`,
+/// Open the newest consent waiting on the server `domain` in `launch_browser`,
 /// at its page, signed in as the Owner, once the server's status in
 /// `statuses`, with its certificate state (its run's, or what its cache in
 /// `data_root` says), is launchable, and tell `launch_presence` its view is
@@ -467,7 +467,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Mutex;
 
-    use wildflowerhealthio_authorization_server::PendingConsentHead;
+    use wildflowerhealthio_authorization_server::NewestPendingConsent;
     use wildflowerhealthio_rathole_settings::TunnelName;
     use wildflowerhealthio_servers::{
         CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerRecord, TunnelToken,
@@ -1045,18 +1045,18 @@ mod tests {
     }
 
     /// The servers' statuses with the server launchable over
-    /// `authorization_server`, `head` waiting first on it.
+    /// `authorization_server`, `newest` the newest consent waiting on it.
     fn launchable_waiting_on(
         authorization_server: &TestAuthorizationServer,
-        head: PendingConsentHead,
+        newest: NewestPendingConsent,
     ) -> UnitStatuses<ServerDetail> {
         running_with(authorization_server, |detail| {
-            detail.pending_consent = Some(head);
+            detail.pending_consent = Some(newest);
         })
     }
 
-    fn oauth_head(id: &str) -> PendingConsentHead {
-        PendingConsentHead::OAuth {
+    fn oauth_consent(id: &str) -> NewestPendingConsent {
+        NewestPendingConsent::OAuth {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
         }
@@ -1091,7 +1091,7 @@ mod tests {
         let presence = OpenLaunchViews::default();
 
         open_consent(
-            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
             true,
@@ -1123,7 +1123,7 @@ mod tests {
         open_consent(
             &launchable_waiting_on(
                 &authorization_server,
-                PendingConsentHead::Device {
+                NewestPendingConsent::Device {
                     user_code: "ABCD-EFGH".to_owned(),
                     client_name: "Pebble".to_owned(),
                 },
@@ -1178,7 +1178,7 @@ mod tests {
         let launch_views = presence.views();
 
         let refused = open_consent(
-            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
             true,
@@ -1194,7 +1194,7 @@ mod tests {
 
         browser.close_showing();
         open_consent(
-            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
             true,
@@ -1214,7 +1214,7 @@ mod tests {
             .unwrap();
 
         open_consent(
-            &launchable_waiting_on(&authorization_server, oauth_head("req-1")),
+            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
             false,
@@ -1230,7 +1230,7 @@ mod tests {
         let authorization_server = test_authorization_server();
         let browser = OneViewBrowser::new(WhileAViewShows::Replace);
         let statuses = running_with(&authorization_server, |detail| {
-            detail.pending_consent = Some(oauth_head("req-1"));
+            detail.pending_consent = Some(oauth_consent("req-1"));
             detail.health = None;
         });
 

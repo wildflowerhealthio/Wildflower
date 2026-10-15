@@ -102,7 +102,7 @@ const optionalPendingConsent = Schema.optionalWith(PendingConsent.Schema, {
  * Narrowed by its run state: a `running` status has `runningSince`; a
  * `stopped` one has the `lastStop` of its latest run, once it has run; only
  * a run in progress has `health`, `tunnel` and `pendingConsent`, the
- * oldest consent waiting on it. Every status has
+ * newest consent waiting on it. Every status has
  * `certificate`: the state the run reported, while it has reported one, or
  * else what the server's certificate cache says.
  */
@@ -159,7 +159,7 @@ const healthOf = (status: Type): Option.Option<Health> =>
 const tunnelOf = (status: Type): Option.Option<TunnelState> =>
   status.runState === 'stopped' ? Option.none() : status.tunnel
 
-/** The oldest consent waiting on the server, while a run in progress reports one. */
+/** The newest consent waiting on the server, while a run in progress reports one. */
 const pendingConsentOf = (status: Type): Option.Option<PendingConsent.Type> =>
   status.runState === 'stopped' ? Option.none() : status.pendingConsent
 

@@ -40,7 +40,7 @@
 //!
 //! A server runs as a [`ServerUnit`] on `UnitRunner`: the host pushes each
 //! record to `UnitRunner` with a factory that builds a fresh unit for every
-//! run, and the unit reports its health and the oldest consent waiting on it
+//! run, and the unit reports its health and the newest consent waiting on it
 //! ([`PendingConsent`]) as its [`ServerDetail`], with the
 //! [`ServerLaunchMinter`] through which the host mints the launch it opens
 //! the server's launcher with, once [`ensure_launchable`] says the server can
@@ -51,8 +51,8 @@
 //! at its page, through [`consent_sign_in_url`]. What the host notifies about
 //! its servers is decided here too: the per-caller request notifications
 //! ([`RequestNotificationCoalescer`]), the notifications for each stop of a
-//! server's run ([`StopNotificationCoalescer`]) and those for each consent
-//! that comes to wait first on a server ([`ConsentNotificationCoalescer`]).
+//! server's run ([`StopNotificationCoalescer`]) and those for each new
+//! consent waiting on a server ([`ConsentNotificationCoalescer`]).
 //!
 //!  - [`domain`] — [`ServerRecord`], its [`RelayKind`], [`TunnelToken`] and
 //!    [`RunPolicy`], [`RegistryError`], enrolment with its [`EnteredRelay`],

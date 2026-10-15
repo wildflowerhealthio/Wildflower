@@ -191,8 +191,8 @@ only it composes. Rust-only, no `-core`.
   as long as the server runs, on a channel the host makes for each run; the
   server's `CertificateState`, published by the device certificate for as
   long as the server runs, on a channel the host makes for each run; the
-  head of the authorization server's pending-consent queue, published as the run starts and
-  after each change to the queue, on a channel the host makes for each run;
+  authorization server's newest pending consent, published as the run starts and
+  after each change to its pending consents, on a channel the host makes for each run;
   and each forwarded request (every request through the tunnel), on a
   channel the host
   shares across runs, reported by the forwarded-request layer as a

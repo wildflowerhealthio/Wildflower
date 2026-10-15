@@ -351,8 +351,8 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    `verification_uri_complete`.
 2. Owner confirms the `user_code` on the device page (typed, or filled in by
    `verification_uri_complete`) in an [Owner browser](#owner-browser). The
-   host app opens the device page with the code filled in for a request at
-   the head of the [pending-consent queue](#pending-consent-queue).
+   host app opens the device page with the code filled in for the newest of
+   the [pending consents](#pending-consents).
 3. Owner reviews the request (device name + requested scopes) and approves via
    `POST /authorization/devices/:userCode/approve`. The Owner may add scopes beyond
    what the device requested (up to the client's `allowedScopes`) or prune them
@@ -386,37 +386,40 @@ nothing; the effective name then falls back to the client name at grant-mint
 time so the durable device grant's `(client_id, device_name)` key stays total.
 Optional on the wire; auth-code requests carry no device name.
 
-### Pending-consent queue
+### Pending consents
 
-The single FIFO of authorization requests waiting on the Owner, spanning **both**
-grant flows: a device-code request parked by `/oauth/device_authorization` and an
-authorization-code request parked by `/oauth/authorize` share one queue,
-oldest `requestedAt` first.
+The authorization requests waiting on the Owner, spanning **both** grant flows:
+a device-code request parked by `/oauth/device_authorization` and an
+authorization-code request parked by `/oauth/authorize` alike. The host asks
+about one at a time, the newest by `requestedAt`, like a stack: a new request
+takes over from the one before it, and deciding it brings back the newest of
+those still pending.
 
-The head of that queue is a `PendingConsentHead`, discriminated because the two
-flows have no shared lookup key, with the name of the client that asks (its
+The newest is a `NewestPendingConsent`, discriminated because the two flows
+have no shared lookup key, with the name of the client that asks (its
 registered name, or its `client_id` while it has none):
 
-| Flow               | Head                                       | Decided at                                        |
+| Flow               | Newest pending consent                     | Decided at                                        |
 | ------------------ | ------------------------------------------ | ------------------------------------------------- |
 | Device (RFC 8628)  | `{ kind: 'device', userCode, clientName }` | the device page, `/oauth/device?user_code=`       |
 | Authorization code | `{ kind: 'oauth', id, clientName }`        | the consent card, `/oauth/authorize/{id}/consent` |
 
-The Rust side recomputes the head (`oldest_pending_consent_head`) after every
-transition that could move it — either flow's insert, approve, or deny — and
-publishes it on a `watch` channel. The Tauri host carries each server's head in
-the server's status, posts a notification ("‹client› wants access to
-‹domain›") once for each request that comes to the head, and on the desktop
-brings its window forward. The base's server page shows the head as a pending
+The Rust side recomputes it (`newest_pending_consent`) after every transition
+that could change it — either flow's insert, approve, or deny — and publishes
+it on a `watch` channel. The Tauri host carries each server's newest pending
+consent in the server's status, posts a notification ("‹client› wants access
+to ‹domain›") once for each request it hasn't notified for, and on the desktop
+brings its window forward. A request that comes back once a newer one is
+decided doesn't notify again. The base's server page shows it as a pending
 request; Open, or a tap on the notification on a phone, opens its page in a
 browser signed in as the Owner, with `then=back` (see `apps/host/servers`'s
 [Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
 
-A request that the [grant](#grant) fast path fully pre-approves never enters the
-queue: `/oauth/authorize` approves it in the same handler, so it never sits
-`pending` awaiting a human. Requests are dropped from the head once expired — a
-background reaper re-runs the query so an idle host doesn't stay stuck on a head
-whose TTL lapsed.
+A request that the [grant](#grant) fast path fully pre-approves is never pending:
+`/oauth/authorize` approves it in the same handler, so it never sits
+`pending` awaiting a human. Requests are dropped once expired — a background
+reaper re-runs the query so an idle host doesn't stay stuck on a request whose
+TTL lapsed.
 
 Leaving the consent page undecided decides nothing: the request stays pending
 and answerable from the server's page in the host until it expires, while the
@@ -753,7 +756,7 @@ mints a JWT.
 
 Unless an existing [grant](#grant) pre-approves every requested scope, the
 request is parked for the Owner: it joins the
-[pending-consent queue](#pending-consent-queue), so the host app notifies
+[pending consents](#pending-consents), so the host app notifies
 it and its server's page offers it. A browser signed in as
 the Owner lands on the [consent card](#consent-card) and decides there; any
 other lands on the [wait page](#wait-page), which redirects the client once

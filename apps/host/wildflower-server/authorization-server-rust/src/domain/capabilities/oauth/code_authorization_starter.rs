@@ -133,7 +133,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// Validate `authorize_query` (client and redirect first, then the redirectable
     /// params), park it, and decide: a fully pre-approved request is issued a
     /// code under the standing grant's authority and sent back to the client;
-    /// anything else joins the pending-consent queue.
+    /// anything else waits on the Owner as a pending consent.
     ///
     /// Clients other than the host app's are trusted on first use (see
     /// [`crate::domain::client_registration`]): a request outside the

@@ -204,17 +204,17 @@ async fn authorize_disallowed_scope_parks_a_pending_request() {
     );
 }
 
-/// A parked `/authorize` request must reach the host's consent popup, not only
-/// the wait page. The wait page tells its viewer to "approve this request on
-/// your device"; if the request never joins the
-/// pending-consent queue, that prompt never appears and the flow hangs until the
-/// 5-minute TTL — the bug this covers.
+/// A parked `/authorize` request must reach the host, not only the wait page.
+/// The wait page tells its viewer to "approve this request on your device"; if
+/// the request is never published as the newest pending consent, the host
+/// never notifies it and the flow hangs until the 5-minute TTL — the bug this
+/// covers.
 #[tokio::test]
-async fn authorize_publishes_the_parked_request_as_the_consent_head() {
+async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() {
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     assert_eq!(
-        pending_consent_head(&db),
+        newest_pending_consent(&db),
         None,
         "no request has been parked yet"
     );
@@ -223,28 +223,28 @@ async fn authorize_publishes_the_parked_request_as_the_consent_head() {
     let request_id = parked_request_id(&res);
 
     assert_eq!(
-        pending_consent_head(&db),
-        Some(PendingConsentHead::OAuth {
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
             id: request_id.clone(),
             client_name: "Integration Test Client".to_owned(),
         }),
-        "the head must be the request the browser was just parked on, named for its client",
+        "the newest must be the request the browser was just parked on, named for its client",
     );
 }
 
-/// Deciding a parked request clears the popup: the Owner answered it, so the
-/// head must not linger on a request that is no longer pending. Covers approve
+/// Deciding a parked request clears it from the host: the Owner answered it,
+/// so it must not linger as the newest pending consent. Covers approve
 /// and deny separately — they take different paths to the same republish.
 #[tokio::test]
-async fn deciding_an_oauth_consent_clears_the_consent_head() {
+async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
     for decision in ["approve", "deny"] {
         let (g, owner_token, db) = spin_up();
         seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
         let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
         let request_id = parked_request_id(&res);
         assert!(
-            pending_consent_head(&db).is_some(),
-            "{decision}: the request should be the popup head before it is decided",
+            newest_pending_consent(&db).is_some(),
+            "{decision}: the request should be pending before it is decided",
         );
 
         let res = g
@@ -264,19 +264,19 @@ async fn deciding_an_oauth_consent_clears_the_consent_head() {
         assert_eq!(res.status(), StatusCode::OK, "{decision} should succeed");
 
         assert_eq!(
-            pending_consent_head(&db),
+            newest_pending_consent(&db),
             None,
-            "{decision}: the popup must close once the request is decided",
+            "{decision}: the request must clear once it is decided",
         );
     }
 }
 
 /// The grant fast path approves inside `/authorize` itself, so its request is
-/// never awaiting a human — it must not raise the popup on its way through
-/// `pending`. A spurious popup here would ask the Owner to re-approve something
+/// never awaiting a human — it must not be published on its way through
+/// `pending`. A spurious notification here would ask the Owner to re-approve something
 /// they already consented to, on a request that is already `approved`.
 #[tokio::test]
-async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
+async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
     let (g, owner_token, db) = spin_up();
     seed_test_client(&db);
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
@@ -290,9 +290,9 @@ async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
     )
     .await;
     assert_eq!(
-        pending_consent_head(&db),
+        newest_pending_consent(&db),
         None,
-        "the approved first request left the popup closed"
+        "the approved first request left nothing pending"
     );
 
     // Second pass: the grant now pre-approves every requested scope, so
@@ -305,9 +305,9 @@ async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
         "expected the fast path's client redirect, got {location}"
     );
     assert_eq!(
-        pending_consent_head(&db),
+        newest_pending_consent(&db),
         None,
-        "a fully pre-approved request must never raise the consent popup",
+        "a fully pre-approved request must never be published as pending",
     );
 }
 

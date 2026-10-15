@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 
 /**
- * The oldest consent waiting for the Owner on a server, as a running
+ * The newest consent waiting for the Owner on a server, as a running
  * server's status carries it: which request, by the key its page looks it up
  * by (a device's pairing by its `userCode`, an app's `/authorize` by its
  * request `id`), and the name of the client that asks, its registered name or
