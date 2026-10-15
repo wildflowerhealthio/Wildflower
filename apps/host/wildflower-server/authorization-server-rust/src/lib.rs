@@ -264,7 +264,6 @@ pub fn setup_authorization_server(
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
-        server_base_url: config.server_origin.clone(),
         server_origin: server_origin.clone(),
         wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),

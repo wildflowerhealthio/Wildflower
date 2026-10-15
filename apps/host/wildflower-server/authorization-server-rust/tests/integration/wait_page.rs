@@ -21,48 +21,23 @@ fn header<'a>(res: &'a axum::response::Response, name: &str) -> &'a str {
 }
 
 /// A parked request is sent to the wait page beside the endpoint it asked,
-/// named relatively, so the browser stays on whichever origin it reached the
-/// authorization server at, and no launcher address is involved.
+/// named relatively, and no launcher address is involved.
 #[tokio::test]
-async fn a_parked_request_waits_beside_the_authorize_endpoint_on_the_origin_it_used() {
+async fn a_parked_request_waits_beside_the_authorize_endpoint() {
     let (g, _owner_token, _db) = spin_up();
 
-    let direct = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
-    let forwarded = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!(
-                "/oauth/authorize?{}",
-                authorize_query("ghost", "read")
-            ))
-            .header(
-                "forwarded",
-                "host=ruth.wildflowerhealth.example;proto=https",
-            ),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
-
-    for (res, authorize_url) in [
-        (direct, "http://127.0.0.1/oauth/authorize"),
-        (
-            forwarded,
-            "https://ruth.wildflowerhealth.example/oauth/authorize",
-        ),
-    ] {
-        let request_id = parked_request_id(&res);
-        let resolved = Url::parse(authorize_url)
-            .and_then(|authorize| authorize.join(&location_of(&res)))
-            .expect("resolves");
-        assert_eq!(
-            resolved.as_str(),
-            format!("{authorize_url}/{request_id}/wait"),
-            "the wait page is on the origin the browser used"
-        );
-        assert!(!location_of(&res).contains(LAUNCHER_BASE));
-    }
+    let res = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
+    let authorize_url = "http://127.0.0.1/oauth/authorize";
+    let request_id = parked_request_id(&res);
+    let resolved = Url::parse(authorize_url)
+        .and_then(|authorize| authorize.join(&location_of(&res)))
+        .expect("resolves");
+    assert_eq!(
+        resolved.as_str(),
+        format!("{authorize_url}/{request_id}/wait"),
+        "the wait page is beside the authorize endpoint"
+    );
+    assert!(!location_of(&res).contains(LAUNCHER_BASE));
 }
 
 /// The page is the same static bytes whatever request id the path names, so an

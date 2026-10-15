@@ -95,10 +95,6 @@ wildflowerhealthio-request-log = { path = "../request-log-rust" }
 wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
   "health-check",
-  # `served_base_url_for`: the unmatched-route 404 links back to the request's
-  # served origin (see `src/http/not_found.rs`); the forwarded-request
-  # report's `is_forwarded`, client address and served host.
-  "served-origin",
 ] }
 # Built once on the shared db and threaded into both the authorization server and the FHIR
 # server so the auth gate and HFS read one revocation denylist/epoch store (#269).

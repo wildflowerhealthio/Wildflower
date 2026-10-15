@@ -32,11 +32,8 @@ wildflowerhealthio-scopes = { path = "../../../../slices/scopes/scopes-rust" }
 wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust", features = [
   "openapi",
 ] }
-# The shared forwarding-header provenance helper (`request_provenance`,
-# `served_base_url_for`) the launch handler dispatches and renders against —
-# same contract wildflowerhealthio-authorization-server uses to resolve token issuer URLs.
+# The shared opaque-500 `InternalError` (`http-errors`).
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = [
-  "served-origin",
   "http-errors",
 ] }
 rand = "0.10"

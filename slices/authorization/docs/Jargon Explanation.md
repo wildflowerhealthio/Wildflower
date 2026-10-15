@@ -804,7 +804,7 @@ subject's epoch. The auth gate (`verify_auth_token_claims`) runs the full check
 on every Owner-gated and every FHIR request; HFS additionally checks the
 per-`jti` denylist in-process (defense-in-depth). Expired denylist rows are swept
 at startup and daily. See `docs/Origins/Explanation.md` for how this composes
-with the served-origin model.
+with the one-origin model.
 
 ### Bearer token / `token_type=Bearer`
 

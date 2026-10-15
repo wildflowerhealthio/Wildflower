@@ -31,12 +31,12 @@ only it composes. Rust-only, no `-core`.
     connection; a TLS-ALPN-01 validation handshake (ALPN `acme-tls/1`) is
     answered and closed. The tunnel router adds the forwarded-request
     report, the tunnel front and, outermost so even a `421` is readable
-    cross-origin, CORS. The front drops any inbound `Forwarded`, answers
-    `421` (unreported) unless every host the request names (each `Host`, and
-    the request target's authority) is the server's domain, and writes
-    `Forwarded: for=<visitor>;host="<domain>";proto=https` (no `for` without
-    a PROXY address), so every served-origin reader treats the request as
-    forwarded, at the public origin. `WildflowerServer` holds the tunnel's
+    cross-origin, CORS. The front answers `421` (unreported) unless every
+    host the request names (each `Host`, and the request target's authority)
+    is the server's domain. Every request is served at the public origin,
+    which every reader takes from config; nothing reads `Forwarded`. The
+    visitor's address rides the request as its `TunnelVisitor` connect info,
+    which the forwarded-request report reads. `WildflowerServer` holds the tunnel's
     daemon, so it dials for exactly as long as the server serves.
   - **The device certificate** (`adapters/acme_certificate.rs`) is
     the tunnel listener's certificate for the server's domain, from
@@ -130,7 +130,7 @@ only it composes. Rust-only, no `-core`.
     router, under both listeners, is wrapped in one cookie→bearer layer per
     cookie, the UI's outermost
     (`http/middleware/session_cookie_bearer.rs`'s
-    `present_session_cookie_bearers`): a request from the served origin with
+    `present_session_cookie_bearers`): a request from the server's origin with
     no `Authorization` gets a live session's bearer, `hfs_session`'s when it
     carries both, unless it sends `Wildflower-Session: owner-browser`
     (the authorization server's `SESSION_HEADER` and
@@ -191,11 +191,11 @@ only it composes. Rust-only, no `-core`.
   long as the server runs, on a channel the host makes for each run; the
   head of the authorization server's pending-consent queue, published as the run starts and
   after each change to the queue, on a channel the host makes for each run;
-  and each forwarded request (every request through the tunnel,
-  and each one a front run on this machine relayed), on a channel the host
+  and each forwarded request (every request through the tunnel), on a
+  channel the host
   shares across runs, reported by the forwarded-request layer as a
   `ForwardedRequest` record: the
-  visitor's address, the path reduced to its route, the status, and the
+  visitor's address (from its `TunnelVisitor`), the path reduced to its route, the status, and the
   `RequestCaller` or `RequestRefusal` the authorization server bearer gates stamped on the
   response. The layer sends the same record to the request-log slice.
   A full report channel drops the report; it never delays a response.
@@ -216,6 +216,6 @@ only it composes. Rust-only, no `-core`.
 - [Server Runs Explanation](../../servers/docs/Server%20Runs%20Explanation.md)
   — how the host runs, restarts and watches each server, as a `ServerUnit`.
 - [Origins Explanation](../../../../docs/Origins/Explanation.md) — the one
-  listener, and the served origin the 404 resolves per request.
+  listener, and the one origin every request is served at.
 - [Shared Diesel Pool Explanation](../../../../docs/Persistence/Shared%20Diesel%20Pool%20Explanation.md)
   — the pool `set_up` builds and shares across the diesel-backed slices.

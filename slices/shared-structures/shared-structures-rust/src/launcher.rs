@@ -7,7 +7,7 @@
 //! the device page), a server serves no UI of its own, so every other
 //! browser-facing page it hands out (logout's landing, the link on an
 //! unmatched route's `404`) is a URL on that hosted UI carrying
-//! `server=<the request's served origin>`.
+//! `server=<the server's origin>`.
 //!
 //! [`LauncherBase`] is the one place those URLs are spelled. The host decides the
 //! base (from `tauri-shared-config.json`, switching to the local `main-web` dev

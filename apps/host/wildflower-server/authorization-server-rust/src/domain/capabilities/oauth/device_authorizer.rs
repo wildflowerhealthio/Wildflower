@@ -28,7 +28,7 @@ const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 
 /// The codes a started device authorization hands the device — the RFC 8628
 /// §3.2 response minus the verification URIs, which the HTTP layer builds from
-/// the served origin.
+/// the server's origin.
 pub(crate) struct DeviceCodes {
     pub(crate) device_code: String,
     pub(crate) user_code: String,

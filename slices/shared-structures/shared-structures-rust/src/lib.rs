@@ -9,11 +9,10 @@ pub use server_runtime_config::ServerRuntimeConfig;
 /// Reduce a base URL to its bare origin string — `scheme://host[:port]`, no
 /// trailing slash (e.g. `https://ruth.relay.example`). The one place the
 /// `url::Origin::ascii_serialization` reduction is spelled, so the callers that
-/// stringify a base URL (forwarded served origins, the
-/// server's origin every token's `iss` and `aud` name) can't each render it a
-/// slightly different way — the flap PR #224 warned about. Pure `url` code, so
-/// it stays out of the axum-gated `served_origin` module and non-HTTP crates can
-/// use it too. See `docs/Origins/Explanation.md`.
+/// stringify a base URL (the server's origin every token's `iss` and `aud`
+/// name, HFS's base URL) can't each render it a slightly different way. Pure
+/// `url` code, so non-HTTP crates can use it too. See
+/// `docs/Origins/Explanation.md`.
 #[must_use]
 pub fn origin_string(base_url: &url::Url) -> String {
     base_url.origin().ascii_serialization()
@@ -31,13 +30,6 @@ pub mod openapi_snapshot;
 #[cfg(feature = "health-check")]
 pub mod health_check;
 
-/// Forwarding-header provenance: `request_provenance` and `served_base_url_for`,
-/// the single source of truth for a request's served base URL (see the module
-/// and `docs/Origins/Explanation.md`). Behind the `served-origin` feature so
-/// non-HTTP crates don't pull `axum`.
-#[cfg(feature = "served-origin")]
-pub mod served_origin;
-
 /// The diesel `JsonText` SQLite mapping (a `serde_json::Value` field stored in a
 /// JSON TEXT column), shared by the diesel-backed slices. Behind the
 /// `diesel-json-text` feature so only diesel-persisting `-rust` slices pull
@@ -52,7 +44,7 @@ mod tests {
 
     /// The bare origin drops the trailing slash and, per the URL Standard, the
     /// scheme's default port — the exact shape every consumer needs when it
-    /// interpolates a served origin into a `Location` / discovery URL. Pinning it
+    /// interpolates an origin into a `Location` / discovery URL. Pinning it
     /// here is what lets the call sites stop each re-spelling the reduction.
     #[test]
     fn reduces_to_scheme_host_port_without_trailing_slash() {
@@ -60,8 +52,8 @@ mod tests {
         assert_eq!(origin_string(&plain), "http://127.0.0.1:8080");
 
         // A non-default port is kept; the trailing path is dropped.
-        let forwarded = Url::parse("https://emr.example.com:8443/token?x=1").expect("valid url");
-        assert_eq!(origin_string(&forwarded), "https://emr.example.com:8443");
+        let with_port = Url::parse("https://emr.example.com:8443/token?x=1").expect("valid url");
+        assert_eq!(origin_string(&with_port), "https://emr.example.com:8443");
 
         // The scheme's default port (443 for https) is omitted from the origin.
         let default_port = Url::parse("https://example.com/path").expect("valid url");

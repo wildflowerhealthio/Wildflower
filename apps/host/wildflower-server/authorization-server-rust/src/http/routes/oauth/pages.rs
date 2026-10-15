@@ -1,8 +1,7 @@
 //! What the authorization server's browser pages share: the
 //! [wait page](super::wait_page) and the [authorization
 //! pages](super::authorization_pages) (the consent card). Each is served on the
-//! origin the browser reached the authorization server at, under the same
-//! security headers, and is reached at a path beside `/oauth/authorize` that
+//! server's origin, under the same security headers, and is reached at a path beside `/oauth/authorize` that
 //! names the pending request.
 
 use axum::http::header::{self, HeaderName};
@@ -28,8 +27,7 @@ pub(super) fn page_security_headers(content_type: &'static str) -> [(HeaderName,
 }
 
 /// The `Location` of `page` for pending request `request_id`: relative, so the
-/// browser resolves it against the `…/oauth/authorize` it just requested, on the
-/// origin it used.
+/// browser resolves it against the `…/oauth/authorize` it just requested.
 pub(super) fn request_page_location(request_id: &str, page: &str) -> String {
     let encoded_request_id = form_urlencoded::byte_serialize(request_id.as_bytes())
         .collect::<String>()

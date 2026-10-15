@@ -66,8 +66,8 @@ pub struct CallerSummaryBody {
     /// bearer gate verified.
     #[schema(required)]
     pub(super) client_id: Option<String>,
-    /// The visitor's address the request's `Forwarded` header named, or `null`
-    /// when it named none.
+    /// The visitor's IP address, from the tunnel connection's PROXY header, or
+    /// `null` when it named none.
     #[schema(required)]
     pub(super) address: Option<String>,
     #[schema(value_type = String, format = DateTime)]

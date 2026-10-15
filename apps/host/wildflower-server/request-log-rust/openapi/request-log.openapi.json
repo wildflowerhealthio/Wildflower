@@ -144,7 +144,7 @@
               "string",
               "null"
             ],
-            "description": "The visitor's address the request's `Forwarded` header named, or `null`\nwhen it named none."
+            "description": "The visitor's IP address, from the tunnel connection's PROXY header, or\n`null` when it named none."
           },
           "firstSeen": {
             "type": "string",

@@ -544,8 +544,7 @@ async fn device_authorization_happy_path() {
     let body = "client_id=integration-test-app&scope=system%2F*.cruds";
     let req = build_request(
         Request::post("/oauth/device_authorization")
-            .header("content-type", "application/x-www-form-urlencoded")
-            .header("forwarded", "host=ruth.relay.example;proto=https"),
+            .header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -561,8 +560,7 @@ async fn device_authorization_happy_path() {
         serde_json::json!({
             "device_code": device_code,
             "user_code": user_code,
-            // This server's own device page, on the origin the device
-            // reached it at.
+            // This server's own device page, on its origin.
             "verification_uri": "https://ruth.relay.example/oauth/device",
             "verification_uri_complete": format!(
                 "https://ruth.relay.example/oauth/device?user_code={user_code}"

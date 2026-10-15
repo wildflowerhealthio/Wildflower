@@ -34,8 +34,8 @@ browser / app ──TLS──► relay :443 ── reads the ClientHello's SNI o
    handshakes arrive through the relay like any other visitor.
 
 The [Origins Explanation](../Origins/Explanation.md#one-listener) covers the
-tunnel listener, and how its tunnel front writes `Forwarded` for the rest of
-the server.
+tunnel listener, and how its tunnel front holds every request to the server's
+domain.
 
 ## What the operator can see
 

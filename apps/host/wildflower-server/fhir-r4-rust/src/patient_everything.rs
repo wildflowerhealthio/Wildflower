@@ -60,9 +60,8 @@ use axum::response::{IntoResponse, Json, Response};
 use axum::Router;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
-use crate::delegate::{delegate_get, internal_error, read_json};
+use crate::delegate::{delegate_get, read_json};
 
 /// Upper bound on bytes buffered from a single delegated search *page* body.
 /// Pages are bounded by HFS's `max_page_size`, so one body stays well under
@@ -112,12 +111,12 @@ const RELATED_RESOURCE_TYPES: &[RelatedType] = &[
 ];
 
 /// State threaded to the `$everything` handler: a clone of HFS's router to
-/// re-drive in-process, plus the server's public origin, the served origin of
-/// a request with no `Forwarded` header.
+/// re-drive in-process, plus the FHIR base for `fullUrl`s and the `self` link:
+/// the server's bare origin, where FHIR is mounted, the same base HFS emits.
 #[derive(Clone)]
 pub(crate) struct EverythingState {
     pub hfs_router: Router,
-    pub public_origin: url::Url,
+    pub fhir_base: String,
 }
 
 /// `$everything` URL parameters. Only `_count` is honored today; unknown params
@@ -134,15 +133,7 @@ pub(crate) async fn patient_everything_handler(
     Query(params): Query<EverythingParams>,
     headers: HeaderMap,
 ) -> Response {
-    // FHIR base for `fullUrl`s and the `self` link: the served origin, where
-    // FHIR is mounted — the same derivation the discovery override uses. A
-    // forwarded host that cleared validation but failed to parse leaves no base
-    // URL to build links from, so 500 rather than emit a Bundle with a malformed
-    // `self`/`fullUrl`.
-    let fhir_base = match served_base_url_for(&headers, &state.public_origin) {
-        Some(base_url) => wildflowerhealthio_shared_structures::origin_string(&base_url),
-        None => return internal_error("forwarded header did not indicate a valid served base URL"),
-    };
+    let fhir_base = &state.fhir_base;
 
     // 1. Read the primary Patient by delegating to HFS. Any non-200 (`404` for a
     //    missing patient, `401`/`403` when scopes are lacking, `503`, …) is
@@ -202,7 +193,7 @@ pub(crate) async fn patient_everything_handler(
 
     (
         StatusCode::OK,
-        Json(build_searchset_bundle(&fhir_base, &self_url, &resources)),
+        Json(build_searchset_bundle(fhir_base, &self_url, &resources)),
     )
         .into_response()
 }
