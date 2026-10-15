@@ -53,7 +53,7 @@ struct ApiDoc;
 fn documented_public_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(routes::well_known_jwks::handle_jwks_request))
-        .nest("/oauth", routes::oauth::openapi_router())
+        .nest(routes::oauth::OAUTH_MOUNT, routes::oauth::openapi_router())
 }
 
 /// The spec-only view of the whole documented surface: the pre-auth routes
@@ -93,7 +93,7 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
 
     Router::new()
         .merge(documented)
-        .nest("/oauth", routes::oauth::page_router())
+        .nest(routes::oauth::OAUTH_MOUNT, routes::oauth::page_router())
         .nest("/authorization", access)
         .with_state(state)
 }

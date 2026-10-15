@@ -32,6 +32,7 @@ use include_dir::{include_dir, Dir};
 use url::form_urlencoded;
 
 use super::pages::{page_security_headers, request_page_location};
+use super::OAUTH_MOUNT;
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
 
@@ -46,8 +47,8 @@ const CONSENT_PAGE: &str = "consent.html";
 /// The device verification page in the build.
 const DEVICE_PAGE: &str = "device.html";
 
-/// Where the device verification page is served, relative to the `/oauth`
-/// mount.
+/// Where the device verification page is served, relative to
+/// [`OAUTH_MOUNT`].
 const DEVICE_PAGE_ROUTE: &str = "/device";
 
 /// Vite's content-hashed output, served at `/oauth/assets/`.
@@ -71,7 +72,7 @@ pub(crate) fn consent_page_location(request_id: &str) -> String {
 /// The RFC 8628 `verification_uri` of the server at `served_origin`: the
 /// device verification page.
 pub(crate) fn device_page_url(served_origin: &str) -> String {
-    format!("{served_origin}/oauth{DEVICE_PAGE_ROUTE}")
+    format!("{served_origin}{OAUTH_MOUNT}{DEVICE_PAGE_ROUTE}")
 }
 
 /// The RFC 8628 `verification_uri_complete` of the server at `served_origin`:
