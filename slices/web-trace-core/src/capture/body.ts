@@ -61,8 +61,8 @@ const contentTypeOf = (headers: CaptureHeaders): string => {
  *
  * @remarks
  * Web Crypto rather than `node:crypto`: a capture runs in a WebView, and this
- * package holds the same line (see the pseudonymizer's `hmac.ts`). Its digest is
- * `Promise`-returning, which is why every capture path is `Effect`-shaped.
+ * package holds the same line as `har-anonymizer-core`'s `hmac.ts`. Its digest
+ * is `Promise`-returning, which is why every capture path is `Effect`-shaped.
  */
 const sha256Base64 = (
   bytes: Uint8Array<ArrayBuffer>
