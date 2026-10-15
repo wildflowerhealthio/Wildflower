@@ -35,7 +35,6 @@ const refusedRequest = (
   receivedAt: DateTime.subtract(NOW, { minutes: minutesAgo }),
   clientId: Option.none(),
   address,
-  servedHost: Option.some('dev1.example.com'),
   method: 'GET',
   path: '/Patient',
   status: 401,

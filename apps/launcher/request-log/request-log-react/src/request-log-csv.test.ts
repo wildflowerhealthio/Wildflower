@@ -9,7 +9,6 @@ const request = (overrides: Partial<LoggedRequest>): LoggedRequest => ({
   receivedAt: DateTime.unsafeMake('2026-07-01T12:00:00Z'),
   clientId: Option.some('lifting'),
   address: Option.some('198.51.100.24'),
-  servedHost: Option.some('dev1.example.com'),
   method: 'GET',
   path: '/Patient',
   status: 200,
@@ -26,8 +25,8 @@ describe('requestLogCsv', () => {
     const csv = requestLogCsv([request({})], new Map([['lifting', 'Lifting app']]))
 
     expect(csv).toBe(
-      'received_at,client_id,client_name,access,address,served_host,method,path,status,refusal,response_bytes,duration_ms\r\n' +
-        '2026-07-01T12:00:00.000Z,lifting,Lifting app,authorized,198.51.100.24,dev1.example.com,GET,/Patient,200,,,12\r\n'
+      'received_at,client_id,client_name,access,address,method,path,status,refusal,response_bytes,duration_ms\r\n' +
+        '2026-07-01T12:00:00.000Z,lifting,Lifting app,authorized,198.51.100.24,GET,/Patient,200,,,12\r\n'
     )
   })
 
@@ -47,14 +46,13 @@ describe('requestLogCsv', () => {
           clientId: Option.none(),
           address: Option.some('=HYPERLINK("x")'),
           method: '+SUM',
-          servedHost: Option.some('@x'),
         }),
       ],
       new Map()
     )
 
     expect(bodyOf(csv)[0]).toBe(
-      `2026-07-01T12:00:00.000Z,,Open,public,"'=HYPERLINK(""x"")",'@x,'+SUM,/Patient,200,,,12`
+      `2026-07-01T12:00:00.000Z,,Open,public,"'=HYPERLINK(""x"")",'+SUM,/Patient,200,,,12`
     )
   })
 })

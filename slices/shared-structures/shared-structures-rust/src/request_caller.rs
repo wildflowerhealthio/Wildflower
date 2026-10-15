@@ -49,9 +49,6 @@ pub struct ForwardedRequest {
     /// `None` when the connection had no header or the header named no
     /// address.
     pub client_address: Option<String>,
-    /// The server's public `host[:port]`, which every request is served at.
-    /// `Some` on every record the server reports.
-    pub served_host: Option<String>,
     /// The request method, e.g. `GET`.
     pub method: String,
     /// The request path reduced to its route, its first segment (`/authorization`,

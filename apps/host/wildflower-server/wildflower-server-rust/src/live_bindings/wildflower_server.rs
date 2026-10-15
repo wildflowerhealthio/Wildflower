@@ -526,7 +526,6 @@ pub async fn set_up(
     // reachability monitor's probes).
     let forwarded_request_report = axum::middleware::from_fn_with_state(
         ForwardedRequestReporter {
-            served_host: public_origin.authority().to_owned(),
             host_tx: observers.forwarded_request_tx,
             request_log_tx: request_log.forwarded_request_tx,
         },

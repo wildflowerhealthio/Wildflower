@@ -26,13 +26,11 @@ use crate::http::tunnel_listener::TunnelVisitor;
 
 use reduced_path::reduced_path;
 
-/// What [`report_forwarded_request`] reports with: the host every record names
-/// as served, and the two channels each record goes to: the host's, which
-/// turns them into notifications, and the request-log slice's writer.
+/// What [`report_forwarded_request`] reports to: the two channels each record
+/// goes to, the host's, which turns them into notifications, and the
+/// request-log slice's writer.
 #[derive(Clone)]
 pub(crate) struct ForwardedRequestReporter {
-    /// The server's public `host[:port]`, from its origin.
-    pub(crate) served_host: String,
     /// The host's channel (`ServerObservers::forwarded_request_tx`).
     pub(crate) host_tx: mpsc::Sender<ForwardedRequest>,
     /// The request-log writer's channel
@@ -76,7 +74,6 @@ pub(crate) async fn report_forwarded_request(
     let forwarded_request = ForwardedRequest {
         received_at,
         client_address,
-        served_host: Some(forwarded_request_reporter.served_host.clone()),
         method,
         reduced_path,
         status: response.status().as_u16(),
@@ -210,8 +207,7 @@ mod tests {
         tunnel_get_from(path, Some("192.0.2.1:4711"), &[])
     }
 
-    /// The layer's reporter, for the server at `demo.example.com`, over
-    /// channels of `capacity`, and the host's and the request log's receivers.
+    /// The layer's reporter, over channels of `capacity`, and the host's and the request log's receivers.
     fn reporter(
         capacity: usize,
     ) -> (
@@ -223,7 +219,6 @@ mod tests {
         let (request_log_tx, request_log_rx) = mpsc::channel(capacity);
         (
             ForwardedRequestReporter {
-                served_host: "demo.example.com".to_owned(),
                 host_tx,
                 request_log_tx,
             },
@@ -268,7 +263,6 @@ mod tests {
             forwarded_request,
             ForwardedRequest {
                 client_address: Some("192.0.2.1".to_owned()),
-                served_host: Some("demo.example.com".to_owned()),
                 method: "GET".to_owned(),
                 reduced_path: "/Patient".to_owned(),
                 status: 200,
@@ -331,28 +325,22 @@ mod tests {
         }
     }
 
-    /// A request is reported as served at the server's host, and from its
-    /// tunnel visitor, whatever `Forwarded` or `Host` it carries.
+    /// A request is reported from its tunnel visitor, whatever `Forwarded` it
+    /// carries.
     #[tokio::test]
-    async fn a_request_s_own_headers_name_neither_host_nor_visitor() {
+    async fn a_request_s_own_headers_name_no_visitor() {
         let forwarded_request = reported(tunnel_get_from(
             "/anonymous",
             Some("192.0.2.1:4711"),
-            &[
-                ("host", "evil.example.com"),
-                (
-                    "forwarded",
-                    "for=203.0.113.9;host=evil.example.com;proto=http",
-                ),
-            ],
+            &[(
+                "forwarded",
+                "for=203.0.113.9;host=evil.example.com;proto=http",
+            )],
         ))
         .await;
         assert_eq!(
-            (
-                forwarded_request.served_host.as_deref(),
-                forwarded_request.client_address.as_deref()
-            ),
-            (Some("demo.example.com"), Some("192.0.2.1"))
+            forwarded_request.client_address.as_deref(),
+            Some("192.0.2.1")
         );
     }
 

@@ -30,7 +30,6 @@ struct NewLoggedRequestRow<'a> {
     received_at: DateTime<Utc>,
     client_id: Option<&'a str>,
     address: Option<&'a str>,
-    served_host: Option<&'a str>,
     method: &'a str,
     path: &'a str,
     status: i32,
@@ -54,7 +53,6 @@ impl<'a> NewLoggedRequestRow<'a> {
                 .as_ref()
                 .map(|caller| caller.client_id.as_str()),
             address: request.client_address.as_deref(),
-            served_host: request.served_host.as_deref(),
             method: &request.method,
             path: &request.reduced_path,
             status: i32::from(request.status),
@@ -114,7 +112,6 @@ struct LoggedRequestRow {
     received_at: DateTime<Utc>,
     client_id: Option<String>,
     address: Option<String>,
-    served_host: Option<String>,
     method: String,
     path: String,
     status: i32,
@@ -132,7 +129,6 @@ impl TryFrom<LoggedRequestRow> for LoggedRequest {
             request: ForwardedRequest {
                 received_at: row.received_at.into(),
                 client_address: row.address,
-                served_host: row.served_host,
                 method: row.method,
                 reduced_path: row.path,
                 status: status_from_column(row.status)?,
@@ -411,7 +407,6 @@ pub(crate) mod test_support {
         ForwardedRequest {
             received_at,
             client_address: Some("192.0.2.1".to_owned()),
-            served_host: Some("dev1.example.com".to_owned()),
             method: "GET".to_owned(),
             reduced_path: "/fhir-r4/Patient".to_owned(),
             status: if client_id.is_some() { 200 } else { 401 },

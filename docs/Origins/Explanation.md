@@ -4,8 +4,8 @@ Which origin the on-device server answers as, where that origin shows up
 (redirects, discovery documents, the links HFS emits, tokens' `iss` and
 `aud`), and why it is always the same one. The bare origin is spelled by
 [`origin_string`] in `shared-structures-rust`; this is the narrative the
-server's consumers (the authorization server, FHIR R4, apps, the request log,
-tunnel) point back to instead of each re-deriving it.
+server's consumers (the authorization server, FHIR R4, apps, the tunnel)
+point back to instead of each re-deriving it.
 
 ## One listener
 
@@ -36,10 +36,9 @@ public origin the server builds from its domain at startup
 (`wildflower_server.rs`). Each consumer is handed it in its config and reads
 it from there, never from the request: the authorization server's redirects
 and device verification URI, FHIR R4's links, the apps slice's launch URLs,
-the unmatched-route `404`'s link to the launcher, and the host the request
-log records. A request's `Host` names no origin, and the tunnel front drops
-any `Forwarded` it carries. A slice's router driven directly, as its tests
-do, is answered the same way.
+and the unmatched-route `404`'s link to the launcher. A request's `Host`
+names no origin, and the tunnel front drops any `Forwarded` it carries. A
+slice's router driven directly, as its tests do, is answered the same way.
 
 ### The tunnel front
 

@@ -12,7 +12,6 @@ const COLUMNS = [
   'client_name',
   'access',
   'address',
-  'served_host',
   'method',
   'path',
   'status',
@@ -25,7 +24,7 @@ const COLUMNS = [
  * One CSV field (RFC 4180): quoted when it holds a comma, quote or line break,
  * with its quotes doubled. A value a spreadsheet would run as a formula (a
  * leading `=`, `+`, `-`, `@`, tab or carriage return) is prefixed with `'`, since
- * addresses, hosts and methods come from whoever called the server.
+ * addresses and methods come from whoever called the server.
  */
 const csvField = (value: string | number): string => {
   const text = String(value)
@@ -56,7 +55,6 @@ const requestLogCsv = (
       csvField(callerNameOf(access, names)),
       csvField(access.auth),
       optionalCsvField(request.address),
-      optionalCsvField(request.servedHost),
       csvField(request.method),
       csvField(request.path),
       csvField(request.status),

@@ -43,7 +43,6 @@ describe('buildRequestLogClientLayer', () => {
           receivedAt: '2026-07-01T12:00:00Z',
           clientId: 'lifting',
           address: '192.0.2.1',
-          servedHost: 'dev1.example.com',
           method: 'GET',
           path: '/Patient',
           status: 403,
