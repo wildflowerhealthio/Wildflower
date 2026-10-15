@@ -80,9 +80,6 @@ dev dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
 - **`StoryDay.instantOn` hashes only its keys.** Every call names what it
   dates (the prescription, and which fill), so two events never share a time
   of day by accident.
-- **The contained `Medication` carries `status` and `manufacturer`,** which
-  `fhir-stu3-as-r4`'s STU3 `Medication` does not model; its type adds them
-  from `fhir-r4`'s R4 `Medication`, which spells them the same.
 
 ## References
 

@@ -4,7 +4,6 @@ import type {
   IdentifierAndReference,
   Meta,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { Medication as R4Medication } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Medication as Stu3Medication } from '@wildflowerhealthio/fhir-stu3-as-r4/schemas'
 import {
   CarebookCodingSystem,
@@ -65,14 +64,6 @@ type CarebookMedicationDispense = Extract<
   typeof MedicationResource.Encoded,
   { readonly resourceType: 'MedicationDispense' }
 >
-
-/**
- * The contained `Medication`. `fhir-stu3-as-r4` models only the fields its
- * decode reads; the dialect also sends `status` and `manufacturer`, which STU3
- * spells as R4 does.
- */
-type ContainedMedication = typeof Stu3Medication.Schema.Encoded &
-  Pick<typeof R4Medication.Schema.Encoded, 'status' | 'manufacturer'>
 
 type WireExtension = typeof Extension.Schema.Encoded
 type WireIdentifier = typeof IdentifierAndReference.IdentifierSchema.Encoded
@@ -172,7 +163,9 @@ const medicationConceptOf = (
   text: DrugProduct.labelOf(product),
 })
 
-const containedMedicationOf = (carebookPrescription: CarebookPrescription): ContainedMedication => {
+const containedMedicationOf = (
+  carebookPrescription: CarebookPrescription
+): typeof Stu3Medication.Schema.Encoded => {
   const { product } = carebookPrescription.prescription
   return {
     resourceType: 'Medication',
