@@ -36,12 +36,16 @@ Security Policy (below).
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` from its query (`user-code-query.ts`) and mounts `DevicePage`
   over the same runner.
-- `src/device/device-page.tsx` — fills the code box from `user_code` but reads
-  nothing until the Owner presses Continue (RFC 8628 §5.4), then reads
+- `src/device/device-page.tsx` — on load reads `GET /authorization/session`:
+  with no session (`401`), or one whose scopes don't cover
+  `Devices.DEVICE_CONSENT_SCOPES` (authorization-core), it says to approve the
+  request on the device running the server and shows no code box. Otherwise
+  it fills the code box from `user_code` but reads no request until the Owner
+  presses Continue (RFC 8628 §5.4), then reads
   `GET /authorization/devices/{userCode}` and shows the card, which posts
   `/approve` or `/deny`. A `404` keeps the code box with an error; a `401` or
-  `403` says to approve the request on the device running the server and
-  leaves it pending. A request that expires before the decision shows
+  `403` (the session ended or changed since load) says to approve on the
+  server too. The request stays pending in both cases. A request that expires before the decision shows
   `ExpiredDeviceConsent`'s copy on the card.
 - `src/owner-browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.

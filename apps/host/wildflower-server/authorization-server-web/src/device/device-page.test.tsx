@@ -77,13 +77,20 @@ const deviceConsentFor = (userCode: string): unknown => ({
   allowedScopes: ['system/Observation.rs'],
 })
 
+/** The path of the session read the page makes on load. */
+const SESSION_PATH = '/authorization/session'
+
+/** The scopes an Owner browser session holds. */
+const OWNER_SCOPES = ['system/*.cruds', 'wildflower/*.cruds']
+
 /**
- * A stub server holding a pending request for `userCode` only, deciding it
- * with `decision`.
+ * A stub server whose session holds `sessionScopes`, holding a pending request
+ * for `userCode` only, deciding it with `decision`.
  */
 const serverHolding =
-  (userCode: string, decision: unknown): Answer =>
+  (userCode: string, decision: unknown, sessionScopes: readonly string[] = OWNER_SCOPES): Answer =>
   (request) => {
+    if (request.path === SESSION_PATH) return { status: 200, body: { scopes: sessionScopes } }
     if (request.path === `/authorization/devices/${userCode}`) {
       return { status: 200, body: deviceConsentFor(userCode) }
     }
@@ -124,6 +131,10 @@ const renderPage = (
   return { user: userEvent.setup({ delay: null }) }
 }
 
+/** The device requests (reads and decisions) the stub server received. */
+const deviceCalls = (): readonly SeenRequest[] =>
+  seen.filter((request) => request.path.startsWith('/authorization/devices/'))
+
 /** The decisions (`approve` / `deny`) the stub server received. */
 const decisions = (): readonly SeenRequest[] => seen.filter((request) => request.method === 'POST')
 
@@ -132,20 +143,22 @@ describe('DevicePage — the code', () => {
     answer = serverHolding('WDJB-MJHT', { status: 'approved' })
     const { user } = renderPage('wdjb-mjht')
 
-    expect(screen.getByLabelText<HTMLInputElement>('Code').value).toBe('WDJB-MJHT')
-    expect(seen).toEqual([])
+    expect((await screen.findByLabelText<HTMLInputElement>('Code')).value).toBe('WDJB-MJHT')
+    expect(seen.map((request) => request.path)).toEqual([SESSION_PATH])
 
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText('Pebble Watch')).toBeDefined()
-    expect(seen.map((request) => request.path)).toEqual(['/authorization/devices/WDJB-MJHT'])
+    expect(deviceCalls().map((request) => request.path)).toEqual([
+      '/authorization/devices/WDJB-MJHT',
+    ])
   })
 
   test('an unknown code shows an error, and the Owner can enter another', async () => {
     answer = serverHolding('WDJB-MJHT', { status: 'approved' })
     const { user } = renderPage('BCDF-GHJK')
 
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
 
     expect((await screen.findByRole('alert')).textContent).toContain(
       'No device is waiting with this code.'
@@ -153,7 +166,7 @@ describe('DevicePage — the code', () => {
     const codeBox = screen.getByLabelText('Code')
     await user.clear(codeBox)
     await user.type(codeBox, 'WDJB-MJHT')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText('Pebble Watch')).toBeDefined()
     expect(screen.queryByRole('alert')).toBeNull()
@@ -165,7 +178,7 @@ describe('DevicePage — deciding', () => {
     answer = serverHolding('WDJB-MJHT', { status: 'approved' })
     const { user } = renderPage('WDJB-MJHT')
 
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Approve' }))
 
     expect(
@@ -188,7 +201,7 @@ describe('DevicePage — deciding', () => {
     answer = serverHolding('WDJB-MJHT', { status: 'denied' })
     const { user } = renderPage('WDJB-MJHT')
 
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Decline' }))
 
     expect(await screen.findByText('The request was declined.')).toBeDefined()
@@ -205,7 +218,7 @@ describe('DevicePage — deciding', () => {
         : holding(request)
     const { user } = renderPage('WDJB-MJHT')
 
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: 'Approve' }))
 
     expect((await screen.findByRole('alert')).textContent).toContain(
@@ -216,15 +229,35 @@ describe('DevicePage — deciding', () => {
 
 describe('DevicePage — a browser that cannot decide here', () => {
   test.each([
-    ['not signed in', 401, {}],
-    ['signed in without the scope', 403, { error: 'InsufficientScope', missingScopes: [] }],
+    ['no session', () => ({ status: 401, body: {} })],
+    ['a session without the device scopes', serverHolding('WDJB-MJHT', {}, ['openid'])],
+  ] as const)(
+    '%s is told to approve on the server on load, with no code box and no device calls',
+    async (_case, server) => {
+      answer = server
+      renderPage('WDJB-MJHT')
+
+      expect(
+        await screen.findByText('Approve this on the device running your server.')
+      ).toBeDefined()
+      expect(screen.queryByLabelText('Code')).toBeNull()
+      expect(seen.map((request) => request.path)).toEqual([SESSION_PATH])
+    }
+  )
+
+  test.each([
+    ['ended', 401, {}],
+    ['lost the scope', 403, { error: 'InsufficientScope', missingScopes: [] }],
   ])(
-    '%s is told to approve on the server, and the request is left untouched',
+    'a session that %s before Continue is told to approve on the server, and the request is left untouched',
     async (_case, status, body) => {
-      answer = () => ({ status, body })
+      answer = (request) =>
+        request.path === SESSION_PATH
+          ? { status: 200, body: { scopes: OWNER_SCOPES } }
+          : { status, body }
       const { user } = renderPage('WDJB-MJHT')
 
-      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await user.click(await screen.findByRole('button', { name: 'Continue' }))
 
       expect(
         await screen.findByText('Approve this on the device running your server.')

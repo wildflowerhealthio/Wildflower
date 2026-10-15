@@ -37,6 +37,18 @@ const DeviceConsentBodySchema = Schema.Struct({
   patient: Schema.optional(Schema.String),
 })
 
+/**
+ * The scopes a session needs to read and decide device requests here:
+ * `GetDeviceConsent` is gated on `wildflower/AuthorizationRequest.r`,
+ * `ApproveDeviceConsent` / `DenyDeviceConsent` on `.u`. The server's gates are
+ * `authorization-server-rust`'s `consent_reader_scopes` and
+ * `consent_decider_scopes`, which `devices.test.ts` reads this list from.
+ */
+const DEVICE_CONSENT_SCOPES = [
+  'wildflower/AuthorizationRequest.r',
+  'wildflower/AuthorizationRequest.u',
+] as const
+
 const httpApiGroup = HttpApiGroup.make('devices', { topLevel: false })
   .add(
     HttpApiEndpoint.get('GetDeviceConsent', '/devices/:userCode')
@@ -67,6 +79,7 @@ const httpApiGroup = HttpApiGroup.make('devices', { topLevel: false })
 
 export {
   httpApiGroup,
+  DEVICE_CONSENT_SCOPES,
   DeviceConsentSchema,
   DeviceConsentResultSchema,
   DeviceConsentNotFoundSchema,

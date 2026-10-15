@@ -20,6 +20,7 @@
     "@wildflowerhealthio/fhir-r4": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/scopes-react": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:",

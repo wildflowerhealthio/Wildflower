@@ -488,10 +488,12 @@ On the [Owner browser](#owner-browser)'s session it reads
 `GET /authorization/devices/{userCode}` and shows `authorization-react`'s
 `DeviceConsentCard`, which posts `/approve` or `/deny`; then it tells the Owner
 they can return to the device. It follows the API's answers rather than
-checking who is signed in: a `404` means no device is waiting with that code,
-and the Owner can enter another; a `401` or `403` means this browser can't
-decide the request, so the page says to approve it on the device running the
-server and leaves the request pending.
+checking who is signed in. On load it reads `GET /authorization/session`: with
+no session, or one whose scopes don't cover `wildflower/AuthorizationRequest.r`
+and `.u`, it says to approve the request on the device running the server,
+shows no code box and leaves the request pending; a `401` or `403` on a code's
+read later does the same. A `404` means no device is waiting with that code,
+and the Owner can enter another.
 
 ### Wildflower host app
 
