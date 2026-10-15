@@ -17,8 +17,9 @@
 //! own sign-in reaches the server's consent card. A consent asked from
 //! another browser or device opens the same way at its page, with `then=back`
 //! ([`consent_sign_in_url`](wildflowerhealthio_servers::consent_sign_in_url)),
-//! once the server is launchable: from the server's page in the base, or from
-//! a tap on its notification on a phone.
+//! once the server is launchable: from the server's page in the base, from a
+//! tap on its notification on a phone, or, on a desktop, which reports no
+//! taps, as its notification posts.
 //!
 //! All open in the in-app browser, [`LaunchBrowser`]. A launch and the
 //! Authorization app replace the views showing: on iOS an open replaces the
@@ -52,12 +53,12 @@ use tauri_plugin_log::log;
 use tauri_plugin_native_page_browser::{
     BrowserEvent, CloseRequest, NativePageBrowserExt, OpenMode, OpenRequest,
 };
-use tokio::sync::Notify;
+use tokio::sync::{watch, Notify};
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
-    LaunchError, ListedServer, PendingConsent, RegistryError, ServerConsentWatcher, ServerDetail,
-    ServerLaunchMinter, ServerRecord, ServerRegistry, ServerSignInCodeMinter,
+    ConsentKey, LaunchError, ListedServer, PendingConsent, RegistryError, ServerConsentWatcher,
+    ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry, ServerSignInCodeMinter,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
@@ -177,6 +178,50 @@ pub async fn server_open_notified_consent(
         CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
     )
     .await
+}
+
+/// Open the consent `consent` waiting on the server `domain` in
+/// `launch_browser`, as [`open_pending_consent`] does with the statuses
+/// `statuses_rx` holds, now and on each change until it opens, while it is
+/// still the server's newest request. Each try logs its outcome; a refusal
+/// leaves the request at its notification and the server's page meanwhile.
+///
+/// On the desktop, which reports no taps on a notification, each request
+/// notified for opens this way, in the default browser (see
+/// `consent_requests`).
+#[cfg(any(test, not(any(target_os = "ios", target_os = "android"))))]
+pub(crate) async fn open_consent_once_openable(
+    registry: Arc<dyn ServerRegistry>,
+    data_root: &Path,
+    mut statuses_rx: watch::Receiver<UnitStatuses<ServerDetail>>,
+    domain: String,
+    consent: &ConsentKey,
+    launch_browser: impl LaunchBrowser + Clone,
+    launch_presence: impl LaunchPresence,
+) {
+    loop {
+        let statuses = statuses_rx.borrow_and_update().clone();
+        let still_newest = statuses
+            .get(&UnitId::new(&domain))
+            .and_then(PendingConsent::of_run)
+            .is_some_and(|newest| newest.key == *consent);
+        if !still_newest {
+            return;
+        }
+        let opened = open_pending_consent(
+            Arc::clone(&registry),
+            data_root,
+            &statuses,
+            domain.clone(),
+            launch_browser.clone(),
+            launch_presence.clone(),
+            CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
+        )
+        .await;
+        if opened.is_ok() || statuses_rx.changed().await.is_err() {
+            return;
+        }
+    }
 }
 
 /// Whether the base closes a consent's view once its request is decided or
@@ -557,8 +602,8 @@ async fn registered_record(
 /// Android a Custom Tab, each presented as a native page, and on a desktop
 /// the default browser.
 #[derive(Clone)]
-struct NativePageLaunchBrowser {
-    app: AppHandle,
+pub(crate) struct NativePageLaunchBrowser {
+    pub(crate) app: AppHandle,
 }
 
 impl LaunchBrowser for NativePageLaunchBrowser {
@@ -1588,6 +1633,105 @@ mod tests {
         browser.close_top();
         browser.close_top();
         assert!(presence.views().is_empty());
+    }
+
+    /// The servers' statuses with the server running over
+    /// `authorization_server`, `newest` the newest consent waiting on it, but
+    /// its health not probed yet, as at the app's start.
+    fn not_yet_probed_waiting_on(
+        authorization_server: &TestAuthorizationServer,
+        newest: Option<NewestPendingConsent>,
+    ) -> UnitStatuses<ServerDetail> {
+        running_with(authorization_server, |detail| {
+            detail.pending_consent = newest;
+            detail.health = None;
+        })
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_notified_consent_opens_once_its_server_becomes_launchable() {
+        let authorization_server = test_authorization_server();
+        let (data_root, registry) = registry();
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let (statuses_tx, statuses_rx) = watch::channel(not_yet_probed_waiting_on(
+            &authorization_server,
+            Some(oauth_consent("req-1")),
+        ));
+        let opening = {
+            let browser = browser.clone();
+            let data_root = data_root.path().to_owned();
+            tokio::spawn(async move {
+                open_consent_once_openable(
+                    registry,
+                    &data_root,
+                    statuses_rx,
+                    DOMAIN.to_owned(),
+                    &ConsentKey::OAuth {
+                        id: "req-1".to_owned(),
+                    },
+                    browser,
+                    OpenLaunchViews::default(),
+                )
+                .await;
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(browser.opened().is_empty(), "not launchable yet");
+
+        statuses_tx
+            .send(launchable_waiting_on(
+                &authorization_server,
+                oauth_consent("req-1"),
+            ))
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), opening)
+            .await
+            .expect("it opens and stops")
+            .unwrap();
+
+        assert_eq!(browser.opened().len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_notified_consent_decided_before_its_server_is_launchable_never_opens() {
+        let authorization_server = test_authorization_server();
+        let (data_root, registry) = registry();
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let (statuses_tx, statuses_rx) = watch::channel(not_yet_probed_waiting_on(
+            &authorization_server,
+            Some(oauth_consent("req-1")),
+        ));
+        let opening = {
+            let browser = browser.clone();
+            let data_root = data_root.path().to_owned();
+            tokio::spawn(async move {
+                open_consent_once_openable(
+                    registry,
+                    &data_root,
+                    statuses_rx,
+                    DOMAIN.to_owned(),
+                    &ConsentKey::OAuth {
+                        id: "req-1".to_owned(),
+                    },
+                    browser,
+                    OpenLaunchViews::default(),
+                )
+                .await;
+            })
+        };
+
+        statuses_tx
+            .send(not_yet_probed_waiting_on(
+                &authorization_server,
+                Some(oauth_consent("req-2")),
+            ))
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), opening)
+            .await
+            .expect("it stops")
+            .unwrap();
+
+        assert!(browser.opened().is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread")]

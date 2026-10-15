@@ -17,7 +17,8 @@
 //!   run's, or what its cache says) and the newest consent waiting on it;
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, and a notification for each new consent
-//!   waiting on a server;
+//!   waiting on a server, which on the desktop opens the request at once in
+//!   the default browser, as the server's page's Open does;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
@@ -220,7 +221,13 @@ pub fn host_servers(
         data_root.to_path_buf(),
     ));
     tauri::async_runtime::spawn(consent_requests::notify_consent_requests(
-        consent_requests::AppConsentRequestNotifier { app: app.clone() },
+        consent_requests::AppConsentRequestNotifier {
+            app: app.clone(),
+            registry: Arc::clone(&registry) as Arc<dyn ServerRegistry>,
+            data_root: data_root.to_path_buf(),
+            server_units: server_units.clone(),
+            statuses_rx: runner.subscribe(),
+        },
         runner.subscribe(),
     ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(

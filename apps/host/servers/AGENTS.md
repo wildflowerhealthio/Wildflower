@@ -494,11 +494,12 @@ changing how servers run or what the host notifies about them.
   `consent-request:<domain>`, replacing the server's last; on a phone the
   host withdraws it once the request is no longer the server's newest
   (decided or expired, or another it notified for is newest again), or the
-  server is removed. A tap opens it
-  on a phone; a desktop can't click a notification, so there the Owner opens
-  it from the server's page. The host never opens a request on its own: a
-  request made in a browser signed in as the Owner, as one a launch opened,
-  already shows its consent card there. A request already notified for, as when it
+  server is removed. A tap opens it on a phone. A desktop can't click a
+  notification, so there the host also opens the request at once in the
+  default browser, as the server's page's Open does; a server that can't
+  open it then, as one not launchable yet at the app's start, opens it on a
+  later status change once it can, while it is still the server's newest
+  request (`open_consent_once_openable`). A request already notified for, as when it
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run
   reports nothing pending, and keeps at most 32 meanwhile. The golden file
