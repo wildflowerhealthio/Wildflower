@@ -1,6 +1,5 @@
 import {
   confidenceRank,
-  isTokenSubset,
   type MatchConfidence,
   scoreName,
   tokenize,
@@ -34,8 +33,10 @@ const primaryTokens = (name: string): readonly string[] => tokenize(name.replace
  * match is dropped when it only holds because of a candidate's parenthetical
  * qualifier (e.g. a bare `"Zinc"` OTC entry must not partial-match
  * `"Insulin human (zinc)"`, which is a zinc-formulated insulin, not a zinc
- * product) — {@link primaryTokens} re-checks containment with that qualifier
- * removed.
+ * product): the name must share at least one of the candidate's
+ * {@link primaryTokens}. A name that also spells out the qualifier
+ * (`"Insulin inhalation"` against `"Insulin human (inhalation, rapid acting)"`)
+ * still matches, so a more specific name never resolves to fewer drugs.
  */
 const matchCatalogDrugs = (name: string, catalog: InteractionCatalog): readonly CatalogMatch[] => {
   const nameTokens = tokenize(name)
@@ -46,7 +47,7 @@ const matchCatalogDrugs = (name: string, catalog: InteractionCatalog): readonly 
     if (confidence === null) continue
     if (confidenceRank[confidence] >= confidenceRank.strong) {
       contained.push({ drug, confidence })
-    } else if (isTokenSubset(nameTokens, primaryTokens(drug.name))) {
+    } else if (primaryTokens(drug.name).some((token) => nameTokens.includes(token))) {
       partial.push({ drug, confidence })
     }
   }

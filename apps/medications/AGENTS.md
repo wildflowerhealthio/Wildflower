@@ -77,10 +77,9 @@ The bundled file holds DDInter's full set (all eight per-ATC download CSVs —
 A, B, D, H, L, P, R, V), retrieved 2026-09-03: 1,939 drugs and 160,235 pairs.
 Of `nonDrugNames`, the data carries Activated charcoal, Caffeine, Cannabidiol,
 Ethanol and Nicotine; Alcohol, Grapefruit, Grapefruit juice, Tobacco, Food and
-Cannabis are not present under those names. Two things remain to verify
-against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
-(record them here), and the drug-detail URL scheme assumed in `ddinterDrugUrl`
-(`ddinter.ts`).
+Cannabis are not present under those names. DDInter's licence / terms remain
+to be verified against the live site (<https://ddinter.scbdd.com/>) and
+recorded here.
 
 ## Rules
 
