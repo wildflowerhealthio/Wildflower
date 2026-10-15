@@ -10,12 +10,6 @@
   <key>com.apple.security.app-sandbox</key>
   <true/>
 
-  <!-- The host binds a loopback TCP listener (src/lib.rs) to serve the FHIR,
-       OHIF, apps and the authorization server routes. Under the sandbox, accepting any
-       connection needs this — loopback is not exempt. -->
-  <key>com.apple.security.network.server</key>
-  <true/>
-
   <!-- Outbound: the rathole tunnel client, the tunnel /health probe, and the
        Recorder's sniffer webview. -->
   <key>com.apple.security.network.client</key>

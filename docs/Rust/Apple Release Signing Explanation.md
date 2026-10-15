@@ -131,10 +131,10 @@ or it would report a valid certificate as missing.
 **The App Sandbox is mandatory.** `com.apple.security.app-sandbox` is required
 for App Store distribution, and it changes how the host runs:
 
-- the loopback listener in `src/lib.rs` needs `com.apple.security.network.server`
-  — loopback is not exempt from the sandbox
 - the tunnel client, the server's `/health` reachability probe and the
-  Recorder's sniffer webview need `com.apple.security.network.client`
+  Recorder's sniffer webview need `com.apple.security.network.client`. Visitors
+  reach the server over the tunnel client's outbound connection, so the host
+  accepts no connection and declares no `com.apple.security.network.server`
 - the importer's file picker needs `com.apple.security.files.user-selected.read-write`
 - the Recorder's recordings folder, `~/Downloads/Wildflower Recordings`, needs
   `com.apple.security.files.downloads.read-write`: the sandboxed build's
