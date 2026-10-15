@@ -19,10 +19,10 @@ const DeviceConsentScreen = ({
 }
 
 /**
- * The `/authorization/devices/$userCode` file route — the public device
- * consent screen reached from the public code-entry page. Renders the
- * shared {@link DeviceConsentForm} under a header with no back link
- * (entered via the published device-flow URL); on a decision it lands the
+ * The `/authorization/devices/$userCode` file route — the device consent
+ * screen reached from the public code-entry page. Renders the shared
+ * {@link DeviceConsentForm} under a header with no back link (entered from
+ * the code-entry page, not from inside the app); on a decision it lands the
  * owner on the app root.
  *
  * Reads the typed `$userCode` path param via `Route.useParams()`. The

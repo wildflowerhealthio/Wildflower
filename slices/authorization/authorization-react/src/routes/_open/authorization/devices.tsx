@@ -5,11 +5,12 @@ import type { JSX } from 'react'
 import { DeviceCodeEntryForm } from '../../../screens/device/device-code-entry-form.tsx'
 
 /**
- * Public device-code entry screen — the RFC 8628 `verification_uri` an
- * owner reaches from another device. Renders the shared
- * {@link DeviceCodeEntryForm} with no back link (this surface is entered
- * directly via the published URL, so there is nowhere in-app to go back
- * to). Submitting advances to the public consent route.
+ * The launcher's public device-code entry screen. The RFC 8628
+ * `verification_uri` is the authorization server's own device page
+ * (`/oauth/device`); this screen is the launcher's way to the same decision,
+ * reached by its address. Renders the shared {@link DeviceCodeEntryForm} with
+ * no back link (nothing in the app links here, so there is nowhere in-app to
+ * go back to). Submitting advances to the consent route.
  */
 function DeviceEntryScreen(): JSX.Element {
   const navigate = useNavigate()

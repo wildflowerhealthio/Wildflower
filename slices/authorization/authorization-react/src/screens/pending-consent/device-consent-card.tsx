@@ -9,7 +9,7 @@
  *
  * Renders the design-system "device authorization" card; its skin lives in
  * `device-consent-card.module.css` (token-driven). The surrounding chrome
- * (page shell + `PageHeader`, or the `Dialog`) is the caller's.
+ * (the page shell and its `PageHeader`) is the caller's.
  */
 
 import type { UseMutationResult } from '@tanstack/react-query'
