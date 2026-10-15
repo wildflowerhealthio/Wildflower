@@ -5,14 +5,15 @@ manages what a Wildflower server has authorized. It is a SMART client of the
 server `?iss=` names, and every Wildflower server advertises it, pointed at
 itself, as its SMART `management_endpoint`
 (`wildflowerhealthio_shared_structures::authorization_app`). Approving
-requests is not here: the launcher's approval routes still do that.
+requests is not here: the server's own consent card and device page do
+that.
 
 ## Packages
 
 - `authorization-web` — the app. Its queries, its Trusted Apps section and
   the API client come from the shared `slices/authorization` packages
-  (`authorization-react`, `authorization-core`), which the launcher's
-  approval routes also use.
+  (`authorization-react`, `authorization-core`), which the server's
+  consent pages (`authorization-server-web`) also use.
 
 ## Guardrails
 

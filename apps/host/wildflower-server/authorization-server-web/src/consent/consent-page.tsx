@@ -18,6 +18,7 @@ import { Effect, Match, Option, Schema } from 'effect'
 import { useEffect, useState, type JSX } from 'react'
 
 import { followableClientCallback } from '../client-callback.ts'
+import { DONE_MESSAGE } from '../then-query.ts'
 import { searchPatientsByName } from './patient-search.ts'
 import styles from './consent-page.module.css'
 
@@ -36,11 +37,20 @@ interface ConsentPageProps {
   readonly waitPage: URL
   /** Leave the page for `destination`, replacing it in the browser's history. */
   readonly leaveFor: (destination: URL) => void
+  /**
+   * In `then=back` mode (see `goBackOnceDecidedOf`), the step back out of the
+   * page once the Owner has decided, in place of the client callback: the
+   * browser that made the request finishes the flow from its wait page.
+   * `None` leaves for the callback.
+   */
+  readonly goBackOnceDecided: Option.Option<() => void>
 }
 
 /** Where the page stands once the Owner has decided. */
 type Exit =
   | { readonly kind: 'leaving' }
+  /** Decided in `then=back` mode: the page steps back out rather than leave for the callback. */
+  | { readonly kind: 'done' }
   | { readonly kind: 'declined' }
   | { readonly kind: 'unexpected' }
 
@@ -74,7 +84,8 @@ const consentDecidableHere = (
  * The consent card on the authorization server's own origin, for the browser
  * signed in as the Owner: it reads the pending request, lets the Owner narrow
  * and decide it, and leaves for the client callback the decision's answer
- * carries. A browser that can't decide the request here goes to the wait page
+ * carries, or, in `then=back` mode, says it is done and steps back out of the
+ * page. A browser that can't decide the request here goes to the wait page
  * instead.
  *
  * @remarks
@@ -88,6 +99,7 @@ const ConsentPage = ({
   runAuthed,
   waitPage,
   leaveFor,
+  goBackOnceDecided,
 }: ConsentPageProps): JSX.Element => {
   const consentQuery = useQuery({
     queryKey: ['consent-page', 'oauth-consent', requestId],
@@ -103,7 +115,18 @@ const ConsentPage = ({
     if (undecidableHere) leaveFor(waitPage)
   }, [undecidableHere, leaveFor, waitPage])
 
+  // Step back out only once the done message is on screen, so a window the
+  // browser refuses to close still says the decision went through.
+  const done = exit?.kind === 'done'
+  useEffect(() => {
+    if (done && Option.isSome(goBackOnceDecided)) goBackOnceDecided.value()
+  }, [done, goBackOnceDecided])
+
   const leaveWith = (result: OAuthConsentResult): void => {
+    if (result.status !== 'error' && Option.isSome(goBackOnceDecided)) {
+      setExit({ kind: 'done' })
+      return
+    }
     const redirect = result.status === 'error' ? undefined : result.redirect
     if (redirect === undefined) {
       setExit({ kind: result.status === 'denied' ? 'declined' : 'unexpected' })
@@ -194,6 +217,7 @@ const ConsentExit = ({ exit }: { readonly exit: Exit }): JSX.Element =>
   Match.value(exit).pipe(
     Match.discriminatorsExhaustive('kind')({
       leaving: () => <p className={styles['consent-page__exit']}>Returning you to the app…</p>,
+      done: () => <p className={styles['consent-page__exit']}>{DONE_MESSAGE}</p>,
       declined: () => <p className={styles['consent-page__exit']}>The request was declined.</p>,
       unexpected: () => <ErrorBanner error={new Error(UNEXPECTED_ANSWER)} />,
     })

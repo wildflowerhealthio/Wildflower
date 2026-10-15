@@ -13,7 +13,12 @@ the server's own origin, so the address bar names the server being approved:
   The code box and the card are `authorization-react`'s `DeviceCodeEntryForm`
   and `DeviceConsentCard`.
 
-This package composes them over the Owner browser's session. See "Consent
+This package composes them over the Owner browser's session. The host app
+also opens either page with `?then=back`, in a browser signed in as the Owner,
+to decide a request another browser or device made: after Allow or Deny the
+page says "Done. You can close this." and steps back out (`history.back()`
+when there is history, else `window.close()`) instead of leaving for the
+client callback or showing the decision's own message. See "Consent
 card" and "Device page" in the
 [Jargon Explanation](../../../../slices/authorization/docs/Jargon%20Explanation.md).
 
@@ -25,17 +30,20 @@ Security Policy (below).
 ## Layout
 
 - `consent.html` + `src/consent/main.tsx` — the consent card's entry: reads
-  the request id from its path and mounts `ConsentPage` over
+  the request id from its path and `then` from its query
+  (`src/then-query.ts`), and mounts `ConsentPage` over
   `ownerBrowserSessionRunner(location.origin, FetchHttpClient.layer)`.
 - `src/consent/consent-page.tsx` — reads the consent, renders the card with a
   patient search (`patient-search.ts`, FHIR `GET /Patient?name=`, each hit
   read as a `PatientMinimal`), and leaves
   for the callback the decision's answer carries, only an http(s) one
-  (`src/client-callback.ts`). A browser that can't read the consent (`401`,
-  `403`, `404`) goes to the wait page.
+  (`src/client-callback.ts`). With `then=back` it leaves for no callback (the
+  wait page in the browser that made the request finishes the flow): it shows
+  the done message, then steps back out. A browser that can't read the
+  consent (`401`, `403`, `404`) goes to the wait page, `then=back` or not.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
-  `user_code` from its query (`user-code-query.ts`) and mounts `DevicePage`
-  over the same runner.
+  `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
+  query and mounts `DevicePage` over the same runner.
 - `src/device/device-page.tsx` — on load reads `GET /authorization/session`:
   with no session (`401`), or one whose scopes don't cover
   `Devices.DEVICE_CONSENT_SCOPES` (authorization-core), it says to approve the
@@ -49,7 +57,14 @@ Security Policy (below).
   A request that expires before the decision shows `ExpiredDeviceConsent`'s
   copy in place of the card, then "Enter a new code", which goes back to an
   empty code box and drops `user_code` from the address bar so a reload
-  doesn't refill it.
+  doesn't refill it. With `then=back` a decision shows the done message in
+  place of the decision's own, then steps back out; the "approve on the
+  server" cases stay as they are.
+- `src/then-query.ts` — `goBackOnceDecidedOf`: the query's `then`, decoded at
+  the entry into `Some` step back out of the window for `then=back` and
+  `None` for anything else. The pages take it as the `goBackOnceDecided`
+  prop, and the tests pass a spy. The pages render the done message before
+  they call it, so a window the browser refuses to close still shows it.
 - `src/owner-browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.
   The browser's `__Host-owner_browser_session` cookie rides every same-origin

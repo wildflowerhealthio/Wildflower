@@ -16,8 +16,10 @@ import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
 import { AsyncErrorView, PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { Grant, Scope } from '@wildflowerhealthio/scopes-core'
 import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
-import { Effect, Match, Schema } from 'effect'
-import { useState, type JSX } from 'react'
+import { Effect, Match, Option, Schema } from 'effect'
+import { useEffect, useState, type JSX } from 'react'
+
+import { DONE_MESSAGE } from '../then-query.ts'
 
 import { withoutUserCode } from './user-code-query.ts'
 import styles from './device-page.module.css'
@@ -34,6 +36,12 @@ interface DevicePageProps {
   readonly initialUserCode: string
   /** The runner over the Owner browser's session (see `ownerBrowserSessionRunner`). */
   readonly runAuthed: AuthorizationRouterContext.RunAuthed
+  /**
+   * In `then=back` mode (see `goBackOnceDecidedOf`), the step back out of the
+   * page once the Owner has decided, which then says it is done in place of
+   * the decision's own message. `None` keeps the page on that message.
+   */
+  readonly goBackOnceDecided: Option.Option<() => void>
 }
 
 /** What reading the request a code names answered. */
@@ -150,8 +158,15 @@ const requestView = (found: DeviceLookup | undefined, parts: RequestViewParts): 
  * server and shows no code box. The same holds if a code's read, or the
  * decision, answers `401` or `403` later (the session can end in between).
  * Either way the request stays pending.
+ *
+ * In `then=back` mode a decision shows the done message and steps back out of
+ * the page.
  */
-const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Element => {
+const DevicePage = ({
+  initialUserCode,
+  runAuthed,
+  goBackOnceDecided,
+}: DevicePageProps): JSX.Element => {
   const sessionQuery = useQuery({
     queryKey: ['device-page', 'session'],
     queryFn: () => runAuthed(sessionDecidesDevices),
@@ -172,6 +187,13 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
   const [decision, setDecision] = useState<DeviceConsentResult | null>(null)
   // The code box's fill: the page's `user_code` until that code is spent.
   const [prefilledUserCode, setPrefilledUserCode] = useState(initialUserCode)
+
+  // Step back out only once the done message is on screen, so a window the
+  // browser refuses to close still says the decision went through.
+  const decided = decision !== null
+  useEffect(() => {
+    if (decided && Option.isSome(goBackOnceDecided)) goBackOnceDecided.value()
+  }, [decided, goBackOnceDecided])
 
   const enterNewCode = (): void => {
     lookup.reset()
@@ -203,7 +225,14 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
       {decision === null ? (
         <SessionGate sessionQuery={sessionQuery}>{pendingView}</SessionGate>
       ) : (
-        <DeviceDecided decision={decision} />
+        goBackOnceDecided.pipe(
+          Option.map(() => (
+            <p key="done" className={styles['device-page__message']}>
+              {DONE_MESSAGE}
+            </p>
+          )),
+          Option.getOrElse(() => <DeviceDecided key="decided" decision={decision} />)
+        )
       )}
     </>
   )

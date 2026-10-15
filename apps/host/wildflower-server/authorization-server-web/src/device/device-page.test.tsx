@@ -3,7 +3,7 @@ import type { HttpClientRequest } from '@effect/platform'
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -104,8 +104,11 @@ const serverHolding =
     return { status: 404, body: {} }
   }
 
+const goBack = vi.fn<() => void>()
+
 beforeEach(() => {
   seen = []
+  goBack.mockReset()
   // jsdom has no scrollIntoView; the card scrolls its error banner into view.
   Element.prototype.scrollIntoView = vi.fn()
 })
@@ -114,8 +117,12 @@ afterEach(() => {
   cleanup()
 })
 
+/** How the page was opened: plainly, or with `then=back`. */
+type OpenedWith = 'no-then' | 'then-back'
+
 const renderPage = (
-  initialUserCode: string
+  initialUserCode: string,
+  openedWith: OpenedWith = 'no-then'
 ): { readonly user: ReturnType<typeof userEvent.setup>; readonly queryClient: QueryClient } => {
   const queryClient = new QueryClient()
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -125,6 +132,7 @@ const renderPage = (
     <DevicePage
       initialUserCode={initialUserCode}
       runAuthed={ownerBrowserSessionRunner(SERVER_ORIGIN, stubServer)}
+      goBackOnceDecided={openedWith === 'then-back' ? Option.some(goBack) : Option.none()}
     />,
     { wrapper }
   )
@@ -236,6 +244,7 @@ describe('DevicePage — deciding', () => {
     expect(decisions().map((request) => request.path)).toEqual([
       '/authorization/devices/WDJB-MJHT/deny',
     ])
+    expect(goBack).not.toHaveBeenCalled()
   })
 
   test('a request that expired before the decision says so, and the Owner can enter a new code', async () => {
@@ -261,6 +270,33 @@ describe('DevicePage — deciding', () => {
 
     expect((await screen.findByLabelText<HTMLInputElement>('Code')).value).toBe('')
     expect(window.location.search).toBe('')
+  })
+})
+
+describe('DevicePage — then=back', () => {
+  test.each([
+    ['approving', 'Approve', 'approved', 'approve'],
+    ['declining', 'Decline', 'denied', 'deny'],
+  ])('%s says it is done and steps back', async (_case, button, status, decisionPath) => {
+    answer = serverHolding('WDJB-MJHT', { status })
+    const { user } = renderPage('WDJB-MJHT', 'then-back')
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: button }))
+
+    expect(await screen.findByText('Done. You can close this.')).toBeDefined()
+    expect(goBack).toHaveBeenCalledOnce()
+    expect(decisions().map((request) => request.path)).toEqual([
+      `/authorization/devices/WDJB-MJHT/${decisionPath}`,
+    ])
+  })
+
+  test('a browser that cannot decide here is still told to approve on the server', async () => {
+    answer = () => ({ status: 401, body: {} })
+    renderPage('WDJB-MJHT', 'then-back')
+
+    expect(await screen.findByText('Approve this on the device running your server.')).toBeDefined()
+    expect(goBack).not.toHaveBeenCalled()
   })
 })
 

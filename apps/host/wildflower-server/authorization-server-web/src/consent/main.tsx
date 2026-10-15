@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { addOsColorSchemeListener, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 
 import { ownerBrowserSessionRunner } from '../owner-browser-session.ts'
+import { goBackOnceDecidedOf } from '../then-query.ts'
 import { ConsentPage } from './consent-page.tsx'
 import { requestIdOf } from './request-path.ts'
 
@@ -35,6 +36,7 @@ if (container !== null) {
             runAuthed={ownerBrowserSessionRunner(window.location.origin, FetchHttpClient.layer)}
             waitPage={new URL('wait', window.location.href)}
             leaveFor={leaveFor}
+            goBackOnceDecided={goBackOnceDecidedOf(window.location.search, window)}
           />
         </main>
       </QueryClientProvider>

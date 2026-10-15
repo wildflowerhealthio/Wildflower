@@ -4,10 +4,6 @@ OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./d
 
 The slice is the TypeScript half every signing-in app shares: `authorization-core` and `authorization-react`. The server, `authorization-server-rust`, and the revocation store it shares with the FHIR server, `token-revocation-rust`, are used by the host alone, so they live in [`apps/host/wildflower-server/`](../../apps/host/wildflower-server/AGENTS.md); `authorization-server-rust/…` paths below are relative to that folder.
 
-## Guardrails
-
-- **Page paths have one source**: `authorization-core/src/page-paths.ts`, drift-tested against the route tree by `authorization-react/src/routes.test.tsx`. Changing a route means changing both together — the drift test fails otherwise.
-
 ## Traps
 
 - The bootstrap-URL / `?token=` minting path is **dev-only** (NODE_ENV-gated) — not a shipping pattern to extend.

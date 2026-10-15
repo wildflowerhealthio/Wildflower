@@ -1,20 +1,9 @@
-import {
-  queryOptions,
-  useMutation,
-  useQueryClient,
-  useSuspenseQuery,
-  type UseMutationOptions,
-  type UseMutationResult,
-  type UseSuspenseQueryOptions,
-  type UseSuspenseQueryResult,
-} from '@tanstack/react-query'
+import { type UseMutationOptions } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import type { OAuthConsent } from '@wildflowerhealthio/authorization-core/http-api-definition'
 import { Effect, type Schema } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
-import { GRANTS_QUERY_KEY, oauthConsentQueryKey } from './keys.ts'
-import { useRunAuthed } from './use-run-authed.ts'
 
 type OAuthConsentResource = Schema.Schema.Type<typeof OAuthConsent.OAuthConsentSchema>
 type OAuthConsentResult = Schema.Schema.Type<typeof OAuthConsent.OAuthConsentResultSchema>
@@ -61,35 +50,11 @@ const foldExpiredConsent = <E, R>(
     Effect.succeed<OAuthConsentResult>({ status: 'error', message: EXPIRED_CONSENT_MESSAGE })
   )
 
-/** Shared by the route `loader` and {@link useOAuthConsentQuery}. */
-const oauthConsentQueryOptions = (
-  runAuthed: RunAuthed,
-  id: string
-): UseSuspenseQueryOptions<
-  OAuthConsentResource,
-  Error,
-  OAuthConsentResource,
-  readonly [string, string, string]
-> =>
-  queryOptions({
-    queryKey: oauthConsentQueryKey(id),
-    queryFn: () =>
-      runAuthed(
-        Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
-          c['oauth-consent'].GetOAuthConsent({ path: { id } })
-        )
-      ),
-  })
-
-const useOAuthConsentQuery = (id: string): UseSuspenseQueryResult<OAuthConsentResource, Error> =>
-  useSuspenseQuery(oauthConsentQueryOptions(useRunAuthed(), id))
-
 /**
  * `ApproveOAuthConsent` / `DenyOAuthConsent` over `runAuthed`, as mutation
  * options: the decision's `mutationFn`, which resolves to the resulting
- * decision. Shared by {@link useOAuthConsentMutation} and the authorization
- * server's consent card (`authorization-server-web`), which runs it on the
- * Owner browser's session rather than the router's.
+ * decision. The authorization server's consent card (`authorization-server-web`)
+ * runs it on the Owner browser's session.
  */
 const oauthConsentMutationOptions = (
   runAuthed: RunAuthed
@@ -111,35 +76,5 @@ const oauthConsentMutationOptions = (
     ),
 })
 
-/**
- * {@link oauthConsentMutationOptions} on the router's authed runner. Returns
- * the resulting decision.
- *
- * Like the device-consent mutation, the consent screen unmounts on
- * success (`onDone()` navigates away), so this consent's own detail key is
- * never re-read. Invalidate the grants list root so the new grant shows
- * wherever the grants are listed next.
- */
-const useOAuthConsentMutation = (): UseMutationResult<
-  OAuthConsentResult,
-  Error,
-  OAuthConsentDecision
-> => {
-  const runAuthed = useRunAuthed()
-  const queryClient = useQueryClient()
-  return useMutation({
-    ...oauthConsentMutationOptions(runAuthed),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: GRANTS_QUERY_KEY })
-    },
-  })
-}
-
-export {
-  foldExpiredConsent,
-  oauthConsentMutationOptions,
-  oauthConsentQueryOptions,
-  useOAuthConsentMutation,
-  useOAuthConsentQuery,
-}
+export { foldExpiredConsent, oauthConsentMutationOptions }
 export type { ApproveOAuthPayload, OAuthConsentDecision, OAuthConsentResource, OAuthConsentResult }

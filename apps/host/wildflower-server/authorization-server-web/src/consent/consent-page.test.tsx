@@ -3,7 +3,7 @@ import type { HttpClientRequest } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -98,10 +98,12 @@ const serverHolding =
   }
 
 const leaveFor = vi.fn<(destination: URL) => void>()
+const goBack = vi.fn<() => void>()
 
 beforeEach(() => {
   seen = []
   leaveFor.mockReset()
+  goBack.mockReset()
   // jsdom has no scrollIntoView; the card scrolls its error banner into view.
   Element.prototype.scrollIntoView = vi.fn()
 })
@@ -110,7 +112,12 @@ afterEach(() => {
   cleanup()
 })
 
-const renderPage = (): { readonly user: ReturnType<typeof userEvent.setup> } => {
+/** How the page was opened: by the browser that made the request, or with `then=back`. */
+type OpenedWith = 'no-then' | 'then-back'
+
+const renderPage = (
+  openedWith: OpenedWith = 'no-then'
+): { readonly user: ReturnType<typeof userEvent.setup> } => {
   const queryClient = new QueryClient()
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -121,6 +128,7 @@ const renderPage = (): { readonly user: ReturnType<typeof userEvent.setup> } => 
       runAuthed={ownerBrowserSessionRunner(SERVER_ORIGIN, stubServer)}
       waitPage={WAIT_PAGE}
       leaveFor={leaveFor}
+      goBackOnceDecided={openedWith === 'then-back' ? Option.some(goBack) : Option.none()}
     />,
     { wrapper }
   )
@@ -149,6 +157,7 @@ describe('ConsentPage — exit', () => {
       expect(leaveFor).toHaveBeenCalledWith(new URL('https://app.example/cb?code=c&state=s'))
     })
     expect(screen.getByText('Returning you to the app…')).toBeDefined()
+    expect(goBack).not.toHaveBeenCalled()
   })
 
   test('a denial leaves for the access_denied callback its answer carries', async () => {
@@ -184,6 +193,43 @@ describe('ConsentPage — exit', () => {
       await screen.findByText('The authorization server returned an unexpected answer.')
     ).toBeDefined()
     expect(leaveFor).not.toHaveBeenCalled()
+  })
+})
+
+describe('ConsentPage — then=back', () => {
+  test.each([
+    ['an approval', 'Allow access', 'approve', 'https://app.example/cb?code=c&state=s'],
+    ['a denial', 'Deny', 'deny', 'https://app.example/cb?error=access_denied&state=s'],
+  ])(
+    '%s says it is done and steps back, without leaving for the callback',
+    async (_case, button, decisionPath, callback) => {
+      answer = serverHolding(consentFor(['user/Observation.rs']), {
+        status: decisionPath === 'approve' ? 'approved' : 'denied',
+        redirect: callback,
+      })
+      const { user } = renderPage('then-back')
+
+      await user.click(await screen.findByRole('button', { name: button }))
+
+      expect(await screen.findByText('Done. You can close this.')).toBeDefined()
+      await waitFor(() => {
+        expect(goBack).toHaveBeenCalledOnce()
+      })
+      expect(leaveFor).not.toHaveBeenCalled()
+      expect(seen.map((request) => request.path)).toContain(
+        `/authorization/oauth-consents/req-1/${decisionPath}`
+      )
+    }
+  )
+
+  test('a browser that cannot decide here still goes to the wait page', async () => {
+    answer = () => ({ status: 401, body: {} })
+    renderPage('then-back')
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    })
+    expect(goBack).not.toHaveBeenCalled()
   })
 })
 

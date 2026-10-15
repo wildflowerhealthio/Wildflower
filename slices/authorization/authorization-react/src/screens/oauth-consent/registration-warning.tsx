@@ -46,8 +46,8 @@ const RedirectDetail = ({ redirectUri }: { readonly redirectUri: string }): JSX.
  * The trust-on-first-use warning callout shown above the `ScopePicker` when a
  * consent's `registration` status is `new` or `changed` (never `registered`,
  * which renders nothing). Requires the Owner to tick an acknowledgment checkbox
- * before {@link OAuthConsentForm} allows approval — the callout owns the
- * checkbox's rendering and copy, the form owns gating the Approve button on it.
+ * before `OAuthConsentCard` allows approval — the callout owns the
+ * checkbox's rendering and copy, the card owns gating the Approve button on it.
  */
 const RegistrationWarning = ({
   registration,

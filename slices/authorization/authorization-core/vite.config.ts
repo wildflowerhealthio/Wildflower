@@ -12,7 +12,6 @@ export default defineConfig({
       'clients/index': 'src/clients/index.ts',
       'domain/index': 'src/domain/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',
-      'page-paths': 'src/page-paths.ts',
       'smart-client/index': 'src/smart-client/index.ts',
     },
   },

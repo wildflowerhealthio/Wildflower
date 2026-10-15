@@ -9,19 +9,13 @@ export {
   CLIENTS_QUERY_KEY,
   clientsQueryOptions,
   deviceConsentMutationOptions,
-  deviceConsentQueryOptions,
   ExpiredDeviceConsent,
   GRANTS_QUERY_KEY,
   grantQueryOptions,
   grantsQueryOptions,
   oauthConsentMutationOptions,
-  oauthConsentQueryOptions,
-  useDeviceConsentMutation,
-  useDeviceConsentQuery,
   useGrantQuery,
   useGrantsQuery,
-  useOAuthConsentMutation,
-  useOAuthConsentQuery,
   useClientsQuery,
   useUpdateClientMutation,
   useRevokeGrantMutation,
@@ -51,8 +45,8 @@ export {
   type OAuthConsentCardProps,
   type OAuthConsentMutation,
   type PatientNameSearch,
+  type PatientOptionsState,
 } from './screens/oauth-consent/oauth-consent-card.tsx'
-export type { PatientOptionsState } from './screens/oauth-consent/use-patient-options.ts'
 
 // The device-consent card and the code entry before it, for a surface that
 // sends the decision on its own session: the authorization server's device

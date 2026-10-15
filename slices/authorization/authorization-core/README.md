@@ -253,21 +253,6 @@ The two share `normalizeServerUrl` — this package owns the one implementation
 and `fhir-r4-react` re-exports it — but nothing else: the launch here is
 hand-rolled and Effect-native, and the one there delegates to `fhirclient`.
 
-## SPA page paths
-
-The authorization server API redirects to URLs under `/authorization/`, which the host app
-serves with a single-page app. The redirect targets are typed in
-[`authorization-core/page-paths`](./src/page-paths.ts) (`AuthorizationServerPaths`); the
-SPA's file-based route tree in [`authorization-react`](../authorization-react/src/routes/)
-mirrors them, and a drift test in
-[`authorization-react/src/routes.test.tsx`](../authorization-react/src/routes.test.tsx)
-enforces consistency. Serving the SPA itself is the host app's static-asset
-concern (see [`apps/launcher/launcher-web`](../../../apps/launcher/launcher-web)), not
-part of the authorization-core contract.
-
-Error pages are rendered inline by core via `internal/error-pages.ts` and are
-not part of the page contract.
-
 ## Bootstrap URL (dev-mode workaround)
 
 The host process (`authorization-server-rust`, native shell, dev server) has direct
