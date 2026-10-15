@@ -5,7 +5,7 @@ import type * as HttpResponseKind from './http-response-kind.ts'
 
 /**
  * The archive-runner **reference model**: fold a static response set through
- * `Extraction.routeTo` + `parseWith` into a four-way accounting. The
+ * `Extraction.routeTo` + `parseWith` into a five-way accounting. The
  * production import path is the interactive review (an untouched review
  * writes what this runner's batches hold, once each source's `mergeResources`
  * has run over them), so this lives with the test helpers as the executable
@@ -120,12 +120,6 @@ const outcomeOf = <TParsed>(
               _tag: 'batch' as const,
               value: { ...ref, responseKindName: kind.name, resources },
             })),
-            // Dedup runs before routing, so a routed response never carries
-            // this outcome — see the early return above.
-            Match.tag('duplicate', ({ of }) => ({
-              _tag: 'duplicate' as const,
-              value: { ...ref, of },
-            })),
             Match.exhaustive
           )
         ),
@@ -141,8 +135,8 @@ const outcomeOf = <TParsed>(
  *   claimed per `Extraction.routeTo`'s ranking
  * @param responses - The responses to extract from, in the order they should
  *   be seen
- * @returns The four-way {@link ExtractionResult} accounting — batches,
- *   unmatched, parse failures, absent bodies — each in input order
+ * @returns The five-way {@link ExtractionResult} accounting — batches,
+ *   unmatched, parse failures, absent bodies, duplicates — each in input order
  *
  * @remarks
  * A deterministic map-then-group over `Extraction.routeTo` + `parseWith`, so

@@ -1,6 +1,7 @@
 import type { ParseResult, Scope } from 'effect'
 import {
   Array,
+  Cause,
   Effect,
   Match,
   Option,
@@ -128,9 +129,11 @@ const makeInboundDispatcher = <
               `[effect-messaging] failed to decode message: ${ParseResultMod.TreeFormatter.formatErrorSync(error)}`
             )
           ),
-          // Handler defects don't take the dispatch fiber down.
-          Effect.catchAllDefect((defect) =>
-            Effect.logError(`[effect-messaging] dispatch defect; continues: ${String(defect)}`)
+          // Handler defects and interrupts (e.g. a handler offering into a
+          // shut-down queue) stay local to their message. The scope's own
+          // interrupt of this fiber is not recoverable, so it still stops it.
+          Effect.catchAllCause((cause) =>
+            Effect.logError(`[effect-messaging] dispatch died; continues: ${Cause.pretty(cause)}`)
           )
         )
       )

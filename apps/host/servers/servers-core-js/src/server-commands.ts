@@ -156,10 +156,41 @@ const openServerAuthorizationApp = ({
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
   invokeHostCommand('server_open_authorization_app', Schema.Null, { domain })
 
+/**
+ * Open the newest consent waiting on the server `domain` at its page, in the
+ * in-app browser (the default browser on a desktop), signed in as the
+ * server's Owner first. The page goes back, or closes, once the Owner has
+ * decided. Answers once the browser is opening it.
+ *
+ * @remarks
+ * Fails with the host's refusal, a `LaunchError`: for the same reasons
+ * {@link launchServer} does, or `nothingPending` once nothing waits there.
+ */
+const openPendingConsent = ({
+  domain,
+}: {
+  readonly domain: string
+}): Effect.Effect<null, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_open_pending_consent', Schema.Null, { domain })
+
+/**
+ * Open the consent the tapped notification `notificationId` announced, as
+ * {@link openPendingConsent} opens a server's; a tap on any other
+ * notification opens nothing. Only a phone reports taps.
+ */
+const openNotifiedConsent = ({
+  notificationId,
+}: {
+  readonly notificationId: number
+}): Effect.Effect<null, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_open_notified_consent', Schema.Null, { notificationId })
+
 export {
   addServer,
   launchServer,
   listServers,
+  openNotifiedConsent,
+  openPendingConsent,
   openServerAuthorizationApp,
   removeServer,
   setServerCredentials,

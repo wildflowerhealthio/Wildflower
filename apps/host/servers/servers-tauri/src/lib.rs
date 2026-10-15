@@ -1,7 +1,7 @@
 //! Tauri host glue for the servers: the install's servers on the unit
-//! runner, the notifications about them, the `server-status` and
-//! `pending-consent` events, and the base's commands, launching a server's
-//! launcher included. Every decision lives in [`wildflowerhealthio_servers`], which needs no
+//! runner, the notifications about them, the `server-status` event, and the
+//! base's commands, launching a server's launcher and opening the consent
+//! waiting on it included. Every decision lives in [`wildflowerhealthio_servers`], which needs no
 //! webview to be tested; this crate is only the glue.
 //!
 //! [`host_servers`], called once from the app's `setup()`:
@@ -13,13 +13,13 @@
 //!   [`ServerUnits::push`]). An unreadable registry is logged, and no server
 //!   runs;
 //! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
-//!   status on `TauriUnitRunner` changed, with its certificate's state: its
-//!   run's, or what its cache says; and the [`PENDING_CONSENT_EVENT`]
-//!   for each server whose oldest waiting consent changed, bringing the
-//!   desktop window forward when a server gets one;
+//!   status on `TauriUnitRunner` changed, with its certificate's state (its
+//!   run's, or what its cache says) and the newest consent waiting on it;
 //! - posts a stop notification for each new stop of a server's run, read from
-//!   `TauriUnitRunner`'s statuses, and the per-caller notifications for the
-//!   requests the servers' tunnels relay;
+//!   `TauriUnitRunner`'s statuses, and a notification for each new consent
+//!   waiting on a server, opening the request as the server's page's Open
+//!   does: on the desktop each one at once, in the default browser, and on a
+//!   phone the first one waiting at the app's start, instead of notifying;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
@@ -51,14 +51,6 @@
 //! - [`server_remove`], invoked as `invoke('server_remove', { domain })`,
 //!   takes the server off `TauriUnitRunner`, waiting for its run to end, then
 //!   deletes its folder and its record.
-//! - [`pending_consents_list`], invoked as `invoke('pending_consents_list')`,
-//!   answers with the oldest consent waiting on each running server.
-//! - [`server_consent_get`], [`server_consent_approve`] and
-//!   [`server_consent_deny`], invoked with the server's `domain` and a
-//!   consent's key or approval, read a waiting consent and decide it as the
-//!   host's Owner, through the running server's authorization server in-process (see
-//!   [`wildflowerhealthio_servers::ServerConsentDecider`]); a server that isn't running
-//!   answers `serverNotRunning`.
 //! - [`server_launch`], invoked as `invoke('server_launch', { domain })`,
 //!   opens the server's launcher in the in-app browser (on iOS replacing the
 //!   view an earlier launch opened; on Android joining it while it opens), at its
@@ -74,6 +66,17 @@
 //!   server's Wildflower Authorization app the same way: at its Authorization
 //!   URL with `iss`, through the same sign-in, in the same in-app browser,
 //!   once the same checks pass.
+//! - [`server_open_pending_consent`], invoked as
+//!   `invoke('server_open_pending_consent', { domain })`, opens the newest
+//!   consent waiting on the server at its page, `then=back` (see
+//!   [`wildflowerhealthio_servers::consent_sign_in_url`]), through the same
+//!   sign-in, in the same in-app browser, once the same checks pass, stacked
+//!   over the views showing rather than replacing them; on iOS the base
+//!   closes its view once the request is decided or expires.
+//!   [`server_open_notified_consent`], invoked as
+//!   `invoke('server_open_notified_consent', { notificationId })` for a
+//!   tapped notification, opens the consent of the server whose consent
+//!   notification it is, and nothing for any other.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -90,16 +93,14 @@
 //!
 //! The app registers every command in its `invoke_handler` and grants them
 //! to the `main` webview only, through its app-defined
-//! `allow-server-enrolment` (`server_add`, `server_set_credentials`),
-//! `allow-server-consents` (the consent commands) and
-//! `allow-server-management` (the rest, `server_launch` and
-//! `server_open_authorization_app` included) permissions.
+//! `allow-server-enrolment` (`server_add`, `server_set_credentials`) and
+//! `allow-server-management` (the rest, the launch and consent openings
+//! included) permissions.
 
 mod commands;
-mod consent_commands;
+mod consent_requests;
 mod launch_commands;
 mod notifications;
-mod pending_consents;
 mod server_status;
 mod server_units;
 #[cfg(test)]
@@ -110,7 +111,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use url::Url;
 use wildflowerhealthio_servers::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
 use wildflowerhealthio_tauri_unit_runner::TauriUnitRunner;
@@ -120,22 +121,15 @@ pub use commands::{
     server_add, server_remove, server_set_credentials, server_set_run_policy, server_update,
     servers_list,
 };
-pub use consent_commands::{
-    pending_consents_list, server_consent_approve, server_consent_deny, server_consent_get,
+pub use launch_commands::{
+    server_launch, server_open_authorization_app, server_open_notified_consent,
+    server_open_pending_consent,
 };
-pub use launch_commands::{server_launch, server_open_authorization_app};
-pub use pending_consents::PENDING_CONSENT_EVENT;
 pub use server_status::SERVER_STATUS_EVENT;
 pub use server_units::{ServerConfigBuilder, ServerUnits};
 
-/// The webview the servers' events go to and the window brought forward for a
-/// consent: the base's.
+/// The webview the servers' events go to: the base's.
 pub(crate) const BASE_WEBVIEW_LABEL: &str = "main";
-
-/// How many forwarded-request reports may wait for the request notifications
-/// before the servers start dropping them (see
-/// `wildflowerhealthio_wildflower_server::ServerObservers`).
-pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
 /// What the servers commands work through: the install's registry and the
 /// data root its servers' folders are in, the launcher and Authorization app
@@ -205,12 +199,7 @@ pub fn host_servers(
         data_root,
         default_authorization_url.clone(),
     ));
-    let (forwarded_request_tx, forwarded_request_rx) = mpsc::channel(FORWARDED_REQUEST_CAPACITY);
-    let server_units = ServerUnits::new(
-        runner.clone(),
-        Arc::new(server_config),
-        forwarded_request_tx,
-    );
+    let server_units = ServerUnits::new(runner.clone(), Arc::new(server_config));
     match registry.read_all() {
         Ok(records) => {
             for record in records {
@@ -232,17 +221,19 @@ pub fn host_servers(
         Arc::clone(&registry) as Arc<dyn ServerRegistry>,
         data_root.to_path_buf(),
     ));
-    tauri::async_runtime::spawn(pending_consents::emit_pending_consents(
-        app.clone(),
+    tauri::async_runtime::spawn(consent_requests::notify_consent_requests(
+        consent_requests::AppConsentRequestNotifier {
+            app: app.clone(),
+            registry: Arc::clone(&registry) as Arc<dyn ServerRegistry>,
+            data_root: data_root.to_path_buf(),
+            server_units: server_units.clone(),
+            statuses_rx: runner.subscribe(),
+        },
         runner.subscribe(),
     ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),
         runner.subscribe_stops(),
-    ));
-    tauri::async_runtime::spawn(notifications::post_request_notifications(
-        app.clone(),
-        forwarded_request_rx,
     ));
     app.manage(ServersState::new(
         registry,

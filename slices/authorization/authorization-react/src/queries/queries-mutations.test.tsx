@@ -1,5 +1,5 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -21,13 +21,10 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
 import { EssentialClientDisableRefusal, useUpdateClientMutation } from './clients.ts'
-import {
-  ExpiredDeviceConsent,
-  foldExpiredDeviceConsent,
-  useDeviceConsentMutation,
-} from './device-consent.ts'
+import { ExpiredDeviceConsent, foldExpiredDeviceConsent } from './device-consent.ts'
 import { useRevokeGrantMutation } from './grants.ts'
-import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
+import { foldExpiredConsent, oauthConsentMutationOptions } from './oauth-consent.ts'
+import { useRunAuthed } from './use-run-authed.ts'
 
 /**
  * Pins each authorization server mutation's `onSuccess` invalidation keys — the
@@ -303,24 +300,6 @@ describe('useUpdateClientMutation of an essential client', () => {
   })
 })
 
-describe('useDeviceConsentMutation invalidation', () => {
-  test('invalidates the grants list root (the surface the user lands on), not its own detail', async () => {
-    const { result, queryClient } = renderWithClient(() => useDeviceConsentMutation())
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-
-    await result.current.mutateAsync({ kind: 'approve', userCode: 'WDJB-MJHT', approvedScopes: [] })
-
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
-    })
-    // The screen unmounts on success, so a self-invalidate of the consent
-    // detail would be dead code — assert it does NOT fire.
-    expect(invalidateSpy).not.toHaveBeenCalledWith({
-      queryKey: ['authorization', 'device-consent', 'WDJB-MJHT'],
-    })
-  })
-})
-
 describe('foldExpiredConsent', () => {
   test('folds an OAuthConsentNotFound failure into the error result with retry copy', async () => {
     // Arrange — the failure shape the server returns once the consent's
@@ -372,30 +351,16 @@ describe('foldExpiredDeviceConsent', () => {
   })
 })
 
-describe('useOAuthConsentMutation invalidation', () => {
-  test('invalidates the grants list root, not its own detail', async () => {
-    const { result, queryClient } = renderWithClient(() => useOAuthConsentMutation())
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-
-    await result.current.mutateAsync({ kind: 'deny', id: 'consent-1' })
-
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
-    })
-    expect(invalidateSpy).not.toHaveBeenCalledWith({
-      queryKey: ['authorization', 'oauth-consent', 'consent-1'],
-    })
-  })
-})
-
-describe('useOAuthConsentMutation approve', () => {
+describe('oauthConsentMutationOptions approve', () => {
   test('decodes a 403 naming the scopes the approver lacks', async () => {
     // Arrange — the approver's token covers `.u` but not every ticked scope.
     const refusal = { error: 'InsufficientScope', missingScopes: ['patient/Condition.rs'] }
     routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), () =>
       Response.json(refusal, { status: 403 })
     )
-    const { result } = renderWithClient(() => useOAuthConsentMutation())
+    const { result } = renderWithClient(() =>
+      useMutation(oauthConsentMutationOptions(useRunAuthed()))
+    )
 
     // Act
     const approval = result.current.mutateAsync({

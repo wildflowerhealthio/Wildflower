@@ -200,6 +200,34 @@ const minimumLoadOf = (progressionRule: TrainingPlanDefinitionProgressionRule): 
 const loadStepOf = (progressionRule: TrainingPlanDefinitionProgressionRule): number =>
   partOf({ progressionRule, part: Part.LoadStep, schema: PART_SCHEMAS.loadStep }).valueDecimal
 
+/** Each {@link Part}'s value, as its getter reads it from a rule. */
+const PART_GETTERS = {
+  unit: unitOf,
+  increment: incrementOf,
+  failuresBeforeDeload: failuresBeforeDeloadOf,
+  deloadFraction: deloadFractionOf,
+  minimumLoad: minimumLoadOf,
+  loadStep: loadStepOf,
+} as const satisfies Record<
+  PartName,
+  (progressionRule: TrainingPlanDefinitionProgressionRule) => Load.Unit | number
+>
+
+/**
+ * Whether two rules move a load alike: every {@link Part} holds the same
+ * value in both, whatever else their extensions carry.
+ */
+const isAlike = ({
+  firstProgressionRule,
+  laterProgressionRule,
+}: {
+  readonly firstProgressionRule: TrainingPlanDefinitionProgressionRule
+  readonly laterProgressionRule: TrainingPlanDefinitionProgressionRule
+}): boolean =>
+  Object.values(PART_GETTERS).every(
+    (partValueOf) => partValueOf(firstProgressionRule) === partValueOf(laterProgressionRule)
+  )
+
 /**
  * The loads `progressionRule` moves: a {@link Load.Type} in the rule's unit — a rule
  * never converts between pounds and kilograms.
@@ -232,6 +260,7 @@ export {
   deloadFractionOf,
   failuresBeforeDeloadOf,
   incrementOf,
+  isAlike,
   loadStepOf,
   make,
   minimumLoadOf,

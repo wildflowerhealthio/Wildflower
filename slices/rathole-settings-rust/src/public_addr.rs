@@ -6,9 +6,11 @@ use std::net::Ipv6Addr;
 
 use crate::is_dns_name;
 
-/// Validate a `host:port` for clients to dial and case-fold it. The host is
-/// lowercase DNS labels (which covers an IPv4 address) or a bracketed IPv6
-/// address; the port is 1–65535.
+/// Validate a `host:port` for clients to dial and normalise it: a DNS host
+/// case-folded, an IPv6 host in its shortest form and the port without a
+/// sign or leading zeros, so two spellings of one address compare equal. The
+/// host is lowercase DNS labels (which covers an IPv4 address) or a bracketed
+/// IPv6 address; the port is 1–65535.
 ///
 /// # Errors
 ///
@@ -18,25 +20,28 @@ pub fn parse_public_addr(raw: &str) -> Result<String, InvalidPublicAddr> {
     let (host, port) = addr
         .rsplit_once(':')
         .ok_or(InvalidPublicAddr::NotHostPort)?;
-    if !port.parse::<u16>().is_ok_and(|port| port != 0) {
-        return Err(InvalidPublicAddr::Port {
+    let port = port
+        .parse::<u16>()
+        .ok()
+        .filter(|&port| port != 0)
+        .ok_or_else(|| InvalidPublicAddr::Port {
             port: port.to_owned(),
-        });
+        })?;
+    let normalised_host = match host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        Some(ipv6) => ipv6
+            .parse::<Ipv6Addr>()
+            .ok()
+            .map(|ipv6| format!("[{ipv6}]")),
+        None => is_dns_name(host).then(|| host.to_owned()),
     }
-    let host_is_valid = match host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
-        Some(ipv6) => ipv6.parse::<Ipv6Addr>().is_ok(),
-        None => is_dns_name(host),
-    };
-    if !host_is_valid {
-        return Err(InvalidPublicAddr::Host {
-            host: host.to_owned(),
-        });
-    }
-    Ok(addr)
+    .ok_or_else(|| InvalidPublicAddr::Host {
+        host: host.to_owned(),
+    })?;
+    Ok(format!("{normalised_host}:{port}"))
 }
 
 /// Why a string isn't a `host:port` a rathole client can dial. The host and
-/// port are as case-folded.
+/// port are as case-folded, not yet normalised.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum InvalidPublicAddr {
     /// There is no `:`.
@@ -55,12 +60,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_and_case_folds_a_dns_or_ip_host_and_port() {
+    fn accepts_and_normalises_a_dns_or_ip_host_and_port() {
         for (raw, parsed) in [
             ("Relay.Example.com:2333", "relay.example.com:2333"),
             ("10.0.0.1:2333", "10.0.0.1:2333"),
             ("[::1]:2333", "[::1]:2333"),
             ("localhost:65535", "localhost:65535"),
+            ("relay.example.com:02333", "relay.example.com:2333"),
+            ("relay.example.com:+2333", "relay.example.com:2333"),
+            ("[0:0:0:0:0:0:0:1]:2333", "[::1]:2333"),
+            ("[2001:DB8::1]:2333", "[2001:db8::1]:2333"),
         ] {
             assert_eq!(parse_public_addr(raw).unwrap(), parsed, "{raw:?}");
         }

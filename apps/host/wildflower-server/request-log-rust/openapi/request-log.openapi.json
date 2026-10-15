@@ -144,7 +144,7 @@
               "string",
               "null"
             ],
-            "description": "The visitor's address the request's `Forwarded` header named, or `null`\nwhen it named none."
+            "description": "The visitor's IP address, from the tunnel connection's PROXY header, or\n`null` when it named none."
           },
           "firstSeen": {
             "type": "string",
@@ -211,7 +211,6 @@
           "receivedAt",
           "clientId",
           "address",
-          "servedHost",
           "method",
           "path",
           "status",
@@ -240,13 +239,6 @@
               "string",
               "null"
             ]
-          },
-          "servedHost": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The public `host[:port]` the visitor addressed."
           },
           "method": {
             "type": "string"

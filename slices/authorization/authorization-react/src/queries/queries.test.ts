@@ -5,13 +5,7 @@ import { Effect, Layer, pipe } from 'effect'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
-import {
-  deviceConsentQueryOptions,
-  GRANTS_QUERY_KEY,
-  grantsQueryOptions,
-  oauthConsentQueryOptions,
-  type RunAuthed,
-} from './index.ts'
+import { GRANTS_QUERY_KEY, grantsQueryOptions, type RunAuthed } from './index.ts'
 
 /**
  * Drives the authorization server `queryOptions` over the real
@@ -33,28 +27,6 @@ const GRANT_BODY = [
     patient: null,
   },
 ]
-
-// Wire shape mirrors `Devices.DeviceConsentSchema`.
-const DEVICE_CONSENT_BODY = {
-  userCode: 'WDJB-MJHT',
-  clientId: 'client-a',
-  clientName: 'Test Device',
-  deviceName: "Ada's laptop",
-  requestedScopes: ['system/*.cruds', 'wildflower/*.cruds'],
-  allowedScopes: ['system/*.cruds', 'wildflower/*.cruds'],
-}
-
-// Wire shape mirrors `OAuthConsent.OAuthConsentSchema`.
-const OAUTH_CONSENT_BODY = {
-  id: 'consent-1',
-  clientId: 'client-a',
-  clientName: 'Test App',
-  scopes: ['patient/*.read'],
-  redirectUri: 'https://example.com/cb',
-  preApprovedScopes: [],
-  patient: null,
-  registration: { status: 'registered' },
-}
 
 const jsonResponse = (body: unknown): Response =>
   new Response(JSON.stringify(body), {
@@ -137,68 +109,5 @@ describe('grantsQueryOptions', () => {
 
     await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(GRANTS_QUERY_KEY)).toBeUndefined()
-  })
-})
-
-describe('deviceConsentQueryOptions', () => {
-  test('keys the query under the user code', () => {
-    const options = deviceConsentQueryOptions(makeRunAuthed(stubHttpClientLayer()), 'WDJB-MJHT')
-    expect(options.queryKey).toEqual(['authorization', 'device-consent', 'WDJB-MJHT'])
-  })
-
-  test('queryFn reads the device consent through the authed runner', async () => {
-    const options = deviceConsentQueryOptions(
-      makeRunAuthed(stubHttpClientLayer({ body: DEVICE_CONSENT_BODY })),
-      'WDJB-MJHT'
-    )
-    const queryClient = freshQueryClient()
-
-    const consent = await queryClient.query({ ...options, staleTime: 'static' })
-
-    expect(consent.userCode).toBe('WDJB-MJHT')
-    expect(consent.clientName).toBe('Test Device')
-    expect([...consent.requestedScopes]).toEqual(['system/*.cruds', 'wildflower/*.cruds'])
-  })
-
-  test('a failed read rejects ensureQueryData', async () => {
-    const options = deviceConsentQueryOptions(
-      makeRunAuthed(stubHttpClientLayer({ failing: true })),
-      'WDJB-MJHT'
-    )
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    disposers.push(() => Promise.resolve(queryClient.clear()))
-
-    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
-  })
-})
-
-describe('oauthConsentQueryOptions', () => {
-  test('keys the query under the consent id', () => {
-    const options = oauthConsentQueryOptions(makeRunAuthed(stubHttpClientLayer()), 'consent-1')
-    expect(options.queryKey).toEqual(['authorization', 'oauth-consent', 'consent-1'])
-  })
-
-  test('queryFn reads the oauth consent through the authed runner', async () => {
-    const options = oauthConsentQueryOptions(
-      makeRunAuthed(stubHttpClientLayer({ body: OAUTH_CONSENT_BODY })),
-      'consent-1'
-    )
-    const queryClient = freshQueryClient()
-
-    const consent = await queryClient.query({ ...options, staleTime: 'static' })
-
-    expect(consent.id).toBe('consent-1')
-    expect([...consent.scopes]).toEqual(['patient/*.read'])
-  })
-
-  test('a failed read rejects ensureQueryData', async () => {
-    const options = oauthConsentQueryOptions(
-      makeRunAuthed(stubHttpClientLayer({ failing: true })),
-      'consent-1'
-    )
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    disposers.push(() => Promise.resolve(queryClient.clear()))
-
-    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
   })
 })

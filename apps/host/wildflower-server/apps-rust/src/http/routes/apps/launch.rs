@@ -27,8 +27,8 @@
 //!      an app authenticates to the API with its own bearer (SMART) — see
 //!      `docs/Apps/Explanation.md`.
 //!
-//! The auth posture (scope-gated on `wildflower/launch` + a per-app SMART check;
-//! a forwarded launch rides the front trust boundary) is canonical in
+//! The auth posture (scope-gated on `wildflower/launch` + a per-app SMART check)
+//! is canonical in
 //! `docs/Apps/Explanation.md` §"Auth posture".
 
 use std::sync::Arc;

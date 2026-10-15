@@ -140,6 +140,38 @@ async fn any_other_browser_goes_to_the_wait_page() {
 }
 
 #[tokio::test]
+async fn the_newest_pending_consent_says_whether_the_owner_s_browser_made_it() {
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+
+    let (_, request_id) = parked_on_the_card(&g).await;
+    assert_eq!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            id: request_id,
+            client_name: "Integration Test Client".to_owned(),
+            requested_by_owner_browser: true,
+        }),
+    );
+
+    let (page, request_id) = parked_page(&authorize_with_cookie(&g, "").await);
+    assert_eq!(page, "wait");
+    assert_eq!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            id: request_id,
+            client_name: "Integration Test Client".to_owned(),
+            requested_by_owner_browser: false,
+        }),
+    );
+}
+
+#[tokio::test]
 async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settles_the_wait_page() {
     let (g, _host_owner_token, db) = spin_up();
     seed_client_with_redirect(

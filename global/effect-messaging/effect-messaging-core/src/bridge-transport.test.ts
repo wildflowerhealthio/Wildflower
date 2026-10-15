@@ -1,10 +1,11 @@
 import { LoggingLayerTest, numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect, Option, Queue, Schema } from 'effect'
+import { Effect, Layer, Option, Queue, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 import * as BridgeTransport from './bridge-transport.ts'
 import * as Bridge from './bridge.ts'
 import * as TestPlatformAdapterLayer from './test-platform-adapter-layer.ts'
+import { TransportAdapter } from './transport-adapter.ts'
 
 const Ping = Schema.parseJson(Schema.TaggedStruct('Ping', { value: Schema.Number }))
 const Pong = Schema.parseJson(Schema.TaggedStruct('Pong', { reply: Schema.String }))
@@ -134,6 +135,63 @@ describe('BridgeTransport — unhandled-tag drop and decode resilience', () => {
         }),
         Effect.scoped
       )
+    )
+  })
+})
+
+describe('BridgeTransport.makeHostTransport — interrupt resilience', () => {
+  // A handler or bare sender can end in an interrupt cause without the
+  // transport's scope closing — e.g. offering into a queue that was shut
+  // down, or awaiting an interrupted Deferred. That cause must stay local
+  // to its one message, like a defect, instead of ending the fiber.
+  test('a handler that ends in an interrupt drops its message and the dispatch fiber survives', async () => {
+    const { PingInbound } = makeBridges()
+    const { layer: adapterLayer } = TestPlatformAdapterLayer.make()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const results = yield* Queue.unbounded<number>()
+        const closedQueue = yield* Queue.unbounded<number>()
+        yield* Queue.shutdown(closedQueue)
+        const transport = yield* BridgeTransport.makeHostTransport({
+          bridges: [PingInbound] as const,
+          handlers: [
+            {
+              Ping: ({ value }) =>
+                Queue.offer(value === 1 ? closedQueue : results, value).pipe(Effect.asVoid),
+            },
+          ],
+        }).pipe(Effect.provide(adapterLayer))
+
+        yield* transport.enqueue(encodePing(1))
+        yield* transport.enqueue(encodePing(2))
+        expect(yield* Queue.take(results)).toBe(2)
+      }).pipe(Effect.scoped)
+    )
+  })
+
+  test('a bare sender that ends in an interrupt drops its message and the pump survives', async () => {
+    const { NavigationLike } = makeBridges()
+    const sent = Effect.runSync(Queue.unbounded<string>())
+    const closedQueue = Effect.runSync(Queue.unbounded<string>())
+    Effect.runSync(Queue.shutdown(closedQueue))
+    const adapterLayer = Layer.succeed(TransportAdapter, {
+      bareSender: (encoded) =>
+        Queue.offer(encoded.includes('"value":1') ? closedQueue : sent, encoded).pipe(
+          Effect.asVoid
+        ),
+    })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* BridgeTransport.makeHostTransport({
+          bridges: [NavigationLike] as const,
+          handlers: [{ Pong: () => Effect.void }],
+        }).pipe(Effect.provide(adapterLayer))
+
+        yield* transport.enqueue('{"_tag":"__Ready"}')
+        yield* transport.sendMessage({ _tag: 'Ping', value: 1 })
+        yield* transport.sendMessage({ _tag: 'Ping', value: 2 })
+        expect(JSON.parse(yield* Queue.take(sent))).toEqual({ _tag: 'Ping', value: 2 })
+      }).pipe(Effect.scoped)
     )
   })
 })

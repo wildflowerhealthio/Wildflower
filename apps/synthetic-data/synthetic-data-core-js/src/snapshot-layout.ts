@@ -35,7 +35,9 @@ const isFileName = Schema.is(Entry.FileNameSchema)
 /**
  * The file a source-file `DocumentReference` stores inline, as an attachment
  * of `format`: its one attachment's `data`, named by its `title` (the name the
- * file was picked under).
+ * file was picked under). The attachment carries no `url`, and its `data` is
+ * the base64 a reader writes back from the bytes (`withAttachmentData`), so
+ * the link loses nothing the import wrote.
  */
 const attachmentOf = (
   documentReference: DocumentReference.Type,
@@ -47,16 +49,22 @@ const attachmentOf = (
   if (content === undefined || otherContent.length > 0) {
     return unplaceable('A source file has exactly one content entry.')
   }
-  const { data, title } = content.attachment
+  const { data, title, url } = content.attachment
   if (data === null) return unplaceable('The source file carries no data.')
+  if (url !== null) return unplaceable('The source file carries a url as well as its data.')
   if (title === null || !isFileName(title)) {
     return unplaceable(
       `The source file's title ${JSON.stringify(title)} is not a file name a snapshot can hold.`
     )
   }
   return Encoding.decodeBase64(data).pipe(
-    Either.map((bytes) => ({ _tag: 'Attachment', format, fileName: title, bytes }) as const),
-    Either.orElse((error) => unplaceable(`The source file's data is not base64: ${error.message}`))
+    Either.orElse((error) => unplaceable(`The source file's data is not base64: ${error.message}`)),
+    Either.flatMap((bytes) =>
+      Encoding.encodeBase64(bytes) === data
+        ? Either.right(bytes)
+        : unplaceable("The source file's data is not the base64 its bytes encode to.")
+    ),
+    Either.map((bytes) => ({ _tag: 'Attachment', format, fileName: title, bytes }) as const)
   )
 }
 
@@ -183,8 +191,9 @@ const merge = (
  * @param resources - Importer output, in the order the import wrote it; a
  *   repeated `<ResourceType>/<id>` keeps its last copy
  * @returns The entries, in path order; an {@link UnplaceableResource} for a
- *   resource with no valid id, a source file with no data or a title that is
- *   not a safe file name, or a resource whose `meta.source` names a
+ *   resource with no valid id, a source file with no data, a `url` beside
+ *   its data, data not in canonical base64 or a title that is not a safe
+ *   file name, or a resource whose `meta.source` names a
  *   `DocumentReference` not among `resources` (a reader loading this snapshot
  *   would store a dangling `meta.source`); a {@link ConflictingFiles} for two
  *   different source files at one path

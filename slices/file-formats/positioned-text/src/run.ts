@@ -5,14 +5,15 @@ import { Schema } from 'effect'
  *
  * @remarks
  * Coordinates use a top-left origin: `x` and `y` are the top-left corner of
- * the run's bounding box, matching the coordinate system pdfjs-dist reports.
+ * the run's bounding box. Every measure is finite, because JSON has no `NaN`
+ * or `Infinity` and `Document.FromJson` would otherwise write one as `null`.
  */
 const RunSchema = Schema.Struct({
   text: Schema.String,
-  x: Schema.Number,
-  y: Schema.Number,
-  width: Schema.Number,
-  fontSize: Schema.Number,
+  x: Schema.Finite,
+  y: Schema.Finite,
+  width: Schema.Finite,
+  fontSize: Schema.Finite,
   fontName: Schema.optional(Schema.String),
 })
 

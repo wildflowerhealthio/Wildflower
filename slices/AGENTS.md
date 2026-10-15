@@ -59,7 +59,7 @@ mirrors, the weights as the page edits them, and the phone's decoding, storage
 and message to the watch, as pure functions.
 
 The request log is not a slice: it keeps each forwarded request the server
-served, through the tunnel or relayed by a front run on this machine.
+served through the tunnel.
 `request-log-rust` (in `apps/host/wildflower-server/`) owns the
 `logged_requests` table in `wildflower.sqlite`: the server's forwarded-request
 layer reports each request on `RequestLog::forwarded_request_tx`, a writer task

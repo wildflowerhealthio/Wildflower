@@ -5,12 +5,14 @@
 A Tauri v2 plugin that opens an external URL in the **system's in-app browser**,
 presented as a **native page**, and tells Rust when the user closes it.
 
-It exposes one command, `open(url, events)`, with a backend per platform. `open` is async on every platform: iOS answers from the main thread, so a caller awaits it rather than blocking on it.
+It exposes two commands, `open(url, view, mode, events)` and `close(view)`, with a backend per platform. Both are async on every platform: iOS answers from the main thread, so a caller awaits them rather than blocking on them.
 
 - `url` must be `http(s)`; anything else (`javascript:`, `file:`, `data:`, …), or a string that doesn't parse, returns `Error::InvalidUrl` before any backend sees it (`src/url_scheme.rs`). A backend gets the parsed URL, normalised (leading and trailing spaces trimmed, tabs and newlines removed), not the caller's string.
-- `events` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `open` replaces it. On Android it may hear one `BrowserEvent::KeptAlive` (`{"event":"keptAlive"}`) before that, when the view's browser keeps the app alive under it (see Keeping the app alive on Android). Desktop never sends either.
+- `view` is the caller's name for the view, unique among those it opens; `close(view)` names the view to close by it.
+- `mode` (`OpenMode`) says how the view shows beside the views already showing: `replace` or `stack` (see One view, or a stack).
+- `events` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `replace` open replaces it or `close` closes it or a view under it. On Android it may hear one `BrowserEvent::KeptAlive` (`{"event":"keptAlive"}`) before that, when the view's browser keeps the app alive under it (see Keeping the app alive on Android). Desktop never sends either.
 
-The caller can't script the page, read it, or navigate an open view. It learns that a view opened, whether its browser keeps the app alive, and that it closed, nothing else.
+The caller can't script the page, read it, or navigate an open view. It learns that a view opened, whether its browser keeps the app alive, and that it closed, nothing else. On iOS it can close a view; a Custom Tab (Android) and a browser tab (desktop) can't be closed by the app, so there `close` returns an error.
 
 | Platform | Backend                                    | Presentation                                                                                                                                | Close report                                                   |
 | -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -27,16 +29,23 @@ Launches open in the system's in-app browser so the app can't script the pages w
 
 `tauri-plugin-native-webview` is the other way the host shows external pages. It is the app's own web view, which injects script into the page; this plugin is for the pages the app must not be able to see into.
 
-## One view at a time
+## One view, or a stack
 
-A phone shows one in-app browser view. What an `open` does while a view is showing differs by platform:
+What an `open` does while a view is showing is its mode's, and differs by platform. `replace` keeps one view at a time, as a launch wants; `stack` keeps the views showing under the new one, so a page opened over an app's page (a consent, while the app waits for it) can go away and leave the app's page where it was.
 
-- **iOS** replaces the showing view. It dismisses the showing `SFSafariViewController` from its presenter, sends its `Closed` on its own channel from the dismissal's completion, then presents the new one from the top of Tauri's root view controller. An `open` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
-- **Android** can't replace a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front. It doesn't need to, though: a showing view covers the host, so an `open` from the app can only arrive while the view is still launching (a second tap before the tab slides in). That `open` joins the launching view instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events. An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
+- **iOS** keeps the views it shows in a stack, bottom first, each presented over the ones before it.
+  - A `replace` open dismisses the bottom view from its presenter, which takes every view over it down too, sends each one's `Closed` on its own channel from the dismissal's completion, top-most first, then presents the new one from the top of Tauri's root view controller.
+  - A `stack` open presents the new one from the top-most view controller, which may be a view of the plugin's, and leaves the others where they are.
+  - `close(view)` dismisses the view the caller named the same way, with every view over it, and sends each one's `Closed`. Dismissing a view dismisses whatever is presented over it, so closing a view under another closes both. A view already gone closes nothing, and `close` resolves.
+  - An `open` or a `close` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
+- **Android** can't replace or close a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front, so `close` is rejected. A showing view covers the host, so an `open` from the app can only arrive while the views it finds are still launching (a second tap before the tab slides in), or after the host came back in front, which reports the views it was under closed (as a notification tap can bring it).
+  - A `replace` open whose latest view still launching is a `replace` open's joins it instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events. Over a `stack` open's view still launching, it launches its own, so its URL opens.
+  - A `stack` open launches its own view, over any still launching. Each tab is an activity in the host's task, so closing the top one reveals the one under it, and the host resumes, reporting every view's `Closed`, only once the last is closed.
+  - An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
 
 ## How Android hears the close
 
-A Custom Tab runs in the browser's process, so the plugin watches the host activity instead. Launching a view pauses the host under it; when the host next resumes, the view is gone, and the plugin reports its `Closed` to every `open` that launched or joined it. The `ACTION_VIEW` fallback to the default browser, when no Custom Tabs provider is installed, closes the same way.
+A Custom Tab runs in the browser's process, so the plugin watches the host activity instead. Launching a view pauses the host under it; when the host next resumes, the views it was under are gone, and the plugin reports each one's `Closed` to every `open` that launched or joined it. The `ACTION_VIEW` fallback to the default browser, when no Custom Tabs provider is installed, closes the same way.
 
 The plugin hears the host pause and resume through `Application.registerActivityLifecycleCallbacks`, filtered to the host activity, not through `Plugin.onPause` / `onResume`. Tauri's generated `TauriActivity` defines `TauriLifecycleObserver`, which forwards those, but never registers it, so they never run. Even registered, it would observe `ProcessLifecycleOwner`, which reports the whole process and delivers a pause about 700 ms late.
 
@@ -66,16 +75,16 @@ The palette is the host's `--color-background` (bar / toolbar) and `--color-neut
 ```text
 apps/host/tauri-plugin-native-page-browser/
 ├── Cargo.toml                 — links, tauri-plugin build dep, url, tauri-plugin-opener (desktop)
-├── build.rs                   — COMMANDS=["open"], ios_path + android_path
-├── permissions/default.toml   — default grant = open (hand-authored open.toml)
+├── build.rs                   — COMMANDS=["open", "close"], ios_path + android_path
+├── permissions/default.toml   — default grant = open + close (hand-authored open.toml, close.toml)
 ├── src/
 │   ├── lib.rs                 — init(), NativePageBrowserExt, plugin wiring
-│   ├── commands.rs            — the open IPC command
-│   ├── models.rs              — OpenRequest, BrowserEvent (KeptAlive, Closed) + wire-shape tests
-│   ├── error.rs               — Error (InvalidUrl; PluginInvoke on mobile / OpenDefaultBrowser on desktop)
+│   ├── commands.rs            — the open and close IPC commands
+│   ├── models.rs              — OpenRequest, OpenMode, CloseRequest, BrowserEvent (KeptAlive, Closed) + wire-shape tests
+│   ├── error.rs               — Error (InvalidUrl; PluginInvoke on mobile / OpenDefaultBrowser, CloseDefaultBrowserTab on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
-│   ├── desktop.rs             — opens the default browser through tauri-plugin-opener
-│   └── mobile.rs              — registers + forwards open to the Swift (iOS) / Kotlin (Android) plugin
+│   ├── desktop.rs             — opens the default browser through tauri-plugin-opener; close fails
+│   └── mobile.rs              — registers + forwards open and close to the Swift (iOS) / Kotlin (Android) plugin
 ├── ios/
 │   ├── Package.swift
 │   └── Sources/NativePageBrowserPlugin.swift
@@ -91,20 +100,26 @@ apps/host/tauri-plugin-native-page-browser/
 ## Round trip
 
 ```text
-[caller (Rust or JS)]  open(url, events: Channel<BrowserEvent>)
+[caller (Rust or JS)]  open(url, view, mode, events: Channel<BrowserEvent>)
       │
       ▼
 [Rust] commands::open → app.native_page_browser().open → url_scheme::parse_http_url → platform backend
       │
-      ├─ iOS/Android: run_mobile_plugin_async("open", { url, events }).await
-      │     → iOS: dismiss the showing view, if any → channel.send({ event:"closed" }) on ITS channel
-      │       Android: reject if the app is in the background; join a view still launching;
-      │                wait up to 1 s for the Custom Tabs session
+      ├─ iOS/Android: run_mobile_plugin_async("open", { url, view, mode, events }).await
+      │     → iOS replace: dismiss the showing views, if any → channel.send({ event:"closed" }) on EACH one's channel
+      │       iOS stack: present over the top-most view
+      │       Android: reject if the app is in the background; replace: join a replace view still launching;
+      │                stack: launch another; wait up to 1 s for the Custom Tabs session
       │     → present SFSafariViewController / launch the Custom Tab (with the keep-alive extra)
       │     → Android: the browser binds KeepAliveService → channel.send({ event:"keptAlive" })
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler
       │
       └─ Desktop: tauri_plugin_opener::open_url(url) → default browser; `events` is dropped unsent
+
+[caller (Rust or JS)]  close(view)
+      │
+      ├─ iOS: dismiss that view and every view over it → channel.send({ event:"closed" }) on each one's channel
+      └─ Android / Desktop: rejected; the app can't close a Custom Tab or a browser tab
 ```
 
 ## Building / verifying
@@ -127,9 +142,14 @@ desktop's `open` refusing a non-`http(s)` URL) are covered by unit tests in
 checked by hand on each device: the view slides in from the right in the app's
 colours; close, an edge swipe and system back each return to the app and report
 `Closed` once; switching apps from an Android view and back reports nothing. A
-second `open` replaces the first and reports `Closed` for it on iOS. On Android
+second `replace` open replaces the first and reports `Closed` for it on iOS; a
+`stack` open shows over the first, and closing it, by hand or with `close`,
+reveals the first, still on its page, and reports `Closed` for the second only;
+`close` of the first with the second over it reports `Closed` for both. On Android
 a launch after the first view closed opens a new view, and a double-tapped
-launch opens one view whose close reports `Closed` to both. With Chrome as the
+launch opens one view whose close reports `Closed` to both; a `stack` open
+while a view launches opens a second tab over it, and the host's resume after
+both are closed reports `Closed` for each. With Chrome as the
 Custom Tabs provider, `adb shell dumpsys netpolicy` shows the host's uid at
 `procState=BTOP` with `effective=NONE` (no network block) while a view is open,
 and `adb shell dumpsys activity services <package>` shows Chrome bound to

@@ -1,11 +1,11 @@
 //! [`ServerDetail`], what a server's run reports to `UnitRunner` beyond its
 //! run state.
 
-use wildflowerhealthio_authorization_server::PendingConsentHead;
+use wildflowerhealthio_authorization_server::NewestPendingConsent;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
-use crate::live_bindings::server_consent_decider::ServerConsentDecider;
+use crate::live_bindings::server_consent_watcher::ServerConsentWatcher;
 use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
 use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 
@@ -27,13 +27,9 @@ pub struct ServerDetail {
     /// it deploys, orders and renews it; `None` until the run's certificate
     /// starts.
     pub certificate: Option<CertificateState>,
-    /// The oldest consent waiting for the Owner's answer on this server, as
+    /// The newest consent waiting for the Owner's answer on this server, as
     /// its authorization server publishes it; `None` when nothing waits.
-    pub pending_consent: Option<PendingConsentHead>,
-    /// How the host decides the consents waiting on this run. A run always
-    /// sets it; it is `None` only in a detail built without a server, as the
-    /// domain's tests build theirs.
-    pub consent_decider: Option<ServerConsentDecider>,
+    pub pending_consent: Option<NewestPendingConsent>,
     /// How the host mints the launches it opens this server's launcher with.
     /// A run always sets it; it is `None` only in a detail built without a
     /// server, as the domain's tests build theirs.
@@ -43,4 +39,9 @@ pub struct ServerDetail {
     /// A run always sets it; it is `None` only in a detail built without a
     /// server, as the domain's tests build theirs.
     pub sign_in_code_minter: Option<ServerSignInCodeMinter>,
+    /// How the host waits for a consent it opened on this server to be
+    /// decided or expire, to close the page it opened it at. A run always
+    /// sets it; it is `None` only in a detail built without a server, as the
+    /// domain's tests build theirs.
+    pub consent_watcher: Option<ServerConsentWatcher>,
 }

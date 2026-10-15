@@ -31,10 +31,18 @@ describe('deepFreeze', () => {
     expect(deepFreeze(null)).toBeNull()
   })
 
-  it('does not recurse into function bodies but freezes the function value', () => {
+  it('freezes a function passed as the value itself', () => {
     const fn = (): number => 1
     deepFreeze(fn)
     expect(Object.isFrozen(fn)).toBe(true)
+  })
+
+  it('leaves a function reached through the graph unfrozen', () => {
+    const callback = (): number => 1
+    const o = { callback }
+    deepFreeze(o)
+    expect(Object.isFrozen(o)).toBe(true)
+    expect(Object.isFrozen(callback)).toBe(false)
   })
 
   it('tolerates cycles via the already-frozen short-circuit', () => {

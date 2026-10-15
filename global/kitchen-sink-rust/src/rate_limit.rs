@@ -308,6 +308,33 @@ mod tests {
         );
     }
 
+    /// An attempt the shared allowance refuses spends nothing from the
+    /// key's own.
+    #[test]
+    fn a_shared_refusal_spends_nothing_from_the_key() {
+        let per_key = Rate {
+            burst: 2,
+            interval: Duration::from_secs(100),
+        };
+        let shared = Rate {
+            burst: 1,
+            interval: Duration::from_secs(10),
+        };
+        let limiter = RateLimiter::new(per_key, shared, MAX_KEYS);
+        let now = Instant::now();
+        assert!(limiter.admit("alice", now));
+        for _ in 0..5 {
+            assert!(
+                !limiter.admit("alice", now),
+                "the shared allowance is spent"
+            );
+        }
+        assert!(
+            limiter.admit("alice", now + shared.interval),
+            "the shared refusals left alice her second attempt"
+        );
+    }
+
     #[test]
     fn an_ipv6_client_is_its_64_and_a_mapped_ipv4_its_address() {
         let limiter = limiter(MAX_KEYS);

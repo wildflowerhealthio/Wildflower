@@ -1,5 +1,5 @@
-//! [`LaunchError`], why a server's launcher or Authorization app couldn't be
-//! opened.
+//! [`LaunchError`], why a server's launcher, its Authorization app or the
+//! consent waiting on it couldn't be opened.
 
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
@@ -7,8 +7,8 @@ use wildflowerhealthio_authorization_server::domain::authorization_server_error:
 
 use crate::domain::{CertificateAuthority, RegistryError};
 
-/// Why a server's launcher or Authorization app couldn't be opened.
-/// Serialises as `{"kind", "message"}`.
+/// Why a server's launcher, its Authorization app or the consent waiting on it
+/// couldn't be opened. Serialises as `{"kind", "message"}`.
 #[derive(Debug, thiserror::Error)]
 pub enum LaunchError {
     /// The server isn't running, so it has no launch to hand out.
@@ -50,6 +50,10 @@ pub enum LaunchError {
     /// The in-app browser couldn't open the page.
     #[error("the in-app browser couldn't open the page: {reason}")]
     OpeningBrowser { reason: String },
+    /// No consent waits on the server: its queue is empty, as when the
+    /// request was decided or expired since it was shown.
+    #[error("nothing is waiting for your consent on the server {domain}")]
+    NothingPending { domain: String },
     /// Reading the registry failed, including
     /// [`RegistryError::NotRegistered`] for a server that isn't registered.
     #[error(transparent)]
@@ -71,6 +75,7 @@ impl LaunchError {
             Self::UntrustedCertificate { .. } => "untrustedCertificate",
             Self::AuthorizationServer(_) => "authorizationServer",
             Self::OpeningBrowser { .. } => "openingBrowser",
+            Self::NothingPending { .. } => "nothingPending",
             Self::Registry(registry_error) => registry_error.kind(),
         }
     }
@@ -153,6 +158,12 @@ mod tests {
                 "openingBrowser",
             ),
             (
+                LaunchError::NothingPending {
+                    domain: DOMAIN.to_owned(),
+                },
+                "nothingPending",
+            ),
+            (
                 LaunchError::Registry(RegistryError::NotRegistered {
                     domain: DOMAIN.to_owned(),
                 }),
@@ -193,6 +204,9 @@ mod tests {
                 domain: DOMAIN.to_owned(),
             },
             LaunchError::TunnelUnknown {
+                domain: DOMAIN.to_owned(),
+            },
+            LaunchError::NothingPending {
                 domain: DOMAIN.to_owned(),
             },
         ];

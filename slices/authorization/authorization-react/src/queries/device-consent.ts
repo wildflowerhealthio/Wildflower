@@ -1,49 +1,15 @@
-import {
-  queryOptions,
-  useMutation,
-  useQueryClient,
-  useSuspenseQuery,
-  type UseMutationOptions,
-  type UseMutationResult,
-  type UseSuspenseQueryOptions,
-  type UseSuspenseQueryResult,
-} from '@tanstack/react-query'
+import { type UseMutationOptions } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import { Devices } from '@wildflowerhealthio/authorization-core/http-api-definition'
 import { Data, Effect, Schema } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
-import { deviceConsentQueryKey, GRANTS_QUERY_KEY } from './keys.ts'
-import { useRunAuthed } from './use-run-authed.ts'
 
 type DeviceConsent = Schema.Schema.Type<typeof Devices.DeviceConsentSchema>
 type DeviceConsentResult = Schema.Schema.Type<typeof Devices.DeviceConsentResultSchema>
 type DeviceConsentNotFound = Schema.Schema.Type<typeof Devices.DeviceConsentNotFoundSchema>
 
 const isDeviceConsentNotFound = Schema.is(Devices.DeviceConsentNotFoundSchema)
-
-/** Shared by the route `loader` and {@link useDeviceConsentQuery}. */
-const deviceConsentQueryOptions = (
-  runAuthed: RunAuthed,
-  userCode: string
-): UseSuspenseQueryOptions<
-  DeviceConsent,
-  Error,
-  DeviceConsent,
-  readonly [string, string, string]
-> =>
-  queryOptions({
-    queryKey: deviceConsentQueryKey(userCode),
-    queryFn: () =>
-      runAuthed(
-        Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
-          c.devices.GetDeviceConsent({ path: { userCode } })
-        )
-      ),
-  })
-
-const useDeviceConsentQuery = (userCode: string): UseSuspenseQueryResult<DeviceConsent, Error> =>
-  useSuspenseQuery(deviceConsentQueryOptions(useRunAuthed(), userCode))
 
 /**
  * A device request that is no longer pending when the Owner decides it: it
@@ -89,9 +55,8 @@ type DeviceConsentDecision =
 /**
  * `ApproveDeviceConsent` / `DenyDeviceConsent` over `runAuthed`, as mutation
  * options: the decision's `mutationFn`, which resolves to the resulting
- * decision. Shared by {@link useDeviceConsentMutation} and the authorization
- * server's device page (`authorization-server-web`), which runs it on the
- * Owner browser's session rather than the router's.
+ * decision. The authorization server's device page (`authorization-server-web`)
+ * runs it on the Owner browser's session.
  */
 const deviceConsentMutationOptions = (
   runAuthed: RunAuthed
@@ -113,37 +78,5 @@ const deviceConsentMutationOptions = (
     ),
 })
 
-/**
- * {@link deviceConsentMutationOptions} on the router's authed runner. Returns
- * the resulting decision.
- *
- * On success the consent screen unmounts (`onDone()` navigates away), so
- * invalidating this consent's own detail key
- * would be dead — nothing re-reads it. Instead invalidate the grants list
- * root: a device approval now upserts a durable device grant (keyed on
- * `(clientId, deviceName)`), which shows in the "Authorized Devices" list —
- * the surface the user lands on.
- */
-const useDeviceConsentMutation = (): UseMutationResult<
-  DeviceConsentResult,
-  Error,
-  DeviceConsentDecision
-> => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    ...deviceConsentMutationOptions(useRunAuthed()),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: GRANTS_QUERY_KEY })
-    },
-  })
-}
-
-export {
-  ExpiredDeviceConsent,
-  foldExpiredDeviceConsent,
-  deviceConsentMutationOptions,
-  deviceConsentQueryOptions,
-  useDeviceConsentMutation,
-  useDeviceConsentQuery,
-}
+export { ExpiredDeviceConsent, foldExpiredDeviceConsent, deviceConsentMutationOptions }
 export type { DeviceConsent, DeviceConsentDecision, DeviceConsentResult }

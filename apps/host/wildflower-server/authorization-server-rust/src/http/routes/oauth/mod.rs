@@ -20,6 +20,8 @@ use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
 
+pub(crate) use authorization_pages::device_page_url;
+
 /// Where [`page_router`] and [`openapi_router`] are mounted, so a URL built
 /// for one of their routes names the same prefix the router serves it under.
 pub(crate) const OAUTH_MOUNT: &str = "/oauth";

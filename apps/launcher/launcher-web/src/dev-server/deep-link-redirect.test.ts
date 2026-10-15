@@ -5,10 +5,10 @@ const BROWSER_ACCEPT = 'text/html,application/xhtml+xml,*/*;q=0.8'
 
 describe('deepLinkRedirect', () => {
   it('should send a browser deep link to the app root with the route in ?redirect=', () => {
-    // Arrange — the link a debug Tauri host hands out for its device-flow page.
+    // Arrange — a link to a launcher page, pointed at a server.
     const request = {
       method: 'GET',
-      url: '/authorization/devices?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WXYZ-2345',
+      url: '/settings/requests?server=https%3A%2F%2Fruth.wildflowerhealth.io&tab=recent',
       accept: BROWSER_ACCEPT,
     }
 
@@ -17,7 +17,7 @@ describe('deepLinkRedirect', () => {
 
     // Assert
     expect(location).toBe(
-      '/?server=https%3A%2F%2Fruth.wildflowerhealth.io&user_code=WXYZ-2345&redirect=%2Fauthorization%2Fdevices'
+      '/?server=https%3A%2F%2Fruth.wildflowerhealth.io&tab=recent&redirect=%2Fsettings%2Frequests'
     )
   })
 
@@ -33,8 +33,8 @@ describe('deepLinkRedirect', () => {
       { method: 'GET', url: '/src/main-web.tsx', accept: '*/*' },
       { method: 'GET', url: '/@vite/client', accept: BROWSER_ACCEPT },
       { method: 'GET', url: '/favicon.svg', accept: BROWSER_ACCEPT },
-      { method: 'GET', url: '/authorization/devices', accept: 'application/json' },
-      { method: 'POST', url: '/authorization/devices', accept: BROWSER_ACCEPT },
+      { method: 'GET', url: '/settings/requests', accept: 'application/json' },
+      { method: 'POST', url: '/settings/requests', accept: BROWSER_ACCEPT },
       { method: 'GET', url: undefined, accept: BROWSER_ACCEPT },
     ]
     for (const request of passThrough) {

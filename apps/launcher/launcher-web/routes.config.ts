@@ -3,30 +3,21 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
 /**
  * Virtual route config for launcher-web. The app owns the structural
  * skeleton (root provider stack, the `_auth` gate, the `/settings`
- * layout) as physical files under `src/routes`, and pulls each slice's
- * route directory into the tree with `physical()`.
+ * layout) as physical files under `src/routes`, and pulls the route
+ * directory of each package beside it in `apps/launcher/` into the tree
+ * with `physical()`.
  *
- * The three slice buckets mount as SIBLINGS so that the id a slice's own
- * generator computes (from its top-level folder) is identical to the id
- * this app generator computes — otherwise the two generators fight over
- * the single `createFileRoute('<id>')` literal in each route file.
+ * The buckets mount so that the id a package's own generator computes
+ * (from its top-level folder) is identical to the id this app generator
+ * computes — otherwise the two generators fight over the single
+ * `createFileRoute('<id>')` literal in each route file.
  *
- *   - `settings/` → mounted under the real `/settings` route → `/settings/…`
- *   - `_auth/`    → mounted under the pathless `_auth` layout  → `/_auth/…`
- *   - `_open/`    → mounted under the pathless `_open` layout  → `/_open/…`
+ *   - `settings/`   → mounted under the real `/settings` route → `/settings/…`
+ *   - `_auth/home/` → mounted under `_auth/home.tsx`           → `/_auth/home/…`
  *
- * Section sub-layouts (`_auth/home.tsx`, `_auth/authorization.tsx`,
- * `_open/authorization.tsx`) live in the app's own `src/routes` directory.
- * Each wraps its slice mount in the shared `pageLayoutStyles['page']`
- * shell so the leaves render content only. They cannot live in their
- * source slice because `physical()` mounts compute the generated
- * route-variable name from the in-mount path: with a slice-level
- * `_auth/authorization.tsx` AND `_open/authorization.tsx`, both reduce to
- * `Authorization` and the launcher-web `routeTree.gen.ts` ends up with a
- * duplicate `const AuthorizationRoute = …`. Owning the section layout at the
- * app level keeps the `/_auth/` / `/_open/` prefix in scope for the
- * generator so it disambiguates as `AuthAuthorizationRoute` /
- * `OpenAuthorizationRoute`.
+ * The section sub-layout `_auth/home.tsx` lives in the app's own
+ * `src/routes` directory and wraps its package mount in the shared
+ * `pageLayoutStyles['page']` shell so the leaves render content only.
  *
  * Because `/settings` is a sibling of `_auth` (not a child), it is not
  * auth-gated by the `_auth` layout's `beforeLoad`. The `/settings`
@@ -41,16 +32,11 @@ import { index, layout, physical, rootRoute, route } from '@tanstack/virtual-fil
  * `plainSmartRouteOptions`.
  *
  * Paths passed to `physical()` are resolved relative to
- * `routesDirectory` (`src/routes`), so `../../../../../slices` reaches the
- * monorepo's `slices/` directory and `../../..` this app's folder,
- * `apps/launcher/`, where the packages built only for the launcher sit.
+ * `routesDirectory` (`src/routes`), so `../../..` reaches this app's
+ * folder, `apps/launcher/`, where the packages built only for the
+ * launcher sit.
  */
-const slices = '../../../../../slices'
 const launcher = '../../..'
-
-/** A slice's `<slice>-react` route bucket. */
-const sliceRoutesDir = (slice: string, bucket: string): string =>
-  `${slices}/${slice}/${slice}-react/src/routes/${bucket}`
 
 /** A route bucket of a package beside this app in `apps/launcher/`. */
 const launcherRoutesDir = (packageDir: string, bucket: string): string =>
@@ -67,13 +53,5 @@ export const routes = rootRoute('__root.tsx', [
   route('/fhir-home', 'fhir-home.tsx'),
   layout('_auth', '_auth.tsx', [
     route('/home', '_auth/home.tsx', [physical('', launcherRoutesDir('apps-react', '_auth/home'))]),
-    route('/authorization', '_auth/authorization.tsx', [
-      physical('', sliceRoutesDir('authorization', '_auth/authorization')),
-    ]),
-  ]),
-  layout('_open', '_open.tsx', [
-    route('/authorization', '_open/authorization.tsx', [
-      physical('', sliceRoutesDir('authorization', '_open/authorization')),
-    ]),
   ]),
 ])

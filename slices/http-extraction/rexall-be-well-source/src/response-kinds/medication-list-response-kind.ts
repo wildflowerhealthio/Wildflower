@@ -8,25 +8,35 @@ import {
   extractJson,
   recognizePortal,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Effect, RegExp as EffectRegExp, Schema } from 'effect'
+import { Effect, Predicate, RegExp as EffectRegExp, Schema } from 'effect'
 import { promoteMedicationDispense } from '../promote/medication-dispense.ts'
 import { promoteMedicationRequest } from '../promote/medication-request.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
-import { REXALL_PHARMACY_LOCATION_URL } from '../tunnel-url.ts'
+import { REXALL_PHARMACY_LOCATION_URL, tunnelGetMatcher } from '../tunnel-url.ts'
 
 /** A decoded carebook medication: an fhir-r4 `MedicationRequest` or `MedicationDispense`. */
 type MedicationResource =
   | Schema.Schema.Type<typeof MedicationRequest.R4FromStu3Schema>
   | Schema.Schema.Type<typeof MedicationDispense.R4FromStu3Schema>
 
+/** Whether an entry claims to be a medication, whatever else it holds. */
+const isMedicationEntry = Schema.is(
+  Schema.Struct({ resourceType: Schema.Literal('MedicationRequest', 'MedicationDispense') })
+)
+
 /**
  * A non-medication searchset entry (the matched `Location`, or a
  * `DocumentReference` / `Immunization` `_revinclude`), decoded to `null` so the
- * heterogeneous bundle parses "as is". `Schema.Unknown` matches anything, so
- * this **must stay last** in {@link medicationOrNull}.
+ * heterogeneous bundle parses "as is". It never claims a `MedicationRequest` /
+ * `MedicationDispense`: one that does not decode fails the list rather than
+ * dropping out of it unseen. Must stay last in {@link medicationOrNull}.
  */
 const NonMedicationResource: Schema.Schema<null, unknown> = Schema.transform(
-  Schema.Unknown,
+  Schema.Unknown.pipe(
+    Schema.filter(Predicate.not(isMedicationEntry), {
+      message: () => 'a MedicationRequest / MedicationDispense that does not decode',
+    })
+  ),
   Schema.Null,
   {
     strict: true,
@@ -78,7 +88,7 @@ const medicationListUrl = new RegExp(`^${EffectRegExp.escape(REXALL_PHARMACY_LOC
 const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
   HttpResponseKind.make({
     name: 'MedicationListResponseKind',
-    tryRecognize: recognizePortal(medicationListUrl, REXALL_CAREBOOK_SYSTEM),
+    tryRecognize: recognizePortal(tunnelGetMatcher(medicationListUrl), REXALL_CAREBOOK_SYSTEM),
     parse: (response) =>
       Effect.gen(function* () {
         const bundle = yield* decode(extractJson(response.text()))

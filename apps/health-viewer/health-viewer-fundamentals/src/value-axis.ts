@@ -98,25 +98,109 @@ const MAX_TICKS = 64
 const DEFAULT_TICK_COUNT = 5
 
 /**
+ * How far a quotient may sit from a whole number, as a fraction of its size,
+ * and still count as that whole number: a few units of float rounding error,
+ * far below any real fraction of a step.
+ */
+const FLOAT_ROUNDING_TOLERANCE = 1e-14
+
+/**
+ * How many `step`s `value` lies from zero, signed: the whole count when the
+ * division misses it only by float rounding, so a bound computed as a
+ * multiple of `step` reads back as one; otherwise the fractional quotient.
+ *
+ * @remarks
+ * Symmetric in sign: the error and its tolerance are both absolute, so a
+ * negative value snaps exactly when its positive mirror does. A real
+ * half-step (`-2.5`, which `Math.round` takes to `-2`) is `0.5` off and stays
+ * fractional.
+ */
+const stepsFromZero = (value: number, step: number): number => {
+  const exactSteps = value / step
+  const nearestWholeSteps = Math.round(exactSteps)
+  const roundingError = Math.abs(exactSteps - nearestWholeSteps)
+  const toleranceAtThisSize = Math.max(1, Math.abs(exactSteps)) * FLOAT_ROUNDING_TOLERANCE
+  const isWithinFloatRounding = roundingError <= toleranceAtThisSize
+  return isWithinFloatRounding ? nearestWholeSteps : exactSteps
+}
+
+/** Whether `value` is a whole number of `step`s from zero, up to float rounding. */
+const isWholeMultipleOf = (value: number, step: number): boolean =>
+  Number.isInteger(stepsFromZero(value, step))
+
+/** The nice step multipliers within one power of ten, coarsest first. */
+const NICE_MULTIPLIERS_COARSEST_FIRST = [5, 2, 1] as const
+
+/** How many times the requested interval count a finer step may split the axis into. */
+const MAX_INTERVALS_PER_REQUESTED = 2
+
+/**
+ * The nice steps no coarser than `coarseStep`, from its power of ten and the
+ * one below, coarsest first (`20` gives `20, 10, 5, 2, 1`).
+ */
+const niceStepsFinerThan = (coarseStep: number): readonly number[] => {
+  const coarseExponent = Math.floor(Math.log10(coarseStep))
+  return [coarseExponent, coarseExponent - 1]
+    .flatMap((exponent) =>
+      NICE_MULTIPLIERS_COARSEST_FIRST.map((multiplier) => multiplier * 10 ** exponent)
+    )
+    .filter((step) => step <= coarseStep)
+}
+
+/**
+ * The tick step for `[low, high]`: the coarsest nice step, no coarser than the
+ * one `count` intervals suggest, that both bounds are whole multiples of, so
+ * the axis is labelled at its ends.
+ *
+ * @remarks
+ * {@link niceDomain} rounds to a step taken from the padded extent, and the
+ * rounding widens the domain past it, so the `coarseStep` this domain's own
+ * width suggests can be one nice step too coarse and miss both bounds
+ * (`[-40, 80]` labelled only `0` and `50`). Candidates come from
+ * {@link niceStepsFinerThan}, coarsest first; one is taken only if it keeps at
+ * most {@link MAX_INTERVALS_PER_REQUESTED} times `count` intervals. A domain
+ * no candidate meets at both bounds keeps `coarseStep`.
+ */
+const stepFor = (low: number, high: number, count: number): number => {
+  const width = high - low
+  const coarseStep = niceStep(width / count)
+  const maxIntervals = MAX_INTERVALS_PER_REQUESTED * count
+  const keepsIntervalsReadable = (step: number): boolean => width / step <= maxIntervals
+  const meetsBothBounds = (step: number): boolean =>
+    isWholeMultipleOf(low, step) && isWholeMultipleOf(high, step)
+  const boundAlignedStep = niceStepsFinerThan(coarseStep).find(
+    (step) => keepsIntervalsReadable(step) && meetsBothBounds(step)
+  )
+  return boundAlignedStep ?? coarseStep
+}
+
+/**
  * The round values to label `domain` with.
  *
- * @returns Ascending ticks inside `domain`, always at least its two bounds
+ * @returns Ascending ticks inside `domain`: at least two, and both bounds
+ *   whenever they are round values themselves (as {@link niceDomain} makes
+ *   them); a collapsed domain's one value
  */
 const ticksFor = (domain: Domain, count: number = DEFAULT_TICK_COUNT): readonly number[] => {
   const [low, high] = domain
   if (!(high > low)) return [low]
-  const step = niceStep((high - low) / count)
+  const step = stepFor(low, high, count)
   // Indexed off the step rather than accumulated, so a fractional step (`0.1`)
-  // cannot drift a later tick off its round value.
-  const first = Math.ceil(low / step)
-  const last = Math.floor(high / step)
-  if (!Number.isFinite(first) || !Number.isFinite(last) || last - first > MAX_TICKS) {
+  // cannot drift a later tick off its round value. A bound that is a multiple
+  // of the step is its own tick, exactly.
+  const lowSteps = stepsFromZero(low, step)
+  const highSteps = stepsFromZero(high, step)
+  const first = Math.ceil(lowSteps)
+  const last = Math.floor(highSteps)
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last - first >= MAX_TICKS) {
     return [low, high]
   }
   const ticks: number[] = []
   // `+ 0` turns the `-0` a zero tick gets from a negative `first` (`-0 * step`)
   // into `0`, so no formatter downstream prints a signed zero.
   for (let index = first; index <= last; index += 1) ticks.push(index * step + 0)
+  if (first === lowSteps) ticks[0] = low + 0
+  if (last === highSteps) ticks[ticks.length - 1] = high + 0
   return ticks.length >= 2 ? ticks : [low, high]
 }
 

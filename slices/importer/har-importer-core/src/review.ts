@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
+import { Array as Arr, Effect, Match, Option, type ParseResult } from 'effect'
 
 import { Extraction, type HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
@@ -100,36 +100,22 @@ const preview = <TParsed>(
         Effect.map(
           (outcome): PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed> => {
             const pickKindName = Option.some(candidate.kind.name)
-            if (outcome._tag === 'resources') {
-              return {
-                ref: recognized.ref,
-                recognized,
-                pickKindName,
-                outcome: {
-                  _tag: 'resources',
-                  resources: outcome.resources.map(
-                    (resource, index): PreviewedResource<TParsed> => ({
-                      key: resourceKey(recognized.ref.id, index),
-                      resource,
-                    })
-                  ),
-                },
-              }
-            }
-            if (outcome._tag === 'parseError') {
-              return {
-                ref: recognized.ref,
-                recognized,
-                pickKindName,
-                outcome: { _tag: 'parseError', error: outcome.error },
-              }
-            }
-            return {
-              ref: recognized.ref,
-              recognized,
-              pickKindName,
-              outcome: { _tag: 'bodyAbsent' },
-            }
+            const previewed = Match.value(outcome).pipe(
+              Match.tag('resources', ({ resources }): PreviewedOutcome<TParsed> => ({
+                _tag: 'resources',
+                resources: resources.map((resource, index): PreviewedResource<TParsed> => ({
+                  key: resourceKey(recognized.ref.id, index),
+                  resource,
+                })),
+              })),
+              Match.tag('parseError', ({ error }): PreviewedOutcome<TParsed> => ({
+                _tag: 'parseError',
+                error,
+              })),
+              Match.tag('bodyAbsent', (): PreviewedOutcome<TParsed> => ({ _tag: 'bodyAbsent' })),
+              Match.exhaustive
+            )
+            return { ref: recognized.ref, recognized, pickKindName, outcome: previewed }
           }
         )
       )

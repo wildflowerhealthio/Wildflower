@@ -1,78 +1,52 @@
 //! The forwarded-request report, on the tunnel listener's router: after each
-//! forwarded request (every request through the tunnel, whose `Forwarded` the
-//! tunnel front writes) report what it was and who made it to the host and
-//! to the request-log slice; a `/health` check goes to the request log only.
+//! forwarded request (every request through the tunnel) report what it was and
+//! who made it to the request-log slice.
 //!
 //! The caller is read off the response's [`RequestCaller`] extension, and a
 //! bearer gate's `401` off its [`RequestRefusal`] one; the authorization server bearer
-//! gates stamp both (see `wildflowerhealthio_shared_structures::request_caller`). The host
-//! turns the reports into "this app is using your server" notifications.
+//! gates stamp both (see `wildflowerhealthio_shared_structures::request_caller`).
 
 mod reduced_path;
 
 use std::time::{Instant, SystemTime};
 
 use axum::body::HttpBody;
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::middleware::Next;
 use axum::response::Response;
 use tokio::sync::mpsc;
-use wildflowerhealthio_shared_structures::health_check::HEALTH_PATH;
 use wildflowerhealthio_shared_structures::request_caller::{
     ForwardedRequest, RequestCaller, RequestRefusal,
 };
-use wildflowerhealthio_shared_structures::served_origin::{
-    forwarded_client_address, is_forwarded, request_provenance, RequestProvenance,
-};
+
+use crate::http::tunnel_listener::TunnelVisitor;
 
 use reduced_path::reduced_path;
 
-/// Where [`report_forwarded_request`] sends each record: the host, which
-/// turns them into notifications, and the request-log slice's writer.
-#[derive(Clone)]
-pub(crate) struct ForwardedRequestSenders {
-    /// The host's channel (`ServerObservers::forwarded_request_tx`).
-    pub(crate) host_tx: mpsc::Sender<ForwardedRequest>,
-    /// The request-log writer's channel
-    /// (`wildflowerhealthio_request_log::RequestLog::forwarded_request_tx`).
-    pub(crate) request_log_tx: mpsc::Sender<ForwardedRequest>,
-}
-
-/// Report a [`ForwardedRequest`] on both of `forwarded_request_senders` once
-/// the response to a forwarded request is ready. A request with no
-/// `Forwarded` header is not reported. A forwarded `GET /health` ([`HEALTH_PATH`]) goes to the request
-/// log but not the host: the reachability monitor asks it through the relay at
-/// the start of every run, and a health check is nobody using the server.
-///
-/// The forwarded test is [`is_forwarded`], a presence-only predicate, so a
-/// request with a malformed `Forwarded` header is reported too, with no client
-/// address or served host.
+/// Report a [`ForwardedRequest`] on `request_log_tx`, the request-log
+/// writer's channel (`wildflowerhealthio_request_log::RequestLog::forwarded_request_tx`),
+/// once the response to a tunnel request is ready, naming the visitor its
+/// [`TunnelVisitor`] connect info holds.
 ///
 /// # Remarks
 ///
-/// Each report uses `try_send`, and a full channel drops it with a debug log.
+/// The report uses `try_send`, and a full channel drops it with a debug log.
 /// This is the one place a dropped value is the right outcome: the report is an
-/// observation feeding a best-effort notification count and log, and the
-/// alternative, awaiting room in a channel, would hold a patient's FHIR response
-/// hostage to how fast the host drains notifications or the log writes. A
-/// closed channel (its reader stopped listening) is dropped the same way, since
-/// there is nobody left to tell.
+/// observation feeding a best-effort log, and the alternative, awaiting room in
+/// a channel, would hold a patient's FHIR response hostage to how fast the log
+/// writes. A closed channel (its reader stopped listening) is dropped the same
+/// way, since there is nobody left to tell.
 pub(crate) async fn report_forwarded_request(
-    State(forwarded_request_senders): State<ForwardedRequestSenders>,
+    State(request_log_tx): State<mpsc::Sender<ForwardedRequest>>,
+    ConnectInfo(tunnel_visitor): ConnectInfo<TunnelVisitor>,
     request: Request,
     next: Next,
 ) -> Response {
-    if !is_forwarded(request.headers()) {
-        return next.run(request).await;
-    }
-    let is_health_check = request.uri().path() == HEALTH_PATH;
     let received_at = SystemTime::now();
     let started = Instant::now();
-    let client_address = forwarded_client_address(request.headers()).map(str::to_owned);
-    let served_host = match request_provenance(request.headers()) {
-        Some(RequestProvenance::Forwarded { base_url }) => Some(base_url.authority().to_owned()),
-        Some(RequestProvenance::Loopback) | None => None,
-    };
+    let client_address = tunnel_visitor
+        .client_address
+        .map(|client_address| client_address.ip().to_string());
     let method = request.method().to_string();
     let reduced_path = reduced_path(request.uri());
 
@@ -81,7 +55,6 @@ pub(crate) async fn report_forwarded_request(
     let forwarded_request = ForwardedRequest {
         received_at,
         client_address,
-        served_host,
         method,
         reduced_path,
         status: response.status().as_u16(),
@@ -90,18 +63,7 @@ pub(crate) async fn report_forwarded_request(
         caller: response.extensions().get::<RequestCaller>().cloned(),
         refusal: response.extensions().get::<RequestRefusal>().copied(),
     };
-    if !is_health_check {
-        if let Err(error) = forwarded_request_senders
-            .host_tx
-            .try_send(forwarded_request.clone())
-        {
-            tracing::debug!("forwarded-request report to the host dropped: {error}");
-        }
-    }
-    if let Err(error) = forwarded_request_senders
-        .request_log_tx
-        .try_send(forwarded_request)
-    {
+    if let Err(error) = request_log_tx.try_send(forwarded_request) {
         tracing::debug!("forwarded-request report to the request log dropped: {error}");
     }
     response
@@ -144,7 +106,7 @@ mod tests {
     /// slices do: `/Patient/{id}` a `200` to the `lifting` client,
     /// `/authorization/grants` a scope `403` to it, `/refused/{refusal}` each bearer
     /// gate `401`, and `/anonymous` an ungated `200`.
-    fn reporting_router(forwarded_request_senders: ForwardedRequestSenders) -> Router {
+    fn reporting_router(request_log_tx: mpsc::Sender<ForwardedRequest>) -> Router {
         Router::new()
             .route(
                 "/Patient/{id}",
@@ -185,42 +147,33 @@ mod tests {
                 }),
             )
             .route("/anonymous", get(|| async { "anonymous" }))
-            .route(HEALTH_PATH, get(|| async { "pass" }))
             .layer(axum::middleware::from_fn_with_state(
-                forwarded_request_senders,
+                request_log_tx,
                 report_forwarded_request,
             ))
     }
 
-    fn forwarded_get(path: &str) -> Request {
-        Request::get(path)
-            .header(
-                "forwarded",
-                "for=192.0.2.1;host=demo.example.com;proto=https",
-            )
-            .body(Body::empty())
-            .expect("request")
+    /// A tunnel request for `path` from the visitor at `client_address`, with
+    /// `headers`.
+    fn tunnel_get_from(
+        path: &str,
+        client_address: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> Request {
+        let mut builder = Request::get(path);
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let mut request = builder.body(Body::empty()).expect("request");
+        request.extensions_mut().insert(ConnectInfo(TunnelVisitor {
+            client_address: client_address.map(|address| address.parse().expect("address")),
+        }));
+        request
     }
 
-    /// The layer's senders over channels of `capacity`, and the host's and
-    /// the request log's receivers.
-    fn senders(
-        capacity: usize,
-    ) -> (
-        ForwardedRequestSenders,
-        mpsc::Receiver<ForwardedRequest>,
-        mpsc::Receiver<ForwardedRequest>,
-    ) {
-        let (host_tx, host_rx) = mpsc::channel(capacity);
-        let (request_log_tx, request_log_rx) = mpsc::channel(capacity);
-        (
-            ForwardedRequestSenders {
-                host_tx,
-                request_log_tx,
-            },
-            host_rx,
-            request_log_rx,
-        )
+    /// A tunnel request for `path` from the visitor at `192.0.2.1:4711`.
+    fn tunnel_get(path: &str) -> Request {
+        tunnel_get_from(path, Some("192.0.2.1:4711"), &[])
     }
 
     /// The one record `receiver` got, checking its sender is gone with nothing
@@ -235,23 +188,20 @@ mod tests {
         forwarded_request
     }
 
-    /// Send `request` through the layer and return the one record it reported,
-    /// which the host and the request log both got.
+    /// Send `request` through the layer and return the one record it reported.
     async fn reported(request: Request) -> ForwardedRequest {
-        let (senders, mut host_rx, mut request_log_rx) = senders(4);
-        reporting_router(senders)
+        let (request_log_tx, mut request_log_rx) = mpsc::channel(4);
+        reporting_router(request_log_tx)
             .oneshot(request)
             .await
             .expect("oneshot");
-        let forwarded_request = only_record(&mut host_rx);
-        assert_eq!(only_record(&mut request_log_rx), forwarded_request);
-        forwarded_request
+        only_record(&mut request_log_rx)
     }
 
     #[tokio::test]
     async fn a_forwarded_request_reports_its_record() {
         let before = SystemTime::now();
-        let forwarded_request = reported(forwarded_get("/Patient/123?_format=json")).await;
+        let forwarded_request = reported(tunnel_get("/Patient/123?_format=json")).await;
 
         assert!(forwarded_request.received_at >= before);
         assert!(forwarded_request.received_at <= SystemTime::now());
@@ -259,7 +209,6 @@ mod tests {
             forwarded_request,
             ForwardedRequest {
                 client_address: Some("192.0.2.1".to_owned()),
-                served_host: Some("demo.example.com".to_owned()),
                 method: "GET".to_owned(),
                 reduced_path: "/Patient".to_owned(),
                 status: 200,
@@ -273,7 +222,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_scope_failure_reports_the_caller_and_the_403() {
-        let forwarded_request = reported(forwarded_get("/authorization/grants")).await;
+        let forwarded_request = reported(tunnel_get("/authorization/grants")).await;
 
         assert_eq!(forwarded_request.status, 403);
         assert_eq!(forwarded_request.caller, Some(lifting()));
@@ -288,7 +237,7 @@ mod tests {
             ("/refused/rejected", RequestRefusal::TokenRejected),
             ("/refused/revoked", RequestRefusal::Revoked),
         ] {
-            let forwarded_request = reported(forwarded_get(path)).await;
+            let forwarded_request = reported(tunnel_get(path)).await;
             assert_eq!(forwarded_request.status, 401, "{path}");
             assert_eq!(forwarded_request.refusal, Some(refusal), "{path}");
             assert_eq!(forwarded_request.caller, None, "{path}");
@@ -297,79 +246,60 @@ mod tests {
 
     #[tokio::test]
     async fn a_forwarded_request_with_no_caller_reports_none() {
-        let forwarded_request = reported(forwarded_get("/anonymous")).await;
+        let forwarded_request = reported(tunnel_get("/anonymous")).await;
 
         assert_eq!(forwarded_request.caller, None);
         assert_eq!(forwarded_request.refusal, None);
     }
 
-    /// A malformed `Forwarded` header still came through the front, so it is
-    /// reported, with no address or host it could vouch for.
+    /// The visitor's address is its [`TunnelVisitor`]'s IP, without the port,
+    /// and absent when the connection named none.
     #[tokio::test]
-    async fn a_malformed_forwarded_header_is_still_reported() {
-        let request = Request::get("/anonymous")
-            .header("forwarded", "junk-with-no-recognized-params")
-            .body(Body::empty())
-            .expect("request");
-        let forwarded_request = reported(request).await;
-
-        assert_eq!(forwarded_request.client_address, None);
-        assert_eq!(forwarded_request.served_host, None);
-        assert_eq!(forwarded_request.reduced_path, "/anonymous");
-    }
-
-    #[tokio::test]
-    async fn an_unforwarded_request_is_not_reported() {
-        let (senders, mut host_rx, mut request_log_rx) = senders(4);
-        let request = Request::get("/Patient/123")
-            .body(Body::empty())
-            .expect("request");
-        // Held, so the senders outlive the request and an empty channel reads
-        // as "nothing reported", not "nobody left to report".
-        let router = reporting_router(senders);
-        router.clone().oneshot(request).await.expect("oneshot");
-
-        for receiver in [&mut host_rx, &mut request_log_rx] {
+    async fn the_visitor_address_comes_from_the_tunnel_visitor() {
+        for (client_address, recorded) in [
+            (Some("192.0.2.1:4711"), Some("192.0.2.1")),
+            (Some("[2001:db8::1]:4711"), Some("2001:db8::1")),
+            (None, None),
+        ] {
+            let forwarded_request =
+                reported(tunnel_get_from("/anonymous", client_address, &[])).await;
             assert_eq!(
-                receiver.try_recv(),
-                Err(mpsc::error::TryRecvError::Empty),
-                "an unforwarded request must not be reported"
+                forwarded_request.client_address.as_deref(),
+                recorded,
+                "{client_address:?}"
             );
         }
     }
 
-    /// A forwarded `/health` check is in the request log but not the host's
-    /// notifications, and is still answered.
+    /// A request is reported from its tunnel visitor, whatever `Forwarded` it
+    /// carries.
     #[tokio::test]
-    async fn a_forwarded_health_check_is_logged_but_not_notified() {
-        let (senders, mut host_rx, mut request_log_rx) = senders(4);
-        let router = reporting_router(senders);
-        let response = router
-            .clone()
-            .oneshot(forwarded_get(HEALTH_PATH))
-            .await
-            .expect("oneshot");
-        assert_eq!(response.status(), StatusCode::OK);
-
+    async fn a_request_s_own_headers_name_no_visitor() {
+        let forwarded_request = reported(tunnel_get_from(
+            "/anonymous",
+            Some("192.0.2.1:4711"),
+            &[(
+                "forwarded",
+                "for=203.0.113.9;host=evil.example.com;proto=http",
+            )],
+        ))
+        .await;
         assert_eq!(
-            host_rx.try_recv(),
-            Err(mpsc::error::TryRecvError::Empty),
-            "a forwarded /health must not notify the host"
+            forwarded_request.client_address.as_deref(),
+            Some("192.0.2.1")
         );
-        let logged = request_log_rx.try_recv().expect("logged");
-        assert_eq!(logged.reduced_path, HEALTH_PATH);
     }
 
-    /// A host or log writer that falls behind never slows the API: with the
-    /// channels full the request is still answered, and the report is dropped.
+    /// A log writer that falls behind never slows the API: with the channel
+    /// full the request is still answered, and the report is dropped.
     #[tokio::test]
     async fn a_full_channel_drops_the_report_and_still_answers() {
-        let (senders, mut receiver, _request_log_rx) = senders(1);
-        let router = reporting_router(senders);
+        let (request_log_tx, mut receiver) = mpsc::channel(1);
+        let router = reporting_router(request_log_tx);
         for _ in 0..2 {
             let response = router
                 .clone()
-                .oneshot(forwarded_get("/anonymous"))
+                .oneshot(tunnel_get("/anonymous"))
                 .await
                 .expect("oneshot");
             assert_eq!(response.status(), StatusCode::OK);

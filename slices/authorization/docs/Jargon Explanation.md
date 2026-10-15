@@ -346,13 +346,13 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    creates a `flow='device_code'` `AuthorizationRequest` and returns
    `{ device_code, user_code, verification_uri, ... }`.
    The verification URIs are the server's own
-   [device page](#device-page), on the origin the device reached it at:
+   [device page](#device-page), at the server's origin:
    `https://<domain>/oauth/device`, and `…/oauth/device?user_code=<code>` for
    `verification_uri_complete`.
 2. Owner confirms the `user_code` on the device page (typed, or filled in by
-   `verification_uri_complete`) in an [Owner browser](#owner-browser) — or
-   answers it in the host's consent sheet, which the
-   [pending-consent queue](#pending-consent-queue) raises with no code entry.
+   `verification_uri_complete`) in an [Owner browser](#owner-browser). The
+   host app opens the device page with the code filled in for the newest of
+   the [pending consents](#pending-consents).
 3. Owner reviews the request (device name + requested scopes) and approves via
    `POST /authorization/devices/:userCode/approve`. The Owner may add scopes beyond
    what the device requested (up to the client's `allowedScopes`) or prune them
@@ -386,57 +386,72 @@ nothing; the effective name then falls back to the client name at grant-mint
 time so the durable device grant's `(client_id, device_name)` key stays total.
 Optional on the wire; auth-code requests carry no device name.
 
-### Pending-consent queue
+### Pending consents
 
-The single FIFO of authorization requests waiting on the Owner, spanning **both**
-grant flows: a device-code request parked by `/oauth/device_authorization` and an
-authorization-code request parked by `/oauth/authorize` share one queue,
-oldest `requestedAt` first.
+The authorization requests waiting on the Owner, spanning **both** grant flows:
+a device-code request parked by `/oauth/device_authorization` and an
+authorization-code request parked by `/oauth/authorize` alike. The host asks
+about one at a time, the newest by `requestedAt`, like a stack: a new request
+takes over from the one before it, and deciding it brings back the newest of
+those still pending.
 
-The head of that queue is a `PendingConsentHead`, discriminated because the two
-flows have no shared lookup key:
+The newest is a `NewestPendingConsent`, discriminated because the two flows
+have no shared lookup key, with the name of the client that asks (its
+registered name, or its `client_id` while it has none):
 
-| Flow               | Head                           | Hydrated by                             |
-| ------------------ | ------------------------------ | --------------------------------------- |
-| Device (RFC 8628)  | `{ kind: 'device', userCode }` | `GET /authorization/devices/:userCode`  |
-| Authorization code | `{ kind: 'oauth', id }`        | `GET /authorization/oauth-consents/:id` |
+| Flow               | Newest pending consent                     | Decided at                                        |
+| ------------------ | ------------------------------------------ | ------------------------------------------------- |
+| Device (RFC 8628)  | `{ kind: 'device', userCode, clientName }` | the device page, `/oauth/device?user_code=`       |
+| Authorization code | `{ kind: 'oauth', id, clientName }`        | the consent card, `/oauth/authorize/{id}/consent` |
 
-The Rust side recomputes the head (`oldest_pending_consent_head`) after every
-transition that could move it — either flow's insert, approve, or deny — and
-publishes it on a `watch` channel. The Tauri host emits each server's head to
-its base as the `pending-consent` event, raises the window when a server with
-nothing waiting gets a request (not when its queue advances), and gives the base
-commands that read and decide a request in-process through
-`HostConsentDecider`, the same consent capabilities with the Owner's grant
-(see `apps/host/servers`'s
+The Rust side recomputes it (`newest_pending_consent`) after every transition
+that could change it — either flow's insert, approve, or deny — and publishes
+it on a `watch` channel. The Tauri host carries each server's newest pending
+consent in the server's status, posts a notification ("‹client› wants access
+to ‹domain›") once for each request it hasn't notified for, and on the desktop,
+where a notification can't be clicked, opens the request at once. A request that comes back once a newer one is
+decided doesn't notify again. A code request made by a browser signed in as the
+Owner neither notifies nor opens: `/oauth/authorize` sent that browser to the
+consent card, and records it on the request (`requested_by_owner_browser`,
+carried on the newest pending consent). The base's server page shows it as a pending
+request; Open, a tap on the notification on a phone, or the notification
+itself on the desktop opens its page in a
+browser signed in as the Owner, with `then=back` (see `apps/host/servers`'s
 [Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
 
-A request that the [grant](#grant) fast path fully pre-approves never enters the
-queue: `/oauth/authorize` approves it in the same handler, so it never sits
-`pending` awaiting a human. Requests are dropped from the head once expired — a
-background reaper re-runs the query so an idle host doesn't stay stuck on a head
-whose TTL lapsed.
+A request that the [grant](#grant) fast path fully pre-approves is never pending:
+`/oauth/authorize` approves it in the same handler, so it never sits
+`pending` awaiting a human. Requests are dropped once expired — a background
+reaper re-runs the query so an idle host doesn't stay stuck on a request whose
+TTL lapsed.
 
-Closing the host's consent sheet decides nothing: the request stays pending
-and answerable from Settings until it expires, while the requesting browser
-keeps waiting (on the [wait page](#wait-page) for a code request).
+The host also watches one request it opened, through the
+`PendingConsentWatcher` the authorization server hands it: it rereads that
+request, by its `ConsentKey` (the device request's `user_code` or the code
+request's `id`), each time the newest is recomputed, changed or not, so it
+sees the request decided or expired even while a newer one stays newest. On
+iOS the host closes the page it opened the request at once it settles.
+
+Leaving the consent page undecided decides nothing: the request stays pending
+and answerable from the server's page in the host until it expires, while the
+requesting browser keeps waiting (on the [wait page](#wait-page) for a code
+request).
 
 ### Wait page
 
 The page `/oauth/authorize` parks a browser that isn't an
 [Owner browser](#owner-browser) on while the Owner decides:
-`/oauth/authorize/{id}/wait`, served by the authorization server itself on whichever
-origin the browser reached it at (loopback, a tunnel, a forwarded front). The
-`Location` is relative to `/oauth/authorize`, so no launcher address is
-involved. The page is static HTML, CSS and JS
-(`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
+`/oauth/authorize/{id}/wait`, served by the authorization server itself at the
+server's origin, `https://<domain>`. The `Location` is relative to
+`/oauth/authorize`, so no launcher address is involved. The page is static
+HTML, CSS and JS (`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
 `GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
 redirect the status carries, which the authorization server built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the authorization server for, and no request parameter can
-name a different one. The page takes no decision itself: the Owner answers in
-the host's consent sheet, a signed-in launcher, or the
-[consent card](#consent-card). While the request is pending, the page also
+name a different one. The page takes no decision itself: the Owner answers on
+the [consent card](#consent-card), in this browser once it signs in, or in one
+the host opens. While the request is pending, the page also
 reads `GET /authorization/oauth-consents/{id}` on the browser's Owner browser
 session, asked for with `Wildflower-Session: owner-browser`; once that
 succeeds (the browser has signed in as the Owner since), it switches to the consent card beside it.
@@ -476,6 +491,17 @@ the page leaves for it with `location.replace`, only for an `http:`/`https:`
 URL. A browser that can't read the request (`401`, `403`, or `404` once it is
 no longer pending) goes to the wait page instead.
 
+The host app opens the card as `/oauth/authorize/{id}/consent?then=back` in a
+browser signed in as the Owner (the desktop's default browser, an in-app
+browser on mobile) to decide a request another browser made. In that mode the
+card leaves for no callback: the other browser's wait page sees the decision
+and finishes the flow. After Allow or Deny it says how it went ("Approved. You
+can close this." or "Declined. You can close this.") and goes back in the
+browser's history, or closes the window when there is no history to go back
+to, and its Close button does the same again for a browser that kept the page
+open. On iOS the host closes the in-app browser's view itself once the request
+settles.
+
 ### Device page
 
 The RFC 8628 verification page: `/oauth/device` (`verification_uri`) and
@@ -487,10 +513,14 @@ Continue (RFC 8628 §5.4), so a phished link can't approve a code on its own.
 On the [Owner browser](#owner-browser)'s session it reads
 `GET /authorization/devices/{userCode}` and shows `authorization-react`'s
 `DeviceConsentCard`, which posts `/approve` or `/deny`; then it tells the Owner
-they can return to the device. It follows the API's answers rather than
+they can return to the device. Opened by the host app as
+`/oauth/device?user_code=…&then=back`, it instead says how it went and goes
+back, or closes the window, with a Close button that does it again, as the
+consent card does. It follows the API's answers rather than
 checking who is signed in. On load it reads `GET /authorization/session`: with
 no session, or one whose scopes don't cover `wildflower/AuthorizationRequest.r`
-and `.u`, it says to approve the request on the device running the server,
+and `.u`, it says to approve the request on the device running the server (its
+notification, or the server's page in the Wildflower app), with no sign-in link,
 shows no code box and leaves the request pending; a `401` or `403` on a code's
 read later does the same. A `404` means no device is waiting with that code,
 and the Owner can enter another.
@@ -515,12 +545,13 @@ running the server, and the host app runs on that device.
    call). A code is 256 random bits, single use, and valid for 60 seconds. The
    server keeps only its hash, in memory, so a restart drops it.
 2. The host app opens `https://<domain>/oauth/sign-in?code=…&next=…` in a
-   browser: for each launch, `next` is the launch URL, and for the server
-   card's Authorization, the server's Authorization app with `iss`.
+   browser: for each launch, `next` is the launch URL; for the server
+   card's Authorization, the server's Authorization app with `iss`; and for
+   a pending request, its consent card or the device page, with `then=back`.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
    proof) and mints a token through the ordinary minter, issued to the
    `wildflower-owner-browser` client (its `sub`) and holding the Owner's
-   grant (`OWNER_SCOPES`, the grant `HostConsentDecider` acts with), as a
+   grant (`OWNER_SCOPES`, the grant the Owner decides consents with), as a
    JWT with its own `jti` that expires in 8 hours.
 4. It answers `303` to `next`, setting
    `__Host-owner_browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
@@ -588,10 +619,8 @@ one by **where it comes from**:
 An approval with any `approver_missing_scopes` is refused as a whole with
 `403 InsufficientScope`. Nothing is recorded, no code is issued, and the request
 stays `pending`, so an approver whose token does cover it can still answer it.
-The launcher's consent page renders that 403 as its permission surface. The
-surface's step-up signs the launcher in again, which asks the Owner's consent
-for its requested scopes, and then returns to the consent page so the Owner can
-approve again.
+The [consent card](#consent-card) shows the refusal above its decision, and
+the Owner can narrow the ticked scopes and approve again.
 
 ### Bootstrap URL
 
@@ -702,8 +731,8 @@ A loose intuition: **`iss` is "who I am, the signer"; `aud` is "who I'm
 talking to, the verifier."** A token signed for `aud=A` should not be
 honored by `aud=B`, even if the signature is valid.
 
-The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`,
-whichever origin the request was served on. Both checks are performed by
+The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`;
+every request is served at that origin. Both checks are performed by
 `verify_jwt`'s `VerifyOptions` (`expected_issuer`, `accepted_audiences`) — not
 by manual post-verify checks — so a caller using `verify_jwt` directly is forced
 to pass them and can't silently accept any iss/aud.
@@ -743,8 +772,8 @@ mints a JWT.
 
 Unless an existing [grant](#grant) pre-approves every requested scope, the
 request is parked for the Owner: it joins the
-[pending-consent queue](#pending-consent-queue) so the host app's consent
-sheet asks about it and a signed-in launcher lists it. A browser signed in as
+[pending consents](#pending-consents), so the host app notifies
+it and its server's page offers it. A browser signed in as
 the Owner lands on the [consent card](#consent-card) and decides there; any
 other lands on the [wait page](#wait-page), which redirects the client once
 its poll observes the outcome, whichever surface decides it. The browser that
@@ -804,7 +833,7 @@ subject's epoch. The auth gate (`verify_auth_token_claims`) runs the full check
 on every Owner-gated and every FHIR request; HFS additionally checks the
 per-`jti` denylist in-process (defense-in-depth). Expired denylist rows are swept
 at startup and daily. See `docs/Origins/Explanation.md` for how this composes
-with the served-origin model.
+with the one-origin model.
 
 ### Bearer token / `token_type=Bearer`
 

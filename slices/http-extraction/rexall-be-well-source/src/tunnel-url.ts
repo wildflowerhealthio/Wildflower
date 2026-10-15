@@ -1,3 +1,6 @@
+import type { UrlMatcher } from '@wildflowerhealthio/http-extraction-fundamentals'
+import { Option } from 'effect'
+
 /**
  * The Rexall tunnel's URLs: the host the portal's single-page app fetches the
  * carebook profile and the carebook STU3 API from.
@@ -56,9 +59,29 @@ const medicationListUrlOf = ({
   ).join('') +
   '&_count=2147483646'
 
+/**
+ * A matcher for one tunnel XHR: a URL `url` matches unless the request is a
+ * known verb other than `GET`, yielding the tunnel origin as its root.
+ *
+ * @remarks
+ * The portal only reads the tunnel, so any other verb at the same URL is not
+ * the response a kind parses: a CORS preflight `OPTIONS` (the SPA's origin is
+ * not the tunnel's) carries no body to decode. A request whose method the
+ * archive dropped is still claimed: the Recorder observes the response side
+ * only and writes every method as `UNKNOWN`, so refusing it would refuse every
+ * Recorder capture of the portal.
+ */
+const tunnelGetMatcher =
+  (url: RegExp): UrlMatcher =>
+  (candidateUrl, method) =>
+    url.test(candidateUrl) && Option.getOrElse(method, () => 'GET') === 'GET'
+      ? Option.some(REXALL_TUNNEL_ORIGIN)
+      : Option.none()
+
 export {
   REXALL_PHARMACY_LOCATION_URL,
   REXALL_PROFILE_URL,
   REXALL_STU3_BASE_URL,
   medicationListUrlOf,
+  tunnelGetMatcher,
 }

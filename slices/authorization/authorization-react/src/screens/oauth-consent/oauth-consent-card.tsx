@@ -20,7 +20,6 @@ import type {
 import { AppAvatar } from './app-avatar.tsx'
 import { PatientChoice } from './patient-choice.tsx'
 import { RegistrationWarning } from './registration-warning.tsx'
-import type { PatientOptionsState } from './use-patient-options.ts'
 import styles from '../../styles/consent-card.module.css'
 
 /**
@@ -32,6 +31,14 @@ type OAuthConsentMutation = Pick<
   UseMutationResult<OAuthConsentResult, Error, OAuthConsentDecision>,
   'mutate' | 'isPending' | 'error'
 >
+
+/** The patients the patient bar offers, as its composer read them. */
+interface PatientOptionsState {
+  readonly options: readonly PatientOption[]
+  readonly loading: boolean
+  /** Why the patient list could not be read, or `null` when it was (or was not asked for). */
+  readonly error: Error | null
+}
 
 /** The patient bar's search of the server's patients by name. */
 interface PatientNameSearch {
@@ -68,9 +75,8 @@ const redirectHostOf = (redirectUri: string): string => {
  * editing surface, and the approve/deny decision wiring. The scope editing
  * itself (statements ⇄ grid, exclusions, flags) is `scopes-react`'s; this card
  * owns the draft and the result routing. What sends the decision and what
- * reads the patients come from its composer: `OAuthConsentForm` on the
- * router's authed runner, or the authorization server's own consent page on the
- * Owner browser's session.
+ * reads the patients come from its composer: the authorization server's own
+ * consent page, on the Owner browser's session.
  */
 const OAuthConsentCard = ({
   consent,
@@ -312,4 +318,4 @@ const OAuthConsentCard = ({
 }
 
 export { OAuthConsentCard }
-export type { OAuthConsentCardProps, OAuthConsentMutation, PatientNameSearch }
+export type { OAuthConsentCardProps, OAuthConsentMutation, PatientNameSearch, PatientOptionsState }

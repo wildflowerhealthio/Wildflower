@@ -34,16 +34,15 @@ const CallerSummarySchema = Schema.Struct({
  * Rust `LoggedRequestBody`. `path` is the route the request was reduced to (no
  * ids, no query string); a higher `id` is newer. The wire's nullable fields
  * (`null` in JSON) decode to an `Option`: `clientId` is `None` when no bearer
- * gate verified a caller, `address` when its `Forwarded` named no visitor,
- * `servedHost` when no public host was addressed, `responseBytes` when the body's
- * length wasn't known up front, and `refusal` when no bearer gate refused it.
+ * gate verified a caller, `address` when the tunnel connection named no
+ * visitor, `responseBytes` when the body's length wasn't known up front, and
+ * `refusal` when no bearer gate refused it.
  */
 const LoggedRequestSchema = Schema.Struct({
   id: Schema.Int,
   receivedAt: Schema.DateTimeUtc,
   clientId: Schema.OptionFromNullOr(Schema.String),
   address: Schema.OptionFromNullOr(Schema.String),
-  servedHost: Schema.OptionFromNullOr(Schema.String),
   method: Schema.String,
   path: Schema.String,
   status: Schema.Int,

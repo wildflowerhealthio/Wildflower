@@ -91,6 +91,9 @@ const labelOf = (resource: FhirResource): string => `${resource.resourceType}/${
 const isDocumentReference = (resource: FhirResource): resource is DocumentReference.Type =>
   resource.resourceType === 'DocumentReference'
 
+/** A source file's attachment, as the import decodes it. */
+type SourceFileAttachment = DocumentReference.Type['content'][number]['attachment']
+
 /** An attachment as its JSON holds it, whatever the fields present. */
 const attachmentOf = (json: ResourceJson): Record<string, unknown> => {
   if (json.resourceType !== 'DocumentReference') throw new Error('expected a DocumentReference')
@@ -339,6 +342,42 @@ describe('Snapshot.Layout.layOut', () => {
           : resource
       )
       expect(layOutError(retitled)).toMatchObject({ _tag: 'UnplaceableResource' })
+    },
+    IMPORT_TIMEOUT_MILLIS
+  )
+
+  test.each<readonly [string, (attachment: SourceFileAttachment) => SourceFileAttachment, string]>([
+    [
+      'its data with a trailing newline',
+      (attachment) => ({ ...attachment, data: `${attachment.data ?? ''}\n` }),
+      "The source file's data is not the base64 its bytes encode to.",
+    ],
+    [
+      'a url beside its data',
+      (attachment) => ({ ...attachment, url: new URL('https://example.org/rexall.har') }),
+      'The source file carries a url as well as its data.',
+    ],
+  ])(
+    'fails for a source file carrying %s, which its link would not write back',
+    async (_, edit, reason) => {
+      const [personCase] = fc.sample(rexallPersonCaseArbitrary, { numRuns: 1, seed: 5 })
+      if (personCase === undefined) throw new Error('expected a sample')
+      const { resources } = await importRexallPerson(personCase)
+      const edited = resources.map((resource) =>
+        isDocumentReference(resource) && resource.content[0]?.attachment.title === HAR_FILE_NAME
+          ? {
+              ...resource,
+              content: resource.content.map((content) => ({
+                ...content,
+                attachment: edit(content.attachment),
+              })),
+            }
+          : resource
+      )
+      expect(layOutError(edited)).toMatchObject({
+        _tag: 'UnplaceableResource',
+        reason,
+      })
     },
     IMPORT_TIMEOUT_MILLIS
   )

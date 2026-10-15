@@ -66,8 +66,8 @@ pub struct CallerSummaryBody {
     /// bearer gate verified.
     #[schema(required)]
     pub(super) client_id: Option<String>,
-    /// The visitor's address the request's `Forwarded` header named, or `null`
-    /// when it named none.
+    /// The visitor's IP address, from the tunnel connection's PROXY header, or
+    /// `null` when it named none.
     #[schema(required)]
     pub(super) address: Option<String>,
     #[schema(value_type = String, format = DateTime)]
@@ -112,9 +112,6 @@ pub struct LoggedRequestBody {
     pub(super) client_id: Option<String>,
     #[schema(required)]
     pub(super) address: Option<String>,
-    /// The public `host[:port]` the visitor addressed.
-    #[schema(required)]
-    pub(super) served_host: Option<String>,
     pub(super) method: String,
     pub(super) path: String,
     pub(super) status: u16,
@@ -133,7 +130,6 @@ impl From<LoggedRequest> for LoggedRequestBody {
             received_at: request.received_at.into(),
             client_id: request.caller.map(|caller| caller.client_id),
             address: request.client_address,
-            served_host: request.served_host,
             method: request.method,
             path: request.reduced_path,
             status: request.status,

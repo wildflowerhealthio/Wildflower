@@ -56,6 +56,8 @@ mod tests {
                     }]
                 });
                 Json(body).into_response()
+            } else if id == "deleted" {
+                (StatusCode::GONE, "deleted").into_response()
             } else {
                 (StatusCode::NOT_FOUND, "not found").into_response()
             }
@@ -106,6 +108,31 @@ mod tests {
     async fn get_dicom_file_not_found() {
         let st = state();
         let (status, _body) = send(&st, get("/api/dicom/files/no-such-id")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_dicom_file_of_a_deleted_document_reference_is_not_found() {
+        let st = state();
+        let (status, body) = send(&st, get("/api/dicom/files/deleted")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["error"], "DicomFileNotFound");
+    }
+
+    #[tokio::test]
+    async fn get_dicom_file_with_a_query_in_the_id_does_not_reach_another_resource() {
+        let st = state();
+        let (status, body) = send(&st, get("/api/dicom/files/doc-1%3F_summary=true")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["id"], "doc-1?_summary=true");
+    }
+
+    #[tokio::test]
+    async fn get_dicom_file_with_a_non_uri_id_is_not_found() {
+        let st = state();
+        let (status, _body) = send(&st, get("/api/dicom/files/doc%201")).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 

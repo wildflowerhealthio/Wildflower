@@ -57,38 +57,25 @@ const isDefinedAlike = ({
 }: {
   readonly firstTrainingPlanDefinitionExercise: TrainingPlanDefinitionExercise.Type
   readonly laterTrainingPlanDefinitionExercise: TrainingPlanDefinitionExercise.Type
-}): boolean => {
-  const firstProgressionRule = TrainingPlanDefinitionExercise.progressionRuleOf(
-    firstTrainingPlanDefinitionExercise
-  )
-  const laterProgressionRule = TrainingPlanDefinitionExercise.progressionRuleOf(
-    laterTrainingPlanDefinitionExercise
-  )
-  return (
+}): boolean =>
+  ExerciseConcept.nameOf(
+    TrainingPlanDefinitionExercise.exerciseConceptOf(firstTrainingPlanDefinitionExercise)
+  ) ===
     ExerciseConcept.nameOf(
-      TrainingPlanDefinitionExercise.exerciseConceptOf(firstTrainingPlanDefinitionExercise)
-    ) ===
-      ExerciseConcept.nameOf(
-        TrainingPlanDefinitionExercise.exerciseConceptOf(laterTrainingPlanDefinitionExercise)
-      ) &&
-    TrainingPlanDefinitionExercise.setsOf(firstTrainingPlanDefinitionExercise) ===
-      TrainingPlanDefinitionExercise.setsOf(laterTrainingPlanDefinitionExercise) &&
-    TrainingPlanDefinitionExercise.repsOf(firstTrainingPlanDefinitionExercise) ===
-      TrainingPlanDefinitionExercise.repsOf(laterTrainingPlanDefinitionExercise) &&
-    TrainingPlanDefinitionProgressionRule.unitOf(firstProgressionRule) ===
-      TrainingPlanDefinitionProgressionRule.unitOf(laterProgressionRule) &&
-    TrainingPlanDefinitionProgressionRule.incrementOf(firstProgressionRule) ===
-      TrainingPlanDefinitionProgressionRule.incrementOf(laterProgressionRule) &&
-    TrainingPlanDefinitionProgressionRule.failuresBeforeDeloadOf(firstProgressionRule) ===
-      TrainingPlanDefinitionProgressionRule.failuresBeforeDeloadOf(laterProgressionRule) &&
-    TrainingPlanDefinitionProgressionRule.deloadFractionOf(firstProgressionRule) ===
-      TrainingPlanDefinitionProgressionRule.deloadFractionOf(laterProgressionRule) &&
-    TrainingPlanDefinitionProgressionRule.minimumLoadOf(firstProgressionRule) ===
-      TrainingPlanDefinitionProgressionRule.minimumLoadOf(laterProgressionRule) &&
-    TrainingPlanDefinitionProgressionRule.loadStepOf(firstProgressionRule) ===
-      TrainingPlanDefinitionProgressionRule.loadStepOf(laterProgressionRule)
-  )
-}
+      TrainingPlanDefinitionExercise.exerciseConceptOf(laterTrainingPlanDefinitionExercise)
+    ) &&
+  TrainingPlanDefinitionExercise.setsOf(firstTrainingPlanDefinitionExercise) ===
+    TrainingPlanDefinitionExercise.setsOf(laterTrainingPlanDefinitionExercise) &&
+  TrainingPlanDefinitionExercise.repsOf(firstTrainingPlanDefinitionExercise) ===
+    TrainingPlanDefinitionExercise.repsOf(laterTrainingPlanDefinitionExercise) &&
+  TrainingPlanDefinitionProgressionRule.isAlike({
+    firstProgressionRule: TrainingPlanDefinitionExercise.progressionRuleOf(
+      firstTrainingPlanDefinitionExercise
+    ),
+    laterProgressionRule: TrainingPlanDefinitionExercise.progressionRuleOf(
+      laterTrainingPlanDefinitionExercise
+    ),
+  })
 
 /** The narrowed fields, before the checks across days. */
 const NarrowedPlanDefinition = narrowFields(

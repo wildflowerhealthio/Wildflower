@@ -1,6 +1,7 @@
 //! Wire shapes shared between the Rust command layer and the native (Swift /
 //! Kotlin) plugin. `OpenRequest` is what crosses
-//! `run_mobile_plugin_async("open", …)`.
+//! `run_mobile_plugin_async("open", …)`, and `CloseRequest` what crosses
+//! `run_mobile_plugin_async("close", …)`.
 //! Field names are `camelCase` on the wire to match the Swift `Decodable` /
 //! Kotlin `@InvokeArg` sides.
 //!
@@ -21,13 +22,45 @@ use tauri::ipc::Channel;
 pub struct OpenRequest {
     /// The external URL to open. Only `http(s)://` is accepted.
     pub url: String,
+    /// The caller's name for the view, unique among the views it opens:
+    /// [`CloseRequest::view`] names the view to close by it.
+    pub view: String,
+    /// How the view shows beside the views already showing.
+    pub mode: OpenMode,
     /// Hears this view's events: exactly one [`BrowserEvent::Closed`] on iOS
     /// and Android once `open` returns `Ok`, after at most one
     /// [`BrowserEvent::KeptAlive`] on Android; nothing on desktop or after an
-    /// `Err`. On iOS a newer `open` replaces a showing view, which sends this
-    /// view's `Closed`; on Android that `open` joins a view still launching,
-    /// and hears that view's events.
+    /// `Err`. On iOS a newer [`OpenMode::Replace`] `open`, or a `close` of
+    /// this view or one under it, sends this view's `Closed`; on Android a
+    /// [`OpenMode::Replace`] `open` that joins a view still launching (one a
+    /// `Replace` open launched) hears that view's events.
     pub events: Channel<BrowserEvent>,
+}
+
+/// How an `open` shows its view beside the views already showing. Desktop
+/// opens a browser tab either way.
+///
+/// On the wire, `"replace"` or `"stack"`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum OpenMode {
+    /// One view at a time. On iOS the open closes the views showing, each
+    /// reporting its `Closed`, before it presents its own. On Android it
+    /// joins a view still launching that a `Replace` open launched instead of
+    /// launching another.
+    Replace,
+    /// Over the views showing, which stay under it. On iOS the view is
+    /// presented over the top-most one; on Android it launches its own
+    /// Custom Tab even while another is launching.
+    Stack,
+}
+
+/// Arguments for closing one view the plugin opened.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseRequest {
+    /// The [`OpenRequest::view`] the view was opened under.
+    pub view: String,
 }
 
 /// An event from an open in-app browser view, sent on its
@@ -48,7 +81,8 @@ pub enum BrowserEvent {
     #[serde(rename = "keptAlive")]
     KeptAlive,
     /// The view is gone: the user closed it (close button, edge swipe, system
-    /// back), or, on iOS, a newer `open` replaced it. Sent once per open, on iOS
+    /// back), or, on iOS, a newer `open` replaced it or a `close` closed it or
+    /// a view under it. Sent once per open, on iOS
     /// and Android only — on desktop the page opens in a browser tab, which isn't a
     /// window the app owns.
     #[serde(rename = "closed")]
@@ -59,13 +93,16 @@ pub enum BrowserEvent {
 mod tests {
     use super::*;
 
-    /// `OpenRequest` rides the wire as `{ "url": …, "events": "__CHANNEL__:…" }`
-    /// — the keys the Swift `OpenArgs` / Kotlin `OpenArgs` decode. Drift here
-    /// would silently break decoding on-device.
+    /// `OpenRequest` rides the wire as
+    /// `{ "url": …, "view": …, "mode": …, "events": "__CHANNEL__:…" }` — the
+    /// keys the Swift `OpenArgs` / Kotlin `OpenArgs` decode. Drift here would
+    /// silently break decoding on-device.
     #[test]
-    fn open_request_serializes_url_and_events_channel() {
+    fn open_request_serializes_url_view_mode_and_events_channel() {
         let json = serde_json::to_value(OpenRequest {
             url: "https://example.test/launcher/".to_owned(),
+            view: "launch-1".to_owned(),
+            mode: OpenMode::Stack,
             events: Channel::new(|_| Ok(())),
         })
         .expect("serialize");
@@ -74,11 +111,16 @@ mod tests {
         // `preserve_order` feature is unified into the build.
         let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
         keys.sort_unstable();
-        assert_eq!(keys, ["events", "url"]);
+        assert_eq!(keys, ["events", "mode", "url", "view"]);
         assert_eq!(
             object.get("url").and_then(|v| v.as_str()),
             Some("https://example.test/launcher/")
         );
+        assert_eq!(
+            object.get("view").and_then(|v| v.as_str()),
+            Some("launch-1")
+        );
+        assert_eq!(object.get("mode").and_then(|v| v.as_str()), Some("stack"));
         // Channel serialises as an opaque IPC handle string; only the prefix is
         // checked to stay version-agnostic.
         assert!(object
@@ -105,5 +147,28 @@ mod tests {
         let event: BrowserEvent = serde_json::from_str(json).expect("de");
         assert_eq!(event, BrowserEvent::KeptAlive);
         assert_eq!(serde_json::to_string(&event).expect("ser"), json);
+    }
+
+    /// `OpenMode` is `"replace"` or `"stack"`, the raw values the Swift
+    /// `OpenMode` and the Kotlin `OpenArgs.mode` match.
+    #[test]
+    fn open_mode_is_its_lowercase_name() {
+        assert_eq!(
+            serde_json::to_value([OpenMode::Replace, OpenMode::Stack]).expect("serialize"),
+            serde_json::json!(["replace", "stack"])
+        );
+    }
+
+    /// `CloseRequest` rides the wire as `{ "view": … }`, the key the Swift
+    /// `CloseArgs` decodes.
+    #[test]
+    fn close_request_serializes_its_view() {
+        assert_eq!(
+            serde_json::to_value(CloseRequest {
+                view: "launch-1".to_owned()
+            })
+            .expect("serialize"),
+            serde_json::json!({ "view": "launch-1" })
+        );
     }
 }

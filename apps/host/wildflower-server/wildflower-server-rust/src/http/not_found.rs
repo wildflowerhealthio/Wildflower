@@ -1,6 +1,6 @@
 //! The API router's fallback: every route no slice claimed answers `404`, with a
 //! link to the hosted launcher ([`LauncherBase`]) pointed back at this server's
-//! served origin and returning to the path asked for — so a browser that lands
+//! origin and returning to the path asked for — so a browser that lands
 //! on, say, the server's bare domain is told where to go.
 //!
 //! Browsers (an `Accept` naming `text/html`) get a small HTML page with the link;
@@ -18,9 +18,7 @@ use std::sync::Arc;
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use serde::Serialize;
-use url::Url;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
-use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
 /// Launcher routes a browser opening this server most likely wants: the home
 /// screen. A browser `GET` of one redirects to the same route on the hosted
@@ -31,9 +29,9 @@ const APP_ENTRY_PATHS: [&str; 1] = ["/home"];
 pub(crate) struct NotFoundConfig {
     /// The hosted launcher the link opens.
     pub(crate) launcher_base: LauncherBase,
-    /// The server's origin, the served origin of an unforwarded request (see
-    /// [`served_base_url_for`]).
-    pub(crate) server_origin: Url,
+    /// The server's bare origin, `https://<domain>`, which the link points the
+    /// launcher at.
+    pub(crate) server_origin: String,
 }
 
 /// Wire shape of the JSON `404` for a route no slice serves.
@@ -43,10 +41,8 @@ struct RouteNotFoundBody {
     /// The origin-relative path (query included) that matched nothing.
     path: String,
     /// The hosted launcher, pointed at this server and returning to `path`.
-    /// Absent only when the request's served origin can't be resolved (a
-    /// malformed `Forwarded` header), where no link back to it can be built.
-    #[serde(rename = "openInApp", skip_serializing_if = "Option::is_none")]
-    open_in_app: Option<String>,
+    #[serde(rename = "openInApp")]
+    open_in_app: String,
 }
 
 /// Build the fallback handler over `config`.
@@ -61,31 +57,25 @@ pub(crate) fn fallback(
 /// browser opening one of its [`APP_ENTRY_PATHS`], else the `404`, as HTML or
 /// JSON per the `Accept` header.
 fn respond(config: &NotFoundConfig, method: &Method, headers: &HeaderMap, uri: &Uri) -> Response {
-    // Resolved per request, like every other served-origin consumer.
-    let served_origin = served_base_url_for(headers, &config.server_origin)
-        .map(|served| wildflowerhealthio_shared_structures::origin_string(&served));
     let is_browser_navigation =
         (method == Method::GET || method == Method::HEAD) && accepts_html(headers);
-    if let Some(origin) = served_origin.as_deref() {
-        if is_browser_navigation && APP_ENTRY_PATHS.contains(&uri.path()) {
-            let target = config.launcher_base.route_url(uri.path(), origin, &[]);
-            return Redirect::to(target.as_str()).into_response();
-        }
+    if is_browser_navigation && APP_ENTRY_PATHS.contains(&uri.path()) {
+        let target = config
+            .launcher_base
+            .route_url(uri.path(), &config.server_origin, &[]);
+        return Redirect::to(target.as_str()).into_response();
     }
 
     let path = uri
         .path_and_query()
         .map_or_else(|| uri.path().to_owned(), |pq| pq.as_str().to_owned());
-    let open_in_app = served_origin
-        .as_deref()
-        .map(|origin| config.launcher_base.open_url(origin, &path).to_string());
+    let open_in_app = config
+        .launcher_base
+        .open_url(&config.server_origin, &path)
+        .to_string();
 
     if accepts_html(headers) {
-        (
-            StatusCode::NOT_FOUND,
-            Html(html_page(&path, open_in_app.as_deref())),
-        )
-            .into_response()
+        (StatusCode::NOT_FOUND, Html(html_page(&path, &open_in_app))).into_response()
     } else {
         (
             StatusCode::NOT_FOUND,
@@ -115,16 +105,8 @@ pub(crate) fn accepts_html(headers: &HeaderMap) -> bool {
         })
 }
 
-fn html_page(path: &str, open_in_app: Option<&str>) -> String {
-    let suggestion = open_in_app.map_or_else(
-        || "<p>Open it from the Wildflower app instead.</p>".to_owned(),
-        |url| {
-            let href = escape_html(url);
-            format!(
-                "<p>Try opening it in the Wildflower app:</p>\n  <p><a href=\"{href}\">{href}</a></p>"
-            )
-        },
-    );
+fn html_page(path: &str, open_in_app: &str) -> String {
+    let href = escape_html(open_in_app);
     format!(
         "<!doctype html>
 <html lang=\"en\">
@@ -140,7 +122,8 @@ fn html_page(path: &str, open_in_app: Option<&str>) -> String {
 <body>
   <h1>Nothing here</h1>
   <p>This Wildflower server has nothing at <code>{path}</code>.</p>
-  {suggestion}
+  <p>Try opening it in the Wildflower app:</p>
+  <p><a href=\"{href}\">{href}</a></p>
 </body>
 </html>
 ",
@@ -170,14 +153,13 @@ mod tests {
     use super::{escape_html, respond, NotFoundConfig};
     use axum::body::to_bytes;
     use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
-    use url::Url;
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     fn config() -> NotFoundConfig {
         NotFoundConfig {
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
                 .expect("valid base"),
-            server_origin: Url::parse("https://ruth.relay.example/").expect("valid origin"),
+            server_origin: "https://ruth.relay.example".to_owned(),
         }
     }
 
@@ -236,44 +218,6 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn a_forwarded_request_links_back_to_its_public_origin() {
-        let uri: Uri = "/".parse().expect("uri");
-        let response = respond(
-            &config(),
-            &Method::GET,
-            &headers(&[(
-                "forwarded",
-                "for=1.2.3.4;host=abc.tunnel.example;proto=https",
-            )]),
-            &uri,
-        );
-        let body: serde_json::Value =
-            serde_json::from_str(&body_text(response).await).expect("json");
-        assert_eq!(
-            body["openInApp"],
-            "https://launcher.test/launcher/?server=https%3A%2F%2Fabc.tunnel.example&returnTo=%2F"
-        );
-    }
-
-    #[tokio::test]
-    async fn an_unresolvable_forwarded_origin_still_404s_without_a_link() {
-        let uri: Uri = "/x".parse().expect("uri");
-        let response = respond(
-            &config(),
-            &Method::GET,
-            &headers(&[("forwarded", "for=1.2.3.4")]),
-            &uri,
-        );
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        let body: serde_json::Value =
-            serde_json::from_str(&body_text(response).await).expect("json");
-        assert_eq!(
-            body,
-            serde_json::json!({ "error": "RouteNotFound", "path": "/x" })
-        );
-    }
-
     const BROWSER_ACCEPT: &str = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8";
 
     fn location(response: &axum::response::Response) -> &str {
@@ -297,27 +241,6 @@ mod tests {
         assert_eq!(
             location(&response),
             "https://launcher.test/launcher/home?server=https%3A%2F%2Fruth.relay.example"
-        );
-    }
-
-    #[test]
-    fn a_forwarded_browser_is_sent_to_the_app_pointed_at_the_public_origin() {
-        let uri: Uri = "/home".parse().expect("uri");
-        let response = respond(
-            &config(),
-            &Method::GET,
-            &headers(&[
-                ("accept", BROWSER_ACCEPT),
-                (
-                    "forwarded",
-                    "for=1.2.3.4;host=abc.tunnel.example;proto=https",
-                ),
-            ]),
-            &uri,
-        );
-        assert_eq!(
-            location(&response),
-            "https://launcher.test/launcher/home?server=https%3A%2F%2Fabc.tunnel.example"
         );
     }
 

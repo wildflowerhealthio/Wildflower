@@ -1,0 +1,17 @@
+/*
+ * What a page in `then=back` mode shows once the Owner has decided: the
+ * decision, and the button that steps back out of the page.
+ */
+
+.decided-then-back__message {
+  margin: var(--space-9) auto 0;
+  max-width: 560px;
+  text-align: center;
+  color: var(--color-neutral-4);
+}
+
+.decided-then-back__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-6);
+}

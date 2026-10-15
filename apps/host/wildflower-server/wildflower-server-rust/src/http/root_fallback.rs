@@ -59,7 +59,6 @@ mod tests {
     use axum::Router;
     use std::sync::Arc;
     use tower::ServiceExt;
-    use url::Url;
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     /// A host router with one slice route, over a stand-in FHIR router that
@@ -69,7 +68,7 @@ mod tests {
         let not_found_config = Arc::new(NotFoundConfig {
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
                 .expect("valid base"),
-            server_origin: Url::parse("https://ruth.relay.example/").expect("valid origin"),
+            server_origin: "https://ruth.relay.example".to_owned(),
         });
         Router::new()
             .route("/apps", axum::routing::get(|| async { StatusCode::OK }))

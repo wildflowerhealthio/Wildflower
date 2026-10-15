@@ -5,8 +5,8 @@ import type * as Run from './run.ts'
 
 /**
  * A PDF's text content as absolutely positioned runs — the neutral seam the
- * importer pipeline's future LifeLabs dialect parses from, and the format the
- * anonymizer downloads as shareable JSON.
+ * LifeLabs importer dialect parses from, and the format the anonymizer
+ * downloads as shareable JSON.
  */
 const DocumentSchema = Schema.Struct({
   format: Schema.Literal('wildflower-positioned-text'),

@@ -4,8 +4,8 @@
  *
  *   - {@link file://./grants.ts}          — access-management grants (list + detail + revoke)
  *   - {@link file://./clients.ts}         — access-management clients (list + update)
- *   - {@link file://./device-consent.ts}  — RFC 8628 device-authorization consent
- *   - {@link file://./oauth-consent.ts}   — OAuth authorization-code consent
+ *   - {@link file://./device-consent.ts}  — RFC 8628 device-authorization consent decisions
+ *   - {@link file://./oauth-consent.ts}   — OAuth authorization-code consent decisions
  *
  * Shared scaffolding lives in {@link file://./keys.ts} (the query-key roots
  * mutations invalidate) and {@link file://./use-run-authed.ts} (the authed-runner
@@ -30,21 +30,10 @@ export type { AppGrant, DeviceGrant, Grant, RevokeGrantVariables } from './grant
 export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation } from './clients.ts'
 export type { ClientSwitch, UpdateClientVariables } from './clients.ts'
 
-export {
-  ExpiredDeviceConsent,
-  deviceConsentMutationOptions,
-  deviceConsentQueryOptions,
-  useDeviceConsentMutation,
-  useDeviceConsentQuery,
-} from './device-consent.ts'
+export { ExpiredDeviceConsent, deviceConsentMutationOptions } from './device-consent.ts'
 export type { DeviceConsent, DeviceConsentDecision, DeviceConsentResult } from './device-consent.ts'
 
-export {
-  oauthConsentMutationOptions,
-  oauthConsentQueryOptions,
-  useOAuthConsentMutation,
-  useOAuthConsentQuery,
-} from './oauth-consent.ts'
+export { oauthConsentMutationOptions } from './oauth-consent.ts'
 export type {
   ApproveOAuthPayload,
   OAuthConsentDecision,

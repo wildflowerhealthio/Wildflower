@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Arbitrary, FastCheck, Schema } from 'effect'
 import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import type { TimelessDate } from './timeless-date-from-string.ts'
@@ -87,6 +87,25 @@ describe('TimelessDateFromString', () => {
 
     it('should prevent plain strings from being assigned to TimelessDate at compile time', () => {
       expectTypeOf<string>().not.toExtend<TimelessDate>()
+    })
+  })
+
+  describe('arbitrary', () => {
+    const samples = FastCheck.sample(Arbitrary.make(TimelessDateFromString), {
+      numRuns: 2000,
+      seed: 1,
+    })
+
+    it('generates dates that decode, within years 1900–2100', () => {
+      for (const sample of samples) {
+        expect(Schema.decodeUnknownSync(TimelessDateFromString)(sample)).toBe(sample)
+        expect(sample >= '1900-01-01' && sample <= '2100-12-31').toBe(true)
+      }
+    })
+
+    it('spreads across the 1900–2100 range rather than clustering near one era', () => {
+      const years = new Set(samples.map((sample) => sample.slice(0, 4)))
+      expect(years.size).toBeGreaterThan(150)
     })
   })
 })

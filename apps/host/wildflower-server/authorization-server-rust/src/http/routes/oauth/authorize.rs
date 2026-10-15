@@ -156,7 +156,8 @@ pub struct AuthorizeParams {
 ///    page this authorization server serves beside the endpoint, on the origin
 ///    the browser used. A browser signed in as the Owner (it carries a live
 ///    Owner browser session) goes to the consent card at
-///    `/oauth/authorize/{id}/consent`, where the Owner decides in place. Any
+///    `/oauth/authorize/{id}/consent`, where the Owner decides in place; the
+///    request records that it was (`requested_by_owner_browser`). Any
 ///    other goes to the wait page at `/oauth/authorize/{id}/wait`, which polls
 ///    `GET /oauth/authorize/{id}` (a custom extension, not part of any RFC)
 ///    until the Owner decides — in the popup, in a signed-in launcher, or on
@@ -194,6 +195,7 @@ pub(super) async fn handle_authorize_request(
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
+    let requested_by_owner_browser = carries_owner_browser_session(&token_verifier, &headers);
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -205,6 +207,7 @@ pub(super) async fn handle_authorize_request(
             client_state: &params.state,
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
+            requested_by_owner_browser,
         },
         FreshIds {
             request_id: Uuid::new_v4().to_string(),
@@ -230,7 +233,7 @@ pub(super) async fn handle_authorize_request(
         // signed-in launcher's consent list, or the consent card — decides
         // first.
         AuthorizeNextStep::AwaitOwner { request_id } => {
-            if carries_owner_browser_session(&token_verifier, &headers) {
+            if requested_by_owner_browser {
                 found_redirect(&consent_page_location(&request_id))
             } else {
                 found_redirect(&wait_page_location(&request_id))

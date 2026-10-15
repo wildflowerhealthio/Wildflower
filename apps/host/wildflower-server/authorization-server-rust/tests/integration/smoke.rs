@@ -91,37 +91,14 @@ async fn access_grants_with_owner_token_returns_empty_list() {
     assert_eq!(body, serde_json::json!([]));
 }
 
-/// An Owner token authenticates on a FORWARDED (tunnel-origin) request
-/// too, where the served origin is the forwarded host, not the server's: its
-/// `iss` and `aud` are the server's origin, checked against the server's
-/// configuration rather than the request.
-#[tokio::test]
-async fn access_grants_with_owner_token_passes_on_forwarded_tunnel_origin() {
-    let (g, owner_token, _db) = spin_up();
+/// `GET /authorization/grants` with `token`.
+async fn access_grants_status(g: &AuthorizationServer, token: &str) -> StatusCode {
     let req = build_request(
         Request::get("/authorization/grants")
             .header("host", "127.0.0.1")
-            .header(
-                "forwarded",
-                "host=ruth.wildflowerhealth.example;proto=https",
-            )
-            .header("authorization", format!("Bearer {owner_token}")),
+            .header("authorization", format!("Bearer {token}")),
         Body::empty(),
     );
-    let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::OK);
-}
-
-/// `GET /authorization/grants` with `token`, with no `Forwarded` or relayed
-/// through the tunnel.
-async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: bool) -> StatusCode {
-    let mut builder = Request::get("/authorization/grants")
-        .header("host", "127.0.0.1")
-        .header("authorization", format!("Bearer {token}"));
-    if forwarded {
-        builder = builder.header("forwarded", "host=ruth.relay.example;proto=https");
-    }
-    let req = build_request(builder, Body::empty());
     g.router
         .clone()
         .oneshot(req)
@@ -130,21 +107,14 @@ async fn access_grants_status(g: &AuthorizationServer, token: &str, forwarded: b
         .status()
 }
 
-/// A token minted for this server is accepted whichever origin the request was
-/// served on: with no `Forwarded` and relayed through the tunnel alike.
+/// A token minted for this server is accepted.
 #[tokio::test]
-async fn a_token_for_this_server_passes_with_and_without_a_forwarded_header() {
+async fn a_token_for_this_server_passes() {
     let (g, _owner_token, db) = spin_up();
     let owner_scopes: Vec<String> = wildflowerhealthio_authorization_server::owner_scopes();
     let owner_scopes: Vec<&str> = owner_scopes.iter().map(String::as_str).collect();
     let token = mint_scoped_token(&db, &owner_scopes);
-    for forwarded in [false, true] {
-        assert_eq!(
-            access_grants_status(&g, &token, forwarded).await,
-            StatusCode::OK,
-            "forwarded: {forwarded}"
-        );
-    }
+    assert_eq!(access_grants_status(&g, &token).await, StatusCode::OK);
 }
 
 /// A token another server minted is refused, owner scopes and all, even signed
@@ -165,13 +135,11 @@ async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
         (SERVER_ORIGIN, path_under_origin.as_str()),
     ] {
         let token = mint_token_naming(&db, &owner_scopes, issuer, audience);
-        for forwarded in [false, true] {
-            assert_eq!(
-                access_grants_status(&g, &token, forwarded).await,
-                StatusCode::UNAUTHORIZED,
-                "iss {issuer}, aud {audience}, forwarded: {forwarded}"
-            );
-        }
+        assert_eq!(
+            access_grants_status(&g, &token).await,
+            StatusCode::UNAUTHORIZED,
+            "iss {issuer}, aud {audience}"
+        );
     }
 }
 

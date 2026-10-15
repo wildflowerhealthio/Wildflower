@@ -80,7 +80,7 @@ const make = (load: {
     comparator: null,
   })
 
-/** The amount of a load, in {@link unitOf} it. */
+/** The amount of a load, in the unit {@link unitOf} reads. */
 const valueOf = (load: Type): number => load.value
 
 /** The UCUM code of the unit a load is in. */

@@ -11,7 +11,7 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
-use crate::domain::pending_consent::PendingConsentHead;
+use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::GrantTx;
@@ -110,9 +110,9 @@ impl GrantTx for FakeGrantTx<'_> {
             .cloned())
     }
 
-    fn oldest_pending_consent_head(
+    fn newest_pending_consent(
         &mut self,
-    ) -> Result<Option<PendingConsentHead>, AuthorizationServerError> {
+    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
         let requests = self.store.authorization_requests.borrow();
         let mut pending: Vec<&AuthorizationRequest> = requests
             .values()
@@ -121,17 +121,35 @@ impl GrantTx for FakeGrantTx<'_> {
                 GrantType::AuthorizationCode => true,
                 // Mirrors the SQL guard: a device row without its `user_code`
                 // has no key the consent surface could fetch by, so it is not a
-                // candidate head rather than a head with a missing key.
+                // candidate rather than a request with a missing key.
                 GrantType::DeviceCode => r.user_code.is_some(),
             })
             .collect();
-        pending.sort_by_key(|r| r.requested_at);
-        Ok(pending.first().and_then(|r| match r.grant_type {
-            GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id: r.id.clone() }),
-            GrantType::DeviceCode => r
-                .user_code
-                .clone()
-                .map(|user_code| PendingConsentHead::Device { user_code }),
+        pending.sort_by_key(|r| std::cmp::Reverse(r.requested_at));
+        Ok(pending.first().and_then(|r| {
+            // Mirrors the SQL left join: a client with no registration is
+            // named by its `client_id`.
+            let client_name = self
+                .store
+                .clients
+                .borrow()
+                .get(&r.client_id)
+                .map_or_else(|| r.client_id.clone(), |client| client.name.clone());
+            match r.grant_type {
+                GrantType::AuthorizationCode => Some(NewestPendingConsent::OAuth {
+                    id: r.id.clone(),
+                    client_name,
+                    requested_by_owner_browser: r.requested_by_owner_browser,
+                }),
+                GrantType::DeviceCode => {
+                    r.user_code
+                        .clone()
+                        .map(|user_code| NewestPendingConsent::Device {
+                            user_code,
+                            client_name,
+                        })
+                }
+            }
         }))
     }
 

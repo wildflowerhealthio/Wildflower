@@ -17,7 +17,7 @@ describe('Message.stringifyMessage', () => {
     // `stringifyMessage` is the runtime tripwire for an unowned outbound
     // tag: it `die`s (a defect) rather than failing, since the transport
     // rules out unowned tags before calling. The outbound pump's
-    // `catchAllDefect` logs it, so the message text matters for diagnosis.
+    // `catchAllCause` logs it, so the message text matters for diagnosis.
     const exit = Effect.runSyncExit(Message.stringifyMessage(record, { _tag: 'Unknown' }))
 
     expect(Exit.isFailure(exit)).toBe(true)

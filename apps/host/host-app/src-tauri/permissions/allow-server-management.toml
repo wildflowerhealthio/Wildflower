@@ -4,13 +4,15 @@
 identifier = "allow-server-management"
 description = """
 Grants the webview the right to invoke the app-defined `servers_list`,
-`server_set_run_policy`, `server_update`, `server_remove`, `server_launch`
-and `server_open_authorization_app` commands (`servers-tauri`): listing the
-install's servers with their status on the unit runner, setting when each
-runs, setting its launcher, Authorization app and certificate source,
-deleting a server with its folder, databases and certificates, opening a
-server's launcher with a launch its authorization server minted, and opening
-its Authorization app, each in a browser signed in as the Owner.
+`server_set_run_policy`, `server_update`, `server_remove`, `server_launch`,
+`server_open_authorization_app`, `server_open_pending_consent` and
+`server_open_notified_consent` commands (`servers-tauri`): listing the
+install's servers with their status on the unit runner and the consent
+waiting first on each, setting when each runs, setting its launcher,
+Authorization app and certificate source, deleting a server with its folder,
+databases and certificates, opening a server's launcher with a launch its
+authorization server minted, opening its Authorization app, and opening the
+consent waiting on it at its page, each in a browser signed in as the Owner.
 
 SECURITY: granted to the `main` webview only (capabilities/default.json),
 which runs the base. A webview holding this grant can start and stop the
@@ -25,4 +27,6 @@ commands.allow = [
   "server_remove",
   "server_launch",
   "server_open_authorization_app",
+  "server_open_pending_consent",
+  "server_open_notified_consent",
 ]

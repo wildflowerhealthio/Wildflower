@@ -18,7 +18,7 @@ import {
   type MedicationResource,
 } from './medication-list-response-kind.ts'
 
-const { expectRightToEqual } = utilityExpectations(expect)
+const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
 /** `medication[x]` is loosely typed on the decoded resource; read it as a concept. */
 const decodeConcept = Schema.decodeUnknownSync(Schema.typeSchema(CodeableConcept.Schema))
@@ -60,11 +60,13 @@ describe('MedicationListResponseKind', () => {
       // A bare MedicationRequest search is not this pattern.
       { url: `${LIST_BASE}/MedicationRequest?patient=x`, match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
-      expect(Option.isSome(MedicationListResponseKind.tryRecognize(url, Option.none()))).toBe(match)
+      expect(Option.isSome(MedicationListResponseKind.tryRecognize(url, Option.some('GET')))).toBe(
+        match
+      )
     })
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
-      expect(MedicationListResponseKind.tryRecognize(LIST_URL, Option.none())).toStrictEqual(
+      expect(MedicationListResponseKind.tryRecognize(LIST_URL, Option.some('GET'))).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
           source: { system: REXALL_CAREBOOK_SYSTEM },
@@ -207,6 +209,21 @@ describe('MedicationListResponseKind', () => {
       expect(dispense.daysSupply).toMatchObject({ value: 30, unit: 'day', code: 'd' })
       expect(dispense.extension.map((e) => e.url)).not.toContain(
         'http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medication-processor'
+      )
+    })
+
+    it('fails the list when a medication entry does not decode, rather than dropping it', () => {
+      const withMalformedRequest = {
+        ...prescriptions,
+        entry: prescriptions.entry.map((entry) =>
+          entry.resource.id === 'mr-0001'
+            ? { ...entry, resource: { ...entry.resource, status: 'not-a-status' } }
+            : entry
+        ),
+      }
+      expectLeftToEqual(
+        runParse(makeResponse(JSON.stringify(withMalformedRequest))),
+        expect.objectContaining({ _tag: 'ParseError' })
       )
     })
 

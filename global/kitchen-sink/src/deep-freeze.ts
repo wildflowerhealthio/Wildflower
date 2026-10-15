@@ -8,10 +8,10 @@ import type { DeepReadonly } from './types/deep-readonly.ts'
  * @remarks
  * - Idempotent — already-frozen subgraphs are left alone, so cycles
  *   terminate.
- * - Functions are not recursed into; their `prototype` /
- *   `arguments` / etc. surface is uninteresting at the freeze
- *   boundary. `Object.freeze` is still applied to the function value
- *   itself so reassignment of own properties on the function fails.
+ * - A function reached through the graph (a callback field, say) is
+ *   left alone: neither frozen nor recursed into, so a shared function
+ *   the caller handed in is not mutated. A function passed as `value`
+ *   itself is frozen like an object.
  * - Primitives (`string`, `number`, `boolean`, `null`, `undefined`,
  *   `bigint`, `symbol`) pass through unchanged.
  * - Operates in place and returns the original reference — callers

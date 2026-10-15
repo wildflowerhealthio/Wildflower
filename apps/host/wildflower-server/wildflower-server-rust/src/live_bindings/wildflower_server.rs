@@ -16,7 +16,7 @@ use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    HostConsentDecider, SameDeviceSignInCodeMinter,
+    PendingConsentWatcher, SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -29,9 +29,9 @@ use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMint
 use crate::domain::reachability_monitor::ReachabilityMonitor;
 use crate::http::health::ServerHealthChecks;
 use crate::http::middleware::cors::api_cors_layer;
-use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestSenders};
+use crate::http::middleware::forwarded_request_layer;
 use crate::http::middleware::session_cookie_bearer::present_session_cookie_bearers;
-use crate::http::middleware::tunnel_front::{stamp_tunnel_forwarded, TunnelFront};
+use crate::http::middleware::tunnel_front::refuse_misdirected_requests;
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
 use crate::http::tunnel_listener::{TunnelListener, TunnelVisitor};
 use crate::http::{not_found, root_fallback};
@@ -79,11 +79,11 @@ pub struct WildflowerServer {
     /// Mints the one-time codes this server's `/oauth/sign-in` signs a
     /// browser in as the Owner with.
     same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
+    /// Waits for a pending consent of this server's to be decided or expire.
+    pending_consent_watcher: PendingConsentWatcher,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
-    /// How the host's Owner decides the server's pending consents.
-    consent_decider_for_host: HostConsentDecider,
     /// Runs the FHIR API's bulk `$export` jobs and deletes expired ones, for
     /// as long as the server serves.
     bulk_export_worker: BulkExportWorker,
@@ -111,11 +111,13 @@ impl WildflowerServer {
         self.same_device_sign_in_code_minter.clone()
     }
 
-    /// How the host reads, approves and denies the server's pending consents
-    /// in-process as its Owner, with no token.
+    /// A handle that waits for a pending consent of this server's to be
+    /// decided or expire, for the host to close the page it opened the
+    /// request at. Clone it before [`serve`](Self::serve); it watches for as
+    /// long as this run serves.
     #[must_use]
-    pub fn consent_decider_for_host(&self) -> &HostConsentDecider {
-        &self.consent_decider_for_host
+    pub fn pending_consent_watcher(&self) -> PendingConsentWatcher {
+        self.pending_consent_watcher.clone()
     }
 
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
@@ -145,8 +147,8 @@ impl WildflowerServer {
             reachability_monitor,
             device_certificate,
             bulk_export_worker,
-            // The launch context and sign-in code minters, the host's consent
-            // decider, and the `test-support` feature's `tunnel_stream_tx`.
+            // The launch context and sign-in code minters, the pending consent
+            // watcher, and the `test-support` feature's `tunnel_stream_tx`.
             ..
         } = self;
         let tunnel = axum::serve(
@@ -305,8 +307,8 @@ pub async fn set_up(
         }
     }
 
-    // `setup_authorization_server` publishes the head of its pending-consent
-    // queue on the host's channel.
+    // `setup_authorization_server` publishes its newest pending consent on the
+    // host's channel.
     let authorization_server = setup_authorization_server(
         diesel_pool.clone(),
         revocation_store,
@@ -314,7 +316,6 @@ pub async fn set_up(
         observers.pending_consent_tx,
     )
     .context("failed to set up the authorization server")?;
-    let consent_decider_for_host = HostConsentDecider::new(authorization_server.state.clone());
 
     // The FHIR API carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
@@ -399,9 +400,8 @@ pub async fn set_up(
     // `GET /apps` (list), the admin surface (`POST /apps`,
     // `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are scope-gated on
     // `wildflower/Apps.*`. The launch route `POST /apps/{id}` is scope-gated on the
-    // `wildflower/launch` umbrella, with a per-app SMART check in the handler; a
-    // forwarded launch rides the front trust boundary for the redirect. Every
-    // launch resolves `{origin}` to the server's public origin.
+    // `wildflower/launch` umbrella, with a per-app SMART check in the handler.
+    // Every launch resolves `{origin}` to the server's public origin.
     let apps_config = AppsConfig {
         public_origin: public_origin.clone(),
     };
@@ -503,7 +503,7 @@ pub async fn set_up(
             fhir_routers.augmented_fhir_r4_router,
             Arc::new(not_found::NotFoundConfig {
                 launcher_base,
-                server_origin: public_origin.clone(),
+                server_origin: wildflowerhealthio_shared_structures::origin_string(&public_origin),
             }),
         ));
 
@@ -523,13 +523,9 @@ pub async fn set_up(
     );
 
     // Every forwarded request is reported to the request log once its response
-    // is ready, and to the host unless it is a `/health` check (the
-    // reachability monitor's probes).
+    // is ready.
     let forwarded_request_report = axum::middleware::from_fn_with_state(
-        ForwardedRequestSenders {
-            host_tx: observers.forwarded_request_tx,
-            request_log_tx: request_log.forwarded_request_tx,
-        },
+        request_log.forwarded_request_tx,
         forwarded_request_layer::report_forwarded_request,
     );
 
@@ -537,13 +533,13 @@ pub async fn set_up(
     // forwarded-request report, the tunnel front and CORS, innermost first.
     let tunnel_router = inner_router
         .layer(forwarded_request_report)
-        // Hold the request to the server's domain and write its
-        // `Forwarded` header (see `stamp_tunnel_forwarded`), so every layer
-        // and handler inside reads it as a forwarded request, served at the
-        // public origin. A misdirected request's `421` is not reported.
+        // Hold the request to the server's domain (see
+        // `refuse_misdirected_requests`); every layer and handler inside
+        // serves it at the public origin. A misdirected request's `421` is
+        // not reported.
         .layer(axum::middleware::from_fn_with_state(
-            TunnelFront::new(public_origin)?,
-            stamp_tunnel_forwarded,
+            public_origin,
+            refuse_misdirected_requests,
         ))
         // Outermost, so a remote app can read even the front's `421`. Every
         // app's page is served from another origin (the hosted launcher, an
@@ -562,8 +558,8 @@ pub async fn set_up(
         reachability_monitor,
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
+        pending_consent_watcher: authorization_server.pending_consent_watcher,
         device_certificate,
-        consent_decider_for_host,
         bulk_export_worker: fhir_routers.bulk_export_worker,
     })
 }

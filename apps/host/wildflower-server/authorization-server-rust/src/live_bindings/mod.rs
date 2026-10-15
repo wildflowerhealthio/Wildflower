@@ -16,11 +16,12 @@
 //! - [`SameDeviceSignInCodeMinter`] is the in-process mint of the one-time codes
 //!   `/oauth/sign-in` signs a browser in as the Owner with, handed out the
 //!   same way, to the host.
+//! - [`PendingConsentWatcher`] waits for one pending consent to be decided or
+//!   expire, handed out the same way, to the host, which closes the page it
+//!   opened the request at.
 //! - [`InProcessTokenVerifier`] is the token verifier both authN gates run,
 //!   handed out the same way, for the host's FHIR server to verify bearers
 //!   with in-process.
-//! - [`HostConsentDecider`] is the consent capabilities bound to the host
-//!   Owner's grant, for the host to decide consents in-process.
 //! - The remaining modules hold one binding each (the `/authorization` ones implement
 //!   `FixedScopeCapability`/`Capability`, the session ones
 //!   `AuthenticatedCapability`); each lifts the store + port handles out of the
@@ -35,10 +36,10 @@ mod consents_decider;
 mod consents_reader;
 mod grants_reader;
 mod grants_revoker;
-mod host_consent_decider;
 mod in_process_token_verifier;
 mod launch_context_minter;
 mod oauth_front_door;
+mod pending_consent_watcher;
 mod same_device_sign_in_code_minter;
 mod session;
 
@@ -53,13 +54,13 @@ pub(crate) use consents_decider::LiveConsentDecider;
 pub(crate) use consents_reader::LiveConsentReader;
 pub(crate) use grants_reader::LiveGrantsReader;
 pub(crate) use grants_revoker::LiveGrantsRevoker;
-pub use host_consent_decider::HostConsentDecider;
 pub use in_process_token_verifier::InProcessTokenVerifier;
 pub use launch_context_minter::LaunchContextMinter;
 pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
     LivePublicKeysReader, LiveSameDeviceSignIn,
 };
+pub use pending_consent_watcher::PendingConsentWatcher;
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
 pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};
 pub use state::AuthorizationServerState;

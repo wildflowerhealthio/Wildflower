@@ -11,21 +11,5 @@ const grantQueryKey = (id: string): readonly [string, string, string] => [
   id,
 ]
 const CLIENTS_QUERY_KEY = ['authorization', 'clients'] as const
-const deviceConsentQueryKey = (userCode: string): readonly [string, string, string] => [
-  'authorization',
-  'device-consent',
-  userCode,
-]
-const oauthConsentQueryKey = (id: string): readonly [string, string, string] => [
-  'authorization',
-  'oauth-consent',
-  id,
-]
 
-export {
-  CLIENTS_QUERY_KEY,
-  deviceConsentQueryKey,
-  GRANTS_QUERY_KEY,
-  grantQueryKey,
-  oauthConsentQueryKey,
-}
+export { CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY, grantQueryKey }

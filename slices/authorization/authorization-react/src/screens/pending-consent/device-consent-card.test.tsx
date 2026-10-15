@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
@@ -6,22 +6,26 @@ import { Effect, Layer } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import type { DeviceConsent } from '../../queries/index.ts'
-import { DeviceConsentForm } from './device-consent-form.tsx'
+import {
+  deviceConsentMutationOptions,
+  useRunAuthed,
+  type DeviceConsent,
+} from '../../queries/index.ts'
+import { DeviceConsentCard } from './device-consent-card.tsx'
 
 /**
- * `DeviceConsentForm` is the `DeviceConsentCard` on the router's runner, so these
- * tests cover the card's logic through it (the expandable {@link ScopePicker}
- * wiring, the device-name field, approve vs deny, result handling). The
- * scope-editing mechanics themselves are covered by `scopes-react`'s
- * `ScopePicker` tests, so this unit focuses on the card's chrome and decision
- * wiring.
+ * `DeviceConsentCard`'s logic: the expandable {@link ScopePicker} wiring, the
+ * device-name field, approve vs deny, result handling. The scope-editing
+ * mechanics themselves are covered by `scopes-react`'s `ScopePicker` tests, so
+ * this unit focuses on the card's chrome and decision wiring.
  *
- * The form drives `useDeviceConsentMutation`, which reads `runAuthed` from router
- * context (`useRouteContext`) and runs through a real `useMutation`. Following the
- * package's mutation tests, we stub only the transport: mock `useRouteContext` to
- * feed a `runAuthedStub`, wrap in a real `QueryClientProvider`, and let
- * `runAuthedStub` resolve/reject to drive the server's decision deterministically.
+ * The card sends its decision through a real `useMutation` over
+ * `deviceConsentMutationOptions`, on the runner `useRunAuthed` reads from
+ * router context (`useRouteContext`). Following the package's mutation tests,
+ * we stub only the transport: mock `useRouteContext` to feed a
+ * `runAuthedStub`, wrap in a real `QueryClientProvider`, and let
+ * `runAuthedStub` resolve/reject to drive the server's decision
+ * deterministically.
  */
 
 const runAuthedStub = vi.fn((_effect: unknown): Promise<unknown> => Promise.resolve(undefined))
@@ -46,10 +50,10 @@ afterEach(() => {
   cleanup()
 })
 
-describe('DeviceConsentForm', () => {
+describe('DeviceConsentCard', () => {
   test('renders the device-authorization chrome: intro, pairing code, app, footnote', () => {
     // Arrange / Act
-    renderConsentForm(makeConsent(), vi.fn())
+    renderCard(makeConsent(), vi.fn())
 
     // Assert
     expect(screen.getByText('A new device is requesting access to your account.')).toBeDefined()
@@ -66,7 +70,7 @@ describe('DeviceConsentForm', () => {
     // Device-auth is pinned to all-patients (the FHIR server's patient/ support is too weak
     // to offer a one-patient subject), so neither the selector nor the pill appears — even
     // though the allowed set covers system/.
-    renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), vi.fn())
+    renderCard(makeConsent({ allowedScopes: ['system/*.cruds'] }), vi.fn())
 
     expect(screen.queryByRole('radio', { name: /Just one patient/ })).toBeNull()
     expect(screen.queryByRole('radio', { name: /All patients/ })).toBeNull()
@@ -97,7 +101,7 @@ describe('DeviceConsentForm', () => {
       )
     )
     const onDone = vi.fn()
-    const { user } = renderConsentForm(makeConsent({ allowedScopes: ['system/*.cruds'] }), onDone)
+    const { user } = renderCard(makeConsent({ allowedScopes: ['system/*.cruds'] }), onDone)
 
     // Act — approve straight away; there is no patient to pick.
     await user.click(screen.getByRole('button', { name: 'Approve' }))
@@ -113,7 +117,7 @@ describe('DeviceConsentForm', () => {
     // Arrange
     runAuthedStub.mockResolvedValueOnce({ status: 'approved' })
     const onDone = vi.fn()
-    const { user } = renderConsentForm(makeConsent(), onDone)
+    const { user } = renderCard(makeConsent(), onDone)
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Approve' }))
@@ -127,7 +131,7 @@ describe('DeviceConsentForm', () => {
   test('disables Approve when nothing is granted (empty request, nothing to add)', () => {
     // A request with no scopes and an empty expansion envelope has an empty draft,
     // which the backend treats as a deny — so Approve is blocked.
-    renderConsentForm(makeConsent({ requestedScopes: [], allowedScopes: [] }), vi.fn())
+    renderCard(makeConsent({ requestedScopes: [], allowedScopes: [] }), vi.fn())
     expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(true)
   })
 
@@ -135,7 +139,7 @@ describe('DeviceConsentForm', () => {
     // Arrange — the server rejects the approval (status 'denied').
     runAuthedStub.mockResolvedValueOnce({ status: 'denied' })
     const onDone = vi.fn()
-    const { user } = renderConsentForm(makeConsent(), onDone)
+    const { user } = renderCard(makeConsent(), onDone)
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Approve' }))
@@ -153,7 +157,7 @@ describe('DeviceConsentForm', () => {
     // Arrange — the transport throws (e.g. a network failure).
     runAuthedStub.mockRejectedValueOnce(new Error('Network unreachable'))
     const onDone = vi.fn()
-    const { user } = renderConsentForm(makeConsent(), onDone)
+    const { user } = renderCard(makeConsent(), onDone)
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Approve' }))
@@ -164,7 +168,7 @@ describe('DeviceConsentForm', () => {
   })
 
   test('says to approve only recognized devices above the decision', () => {
-    renderConsentForm(makeConsent(), vi.fn())
+    renderCard(makeConsent(), vi.fn())
 
     const footnote = screen.getByText('Only approve devices you recognize.')
     expect(
@@ -177,7 +181,7 @@ describe('DeviceConsentForm', () => {
     // Arrange
     runAuthedStub.mockResolvedValueOnce({ status: 'denied' })
     const onDone = vi.fn()
-    const { user } = renderConsentForm(makeConsent(), onDone)
+    const { user } = renderCard(makeConsent(), onDone)
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Decline' }))
@@ -198,7 +202,7 @@ describe('DeviceConsentForm', () => {
       })
     )
     const onDone = vi.fn()
-    const { user } = renderConsentForm(makeConsent(), onDone)
+    const { user } = renderCard(makeConsent(), onDone)
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Approve' }))
@@ -219,7 +223,7 @@ describe('DeviceConsentForm', () => {
 
   describe('device name', () => {
     test('shows the supplied name, read only', () => {
-      renderConsentForm(makeConsent({ deviceName: "Ada's laptop" }), vi.fn())
+      renderCard(makeConsent({ deviceName: "Ada's laptop" }), vi.fn())
       expect(screen.getByText("Ada's laptop")).toBeDefined()
       expect(screen.queryByRole('textbox', { name: /Device name/ })).toBeNull()
     })
@@ -239,7 +243,19 @@ const makeConsent = (overrides?: Partial<DeviceConsent>): DeviceConsent => ({
   ...overrides,
 })
 
-const renderConsentForm = (
+/** The card on a real decision mutation over the stubbed runner. */
+const CardOnStubbedRunner = ({
+  consent,
+  onDone,
+}: {
+  readonly consent: DeviceConsent
+  readonly onDone: () => void
+}): JSX.Element => {
+  const consentMutation = useMutation(deviceConsentMutationOptions(useRunAuthed()))
+  return <DeviceConsentCard consent={consent} consentMutation={consentMutation} onDone={onDone} />
+}
+
+const renderCard = (
   consent: DeviceConsent,
   onDone: () => void
 ): { readonly user: ReturnType<typeof userEvent.setup> } => {
@@ -248,7 +264,7 @@ const renderConsentForm = (
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
-  render(<DeviceConsentForm consent={consent} onDone={onDone} />, {
+  render(<CardOnStubbedRunner consent={consent} onDone={onDone} />, {
     wrapper,
   })
   return { user }
