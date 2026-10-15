@@ -27,6 +27,7 @@ export {
   chromePageOf,
 } from './chrome-har.ts'
 export {
+  ABSENT_BODY_COMMENT,
   CREATOR_NAME,
   DROPPED_REQUEST_ON_IMPORT_COMMENT,
   type EmitHarFromLogOptions,

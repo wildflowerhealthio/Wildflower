@@ -36,6 +36,7 @@ import {
   traceExchange,
 } from '@wildflowerhealthio/web-trace-core/test-helpers'
 import {
+  ABSENT_BODY_COMMENT,
   CREATOR_NAME,
   DROPPED_REQUEST_ON_IMPORT_COMMENT,
   emitHar,
@@ -272,6 +273,24 @@ describe('emitHarFromLog', () => {
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
+  })
+
+  test('an absent body states no size and no producer-specific reason, and still validates', () => {
+    const [present] = logOf().entries
+    expect(present).toBeDefined()
+    if (present === undefined) {
+      return
+    }
+    const archive = emitHarFromLog(
+      { version: '1.2', entries: [{ ...present, body: new Uint8Array(0), bodyAbsent: true }] },
+      { creatorName: 'Wildflower Recorder' }
+    )
+    const response = archive.log.entries[0]?.response
+    expect(response?.content.body).toEqual({ _tag: 'HarNoBody' })
+    // -1 is the spec's "not available"; 0 would claim the response was empty.
+    expect(response?.bodySize).toBe(-1)
+    expect(response?.content.comment).toBe(ABSENT_BODY_COMMENT)
+    expect(validateHar(encode(archive))).toBe(true)
   })
 
   test('an archive emitted with both overrides still validates against the HAR 1.2 schema', () => {
