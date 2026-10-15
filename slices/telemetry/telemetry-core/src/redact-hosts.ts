@@ -15,17 +15,27 @@ import { anonymizeHost, HOST_PLACEHOLDER } from './anonymize-url.ts'
 const SUBDOMAIN_LABELS = '(?:[a-z0-9-]+\\.)'
 
 /**
- * Not preceded by a hostname character, so a match starts on a label
- * boundary: `ruth.example` does not match inside `xruth.example`.
+ * Not preceded by a label character, so a match starts on a label boundary:
+ * `ruth.example` does not match inside `xruth.example`, and does in
+ * `.ruth.example`. A label character that ends an escape counts as a
+ * boundary too: a percent-encoded octet, encoded again any number of times
+ * (`%2F`, `%252F`), a `\u` escape (`\u002F`) or a backslash escape (`\n`),
+ * so `https%3A%2F%2Fruth.example` matches; a match never starts on a
+ * percent-encoded octet's hex digits.
  */
-const LABEL_START = '(?<![a-z0-9.-])'
+const LABEL_START =
+  '(?:(?<![a-z0-9-])|(?<=%(?:25)*[0-9a-f]{2}|\\\\u[0-9a-f]{4}|\\\\[a-z]))' +
+  '(?!(?<=%)[0-9a-f]{2})(?!(?<=%[0-9a-f])[0-9a-f])'
 
 /**
- * Not followed by a hostname character, or by a dot and one, so a match ends
- * on the host's last label: `ruth.example` does not match the start of
- * `ruth.example.org`, while a sentence's closing dot still ends one.
+ * Not followed by a label character, so a match ends on a label boundary:
+ * `ruth.example` does not match the start of `ruth.examples`. A dot does end
+ * one, so `ruth.example.status` and a sentence run on without a space
+ * (`ruth.example.Retrying`) redact to `{host}.status` and `{host}.Retrying`;
+ * so does a longer host such as `ruth.example.org`, which errs towards
+ * replacing too much.
  */
-const LABEL_END = '(?!\\.?[a-z0-9-])'
+const LABEL_END = '(?![a-z0-9-])'
 
 /** An optional port, replaced along with the host. */
 const OPTIONAL_PORT = '(?::\\d+)?'
@@ -41,14 +51,16 @@ const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/
 
 /**
  * The hostname of `host` (a host with an optional port, or an `http(s)`
- * origin) as the URL parser reads it, lower-cased; `undefined` for input it
+ * origin) as the URL parser reads it, lower-cased and without a trailing dot
+ * (`ruth.example.` names `ruth.example`); `undefined` for input it
  * rejects and for a kept host (`localhost`, `tauri.localhost`,
  * `wildflowerhealth.io`), which telemetry reports as written.
  */
 const redactableHostname = (host: string): string | undefined => {
   if (!anonymizeHost(host).endsWith(HOST_PLACEHOLDER)) return undefined
   const origin = URL.parse(/^https?:/i.test(host) ? host : `http://${host}`)
-  return origin === null || origin.hostname === '' ? undefined : origin.hostname
+  const hostname = origin?.hostname.replace(/\.$/, '')
+  return hostname === '' ? undefined : hostname
 }
 
 /**
@@ -64,7 +76,7 @@ const redactableHostname = (host: string): string | undefined => {
  * subdomains in front of them and any port after them, all of which the
  * placeholder replaces: with `ruth.example` to redact,
  * `https://API.Ruth.Example:8443/x` becomes `https://{host}/x`, while
- * `xruth.example.org` stays. Longer hosts are tried first.
+ * `xruth.example` stays. Longer hosts are tried first.
  *
  * Idempotent: a redacted text redacts to itself.
  */

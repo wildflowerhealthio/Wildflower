@@ -20,6 +20,11 @@ describe('makeHostRedactor', () => {
       text: 'Could not reach ruth.relay.wildflowerhealth.io.',
       redacted: 'Could not reach {host}.',
     },
+    {
+      case: 'a relay tunnel in front of more labels',
+      text: 'ruth.relay.wildflowerhealth.io.example.org',
+      redacted: '{host}.example.org',
+    },
   ])('replaces $case with no hosts to redact', ({ text, redacted }) => {
     expect(makeHostRedactor([])(text)).toBe(redacted)
   })
@@ -29,7 +34,6 @@ describe('makeHostRedactor', () => {
     'https://wildflowerhealth.io/launcher/',
     'http://tauri.localhost/assets/index.js',
     'http://localhost:5173/src/main.tsx',
-    'ruth.relay.wildflowerhealth.io.example.org',
   ])('leaves %s as written', (text) => {
     expect(makeHostRedactor([])(text)).toBe(text)
   })
@@ -60,13 +64,54 @@ describe('makeHostRedactor', () => {
       text: 'at https://fhir.example:8443/r4',
       redacted: 'at https://{host}/r4',
     },
+    {
+      case: 'the host registered with a trailing dot',
+      text: 'https://dotted.example/r4',
+      redacted: 'https://{host}/r4',
+    },
+    {
+      case: 'the host after a dot',
+      text: 'cookie for .ruth.example and ...ruth.example',
+      redacted: 'cookie for .{host} and ...{host}',
+    },
+    {
+      case: 'the host in a percent-encoded URL',
+      text: 'iss=https%3A%2F%2Fruth.example%2Fr4',
+      redacted: 'iss=https%3A%2F%2F{host}%2Fr4',
+    },
+    {
+      case: 'the host in a twice percent-encoded URL',
+      text: 'next=https%253A%252F%252FRuth.Example%253A8443%252Fr4',
+      redacted: 'next=https%253A%252F%252F{host}%253A8443%252Fr4',
+    },
+    {
+      case: 'the host after a backslash escape',
+      text: String.raw`"reach\nruth.example\u002Fruth.example"`,
+      redacted: String.raw`"reach\n{host}\u002F{host}"`,
+    },
+    {
+      case: 'the host run on into more labels',
+      text: 'ruth.example.status ruth.example.Retrying ruth.example.org',
+      redacted: '{host}.status {host}.Retrying {host}.org',
+    },
+    {
+      case: 'the host in quotes, backticks and brackets',
+      text: '"ruth.example" `ruth.example` (ruth.example:8443)',
+      redacted: '"{host}" `{host}` ({host})',
+    },
   ])('replaces $case', ({ text, redacted }) => {
-    expect(makeHostRedactor(['ruth.example:8443', 'https://fhir.example:8443'])(text)).toBe(
-      redacted
+    expect(
+      makeHostRedactor(['ruth.example:8443', 'https://fhir.example:8443', 'dotted.example.'])(text)
+    ).toBe(redacted)
+  })
+
+  test('replaces a relay tunnel in a percent-encoded URL', () => {
+    expect(makeHostRedactor([])('to=https%3A%2F%2Fruth.relay.wildflowerhealth.io%2Fx')).toBe(
+      'to=https%3A%2F%2F{host}%2Fx'
     )
   })
 
-  test.each(['xruth.example', 'ruth.example.org', 'xruth.example.org', 'ruth-example'])(
+  test.each(['xruth.example', 'ruth.examples', 'xruth.example.org', 'ruth-example'])(
     'leaves %s, which only contains the host to redact, as written',
     (text) => {
       expect(makeHostRedactor(['ruth.example'])(text)).toBe(text)
