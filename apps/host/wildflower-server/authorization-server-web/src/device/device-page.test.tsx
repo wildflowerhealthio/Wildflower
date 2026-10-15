@@ -33,8 +33,15 @@ interface SeenRequest {
   readonly session: string | undefined
 }
 
-/** How the stub server answers one request, by method and path. */
-type Answer = (request: SeenRequest) => { readonly status: number; readonly body: unknown }
+/**
+ * How the stub server answers one request, by method and path: a JSON `body`,
+ * or a `text` body sent as it is.
+ */
+type Answer = (
+  request: SeenRequest
+) =>
+  | { readonly status: number; readonly body: unknown }
+  | { readonly status: number; readonly text: string }
 
 let seen: SeenRequest[] = []
 let answer: Answer = () => ({ status: 404, body: {} })
@@ -54,14 +61,19 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       session: request.headers[OWNER_BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
-    const { status, body } = answer(seenRequest)
+    const reply = answer(seenRequest)
     return Effect.succeed(
       HttpClientResponse.fromWeb(
         request,
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { 'content-type': 'application/json' },
-        })
+        'text' in reply
+          ? new Response(reply.text, {
+              status: reply.status,
+              headers: { 'content-type': 'text/plain' },
+            })
+          : new Response(JSON.stringify(reply.body), {
+              status: reply.status,
+              headers: { 'content-type': 'application/json' },
+            })
       )
     )
   })
@@ -295,12 +307,37 @@ describe('DevicePage — then=back', () => {
     answer = () => ({ status: 401, body: {} })
     renderPage('WDJB-MJHT', 'then-back')
 
-    expect(await screen.findByText('Approve this on the device running your server.')).toBeDefined()
+    expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
     expect(goBack).not.toHaveBeenCalled()
   })
 })
 
+/** What the page says when this browser can't decide device requests. */
+const APPROVE_ON_SERVER =
+  "Approve this on the device running your server: open its notification, or the server's page in the Wildflower app."
+
 describe('DevicePage — a browser that cannot decide here', () => {
+  test('no session, as the server answers it (a 401 with no body), is told to approve on the server', async () => {
+    answer = () => ({ status: 401, text: '' })
+    renderPage('WDJB-MJHT')
+
+    expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
+    expect(screen.queryByLabelText('Code')).toBeNull()
+  })
+
+  test('a session read that fails some other way says so in plain words', async () => {
+    answer = () => ({ status: 500, text: 'not JSON' })
+    renderPage('WDJB-MJHT')
+
+    expect(
+      await screen.findByText(
+        "Couldn't check this browser's session. Approve the request on the device running your server instead."
+      )
+    ).toBeDefined()
+    expect(screen.queryByText(/JSON/)).toBeNull()
+    expect(screen.queryByLabelText('Code')).toBeNull()
+  })
+
   test.each([
     ['no session', () => ({ status: 401, body: {} })],
     ['a session without the device scopes', serverHolding('WDJB-MJHT', {}, ['openid'])],
@@ -310,9 +347,7 @@ describe('DevicePage — a browser that cannot decide here', () => {
       answer = server
       renderPage('WDJB-MJHT')
 
-      expect(
-        await screen.findByText('Approve this on the device running your server.')
-      ).toBeDefined()
+      expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
       expect(screen.queryByLabelText('Code')).toBeNull()
       expect(seen.map((request) => request.path)).toEqual([SESSION_PATH])
     }
@@ -332,9 +367,7 @@ describe('DevicePage — a browser that cannot decide here', () => {
 
       await user.click(await screen.findByRole('button', { name: 'Continue' }))
 
-      expect(
-        await screen.findByText('Approve this on the device running your server.')
-      ).toBeDefined()
+      expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
       expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
       expect(decisions()).toEqual([])
     }
@@ -353,9 +386,7 @@ describe('DevicePage — a browser that cannot decide here', () => {
       await user.click(await screen.findByRole('button', { name: 'Continue' }))
       await user.click(await screen.findByRole('button', { name: 'Approve' }))
 
-      expect(
-        await screen.findByText('Approve this on the device running your server.')
-      ).toBeDefined()
+      expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
       expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
     }
   )

@@ -12,7 +12,7 @@ import {
   type OAuthConsentResult,
 } from '@wildflowerhealthio/authorization-react'
 import { useDebouncedCallback } from '@wildflowerhealthio/react-kitchen-sink'
-import { AsyncErrorView, ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import { ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Effect, Match, Option, Schema } from 'effect'
 import { useEffect, useState, type JSX } from 'react'
@@ -24,6 +24,10 @@ import styles from './consent-page.module.css'
 
 /** How long the name search waits after the last keystroke before it asks the server. */
 const PATIENT_SEARCH_DELAY_MS = 300
+
+/** What the page says when reading the request failed some other way. */
+const REQUEST_UNREADABLE =
+  "Couldn't read this request. Approve it on the device running your server instead."
 
 /** What the page says once a decision has no callback it can leave for. */
 const UNEXPECTED_ANSWER = 'The authorization server returned an unexpected answer.'
@@ -145,7 +149,7 @@ const ConsentPage = ({
 
   if (exit !== null) return <ConsentExit exit={exit} />
   if (consentQuery.isError) {
-    return <AsyncErrorView error={consentQuery.error} title="Authorization request" />
+    return <p className={styles['consent-page__message']}>{REQUEST_UNREADABLE}</p>
   }
   return (
     consentQuery.data?.pipe(
@@ -216,9 +220,9 @@ const DecidableConsent = ({
 const ConsentExit = ({ exit }: { readonly exit: Exit }): JSX.Element =>
   Match.value(exit).pipe(
     Match.discriminatorsExhaustive('kind')({
-      leaving: () => <p className={styles['consent-page__exit']}>Returning you to the app…</p>,
-      done: () => <p className={styles['consent-page__exit']}>{DONE_MESSAGE}</p>,
-      declined: () => <p className={styles['consent-page__exit']}>The request was declined.</p>,
+      leaving: () => <p className={styles['consent-page__message']}>Returning you to the app…</p>,
+      done: () => <p className={styles['consent-page__message']}>{DONE_MESSAGE}</p>,
+      declined: () => <p className={styles['consent-page__message']}>The request was declined.</p>,
       unexpected: () => <ErrorBanner error={new Error(UNEXPECTED_ANSWER)} />,
     })
   )

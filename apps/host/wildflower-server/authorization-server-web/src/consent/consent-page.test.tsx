@@ -35,8 +35,15 @@ interface SeenRequest {
   readonly session: string | undefined
 }
 
-/** How the stub server answers one request, by method and path. */
-type Answer = (request: SeenRequest) => { readonly status: number; readonly body: unknown }
+/**
+ * How the stub server answers one request, by method and path: a JSON `body`,
+ * or a `text` body sent as it is.
+ */
+type Answer = (
+  request: SeenRequest
+) =>
+  | { readonly status: number; readonly body: unknown }
+  | { readonly status: number; readonly text: string }
 
 let seen: SeenRequest[] = []
 let answer: Answer = () => ({ status: 404, body: {} })
@@ -58,14 +65,19 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       session: request.headers[OWNER_BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
-    const { status, body } = answer(seenRequest)
+    const reply = answer(seenRequest)
     return Effect.succeed(
       HttpClientResponse.fromWeb(
         request,
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { 'content-type': 'application/json' },
-        })
+        'text' in reply
+          ? new Response(reply.text, {
+              status: reply.status,
+              headers: { 'content-type': 'text/plain' },
+            })
+          : new Response(JSON.stringify(reply.body), {
+              status: reply.status,
+              headers: { 'content-type': 'application/json' },
+            })
       )
     )
   })
@@ -234,6 +246,28 @@ describe('ConsentPage — then=back', () => {
 })
 
 describe('ConsentPage — a browser that cannot decide here', () => {
+  test('no session, as the server answers it (a 401 with no body), goes to the wait page', async () => {
+    answer = () => ({ status: 401, text: '' })
+    renderPage()
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    })
+  })
+
+  test('a read that fails some other way says so in plain words', async () => {
+    answer = () => ({ status: 500, text: 'not JSON' })
+    renderPage()
+
+    expect(
+      await screen.findByText(
+        "Couldn't read this request. Approve it on the device running your server instead."
+      )
+    ).toBeDefined()
+    expect(screen.queryByText(/JSON/)).toBeNull()
+    expect(leaveFor).not.toHaveBeenCalled()
+  })
+
   test.each([
     ['not signed in as the Owner', 401, {}],
     ['signed in without the scope', 403, { error: 'InsufficientScope', missingScopes: [] }],

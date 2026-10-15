@@ -40,14 +40,17 @@ Security Policy (below).
   (`src/client-callback.ts`). With `then=back` it leaves for no callback (the
   wait page in the browser that made the request finishes the flow): it shows
   the done message, then steps back out. A browser that can't read the
-  consent (`401`, `403`, `404`) goes to the wait page, `then=back` or not.
+  consent (`401`, `403`, `404`) goes to the wait page, `then=back` or not;
+  any other failed read says so in plain words, never the error's text.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
   query and mounts `DevicePage` over the same runner.
 - `src/device/device-page.tsx` — on load reads `GET /authorization/session`:
   with no session (`401`), or one whose scopes don't cover
   `Devices.DEVICE_CONSENT_SCOPES` (authorization-core), it says to approve the
-  request on the device running the server and shows no code box. Otherwise
+  request on the device running the server (its notification, or the
+  server's page in the Wildflower app) and shows no code box; any other
+  failed read says so in plain words, never the error's text. Otherwise
   it fills the code box from `user_code` but reads no request until the Owner
   presses Continue (RFC 8628 §5.4), then reads
   `GET /authorization/devices/{userCode}` and shows the card, which posts
@@ -65,6 +68,8 @@ Security Policy (below).
   `None` for anything else. The pages take it as the `goBackOnceDecided`
   prop, and the tests pass a spy. The pages render the done message before
   they call it, so a window the browser refuses to close still shows it.
+- The authorization server's `401` has no body, as the client's declared
+  `HttpApiError.Unauthorized` expects, so the pages see it as a `401`.
 - `src/owner-browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.
   The browser's `__Host-owner_browser_session` cookie rides every same-origin

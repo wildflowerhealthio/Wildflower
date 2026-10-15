@@ -13,7 +13,7 @@ import {
   type DeviceConsentResult,
 } from '@wildflowerhealthio/authorization-react'
 import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
-import { AsyncErrorView, PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import { PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { Grant, Scope } from '@wildflowerhealthio/scopes-core'
 import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Effect, Match, Option, Schema } from 'effect'
@@ -24,8 +24,16 @@ import { DONE_MESSAGE } from '../then-query.ts'
 import { withoutUserCode } from './user-code-query.ts'
 import styles from './device-page.module.css'
 
-/** What the page says when this browser can't decide device requests. */
-const APPROVE_ON_SERVER = 'Approve this on the device running your server.'
+/**
+ * What the page says when this browser can't decide device requests: the
+ * request is decided on the device running the server, which notifies it.
+ */
+const APPROVE_ON_SERVER =
+  "Approve this on the device running your server: open its notification, or the server's page in the Wildflower app."
+
+/** What the page says when reading the session failed some other way. */
+const SESSION_UNREADABLE =
+  "Couldn't check this browser's session. Approve the request on the device running your server instead."
 
 /** What the page says when the code names no pending request. */
 const UNKNOWN_CODE =
@@ -252,12 +260,13 @@ interface SessionGateProps {
 /**
  * The page once the session is known to decide device requests here, or why
  * not. Only the first answer gates: once there is one, a later failed read
- * leaves the page as it is.
+ * leaves the page as it is. A read that failed other than as `401` or `403`
+ * says so in plain words, never with the error's own text.
  */
 const SessionGate = ({ sessionQuery, children }: SessionGateProps): JSX.Element => {
   if (sessionQuery.data !== undefined) return sessionQuery.data ? children : <ApproveOnServer />
   if (sessionQuery.isError) {
-    return <AsyncErrorView error={sessionQuery.error} title="Device authorization" />
+    return <p className={styles['device-page__message']}>{SESSION_UNREADABLE}</p>
   }
   return <PageLoading message="Checking your session…" />
 }

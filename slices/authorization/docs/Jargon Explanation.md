@@ -505,7 +505,8 @@ they can return to the device. Opened by the host app as
 this." and goes back, or closes the window, as the consent card does. It follows the API's answers rather than
 checking who is signed in. On load it reads `GET /authorization/session`: with
 no session, or one whose scopes don't cover `wildflower/AuthorizationRequest.r`
-and `.u`, it says to approve the request on the device running the server,
+and `.u`, it says to approve the request on the device running the server (its
+notification, or the server's page in the Wildflower app), with no sign-in link,
 shows no code box and leaves the request pending; a `401` or `403` on a code's
 read later does the same. A `404` means no device is waiting with that code,
 and the Owner can enter another.

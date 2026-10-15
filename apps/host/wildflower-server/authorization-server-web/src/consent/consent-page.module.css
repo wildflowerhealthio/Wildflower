@@ -1,9 +1,9 @@
 /*
  * The consent page around the card: what it says once the Owner has decided
- * and the card is gone.
+ * and the card is gone, or when the request couldn't be read.
  */
 
-.consent-page__exit {
+.consent-page__message {
   margin: var(--space-9) auto 0;
   max-width: 560px;
   text-align: center;
