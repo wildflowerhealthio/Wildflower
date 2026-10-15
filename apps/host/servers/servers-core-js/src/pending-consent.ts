@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Match, Schema } from 'effect'
 
 /**
  * The newest consent waiting for the Owner on a server, as a running
@@ -21,9 +21,11 @@ type Type = typeof PendingConsentSchema.Type
 
 /** A string naming the request, distinct across the two flows: a React key. */
 const keyOf = (pendingConsent: Type): string =>
-  pendingConsent.kind === 'device'
-    ? `device:${pendingConsent.userCode}`
-    : `oauth:${pendingConsent.id}`
+  Match.value(pendingConsent).pipe(
+    Match.when({ kind: 'device' }, ({ userCode }) => `device:${userCode}`),
+    Match.when({ kind: 'oauth' }, ({ id }) => `oauth:${id}`),
+    Match.exhaustive
+  )
 
 export { keyOf, PendingConsentSchema as Schema }
 export type { Type }
