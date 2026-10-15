@@ -46,7 +46,7 @@ interface Type {
   readonly patient: Patient.Type
   /** The `Ordered by:` value, or `''`. */
   readonly orderedBy: string
-  /** The `Copy To:` values, one per printed name. */
+  /** The whole `Copy To:` line as one entry, or `[]` when the report prints none. */
   readonly copyTo: readonly string[]
   /** The `Date of Service:` value as printed (`Aug 13 2026 13:02`), or `''`. */
   readonly dateOfService: string
