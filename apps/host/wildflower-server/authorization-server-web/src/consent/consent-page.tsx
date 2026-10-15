@@ -54,41 +54,50 @@ interface ConsentPageProps {
 type Exit =
   | { readonly kind: 'leaving' }
   /**
-   * Decided in `then=back` mode, as `decision`: the page steps back out
-   * through `goBack` rather than leave for the callback.
+   * Settled in `then=back` mode, as `decision` (`elsewhere` when the read
+   * found it no longer pending): the page steps back out through `goBack`
+   * rather than leave for the callback.
    */
   | {
       readonly kind: 'done'
-      readonly decision: 'approved' | 'denied'
+      readonly decision: 'approved' | 'denied' | 'elsewhere'
       readonly goBack: () => void
     }
   | { readonly kind: 'declined' }
   | { readonly kind: 'unexpected' }
 
+/** What reading the pending request answered. */
+type ConsentLookup =
+  | { readonly kind: 'decidable'; readonly consent: OAuthConsentResource }
+  /** This browser's session can't decide the request here. */
+  | { readonly kind: 'undecidable-here' }
+  /** The request is no longer pending: decided elsewhere, or expired. */
+  | { readonly kind: 'no-longer-pending' }
+
 /**
  * Whether a failed consent read means this browser can't decide the request
- * here, so the wait page should take over: it isn't signed in as the Owner
- * (`401`), its session can't read consents (`403`), or the request is no longer
- * pending (`404`: decided elsewhere, or expired, which the wait page reports).
+ * here: it isn't signed in as the Owner (`401`), or its session can't read
+ * consents (`403`).
  */
 const isUndecidableHere = (error: unknown): boolean =>
   error instanceof HttpApiError.Unauthorized ||
   (error instanceof HttpClientError.ResponseError && error.response.status === 401) ||
-  isInsufficientScopeBody(error) ||
-  Schema.is(OAuthConsent.OAuthConsentNotFoundSchema)(error)
+  isInsufficientScopeBody(error)
 
-/**
- * The pending consent `requestId`, or `None` when this browser can't decide it
- * here (see {@link isUndecidableHere}).
- */
-const consentDecidableHere = (
+/** The pending consent `requestId`, as a {@link ConsentLookup}. */
+const lookUpConsent = (
   requestId: string
-): Effect.Effect<Option.Option<OAuthConsentResource>, unknown, AuthorizationServerHttpApiClient> =>
+): Effect.Effect<ConsentLookup, unknown, AuthorizationServerHttpApiClient> =>
   Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
     client['oauth-consent'].GetOAuthConsent({ path: { id: requestId } })
   ).pipe(
-    Effect.map(Option.some),
-    Effect.catchIf(isUndecidableHere, () => Effect.succeed(Option.none()))
+    Effect.map((consent): ConsentLookup => ({ kind: 'decidable', consent })),
+    Effect.catchIf(isUndecidableHere, () =>
+      Effect.succeed<ConsentLookup>({ kind: 'undecidable-here' })
+    ),
+    Effect.catchIf(Schema.is(OAuthConsent.OAuthConsentNotFoundSchema), () =>
+      Effect.succeed<ConsentLookup>({ kind: 'no-longer-pending' })
+    )
   )
 
 /**
@@ -96,8 +105,11 @@ const consentDecidableHere = (
  * signed in as the Owner: it reads the pending request, lets the Owner narrow
  * and decide it, and leaves for the client callback the decision's answer
  * carries, or, in `then=back` mode, says how the Owner decided and steps back
- * out of the page. A browser that can't decide the request here goes to the wait page
- * instead.
+ * out of the page. A browser that can't decide the request here, or finds it no
+ * longer pending, goes to the wait page instead, which follows the client
+ * callback once the request is decided; in `then=back` mode a request no
+ * longer pending says so and steps back out instead, since that callback is
+ * not this browser's to follow.
  *
  * @remarks
  * Everything goes through `runAuthed` on the Owner browser's session: the
@@ -114,21 +126,31 @@ const ConsentPage = ({
 }: ConsentPageProps): JSX.Element => {
   const consentQuery = useQuery({
     queryKey: ['consent-page', 'oauth-consent', requestId],
-    queryFn: () => runAuthed(consentDecidableHere(requestId)),
+    queryFn: () => runAuthed(lookUpConsent(requestId)),
     // The read is the page's first; a retry only delays the wait page.
     retry: false,
   })
   const consentMutation = useMutation(oauthConsentMutationOptions(runAuthed))
   const [exit, setExit] = useState<Exit | null>(null)
 
-  const undecidableHere = consentQuery.data !== undefined && Option.isNone(consentQuery.data)
+  // In `then=back` mode a request no longer pending is settled as far as
+  // this page goes; otherwise the wait page takes over.
+  const lookupKind = consentQuery.data?.kind
+  const settledElsewhere: Exit | null =
+    lookupKind === 'no-longer-pending' && Option.isSome(goBackOnceDecided)
+      ? { kind: 'done', decision: 'elsewhere', goBack: goBackOnceDecided.value }
+      : null
+  const leavesForWaitPage =
+    lookupKind === 'undecidable-here' ||
+    (lookupKind === 'no-longer-pending' && Option.isNone(goBackOnceDecided))
   useEffect(() => {
-    if (undecidableHere) leaveFor(waitPage)
-  }, [undecidableHere, leaveFor, waitPage])
+    if (leavesForWaitPage) leaveFor(waitPage)
+  }, [leavesForWaitPage, leaveFor, waitPage])
 
   // Step back out only once the decision is on screen, so a window the
   // browser refuses to close still says how it went.
-  const done = exit?.kind === 'done'
+  const shownExit = exit ?? settledElsewhere
+  const done = shownExit?.kind === 'done'
   useEffect(() => {
     if (done && Option.isSome(goBackOnceDecided)) goBackOnceDecided.value()
   }, [done, goBackOnceDecided])
@@ -154,23 +176,22 @@ const ConsentPage = ({
     })
   }
 
-  if (exit !== null) return <ConsentExit exit={exit} />
+  if (shownExit !== null) return <ConsentExit exit={shownExit} />
   if (consentQuery.isError) {
     return <p className={styles['consent-page__message']}>{REQUEST_UNREADABLE}</p>
   }
+  if (consentQuery.data?.kind !== 'decidable') {
+    return <PageLoading message="Loading the request…" />
+  }
+  const { consent } = consentQuery.data
   return (
-    consentQuery.data?.pipe(
-      Option.map((consent) => (
-        <DecidableConsent
-          key={consent.id}
-          consent={consent}
-          consentMutation={consentMutation}
-          runAuthed={runAuthed}
-          onDone={leaveWith}
-        />
-      )),
-      Option.getOrNull
-    ) ?? <PageLoading message="Loading the request…" />
+    <DecidableConsent
+      key={consent.id}
+      consent={consent}
+      consentMutation={consentMutation}
+      runAuthed={runAuthed}
+      onDone={leaveWith}
+    />
   )
 }
 

@@ -2,24 +2,29 @@ import type { JSX } from 'react'
 
 import styles from './decided-then-back.module.css'
 
-/** How the Owner decided a request. */
-type Decision = 'approved' | 'denied'
+/**
+ * How a request was settled: the Owner decided it here (`approved`,
+ * `denied`), or it was no longer pending when the page read it (`elsewhere`:
+ * decided in another browser, or expired).
+ */
+type Decision = 'approved' | 'denied' | 'elsewhere'
 
-/** What a page in `then=back` mode says once the Owner has decided, by the decision. */
+/** What a page in `then=back` mode says once the request is settled, by the decision. */
 const DECIDED_MESSAGES: Readonly<Record<Decision, string>> = {
   approved: 'Approved. You can close this.',
   denied: 'Declined. You can close this.',
+  elsewhere: 'This request was already decided or has expired. You can close this.',
 }
 
 interface DecidedThenBackProps {
-  /** How the Owner decided. */
+  /** How the request was settled. */
   readonly decision: Decision
   /** The step back out of the page (see `goBackOnceDecidedOf`). */
   readonly goBack: () => void
 }
 
 /**
- * What a page in `then=back` mode shows once the Owner has decided: the
+ * What a page in `then=back` mode shows once the request is settled: the
  * decision, and a Close button that steps back out of the page.
  *
  * @remarks

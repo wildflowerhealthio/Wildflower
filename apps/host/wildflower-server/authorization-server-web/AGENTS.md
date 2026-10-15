@@ -43,7 +43,9 @@ Security Policy (below).
   (`src/client-callback.ts`). With `then=back` it leaves for no callback (the
   wait page in the browser that made the request finishes the flow): it shows
   the done message, then steps back out. A browser that can't read the
-  consent (`401`, `403`, `404`) goes to the wait page, `then=back` or not;
+  consent (`401`, `403`) goes to the wait page, `then=back` or not; a
+  request no longer pending (`404`) goes there too, except with `then=back`,
+  where the page says it was already decided or expired and steps back out;
   any other failed read says so in plain words, never the error's text.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its

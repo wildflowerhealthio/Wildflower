@@ -262,6 +262,21 @@ describe('ConsentPage — then=back', () => {
     expect(goBack).toHaveBeenCalledTimes(2)
   })
 
+  test('a request no longer pending says so and steps back, without the wait page', async () => {
+    answer = () => ({ status: 404, body: { error: 'OAuthConsentNotFound', id: 'req-1' } })
+    renderPage('then-back')
+
+    expect(
+      await screen.findByText(
+        'This request was already decided or has expired. You can close this.'
+      )
+    ).toBeDefined()
+    await waitFor(() => {
+      expect(goBack).toHaveBeenCalledOnce()
+    })
+    expect(leaveFor).not.toHaveBeenCalled()
+  })
+
   test('a browser that cannot decide here still goes to the wait page', async () => {
     answer = () => ({ status: 401, body: {} })
     renderPage('then-back')
