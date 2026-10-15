@@ -100,20 +100,6 @@ const causeToError = (cause: Cause.Cause<unknown>): Error => {
   return new Error(Cause.pretty(cause))
 }
 
-/**
- * The log with every entry's method withheld, as the archive states it.
- *
- * @remarks
- * The {@link HttpArchive.Log} projection carries each entry's verb and
- * `emitHarFromLog` writes what it is given, so the anonymizer's "request
- * method was dropped" — on `log.comment`, on every entry's request, and in the
- * panel — holds because this withholds it.
- */
-const withMethodsWithheld = (log: HttpArchive.Log): HttpArchive.Log => ({
-  ...log,
-  entries: log.entries.map((entry) => ({ ...entry, method: 'UNKNOWN' })),
-})
-
 /** The note placed on the archive's `log.comment`, so the file states how it was made. */
 const describeSettings = (settings: AnonymizeSettings): string => {
   const overrides = Object.entries(settings.overrides)
@@ -125,7 +111,7 @@ const describeSettings = (settings: AnonymizeSettings): string => {
     overrides.length === 0
       ? 'no per-path overrides'
       : overrides.map(([path, decision]) => `${path}=${decision}`).join('; ')
-  return `Anonymized: ${carveOut}; ${uris}; ${overrideNote}. Request method, request headers and request body were dropped at import — the projection carries the response half only. Pseudonyms are stable within this archive only — a fresh salt is minted per anonymize, so two anonymized archives of one source cannot be linked.`
+  return `Anonymized: ${carveOut}; ${uris}; ${overrideNote}. Request headers and request body were dropped at import — the projection carries the request method and the response half only. Pseudonyms are stable within this archive only — a fresh salt is minted per anonymize, so two anonymized archives of one source cannot be linked.`
 }
 
 /**
@@ -227,7 +213,7 @@ const useAnonymize = (log: HttpArchive.Log, fileName: string): AnonymizeState =>
 
   const download = useCallback((): void => {
     if (preview === null) return
-    const archive = emitHarFromLog(withMethodsWithheld(preview.redacted), {
+    const archive = emitHarFromLog(preview.redacted, {
       comment: describeSettings(settings),
     })
     downloadBlob(harBlob(archive), anonymizedFileName(fileName))

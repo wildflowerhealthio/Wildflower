@@ -206,9 +206,8 @@ const AnonymizePanel = ({ log, fileName, className }: AnonymizePanelProps): JSX.
         </h3>
         <ul className={cn(styles['anonymize__manifest'], 'text-body-3')}>
           <li>
-            <strong>Request method, request headers and request body were dropped</strong> at import
-            — the projection carries the response half only, so this archive cannot tell a GET from
-            a POST.
+            <strong>Request headers and request body were dropped</strong> at import — the
+            projection carries the request method and the response half only.
           </li>
           <li>
             {dropped === 0

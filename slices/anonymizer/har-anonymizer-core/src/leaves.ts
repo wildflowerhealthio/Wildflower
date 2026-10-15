@@ -436,8 +436,9 @@ const isJsonEntry = (entry: HttpArchive.Entry): boolean =>
  * archive is deliberately explicit about that boundary — the manifest above
  * says how many were dropped, and the archive `log.comment` says why.
  *
- * `HttpArchive.Entry` carries no request side (the projection dropped it at
- * import), no body hash and no timings, so nothing here has to walk them.
+ * `HttpArchive.Entry` carries no request headers or body (the projection
+ * dropped them at import, keeping only the method), no body hash and no
+ * timings, so nothing here has to walk them.
  */
 const mapEntryLeaves = <E>(
   entry: HttpArchive.Entry,

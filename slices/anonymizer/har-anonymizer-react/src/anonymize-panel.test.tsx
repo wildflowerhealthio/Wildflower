@@ -70,6 +70,7 @@ const ArchiveShape = Schema.Struct({
         request: Schema.Struct({
           method: Schema.String,
           headers: Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String })),
+          postData: Schema.optional(Schema.Unknown),
         }),
         response: Schema.Struct({
           content: Schema.Struct({
@@ -440,9 +441,7 @@ describe('AnonymizePanel', () => {
     // Assert
     expect(screen.getByText(/3 archived responses/)).toBeDefined()
     expect(screen.getByText(/3 JSON response bodies/)).toBeDefined()
-    expect(
-      screen.getByText(/Request method, request headers and request body were dropped/)
-    ).toBeDefined()
+    expect(screen.getByText(/Request headers and request body were dropped/)).toBeDefined()
   })
 
   it('should say how many non-JSON bodies the anonymize drops rather than dropping them silently', async () => {
@@ -470,12 +469,12 @@ describe('AnonymizePanel', () => {
     expect(screen.getByText(/No non-JSON bodies to drop/)).toBeDefined()
   })
 
-  it('should carry a DevTools-shaped archive through the panel with no request side and no original leaf', async () => {
+  it('should carry a DevTools-shaped archive through the panel keeping its method, with no request headers or body and no original leaf', async () => {
     // Arrange — the shape a real Chrome DevTools export takes: request method,
-    // request headers, and request body live on the wire, and `LogFromHarJson`
-    // drops them at import so the panel never sees them. This test drives the
-    // decoded projection through the panel and asserts the archive downloaded
-    // states no request side.
+    // request headers, and request body live on the wire. `LogFromHarJson`
+    // keeps the method and drops the headers and body at import, so the panel
+    // never sees them. This test drives the decoded projection through the
+    // panel and asserts what the archive downloaded carries of the request.
     const devToolsHar = JSON.stringify({
       log: {
         version: '1.2',
@@ -525,13 +524,15 @@ describe('AnonymizePanel', () => {
     await mountAndSettle(log)
     await userEvent.click(screen.getByRole('button', { name: 'Download anonymized HAR' }))
 
-    // Assert — the archive downloaded carries no request side at all, and no
-    // captured leaf value survives the anonymize.
+    // Assert — the archive downloaded carries the source's real method but no
+    // request headers or body, and no captured leaf value survives the
+    // anonymize.
     const archive = await downloadedArchive()
     expect(archive.log.entries.length).toBe(1)
     for (const entry of archive.log.entries) {
-      expect(entry.request.method).toBe('UNKNOWN')
+      expect(entry.request.method).toBe('POST')
       expect(entry.request.headers).toHaveLength(0)
+      expect(entry.request.postData).toBeUndefined()
     }
     const text = await downloadedText()
     expect(text).not.toContain('super-secret-token')
