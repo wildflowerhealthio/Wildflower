@@ -54,10 +54,6 @@ pub enum LaunchError {
     /// request was decided or expired since it was shown.
     #[error("nothing is waiting for your consent on the server {domain}")]
     NothingPending { domain: String },
-    /// A page the base opened still shows in the in-app browser, which shows
-    /// one at a time; opening the consent would replace or close it.
-    #[error("a page is already open in the in-app browser; close it to open this one")]
-    ViewShowing,
     /// Reading the registry failed, including
     /// [`RegistryError::NotRegistered`] for a server that isn't registered.
     #[error(transparent)]
@@ -80,7 +76,6 @@ impl LaunchError {
             Self::AuthorizationServer(_) => "authorizationServer",
             Self::OpeningBrowser { .. } => "openingBrowser",
             Self::NothingPending { .. } => "nothingPending",
-            Self::ViewShowing => "viewShowing",
             Self::Registry(registry_error) => registry_error.kind(),
         }
     }
@@ -168,7 +163,6 @@ mod tests {
                 },
                 "nothingPending",
             ),
-            (LaunchError::ViewShowing, "viewShowing"),
             (
                 LaunchError::Registry(RegistryError::NotRegistered {
                     domain: DOMAIN.to_owned(),
@@ -215,7 +209,6 @@ mod tests {
             LaunchError::NothingPending {
                 domain: DOMAIN.to_owned(),
             },
-            LaunchError::ViewShowing,
         ];
         assert_eq!(
             serde_json::to_value(errors).unwrap(),

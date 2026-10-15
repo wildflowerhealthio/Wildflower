@@ -164,8 +164,7 @@ const openServerAuthorizationApp = ({
  *
  * @remarks
  * Fails with the host's refusal, a `LaunchError`: for the same reasons
- * {@link launchServer} does, or `nothingPending` once nothing waits there, or,
- * on a phone, `viewShowing` while a page the base opened still shows.
+ * {@link launchServer} does, or `nothingPending` once nothing waits there.
  */
 const openPendingConsent = ({
   domain,

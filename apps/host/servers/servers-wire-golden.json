@@ -590,10 +590,6 @@
     {
       "kind": "nothingPending",
       "message": "nothing is waiting for your consent on the server ruth.relay.example.com"
-    },
-    {
-      "kind": "viewShowing",
-      "message": "a page is already open in the in-app browser; close it to open this one"
     }
   ],
   "browserTrustedCertificateAuthorities": {
