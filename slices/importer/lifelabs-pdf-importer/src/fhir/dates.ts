@@ -46,13 +46,12 @@ const parts = (text: string): Option.Option<PrintedParts> => {
   const [, monthText = '', dayText = '', yearText = '', hoursText, minutesText] = match
   const month = MONTHS[monthText.toLowerCase()]
   if (month === undefined) return Option.none()
-  return Option.some({
-    year: Number(yearText),
-    month,
-    day: Number(dayText),
-    hours: hoursText === undefined ? 0 : Number(hoursText),
-    minutes: minutesText === undefined ? 0 : Number(minutesText),
-  })
+  const hours = hoursText === undefined ? 0 : Number(hoursText)
+  const minutes = minutesText === undefined ? 0 : Number(minutesText)
+  // `DateTime.makeZoned` rolls `13:75` forward to `14:15` rather than
+  // rejecting it; a clock reading past the hour or day names no time at all.
+  if (hours > 23 || minutes > 59) return Option.none()
+  return Option.some({ year: Number(yearText), month, day: Number(dayText), hours, minutes })
 }
 
 /**
@@ -72,7 +71,8 @@ const namesSameDay = (
  * @param text - The printed value (`Aug 13 2026 13:02`)
  * @param timeZone - The IANA zone the report's clock is in (`America/Toronto`)
  * @returns The UTC instant, or `None` when the text is not a printed
- *   timestamp, names an impossible date, or `timeZone` is not a zone
+ *   timestamp, names an impossible date or clock time, or `timeZone` is not
+ *   a zone
  *
  * @remarks
  * A masked value (`Xxx 00 0000`, what the anonymizer leaves) is `None`, not a

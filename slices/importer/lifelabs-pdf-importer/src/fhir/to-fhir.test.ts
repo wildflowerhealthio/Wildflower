@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { arbitrary as reportArbitrary } from '../entities/report-arbitrary.ts'
 import type * as Report from '../entities/report.ts'
+import type * as TestTableRow from '../entities/test-table-row.ts'
 import { LifeLabsIdentifierSystem } from '../source-system.ts'
 import {
   patientOriginalId,
@@ -31,6 +32,16 @@ const ofType = <T extends FhirResource['resourceType']>(
     (resource): resource is Extract<FhirResource, { resourceType: T }> =>
       resource.resourceType === resourceType
   )
+
+const hemoglobinRow: TestTableRow.Type = {
+  name: 'Hemoglobin',
+  flag: 'LO',
+  result: '118',
+  referenceRange: '120- 160',
+  unit: 'g/L',
+  labLicence: '#5687',
+  comments: [],
+}
 
 const sample: Report.Type = {
   labNo: '2024-JJ6330780',
@@ -64,17 +75,7 @@ const sample: Report.Type = {
       groups: [
         {
           name: '',
-          rows: [
-            {
-              name: 'Hemoglobin',
-              flag: 'LO',
-              result: '118',
-              referenceRange: '120- 160',
-              unit: 'g/L',
-              labLicence: '#5687',
-              comments: [],
-            },
-          ],
+          rows: [hemoglobinRow],
         },
         {
           name: 'Differential',
@@ -417,6 +418,46 @@ describe('toFhirResources', () => {
     expect(report?.resultsInterpreter).toEqual([])
     expect(report?.effectiveDateTime).toBeNull()
     expect(report?.issued).toBeNull()
+  })
+
+  it("leaves an unprinted lab number off the DiagnosticReport and an unheaded row's category without text", () => {
+    const unheaded: Report.Type = {
+      ...sample,
+      labNo: '',
+      sections: [{ name: '', comments: [], groups: [{ name: '', rows: [hemoglobinRow] }] }],
+    }
+
+    const resources = synthesize([unheaded])
+    const [report] = ofType(resources, 'DiagnosticReport')
+    const [observation] = ofType(resources, 'Observation')
+
+    expect(report?.identifier).toEqual([])
+    expect(observation?.category[0]?.coding[0]?.code).toBe('laboratory')
+    expect(observation?.category[0]?.text).toBeNull()
+  })
+
+  it('reads a reference range printed with thousands separators to its bounds', () => {
+    const [observation] = ofType(
+      synthesize([
+        {
+          ...sample,
+          sections: [
+            {
+              name: 'Hematology',
+              comments: [],
+              groups: [{ name: '', rows: [{ ...hemoglobinRow, referenceRange: '1,000 - 4,000' }] }],
+            },
+          ],
+        },
+      ]),
+      'Observation'
+    )
+
+    expect(observation?.referenceRange[0]).toMatchObject({
+      low: { value: 1000 },
+      high: { value: 4000 },
+      text: '1,000 - 4,000',
+    })
   })
 
   it('groups each report with its own resources, minting a shared Patient in the first group only', () => {

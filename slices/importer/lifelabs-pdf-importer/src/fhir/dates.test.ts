@@ -109,6 +109,11 @@ describe('parsePrintedDateTime', () => {
     ).toEqual(Option.some('2024-01-19T05:00:00.000Z'))
   })
 
+  it('is None for a clock time past the hour or the day, rather than rolling it forward', () => {
+    expect(parsePrintedDateTime('Aug 13 2026 13:75', 'America/Toronto')).toEqual(Option.none())
+    expect(parsePrintedDateTime('Aug 13 2026 24:00', 'America/Toronto')).toEqual(Option.none())
+  })
+
   it('is None for a masked value or an unknown zone', () => {
     expect(parsePrintedDateTime('Xxx 00 0000 00:00', 'America/Toronto')).toEqual(Option.none())
     expect(parsePrintedDateTime('Aug 13 2026 13:02', 'Not/AZone')).toEqual(Option.none())

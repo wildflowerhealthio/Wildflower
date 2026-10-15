@@ -64,6 +64,9 @@ const observationWire = (
   id: string,
   timeZone: string
 ): Wire => {
+  // A row printed before any section or group heading has neither; a FHIR
+  // string is never empty, so the category then carries its coding alone.
+  const categoryText = [section, group].filter((part) => part.length > 0).join(' · ')
   const wire: Wire = {
     resourceType: 'Observation',
     id,
@@ -73,7 +76,7 @@ const observationWire = (
         coding: [
           { system: OBSERVATION_CATEGORY_SYSTEM, code: 'laboratory', display: 'Laboratory' },
         ],
-        text: [section, group].filter((part) => part.length > 0).join(' · '),
+        ...(categoryText === '' ? {} : { text: categoryText }),
       },
     ],
     code: { text: row.name },

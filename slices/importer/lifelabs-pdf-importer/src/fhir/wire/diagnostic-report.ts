@@ -29,7 +29,6 @@ const diagnosticReportWire = (
   const wire: Wire = {
     resourceType: 'DiagnosticReport',
     id,
-    identifier: [{ system: LifeLabsIdentifierSystem.LabNumber, value: report.labNo }],
     status: reportStatus(report),
     category: [
       { coding: [{ system: REPORT_CATEGORY_SYSTEM, code: 'LAB', display: 'Laboratory' }] },
@@ -41,6 +40,10 @@ const diagnosticReportWire = (
     subject: { reference: `Patient/${patientId}` },
     ...timingWire(report, timeZone),
     result: observationIds.map((observationId) => ({ reference: `Observation/${observationId}` })),
+  }
+  // A report whose pages print no `Lab No` has no identifier, not an empty one.
+  if (report.labNo !== '') {
+    wire['identifier'] = [{ system: LifeLabsIdentifierSystem.LabNumber, value: report.labNo }]
   }
   if (resultsInterpreterIds.length > 0) {
     wire['resultsInterpreter'] = resultsInterpreterIds.map((practitionerId) => ({

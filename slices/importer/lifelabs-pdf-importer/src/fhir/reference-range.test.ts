@@ -47,6 +47,12 @@ describe('parseReferenceRange', () => {
     expect(parseReferenceRange('120- 160')).toEqual({ low: 120, high: 160, text: '120- 160' })
     expect(parseReferenceRange('< 1.8')).toEqual({ low: undefined, high: 1.8, text: '< 1.8' })
     expect(parseReferenceRange('>=1.30')).toEqual({ low: 1.3, high: undefined, text: '>=1.30' })
+    expect(parseReferenceRange('1,000 - 4,000')).toEqual({
+      low: 1000,
+      high: 4000,
+      text: '1,000 - 4,000',
+    })
+    expect(parseReferenceRange('<1,200')).toEqual({ low: undefined, high: 1200, text: '<1,200' })
   })
 
   it('keeps a range with no bounds as text alone', () => {
