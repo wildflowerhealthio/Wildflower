@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import type { HttpClientRequest } from '@effect/platform'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { Effect, Layer } from 'effect'
 import { type JSX, type ReactNode } from 'react'
@@ -116,7 +116,7 @@ afterEach(() => {
 
 const renderPage = (
   initialUserCode: string
-): { readonly user: ReturnType<typeof userEvent.setup> } => {
+): { readonly user: ReturnType<typeof userEvent.setup>; readonly queryClient: QueryClient } => {
   const queryClient = new QueryClient()
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -128,7 +128,7 @@ const renderPage = (
     />,
     { wrapper }
   )
-  return { user: userEvent.setup({ delay: null }) }
+  return { user: userEvent.setup({ delay: null }), queryClient }
 }
 
 /** The device requests (reads and decisions) the stub server received. */
@@ -170,6 +170,34 @@ describe('DevicePage — the code', () => {
 
     expect(await screen.findByText('Pebble Watch')).toBeDefined()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('DevicePage — the session read', () => {
+  test('is read once: refocusing the page, or a later failed read, leaves the open card', async () => {
+    const holding = serverHolding('WDJB-MJHT', { status: 'approved' })
+    answer = holding
+    const { user, queryClient } = renderPage('WDJB-MJHT')
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText('Pebble Watch')).toBeDefined()
+
+    answer = (request) =>
+      request.path === SESSION_PATH ? { status: 500, body: {} } : holding(request)
+    await act(async () => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    focusManager.setFocused(undefined)
+    expect(seen.filter((request) => request.path === SESSION_PATH)).toHaveLength(1)
+
+    await act(async () => {
+      await queryClient.refetchQueries()
+      // React Query notifies its observers on the next macrotask.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(seen.filter((request) => request.path === SESSION_PATH)).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDefined()
   })
 })
 

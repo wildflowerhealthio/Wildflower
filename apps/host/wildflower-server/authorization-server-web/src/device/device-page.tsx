@@ -136,7 +136,12 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
   const sessionQuery = useQuery({
     queryKey: ['device-page', 'session'],
     queryFn: () => runAuthed(sessionDecidesDevices),
-    // The read is the page's first; a retry only delays the answer.
+    // One read for the page's life: a refetch on focus could swap an open
+    // card for another view and lose the Owner's draft. The read is the
+    // page's first; a retry only delays the answer.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false,
   })
   // The read runs when the Owner confirms a code, not on render, so it is a
@@ -186,13 +191,17 @@ interface SessionGateProps {
   readonly children: JSX.Element
 }
 
-/** The page once the session is known to decide device requests here, or why not. */
+/**
+ * The page once the session is known to decide device requests here, or why
+ * not. Only the first answer gates: once there is one, a later failed read
+ * leaves the page as it is.
+ */
 const SessionGate = ({ sessionQuery, children }: SessionGateProps): JSX.Element => {
+  if (sessionQuery.data !== undefined) return sessionQuery.data ? children : <ApproveOnServer />
   if (sessionQuery.isError) {
     return <AsyncErrorView error={sessionQuery.error} title="Device authorization" />
   }
-  if (sessionQuery.data === undefined) return <PageLoading message="Checking your session…" />
-  return sessionQuery.data ? children : <ApproveOnServer />
+  return <PageLoading message="Checking your session…" />
 }
 
 /** Where to decide when this browser can't. */
