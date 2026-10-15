@@ -89,7 +89,7 @@ mod ports;
 pub use adapters::{JsonServerRegistry, ReqwestRelayClient, SERVERS_FILE_NAME};
 pub use domain::notifications::consent_notifications::{
     consent_notification_id_for_plugin, server_of_consent_notification, ConsentNotificationChanges,
-    ConsentNotificationCoalescer, ConsentRequest,
+    ConsentNotificationCoalescer, ConsentOpening, ConsentRequest,
 };
 pub use domain::notifications::local_notification::LocalNotification;
 pub use domain::notifications::stop_notifications::{

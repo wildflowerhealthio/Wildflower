@@ -18,8 +18,9 @@
 //! another browser or device opens the same way at its page, with `then=back`
 //! ([`consent_sign_in_url`](wildflowerhealthio_servers::consent_sign_in_url)),
 //! once the server is launchable: from the server's page in the base, from a
-//! tap on its notification on a phone, or, on a desktop, which reports no
-//! taps, as its notification posts.
+//! tap on its notification on a phone, at the app's start on a phone for the
+//! request a server reports then, or, on a desktop, which reports no taps, as
+//! its notification posts.
 //!
 //! All open in the in-app browser, [`LaunchBrowser`]. A launch and the
 //! Authorization app replace the views showing: on iOS an open replaces the
@@ -186,10 +187,9 @@ pub async fn server_open_notified_consent(
 /// still the server's newest request. Each try logs its outcome; a refusal
 /// leaves the request at its notification and the server's page meanwhile.
 ///
-/// On the desktop, which reports no taps on a notification, each request
-/// notified for opens this way, in the default browser (see
-/// `consent_requests`).
-#[cfg(any(test, not(any(target_os = "ios", target_os = "android"))))]
+/// Each request `consent_requests` opens, opens this way: on the desktop
+/// each it notifies for, in the default browser, and on a phone the first a
+/// server reports at the app's start.
 pub(crate) async fn open_consent_once_openable(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,

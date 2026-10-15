@@ -499,12 +499,19 @@ changing how servers run or what the host notifies about them.
   the server's page still shows it as the pending request. On a phone the
   host withdraws it once the request is no longer the server's newest
   (decided or expired, or another it notified for is newest again), or the
-  server is removed. A tap opens it on a phone. A desktop can't click a
-  notification, so there the host also opens the request at once in the
-  default browser, as the server's page's Open does; a server that can't
-  open it then, as one not launchable yet at the app's start, opens it on a
-  later status change once it can, while it is still the server's newest
-  request (`open_consent_once_openable`). A request already notified for, as when it
+  server is removed. A tap opens it on a phone. On a phone the host also
+  opens, at the app's start, the request a server reports in its run's first
+  status since then, instead of notifying for it, so a request whose
+  notification launched the app opens: once per app start, for the first
+  such server in domain order, while any other's notifies; one the Owner's
+  own browser made doesn't open, since that browser died with the app. A
+  desktop can't click a notification, so there the host also opens each
+  request it notifies for at once in the default browser, as the server's
+  page's Open does. Either open waits for the server: one that can't open it
+  then, as one not launchable yet at the app's start, opens it on a later
+  status change once it can, while it is still the server's newest request
+  (`open_consent_once_openable`). `ConsentNotificationCoalescer` decides
+  which requests notify and which open (`ConsentOpening`). A request already notified for, as when it
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run
   reports nothing pending, and keeps at most 32 meanwhile. The golden file

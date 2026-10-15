@@ -17,8 +17,9 @@
 //!   run's, or what its cache says) and the newest consent waiting on it;
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, and a notification for each new consent
-//!   waiting on a server, which on the desktop opens the request at once in
-//!   the default browser, as the server's page's Open does;
+//!   waiting on a server, opening the request as the server's page's Open
+//!   does: on the desktop each one at once, in the default browser, and on a
+//!   phone the first one waiting at the app's start, instead of notifying;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
