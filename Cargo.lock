@@ -9649,7 +9649,6 @@ dependencies = [
  "helios-rest",
  "helios-ui",
  "http-body-util",
- "jsonwebtoken 10.2.0",
  "serde",
  "serde_json",
  "tempfile",
@@ -9658,13 +9657,10 @@ dependencies = [
  "tower",
  "tracing",
  "url",
- "wildflowerhealthio-authorization-server",
  "wildflowerhealthio-ohif-server",
- "wildflowerhealthio-persistence",
  "wildflowerhealthio-scope-capabilities",
  "wildflowerhealthio-scopes",
  "wildflowerhealthio-shared-structures",
- "wildflowerhealthio-token-revocation",
 ]
 
 [[package]]

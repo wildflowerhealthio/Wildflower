@@ -21,7 +21,7 @@ use wildflowerhealthio_authorization_server::{
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
-use crate::adapters::access_token_signing_keys::AuthorizationServerSigningKeys;
+use crate::adapters::access_token_verifier::AuthorizationServerAccessTokenVerifier;
 use crate::adapters::acme_certificate::DeviceCertificate;
 use crate::adapters::app_launch_scopes::AuthorizationServerAppLaunchScopes;
 use crate::adapters::health_probe::ReqwestHealthProbe;
@@ -309,7 +309,7 @@ pub async fn set_up(
     // queue on the host's channel.
     let authorization_server = setup_authorization_server(
         diesel_pool.clone(),
-        revocation_store.clone(),
+        revocation_store,
         &authorization_server_config,
         observers.pending_consent_tx,
     )
@@ -323,14 +323,13 @@ pub async fn set_up(
     // at the root through the fallback below, not as merged routes.
     let fhir_routers = setup_fhir_r4(
         &fhir_r4_config,
-        // HFS-enforced auth: every FHIR request must carry a Bearer JWT signed
-        // with one of the authorization server's keys, read in process, whose
-        // `iss` and `aud` are the server's origin — set by the authorization
-        // server at mint, checked by both its gate and HFS.
-        Some(Arc::new(AuthorizationServerSigningKeys {
-            signing_keys_reader: authorization_server.signing_keys_reader.clone(),
+        // HFS-enforced auth: every FHIR request must carry a Bearer JWT the
+        // authorization server's own verifier accepts, run in process — its
+        // `iss` and `aud` the server's origin, and not revoked — checked by
+        // both its gate and HFS.
+        Some(Arc::new(AuthorizationServerAccessTokenVerifier {
+            verifier: authorization_server.in_process_token_verifier.clone(),
         })),
-        revocation_store,
         ui_sessions.clone(),
         authorization_server_auth_middleware(
             authorization_server.state.clone(),

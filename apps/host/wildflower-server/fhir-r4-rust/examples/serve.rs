@@ -31,16 +31,12 @@ async fn main() -> anyhow::Result<()> {
             )?,
     };
 
-    // Dev binary: HFS auth is off (no signing keys), so the revocation store is
-    // never consulted — the always-allow double satisfies the signature.
-    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(
         &config,
         // Dev binary: HFS auth off. Discovery + /metadata are served as
         // ever; anything that would normally require auth (Patient, etc.) is
         // open.
         None,
-        revocation_store,
         ui_sessions(&config),
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),

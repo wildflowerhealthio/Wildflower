@@ -100,16 +100,14 @@ served on, so they are checked against configuration, never against the request:
   in front of the FHIR server and the other slices) run the `TokenVerifier`,
   which accepts a token only when its `iss` and its `aud` are both the
   configured server origin.
-- **HFS** checks the same pair itself: fhir-r4-rust sets HFS's `expected_issuer` and
-  `expected_audience` to the server's origin, and HFS matches `aud` exactly. A
-  FHIR request is checked by the authorization server's gate and again by HFS.
+- **HFS** checks each bearer through the same `TokenVerifier`, run in
+  process (fhir-r4-rust's `AccessTokenVerifier` port, which the host fills
+  with the authorization server's `InProcessTokenVerifier`), so validating a
+  token never calls the server over HTTP. A FHIR request is checked by the
+  authorization server's gate and again by HFS.
 
 So a token another server minted names that server's origin, and is refused
 here by construction, even if the two servers somehow shared a signing key.
-
-HFS checks a token's signature against the authorization server's keys, which
-the server reads in process: validating a token never calls the server over
-HTTP.
 
 The SMART discovery document reports the server's origin as its `issuer`, and
 its endpoint URLs (`authorization_endpoint`, `token_endpoint`, `jwks_uri`,

@@ -5,11 +5,9 @@ edition.workspace = true
 publish.workspace = true
 
 # The shared token-revocation store: a SQLite-backed per-token denylist plus a
-# per-subject not-before epoch, living in its own thin crate so *both*
-# enforcement points can read it without pulling in a heavier dependency. The
-# authorization server (policy: mint, when-to-revoke, the HTTP control
-# surface) and wildflowerhealthio-fhir-r4's HFS `JtiCache` adapter (per-jti denylist, in-process)
-# each depend on this crate — but neither depends on the other. Deliberately
+# per-subject not-before epoch, in its own thin crate the host builds on the
+# shared database and hands to the authorization server (policy: mint,
+# when-to-revoke, the token verifier, the HTTP control surface). Deliberately
 # helios-free: it owns storage only, no auth policy.
 [dependencies]
 anyhow.workspace = true

@@ -1,7 +1,7 @@
 //! End-to-end tests for the `$everything` override, exercised through the real
 //! router `setup_fhir_r4` builds (HFS create/read + indexed, server-side,
 //! fully-paged `subject=` searches + merge), with HFS auth off
-//! (no signing keys). Covers patient-first ordering, the multi-type related set
+//! (no verifier). Covers patient-first ordering, the multi-type related set
 //! (`Observation` + `MedicationRequest`), `_count` truncation, paging past a
 //! single search page, server-side parameter filtering, and `404` for a missing
 //! patient.
@@ -57,15 +57,10 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse the authorization app base"),
     };
 
-    // Auth is off here (no signing keys), so the revocation store is never
-    // consulted — the always-allow double satisfies the signature without
-    // standing up a database.
-    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let router = setup_fhir_r4(
         &config,
-        // No signing keys: HFS auth is off.
+        // No verifier: HFS auth is off.
         None,
-        revocation_store,
         ui_sessions(&config),
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),

@@ -17,10 +17,10 @@
 //! The verdict is: **revoked** iff `jti ∈ revoked_jtis` **or**
 //! `iat < not_before(subject)`.
 //!
-//! It carries no auth policy and no helios dependency, so both enforcement
-//! points can read it in-process without pulling each other in: `authorization-server-rust`
-//! (the gate + the revoke control surface) and `fhir-r4-rust`'s HFS auth-provider
-//! wrapper (per-`jti` denylist only — helios's `Principal` carries no `iat`).
+//! It carries no auth policy and no helios dependency. The host builds it on
+//! the shared database and hands it to `authorization-server-rust`, which
+//! enforces it in its token verifier (behind its gates and, in process, the
+//! FHIR server's bearer auth) and writes it from its revoke control surface.
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, OptionalExtension};
@@ -43,20 +43,9 @@ const MIGRATIONS: &[&str] = &[
 /// each enforcement point.
 #[derive(Clone)]
 pub struct RevocationStore {
-    backend: Backend,
-}
-
-/// How a [`RevocationStore`] resolves its checks. Production is
-/// [`Backend::Sqlite`]; [`Backend::AlwaysAllow`] is a no-op double
-/// ([`RevocationStore::always_allow`]) for callers whose auth path never
-/// consults revocation, so they needn't stand up even an in-memory database
-/// just to satisfy the signature.
-#[derive(Clone)]
-enum Backend {
-    /// SQLite-backed: the real per-`jti` denylist + per-subject epoch tables.
-    Sqlite(Connection),
-    /// Never reports a token as revoked; writes are no-ops. Test/dev only.
-    AlwaysAllow,
+    /// The shared database holding the per-`jti` denylist and the
+    /// per-subject epoch tables.
+    conn: Connection,
 }
 
 impl RevocationStore {
@@ -72,9 +61,7 @@ impl RevocationStore {
             let mut guard = conn.lock();
             wildflowerhealthio_persistence::run_migrations(&mut guard, NAMESPACE, MIGRATIONS)?;
         }
-        Ok(Self {
-            backend: Backend::Sqlite(conn),
-        })
+        Ok(Self { conn })
     }
 
     /// Open a private in-memory shared connection and wrap it — for tests that
@@ -85,18 +72,6 @@ impl RevocationStore {
     /// Returns an error if the in-memory connection can't be opened or migrated.
     pub fn open_in_memory() -> anyhow::Result<Self> {
         Ok(Self::new(Connection::open_in_memory()?)?)
-    }
-
-    /// A no-op store that never reports a token as revoked and whose writes do
-    /// nothing. For callers whose auth path never consults revocation — HFS with
-    /// auth off, the dev `serve` binary, the FHIR router tests — so they can
-    /// satisfy `setup_fhir_r4`'s signature without standing up a real (even
-    /// in-memory) SQLite store. **Never** wire this into a path that actually
-    /// enforces revocation.
-    pub fn always_allow() -> Self {
-        Self {
-            backend: Backend::AlwaysAllow,
-        }
     }
 
     /// The **complete** revocation check, for the enforcement point that holds
@@ -136,17 +111,13 @@ impl RevocationStore {
         })
     }
 
-    /// The **denylist-only** check, for the enforcement point that sees just the
-    /// `jti` (fhir-r4-rust's HFS auth-provider wrapper — helios's `Principal` carries
-    /// no `iat`, so it can't run the epoch half; the gate, which runs first, does).
+    /// The **denylist-only** check: whether `jti` itself was revoked.
     ///
     /// # Errors
     ///
     /// Returns a `rusqlite::Error` if the lookup query fails.
     pub fn is_revoked_by_jti(&self, jti: &str) -> DbResult<bool> {
-        let Backend::Sqlite(conn) = &self.backend else {
-            return Ok(false);
-        };
+        let conn = &self.conn;
         conn.lock().query_row(
             "SELECT EXISTS(SELECT 1 FROM revoked_jtis WHERE jti = ?1)",
             params![jti],
@@ -168,9 +139,7 @@ impl RevocationStore {
     ///
     /// Returns a `rusqlite::Error` if the insert fails.
     pub fn revoke_jti(&self, jti: &str, expires_at: DateTime<Utc>, reason: &str) -> DbResult<()> {
-        let Backend::Sqlite(conn) = &self.backend else {
-            return Ok(());
-        };
+        let conn = &self.conn;
         conn.lock().execute(
             "INSERT INTO revoked_jtis (jti, expires_at, revoked_at, reason)
              VALUES (?1, ?2, ?3, ?4)
@@ -191,9 +160,7 @@ impl RevocationStore {
     ///
     /// Returns a `rusqlite::Error` if the upsert fails.
     pub fn bump_subject_epoch(&self, subject: &str, not_before: DateTime<Utc>) -> DbResult<()> {
-        let Backend::Sqlite(conn) = &self.backend else {
-            return Ok(());
-        };
+        let conn = &self.conn;
         conn.lock().execute(
             "INSERT INTO revocation_epochs (subject, not_before, updated_at)
              VALUES (?1, ?2, ?3)
@@ -239,9 +206,7 @@ impl RevocationStore {
     ///
     /// Returns a `rusqlite::Error` if the delete fails.
     pub fn purge_expired(&self, now: DateTime<Utc>, max_token_ttl: Duration) -> DbResult<usize> {
-        let Backend::Sqlite(conn) = &self.backend else {
-            return Ok(0);
-        };
+        let conn = &self.conn;
         let retention_floor = (now - max_token_ttl).timestamp();
         conn.lock().execute(
             "DELETE FROM revoked_jtis WHERE expires_at < ?1 AND revoked_at < ?2",
@@ -252,9 +217,7 @@ impl RevocationStore {
     /// The subject's revocation-epoch `not_before` as Unix epoch seconds, if one
     /// has been set.
     fn subject_not_before(&self, subject: &str) -> DbResult<Option<i64>> {
-        let Backend::Sqlite(conn) = &self.backend else {
-            return Ok(None);
-        };
+        let conn = &self.conn;
         conn.lock()
             .query_row(
                 "SELECT not_before FROM revocation_epochs WHERE subject = ?1",
@@ -396,42 +359,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn always_allow_never_revokes_and_writes_are_no_ops() {
-        let store = RevocationStore::always_allow();
-        // Writes succeed but change nothing.
-        store
-            .revoke_jti("jti-1", Utc::now() + Duration::hours(1), "test")
-            .expect("revoke_jti no-op");
-        store
-            .bump_subject_epoch("client", Utc::now())
-            .expect("bump no-op");
-        store
-            .revoke_subject_as_of_now("client")
-            .expect("bulk no-op");
-        // Nothing ever reads back revoked — including what we just "revoked".
-        assert!(!store.is_revoked_by_jti("jti-1").expect("query"));
-        assert!(!store
-            .is_revoked(
-                Some("jti-1"),
-                Some(Utc::now() - Duration::hours(1)),
-                "client"
-            )
-            .expect("query"));
-        assert_eq!(
-            store
-                .purge_expired(Utc::now(), Duration::hours(2))
-                .expect("purge"),
-            0
-        );
-    }
-
     /// Read the stored `expires_at` (epoch seconds) for a `jti` directly, to
     /// assert the `ON CONFLICT` bump behaviour.
     fn stored_expires_at(store: &RevocationStore, jti: &str) -> i64 {
-        let Backend::Sqlite(conn) = &store.backend else {
-            panic!("sqlite-backed store expected");
-        };
+        let conn = &store.conn;
         conn.lock()
             .query_row(
                 "SELECT expires_at FROM revoked_jtis WHERE jti = ?1",

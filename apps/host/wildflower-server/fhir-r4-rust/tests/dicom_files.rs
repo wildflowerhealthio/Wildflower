@@ -51,12 +51,10 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse the authorization app base"),
     };
 
-    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(
         &config,
-        // No signing keys: HFS auth is off.
+        // No verifier: HFS auth is off.
         None,
-        revocation_store,
         ui_sessions(&config),
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),
@@ -95,7 +93,7 @@ async fn get_file(router: &Router, id: &str) -> (StatusCode, Vec<u8>, Option<Str
         .method("GET")
         .uri(format!("/api/dicom/files/{id}"))
         // The handler requires a bearer token, which it forwards onto its
-        // in-process HFS sub-request. HFS auth is off here (no signing keys),
+        // in-process HFS sub-request. HFS auth is off here (no verifier),
         // so the value is inert — only its presence matters.
         .header("authorization", "Bearer test-token")
         .body(Body::empty())

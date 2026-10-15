@@ -16,7 +16,7 @@
 //! - [`SameDeviceSignInCodeMinter`] is the in-process mint of the one-time codes
 //!   `/oauth/sign-in` signs a browser in as the Owner with, handed out the
 //!   same way, to the host.
-//! - [`SigningKeysReader`] is the read-only face of the public signing keys,
+//! - [`InProcessTokenVerifier`] is the token verifier both authN gates run,
 //!   handed out the same way, for the host's FHIR server to verify bearers
 //!   with in-process.
 //! - [`HostConsentDecider`] is the consent capabilities bound to the host
@@ -36,11 +36,11 @@ mod consents_reader;
 mod grants_reader;
 mod grants_revoker;
 mod host_consent_decider;
+mod in_process_token_verifier;
 mod launch_context_minter;
 mod oauth_front_door;
 mod same_device_sign_in_code_minter;
 mod session;
-mod signing_keys_reader;
 
 pub mod state;
 mod token_exchanger;
@@ -54,6 +54,7 @@ pub(crate) use consents_reader::LiveConsentReader;
 pub(crate) use grants_reader::LiveGrantsReader;
 pub(crate) use grants_revoker::LiveGrantsRevoker;
 pub use host_consent_decider::HostConsentDecider;
+pub use in_process_token_verifier::InProcessTokenVerifier;
 pub use launch_context_minter::LaunchContextMinter;
 pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
@@ -61,7 +62,6 @@ pub(crate) use oauth_front_door::{
 };
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
 pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};
-pub use signing_keys_reader::SigningKeysReader;
 pub use state::AuthorizationServerState;
 pub(crate) use token_exchanger::LiveTokenExchanger;
 pub(crate) use token_revoker::LiveTokenRevoker;

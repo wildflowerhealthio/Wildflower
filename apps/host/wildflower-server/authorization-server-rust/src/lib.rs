@@ -79,7 +79,7 @@ pub use http::{
     AuthorizationServerAuthMiddleware, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
     OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
-pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter, SigningKeysReader};
+pub use live_bindings::{InProcessTokenVerifier, LaunchContextMinter, SameDeviceSignInCodeMinter};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
@@ -200,9 +200,10 @@ pub struct AuthorizationServer {
     /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
     /// Owner with — for the host, in-process.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
-    /// Reads the public halves of the signing keys — for the host's FHIR
-    /// server, which verifies each bearer against them in-process.
-    pub signing_keys_reader: SigningKeysReader,
+    /// Verifies access tokens as the authorization server's own gates do —
+    /// for the host's FHIR server, which verifies each bearer through it
+    /// in-process.
+    pub in_process_token_verifier: InProcessTokenVerifier,
 }
 
 /// Build the authorization-server-rust HTTP surface over the host-owned diesel
@@ -229,8 +230,8 @@ pub struct AuthorizationServer {
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
 ///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
-///  - returns the [`SigningKeysReader`] the host's FHIR server reads the
-///    public signing keys through, to verify each bearer in-process.
+///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
+///    each bearer through, in-process.
 ///
 /// Every token this server mints carries the server's origin
 /// ([`AuthorizationServerConfig::server_origin`]) as both `iss` and `aud`, and
@@ -291,7 +292,7 @@ pub fn setup_authorization_server(
     spawn_revocation_purge(revocation_store);
     let router = http::router(state.clone());
     let launch_context_minter = LaunchContextMinter::new(state.store.clone());
-    let signing_keys_reader = SigningKeysReader::new(state.store.clone());
+    let in_process_token_verifier = InProcessTokenVerifier::new(&state);
     let same_device_sign_in_code_minter =
         SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
     Ok(AuthorizationServer {
@@ -299,7 +300,7 @@ pub fn setup_authorization_server(
         state,
         launch_context_minter,
         same_device_sign_in_code_minter,
-        signing_keys_reader,
+        in_process_token_verifier,
     })
 }
 

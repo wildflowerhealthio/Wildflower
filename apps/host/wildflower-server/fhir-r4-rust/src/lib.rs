@@ -3,8 +3,8 @@
 //! at the server's root (FHIR base = origin), overrides the SMART discovery doc with a
 //! SMART-App-Launch-shaped one, adds the `$everything` operation HFS lacks,
 //! mounts HFS's web UI at `/ui` with its sign-in against the authorization server, and
-//! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy against
-//! the authorization server's signing keys, read in process.
+//! (optionally) wires HFS's bearer-JWT auth + SMART v2 scope policy through
+//! the host's access-token verifier, run in process.
 
 mod auth;
 mod bulk_export;
@@ -30,14 +30,12 @@ use helios_rest::{create_app_with_auth_bulk_and_settings, ServerConfig};
 use tower::{Layer, Service};
 use wildflowerhealthio_scopes::{Permission, Scope};
 
-use wildflowerhealthio_token_revocation::RevocationStore;
-
 use crate::auth::build_auth;
 use crate::bulk_export::bulk_export_bundle;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
-pub use crate::auth::{AccessTokenPublicKey, AccessTokenSigningKeys};
+pub use crate::auth::{AccessTokenVerifier, AccessTokenVerifyError, VerifiedAccessToken};
 pub use crate::bulk_export::BulkExportWorker;
 pub use crate::config::FhirR4Config;
 
@@ -125,9 +123,10 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 ///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
 ///   `subject=` searches in-process (see [`patient_everything`]).
 ///
-/// When `access_token_signing_keys` is `Some`, HFS auth is enabled: it
-/// validates the JWT against those keys, read in process, enforces `iss` and
-/// `aud`, parses SMART v2 scopes, and gates each FHIR operation against them.
+/// When `access_token_verifier` is `Some`, HFS auth is enabled: each bearer
+/// is verified through it, in process (signature, expiry, `iss` and `aud`,
+/// revocation), its SMART v2 scopes are parsed, and each FHIR operation is
+/// gated against them.
 /// `None` leaves HFS open, relying on whatever wraps this router from outside
 /// (e.g. the host's bearer gate). The discovery override and
 /// HFS's `/metadata` remain unauthenticated per the SMART spec — see
@@ -145,12 +144,6 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// same-site request carrying its `hfs_session` cookie and no `Authorization`
 /// as the session's bearer.
 ///
-/// `revocation_store` is the shared token-revocation store the host wires into
-/// both this and the authorization server; when auth is enabled, HFS consults it per validated
-/// token through a revocation-checking [`AuthProvider`](helios_auth::AuthProvider)
-/// wrapper (per-`jti` denylist — defense-in-depth behind the authorization server's gate). See
-/// [`crate::auth`].
-///
 /// HFS's `base_url`, the prefix of every URL it emits (Bundle links,
 /// `fullUrl`s, `Location`), is [`FhirR4Config::public_origin`]'s FHIR base: HFS
 /// never reads `Forwarded`/`Host` to vary it, so a client that pages by
@@ -163,8 +156,7 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// configured path, or if initializing its schema fails.
 pub fn setup_fhir_r4<Gate>(
     config: &FhirR4Config,
-    access_token_signing_keys: Option<Arc<dyn AccessTokenSigningKeys>>,
-    revocation_store: RevocationStore,
+    access_token_verifier: Option<Arc<dyn AccessTokenVerifier>>,
     ui_sessions: Arc<SessionStore>,
     fhir_api_gate: Gate,
 ) -> anyhow::Result<FhirR4Routers>
@@ -220,13 +212,9 @@ where
     };
 
     let bulk_export_config = server_config.bulk_export.clone();
-    let hfs_auth_enabled = access_token_signing_keys.is_some();
-    let (auth_config, auth_state) = build_auth(
-        access_token_signing_keys,
-        revocation_store,
-        &server_origin,
-        ui_sessions.clone(),
-    );
+    let hfs_auth_enabled = access_token_verifier.is_some();
+    let (auth_config, auth_state) =
+        build_auth(access_token_verifier, &server_origin, ui_sessions.clone());
     // The web UI's per-user settings (`/_user/settings`), which also track its
     // bulk-export jobs, live in the health data's own sqlite file, in HFS's
     // `user_settings` table; so do the export jobs themselves.

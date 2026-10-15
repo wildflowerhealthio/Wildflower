@@ -54,15 +54,10 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse the authorization app base"),
     };
 
-    // Auth is off here (no signing keys), so the revocation store is never
-    // consulted — the always-allow double satisfies the signature without
-    // standing up a database.
-    let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let router = setup_fhir_r4(
         &config,
-        // No signing keys: HFS auth is off.
+        // No verifier: HFS auth is off.
         None,
-        revocation_store,
         ui_sessions(&config),
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),
