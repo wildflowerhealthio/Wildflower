@@ -96,8 +96,10 @@ An adapter. Depends on `har-anonymizer-core` (the redactor),
   quietly dropped a body would misrepresent what the source held.
 - **The manifest states that request method, headers and body were dropped.**
   True for a DevTools/extension export where they existed: the projection
-  `HttpArchive.Log` carries the response half only, and the archive's
-  `log.comment` says the same via `describeSettings`.
+  `HttpArchive.Log` carries the response half plus the verb, and the archive's
+  `log.comment` says the same via `describeSettings`. `emitHarFromLog` writes
+  each entry's own method, so `withMethodsWithheld` sets it to `UNKNOWN` before
+  the emit — that is what makes the statement true.
 - **The archive is encoded before it is stringified.** `emitHarFromLog` builds
   the _decoded_ form of the `Har` schema — instants are `DateTime`s, bodies
   are a tagged union — so `harBlob` runs `Schema.encodeSync(Har)` first. A

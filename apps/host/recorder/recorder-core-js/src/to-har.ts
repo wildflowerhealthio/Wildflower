@@ -14,14 +14,15 @@ import { MAX_BODY_BYTES, type Recording } from './recording.ts'
 const CREATOR_NAME = 'Wildflower Recorder'
 
 /**
- * Why a recorded entry states no request side, carried on every entry.
+ * Why a recorded entry states a method but no other request side, carried on
+ * every entry.
  *
  * @remarks
  * Distinct from `http-archive`'s `DROPPED_REQUEST_ON_IMPORT_COMMENT`, which
  * speaks for an archive that *had* a request side and lost it at import.
  */
 const REQUEST_COMMENT =
-  'The injected sniffer observes fetch and XMLHttpRequest on the response side only, so this exchange’s method, request headers and request body were never observed. They are reported as UNKNOWN and absent rather than guessed — a GET and a POST to this URL are indistinguishable in this recording.'
+  'The injected sniffer observes fetch and XMLHttpRequest calls and their responses: the method is the one the page called with (UNKNOWN when it is not a standard HTTP verb), but this exchange’s request headers and request body were never observed. They are absent rather than guessed.'
 
 /** What a recording collected, stated on `log.comment`. */
 const commentOf = (startUrl: string, startedAt: DateTime.Utc, stoppedAt: DateTime.Utc): string =>

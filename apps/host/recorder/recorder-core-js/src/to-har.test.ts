@@ -13,19 +13,19 @@ const readLog = Schema.decodeUnknownSync(HttpArchive.LogFromHarJson)
 /** The same text read as a whole archive, which is what validates the format. */
 const readHar = Schema.decodeUnknownSync(HarFromJson)
 
-/** A recording built from a list of `(content type, body)` responses. */
+/** A recording built from a list of `(content type, body, method)` responses. */
 const recordingOf = (
-  responses: readonly (readonly [contentType: string, body: Uint8Array])[]
+  responses: readonly (readonly [contentType: string, body: Uint8Array, method?: string])[]
 ): Recording => {
   const recording = Recording.empty()
-  responses.forEach(([contentType, body], index) => {
+  responses.forEach(([contentType, body, method = 'GET'], index) => {
     const id = `req-${index}`
     recording.onResponseStart(
       {
         _tag: 'ResponseStart',
         id,
         url: `https://portal.example.org/api/${index}`,
-        method: 'GET',
+        method,
         status: 200,
         statusText: 'OK',
         headers: [['content-type', contentType]],
@@ -47,22 +47,26 @@ const meta = {
 /** A response body and the content type it was served as. */
 const responseArbitrary = fc.tuple(
   fc.constantFrom('application/json', 'text/html', 'text/xml', 'application/octet-stream'),
-  fc.uint8Array()
+  fc.uint8Array(),
+  fc.constantFrom('GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'BREW')
 )
 
 describe('toHar', () => {
-  it('should name the recorder and say the request side was never observed', () => {
+  it('should name the recorder, carry the observed method, and say the rest of the request was never observed', () => {
     // Arrange
-    const recording = recordingOf([['application/json', new TextEncoder().encode('{"ok":true}')]])
+    const recording = recordingOf([
+      ['application/json', new TextEncoder().encode('{"ok":true}'), 'POST'],
+    ])
 
     // Act
     const archive = toHar(recording, meta)
 
     // Assert
     expect(archive.log.creator.name).toBe(CREATOR_NAME)
-    expect(archive.log.entries[0]?.request.method).toBe('UNKNOWN')
+    expect(archive.log.entries[0]?.request.method).toBe('POST')
+    expect(archive.log.entries[0]?.request.headers).toEqual([])
     expect(archive.log.entries[0]?.request.comment).toBe(REQUEST_COMMENT)
-    expect(REQUEST_COMMENT).toContain('response side only')
+    expect(REQUEST_COMMENT).toContain('request headers and request body were never observed')
   })
 
   it('should state the run and what the recording left out on log.comment', () => {
@@ -105,6 +109,9 @@ describe('toHar', () => {
         expect(readHar(text).log.entries).toHaveLength(recording.count)
         expect(log.entries.map((entry) => entry.url)).toEqual(
           recording.entries().map((entry) => entry.url)
+        )
+        expect(log.entries.map((entry) => entry.method)).toEqual(
+          recording.entries().map((entry) => entry.method)
         )
         expect(log.entries.map((entry) => entry.status)).toEqual(
           recording.entries().map((entry) => entry.status)

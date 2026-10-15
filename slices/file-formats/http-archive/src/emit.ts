@@ -243,7 +243,7 @@ const bodyOfEntry = (entry: HttpArchive.Entry): HarBody =>
     : { _tag: 'HarBase64Body', text: Encoding.encodeBase64(entry.body) }
 
 const requestFromEntry = (entry: HttpArchive.Entry, requestComment: string): HarRequest => ({
-  method: 'UNKNOWN',
+  method: entry.method,
   url: entry.url,
   httpVersion: '',
   cookies: [],
@@ -291,8 +291,9 @@ const entryFromArchiveEntry = (entry: HttpArchive.Entry, requestComment: string)
  * @remarks
  * The HAR-native counterpart to {@link emitHar}. Entries come out in the order
  * given — a HAR read is already sorted or is a DevTools export that is not, and
- * a re-sort would misreport what the source said. Nothing unobserved is
- * guessed: `request.method` is `UNKNOWN`, timings are `-1`, and an absent body
+ * a re-sort would misreport what the source said. `request.method` is the
+ * entry's own {@link HttpArchive.Entry.method} — `UNKNOWN` when the log does not
+ * know it. Nothing unobserved is guessed: timings are `-1`, and an absent body
  * is a `HarNoBody` with a `bodySize` of `-1` and an {@link ABSENT_BODY_COMMENT}
  * saying its size is not known.
  *
