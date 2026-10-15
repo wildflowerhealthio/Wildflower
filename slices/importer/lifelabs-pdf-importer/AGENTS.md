@@ -62,7 +62,8 @@ function.
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
   Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
   `dateTime`), `reference-range.ts` (printed reference range to bounds),
-  `result-value.ts` (printed result to quantity or text), `units.ts` (the
+  `result-value.ts` (printed result to quantity or text), `printed-number.ts`
+  (the printed-number grammar and reading those two share), `units.ts` (the
   LifeLabs display-unit → UCUM mapping `quantityWire` stamps as
   `Quantity.system` / `Quantity.code` beside the printed spelling; a spelling
   not in the table is carried as `unit` alone rather than guessing a code).
@@ -162,7 +163,9 @@ and must stay out of the production bundle. Never imports `har-importer-core`,
   would drop them silently.
 - **A masked field is absent, not invented.** The anonymizer's `Xxx 00 0000`
   reads as no date of birth; a masked lab number that repeats is told apart by
-  the page footer and the date of service.
+  the page footer (each report starts at its own `Page 1 of N`). Reports that
+  share a lab number and date of service stay separate reports, never merged:
+  the later ones' ids add their repeat count (`reportOriginalId`).
 
 ## References
 

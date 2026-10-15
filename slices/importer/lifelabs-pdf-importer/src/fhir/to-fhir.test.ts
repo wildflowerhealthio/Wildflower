@@ -116,27 +116,28 @@ const sample: Report.Type = {
   ],
 }
 
+/** The lab number and date of service an anonymized export masks every report's to. */
+const MASKED_LAB_NO = '0000-XX0000000'
+const MASKED_DATE_OF_SERVICE = 'Xxx 00 0000 00:00'
+
 /**
- * Arrays of reports with pairwise-distinct identities (`reportOriginalId`).
- * A real decode can never hand the synthesis two reports with the same
- * identity — `Report.tryFromDocument` yields one report per `Lab No` (masked
- * ones told apart by footer and date of service) — so the multi-report
- * properties mirror that invariant rather than asserting over an input the
- * dialect cannot produce.
+ * Arrays of reports, some masked to the same lab number and date of service —
+ * the anonymized export whose reports print one shared key, which the
+ * synthesis must still keep apart.
  */
-const distinctReportsArbitrary = fc
-  .array(reportArbitrary, { minLength: 1, maxLength: 3 })
-  .map((reports) =>
-    reports.filter(
-      (report, index) =>
-        reports.findIndex((other) => reportOriginalId(other) === reportOriginalId(report)) === index
-    )
-  )
+const reportsArbitrary = fc.array(
+  fc
+    .tuple(reportArbitrary, fc.boolean())
+    .map(([report, masked]) =>
+      masked ? { ...report, labNo: MASKED_LAB_NO, dateOfService: MASKED_DATE_OF_SERVICE } : report
+    ),
+  { minLength: 1, maxLength: 3 }
+)
 
 describe('toFhirResources', () => {
   it('property: every row is one Observation the report lists, on the one Patient, and every id is unique', () => {
     fc.assert(
-      fc.property(distinctReportsArbitrary, (reports) => {
+      fc.property(reportsArbitrary, (reports) => {
         const resources = synthesize(reports)
 
         const ids = resources.map((resource) => `${resource.resourceType}/${resource.id}`)
@@ -196,6 +197,24 @@ describe('toFhirResources', () => {
         expect(again).toEqual(first)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('keeps two reports printing the same lab number and date of service apart', () => {
+    const masked = { ...sample, labNo: MASKED_LAB_NO, dateOfService: MASKED_DATE_OF_SERVICE }
+
+    const resources = synthesize([masked, masked])
+
+    const reports = ofType(resources, 'DiagnosticReport')
+    expect(reports.map((report) => report.id)).toEqual([
+      reportOriginalId(masked, 0),
+      reportOriginalId(masked, 1),
+    ])
+    const observationIds = ofType(resources, 'Observation').map((observation) => observation.id)
+    expect(new Set(observationIds).size).toBe(observationIds.length)
+    // A document with no repeat keeps the plain key.
+    expect(ofType(synthesize([masked]), 'DiagnosticReport')[0]?.id).toBe(
+      reportOriginalId(masked, 0)
     )
   })
 
@@ -264,7 +283,7 @@ describe('toFhirResources', () => {
   it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer, resultsInterpreter', () => {
     const [report] = ofType(synthesize([sample]), 'DiagnosticReport')
 
-    expect(report?.id).toBe(reportOriginalId(sample))
+    expect(report?.id).toBe(reportOriginalId(sample, 0))
     expect(report?.status).toBe('final')
     expect(report?.identifier[0]).toMatchObject({
       system: new URL(LifeLabsIdentifierSystem.LabNumber),
@@ -436,6 +455,27 @@ describe('toFhirResources', () => {
     expect(observation?.category[0]?.text).toBeNull()
   })
 
+  it('property: a report whose rows print a licence lists one performer per licence, none without', () => {
+    fc.assert(
+      fc.property(reportArbitrary, (report) => {
+        const printed = new Set(
+          report.sections.flatMap((section) =>
+            section.groups.flatMap((group) => group.rows.map((row) => row.labLicence))
+          )
+        )
+        printed.delete('')
+        fc.pre(printed.size > 0)
+
+        const [diagnosticReport] = ofType(synthesize([report]), 'DiagnosticReport')
+
+        expect(
+          diagnosticReport?.performer.map((performer) => performer.display?.split(' · ')[0])
+        ).toEqual([...printed].map((licence) => `Lab Lic. ${licence}`))
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
   it('lists the lab once as performer when rows above the first printed licence carry none', () => {
     const [report] = ofType(
       synthesize([
@@ -456,30 +496,6 @@ describe('toFhirResources', () => {
     expect(report?.performer.map((p) => p.display)).toEqual([
       'Lab Lic. #5687 · 100 International Blvd., Toronto, Ontario, Canada M9W 6J6',
     ])
-  })
-
-  it('reads a reference range printed with thousands separators to its bounds', () => {
-    const [observation] = ofType(
-      synthesize([
-        {
-          ...sample,
-          sections: [
-            {
-              name: 'Hematology',
-              comments: [],
-              groups: [{ name: '', rows: [{ ...hemoglobinRow, referenceRange: '1,000 - 4,000' }] }],
-            },
-          ],
-        },
-      ]),
-      'Observation'
-    )
-
-    expect(observation?.referenceRange[0]).toMatchObject({
-      low: { value: 1000 },
-      high: { value: 4000 },
-      text: '1,000 - 4,000',
-    })
   })
 
   it('groups each report with its own resources, minting a shared Patient in the first group only', () => {

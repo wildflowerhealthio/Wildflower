@@ -1,3 +1,5 @@
+import { PRINTED_NUMBER, printedNumberValue } from './printed-number.ts'
+
 /** The comparators FHIR's `Quantity.comparator` admits. */
 type Comparator = '<' | '<=' | '>=' | '>'
 
@@ -14,17 +16,8 @@ type ResultValue =
     }
   | { readonly _tag: 'text'; readonly text: string }
 
-/**
- * A printed number — `8.0`, `-2`, `1,234` (a thousands separator) — the
- * grammar a result and a reference range's bounds share.
- */
-const PRINTED_NUMBER = String.raw`-?\d{1,3}(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?`
-
 /** `8.0`, `-2`, `<0.1`, `>= 60`, `1,234`. */
 const NUMERIC = new RegExp(String.raw`^(<=|>=|<|>)?\s*(${PRINTED_NUMBER})$`)
-
-/** A {@link PRINTED_NUMBER} read as the number it prints. */
-const printedNumberValue = (text: string): number => Number(text.replaceAll(',', ''))
 
 const isComparator = (text: string): text is Comparator =>
   text === '<' || text === '<=' || text === '>=' || text === '>'
@@ -41,15 +34,13 @@ const parseResultValue = (text: string): ResultValue => {
   const match = NUMERIC.exec(trimmed)
   if (match === null) return { _tag: 'text', text: trimmed }
   const [, comparatorText, numberText = ''] = match
-  // `-0` prints as `-0` but means zero; keep the sign out of the quantity.
-  const value = printedNumberValue(numberText) || 0
   return {
     _tag: 'quantity',
-    value,
+    value: printedNumberValue(numberText),
     comparator:
       comparatorText !== undefined && isComparator(comparatorText) ? comparatorText : undefined,
   }
 }
 
-export { parseResultValue, PRINTED_NUMBER, printedNumberValue }
+export { parseResultValue }
 export type { Comparator, ResultValue }

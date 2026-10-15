@@ -1,4 +1,4 @@
-import { PRINTED_NUMBER, printedNumberValue } from './result-value.ts'
+import { PRINTED_NUMBER, printedNumberValue } from './printed-number.ts'
 
 /**
  * A printed reference range read into bounds, or kept as text when it has
@@ -11,13 +11,12 @@ interface ReferenceRange {
   readonly text: string
 }
 
-const NUMBER = `(?:${PRINTED_NUMBER})`
 /** `4.0 - 11.0`, `120- 160`, `135-145`, `1,000 - 4,000`. */
-const BOUNDED = new RegExp(`^(${NUMBER})\\s*-\\s*(${NUMBER})$`)
+const BOUNDED = new RegExp(`^(${PRINTED_NUMBER})\\s*-\\s*(${PRINTED_NUMBER})$`)
 /** `<36`, `< 1.8`, `<=7.0`. */
-const BELOW = new RegExp(`^<\\s*=?\\s*(${NUMBER})$`)
+const BELOW = new RegExp(`^<\\s*=?\\s*(${PRINTED_NUMBER})$`)
 /** `>=1.30`, `=>60`, `> 5`. */
-const ABOVE = new RegExp(`^(?:>\\s*=?|=>)\\s*(${NUMBER})$`)
+const ABOVE = new RegExp(`^(?:>\\s*=?|=>)\\s*(${PRINTED_NUMBER})$`)
 
 /**
  * Read a printed reference range.

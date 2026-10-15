@@ -13,9 +13,25 @@ const LABORATORY_REPORT_LOINC = { code: '11502-2', display: 'Laboratory report' 
  * the lab number alone is the identity on a genuine report, but an
  * anonymized export masks every lab number to the same digits, and the
  * date keeps those reports apart.
+ *
+ * @param report - The report to key
+ * @param repeat - How many earlier reports in the same document print this
+ *   report's lab number and date of service: `0` for the first (whose key is
+ *   the lab number and date alone), counting up from there
+ *
+ * @remarks
+ * Each report a document prints starts at its own `Page 1 of N`, so two
+ * reports that share a lab number and date of service are still two reports
+ * — an export masked down to `0000-XX0000000` and `Xxx 00 0000 00:00`, say —
+ * and `repeat` keeps their ids apart rather than merging them. The first keeps
+ * the plain key, so a document with no repeats mints the same ids as before.
  */
-const reportOriginalId = (report: Report.Type): string =>
-  sourceId(['report', report.labNo, report.dateOfService])
+const reportOriginalId = (report: Report.Type, repeat: number): string =>
+  sourceId(
+    repeat === 0
+      ? ['report', report.labNo, report.dateOfService]
+      : ['report', report.labNo, report.dateOfService, String(repeat)]
+  )
 
 const diagnosticReportWire = (
   report: Report.Type,
