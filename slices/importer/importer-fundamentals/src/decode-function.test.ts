@@ -490,6 +490,23 @@ describe('a grouped decode', () => {
     )
   })
 
+  it('keeps sets in pick order when their keys look like array indices', async () => {
+    // A plain object would hoist integer-like keys ahead of the rest, sorted
+    // numerically, whatever order the files were picked in.
+    const result = await Effect.runPromise(
+      groupedDecode(
+        asBatch([
+          oneFile('b-1.bin', new Uint8Array([1])),
+          oneFile('10-1.bin', new Uint8Array([1])),
+          oneFile('2-1.bin', new Uint8Array([1])),
+          oneFile('b-2.bin', new Uint8Array([1])),
+        ]),
+        null
+      )
+    )
+    expect(result.decoded.notes).toEqual(['b: 2 files', '10: 1 files', '2: 1 files'])
+  })
+
   it('rejects exactly the members of a failing set, leaving its neighbours readable', async () => {
     const result = await Effect.runPromise(
       groupedDecode(

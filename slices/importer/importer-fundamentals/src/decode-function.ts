@@ -96,7 +96,7 @@ const sourceFileKey = (file: PickedFile.Type): string =>
 
 const mintSourceFile = Schema.encode(PickedFile.FromDocumentReference)
 
-/** A source file stored exactly as minted — what a format that states no `source file` gets. */
+/** A source file stored exactly as minted — what a format that states no {@link Config.linkSourceFile} gets. */
 const asMinted = (minted: DocumentReference.Type): DocumentReference.Type => minted
 
 /**
@@ -195,9 +195,10 @@ interface Grouped {
  * none.
  *
  * @remarks
- * `Array.groupBy` keys are insertion-ordered, so the sets come out ordered by
- * the pick that opened each — the order the reviewer picked the files in, which
- * is also the order their members keep within a set.
+ * The sets come out ordered by the pick that opened each — the order the
+ * reviewer picked the files in, which is also the order their members keep
+ * within a set. A `Map` rather than `Array.groupBy`'s record, which hoists
+ * integer-like keys ahead of the rest in numeric order.
  */
 const groupFiles = (
   files: readonly PickedFile.Type[],
@@ -209,10 +210,13 @@ const groupFiles = (
       onRight: (key) => ({ file, key }),
     })
   )
-  const fileSets = Object.values(Arr.groupBy(keyed, (one) => one.key)).map((set) =>
-    Arr.map(set, (one) => one.file)
-  )
-  return { fileSets, unreadable }
+  const byKey = new Map<string, Arr.NonEmptyArray<PickedFile.Type>>()
+  for (const { file, key } of keyed) {
+    const fileSet = byKey.get(key)
+    if (fileSet === undefined) byKey.set(key, [file])
+    else fileSet.push(file)
+  }
+  return { fileSets: [...byKey.values()], unreadable }
 }
 
 /**
@@ -220,15 +224,15 @@ const groupFiles = (
  * reads.
  *
  * @param config - The format's tag, its source file constants, its
- *   `decodeFileSet`, and — for a format whose files are read together — its
- *   `groupBy` and its `source file`
+ *   `decodeFileSet`, and optionally its `groupBy` — for a format whose files
+ *   are read together — and its `linkSourceFile`
  * @returns The format's batch decode: never failing, requiring nothing
  *
  * @remarks
  * Sets are decoded concurrently and each is independent: one that rejects
  * yields an `unreadableFiles` row per pick in it while the rest stay
  * reviewable. Within a set the source files are minted concurrently too, but they
- * are finished after the decode, because {@link Config.sourceFile} reads it.
+ * are finished after the decode, because {@link Config.linkSourceFile} reads it.
  */
 const make = <TFormat extends string, TSettings>(
   config: Config<TFormat, TSettings>
