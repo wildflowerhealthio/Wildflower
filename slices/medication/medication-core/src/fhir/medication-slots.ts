@@ -3,7 +3,7 @@ import {
   Medication as FhirMedication,
   type MedicationRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as Arr, Option, pipe, Schema } from 'effect'
+import { Array as Arr, Option, Schema } from 'effect'
 
 /**
  * The three places a `MedicationRequest` names its drug: the
@@ -65,16 +65,25 @@ const hasId =
  * DIN, description and strength would be read onto the wrong drug.
  */
 const containedMedicationOf = (request: MedicationRequest.Type): FhirMedication.Type | null => {
-  const medications = Arr.filterMap(request.contained, asContainedMedication)
-  return pipe(
-    Option.fromNullable(medicationReferenceOf(request)?.reference),
-    Option.flatMap(IdentifierAndReference.fragmentIdOf),
-    Option.match({
-      onNone: () => Arr.head(medications),
-      onSome: (containedId) => Arr.findFirst(medications, hasId(containedId)),
-    }),
-    Option.getOrNull
+  const containedMedications: ReadonlyArray<FhirMedication.Type> = Arr.filterMap(
+    request.contained,
+    asContainedMedication
   )
+  const reference: Option.Option<string> = Option.fromNullable(
+    medicationReferenceOf(request)?.reference
+  )
+  // The `id` a local `#id` reference names; `None` for an external reference.
+  const containedId: Option.Option<string> = Option.flatMap(
+    reference,
+    IdentifierAndReference.fragmentIdOf
+  )
+
+  // No reference, or one pointing outside this resource: take the first.
+  if (Option.isNone(containedId)) {
+    return Option.getOrNull(Arr.head(containedMedications))
+  }
+  // A local reference: only the Medication it names, never a fallback.
+  return Option.getOrNull(Arr.findFirst(containedMedications, hasId(containedId.value)))
 }
 
 export { containedMedicationOf, medicationConceptOf, medicationReferenceOf }
