@@ -12,8 +12,7 @@ interface CalendarMedicationInput {
   readonly prescriber: string | null
   /**
    * Estimated next-fill date as a **local** calendar day (`YYYY-MM-DD`), or
-   * `null` when unknown. See the module-level `@remarks` for how the caller
-   * derives it.
+   * `null` when unknown.
    */
   readonly nextFillDate: string | null
   readonly hasRefill: boolean

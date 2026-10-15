@@ -4,7 +4,8 @@ import { DateTime, Option } from 'effect'
 /**
  * Estimated next-fill date as an ISO instant: `authoredOnIso` advanced by
  * `supply` (i.e. when the current supply runs out). `null` unless the authored
- * date parses and the supply duration is usable — total, never throws.
+ * date parses, the supply duration is usable, and the advanced instant stays
+ * within the representable date range — total, never throws.
  *
  * The authored date is taken as an ISO string (not a parsed instant) so this
  * stays FHIR-free; the caller formats its decoded date to ISO first. The
@@ -16,7 +17,8 @@ const nextFillDate = (authoredOnIso: string, supply: SupplyDuration): string | n
   if (parts === null) return null
   const authored = DateTime.make(authoredOnIso)
   if (Option.isNone(authored)) return null
-  return DateTime.formatIso(DateTime.add(authored.value, parts))
+  const exhausted = DateTime.add(authored.value, parts)
+  return Number.isFinite(exhausted.epochMillis) ? DateTime.formatIso(exhausted) : null
 }
 
 export { nextFillDate }
