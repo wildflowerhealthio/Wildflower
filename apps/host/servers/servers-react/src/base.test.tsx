@@ -1711,6 +1711,53 @@ describe('Authorization', () => {
       })
     }
   })
+  it("should open the Authorization app from the server page's status, under Launch, and show its refusal there", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = hostWith({
+      servers: () => Promise.resolve(golden.listedServers),
+      answers: { server_open_authorization_app: () => Promise.reject(golden.launchErrors[2]) },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: `/servers/${RUTH}`,
+    })
+    const hero = await screen.findByRole('region', { name: 'Status' })
+    const launch = within(hero).getByRole('button', { name: 'Launch' })
+    const authorization = within(hero).getByRole('button', { name: 'Authorization' })
+
+    // Act
+    await user.click(authorization)
+
+    // Assert
+    expect(isBefore(launch, authorization)).toBe(true)
+    expect(authorization.parentElement).toBe(hero)
+    expect(host.seen.filter(({ command }) => command === 'server_open_authorization_app')).toEqual([
+      { command: 'server_open_authorization_app', args: { domain: RUTH } },
+    ])
+    const banner = await within(hero).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[2].message)
+    expect(banner.parentElement).toBe(hero)
+    expect(isBefore(banner, launch)).toBe(true)
+  })
+
+  it("should be disabled on the server page's status for a server the host would refuse, described by its status", async () => {
+    // Arrange
+    renderBase({
+      invoke: hostWith({ servers: () => Promise.resolve(golden.listedServers) }).invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: `/servers/${LAB}`,
+    })
+    const hero = await screen.findByRole('region', { name: 'Status' })
+
+    // Assert
+    const authorization = within(hero).getByRole('button', { name: 'Authorization' })
+    expect(authorization).toHaveProperty('disabled', true)
+    const describedBy = authorization.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(hero.contains(document.getElementById(describedBy ?? ''))).toBe(true)
+  })
 })
 
 describe('the server page', () => {

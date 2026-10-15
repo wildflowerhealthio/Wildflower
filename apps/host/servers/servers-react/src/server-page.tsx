@@ -8,7 +8,6 @@ import {
   type ItemListItem,
   PageBodyError,
   PageHeader,
-  StatusBadge,
   TextField,
 } from '@wildflowerhealthio/react-tundraish'
 import {
@@ -23,9 +22,7 @@ import {
 import { type DateTime, Match, Option } from 'effect'
 import { type JSX, type ReactNode, useId, useState } from 'react'
 
-import { useActionError } from './action-error.ts'
 import { failureText } from './failure-text.ts'
-import { LaunchButton } from './launch-button.tsx'
 import {
   type ServerHealthError,
   serverHealthQueryOptions,
@@ -36,13 +33,8 @@ import {
   useUpdateServer,
 } from './queries.ts'
 import type { RouterContext, RunHostCommand, RunHttpRequest } from './router-context.ts'
-import { RunPolicyPicker } from './run-policy-picker.tsx'
-import {
-  formatInstant,
-  lastStopText,
-  PLATFORM_STOP_REASON_TEXT,
-  statusSummary,
-} from './server-status-text.ts'
+import { formatInstant, lastStopText, PLATFORM_STOP_REASON_TEXT } from './server-status-text.ts'
+import { StatusHero } from './status-hero.tsx'
 import { useHasPassed } from './use-has-passed.ts'
 import styles from './server-page.module.css'
 
@@ -125,85 +117,6 @@ const certificateErrorText = (
     ),
     Match.exhaustive
   )
-
-/** Where copying the domain to the clipboard stands. */
-type CopyOutcome = 'idle' | 'copied' | 'refused'
-
-/**
- * The top of a server's page: its domain, with Copy; its status, merged from
- * its run state and health; when its run started, while it runs; the
- * run-policy field; the latest failure of Launch; and Launch.
- *
- * @remarks
- * Launch opens the server's launcher, or says why it can't when the status
- * row doesn't (see `LaunchButton`); disabled for what the status shows, it
- * is described by the status row. Its failure shows across the hero, above
- * it, until it starts again. The clipboard needs a focused, secure page and may still
- * refuse; the domain is on screen to copy by hand either way, and the page
- * says so.
- */
-const StatusHero = ({
-  server,
-  runHostCommand,
-}: {
-  readonly server: ListedServer.Type
-  readonly runHostCommand: RunHostCommand
-}): JSX.Element => {
-  const status = statusSummary(server.status)
-  const statusId = useId()
-  const { error, onActionStart, onError } = useActionError()
-  const [copyOutcome, setCopyOutcome] = useState<CopyOutcome>('idle')
-  const copyDomain = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(server.domain)
-      setCopyOutcome('copied')
-    } catch {
-      setCopyOutcome('refused')
-    }
-  }
-  return (
-    <section className={styles['server-page__hero']} aria-label="Status">
-      <div className={styles['server-page__domain-row']}>
-        <h2 className={styles['server-page__domain']} title={server.domain}>
-          {server.domain}
-        </h2>
-        <button
-          type="button"
-          className="button-2 outline"
-          onClick={() => {
-            void copyDomain()
-          }}
-        >
-          {copyOutcome === 'copied' ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      {copyOutcome === 'refused' ? (
-        <p className={`text-body-3 ${styles['server-page__note']}`} role="status">
-          The clipboard refused. Select the domain to copy it by hand.
-        </p>
-      ) : null}
-      <div id={statusId} className={styles['server-page__status-row']}>
-        <StatusBadge tone={status.tone} pulse={status.tone === 'success'}>
-          {status.label}
-        </StatusBadge>
-        {server.status.runState === 'running' ? (
-          <span className={`text-body-3 ${styles['server-page__note']}`}>
-            Since {formatInstant(server.status.runningSince)}
-          </span>
-        ) : null}
-      </div>
-      <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
-      <ErrorBanner error={error} />
-      <LaunchButton
-        server={server}
-        runHostCommand={runHostCommand}
-        statusDescriptionId={statusId}
-        onActionStart={onActionStart}
-        onError={onError}
-      />
-    </section>
-  )
-}
 
 /**
  * What the Connection row says: the host's own check of the server's

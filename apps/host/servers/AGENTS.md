@@ -122,7 +122,7 @@ changing how servers run or what the host notifies about them.
   never starting a server; and
   Edit, which opens the server's page, kept current by the `server-status`
   event too: its domain with Copy, its status badge, when its run started, the
-  run-policy field and Launch, over three tabs in component state. Status holds the
+  run-policy field, and Launch with Authorization under it, each full width, over three tabs in component state. Status holds the
   host's last check of its connection (said to be from before, once the
   tunnel has dropped or been refused since), with its tunnel's connection to
   the relay while a run reports it (a failure once the relay refused the
@@ -161,7 +161,7 @@ changing how servers run or what the host notifies about them.
   the host has added the server.
   Launch and Authorization report their failures, the host's refusal or why
   a wait gave up, through `onError`, and each start through `onActionStart`
-  (`useActionError`): the card, and the page's status for its Launch, shows
+  (`useActionError`): the card, and the page's status, shows
   the latest failure in one banner across it, above the buttons, until either
   starts again. Launch's reasons stay above its own button.
   Launch opens the server's launcher through `server_launch`, signed in as
