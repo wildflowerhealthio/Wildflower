@@ -17,8 +17,9 @@
 //! own sign-in reaches the server's consent card. A consent asked from
 //! another browser or device opens the same way at its page, with `then=back`
 //! ([`consent_sign_in_url`](wildflowerhealthio_servers::consent_sign_in_url)),
-//! once the server is launchable: from the server's page in the base, or from
-//! a tap on its notification on a phone.
+//! once the server is launchable: from the server's page in the base, from a
+//! tap on its notification on a phone, or, on a desktop, which reports no
+//! taps, as its notification posts.
 //!
 //! All open in the in-app browser, [`LaunchBrowser`], which shows one view
 //! at a time: on iOS an open replaces the view an earlier one opened, and on
@@ -170,6 +171,32 @@ pub async fn server_open_notified_consent(
         REFUSE_CONSENT_WHILE_A_VIEW_SHOWS,
     )
     .await
+}
+
+/// Open the newest consent waiting on the server `domain` in the default
+/// browser, as [`server_open_pending_consent`] does, as a new request on it
+/// notifies on the desktop (see `consent_requests`). The outcome is logged,
+/// a refusal included: the request then waits on the server's page.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+pub(crate) async fn open_notified_consent_on_desktop(
+    app: AppHandle,
+    registry: Arc<dyn ServerRegistry>,
+    data_root: std::path::PathBuf,
+    server_units: ServerUnits,
+    domain: String,
+) {
+    let statuses = server_units.statuses();
+    // `open_pending_consent` logs its outcome, and nothing waits on it.
+    let _logged = open_pending_consent(
+        registry,
+        &data_root,
+        &statuses,
+        domain,
+        NativePageLaunchBrowser { app },
+        server_units,
+        REFUSE_CONSENT_WHILE_A_VIEW_SHOWS,
+    )
+    .await;
 }
 
 /// Whether a consent's open is refused while a view the base opened still

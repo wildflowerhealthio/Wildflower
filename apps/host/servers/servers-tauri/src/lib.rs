@@ -18,8 +18,8 @@
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, the per-caller notifications for the
 //!   requests the servers' tunnels relay, and a notification for each new consent
-//!   waiting on a server, bringing the desktop window
-//!   forward with it;
+//!   waiting on a server, which on the desktop opens the request at once in
+//!   the default browser, as the server's page's Open does;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
@@ -127,8 +127,7 @@ pub use launch_commands::{
 pub use server_status::SERVER_STATUS_EVENT;
 pub use server_units::{ServerConfigBuilder, ServerUnits};
 
-/// The webview the servers' events go to and the window brought forward for a
-/// consent request: the base's.
+/// The webview the servers' events go to: the base's.
 pub(crate) const BASE_WEBVIEW_LABEL: &str = "main";
 
 /// How many forwarded-request reports may wait for the request notifications
@@ -232,7 +231,12 @@ pub fn host_servers(
         data_root.to_path_buf(),
     ));
     tauri::async_runtime::spawn(consent_requests::notify_consent_requests(
-        consent_requests::AppConsentRequestNotifier { app: app.clone() },
+        consent_requests::AppConsentRequestNotifier {
+            app: app.clone(),
+            registry: Arc::clone(&registry) as Arc<dyn ServerRegistry>,
+            data_root: data_root.to_path_buf(),
+            server_units: server_units.clone(),
+        },
         runner.subscribe(),
     ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(

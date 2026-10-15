@@ -1,5 +1,5 @@
 import { createMemoryHistory, type RouterHistory } from '@tanstack/react-router'
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import type { ServersRouterContext } from '@wildflowerhealthio/servers-react'
@@ -8,7 +8,6 @@ import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import recorderGolden from '../../recorder/recorder-wire-golden.json' with { type: 'json' }
-import serversGolden from '../../servers/servers-wire-golden.json' with { type: 'json' }
 import { HostRoot } from './host-root.tsx'
 import type { RecorderTransport } from './router-context.ts'
 
@@ -79,32 +78,8 @@ const invoke = (command: string): Promise<unknown> =>
     ? Promise.resolve(HOST_ANSWERS[command])
     : Promise.reject(new Error(`unexpected command ${command}`))
 
-/** A host event listener the test can fire, standing in for Tauri's `listen`. */
-interface FakeHostEvents {
-  readonly listen: ServersRouterContext.ListenToHostEvent
-  readonly emit: (event: string, payload: unknown) => void
-}
-
-const fakeHostEvents = (): FakeHostEvents => {
-  const listeners = new Set<{
-    readonly event: string
-    readonly handler: (event: { readonly payload: unknown }) => void
-  }>()
-  return {
-    listen: (event, handler) => {
-      const listener = { event, handler }
-      listeners.add(listener)
-      return Promise.resolve(() => {
-        listeners.delete(listener)
-      })
-    },
-    emit: (event, payload) => {
-      for (const listener of listeners) {
-        if (listener.event === event) listener.handler({ payload })
-      }
-    },
-  }
-}
+/** A host event listener that hears nothing, standing in for Tauri's `listen`. */
+const listenToNoHostEvent: ServersRouterContext.ListenToHostEvent = () => Promise.resolve(() => {})
 
 /** A Recorder transport that has told the host the page is ready, and the tags it was sent. */
 interface FakeRecorderTransport {
@@ -129,12 +104,10 @@ const readyRecorderTransport = (): FakeRecorderTransport => {
 const renderHost = async ({
   path = '/',
   storage = storageAnswered(),
-  hostEvents = fakeHostEvents(),
   recorderTransport = readyRecorderTransport().transport,
 }: {
   readonly path?: string
   readonly storage?: ConsentStorage
-  readonly hostEvents?: FakeHostEvents
   readonly recorderTransport?: Promise<RecorderTransport>
 } = {}): Promise<RouterHistory> => {
   const history = createMemoryHistory({ initialEntries: [path] })
@@ -142,7 +115,7 @@ const renderHost = async ({
     <HostRoot
       base={{
         invoke,
-        listen: hostEvents.listen,
+        listen: listenToNoHostEvent,
         listenToNotificationTaps: () => Promise.reject(new Error('no notification taps here')),
         backgroundServiceStartConfig: { serviceLabel: 'Servers', foregroundServiceType: 'none' },
         defaultLauncherUrl: 'https://wildflowerhealth.io/launcher/',
@@ -258,41 +231,6 @@ describe('HostRoot', () => {
     expect(screen.getByLabelText<HTMLInputElement>('URL').value).toBe('https://example.com')
     expect(screen.getByRole('button', { name: 'Stop & Save' })).toBeDefined()
     expect(recorder.sentTags).toEqual(['Open'])
-  })
-
-  it("should navigate to a server's page when a consent comes to wait first on it", async () => {
-    // Arrange
-    const hostEvents = fakeHostEvents()
-    const history = await renderHost({ path: '/recorder', hostEvents })
-    await screen.findByRole('heading', { name: 'Recorder' })
-    const { runningAndReachable, runningWithAPendingConsent } = serversGolden.serverStatuses
-
-    // Act — a status with nothing waiting leaves the Recorder showing.
-    act(() => {
-      hostEvents.emit('server-status', runningAndReachable)
-    })
-
-    // Assert
-    expect(history.location.pathname).toBe('/recorder')
-
-    // Act
-    act(() => {
-      hostEvents.emit('server-status', runningWithAPendingConsent)
-    })
-
-    // Assert
-    await waitFor(() => {
-      expect(history.location.pathname).toBe(`/servers/${runningWithAPendingConsent.domain}`)
-    })
-
-    // Act — the same request again, once the user has moved on, doesn't.
-    await userEvent.setup().click(linkOf('Recorder'))
-    act(() => {
-      hostEvents.emit('server-status', runningWithAPendingConsent)
-    })
-
-    // Assert
-    expect(history.location.pathname).toBe('/recorder')
   })
 
   it('should say so on the Recorder page when the recorder cannot connect, and still show the base', async () => {

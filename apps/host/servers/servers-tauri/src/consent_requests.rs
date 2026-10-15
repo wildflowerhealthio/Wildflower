@@ -1,35 +1,45 @@
-//! Notifying each new consent waiting on the servers: a
-//! notification for each, "‹client› wants access to ‹domain›", and on the
-//! desktop the base's window brought forward, so the server's page, where its
-//! pending request opens, can be reached at once.
+//! Notifying each new consent waiting on the servers: a notification for
+//! each, "‹client› wants access to ‹domain›", and on the desktop the request
+//! opened at once in the default browser, since a desktop can't click the
+//! notification.
 
-use tauri::{AppHandle, Runtime};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use tauri::AppHandle;
 use tauri_plugin_log::log;
 use tokio::sync::watch;
-use wildflowerhealthio_servers::{ConsentNotificationCoalescer, ConsentRequest, ServerDetail};
+use wildflowerhealthio_servers::{
+    ConsentNotificationCoalescer, ConsentRequest, ServerDetail, ServerRegistry,
+};
 use wildflowerhealthio_tauri_unit_runner::UnitStatuses;
 
 use crate::notifications::post_notification;
-use crate::BASE_WEBVIEW_LABEL;
+use crate::ServerUnits;
 
 /// Where a consent request is announced: in the app, a posted notification
-/// and the desktop window brought forward; in the tests, a record of the
+/// and, on the desktop, the request opened; in the tests, a record of the
 /// requests announced.
 pub(crate) trait ConsentRequestNotifier: Send + 'static {
     /// Announce `request`.
     fn notify(&self, request: &ConsentRequest);
 }
 
-/// The app's [`ConsentRequestNotifier`]: the notification plugin, and the
-/// base's window.
-pub(crate) struct AppConsentRequestNotifier<R: Runtime> {
-    pub(crate) app: AppHandle<R>,
+/// The app's [`ConsentRequestNotifier`]: the notification plugin, and on the
+/// desktop the default browser, which opens the request as the server's
+/// page's Open does.
+pub(crate) struct AppConsentRequestNotifier {
+    pub(crate) app: AppHandle,
+    pub(crate) registry: Arc<dyn ServerRegistry>,
+    /// The directory holding `servers.json` and each server's folder.
+    pub(crate) data_root: PathBuf,
+    pub(crate) server_units: ServerUnits,
 }
 
-impl<R: Runtime> ConsentRequestNotifier for AppConsentRequestNotifier<R> {
+impl ConsentRequestNotifier for AppConsentRequestNotifier {
     fn notify(&self, request: &ConsentRequest) {
         post_notification(&self.app, &request.notification());
-        raise_main_window(&self.app);
+        open_on_desktop(self, request);
     }
 }
 
@@ -56,36 +66,27 @@ pub(crate) async fn notify_consent_requests(
     }
 }
 
-/// Bring the base's window to the front, so the server's page, whose pending
-/// request opens the consent, is a click away: an app on another device, or
-/// one launched from the base, is waiting on it. A minimised window is
-/// restored first.
+/// Open `request` in the default browser, signed in as the Owner, as the
+/// server's page's Open does: a desktop can't click a notification
+/// (`tauri-plugin-notification` reports no taps there), so the request opens
+/// as it notifies. A server that can't open it now, as one not yet launchable,
+/// leaves it at the notification and the server's page; the open logs why.
 ///
-/// Desktop only: iOS doesn't let an app take the foreground, and Android
-/// surfaces the app differently; there a tap on the notification opens the
-/// consent. (`cfg(desktop)` is set only for the app crate, by `tauri-build`,
-/// so this gate names the mobile targets.)
+/// Desktop only: on a phone a tap on the notification opens the request.
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn raise_main_window<R: Runtime>(app: &AppHandle<R>) {
-    use tauri::Manager;
-
-    let Some(window) = app.get_webview_window(BASE_WEBVIEW_LABEL) else {
-        log::warn!("[servers] no '{BASE_WEBVIEW_LABEL}' window to bring forward for a consent");
-        return;
-    };
-    if matches!(window.is_minimized(), Ok(true)) {
-        if let Err(error) = window.unminimize() {
-            log::warn!("[servers] restoring the window for a consent failed: {error}");
-        }
-    }
-    if let Err(error) = window.set_focus() {
-        log::warn!("[servers] focusing the window for a consent failed: {error}");
-    }
+fn open_on_desktop(notifier: &AppConsentRequestNotifier, request: &ConsentRequest) {
+    tauri::async_runtime::spawn(crate::launch_commands::open_notified_consent_on_desktop(
+        notifier.app.clone(),
+        Arc::clone(&notifier.registry),
+        notifier.data_root.clone(),
+        notifier.server_units.clone(),
+        request.domain.clone(),
+    ));
 }
 
-/// Mobile builds leave the window where it is: see the desktop variant.
+/// Mobile builds open nothing: see the desktop variant.
 #[cfg(any(target_os = "ios", target_os = "android"))]
-fn raise_main_window<R: Runtime>(_app: &AppHandle<R>) {}
+fn open_on_desktop(_notifier: &AppConsentRequestNotifier, _request: &ConsentRequest) {}
 
 #[cfg(test)]
 mod tests {

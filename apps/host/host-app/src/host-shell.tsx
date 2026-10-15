@@ -1,14 +1,6 @@
-import {
-  Link,
-  Outlet,
-  useLoaderData,
-  useNavigate,
-  useRouteContext,
-  useRouterState,
-} from '@tanstack/react-router'
-import { PendingConsent, ServerStatus } from '@wildflowerhealthio/servers-core-js'
-import { Either, Option } from 'effect'
-import { useEffect, useEffectEvent, useState, type JSX } from 'react'
+import { Link, Outlet, useLoaderData, useRouterState } from '@tanstack/react-router'
+import { Option } from 'effect'
+import { useState, type JSX } from 'react'
 
 import { RecorderSession } from './recorder-session.tsx'
 import styles from './host-shell.module.css'
@@ -43,49 +35,6 @@ const useServersPath = (basePathname: Option.Option<string>): string => {
 }
 
 /**
- * Navigate to a server's page whenever a consent comes to wait first on it,
- * as the server's `server-status` event says, so its pending request is on
- * screen to open: on the desktop the host brings the window forward with it.
- * A request already shown doesn't navigate again.
- */
-const useServerPageForPendingConsents = (): void => {
-  const listen = useRouteContext({
-    from: '__root__',
-    select: (context) => context.listenToHostEvent,
-  })
-  const navigate = useNavigate()
-  const showServerPage = useEffectEvent((domain: string) => {
-    void navigate({ to: '/servers/$domain', params: { domain } })
-  })
-  useEffect(() => {
-    // The request each server's page was last shown for.
-    const shown = new Map<string, string>()
-    let unmounted = false
-    let stopListening: (() => void) | undefined
-    void listen(ServerStatus.EVENT, ({ payload }) => {
-      Either.map(ServerStatus.decodeEvent(payload), (status) => {
-        const pendingConsent = ServerStatus.pendingConsentOf(status)
-        if (Option.isNone(pendingConsent)) return
-        const request = PendingConsent.keyOf(pendingConsent.value)
-        if (shown.get(status.domain) === request) return
-        shown.set(status.domain, request)
-        showServerPage(status.domain)
-      })
-    }).then((stop) => {
-      if (unmounted) {
-        stop()
-        return
-      }
-      stopListening = stop
-    })
-    return () => {
-      unmounted = true
-      stopListening?.()
-    }
-  }, [listen])
-}
-
-/**
  * The host's layout, the root route's component: a bar of two links,
  * Servers (the base's routes) and Recorder (`/recorder`), over the matched
  * route, or the not-found page.
@@ -98,16 +47,11 @@ const useServerPageForPendingConsents = (): void => {
  *
  * **A recording outlives the Recorder route.** `RecorderSession` runs it
  * around every route, so it keeps going while the base shows.
- *
- * **A consent navigates to its server's page.** When a server's status first
- * carries a consent waiting on it, the shell navigates to the server's page,
- * whose pending request opens it.
  */
 function HostShell(): JSX.Element {
   const recorderConnection = useLoaderData({ from: '__root__' })
   const basePathname = useBasePathname()
   const serversPath = useServersPath(basePathname)
-  useServerPageForPendingConsents()
   const linkClassName = `text-label-2 ${styles['host-shell__link']}`
   const activeProps = { className: styles['host-shell__link--current'] }
   return (

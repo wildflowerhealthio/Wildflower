@@ -408,10 +408,11 @@ The Rust side recomputes it (`newest_pending_consent`) after every transition
 that could change it — either flow's insert, approve, or deny — and publishes
 it on a `watch` channel. The Tauri host carries each server's newest pending
 consent in the server's status, posts a notification ("‹client› wants access
-to ‹domain›") once for each request it hasn't notified for, and on the desktop
-brings its window forward. A request that comes back once a newer one is
+to ‹domain›") once for each request it hasn't notified for, and on the desktop,
+where a notification can't be clicked, opens the request at once. A request that comes back once a newer one is
 decided doesn't notify again. The base's server page shows it as a pending
-request; Open, or a tap on the notification on a phone, opens its page in a
+request; Open, a tap on the notification on a phone, or the notification
+itself on the desktop opens its page in a
 browser signed in as the Owner, with `then=back` (see `apps/host/servers`'s
 [Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
 

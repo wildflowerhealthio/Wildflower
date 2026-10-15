@@ -55,8 +55,8 @@ changing how servers run or what the host notifies about them.
 - **`servers-tauri`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
   `ServerUnits::push`, emits the `server-status` event, posts the stop,
-  request and consent notifications, bringing the desktop window forward with
-  each consent's (`raise_main_window`), and manages the commands'
+  request and consent notifications, opening each consent's request in the
+  default browser on the desktop, and manages the commands'
   `ServersState`. The base's Tauri commands: `servers_list`, `server_add`,
   `server_set_credentials`, `server_set_run_policy`, `server_update` and
   `server_remove`, each writing the registry and then pushing what it wrote;
@@ -485,8 +485,10 @@ changing how servers run or what the host notifies about them.
   brings back the one before. `ConsentNotificationCoalescer` picks, from
   `UnitRunner`'s statuses, each server whose newest request is one it hasn't
   notified for, and the host posts "‹client› wants access to ‹domain›" under
-  `consent-request:<domain>`, replacing the server's last; on the desktop it
-  brings the window forward too. A request already notified for, as when it
+  `consent-request:<domain>`, replacing the server's last. A desktop can't
+  click a notification, so there the host also opens the request at once in
+  the default browser, as the server's page's Open does; a server that can't
+  open it then leaves it at the notification and its page. A request already notified for, as when it
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run
   reports nothing pending, and keeps at most 32 meanwhile. The golden file
