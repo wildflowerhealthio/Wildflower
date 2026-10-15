@@ -45,8 +45,18 @@ pub struct AuthorizationServerConfig {
     pub launcher_base: LauncherBase,
 
     /// The hosted Wildflower Authorization app (see [`AuthorizationAppBase`]):
-    /// besides the launcher and this server's own paths, the one place
-    /// `/oauth/sign-in` may send a browser next. The live Tauri app sources it
-    /// from `tauri-shared-config.json`.
+    /// besides the launcher, this server's own paths and the pages below, a
+    /// place `/oauth/sign-in` may send a browser next. The live Tauri app
+    /// sources it from `tauri-shared-config.json`.
     pub authorization_app_base: AuthorizationAppBase,
+
+    /// The page the host opens this server's launches in, its own launcher,
+    /// which a browser signed in at `/oauth/sign-in` may be sent on to. The
+    /// live Tauri app sources it from the server's record.
+    pub launcher_url: Url,
+
+    /// The page the host opens this server's Authorization app at, which a
+    /// browser signed in at `/oauth/sign-in` may be sent on to. The live Tauri
+    /// app sources it from the server's record.
+    pub authorization_url: Url,
 }

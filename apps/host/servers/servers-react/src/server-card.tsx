@@ -3,6 +3,7 @@ import { type ListedServer, ServerStatus } from '@wildflowerhealthio/servers-cor
 import { Option } from 'effect'
 import { type JSX, useId } from 'react'
 
+import { AuthorizationButton } from './authorization-button.tsx'
 import { LaunchButton } from './launch-button.tsx'
 import type { RunHostCommand } from './router-context.ts'
 import { RunPolicyPicker } from './run-policy-picker.tsx'
@@ -14,15 +15,17 @@ import styles from './server-card.module.css'
  * run-policy field that says when it runs, outlined in its status's tone,
  * over the native picker that changes it; the host's refusal of the latest
  * change; what its status says beyond running or stopped; why its latest
- * run stopped; and Launch and Edit.
+ * run stopped; and Launch, Authorization and Edit.
  *
  * @remarks
  * The picker is disabled while a change is pending. Launch opens the
  * server's launcher, or says why it can't when the status note or the
  * latest run's stop doesn't (see `LaunchButton`); disabled for what the
  * status shows, it is described by whichever of the two is on the card,
- * never both. Edit opens the server's page, `/servers/$domain`, where it is
- * removed.
+ * never both. Authorization opens the server's Wildflower Authorization app
+ * (see `AuthorizationButton`), described the same way while disabled. Both
+ * open signed in as the server's Owner. Edit opens the server's page,
+ * `/servers/$domain`, where it is removed.
  */
 const ServerCard = ({
   server,
@@ -70,6 +73,12 @@ const ServerCard = ({
       )}
       <div className={styles['server-card__actions']}>
         <LaunchButton
+          server={server}
+          runHostCommand={runHostCommand}
+          className={styles['server-card__action']}
+          statusDescriptionId={statusId}
+        />
+        <AuthorizationButton
           server={server}
           runHostCommand={runHostCommand}
           className={styles['server-card__action']}

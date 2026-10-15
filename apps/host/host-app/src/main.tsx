@@ -14,6 +14,7 @@ import { createRoot } from 'react-dom/client'
 import {
   background_service_foreground_type as backgroundServiceForegroundType,
   background_service_label as backgroundServiceLabel,
+  authorization_app_base_url as authorizationAppBaseUrl,
   launcher_base_url as launcherBaseUrl,
 } from '../tauri-shared-config.json'
 import { HostRoot } from './host-root.tsx'
@@ -42,10 +43,10 @@ if (rootElement === null) throw new Error('index.html has no #root element')
 // The base's telemetry consent dialog first, then one router, over the
 // webview's history, with the Servers | Recorder bar over the base's screens,
 // which reach the host only through Tauri commands and events, and the
-// Recorder. The launcher the host gives a new server
-// is the published launcher, `launcher_base_url` from the same
-// `tauri-shared-config.json` in every build, which the server page offers as
-// Reset to default.
+// Recorder. The launcher and Authorization app the host gives a new server
+// are the published ones, `launcher_base_url` and `authorization_app_base_url`
+// from the same `tauri-shared-config.json` in every build, which the server
+// page offers as Reset to default.
 createRoot(rootElement).render(
   <StrictMode>
     <HostRoot
@@ -54,6 +55,7 @@ createRoot(rootElement).render(
         listen,
         backgroundServiceStartConfig,
         defaultLauncherUrl: launcherBaseUrl,
+        defaultAuthorizationUrl: authorizationAppBaseUrl,
         telemetry: {
           dsn: import.meta.env.VITE_SENTRY_DSN_HOST_APP ?? '',
           app: 'host-app',

@@ -14,8 +14,8 @@ use crate::domain::{CertificateAuthority, RelayKind, ServerDetail, ServerRecord,
 /// certificate's state.
 ///
 /// `Serialize` writes camelCase
-/// `{domain, relay, tunnelName, launcherUrl, certificateAuthority,
-/// runPolicy, status, certificate}`, `status` being a [`ServerStatus`] as the
+/// `{domain, relay, tunnelName, launcherUrl, authorizationUrl,
+/// certificateAuthority, runPolicy, status, certificate}`, `status` being a [`ServerStatus`] as the
 /// `server-status` event carries it, and `certificate` the status's
 /// certificate state, written as the status writes it. Neither the token nor
 /// the relay's dial settings are written.
@@ -74,6 +74,7 @@ struct ListedServerWire<'a> {
     relay: &'a RelayKind,
     tunnel_name: &'a str,
     launcher_url: &'a str,
+    authorization_url: &'a str,
     certificate_authority: CertificateAuthority,
     run_policy: RunPolicy,
     status: ServerStatusWire<'a>,
@@ -88,6 +89,7 @@ impl Serialize for ListedServer {
             relay: &self.record.relay,
             tunnel_name: self.record.tunnel_name.as_str(),
             launcher_url: self.record.launcher_url.as_str(),
+            authorization_url: self.record.authorization_url.as_str(),
             certificate_authority: self.record.certificate_authority,
             run_policy: self.record.run_policy,
             status: ServerStatusWire::of(&status.domain, &status.unit_status, &status.certificate),
@@ -108,7 +110,7 @@ mod tests {
     use wildflowerhealthio_wildflower_server::CertificateStatus;
 
     use super::*;
-    use crate::domain::fixtures::launcher_url;
+    use crate::domain::fixtures::{authorization_url, launcher_url};
     use crate::domain::server_status::tests::{
         golden, issued_certificate, running_and_reachable, stopped_with_an_error, LAB, RUTH,
     };
@@ -151,6 +153,7 @@ mod tests {
                 domain: relay_domain.to_owned(),
             },
             launcher_url: launcher_url(),
+            authorization_url: authorization_url(),
             certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::Off,
         }
@@ -173,6 +176,7 @@ mod tests {
             },
             ServerRecord {
                 launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
+                authorization_url: Url::parse("http://localhost:5300/authorization/").unwrap(),
                 certificate_authority: CertificateAuthority::LetsEncryptStaging,
                 ..record(RelayKind::Rathole, "lab", "rathole.example.com")
             },

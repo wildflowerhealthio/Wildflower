@@ -5,7 +5,7 @@ use tokio::sync::watch;
 use url::Url;
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AuthorizationServerConfig, HostConsentDecider, LaunchContextMinter,
-    PendingConsentHead, SqliteGrantStore,
+    PendingConsentHead, SameDeviceSignInCodeMinter, SqliteGrantStore,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -18,6 +18,7 @@ pub(crate) const DOMAIN: &str = "ruth.relay.example.com";
 pub(crate) struct TestAuthorizationServer {
     pub(crate) consent_decider: HostConsentDecider,
     pub(crate) launch_context_minter: LaunchContextMinter,
+    pub(crate) same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     pub(crate) store: SqliteGrantStore,
     _pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
     database_dir: tempfile::TempDir,
@@ -64,6 +65,8 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
                 "https://authorization.test/authorization/",
             )
             .unwrap(),
+            launcher_url: Url::parse("https://launcher.test/launcher/").unwrap(),
+            authorization_url: Url::parse("https://authorization.test/authorization/").unwrap(),
         },
         pending_consent_tx,
     )
@@ -71,6 +74,7 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
     TestAuthorizationServer {
         consent_decider: HostConsentDecider::new(authorization_server.state),
         launch_context_minter: authorization_server.launch_context_minter,
+        same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
         store: SqliteGrantStore::new(pool).unwrap(),
         _pending_consent_rx: pending_consent_rx,
         database_dir,

@@ -1,19 +1,30 @@
-//! The launch command: the base opens a server's launcher, an app, as a SMART
-//! EHR launch against the server. The launcher's URL comes from the server's
-//! record; the server must be launchable now, by the status the base
-//! receives ([`ensure_launchable`](wildflowerhealthio_servers::ensure_launchable)); its run's
-//! authorization server mints a launch for any client on a blocking thread
-//! ([`ServerLaunchMinter`]); and the launcher opens at
-//! [`launch_url`](wildflowerhealthio_servers::launch_url) in the in-app
-//! browser, [`LaunchBrowser`], which shows one view at a time: on iOS a launch
-//! replaces the view an earlier one opened, and on Android a launch that
-//! arrives while an earlier one's view is still opening joins that view. While
-//! a launch's view is open it counts toward the `WhileOpen` run policy
-//! ([`LaunchPresence`]), until the browser reports it closed; on Android, a
-//! background session keeps the app alive under it until the browser reports
-//! it keeps the app alive itself. The outcome is logged by domain.
+//! The launch commands: the base opens a server's launcher, an app, as a SMART
+//! EHR launch against the server, or the server's Wildflower Authorization
+//! app, each signed in as the Owner. The launcher's and the Authorization
+//! app's URLs come from the server's record; the server must be launchable
+//! now, by the status the base receives
+//! ([`ensure_launchable`](wildflowerhealthio_servers::ensure_launchable)). For
+//! a launch, its run's authorization server mints a launch for any client on
+//! a blocking thread ([`ServerLaunchMinter`]), for the launcher to open at
+//! [`launch_url`](wildflowerhealthio_servers::launch_url); the Authorization
+//! app opens at
+//! [`authorization_app_url`](wildflowerhealthio_servers::authorization_app_url).
+//! Either opens through the server's `/oauth/sign-in`, at
+//! [`sign_in_url`](wildflowerhealthio_servers::sign_in_url) with a one-time
+//! code the same authorization server mints ([`ServerSignInCodeMinter`]),
+//! which signs the browser in as the Owner and sends it on, so the launch's
+//! own sign-in reaches the server's consent card.
 //!
-//! Launching never changes the server's run policy: a server that isn't
+//! Both open in the in-app browser, [`LaunchBrowser`], which shows one view
+//! at a time: on iOS an open replaces the view an earlier one opened, and on
+//! Android an open that arrives while an earlier one's view is still opening
+//! joins that view. While a view is open it counts toward the `WhileOpen` run
+//! policy ([`LaunchPresence`]), until the browser reports it closed; on
+//! Android, a background session keeps the app alive under it until the
+//! browser reports it keeps the app alive itself. Each such view is a launch
+//! view, whichever page it opened. The outcome is logged by domain.
+//!
+//! Opening either never changes the server's run policy: a server that isn't
 //! launchable answers at once, and the base waits for it to become so.
 //! Every failure answers as `{kind, message}`, a [`LaunchError`].
 
@@ -29,8 +40,8 @@ use tauri_plugin_native_page_browser::{BrowserEvent, NativePageBrowserExt, OpenR
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
-    LaunchError, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry,
-    ServerStatus,
+    LaunchError, ListedServer, RegistryError, ServerDetail, ServerLaunchMinter, ServerRecord,
+    ServerRegistry, ServerSignInCodeMinter,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
@@ -38,9 +49,9 @@ use crate::server_status::certificate_state;
 use crate::{ServerUnits, ServersState};
 
 /// Open the server `domain`'s launcher as a SMART EHR launch against it, with
-/// a launch minted for any client, in the in-app browser. Invoked as
-/// `invoke('server_launch', { domain })`; answers with nothing once the
-/// browser is opening it.
+/// a launch minted for any client, in the in-app browser, signed in as the
+/// Owner first. Invoked as `invoke('server_launch', { domain })`; answers with
+/// nothing once the browser is opening it.
 ///
 /// # Errors
 ///
@@ -63,6 +74,32 @@ pub async fn server_launch(
     .await
 }
 
+/// Open the server `domain`'s Wildflower Authorization app, pointed at the
+/// server, in the in-app browser, signed in as the Owner first. Invoked as
+/// `invoke('server_open_authorization_app', { domain })`; answers with
+/// nothing once the browser is opening it.
+///
+/// # Errors
+///
+/// The [`LaunchError`] that stopped it: the server isn't registered, isn't
+/// launchable now, or the in-app browser failed.
+#[tauri::command]
+pub async fn server_open_authorization_app(
+    app: AppHandle,
+    servers: tauri::State<'_, ServersState>,
+    domain: String,
+) -> Result<(), LaunchError> {
+    open_authorization_app(
+        Arc::clone(&servers.registry),
+        &servers.data_root,
+        &servers.server_units.statuses(),
+        domain,
+        NativePageLaunchBrowser { app },
+        servers.server_units.clone(),
+    )
+    .await
+}
+
 /// Hears a launch's in-app browser view's events: that its browser keeps the
 /// app alive under it (Android), and that it is gone.
 pub(crate) type LaunchViewEvents = Box<dyn Fn(BrowserEvent) + Send + Sync>;
@@ -70,22 +107,22 @@ pub(crate) type LaunchViewEvents = Box<dyn Fn(BrowserEvent) + Send + Sync>;
 /// Where launches open: in the app, the native-page browser plugin's in-app
 /// browser; in the tests, a record of what was opened.
 pub(crate) trait LaunchBrowser: Send + Sync + 'static {
-    /// Open `launch_url` in a view of the in-app browser. A view already
-    /// showing is replaced on iOS; on Android, where only a view still opening
-    /// can show while the app is in front, the open joins that view instead of
-    /// opening `launch_url`. `view_events` hears [`BrowserEvent::Closed`] once
-    /// the view is gone: the user closed it, or, on iOS, a later open replaced
-    /// it; and, on Android, [`BrowserEvent::KeptAlive`] before that when the
-    /// view's browser keeps the app alive under it. It hears nothing on a
-    /// desktop, whose view is a default-browser tab, nor after an error.
+    /// Open `url` in a view of the in-app browser. A view already showing is
+    /// replaced on iOS; on Android, where only a view still opening can show
+    /// while the app is in front, the open joins that view instead of opening
+    /// `url`. `view_events` hears [`BrowserEvent::Closed`] once the view is
+    /// gone: the user closed it, or, on iOS, a later open replaced it; and,
+    /// on Android, [`BrowserEvent::KeptAlive`] before that when the view's
+    /// browser keeps the app alive under it. It hears nothing on a desktop,
+    /// whose view is a default-browser tab, nor after an error.
     ///
     /// # Errors
     ///
-    /// [`LaunchError::OpeningLauncher`] when the view couldn't be opened,
+    /// [`LaunchError::OpeningBrowser`] when the view couldn't be opened,
     /// including an Android open refused while the app isn't in front.
     fn open(
         &self,
-        launch_url: Url,
+        url: Url,
         view_events: LaunchViewEvents,
     ) -> impl Future<Output = Result<(), LaunchError>> + Send;
 }
@@ -116,10 +153,10 @@ impl LaunchPresence for ServerUnits {
     }
 }
 
-/// Open the server `domain`'s launcher in `launch_browser`, once the server's
-/// status in `statuses`, with its certificate state (its run's, or what its
-/// cache in `data_root` says), is launchable, and tell `launch_presence` its
-/// view is open until the browser reports it closed.
+/// Open the server `domain`'s launcher in `launch_browser`, signed in as the
+/// Owner, once the server's status in `statuses`, with its certificate state
+/// (its run's, or what its cache in `data_root` says), is launchable, and tell
+/// `launch_presence` its view is open until the browser reports it closed.
 async fn launch(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,
@@ -129,18 +166,9 @@ async fn launch(
     launch_presence: impl LaunchPresence,
 ) -> Result<(), LaunchError> {
     let result = async {
-        let record = registered_record(registry, domain.clone()).await?;
-        // A server the unit runner doesn't hold has never run.
-        let unit_status = statuses
-            .get(&UnitId::new(&domain))
-            .cloned()
-            .unwrap_or_else(UnitStatus::never_run);
-        let status = ServerStatus {
-            domain: domain.clone(),
-            certificate: certificate_state(data_root, &record, &unit_status).await,
-            unit_status,
-        };
-        let launch_minter = ServerLaunchMinter::of_launchable_server(&status)?;
+        let server = listed_server(registry, data_root, statuses, domain.clone()).await?;
+        let launch_minter = ServerLaunchMinter::of_launchable_server(&server.status)?;
+        let sign_in_code_minter = ServerSignInCodeMinter::of_launchable_server(&server.status)?;
         let launch = tokio::task::spawn_blocking(move || launch_minter.mint())
             .await
             .map_err(|error| {
@@ -149,12 +177,18 @@ async fn launch(
                     error,
                 ))
             })??;
+        let public_origin = server.record.public_origin();
         let launch_url = wildflowerhealthio_servers::launch_url(
-            &record.launcher_url,
-            &record.public_origin(),
+            &server.record.launcher_url,
+            &public_origin,
             &launch,
         );
-        open_launch_view(&launch_browser, launch_presence, launch_url).await
+        let sign_in_url = wildflowerhealthio_servers::sign_in_url(
+            &public_origin,
+            &sign_in_code_minter.mint(),
+            &launch_url,
+        );
+        open_launch_view(&launch_browser, launch_presence, sign_in_url).await
     }
     .await;
     match &result {
@@ -164,14 +198,70 @@ async fn launch(
     result
 }
 
-/// Open `launch_url` in a new view of `launch_browser`, open in
-/// `launch_presence` from before the open until the browser reports the view
-/// closed, or the open fails, and kept alive there once the browser reports
-/// that.
+/// Open the server `domain`'s Authorization app in `launch_browser`, signed
+/// in as the Owner, once the server's status in `statuses`, with its
+/// certificate state (its run's, or what its cache in `data_root` says), is
+/// launchable, and tell `launch_presence` its view is open until the browser
+/// reports it closed, as a launch does.
+async fn open_authorization_app(
+    registry: Arc<dyn ServerRegistry>,
+    data_root: &Path,
+    statuses: &UnitStatuses<ServerDetail>,
+    domain: String,
+    launch_browser: impl LaunchBrowser,
+    launch_presence: impl LaunchPresence,
+) -> Result<(), LaunchError> {
+    let result = async {
+        let server = listed_server(registry, data_root, statuses, domain.clone()).await?;
+        let sign_in_code_minter = ServerSignInCodeMinter::of_launchable_server(&server.status)?;
+        let public_origin = server.record.public_origin();
+        let authorization_app_url = wildflowerhealthio_servers::authorization_app_url(
+            &server.record.authorization_url,
+            &public_origin,
+        );
+        let sign_in_url = wildflowerhealthio_servers::sign_in_url(
+            &public_origin,
+            &sign_in_code_minter.mint(),
+            &authorization_app_url,
+        );
+        open_launch_view(&launch_browser, launch_presence, sign_in_url).await
+    }
+    .await;
+    match &result {
+        Ok(()) => log::info!("[servers] opened the Authorization app of {domain}"),
+        Err(error) => {
+            log::warn!("[servers] opening the Authorization app of {domain} failed: {error}");
+        }
+    }
+    result
+}
+
+/// The server `domain` as `servers.json` holds it, with its status in
+/// `statuses` and its certificate state: its run's, or what its cache in
+/// `data_root` says.
+async fn listed_server(
+    registry: Arc<dyn ServerRegistry>,
+    data_root: &Path,
+    statuses: &UnitStatuses<ServerDetail>,
+    domain: String,
+) -> Result<ListedServer, LaunchError> {
+    let record = registered_record(registry, domain.clone()).await?;
+    // A server the unit runner doesn't hold has never run.
+    let unit_status = statuses
+        .get(&UnitId::new(&domain))
+        .cloned()
+        .unwrap_or_else(UnitStatus::never_run);
+    let certificate = certificate_state(data_root, &record, &unit_status).await;
+    Ok(ListedServer::new(record, unit_status, certificate))
+}
+
+/// Open `url` in a new view of `launch_browser`, open in `launch_presence`
+/// from before the open until the browser reports the view closed, or the
+/// open fails, and kept alive there once the browser reports that.
 async fn open_launch_view(
     launch_browser: &impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
-    launch_url: Url,
+    url: Url,
 ) -> Result<(), LaunchError> {
     let view = next_launch_view();
     // Before the open, so a close reported as the view opens finds it, and
@@ -185,7 +275,7 @@ async fn open_launch_view(
             BrowserEvent::Closed => launch_presence.view_closed(&view),
         })
     };
-    let opened = launch_browser.open(launch_url, view_events).await;
+    let opened = launch_browser.open(url, view_events).await;
     if opened.is_err() {
         launch_presence.view_closed(&view);
     }
@@ -193,7 +283,7 @@ async fn open_launch_view(
 }
 
 /// A new launch view's id, `launch-<n>`: one per open, so a view a later
-/// launch replaces (iOS), whose close is reported after the new view opened,
+/// open replaces (iOS), whose close is reported after the new view opened,
 /// closes under its own.
 fn next_launch_view() -> String {
     static LAUNCH_VIEWS_OPENED: AtomicU64 = AtomicU64::new(0);
@@ -211,23 +301,20 @@ async fn registered_record(
 ) -> Result<ServerRecord, LaunchError> {
     tokio::task::spawn_blocking(move || registry.read(&domain))
         .await
-        .map_err(|error| RegistryError::storage("reading a server's launcher", error))?
+        .map_err(|error| RegistryError::storage("reading a server's record", error))?
         .map_err(LaunchError::from)
 }
 
-/// The app's in-app browser: the native-page browser plugin, which a launch
-/// can't script. On iOS it is an `SFSafariViewController`, on Android a Custom
-/// Tab, each presented as a native page, and on a desktop the default browser.
+/// The app's in-app browser: the native-page browser plugin, which the page
+/// it opens can't script. On iOS it is an `SFSafariViewController`, on
+/// Android a Custom Tab, each presented as a native page, and on a desktop
+/// the default browser.
 struct NativePageLaunchBrowser {
     app: AppHandle,
 }
 
 impl LaunchBrowser for NativePageLaunchBrowser {
-    async fn open(
-        &self,
-        launch_url: Url,
-        view_events: LaunchViewEvents,
-    ) -> Result<(), LaunchError> {
+    async fn open(&self, url: Url, view_events: LaunchViewEvents) -> Result<(), LaunchError> {
         let events = Channel::new(move |body| {
             view_events(body.deserialize()?);
             Ok(())
@@ -235,11 +322,11 @@ impl LaunchBrowser for NativePageLaunchBrowser {
         self.app
             .native_page_browser()
             .open(OpenRequest {
-                url: launch_url.to_string(),
+                url: url.to_string(),
                 events,
             })
             .await
-            .map_err(|error| LaunchError::OpeningLauncher {
+            .map_err(|error| LaunchError::OpeningBrowser {
                 reason: error.to_string(),
             })
     }
@@ -265,6 +352,7 @@ mod tests {
     };
 
     const LAUNCHER: &str = "https://launcher.example/app?theme=dark";
+    const AUTHORIZATION: &str = "https://authorization.example/app/?theme=dark";
 
     /// What an [`OneViewBrowser`] does with an open while a view shows.
     #[derive(Clone, Copy)]
@@ -283,7 +371,7 @@ mod tests {
         views: Arc<Mutex<BrowserViews>>,
     }
 
-    /// Each launch URL a [`OneViewBrowser`] opened, and how its showing view
+    /// Each URL a [`OneViewBrowser`] opened, and how its showing view
     /// reports its events: once for each open that opened or joined it, none
     /// while no view shows.
     #[derive(Default)]
@@ -302,7 +390,7 @@ mod tests {
             }
         }
 
-        /// Each launch URL opened, in order.
+        /// Each URL opened, in order.
         fn opened(&self) -> Vec<Url> {
             self.views.lock().unwrap().opened.clone()
         }
@@ -327,11 +415,7 @@ mod tests {
     }
 
     impl LaunchBrowser for OneViewBrowser {
-        async fn open(
-            &self,
-            launch_url: Url,
-            view_events: LaunchViewEvents,
-        ) -> Result<(), LaunchError> {
+        async fn open(&self, url: Url, view_events: LaunchViewEvents) -> Result<(), LaunchError> {
             let replaced = {
                 let mut views = self.views.lock().unwrap();
                 if !views.showing.is_empty() {
@@ -340,7 +424,7 @@ mod tests {
                         return Ok(());
                     }
                 }
-                views.opened.push(launch_url);
+                views.opened.push(url);
                 std::mem::replace(&mut views.showing, vec![view_events])
             };
             for replaced_view_events in replaced {
@@ -355,7 +439,7 @@ mod tests {
 
     impl LaunchBrowser for FailingBrowser {
         async fn open(&self, _: Url, _: LaunchViewEvents) -> Result<(), LaunchError> {
-            Err(LaunchError::OpeningLauncher {
+            Err(LaunchError::OpeningBrowser {
                 reason: "no browser".to_owned(),
             })
         }
@@ -404,10 +488,14 @@ mod tests {
     }
 
     /// A registry in a fresh folder holding the server [`DOMAIN`], whose
-    /// launcher is [`LAUNCHER`].
+    /// launcher is [`LAUNCHER`] and whose Authorization app is
+    /// [`AUTHORIZATION`].
     fn registry() -> (tempfile::TempDir, Arc<dyn ServerRegistry>) {
         let data_root = tempfile::tempdir().unwrap();
-        let registry = JsonServerRegistry::in_data_root(data_root.path());
+        let registry = JsonServerRegistry::in_data_root(
+            data_root.path(),
+            Url::parse("https://wildflowerhealth.io/authorization/").unwrap(),
+        );
         let record = ServerRecord {
             relay: RelayKind::Rathole,
             tunnel_name: TunnelName::parse("ruth").unwrap(),
@@ -421,6 +509,7 @@ mod tests {
             }))
             .unwrap(),
             launcher_url: Url::parse(LAUNCHER).unwrap(),
+            authorization_url: Url::parse(AUTHORIZATION).unwrap(),
             certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::WhileOpen,
         };
@@ -452,6 +541,9 @@ mod tests {
             consent_decider: None,
             launch_minter: Some(ServerLaunchMinter::new(
                 authorization_server.launch_context_minter.clone(),
+            )),
+            sign_in_code_minter: Some(ServerSignInCodeMinter::new(
+                authorization_server.same_device_sign_in_code_minter.clone(),
             )),
         };
         change(&mut detail);
@@ -487,8 +579,48 @@ mod tests {
         .await
     }
 
+    /// Open the Authorization app of the server [`DOMAIN`], launchable over
+    /// `authorization_server`, in `browser`, with `presence` hearing its view.
+    async fn open_launchable_authorization_app(
+        authorization_server: &TestAuthorizationServer,
+        browser: impl LaunchBrowser,
+        presence: &OpenLaunchViews,
+    ) -> Result<(), LaunchError> {
+        let (data_root, registry) = registry();
+        open_authorization_app(
+            registry,
+            data_root.path(),
+            &launchable(authorization_server),
+            DOMAIN.to_owned(),
+            browser,
+            presence.clone(),
+        )
+        .await
+    }
+
+    /// Where `opened`, the server [`DOMAIN`]'s `/oauth/sign-in` with a minted
+    /// code, sends the browser once it has signed it in.
+    fn next_after_sign_in(opened: &Url) -> Url {
+        assert_eq!(
+            opened.origin(),
+            Url::parse(&format!("https://{DOMAIN}")).unwrap().origin()
+        );
+        assert_eq!(opened.path(), "/oauth/sign-in");
+        let query: Vec<(String, String)> = opened
+            .query_pairs()
+            .map(|(name, value)| (name.into_owned(), value.into_owned()))
+            .collect();
+        let [(code_name, code), (next_name, next)] = query.as_slice() else {
+            panic!("a code and where to go next: {opened}");
+        };
+        assert_eq!(code_name, "code");
+        assert!(!code.is_empty(), "a minted code: {opened}");
+        assert_eq!(next_name, "next");
+        Url::parse(next).unwrap()
+    }
+
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_launchable_server_s_launcher_opens_at_its_launch_url() {
+    async fn a_launchable_server_s_launcher_opens_at_its_launch_url_through_the_sign_in() {
         let authorization_server = test_authorization_server();
         let browser = OneViewBrowser::new(WhileAViewShows::Replace);
         let presence = OpenLaunchViews::default();
@@ -498,9 +630,14 @@ mod tests {
             .unwrap();
 
         let opened = browser.opened();
-        let [launch_url] = opened.as_slice() else {
+        let [sign_in_url] = opened.as_slice() else {
             panic!("one launcher opens: {opened:?}");
         };
+        let launch_url = next_after_sign_in(sign_in_url);
+        assert_eq!(
+            launch_url[..url::Position::AfterPath],
+            *"https://launcher.example/app"
+        );
         let query: Vec<(String, String)> = launch_url
             .query_pairs()
             .map(|(name, value)| (name.into_owned(), value.into_owned()))
@@ -561,7 +698,11 @@ mod tests {
 
         let opened = browser.opened();
         assert_eq!(opened.len(), 2);
-        assert_ne!(opened[0], opened[1], "each launch is minted afresh");
+        assert_ne!(
+            next_after_sign_in(&opened[0]),
+            next_after_sign_in(&opened[1]),
+            "each launch is minted afresh"
+        );
         let second_views = presence.views();
         assert_eq!(second_views.len(), 1, "only the second view is open");
         assert!(second_views.is_disjoint(&first_views));
@@ -598,7 +739,71 @@ mod tests {
 
         let failed = launch_launchable(&authorization_server, FailingBrowser, &presence).await;
 
-        assert_eq!(failed.map_err(|error| error.kind()), Err("openingLauncher"));
+        assert_eq!(failed.map_err(|error| error.kind()), Err("openingBrowser"));
+        assert!(presence.views().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_launchable_server_s_authorization_app_opens_pointed_at_it_through_the_sign_in() {
+        let authorization_server = test_authorization_server();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let presence = OpenLaunchViews::default();
+
+        open_launchable_authorization_app(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+
+        let opened = browser.opened();
+        let [sign_in_url] = opened.as_slice() else {
+            panic!("one Authorization app opens: {opened:?}");
+        };
+        assert_eq!(
+            next_after_sign_in(sign_in_url).as_str(),
+            format!("https://authorization.example/app/?theme=dark&iss=https%3A%2F%2F{DOMAIN}")
+        );
+        assert_eq!(authorization_server.minted_launches(), 0, "no launch");
+        assert_eq!(presence.views().len(), 1, "its view is open");
+        browser.close_showing();
+        assert!(presence.views().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_authorization_app_the_browser_can_t_open_leaves_no_view_open() {
+        let authorization_server = test_authorization_server();
+        let presence = OpenLaunchViews::default();
+
+        let failed =
+            open_launchable_authorization_app(&authorization_server, FailingBrowser, &presence)
+                .await;
+
+        assert_eq!(failed.map_err(|error| error.kind()), Err("openingBrowser"));
+        assert!(presence.views().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_server_that_isn_t_launchable_opens_no_authorization_app() {
+        let authorization_server = test_authorization_server();
+        let (data_root, registry) = registry();
+        let browser = OneViewBrowser::new(WhileAViewShows::Replace);
+        let presence = OpenLaunchViews::default();
+        let unreachable = running_with(&authorization_server, |detail| {
+            detail.health = Some(ServerHealth::Unreachable {
+                error: "the relay answered 502".to_owned(),
+            });
+        });
+
+        let refused = open_authorization_app(
+            registry,
+            data_root.path(),
+            &unreachable,
+            DOMAIN.to_owned(),
+            browser.clone(),
+            presence.clone(),
+        )
+        .await;
+
+        assert_eq!(refused.map_err(|error| error.kind()), Err("unreachable"));
+        assert!(browser.opened().is_empty());
         assert!(presence.views().is_empty());
     }
 

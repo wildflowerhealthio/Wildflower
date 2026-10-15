@@ -16,7 +16,8 @@ interface HostRootProps {
   /**
    * What the base needs: its gate's (`invoke`, the background service's start
    * config, its telemetry and where the consent answer is kept) and its
-   * routes' (`listen`, the default launcher and the HTTP client).
+   * routes' (`listen`, the default launcher and Authorization app, and the
+   * HTTP client).
    */
   readonly base: Omit<BaseGateProps, 'children'> &
     Omit<ServersRouterContext.RouterContextInputs, 'invoke'>
@@ -41,7 +42,7 @@ interface HostRootProps {
 
 /** The host's router and the base's query cache, built once. */
 function HostRouter({
-  base: { invoke, listen, defaultLauncherUrl, httpClient },
+  base: { invoke, listen, defaultLauncherUrl, defaultAuthorizationUrl, httpClient },
   history,
   recorderTransport,
   revealFile,
@@ -52,7 +53,13 @@ function HostRouter({
     buildHostRouter({
       history,
       context: {
-        ...ServersRouterContext.make({ invoke, listen, defaultLauncherUrl, httpClient }),
+        ...ServersRouterContext.make({
+          invoke,
+          listen,
+          defaultLauncherUrl,
+          defaultAuthorizationUrl,
+          httpClient,
+        }),
         recorderConnection: settleRecorderTransport(recorderTransport),
         recorderPage: { invoke, revealFile },
       },

@@ -50,28 +50,35 @@ pub struct ServerUpdate {
     pub run_inputs_changed: bool,
 }
 
-/// Set the launcher the server with `domain` opens apps from, and the ACME CA
-/// its certificates are ordered from, and return what was written. Its other
-/// fields are kept as they are when the change is made.
+/// Set the launcher the server with `domain` opens apps from, the page its
+/// Authorization app opens at, and the ACME CA its certificates are ordered
+/// from, and return what was written. Its other fields are kept as they are
+/// when the change is made.
 ///
 /// # Errors
 ///
-/// [`ServerChangeError::InvalidLauncherUrl`] unless `launcher_url` is an
-/// absolute `http` or `https` URL with a host and no credentials,
+/// [`ServerChangeError::InvalidLauncherUrl`] unless `launcher_url`, and
+/// [`ServerChangeError::InvalidAuthorizationUrl`] unless `authorization_url`,
+/// is an absolute `http` or `https` URL with a host and no credentials,
 /// [`RegistryError::NotRegistered`](crate::RegistryError::NotRegistered) when no server has `domain`, or a registry
 /// failure. Nothing is written on any of them.
 pub fn update_server(
     registry: &dyn ServerRegistry,
     domain: &str,
     launcher_url: &str,
+    authorization_url: &str,
     certificate_authority: CertificateAuthority,
 ) -> Result<ServerUpdate, ServerChangeError> {
-    let launcher_url = parse_launcher_url(launcher_url)?;
+    let launcher_url = parse_page_url(launcher_url)
+        .map_err(|reason| ServerChangeError::InvalidLauncherUrl { reason })?;
+    let authorization_url = parse_page_url(authorization_url)
+        .map_err(|reason| ServerChangeError::InvalidAuthorizationUrl { reason })?;
     let mut update = None;
     registry.modify(Box::new(|servers| {
         let server = registered_mut(servers, domain)?;
         let before = server.clone();
         server.launcher_url = launcher_url;
+        server.authorization_url = authorization_url;
         server.certificate_authority = certificate_authority;
         update = Some(ServerUpdate {
             run_inputs_changed: before.run_inputs_differ(server),
@@ -126,22 +133,22 @@ pub fn remove_server(
     Ok(())
 }
 
-/// A launcher URL as entered, if the base can open apps from it: an absolute
-/// `http` or `https` URL with a host and no credentials.
-fn parse_launcher_url(entered: &str) -> Result<Url, ServerChangeError> {
-    let invalid = |reason: String| ServerChangeError::InvalidLauncherUrl { reason };
-    let launcher_url = Url::parse(entered)
-        .map_err(|error| invalid(format!("{entered:?} is not a URL: {error}")))?;
-    if !matches!(launcher_url.scheme(), "http" | "https") {
-        return Err(invalid(format!("{entered:?} is not an http or https URL")));
+/// A launcher or Authorization URL as entered, if the base can open a page
+/// at it: an absolute `http` or `https` URL with a host and no credentials.
+/// Otherwise why not, to follow "the entered … URL".
+fn parse_page_url(entered: &str) -> Result<Url, String> {
+    let page_url =
+        Url::parse(entered).map_err(|error| format!("{entered:?} is not a URL: {error}"))?;
+    if !matches!(page_url.scheme(), "http" | "https") {
+        return Err(format!("{entered:?} is not an http or https URL"));
     }
-    if launcher_url.host_str().is_none_or(str::is_empty) {
-        return Err(invalid(format!("{entered:?} has no host")));
+    if page_url.host_str().is_none_or(str::is_empty) {
+        return Err(format!("{entered:?} has no host"));
     }
-    if !launcher_url.username().is_empty() || launcher_url.password().is_some() {
-        return Err(invalid(format!("{entered:?} holds credentials")));
+    if !page_url.username().is_empty() || page_url.password().is_some() {
+        return Err(format!("{entered:?} holds credentials"));
     }
-    Ok(launcher_url)
+    Ok(page_url)
 }
 
 #[cfg(test)]
@@ -151,7 +158,7 @@ mod tests {
     use chrono::{TimeDelta, TimeZone};
 
     use super::*;
-    use crate::domain::fixtures::{official_record, self_hosted_record};
+    use crate::domain::fixtures::{authorization_url, official_record, self_hosted_record};
     use crate::{JsonServerRegistry, RegistryError};
 
     fn now() -> DateTime<Utc> {
@@ -168,8 +175,10 @@ mod tests {
     /// A registry in a fresh data root holding `servers`, in order.
     fn registry_holding(servers: &[ServerRecord]) -> (tempfile::TempDir, Arc<dyn ServerRegistry>) {
         let data_root = tempfile::tempdir().unwrap();
-        let registry: Arc<dyn ServerRegistry> =
-            Arc::new(JsonServerRegistry::in_data_root(data_root.path()));
+        let registry: Arc<dyn ServerRegistry> = Arc::new(JsonServerRegistry::in_data_root(
+            data_root.path(),
+            authorization_url(),
+        ));
         for server in servers {
             registry.insert(Box::new(|_| server.clone())).unwrap();
         }
@@ -238,12 +247,13 @@ mod tests {
             registry.as_ref(),
             "ruth.relay.wildflowerhealth.io",
             "https://launcher.example.com/",
+            authorization_url().as_str(),
             CertificateAuthority::LetsEncrypt,
         )
         .unwrap();
 
         assert_eq!(
-            JsonServerRegistry::in_data_root(data_root.path())
+            JsonServerRegistry::in_data_root(data_root.path(), authorization_url())
                 .read_all()
                 .unwrap()[0]
                 .run_policy,
@@ -313,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn update_sets_the_launcher_and_certificate_authority_and_keeps_the_rest() {
+    fn update_sets_the_launcher_authorization_app_and_certificate_authority_and_keeps_the_rest() {
         let ruth = with_policy(official_record("ruth"), RunPolicy::Always);
         let (_data_root, registry) = registry_holding(&[ruth.clone(), self_hosted_record("lab")]);
 
@@ -321,12 +331,14 @@ mod tests {
             registry.as_ref(),
             "ruth.relay.wildflowerhealth.io",
             "http://localhost:5200/app",
+            "http://localhost:5300/authorization/",
             CertificateAuthority::LetsEncryptStaging,
         )
         .unwrap();
 
         let updated = ServerRecord {
             launcher_url: Url::parse("http://localhost:5200/app").unwrap(),
+            authorization_url: Url::parse("http://localhost:5300/authorization/").unwrap(),
             certificate_authority: CertificateAuthority::LetsEncryptStaging,
             ..ruth
         };
@@ -346,27 +358,32 @@ mod tests {
     #[test]
     fn update_says_whether_a_field_a_run_reads_changed() {
         let (_data_root, registry) = registry_holding(&[official_record("ruth")]);
-        let update = |launcher_url, certificate_authority| {
+        let update = |launcher_url, authorization_url, certificate_authority| {
             update_server(
                 registry.as_ref(),
                 "ruth.relay.wildflowerhealth.io",
                 launcher_url,
+                authorization_url,
                 certificate_authority,
             )
             .unwrap()
             .run_inputs_changed
         };
+        let authorization_url = authorization_url();
+        let authorization_url = authorization_url.as_str();
 
         assert!(
-            !update(
+            update(
                 "http://localhost:5200/app",
+                authorization_url,
                 CertificateAuthority::LetsEncrypt
             ),
-            "only the base reads the launcher"
+            "the launcher"
         );
         assert!(
             !update(
                 "http://localhost:5200/app",
+                authorization_url,
                 CertificateAuthority::LetsEncrypt
             ),
             "nothing changed"
@@ -374,6 +391,15 @@ mod tests {
         assert!(
             update(
                 "http://localhost:5200/app",
+                "http://localhost:5300/authorization/",
+                CertificateAuthority::LetsEncrypt
+            ),
+            "the Authorization app"
+        );
+        assert!(
+            update(
+                "http://localhost:5200/app",
+                "http://localhost:5300/authorization/",
                 CertificateAuthority::LetsEncryptStaging
             ),
             "the certificate authority"
@@ -397,11 +423,40 @@ mod tests {
                         registry.as_ref(),
                         "ruth.relay.wildflowerhealth.io",
                         launcher_url,
+                        authorization_url().as_str(),
                         CertificateAuthority::LetsEncryptStaging,
                     ),
                     Err(ServerChangeError::InvalidLauncherUrl { .. })
                 ),
                 "{launcher_url:?}"
+            );
+        }
+        assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
+    }
+
+    #[test]
+    fn an_authorization_url_the_base_cannot_open_is_refused() {
+        let (_data_root, registry) = registry_holding(&[official_record("ruth")]);
+
+        for authorization_url in [
+            "",
+            "/authorization/",
+            "ftp://authorization.example.com/",
+            "file:///authorization",
+            "https://user:secret@authorization.example.com/",
+        ] {
+            assert!(
+                matches!(
+                    update_server(
+                        registry.as_ref(),
+                        "ruth.relay.wildflowerhealth.io",
+                        "http://localhost:5200/app",
+                        authorization_url,
+                        CertificateAuthority::LetsEncryptStaging,
+                    ),
+                    Err(ServerChangeError::InvalidAuthorizationUrl { .. })
+                ),
+                "{authorization_url:?}"
             );
         }
         assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
@@ -415,6 +470,7 @@ mod tests {
                 registry.as_ref(),
                 "ruth.relay.wildflowerhealth.io",
                 "https://wildflowerhealth.io/launcher",
+                "https://wildflowerhealth.io/authorization/",
                 CertificateAuthority::LetsEncrypt,
             ),
             Err(ServerChangeError::Registry(

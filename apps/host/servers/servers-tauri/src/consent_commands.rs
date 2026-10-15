@@ -215,6 +215,7 @@ mod tests {
                 authorization_server.consent_decider.clone(),
             )),
             launch_minter: None,
+            sign_in_code_minter: None,
         };
         let status = UnitStatus {
             run_state: RunState::Running,

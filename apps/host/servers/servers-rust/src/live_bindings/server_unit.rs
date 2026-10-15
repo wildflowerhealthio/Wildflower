@@ -12,6 +12,7 @@ use wildflowerhealthio_wildflower_server::{
 use crate::domain::ServerDetail;
 use crate::live_bindings::server_consent_decider::ServerConsentDecider;
 use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
+use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 
 /// One run of one server: the Wildflower server `wildflower-server-rust` sets
 /// up and serves, as a unit `UnitRunner` runs.
@@ -49,8 +50,9 @@ impl Unit for ServerUnit {
     /// Set the server up, announce it running, and serve it until
     /// `UnitRunner` stops the run. Its health, its tunnel's state, its
     /// certificate's state, the head of its pending-consent queue, and the
-    /// [`ServerConsentDecider`] and [`ServerLaunchMinter`] over its authorization server
-    /// go out as the run's [`ServerDetail`].
+    /// [`ServerConsentDecider`], [`ServerLaunchMinter`] and
+    /// [`ServerSignInCodeMinter`] over its authorization server go out as the
+    /// run's [`ServerDetail`].
     ///
     /// The run's authorization server publishes its queue's head on a channel of the
     /// run's own, so each server's head is its own.
@@ -76,6 +78,9 @@ impl Unit for ServerUnit {
                     server.consent_decider_for_host().clone(),
                 ),
                 launch_minter: ServerLaunchMinter::new(server.launch_context_minter()),
+                sign_in_code_minter: ServerSignInCodeMinter::new(
+                    server.same_device_sign_in_code_minter(),
+                ),
                 channels: DetailChannels::new(
                     server_health_rx,
                     tunnel_state_rx,
@@ -96,6 +101,8 @@ struct DetailSources {
     consent_decider: ServerConsentDecider,
     /// The run's launch minter, the same in every detail the run sets.
     launch_minter: ServerLaunchMinter,
+    /// The run's sign-in code minter, the same in every detail the run sets.
+    sign_in_code_minter: ServerSignInCodeMinter,
     /// The channels the rest of the detail is read from.
     channels: DetailChannels,
 }
@@ -162,10 +169,11 @@ impl DetailChannels {
 
 /// The task each run spawns to report its [`ServerDetail`]: it merges the
 /// run's health, its tunnel's state, its certificate's state, the head of its
-/// authorization server's pending-consent queue, its consent decider and its launch
-/// minter into the detail, now and each time the health, the tunnel state, the
-/// certificate state or the head changes. The task dies with the run's
-/// runtime, and `UnitRunner` clears the detail when the run ends.
+/// authorization server's pending-consent queue, its consent decider, its
+/// launch minter and its sign-in code minter into the detail, now and each
+/// time the health, the tunnel state, the certificate state or the head
+/// changes. The task dies with the run's runtime, and `UnitRunner` clears the
+/// detail when the run ends.
 async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>) {
     loop {
         let channels = &mut sources.channels;
@@ -176,6 +184,7 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
             pending_consent: channels.pending_consent_rx.borrow_and_update().clone(),
             consent_decider: Some(sources.consent_decider.clone()),
             launch_minter: Some(sources.launch_minter.clone()),
+            sign_in_code_minter: Some(sources.sign_in_code_minter.clone()),
         });
         if !channels.changed().await {
             return;

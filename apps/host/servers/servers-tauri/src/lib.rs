@@ -33,7 +33,7 @@
 //! - [`server_add`], invoked as
 //!   `invoke('server_add', { relay, credentials })`, enrols a tunnel at a
 //!   relay, from a claim code or its name and token, and registers the server
-//!   with the app's default launcher (see
+//!   with the app's default launcher and Authorization app (see
 //!   [`wildflowerhealthio_servers::add_server`]), answering with the server's domain.
 //! - [`server_set_credentials`], invoked as
 //!   `invoke('server_set_credentials', { domain, token })`, replaces a
@@ -44,10 +44,10 @@
 //!   `invoke('server_set_run_policy', { domain, choice })`, stores the
 //!   [`RunPolicyChoice`](wildflowerhealthio_servers::RunPolicyChoice) as a run policy and
 //!   gives `TauriUnitRunner` that policy, answering with it.
-//! - [`server_update`], invoked as
-//!   `invoke('server_update', { domain, launcherUrl, certificateAuthority })`,
-//!   sets the launcher and the certificate authority, and pushes the server
-//!   again only when a field its runs read changed.
+//! - [`server_update`], invoked as `invoke('server_update', { domain,
+//!   launcherUrl, authorizationUrl, certificateAuthority })`, sets the
+//!   launcher, the Authorization app and the certificate authority, and
+//!   pushes the server again only when a field its runs read changed.
 //! - [`server_remove`], invoked as `invoke('server_remove', { domain })`,
 //!   takes the server off `TauriUnitRunner`, waiting for its run to end, then
 //!   deletes its folder and its record.
@@ -63,9 +63,17 @@
 //!   opens the server's launcher in the in-app browser (on iOS replacing the
 //!   view an earlier launch opened; on Android joining it while it opens), at its
 //!   launcher URL with `iss` and a `launch` its running authorization server minted for
-//!   any client (see [`wildflowerhealthio_servers::ServerLaunchMinter`]); a server that
+//!   any client (see [`wildflowerhealthio_servers::ServerLaunchMinter`]),
+//!   through the server's `/oauth/sign-in`, which first signs the browser in
+//!   as the Owner with a code the same authorization server minted (see
+//!   [`wildflowerhealthio_servers::ServerSignInCodeMinter`]); a server that
 //!   isn't running, reachable through its relay and holding a valid
 //!   certificate answers why at once. It never changes the run policy.
+//! - [`server_open_authorization_app`], invoked as
+//!   `invoke('server_open_authorization_app', { domain })`, opens the
+//!   server's Wildflower Authorization app the same way: at its Authorization
+//!   URL with `iss`, through the same sign-in, in the same in-app browser,
+//!   once the same checks pass.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -84,8 +92,8 @@
 //! to the `main` webview only, through its app-defined
 //! `allow-server-enrolment` (`server_add`, `server_set_credentials`),
 //! `allow-server-consents` (the consent commands) and
-//! `allow-server-management` (the rest, `server_launch` included)
-//! permissions.
+//! `allow-server-management` (the rest, `server_launch` and
+//! `server_open_authorization_app` included) permissions.
 
 mod commands;
 mod consent_commands;
@@ -115,7 +123,7 @@ pub use commands::{
 pub use consent_commands::{
     pending_consents_list, server_consent_approve, server_consent_deny, server_consent_get,
 };
-pub use launch_commands::server_launch;
+pub use launch_commands::{server_launch, server_open_authorization_app};
 pub use pending_consents::PENDING_CONSENT_EVENT;
 pub use server_status::SERVER_STATUS_EVENT;
 pub use server_units::{ServerConfigBuilder, ServerUnits};
@@ -130,15 +138,17 @@ pub(crate) const BASE_WEBVIEW_LABEL: &str = "main";
 pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
 /// What the servers commands work through: the install's registry and the
-/// data root its servers' folders are in, the launcher a new server gets,
-/// `TauriUnitRunner`'s server units, and the lock that orders each registry
-/// write with its push.
+/// data root its servers' folders are in, the launcher and Authorization app
+/// a new server gets, `TauriUnitRunner`'s server units, and the lock that
+/// orders each registry write with its push.
 pub struct ServersState {
     pub(crate) registry: Arc<dyn ServerRegistry>,
     /// The directory holding `servers.json` and each server's folder.
     pub(crate) data_root: PathBuf,
     /// The launcher [`server_add`] gives a new server.
     pub(crate) default_launcher_url: Url,
+    /// The Authorization app [`server_add`] gives a new server.
+    pub(crate) default_authorization_url: Url,
     pub(crate) server_units: ServerUnits,
     /// Held by a command from before its registry write until after it has
     /// pushed the result, so pushes reach `TauriUnitRunner` in the order the
@@ -148,19 +158,21 @@ pub struct ServersState {
 
 impl ServersState {
     /// The commands' state over `registry`, whose servers' folders are in
-    /// `data_root`, giving a new server `default_launcher_url` and pushing to
-    /// `server_units`.
+    /// `data_root`, giving a new server `default_launcher_url` and
+    /// `default_authorization_url` and pushing to `server_units`.
     #[must_use]
     pub fn new(
         registry: Arc<dyn ServerRegistry>,
         data_root: PathBuf,
         default_launcher_url: Url,
+        default_authorization_url: Url,
         server_units: ServerUnits,
     ) -> Self {
         Self {
             registry,
             data_root,
             default_launcher_url,
+            default_authorization_url,
             server_units,
             registry_writes: Mutex::new(()),
         }
@@ -172,21 +184,27 @@ impl ServersState {
 /// [crate docs](crate).
 ///
 /// `data_root` is the directory the host already resolved and created in
-/// `setup()`, holding `servers.json`. `default_launcher_url` is the launcher
-/// [`server_add`] gives a new server. Each run of a server reads the config
+/// `setup()`, holding `servers.json`. `default_launcher_url` and
+/// `default_authorization_url` are the launcher and Authorization app
+/// [`server_add`] gives a new server, the Authorization app also the one a
+/// server read from a `servers.json` that stored none gets. Each run of a server reads the config
 /// `server_config` builds from its record. Call once per app lifecycle, from
 /// `setup()`.
 pub fn host_servers(
     app: &AppHandle,
     data_root: &Path,
     default_launcher_url: Url,
+    default_authorization_url: Url,
     runner: &TauriUnitRunner<ServerDetail>,
     server_config: impl Fn(&ServerRecord) -> anyhow::Result<WildflowerServerConfig>
         + Send
         + Sync
         + 'static,
 ) {
-    let registry = Arc::new(JsonServerRegistry::in_data_root(data_root));
+    let registry = Arc::new(JsonServerRegistry::in_data_root(
+        data_root,
+        default_authorization_url.clone(),
+    ));
     let (forwarded_request_tx, forwarded_request_rx) = mpsc::channel(FORWARDED_REQUEST_CAPACITY);
     let server_units = ServerUnits::new(
         runner.clone(),
@@ -230,6 +248,7 @@ pub fn host_servers(
         registry,
         data_root.to_path_buf(),
         default_launcher_url,
+        default_authorization_url,
         server_units,
     ));
 }

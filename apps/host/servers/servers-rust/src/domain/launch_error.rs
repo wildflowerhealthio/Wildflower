@@ -1,4 +1,5 @@
-//! [`LaunchError`], why a server's launcher couldn't be opened.
+//! [`LaunchError`], why a server's launcher or Authorization app couldn't be
+//! opened.
 
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
@@ -6,8 +7,8 @@ use wildflowerhealthio_authorization_server::domain::authorization_server_error:
 
 use crate::domain::{CertificateAuthority, RegistryError};
 
-/// Why a server's launcher couldn't be opened. Serialises as
-/// `{"kind", "message"}`.
+/// Why a server's launcher or Authorization app couldn't be opened.
+/// Serialises as `{"kind", "message"}`.
 #[derive(Debug, thiserror::Error)]
 pub enum LaunchError {
     /// The server isn't running, so it has no launch to hand out.
@@ -46,9 +47,9 @@ pub enum LaunchError {
     /// The server's authorization server couldn't mint the launch.
     #[error("the server's authorization server failed: {0}")]
     AuthorizationServer(#[from] AuthorizationServerError),
-    /// The launcher's window couldn't be opened.
-    #[error("the launcher couldn't be opened: {reason}")]
-    OpeningLauncher { reason: String },
+    /// The in-app browser couldn't open the page.
+    #[error("the in-app browser couldn't open the page: {reason}")]
+    OpeningBrowser { reason: String },
     /// Reading the registry failed, including
     /// [`RegistryError::NotRegistered`] for a server that isn't registered.
     #[error(transparent)]
@@ -69,7 +70,7 @@ impl LaunchError {
             Self::NoValidCertificate { .. } => "noValidCertificate",
             Self::UntrustedCertificate { .. } => "untrustedCertificate",
             Self::AuthorizationServer(_) => "authorizationServer",
-            Self::OpeningLauncher { .. } => "openingLauncher",
+            Self::OpeningBrowser { .. } => "openingBrowser",
             Self::Registry(registry_error) => registry_error.kind(),
         }
     }
@@ -146,10 +147,10 @@ mod tests {
                 "authorizationServer",
             ),
             (
-                LaunchError::OpeningLauncher {
+                LaunchError::OpeningBrowser {
                     reason: "no window".to_owned(),
                 },
-                "openingLauncher",
+                "openingBrowser",
             ),
             (
                 LaunchError::Registry(RegistryError::NotRegistered {

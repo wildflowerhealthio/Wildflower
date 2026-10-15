@@ -212,6 +212,8 @@ pub async fn set_up(
         search_parameter_data_dir,
         launcher_base,
         authorization_app_base,
+        launcher_url,
+        authorization_url,
         host_app_client_scopes,
         wildflower_host_app_client_id,
         relay_settings,
@@ -268,6 +270,8 @@ pub async fn set_up(
         fhir_ui_client_id: FHIR_UI_CLIENT_ID.to_string(),
         launcher_base: launcher_base.clone(),
         authorization_app_base,
+        launcher_url,
+        authorization_url,
     };
 
     // One shared SQLite database for all persistence-rust-backed slices; each

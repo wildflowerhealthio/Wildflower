@@ -273,6 +273,8 @@ pub fn setup_authorization_server(
             config.server_origin.clone(),
             config.launcher_base.clone(),
             config.authorization_app_base.clone(),
+            config.launcher_url.clone(),
+            config.authorization_url.clone(),
         )),
     });
     // Seed the popup head from SQLite so a request that was pending

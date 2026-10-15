@@ -183,7 +183,9 @@ only it composes. Rust-only, no `-core`.
   `apps/host/host-app` derives at build time (`tauri-shared-config.json`),
   from its platform paths (the server's folder, the FHIR SearchParameter
   bundle dir) or from the server's record (the tunnel's relay settings, the
-  domain, and the `DeviceCertificateConfig` its
+  domain, the launcher and Authorization app URLs the host opens for it,
+  which `/oauth/sign-in` may send a browser on to, and the
+  `DeviceCertificateConfig` its
   `ServerRecord::device_certificate_config` builds: the CA, the server's
   certificate folder and the install's ACME account folder). The server reads none of the host's build-time
   configuration or platform paths itself.

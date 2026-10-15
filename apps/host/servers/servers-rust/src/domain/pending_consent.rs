@@ -166,6 +166,7 @@ mod tests {
                 pending_consent,
                 consent_decider: None,
                 launch_minter: None,
+                sign_in_code_minter: None,
             }),
         }
     }

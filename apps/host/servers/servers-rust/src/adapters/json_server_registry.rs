@@ -1,10 +1,11 @@
 //! [`JsonServerRegistry`]: the [`ServerRegistry`] kept in
 //! `<data root>/servers.json`.
 //!
-//! The file is `{"version": 2, "servers": [...]}`, each server's fields in
-//! camelCase. Its version is read before anything else. A version 1 file is
-//! migrated as it is read (see [`migrate_version_1`]) and written as version
-//! 2 by the next change; any other version but [`FORMAT_VERSION`] is
+//! The file is `{"version": 3, "servers": [...]}`, each server's fields in
+//! camelCase. Its version is read before anything else. A version 1 or 2 file
+//! is migrated as it is read (see [`migrate_version_1`] and
+//! [`migrate_version_2`]) and written as version 3 by the next change; any
+//! other version but [`FORMAT_VERSION`] is
 //! [`RegistryError::UnsupportedVersion`]: the registry neither reads nor
 //! overwrites a file it doesn't understand. A missing file is an empty
 //! registry.
@@ -33,26 +34,31 @@ use crate::ports::{NewRecord, RegistryChange, ServerRegistry};
 pub const SERVERS_FILE_NAME: &str = "servers.json";
 
 /// The `servers.json` format version this build writes. It reads this and
-/// version 1.
-const FORMAT_VERSION: u64 = 2;
+/// versions 1 and 2.
+const FORMAT_VERSION: u64 = 3;
 
 /// The [`ServerRegistry`] over `<data root>/servers.json`.
 pub struct JsonServerRegistry {
     data_root: PathBuf,
     path: PathBuf,
+    /// The Authorization app a server read from a version 1 or 2 file gets,
+    /// which stored none.
+    default_authorization_url: Url,
     /// Held across each read-modify-write, so two changes in this process
     /// can't each write over the other's.
     write_lock: Mutex<()>,
 }
 
 impl JsonServerRegistry {
-    /// The registry in `data_root`. Nothing is read or created until it's
-    /// used.
+    /// The registry in `data_root`, which gives each server read from a
+    /// version 1 or 2 file `default_authorization_url`, the Authorization app
+    /// a new server gets. Nothing is read or created until it's used.
     #[must_use]
-    pub fn in_data_root(data_root: &Path) -> Self {
+    pub fn in_data_root(data_root: &Path, default_authorization_url: Url) -> Self {
         Self {
             data_root: data_root.to_owned(),
             path: data_root.join(SERVERS_FILE_NAME),
+            default_authorization_url,
             write_lock: Mutex::new(()),
         }
     }
@@ -68,14 +74,17 @@ impl JsonServerRegistry {
         let VersionProbe { version } = serde_json::from_slice(&bytes)
             .map_err(|error| RegistryError::storage("reading servers.json's version", error))?;
         let parse_error = |error| RegistryError::storage("parsing servers.json", error);
-        match version {
-            FORMAT_VERSION => serde_json::from_slice(&bytes).map_err(parse_error),
-            1 => {
-                let version_1 = serde_json::from_slice(&bytes).map_err(parse_error)?;
-                serde_json::from_value(migrate_version_1(version_1)?).map_err(parse_error)
-            }
-            version => Err(RegistryError::UnsupportedVersion { version }),
-        }
+        let migrated = match version {
+            FORMAT_VERSION => return serde_json::from_slice(&bytes).map_err(parse_error),
+            2 => serde_json::from_slice(&bytes).map_err(parse_error)?,
+            1 => migrate_version_1(serde_json::from_slice(&bytes).map_err(parse_error)?)?,
+            version => return Err(RegistryError::UnsupportedVersion { version }),
+        };
+        serde_json::from_value(migrate_version_2(
+            migrated,
+            &self.default_authorization_url,
+        )?)
+        .map_err(parse_error)
     }
 
     /// Read the registry, apply `change` to its servers, and replace the file
@@ -236,6 +245,36 @@ fn migrate_version_1(mut document: serde_json::Value) -> Result<serde_json::Valu
         server["certificateAuthority"] = serde_json::to_value(certificate_authority)
             .map_err(|error| RegistryError::storage(CONTEXT, error))?;
     }
+    document["version"] = 2.into();
+    Ok(document)
+}
+
+/// A version 2 `servers.json` `document` as version 3. Version 2 stored no
+/// Authorization app; each server gets `default_authorization_url` as its
+/// `authorizationUrl`, the one a new server gets. Nothing else changed.
+///
+/// # Errors
+///
+/// [`RegistryError::Storage`] if the document has no list of servers, or a
+/// server isn't an object.
+fn migrate_version_2(
+    mut document: serde_json::Value,
+    default_authorization_url: &Url,
+) -> Result<serde_json::Value, RegistryError> {
+    const CONTEXT: &str = "migrating servers.json from version 2";
+    let servers = document
+        .get_mut("servers")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| RegistryError::storage(CONTEXT, "it has no list of servers"))?;
+    for server in servers {
+        server
+            .as_object_mut()
+            .ok_or_else(|| RegistryError::storage(CONTEXT, "a server isn't an object"))?
+            .insert(
+                "authorizationUrl".to_owned(),
+                default_authorization_url.as_str().into(),
+            );
+    }
     document["version"] = FORMAT_VERSION.into();
     Ok(document)
 }
@@ -288,6 +327,7 @@ struct StoredServerFields {
     #[serde(with = "StoredPublicSettings")]
     public_settings: PublicRatholeSettings,
     launcher_url: Url,
+    authorization_url: Url,
     certificate_authority: CertificateAuthority,
     run_policy: RunPolicy,
 }
@@ -343,11 +383,17 @@ mod exposed_token {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::fixtures::{official_record, self_hosted_record, TOKEN};
+    use crate::domain::fixtures::{authorization_url, official_record, self_hosted_record, TOKEN};
+
+    /// The registry in `data_root`, giving a server read from an earlier
+    /// version the fixtures' Authorization app.
+    fn registry_in(data_root: &Path) -> JsonServerRegistry {
+        JsonServerRegistry::in_data_root(data_root, authorization_url())
+    }
 
     fn registry() -> (tempfile::TempDir, JsonServerRegistry) {
         let data_root = tempfile::tempdir().unwrap();
-        let registry = JsonServerRegistry::in_data_root(data_root.path());
+        let registry = registry_in(data_root.path());
         (data_root, registry)
     }
 
@@ -372,7 +418,7 @@ mod tests {
             .insert(Box::new(|_| self_hosted_record("lab")))
             .unwrap();
 
-        let reopened = JsonServerRegistry::in_data_root(data_root.path());
+        let reopened = registry_in(data_root.path());
         assert_eq!(
             reopened.read_all().unwrap(),
             vec![official_record("ruth"), self_hosted_record("lab")]
@@ -419,15 +465,41 @@ mod tests {
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
     }
 
-    /// A version 2 `servers.json` holding `official_record(tunnel_name)`,
+    /// A version 3 `servers.json` holding `official_record(tunnel_name)`,
     /// written by hand rather than by the adapter.
-    fn version_2_file(tunnel_name: &str) -> String {
+    fn version_3_file(tunnel_name: &str) -> String {
+        format!(
+            r#"{{
+              "version": 3,
+              "servers": [{{
+                "relay": {{"kind": "wildflowerOfficial"}},
+                "tunnelName": "{tunnel_name}",
+                "token": "{TOKEN}",
+                "publicSettings": {{
+                  "remoteAddr": "relay.wildflowerhealth.io:2333",
+                  "transport": "noise",
+                  "noisePattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
+                  "publicKey": "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=",
+                  "domain": "relay.wildflowerhealth.io"
+                }},
+                "launcherUrl": "https://wildflowerhealth.io/launcher",
+                "authorizationUrl": "https://wildflowerhealth.io/authorization/",
+                "certificateAuthority": "letsEncrypt",
+                "runPolicy": {{"kind": "off"}}
+              }}]
+            }}"#
+        )
+    }
+
+    /// A version 2 `servers.json` holding `official_record("ruth")` with no
+    /// Authorization app, which version 2 doesn't store.
+    fn version_2_file() -> String {
         format!(
             r#"{{
               "version": 2,
               "servers": [{{
                 "relay": {{"kind": "wildflowerOfficial"}},
-                "tunnelName": "{tunnel_name}",
+                "tunnelName": "ruth",
                 "token": "{TOKEN}",
                 "publicSettings": {{
                   "remoteAddr": "relay.wildflowerhealth.io:2333",
@@ -470,25 +542,59 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_version_2_format() {
+    fn reads_the_version_3_format() {
         let (data_root, registry) = registry();
         fs::write(
             data_root.path().join(SERVERS_FILE_NAME),
-            version_2_file("ruth"),
+            version_3_file("ruth"),
         )
         .unwrap();
         assert_eq!(registry.read_all().unwrap(), vec![official_record("ruth")]);
     }
 
     #[test]
-    fn writes_the_version_2_format() {
+    fn writes_the_version_3_format() {
         let (data_root, registry) = registry();
         registry
             .insert(Box::new(|_| official_record("ruth")))
             .unwrap();
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
-        let by_hand: serde_json::Value = serde_json::from_str(&version_2_file("ruth")).unwrap();
+        let by_hand: serde_json::Value = serde_json::from_str(&version_3_file("ruth")).unwrap();
         assert_eq!(written, by_hand);
+    }
+
+    /// A server in a version 2 file, which stores no Authorization app, reads
+    /// with the default one; reading leaves the file as it was.
+    #[test]
+    fn a_version_2_server_reads_with_the_default_authorization_app() {
+        let data_root = tempfile::tempdir().unwrap();
+        let default_authorization_url =
+            Url::parse("https://default.example/authorization/").unwrap();
+        let registry =
+            JsonServerRegistry::in_data_root(data_root.path(), default_authorization_url.clone());
+        fs::write(data_root.path().join(SERVERS_FILE_NAME), version_2_file()).unwrap();
+
+        assert_eq!(
+            registry.read_all().unwrap(),
+            vec![ServerRecord {
+                authorization_url: default_authorization_url,
+                ..official_record("ruth")
+            }]
+        );
+        assert_eq!(file_text(&data_root), version_2_file());
+    }
+
+    /// The next change to a version 2 file writes it as version 3.
+    #[test]
+    fn a_version_2_file_is_written_as_version_3_by_the_next_change() {
+        let (data_root, registry) = registry();
+        fs::write(data_root.path().join(SERVERS_FILE_NAME), version_2_file()).unwrap();
+
+        registry.modify(Box::new(|_| Ok(()))).unwrap();
+
+        let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
+        let version_3: serde_json::Value = serde_json::from_str(&version_3_file("ruth")).unwrap();
+        assert_eq!(written, version_3);
     }
 
     /// Each server in a version 1 file keeps the CA its `stagingCertificates`
@@ -515,9 +621,9 @@ mod tests {
         }
     }
 
-    /// The next change to a version 1 file writes it as version 2.
+    /// The next change to a version 1 file writes it as version 3.
     #[test]
-    fn a_version_1_file_is_written_as_version_2_by_the_next_change() {
+    fn a_version_1_file_is_written_as_version_3_by_the_next_change() {
         let (data_root, registry) = registry();
         fs::write(
             data_root.path().join(SERVERS_FILE_NAME),
@@ -528,8 +634,8 @@ mod tests {
         registry.modify(Box::new(|_| Ok(()))).unwrap();
 
         let written: serde_json::Value = serde_json::from_str(&file_text(&data_root)).unwrap();
-        let version_2: serde_json::Value = serde_json::from_str(&version_2_file("ruth")).unwrap();
-        assert_eq!(written, version_2);
+        let version_3: serde_json::Value = serde_json::from_str(&version_3_file("ruth")).unwrap();
+        assert_eq!(written, version_3);
     }
 
     #[test]
@@ -550,7 +656,7 @@ mod tests {
     #[test]
     fn a_snake_case_file_is_refused() {
         let (data_root, registry) = registry();
-        let snake_case = version_2_file("ruth")
+        let snake_case = version_3_file("ruth")
             .replace("tunnelName", "tunnel_name")
             .replace("publicSettings", "public_settings");
         fs::write(data_root.path().join(SERVERS_FILE_NAME), snake_case).unwrap();
@@ -635,12 +741,7 @@ mod tests {
                 &serde_json::json!({"kind": "always"}),
             ]
         );
-        assert_eq!(
-            JsonServerRegistry::in_data_root(data_root.path())
-                .read_all()
-                .unwrap(),
-            records
-        );
+        assert_eq!(registry_in(data_root.path()).read_all().unwrap(), records);
     }
 
     /// The tunnel name becomes the server's folder name, so one read from the
@@ -651,7 +752,7 @@ mod tests {
         for tunnel_name in ["Ruth", "ru.th", "..", "admin"] {
             fs::write(
                 data_root.path().join(SERVERS_FILE_NAME),
-                version_2_file(tunnel_name),
+                version_3_file(tunnel_name),
             )
             .unwrap();
             assert!(
@@ -667,11 +768,11 @@ mod tests {
     fn a_stored_domain_that_is_not_a_dns_name_is_refused() {
         let (data_root, registry) = registry();
         for domain in ["x/../../..", "..", "Relay.example.com", ""] {
-            let file = version_2_file("ruth").replace(
+            let file = version_3_file("ruth").replace(
                 r#""domain": "relay.wildflowerhealth.io""#,
                 &format!(r#""domain": "{domain}""#),
             );
-            assert_ne!(file, version_2_file("ruth"));
+            assert_ne!(file, version_3_file("ruth"));
             fs::write(data_root.path().join(SERVERS_FILE_NAME), file).unwrap();
             assert!(
                 matches!(registry.read_all(), Err(RegistryError::Storage { .. })),
@@ -714,16 +815,16 @@ mod tests {
     #[test]
     fn an_unknown_version_is_rejected_and_left_in_place() {
         let (data_root, registry) = registry();
-        let future = r#"{"version": 3, "servers": [], "profiles": []}"#;
+        let future = r#"{"version": 4, "servers": [], "profiles": []}"#;
         fs::write(data_root.path().join(SERVERS_FILE_NAME), future).unwrap();
 
         assert!(matches!(
             registry.read_all(),
-            Err(RegistryError::UnsupportedVersion { version: 3 })
+            Err(RegistryError::UnsupportedVersion { version: 4 })
         ));
         assert!(matches!(
             registry.insert(Box::new(|_| official_record("ruth"))),
-            Err(RegistryError::UnsupportedVersion { version: 3 })
+            Err(RegistryError::UnsupportedVersion { version: 4 })
         ));
         assert_eq!(file_text(&data_root), future);
     }

@@ -63,19 +63,32 @@ const setServerRunPolicy = ({
   invokeHostCommand('server_set_run_policy', RunPolicy.Schema, { domain, choice })
 
 /**
- * Set the launcher the server `domain` opens apps from, and the ACME CA its
- * certificates are ordered from.
+ * Set the launcher the server `domain` opens apps from, the page its
+ * Authorization app opens at, and the ACME CA its certificates are ordered
+ * from.
+ *
+ * @remarks
+ * The host refuses a launcher or Authorization URL it can't open a page at as
+ * `invalidLauncherUrl` or `invalidAuthorizationUrl`. Its runs read both URLs,
+ * so a change to either restarts a running server.
  */
 const updateServer = ({
   domain,
   launcherUrl,
+  authorizationUrl,
   certificateAuthority,
 }: {
   readonly domain: string
   readonly launcherUrl: string
+  readonly authorizationUrl: string
   readonly certificateAuthority: CertificateAuthority.Type
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
-  invokeHostCommand('server_update', Schema.Null, { domain, launcherUrl, certificateAuthority })
+  invokeHostCommand('server_update', Schema.Null, {
+    domain,
+    launcherUrl,
+    authorizationUrl,
+    certificateAuthority,
+  })
 
 /**
  * Replace the token the server `domain`'s tunnel signs in to its relay with,
@@ -108,10 +121,11 @@ const removeServer = ({
   invokeHostCommand('server_remove', Schema.Null, { domain })
 
 /**
- * Open the server `domain`'s launcher, as a SMART EHR launch against it, in a
- * window of its own: its launcher URL with `iss`, the server's FHIR base, and
- * a `launch` its authorization server minted, which any app may use once. Answers once
- * the window is open, and never changes the server's run policy.
+ * Open the server `domain`'s launcher, as a SMART EHR launch against it, in
+ * the in-app browser, signed in as the server's Owner first: its launcher URL
+ * with `iss`, the server's FHIR base, and a `launch` its authorization server
+ * minted, which any app may use once. Answers once the browser is opening it,
+ * and never changes the server's run policy.
  *
  * @remarks
  * Fails with the host's refusal (see `HostCommandFailed.refusal`), a
@@ -125,10 +139,28 @@ const launchServer = ({
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
   invokeHostCommand('server_launch', Schema.Null, { domain })
 
+/**
+ * Open the server `domain`'s Wildflower Authorization app in the in-app
+ * browser, signed in as the server's Owner first: its Authorization URL with
+ * `iss`, the server's FHIR base. Answers once the browser is opening it, and
+ * never changes the server's run policy.
+ *
+ * @remarks
+ * Fails with the host's refusal, a `LaunchError`, for the same reasons
+ * {@link launchServer} does.
+ */
+const openServerAuthorizationApp = ({
+  domain,
+}: {
+  readonly domain: string
+}): Effect.Effect<null, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_open_authorization_app', Schema.Null, { domain })
+
 export {
   addServer,
   launchServer,
   listServers,
+  openServerAuthorizationApp,
   removeServer,
   setServerCredentials,
   setServerRunPolicy,

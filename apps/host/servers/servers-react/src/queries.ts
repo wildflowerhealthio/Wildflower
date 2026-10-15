@@ -17,6 +17,7 @@ import {
   launchServer,
   ListedServer,
   listServers,
+  openServerAuthorizationApp,
   type NotificationPermission,
   readAppVersion,
   readNotificationPermission,
@@ -286,18 +287,34 @@ const useLaunchServer = (
     mutationFn: (server) => runHostCommand(launchServer(server)),
   })
 
-/** `servers` with the server `domain`'s launcher set to `launcherUrl`. */
-const withLauncherUrl =
-  (domain: string, launcherUrl: string) =>
-  (servers: readonly ListedServer.Type[]): readonly ListedServer.Type[] =>
-    servers.map((server) => (server.domain === domain ? { ...server, launcherUrl } : server))
+/**
+ * Opens a server's Wildflower Authorization app in the in-app browser,
+ * signed in as its Owner.
+ */
+const useOpenServerAuthorizationApp = (
+  runHostCommand: RunHostCommand
+): UseMutationResult<null, HostCommandError, { readonly domain: string }> =>
+  useMutation({
+    mutationFn: (server) => runHostCommand(openServerAuthorizationApp(server)),
+  })
 
 /**
- * Sets the launcher a server opens apps from, keeping the ACME CA it is
- * given, and once the host has stored it, writes it into the cached server
- * list.
+ * `servers` with the server `domain`'s launcher set to `launcherUrl` and its
+ * Authorization app to `authorizationUrl`.
  */
-const useUpdateLauncher = (
+const withPageUrls =
+  (domain: string, launcherUrl: string, authorizationUrl: string) =>
+  (servers: readonly ListedServer.Type[]): readonly ListedServer.Type[] =>
+    servers.map((server) =>
+      server.domain === domain ? { ...server, launcherUrl, authorizationUrl } : server
+    )
+
+/**
+ * Sets the launcher a server opens apps from and the page its Authorization
+ * app opens at, keeping the ACME CA it is given, and once the host has stored
+ * them, writes both into the cached server list.
+ */
+const useUpdateServer = (
   runHostCommand: RunHostCommand
 ): UseMutationResult<
   null,
@@ -305,14 +322,15 @@ const useUpdateLauncher = (
   {
     readonly domain: string
     readonly launcherUrl: string
+    readonly authorizationUrl: string
     readonly certificateAuthority: CertificateAuthority.Type
   }
 > => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (update) => runHostCommand(updateServer(update)),
-    onSuccess: (_answer, { domain, launcherUrl }) =>
-      updateCachedServers(queryClient, withLauncherUrl(domain, launcherUrl)),
+    onSuccess: (_answer, { domain, launcherUrl, authorizationUrl }) =>
+      updateCachedServers(queryClient, withPageUrls(domain, launcherUrl, authorizationUrl)),
   })
 }
 
@@ -421,11 +439,12 @@ export {
   serversQueryOptions,
   useAddServer,
   useLaunchServer,
+  useOpenServerAuthorizationApp,
   useRemoveServer,
   useRequestNotificationPermission,
   useServerStatusEvents,
   useSetServerCredentials,
   useSetServerRunPolicy,
-  useUpdateLauncher,
+  useUpdateServer,
 }
 export type { ServerHealthError }

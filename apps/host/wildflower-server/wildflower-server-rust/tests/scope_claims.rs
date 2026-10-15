@@ -45,6 +45,9 @@ fn set_up_authorization_server(
             "https://authorization.test/authorization/",
         )
         .expect("authorization app base URL"),
+        launcher_url: Url::parse("https://launcher.test/launcher/").expect("launcher URL"),
+        authorization_url: Url::parse("https://authorization.test/authorization/")
+            .expect("authorization URL"),
     };
     let (pending_consent_tx, _pending_consent_rx) =
         watch::channel::<Option<PendingConsentHead>>(None);

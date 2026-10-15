@@ -330,6 +330,10 @@ mod tests {
                     "https://authorization.test/authorization/",
                 )
                 .expect("authorization app base"),
+                launcher_url: url::Url::parse("https://launcher.test/launcher/")
+                    .expect("launcher URL"),
+                authorization_url: url::Url::parse("https://authorization.test/authorization/")
+                    .expect("authorization URL"),
             };
             let authorization_server = setup_authorization_server(
                 pool.clone(),

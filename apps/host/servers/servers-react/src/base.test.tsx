@@ -192,6 +192,12 @@ const BACKGROUND_SERVICE_START_CONFIG = {
  */
 const DEFAULT_LAUNCHER_URL = 'https://wildflowerhealth.io/launcher'
 
+/**
+ * The Authorization app the app passes as the host's default: the golden
+ * file's first server has it, its second doesn't.
+ */
+const DEFAULT_AUTHORIZATION_URL = 'https://wildflowerhealth.io/authorization/'
+
 const renderBase = ({
   invoke,
   storage,
@@ -211,6 +217,7 @@ const renderBase = ({
       listen={events.listen}
       backgroundServiceStartConfig={BACKGROUND_SERVICE_START_CONFIG}
       defaultLauncherUrl={DEFAULT_LAUNCHER_URL}
+      defaultAuthorizationUrl={DEFAULT_AUTHORIZATION_URL}
       telemetry={{ dsn: BASE_DSN, app: 'host-app' }}
       httpClient={httpClient}
       path={path}
@@ -1559,6 +1566,90 @@ describe('Launch', () => {
   })
 })
 
+describe('Authorization', () => {
+  const RUTH = 'ruth.relay.example.com'
+  const LAB = 'lab.rathole.example.com'
+
+  /** The list item of the server `domain`. */
+  const serverRow = (domain: string): HTMLElement => screen.getByRole('listitem', { name: domain })
+
+  /** The Authorization button on the server `domain`'s card. */
+  const authorizationOn = (domain: string): HTMLButtonElement => {
+    const button = within(serverRow(domain)).getByRole('button', { name: 'Authorization' })
+    if (!(button instanceof HTMLButtonElement)) throw new Error('Authorization is no <button>')
+    return button
+  }
+
+  /** Whether `first` comes before `second` in the document. */
+  const isBefore = (first: Node, second: Node): boolean =>
+    (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+  /** The servers' list on a host answering `answers`, and the host. */
+  const renderServers = (answers: Readonly<Record<string, () => Promise<unknown>>>): FakeHost => {
+    const host = hostWith({ servers: () => Promise.resolve(golden.listedServers), answers })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+    })
+    return host
+  }
+
+  it("should open a launchable server's Authorization app, and show the host's refusal", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderServers({
+      server_open_authorization_app: () => Promise.reject(golden.launchErrors[2]),
+    })
+    await screen.findByRole('listitem', { name: RUTH })
+    const launch = within(serverRow(RUTH)).getByRole('button', { name: 'Launch' })
+    const edit = within(serverRow(RUTH)).getByRole('link', { name: 'Edit' })
+
+    // Act
+    await user.click(authorizationOn(RUTH))
+
+    // Assert
+    expect(isBefore(launch, authorizationOn(RUTH))).toBe(true)
+    expect(isBefore(authorizationOn(RUTH), edit)).toBe(true)
+    expect(host.seen.filter(({ command }) => command === 'server_open_authorization_app')).toEqual([
+      { command: 'server_open_authorization_app', args: { domain: RUTH } },
+    ])
+    const banner = await within(serverRow(RUTH)).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[2].message)
+    expect(authorizationOn(RUTH).disabled).toBe(false)
+  })
+
+  it('should be disabled for a server the host would refuse, described by its status', async () => {
+    // Arrange
+    renderServers({})
+    await screen.findByRole('listitem', { name: LAB })
+
+    // Assert
+    expect(authorizationOn(LAB).disabled).toBe(true)
+    const describedBy = authorizationOn(LAB).getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(document.getElementById(describedBy ?? '')?.textContent).toBeTruthy()
+  })
+
+  it('should be disabled while the webview is offline', async () => {
+    // Arrange
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    try {
+      // Act
+      renderServers({})
+      await screen.findByRole('listitem', { name: RUTH })
+
+      // Assert
+      expect(authorizationOn(RUTH).disabled).toBe(true)
+    } finally {
+      onLine.mockRestore()
+      // TanStack Query's online manager hears the window's events.
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+    }
+  })
+})
+
 describe('the server page', () => {
   /** A `/health` check object as a server serves it. */
   const healthCheck = (status: string): Readonly<Record<string, string>> => ({
@@ -2034,6 +2125,7 @@ describe('the server page', () => {
       args: {
         domain: 'ruth.relay.example.com',
         launcherUrl: 'https://launcher.example.com/',
+        authorizationUrl: DEFAULT_AUTHORIZATION_URL,
         certificateAuthority: 'letsEncrypt',
       },
     })
@@ -2222,7 +2314,14 @@ describe('the server page', () => {
     expect(document.body.textContent).not.toContain('tunnel-token-123')
   })
 
-  it('should save an edited launcher with the certificate authority unchanged', async () => {
+  /** The form of the server page's field labelled `label`. */
+  const formOf = async (label: string): Promise<HTMLElement> => {
+    const form = (await screen.findByLabelText(label)).closest('form')
+    if (form === null) throw new Error(`no form for ${label}`)
+    return form
+  }
+
+  it('should save an edited launcher with the Authorization app and certificate authority unchanged', async () => {
     // Arrange
     const user = userEvent.setup()
     const host = renderServerPage({
@@ -2244,12 +2343,70 @@ describe('the server page', () => {
       args: {
         domain: 'lab.rathole.example.com',
         launcherUrl: 'https://launcher.example.com/app',
+        authorizationUrl: 'http://localhost:5300/authorization/',
         certificateAuthority: 'letsEncryptStaging',
       },
     })
     await waitFor(() => {
       expect(save).toHaveProperty('disabled', true)
     })
+  })
+
+  it('should save an edited Authorization app with the launcher and certificate authority unchanged', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderServerPage({
+      domain: 'lab.rathole.example.com',
+      answers: { server_update: () => Promise.resolve(null) },
+    })
+    const field = await screen.findByLabelText('Authorization')
+    const save = screen.getByRole('button', { name: 'Save Authorization' })
+    expect(field).toHaveProperty('value', 'http://localhost:5300/authorization/')
+    expect(save).toHaveProperty('disabled', true)
+
+    // Act
+    await user.clear(field)
+    await user.type(field, 'https://authorization.example.com/')
+    await user.click(save)
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_update',
+      args: {
+        domain: 'lab.rathole.example.com',
+        launcherUrl: 'http://localhost:5200/app',
+        authorizationUrl: 'https://authorization.example.com/',
+        certificateAuthority: 'letsEncryptStaging',
+      },
+    })
+    await waitFor(() => {
+      expect(save).toHaveProperty('disabled', true)
+    })
+  })
+
+  it("should show the host's refusal of an Authorization app under its field", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const refusal = {
+      kind: 'invalidAuthorizationUrl',
+      message:
+        'the entered Authorization URL "ftp://authorization.example.com/" is not an http or https URL',
+    }
+    renderServerPage({
+      domain: 'lab.rathole.example.com',
+      answers: { server_update: () => Promise.reject(refusal) },
+    })
+    const field = await screen.findByLabelText('Authorization')
+
+    // Act
+    await user.clear(field)
+    await user.type(field, 'ftp://authorization.example.com/')
+    await user.click(screen.getByRole('button', { name: 'Save Authorization' }))
+
+    // Assert
+    const form = await formOf('Authorization')
+    expect(await within(form).findByText(refusal.message, { exact: false })).toBeDefined()
+    expect(within(await formOf('Launcher')).queryByRole('alert')).toBeNull()
   })
 
   it('should reset the launcher to the default at once, and offer no reset when it is the default', async () => {
@@ -2261,7 +2418,9 @@ describe('the server page', () => {
     })
 
     // Act
-    await user.click(await screen.findByRole('button', { name: 'Reset to default' }))
+    await user.click(
+      within(await formOf('Launcher')).getByRole('button', { name: 'Reset to default' })
+    )
 
     // Assert
     expect(host.seen).toContainEqual({
@@ -2269,11 +2428,14 @@ describe('the server page', () => {
       args: {
         domain: 'lab.rathole.example.com',
         launcherUrl: DEFAULT_LAUNCHER_URL,
+        authorizationUrl: 'http://localhost:5300/authorization/',
         certificateAuthority: 'letsEncryptStaging',
       },
     })
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Reset to default' })).toBeNull()
+    await waitFor(async () => {
+      expect(
+        within(await formOf('Launcher')).queryByRole('button', { name: 'Reset to default' })
+      ).toBeNull()
     })
     expect(screen.getByLabelText('Launcher')).toHaveProperty('value', DEFAULT_LAUNCHER_URL)
     cleanup()
@@ -2284,6 +2446,43 @@ describe('the server page', () => {
     // Assert
     expect(await screen.findByLabelText('Launcher')).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Reset to default' })).toBeNull()
+  })
+
+  it('should reset the Authorization app to the default at once, keeping the launcher', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderServerPage({
+      domain: 'lab.rathole.example.com',
+      answers: { server_update: () => Promise.resolve(null) },
+    })
+
+    // Act
+    await user.click(
+      within(await formOf('Authorization')).getByRole('button', { name: 'Reset to default' })
+    )
+
+    // Assert
+    expect(host.seen).toContainEqual({
+      command: 'server_update',
+      args: {
+        domain: 'lab.rathole.example.com',
+        launcherUrl: 'http://localhost:5200/app',
+        authorizationUrl: DEFAULT_AUTHORIZATION_URL,
+        certificateAuthority: 'letsEncryptStaging',
+      },
+    })
+    await waitFor(async () => {
+      expect(
+        within(await formOf('Authorization')).queryByRole('button', { name: 'Reset to default' })
+      ).toBeNull()
+    })
+    expect(screen.getByLabelText('Authorization')).toHaveProperty(
+      'value',
+      DEFAULT_AUTHORIZATION_URL
+    )
+    expect(
+      within(await formOf('Launcher')).getByRole('button', { name: 'Reset to default' })
+    ).toBeDefined()
   })
 
   it.each([

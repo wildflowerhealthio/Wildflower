@@ -21,6 +21,7 @@ const router = createRouter({
     invoke: () => Promise.reject(new Error('package-local router is never run')),
     listen: () => Promise.reject(new Error('package-local router is never run')),
     defaultLauncherUrl: '',
+    defaultAuthorizationUrl: '',
   }),
 })
 

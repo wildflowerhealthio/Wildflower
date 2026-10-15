@@ -183,6 +183,8 @@ mod tests {
                 LauncherBase::parse("https://site.example/launcher/").expect("launcher"),
                 AuthorizationAppBase::parse("https://site.example/authorization/")
                     .expect("authorization app"),
+                Url::parse("https://site.example/launcher/").expect("launcher URL"),
+                Url::parse("https://site.example/authorization/").expect("authorization URL"),
             )),
             SERVER_ORIGIN.into(),
             Grant::parse(OWNER_SCOPES),

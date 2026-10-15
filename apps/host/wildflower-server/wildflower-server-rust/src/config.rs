@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use tokio::sync::{mpsc, watch};
+use url::Url;
 use wildflowerhealthio_authorization_server::PendingConsentHead;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -30,6 +31,14 @@ pub struct WildflowerServerConfig {
     /// The hosted Wildflower Authorization app, which the server's SMART
     /// discovery advertises as its `management_endpoint`.
     pub authorization_app_base: AuthorizationAppBase,
+    /// The page the host opens the server's launches in, from its record:
+    /// one `/oauth/sign-in` may send a browser on to (see
+    /// [`AuthorizationServerConfig::launcher_url`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::launcher_url)).
+    pub launcher_url: Url,
+    /// The page the host opens the server's Authorization app at, from its
+    /// record: one `/oauth/sign-in` may send a browser on to (see
+    /// [`AuthorizationServerConfig::authorization_url`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::authorization_url)).
+    pub authorization_url: Url,
     /// The scopes the authorization server seeds the host app's client with
     /// (see
     /// [`AuthorizationServerConfig::host_app_client_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_app_client_scopes)).

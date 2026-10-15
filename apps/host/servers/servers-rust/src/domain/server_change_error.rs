@@ -23,6 +23,10 @@ pub enum ServerChangeError {
     /// The entered launcher URL isn't one the base can open apps from.
     #[error("the entered launcher URL {reason}")]
     InvalidLauncherUrl { reason: String },
+    /// The entered Authorization URL isn't one the base can open the
+    /// Authorization app at.
+    #[error("the entered Authorization URL {reason}")]
+    InvalidAuthorizationUrl { reason: String },
     /// The removed server's folder couldn't be deleted. The server is still
     /// registered.
     #[error("the folder of {domain} couldn't be deleted: {source}")]
@@ -47,6 +51,7 @@ impl ServerChangeError {
             Self::NonPositiveDuration { .. } => "nonPositiveDuration",
             Self::DurationOutOfRange { .. } => "durationOutOfRange",
             Self::InvalidLauncherUrl { .. } => "invalidLauncherUrl",
+            Self::InvalidAuthorizationUrl { .. } => "invalidAuthorizationUrl",
             Self::DeletingFolder { .. } => "deletingFolder",
             Self::Registry(registry_error) => registry_error.kind(),
         }
@@ -78,6 +83,12 @@ mod tests {
                     reason: "\"ftp://x\" is not an http or https URL".to_owned(),
                 },
                 "invalidLauncherUrl",
+            ),
+            (
+                ServerChangeError::InvalidAuthorizationUrl {
+                    reason: "\"/authorization\" is not a URL".to_owned(),
+                },
+                "invalidAuthorizationUrl",
             ),
             (
                 ServerChangeError::Registry(RegistryError::NotRegistered {

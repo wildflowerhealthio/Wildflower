@@ -45,7 +45,10 @@ const LAUNCHER_BASE_URL: &str = if cfg!(debug_assertions) {
 // The hosted Wildflower Authorization app (see
 // `wildflowerhealthio_shared_structures::authorization_app`), from the same
 // `tauri-shared-config.json` (re-emitted by `build.rs`), in every build: each
-// server's SMART discovery advertises it as its `management_endpoint`.
+// server's SMART discovery advertises it as its `management_endpoint`. It is
+// also the Authorization app a new server gets, as is a server read from a
+// `servers.json` that stored none; the TS shell imports the same value from
+// that file for the server page's Reset to default (`src/main.tsx`).
 const AUTHORIZATION_APP_BASE_URL: &str = env!("WILDFLOWER_AUTHORIZATION_APP_BASE_URL");
 
 // The launcher a new server gets: the hosted launcher, the release
@@ -215,6 +218,8 @@ fn server_config(
         search_parameter_data_dir,
         launcher_base,
         authorization_app_base,
+        launcher_url: server.launcher_url.clone(),
+        authorization_url: server.authorization_url.clone(),
         host_app_client_scopes: host_app_client_scopes(),
         wildflower_host_app_client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
@@ -262,6 +267,7 @@ pub fn run() {
             wildflowerhealthio_servers_tauri::server_update,
             wildflowerhealthio_servers_tauri::server_remove,
             wildflowerhealthio_servers_tauri::server_launch,
+            wildflowerhealthio_servers_tauri::server_open_authorization_app,
             // The base's consent commands, granted to the `main` webview only
             // (`allow-server-consents`).
             wildflowerhealthio_servers_tauri::pending_consents_list,
@@ -369,10 +375,14 @@ pub fn run() {
 
             // Push every server in `servers.json`, in the same data root, to
             // `TauriUnitRunner`, and manage the registry the commands write,
-            // which gives a new server `DEFAULT_LAUNCHER_URL`. Each run of a
-            // server builds its config from its record here.
+            // which gives a new server `DEFAULT_LAUNCHER_URL` and
+            // `AUTHORIZATION_APP_BASE_URL`. Each run of a server builds its
+            // config from its record here.
             let default_launcher_url = Url::parse(DEFAULT_LAUNCHER_URL).context(
                 "launcher_base_url (from tauri-shared-config.json) must be an absolute URL",
+            )?;
+            let default_authorization_url = Url::parse(AUTHORIZATION_APP_BASE_URL).context(
+                "authorization_app_base_url (from tauri-shared-config.json) must be an absolute URL",
             )?;
             let config_app_handle = app.handle().clone();
             let config_data_root = data_root.clone();
@@ -380,6 +390,7 @@ pub fn run() {
                 app.handle(),
                 &data_root,
                 default_launcher_url,
+                default_authorization_url,
                 &runner,
                 move |server| server_config(server, &config_data_root, &config_app_handle),
             );
@@ -412,6 +423,7 @@ mod tests {
                 domain: "relay.wildflowerhealth.io".to_owned(),
             },
             launcher_url: url::Url::parse(super::DEFAULT_LAUNCHER_URL).unwrap(),
+            authorization_url: url::Url::parse(super::AUTHORIZATION_APP_BASE_URL).unwrap(),
             certificate_authority: CertificateAuthority::LetsEncrypt,
             run_policy: RunPolicy::WhileOpen,
         }

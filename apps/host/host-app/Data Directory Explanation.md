@@ -50,7 +50,7 @@ configuration only, never whether a server is up:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "servers": [
     {
       "relay": { "kind": "wildflowerOfficial" },
@@ -64,6 +64,7 @@ configuration only, never whether a server is up:
         "domain": "relay.wildflowerhealth.io"
       },
       "launcherUrl": "https://wildflowerhealth.io/launcher",
+      "authorizationUrl": "https://wildflowerhealth.io/authorization/",
       "certificateAuthority": "letsEncrypt",
       "runPolicy": { "kind": "whileOpen" }
     }
@@ -78,6 +79,11 @@ shape, which the host pushes to `TauriUnitRunner` unchanged:
 gets `whileOpen` when no other server's policy wants it running, and `off`
 otherwise. An `until` whose `at` has passed stays in the file and no longer
 wants its server running.
+
+`launcherUrl` and `authorizationUrl` are the pages the base opens for the
+server, its launcher and its Wildflower Authorization app, both signed in as
+the Owner; a new server gets the hosted ones. A version 2 file, which has no
+`authorizationUrl`, reads each server's as the hosted Authorization app.
 
 `certificateAuthority` is the ACME CA the server's certificates are ordered
 from: `"letsEncryptStaging"` or `"letsEncrypt"`.

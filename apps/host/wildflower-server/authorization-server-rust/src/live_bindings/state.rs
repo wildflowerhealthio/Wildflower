@@ -91,10 +91,14 @@ pub struct AuthorizationServerState {
     /// `/oauth/sign-in`.
     pub(crate) same_device_sign_in_codes: Arc<SameDeviceSignInCodes>,
     /// Where `/oauth/sign-in` may send a browser next: this server's paths,
-    /// the hosted launcher and the Wildflower Authorization app, built at
+    /// the hosted launcher, the Wildflower Authorization app, and the launcher
+    /// and Authorization app the host opens for this server, built at
     /// [`crate::setup_authorization_server`] from the server's origin,
-    /// [`launcher_base`](Self::launcher_base) and
-    /// [`AuthorizationServerConfig::authorization_app_base`](crate::AuthorizationServerConfig::authorization_app_base).
+    /// [`launcher_base`](Self::launcher_base),
+    /// [`AuthorizationServerConfig::authorization_app_base`](crate::AuthorizationServerConfig::authorization_app_base),
+    /// [`AuthorizationServerConfig::launcher_url`](crate::AuthorizationServerConfig::launcher_url)
+    /// and
+    /// [`AuthorizationServerConfig::authorization_url`](crate::AuthorizationServerConfig::authorization_url).
     pub(crate) sign_in_destinations: Arc<SignInDestinations>,
 }
 

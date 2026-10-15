@@ -7,7 +7,10 @@
 //! - a path on this server: it starts with `/` but not `//`, and still names
 //!   this server's origin once resolved against it;
 //! - a URL under the hosted launcher ([`LauncherBase`]);
-//! - a URL under the Wildflower Authorization app ([`AuthorizationAppBase`]).
+//! - a URL under the Wildflower Authorization app ([`AuthorizationAppBase`]);
+//! - a URL under the pages the host opens for this server, its own launcher
+//!   and Authorization app: the page itself, whatever its query, or a URL
+//!   within it as a folder.
 //!
 //! Each is judged by the URL a browser would make of it, parsed as the WHATWG
 //! URL standard says, so the spellings a browser reads as another host
@@ -25,6 +28,10 @@ pub(crate) struct SignInDestinations {
     server_origin: Url,
     launcher: LauncherBase,
     authorization_app: AuthorizationAppBase,
+    /// The page the host opens this server's launches in.
+    launcher_url: Url,
+    /// The page the host opens this server's Authorization app at.
+    authorization_url: Url,
 }
 
 /// A `next` [`SignInDestinations`] allowed: the `Location` the sign-in
@@ -41,17 +48,21 @@ impl SignInRedirect {
 }
 
 impl SignInDestinations {
-    /// The paths on `server_origin`, and the URLs under `launcher` and under
-    /// `authorization_app`.
+    /// The paths on `server_origin`, and the URLs under `launcher`,
+    /// `authorization_app`, `launcher_url` and `authorization_url`.
     pub(crate) fn new(
         server_origin: Url,
         launcher: LauncherBase,
         authorization_app: AuthorizationAppBase,
+        launcher_url: Url,
+        authorization_url: Url,
     ) -> Self {
         SignInDestinations {
             server_origin,
             launcher,
             authorization_app,
+            launcher_url,
+            authorization_url,
         }
     }
 
@@ -62,8 +73,14 @@ impl SignInDestinations {
             return self.path_on_this_server(next);
         }
         let url = Url::parse(next).ok()?;
-        let is_allowed = is_under(&url, self.launcher.as_url())
-            || is_under(&url, self.authorization_app.as_url());
+        let is_allowed = [
+            self.launcher.as_url(),
+            self.authorization_app.as_url(),
+            &self.launcher_url,
+            &self.authorization_url,
+        ]
+        .into_iter()
+        .any(|page| is_under(&url, page));
         is_allowed.then(|| SignInRedirect(url.into()))
     }
 
@@ -79,13 +96,19 @@ impl SignInDestinations {
     }
 }
 
-/// Whether `url` is `base` or below it: the same origin, no credentials, and a
-/// path within `base`'s (which ends in `/`).
-fn is_under(url: &Url, base: &Url) -> bool {
-    url.origin() == base.origin()
+/// Whether `url` is `page` or below it: the same origin, no credentials, and
+/// `page`'s path or a path within it as a folder. A base's path ends in `/`,
+/// so only the paths within it are.
+fn is_under(url: &Url, page: &Url) -> bool {
+    let folder = if page.path().ends_with('/') {
+        page.path().to_owned()
+    } else {
+        format!("{}/", page.path())
+    };
+    url.origin() == page.origin()
         && url.username().is_empty()
         && url.password().is_none()
-        && url.path().starts_with(base.path())
+        && (url.path() == page.path() || url.path().starts_with(&folder))
 }
 
 #[cfg(test)]
@@ -100,6 +123,8 @@ mod tests {
             LauncherBase::parse("https://site.example/launcher/").expect("launcher"),
             AuthorizationAppBase::parse("https://site.example/authorization/")
                 .expect("authorization app"),
+            Url::parse("https://apps.example/launcher?theme=dark").expect("launcher URL"),
+            Url::parse("https://manage.example/authorization/").expect("authorization URL"),
         )
     }
 
@@ -153,6 +178,37 @@ mod tests {
                 .as_deref(),
             Some("https://site.example/authorization/?iss=https%3A%2F%2Fruth.relay.example")
         );
+    }
+
+    #[test]
+    fn a_url_under_the_server_s_own_launcher_or_authorization_app_is_allowed() {
+        for next in [
+            // A launch: the launcher page, its own query, `iss` and `launch`.
+            "https://apps.example/launcher?theme=dark&iss=https%3A%2F%2Fruth.relay.example&launch=n1",
+            "https://apps.example/launcher",
+            "https://apps.example/launcher/settings",
+            "https://manage.example/authorization/?iss=https%3A%2F%2Fruth.relay.example",
+            "https://manage.example/authorization/grants",
+        ] {
+            assert_eq!(allowed(next).as_deref(), Some(next), "{next:?}");
+        }
+    }
+
+    #[test]
+    fn a_url_outside_the_server_s_own_launcher_and_authorization_app_is_refused() {
+        for next in [
+            "https://apps.example/",
+            "https://apps.example/launcherx",
+            "https://apps.example/launcher.html",
+            "https://apps.example/other?theme=dark",
+            "http://apps.example/launcher",
+            "https://user@apps.example/launcher",
+            "https://manage.example/",
+            "https://manage.example/authorization",
+            "https://manage.example/authorizations/",
+        ] {
+            assert_eq!(allowed(next), None, "{next:?}");
+        }
     }
 
     #[test]

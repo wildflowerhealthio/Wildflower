@@ -216,7 +216,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::domain::fixtures::{launcher_url, token_credentials};
+    use crate::domain::fixtures::{authorization_url, launcher_url, token_credentials};
     use crate::domain::{add_server, EnteredCredentials, EnteredRelay, RegistryError};
     use crate::{JsonServerRegistry, ServerRecord, ServerRegistry};
 
@@ -517,14 +517,17 @@ mod tests {
     async fn adds_a_server_through_the_real_relay() {
         let relay = TestRelay::start().await;
         let data_root = tempfile::tempdir().unwrap();
-        let registry: Arc<dyn ServerRegistry> =
-            Arc::new(JsonServerRegistry::in_data_root(data_root.path()));
+        let registry: Arc<dyn ServerRegistry> = Arc::new(JsonServerRegistry::in_data_root(
+            data_root.path(),
+            authorization_url(),
+        ));
 
         let record = add_server(
             Arc::clone(&registry),
             relay.relay(),
             token_credentials("ruth", TOKEN),
             launcher_url(),
+            authorization_url(),
             |relay_base| Ok(relay.client_at(relay_base)),
             chrono::Utc::now(),
         )
@@ -534,6 +537,7 @@ mod tests {
         assert_eq!(record.domain(), format!("ruth.{RELAY_DOMAIN}"));
         assert_eq!(record.public_settings, served_settings());
         assert_eq!(record.launcher_url, launcher_url());
+        assert_eq!(record.authorization_url, authorization_url());
         assert_eq!(
             record.certificate_authority,
             ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY
@@ -545,6 +549,7 @@ mod tests {
                 relay.relay(),
                 token_credentials("ruth", TOKEN),
                 launcher_url(),
+                authorization_url(),
                 |relay_base| Ok(relay.client_at(relay_base)),
                 chrono::Utc::now(),
             )
@@ -613,8 +618,10 @@ mod tests {
     async fn adds_a_server_from_a_claim_code_through_the_real_relay() {
         let relay = TestRelay::start().await;
         let data_root = tempfile::tempdir().unwrap();
-        let registry: Arc<dyn ServerRegistry> =
-            Arc::new(JsonServerRegistry::in_data_root(data_root.path()));
+        let registry: Arc<dyn ServerRegistry> = Arc::new(JsonServerRegistry::in_data_root(
+            data_root.path(),
+            authorization_url(),
+        ));
 
         let record = add_server(
             Arc::clone(&registry),
@@ -623,6 +630,7 @@ mod tests {
                 code: CLAIM_CODE.to_owned(),
             },
             launcher_url(),
+            authorization_url(),
             |relay_base| Ok(relay.client_at(relay_base)),
             chrono::Utc::now(),
         )
@@ -642,8 +650,10 @@ mod tests {
         let logs = captured_logs();
         let relay = TestRelay::start().await;
         let data_root = tempfile::tempdir().unwrap();
-        let registry: Arc<dyn ServerRegistry> =
-            Arc::new(JsonServerRegistry::in_data_root(data_root.path()));
+        let registry: Arc<dyn ServerRegistry> = Arc::new(JsonServerRegistry::in_data_root(
+            data_root.path(),
+            authorization_url(),
+        ));
         let wrong_token = "the-wrong-s3cret";
 
         let mut errors = Vec::new();
@@ -660,6 +670,7 @@ mod tests {
                     },
                     token_credentials("ruth", token),
                     launcher_url(),
+                    authorization_url(),
                     |relay_base| Ok(relay.client_at(relay_base)),
                     chrono::Utc::now(),
                 )

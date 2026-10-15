@@ -32,7 +32,7 @@ import {
   useRemoveServer,
   useServerStatusEvents,
   useSetServerCredentials,
-  useUpdateLauncher,
+  useUpdateServer,
 } from './queries.ts'
 import type { RouterContext, RunHostCommand, RunHttpRequest } from './router-context.ts'
 import { RunPolicyPicker } from './run-policy-picker.tsx'
@@ -499,12 +499,12 @@ const RelayAndTunnel = ({
 
 /**
  * The server's certificate for its domain: its status; the CA the server
- * orders from, its record's, which Save launcher saves unchanged, and, when
- * the certificate state is for another CA (`issuer`), as before a changed CA
- * takes effect, the CA the state is for; the certificate held, with when it
- * is valid and its fingerprint; and the run's latest error since it last
- * deployed one, `retryHasPassed` saying whether a rate limit's retry time
- * has passed.
+ * orders from, its record's, which Save launcher and Save Authorization save
+ * unchanged, and, when the certificate state is for another CA (`issuer`), as
+ * before a changed CA takes effect, the CA the state is for; the certificate
+ * held, with when it is valid and its fingerprint; and the run's latest error
+ * since it last deployed one, `retryHasPassed` saying whether a rate limit's
+ * retry time has passed.
  */
 const certificateItems = (
   { certificateAuthority, certificate }: ListedServer.Type,
@@ -554,13 +554,13 @@ const normalisedUrl = (url: string): Option.Option<string> =>
   URL.canParse(url) ? Option.some(new URL(url).href) : Option.none()
 
 /**
- * Whether `launcherUrl` is `defaultLauncherUrl`, compared as URLs, so a
- * spelling the parser normalises (a host's case, a default port) still
- * matches; a launcher or default that doesn't parse matches nothing.
+ * Whether `url` is `defaultUrl`, compared as URLs, so a spelling the parser
+ * normalises (a host's case, a default port) still matches; a URL or default
+ * that doesn't parse matches nothing.
  */
-const isDefaultLauncher = (launcherUrl: string, defaultLauncherUrl: string): boolean =>
-  Option.all([normalisedUrl(launcherUrl), normalisedUrl(defaultLauncherUrl)]).pipe(
-    Option.exists(([launcher, defaultLauncher]) => launcher === defaultLauncher)
+const isDefaultUrl = (url: string, defaultUrl: string): boolean =>
+  Option.all([normalisedUrl(url), normalisedUrl(defaultUrl)]).pipe(
+    Option.exists(([parsed, parsedDefault]) => parsed === parsedDefault)
   )
 
 /**
@@ -579,29 +579,54 @@ const CertificateList = ({ server }: { readonly server: ListedServer.Type }): JS
   )
 }
 
+/** Which of a server's page URLs a {@link PageUrlForm} edits. */
+type PageUrlField = 'launcherUrl' | 'authorizationUrl'
+
+/** How a {@link PageUrlForm} names its field, for each of the page URLs. */
+const PAGE_URL_COPY: Readonly<
+  Record<PageUrlField, { label: string; description: string; saveLabel: string }>
+> = {
+  launcherUrl: {
+    label: 'Launcher',
+    description: "The page this server's apps are launched from.",
+    saveLabel: 'Save launcher',
+  },
+  authorizationUrl: {
+    label: 'Authorization',
+    description: 'The Wildflower Authorization app this server opens.',
+    saveLabel: 'Save Authorization',
+  },
+}
+
 /**
- * The launcher the server opens apps from: a field starting at the saved
- * URL, Save once it is changed, and, while the saved URL isn't
- * `defaultLauncherUrl`, the one the host gives a new server, compared as
- * URLs, Reset to default, which saves the default at once. The certificate authority is
- * saved unchanged, and the host's refusal shows under the field.
+ * One of the pages the server opens, its launcher or its Authorization app:
+ * a field starting at the saved URL, Save once it is changed, and, while the
+ * saved URL isn't `defaultUrl`, the one the host gives a new server, compared
+ * as URLs, Reset to default, which saves the default at once. The server's
+ * other page and its certificate authority are saved unchanged, and the
+ * host's refusal shows under the field.
  */
-const Launcher = ({
+const PageUrlForm = ({
   server,
-  defaultLauncherUrl,
+  field,
+  defaultUrl,
   runHostCommand,
 }: {
   readonly server: ListedServer.Type
-  readonly defaultLauncherUrl: string
+  readonly field: PageUrlField
+  readonly defaultUrl: string
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
-  const updateLauncher = useUpdateLauncher(runHostCommand)
-  const [launcherUrl, setLauncherUrl] = useState(server.launcherUrl)
-  const save = (url: string): void => {
-    updateLauncher.mutate({
+  const updateServer = useUpdateServer(runHostCommand)
+  const [url, setUrl] = useState(server[field])
+  const { label, description, saveLabel } = PAGE_URL_COPY[field]
+  const save = (saved: string): void => {
+    updateServer.mutate({
       domain: server.domain,
-      launcherUrl: url,
+      launcherUrl: server.launcherUrl,
+      authorizationUrl: server.authorizationUrl,
       certificateAuthority: server.certificateAuthority,
+      [field]: saved,
     })
   }
   return (
@@ -609,36 +634,34 @@ const Launcher = ({
       className={styles['server-page__form']}
       onSubmit={(event) => {
         event.preventDefault()
-        save(launcherUrl)
+        save(url)
       }}
     >
       <TextField
-        label="Launcher"
+        label={label}
         type="url"
         inputMode="url"
-        value={launcherUrl}
-        onChange={setLauncherUrl}
-        description="The page this server's apps are launched from."
+        value={url}
+        onChange={setUrl}
+        description={description}
       />
-      <ErrorBanner
-        error={updateLauncher.error === null ? null : failureText(updateLauncher.error)}
-      />
+      <ErrorBanner error={updateServer.error === null ? null : failureText(updateServer.error)} />
       <div className={styles['server-page__form-actions']}>
         <button
           type="submit"
           className={`button-2 outline ${styles['server-page__form-action']}`}
-          disabled={launcherUrl === server.launcherUrl || updateLauncher.isPending}
+          disabled={url === server[field] || updateServer.isPending}
         >
-          Save launcher
+          {saveLabel}
         </button>
-        {isDefaultLauncher(server.launcherUrl, defaultLauncherUrl) ? null : (
+        {isDefaultUrl(server[field], defaultUrl) ? null : (
           <button
             type="button"
             className={`button-2 ghost ${styles['server-page__form-action']}`}
-            disabled={updateLauncher.isPending}
+            disabled={updateServer.isPending}
             onClick={() => {
-              setLauncherUrl(defaultLauncherUrl)
-              save(defaultLauncherUrl)
+              setUrl(defaultUrl)
+              save(defaultUrl)
             }}
           >
             Reset to default
@@ -726,9 +749,9 @@ type Tab = (typeof TABS)[number]['id']
 /**
  * A server's page, `/servers/$domain`, opened by its card's Edit: its
  * status, with when it runs, over three tabs. Status holds its connection,
- * its `/health` report while it runs, its launcher and its removal; Relay,
- * its relay and tunnel, with a new tunnel token; Certificate, its
- * certificate's state.
+ * its `/health` report while it runs, its launcher, its Authorization app and
+ * its removal; Relay, its relay and tunnel, with a new tunnel token;
+ * Certificate, its certificate's state.
  *
  * @remarks
  * The server is read from the same cached list as the server list, kept
@@ -752,6 +775,10 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
   const defaultLauncherUrl = useRouteContext({
     from: '__root__',
     select: (context: RouterContext) => context.defaultLauncherUrl,
+  })
+  const defaultAuthorizationUrl = useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.defaultAuthorizationUrl,
   })
   useServerStatusEvents(listenToHostEvent)
   const tabPanelId = useId()
@@ -821,9 +848,16 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
           Match.when('status', () => (
             <>
               <Connection server={server} runHttpRequest={runHttpRequest} />
-              <Launcher
+              <PageUrlForm
                 server={server}
-                defaultLauncherUrl={defaultLauncherUrl}
+                field="launcherUrl"
+                defaultUrl={defaultLauncherUrl}
+                runHostCommand={runHostCommand}
+              />
+              <PageUrlForm
+                server={server}
+                field="authorizationUrl"
+                defaultUrl={defaultAuthorizationUrl}
                 runHostCommand={runHostCommand}
               />
               <DangerZone server={server} runHostCommand={runHostCommand} />
