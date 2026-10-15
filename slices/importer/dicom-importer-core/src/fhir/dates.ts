@@ -63,19 +63,32 @@ const dateParts = (da: string | undefined): Option.Option<DateParts> => {
   return Option.some({ year: Number(year), month: Number(month), day: Number(day) })
 }
 
+/**
+ * Whether a `TM`'s components name a clock time — `HH` 00–23, `MM` 00–59, `SS`
+ * 00–60 (PS3.5 6.2 allows `60` for a leap second). `DateTime.makeZoned` rolls
+ * an out-of-range `1275` forward to `13:15` rather than rejecting it, and a
+ * header never means that.
+ */
+const isClockTime = ({ hours, minutes, seconds }: TimeParts): boolean =>
+  hours <= 23 && minutes <= 59 && seconds <= 60
+
 const timeParts = (tm: string | undefined): Option.Option<TimeParts> => {
   if (tm === undefined) return Option.none()
   const match = TM.exec(tm.trim())
   if (match === null) return Option.none()
   const [, hours = '', minutes = '', seconds, fraction] = match
-  return Option.some({
-    hours: Number(hours),
-    minutes: Number(minutes),
-    seconds: seconds === undefined ? 0 : Number(seconds),
-    // `FFFFFF` is a fraction of a second written to up to six places, so it
-    // has to be scaled by its own width — `.5` is 500ms, not 5ms.
-    millis: fraction === undefined ? 0 : Math.round(Number(`0.${fraction}`) * 1000),
-  })
+  return Option.filter(
+    Option.some({
+      hours: Number(hours),
+      minutes: Number(minutes),
+      seconds: seconds === undefined ? 0 : Number(seconds),
+      // `FFFFFF` is a fraction of a second written to up to six places, so it
+      // is read by its own width — `.5` is 500ms, not 5ms — and truncated to
+      // the millisecond, so `23:59:59.9996` stays on the day it was written.
+      millis: fraction === undefined ? 0 : Number(fraction.padEnd(3, '0').slice(0, 3)),
+    }),
+    isClockTime
+  )
 }
 
 /**
@@ -114,7 +127,7 @@ const dicomCalendarDate = (da: string | undefined): Option.Option<string> =>
  * @param timeZone - The IANA zone the acquiring equipment's clock was set to
  *   (`America/Toronto`)
  * @returns The UTC instant, or `None` when either value is absent or
- *   malformed, the date is impossible, or `timeZone` is not a zone
+ *   malformed, the date or time is impossible, or `timeZone` is not a zone
  *
  * @remarks
  * `None` rather than a failure: a header that omits `StudyTime` is ordinary,

@@ -407,6 +407,24 @@ describe('toFhirResources over a study of several files', () => {
     expect(study.started).toBe('2024-03-15T13:00:00.000Z')
   })
 
+  it('starts at a whole second before a fraction past it', async () => {
+    const study = await studyOf([
+      instanceOf({
+        sopInstanceUid: 'I1',
+        instanceNumber: 1,
+        studyDate: '20240315',
+        studyTime: '143022.5',
+      }),
+      instanceOf({
+        sopInstanceUid: 'I2',
+        instanceNumber: 2,
+        studyDate: '20240315',
+        studyTime: '143022',
+      }),
+    ])
+    expect(study.started).toBe('2024-03-15T18:30:22.000Z')
+  })
+
   it('synthesizes identical resources whatever order the files were picked in', async () => {
     const forward = await Effect.runPromise(toFhirResources(twoSeries, SETTINGS))
     const reversed = await Effect.runPromise(toFhirResources(twoSeries.toReversed(), SETTINGS))

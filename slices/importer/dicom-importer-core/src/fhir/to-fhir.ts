@@ -307,20 +307,23 @@ const orderedInstances = <T extends StudyInstance>(instances: readonly T[]): rea
   studySeries(instances).flatMap((series) => series.instances)
 
 /**
- * How a header's acquisition instant sorts, as one comparable string.
+ * How a header's acquisition instant sorts, as one comparable string of
+ * digits.
  *
  * @remarks
- * `DA` is fixed-width `YYYYMMDD` and `TM` is `HHMMSS.FFFFFF` truncated at any
- * component boundary (PS3.5 6.2), so padding the time to full width makes
- * lexicographic order chronological order — an hour-only `14` sorts before
- * `1430`, as it must. A header with no `StudyDate` sorts last rather than
- * claiming the earliest instant.
+ * `DA` is fixed-width `YYYYMMDD` once the retired `YYYY.MM.DD` spelling's dots
+ * are dropped, and `TM` is `HHMMSS.FFFFFF` truncated at any component boundary
+ * (PS3.5 6.2). Padding the clock and the fraction each to full width, with the
+ * `.` between them dropped, makes lexicographic order chronological order — an
+ * hour-only `14` sorts before `1430`, and `143022` before `143022.5`, as they
+ * must; a `.` left in would sort below every digit. A header with no
+ * `StudyDate` sorts last rather than claiming the earliest instant.
  */
 const startRank = (header: DicomHeader.Type): Option.Option<string> =>
-  Option.map(
-    Option.fromNullable(header.studyDate),
-    (studyDate) => `${studyDate}${(header.studyTime ?? '').padEnd(13, '0')}`
-  )
+  Option.map(Option.fromNullable(header.studyDate), (studyDate) => {
+    const [clock = '', fraction = ''] = (header.studyTime ?? '').split('.')
+    return `${studyDate.replaceAll('.', '')}${clock.padEnd(6, '0')}${fraction.padEnd(6, '0')}`
+  })
 
 /**
  * Order two instances by acquisition instant, a header stating none last.

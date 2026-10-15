@@ -21,6 +21,7 @@ import {
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 
+import { dicomCalendarDate } from './fhir/dates.ts'
 import {
   accessionNumbers,
   orderedInstances,
@@ -90,20 +91,19 @@ const studyGroupKey = (file: PickedFile.Type): Either.Either<string, ParseResult
 
 /**
  * Build the section title from the study's representative header:
- * `<Modality> <StudyDescription> · <StudyDate>`. Modality is required of every
- * header, so a study always names at least that.
+ * `<Modality> <StudyDescription> · <StudyDate>`, the date read as
+ * `dicomCalendarDate` reads it and left out when it names no real day.
+ * Modality is required of every header, so a study always names at least
+ * that.
  */
 const sectionTitle = (header: DicomHeader.Type): string => {
   const parts: string[] = [header.modality]
   if (header.studyDescription !== undefined) parts.push(header.studyDescription)
   const prefix = parts.join(' ')
-  if (header.studyDate !== undefined) {
-    const y = header.studyDate.slice(0, 4)
-    const m = header.studyDate.slice(4, 6)
-    const d = header.studyDate.slice(6, 8)
-    return `${prefix} · ${y}-${m}-${d}`
-  }
-  return prefix
+  return Option.match(dicomCalendarDate(header.studyDate), {
+    onNone: () => prefix,
+    onSome: (studyDate) => `${prefix} · ${studyDate}`,
+  })
 }
 
 /** How one file reads in the notes: which series and instance of the study it is. */
