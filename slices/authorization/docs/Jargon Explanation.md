@@ -14,10 +14,10 @@ questions about whether two concepts should collapse are flagged with
 Wildflower Authorization allows an authorized **Owner** on one device to
 issue **Grants** to OAuth Clients (registered in the
 [`clients`](#client) table) requesting access on a separate device,
-allowing them to access data in a system. The host browser bootstraps
-onto a fresh deployment via the RFC 8628 device authorization flow; a
-direct-loopback caller on the host's own machine is instead presented with a
-host-minted token (see [bootstrap URL](#bootstrap-url)).
+allowing them to access data in a system. The
+[Wildflower host app](#wildflower-host-app) holds no token: it acts as the
+Owner in process, and signs browsers on its own device in as the Owner (see
+[Owner browser](#owner-browser)).
 
 ## Roles
 
@@ -100,11 +100,8 @@ empty `redirectUris`:
 - `WILDFLOWER_HOST_APP_CLIENT_ID` (configured as `wildflower_host_app_client_id`
   in `tauri-shared-config.json`), named `Wildflower Host`, the
   [Wildflower host app](#wildflower-host-app)'s. It is allowed only its own
-  scopes (`host_app_client_scopes`, `openid`), not the Owner's. It gets its token from a host
-  mint or the device flow — see [bootstrap URL](#bootstrap-url) — not OAuth
-  redirects. Its grants and subject are revoked like any client's (see
-  [Wildflower host app](#wildflower-host-app) for how the host app stays
-  signed in).
+  scopes (`host_app_client_scopes`, `openid`), not the Owner's. The host app holds
+  no token of its own (see [Wildflower host app](#wildflower-host-app)).
 - `wildflower-owner-browser` (`OWNER_BROWSER_CLIENT_ID`), the
   [Owner browsers](#owner-browser)', allowed the Owner's scopes
   (`OWNER_SCOPES`). It is allowed no grant type: its tokens
@@ -334,7 +331,7 @@ writes, and turns each into a bearer token ahead of the gate
 (`wildflower-server-rust`'s `session_cookie_bearer`); with both, `hfs_session`
 wins, unless the page asks for the Owner browser's session with
 `Wildflower-Session: owner-browser` (see [Owner browser](#owner-browser)). Every
-other caller, direct-loopback or relayed, attaches its own bearer: the launcher
+other caller attaches its own bearer: the launcher
 its in-memory one.
 
 ### Device flow (RFC 8628)
@@ -621,20 +618,6 @@ An approval with any `approver_missing_scopes` is refused as a whole with
 stays `pending`, so an approver whose token does cover it can still answer it.
 The [consent card](#consent-card) shows the refusal above its decision, and
 the Owner can narrow the ticked scopes and approve again.
-
-### Bootstrap URL
-
-Replaces the deleted PIN flow's "operator gets onto a cold deployment"
-mechanism. The host process (`authorization-server-rust`, native-shell wrapper, dev
-server) has direct access to the signing key and mints a short-lived owner
-access token directly. It verifies normally
-because the host app's client is a registered [`Client`](#client) and
-`'owner' ∈ scope` — no new endpoint, no redemption table.
-
-The web SPA has no client-side URL-token consumption: it signs in through
-SMART and holds the resulting bearer in memory. A
-direct-loopback caller never holds the host-minted token at all — the host
-presents it on the caller's requests.
 
 ### `authorization-server-pages` group
 
