@@ -1,6 +1,7 @@
 //! Notifying each new consent waiting on the servers: a notification for
-//! each, "‹client› wants access to ‹domain›". A tap opens it on a phone; a
-//! desktop, which reports no taps, opens it from the server's page.
+//! each, "‹client› wants access to ‹domain›", withdrawn once the request is
+//! no longer the server's newest. A tap opens it on a phone; a desktop, which
+//! reports no taps, opens it from the server's page.
 
 use tauri::AppHandle;
 use tauri_plugin_log::log;
@@ -8,13 +9,15 @@ use tokio::sync::watch;
 use wildflowerhealthio_servers::{ConsentNotificationCoalescer, ConsentRequest, ServerDetail};
 use wildflowerhealthio_tauri_unit_runner::UnitStatuses;
 
-use crate::notifications::post_notification;
+use crate::notifications::{post_notification, withdraw_consent_notification};
 
 /// Where a consent request is announced: in the app, a posted notification;
 /// in the tests, a record of the requests announced.
 pub(crate) trait ConsentRequestNotifier: Send + 'static {
     /// Announce `request`.
     fn notify(&self, request: &ConsentRequest);
+    /// Withdraw the announcement of the server `domain`'s request.
+    fn withdraw(&self, domain: &str);
 }
 
 /// The app's [`ConsentRequestNotifier`]: the notification plugin.
@@ -25,6 +28,10 @@ pub(crate) struct AppConsentRequestNotifier {
 impl ConsentRequestNotifier for AppConsentRequestNotifier {
     fn notify(&self, request: &ConsentRequest) {
         post_notification(&self.app, &request.notification());
+    }
+
+    fn withdraw(&self, domain: &str) {
+        withdraw_consent_notification(&self.app, domain);
     }
 }
 
@@ -39,8 +46,12 @@ pub(crate) async fn notify_consent_requests(
     let mut coalescer = ConsentNotificationCoalescer::new();
     loop {
         let current = statuses.borrow_and_update().clone();
-        for request in coalescer.record(&current) {
-            notifier.notify(&request);
+        let changes = coalescer.record(&current);
+        for domain in &changes.withdrawn {
+            notifier.withdraw(domain);
+        }
+        for request in &changes.posted {
+            notifier.notify(request);
         }
         if statuses.changed().await.is_err() {
             log::error!(
@@ -63,13 +74,18 @@ mod tests {
 
     const RUTH: &str = "ruth.relay.example.com";
 
-    /// The requests announced, in order.
+    /// The requests announced, and the domains whose announcement was
+    /// withdrawn, each in order.
     #[derive(Clone, Default)]
-    struct RecordedRequests(Arc<Mutex<Vec<ConsentRequest>>>);
+    struct RecordedRequests(Arc<Mutex<Vec<ConsentRequest>>>, Arc<Mutex<Vec<String>>>);
 
     impl ConsentRequestNotifier for RecordedRequests {
         fn notify(&self, request: &ConsentRequest) {
             self.0.lock().unwrap().push(request.clone());
+        }
+
+        fn withdraw(&self, domain: &str) {
+            self.1.lock().unwrap().push(domain.to_owned());
         }
     }
 
@@ -143,10 +159,11 @@ mod tests {
         assert_eq!(recorded.keys(), [oauth("a")]);
 
         // A newer request arrives, and is decided: "a" comes back, but was
-        // announced already.
+        // announced already, and "b"'s announcement is withdrawn.
         send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("b"))).await;
         send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
         assert_eq!(recorded.count(), 2);
+        assert_eq!(*recorded.1.lock().unwrap(), [RUTH]);
         drop(statuses_tx);
         notifying.await.unwrap();
 

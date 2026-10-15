@@ -1,6 +1,7 @@
 //! Posting what [`wildflowerhealthio_servers`] decides to notify about the
 //! servers: each stop of a server's run `TauriUnitRunner` reports;
-//! [`post_notification`] posts the consent requests too.
+//! [`post_notification`] posts the consent requests too, and
+//! [`withdraw_consent_notification`] withdraws a server's.
 
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_log::log;
@@ -59,3 +60,27 @@ pub(crate) fn post_notification<R: Runtime>(app: &AppHandle<R>, notification: &L
         log::warn!("[servers] notification {} failed: {error}", notification.id);
     }
 }
+
+/// Withdraw the server `domain`'s consent notification from the
+/// notifications shown, on a phone. A failure is logged, as for
+/// [`post_notification`]. A desktop's plugin can't withdraw a notification,
+/// and reports no taps on one, so there it stays until the user dismisses it.
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(crate) fn withdraw_consent_notification<R: Runtime>(app: &AppHandle<R>, domain: &str) {
+    let Some(notifications) = app.try_state::<Notification<R>>() else {
+        log::warn!(
+            "[servers] the notification plugin is not registered; \
+             {domain}'s consent notification not withdrawn"
+        );
+        return;
+    };
+    if let Err(error) = notifications.remove_active(vec![
+        wildflowerhealthio_servers::consent_notification_id_for_plugin(domain),
+    ]) {
+        log::warn!("[servers] withdrawing {domain}'s consent notification failed: {error}");
+    }
+}
+
+/// Desktop builds withdraw nothing: see the mobile variant.
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+pub(crate) fn withdraw_consent_notification<R: Runtime>(_app: &AppHandle<R>, _domain: &str) {}
