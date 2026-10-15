@@ -10,8 +10,8 @@ const ALL_BUT_SIGN_BIT: u32 = 0x7fff_ffff;
 /// notifications stack).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalNotification {
-    /// The stable string id: `server-stopped:<domain>`,
-    /// `server-requests:<caller>` or `consent-request:<domain>`.
+    /// The stable string id: `server-stopped:<domain>` or
+    /// `consent-request:<domain>`.
     pub id: String,
     /// The notification's title.
     pub title: String,
@@ -59,10 +59,10 @@ mod tests {
             with_id("server-stopped:ruth.relay.example.com").hash_id_for_plugin(),
             0x5f69_2c69
         );
-        // FNV-1a("server-requests:client:lifting") = 0x8dd190a5 → masked 0x0dd190a5 → | 1.
+        // FNV-1a("consent-request:ruth.relay.example.com") = 0x96a08280 → masked 0x16a08280 → | 1.
         assert_eq!(
-            with_id("server-requests:client:lifting").hash_id_for_plugin(),
-            0x0dd1_90a5
+            with_id("consent-request:ruth.relay.example.com").hash_id_for_plugin(),
+            0x16a0_8281
         );
     }
 

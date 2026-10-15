@@ -14,7 +14,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
@@ -133,7 +132,6 @@ fn server_on_a_runner() -> ServerOnARunner {
 
 /// The server whose folder is `server_dir`, set on a runner.
 fn server_in_a_folder_on_a_runner(server_dir: tempfile::TempDir) -> ServerOnARunner {
-    let (forwarded_request_tx, _forwarded_request_rx) = mpsc::channel(16);
     let config = server_config(server_dir.path().to_owned());
 
     let unit_runner = UnitRunner::<ServerDetail>::new(
@@ -142,10 +140,7 @@ fn server_in_a_folder_on_a_runner(server_dir: tempfile::TempDir) -> ServerOnARun
         BackgroundSessionLength::AsLongAsNeeded,
     );
     unit_runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
-        Ok(ServerUnit::new(
-            config.clone(),
-            forwarded_request_tx.clone(),
-        ))
+        Ok(ServerUnit::new(config.clone()))
     });
     ServerOnARunner {
         unit_runner,

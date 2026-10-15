@@ -25,8 +25,7 @@ changing how servers run or what the host notifies about them.
   `UnitRunner` as the base receives it, and `ListedServer`, with the
   certificate state its run reported or its cache holds; `PendingConsent`,
   the newest consent waiting on a server, named by its `ConsentKey`; and the
-  notification decisions: the per-caller request coalescer, the stop
-  notification for each new stop of a server's run, and the consent
+  notification decisions: the stop notification for each new stop of a server's run, and the consent
   notification for each new request waiting on a server.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
@@ -40,7 +39,7 @@ changing how servers run or what the host notifies about them.
     `launch_url`, `authorization_app_url`, `sign_in_url`,
     `consent_sign_in_url`, `LaunchError`), and `notifications/`
     (`LocalNotification` with its `fnv1a` id hash,
-    `RequestNotificationCoalescer`, `StopNotificationCoalescer` with
+    `StopNotificationCoalescer` with
     `ServerStop` and `StopCause`, and `ConsentNotificationCoalescer` with
     `ConsentRequest` and `server_of_consent_notification`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
@@ -54,8 +53,8 @@ changing how servers run or what the host notifies about them.
     server through `UnitRunner`, the consent waiting on it included.
 - **`servers-tauri`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
-  `ServerUnits::push`, emits the `server-status` event, posts the stop,
-  request and consent notifications, opening each consent's request in the
+  `ServerUnits::push`, emits the `server-status` event, posts the stop
+  and consent notifications, opening each consent's request in the
   default browser on the desktop, and manages the commands'
   `ServersState`. The base's Tauri commands: `servers_list`, `server_add`,
   `server_set_credentials`, `server_set_run_policy`, `server_update` and

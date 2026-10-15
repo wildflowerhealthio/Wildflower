@@ -30,7 +30,7 @@ thiserror = "2"
 async-trait = "0.1"
 # Runs the synchronous registry off the async runtime during enrolment and
 # spawns a run's detail reporter (`rt`); `sync` carries a run's server-health
-# and certificate watches and the forwarded-request channel; `macros` selects
+# and certificate watches; `macros` selects
 # over the two watches.
 tokio = { workspace = true, features = ["rt", "sync", "macros"] }
 # `GET /rathole` and the signed `GET /me` on the relay's site. `rustls-tls`
@@ -60,8 +60,7 @@ wildflowerhealthio-unit-runner = { path = "../../unit-runner/unit-runner-rust" }
 # `CertificateState` its detail carries, and the `CertificateAuthority` a
 # record names. Tauri-free too.
 wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflower-server-rust"}
-# `ForwardedRequest`/`RequestCaller`, which a run reports and the request
-# notifications count, and `HealthStatus`, which a server's status carries.
+# `HealthStatus`, which a server's status carries.
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust", features = ["health-check"] }
 # The head of a run's pending-consent queue, which its detail carries, and
 # the launch and sign-in code minters the host mints through. Tauri-free.

@@ -49,8 +49,7 @@
 //! first, at its [`sign_in_url`]; the server's Authorization app opens the
 //! same way, at its [`authorization_app_url`], and the consent waiting on it
 //! at its page, through [`consent_sign_in_url`]. What the host notifies about
-//! its servers is decided here too: the per-caller request notifications
-//! ([`RequestNotificationCoalescer`]), the notifications for each stop of a
+//! its servers is decided here too: the notifications for each stop of a
 //! server's run ([`StopNotificationCoalescer`]) and those for each new
 //! consent waiting on a server ([`ConsentNotificationCoalescer`]).
 //!
@@ -90,9 +89,6 @@ pub use domain::notifications::consent_notifications::{
     server_of_consent_notification, ConsentNotificationCoalescer, ConsentRequest,
 };
 pub use domain::notifications::local_notification::LocalNotification;
-pub use domain::notifications::request_notifications::{
-    CallerActivity, RequestNotificationCoalescer,
-};
 pub use domain::notifications::stop_notifications::{
     ServerStop, StopCause, StopNotificationCoalescer,
 };

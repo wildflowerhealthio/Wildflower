@@ -5,8 +5,7 @@
 //! The authorization server bearer gates stamp a [`RequestCaller`] on a response's
 //! extensions, from the verified token, or a [`RequestRefusal`] on the `401`
 //! they answer instead. The server's forwarded-request layer reads them back
-//! and reports a [`ForwardedRequest`] to the host, which turns them into
-//! notifications. The types live here so the gates and the layer meet without
+//! and reports a [`ForwardedRequest`] to the request log. The types live here so the gates and the layer meet without
 //! depending on each other.
 
 use std::time::{Duration, SystemTime};

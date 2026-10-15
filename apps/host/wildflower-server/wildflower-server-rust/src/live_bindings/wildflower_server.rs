@@ -29,7 +29,7 @@ use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMint
 use crate::domain::reachability_monitor::ReachabilityMonitor;
 use crate::http::health::ServerHealthChecks;
 use crate::http::middleware::cors::api_cors_layer;
-use crate::http::middleware::forwarded_request_layer::{self, ForwardedRequestReporter};
+use crate::http::middleware::forwarded_request_layer;
 use crate::http::middleware::session_cookie_bearer::present_session_cookie_bearers;
 use crate::http::middleware::tunnel_front::refuse_misdirected_requests;
 use crate::http::tunnel_listener::tls::TunnelTlsAcceptor;
@@ -512,13 +512,9 @@ pub async fn set_up(
     );
 
     // Every forwarded request is reported to the request log once its response
-    // is ready, and to the host unless it is a `/health` check (the
-    // reachability monitor's probes).
+    // is ready.
     let forwarded_request_report = axum::middleware::from_fn_with_state(
-        ForwardedRequestReporter {
-            host_tx: observers.forwarded_request_tx,
-            request_log_tx: request_log.forwarded_request_tx,
-        },
+        request_log.forwarded_request_tx,
         forwarded_request_layer::report_forwarded_request,
     );
 

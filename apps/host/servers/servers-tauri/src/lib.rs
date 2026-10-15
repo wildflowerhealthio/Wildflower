@@ -16,8 +16,7 @@
 //!   status on `TauriUnitRunner` changed, with its certificate's state (its
 //!   run's, or what its cache says) and the newest consent waiting on it;
 //! - posts a stop notification for each new stop of a server's run, read from
-//!   `TauriUnitRunner`'s statuses, the per-caller notifications for the
-//!   requests the servers' tunnels relay, and a notification for each new consent
+//!   `TauriUnitRunner`'s statuses, and a notification for each new consent
 //!   waiting on a server, which on the desktop opens the request at once in
 //!   the default browser, as the server's page's Open does;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
@@ -110,7 +109,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use url::Url;
 use wildflowerhealthio_servers::{JsonServerRegistry, ServerDetail, ServerRecord, ServerRegistry};
 use wildflowerhealthio_tauri_unit_runner::TauriUnitRunner;
@@ -129,11 +128,6 @@ pub use server_units::{ServerConfigBuilder, ServerUnits};
 
 /// The webview the servers' events go to: the base's.
 pub(crate) const BASE_WEBVIEW_LABEL: &str = "main";
-
-/// How many forwarded-request reports may wait for the request notifications
-/// before the servers start dropping them (see
-/// `wildflowerhealthio_wildflower_server::ServerObservers`).
-pub const FORWARDED_REQUEST_CAPACITY: usize = 256;
 
 /// What the servers commands work through: the install's registry and the
 /// data root its servers' folders are in, the launcher and Authorization app
@@ -203,12 +197,7 @@ pub fn host_servers(
         data_root,
         default_authorization_url.clone(),
     ));
-    let (forwarded_request_tx, forwarded_request_rx) = mpsc::channel(FORWARDED_REQUEST_CAPACITY);
-    let server_units = ServerUnits::new(
-        runner.clone(),
-        Arc::new(server_config),
-        forwarded_request_tx,
-    );
+    let server_units = ServerUnits::new(runner.clone(), Arc::new(server_config));
     match registry.read_all() {
         Ok(records) => {
             for record in records {
@@ -242,10 +231,6 @@ pub fn host_servers(
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),
         runner.subscribe_stops(),
-    ));
-    tauri::async_runtime::spawn(notifications::post_request_notifications(
-        app.clone(),
-        forwarded_request_rx,
     ));
     app.manage(ServersState::new(
         registry,

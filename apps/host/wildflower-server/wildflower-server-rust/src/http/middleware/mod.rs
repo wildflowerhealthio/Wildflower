@@ -1,5 +1,5 @@
 //! The layers around the composed API: the [`cors`] policy, the
-//! [`forwarded_request_layer`] that reports each forwarded request to the host, the [`tunnel_front`] that
+//! [`forwarded_request_layer`] that reports each forwarded request to the request log, the [`tunnel_front`] that
 //! holds each tunnel request to the server's domain, and the
 //! [`session_cookie_bearer`] that presents the bearer the Owner's or the FHIR
 //! web UI's session cookie stands for.

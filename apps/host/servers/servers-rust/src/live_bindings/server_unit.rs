@@ -1,8 +1,7 @@
 //! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
 
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use wildflowerhealthio_authorization_server::NewestPendingConsent;
-use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};
 use wildflowerhealthio_wildflower_server::{
@@ -25,21 +24,13 @@ use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 /// The unit knows nothing of Tauri: the host hands it everything it reads.
 pub struct ServerUnit {
     config: WildflowerServerConfig,
-    forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
 }
 
 impl ServerUnit {
-    /// A run of the server `config` describes, reporting each request its
-    /// tunnel relays on `forwarded_request_tx`.
+    /// A run of the server `config` describes.
     #[must_use]
-    pub fn new(
-        config: WildflowerServerConfig,
-        forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
-    ) -> Self {
-        Self {
-            config,
-            forwarded_request_tx,
-        }
+    pub fn new(config: WildflowerServerConfig) -> Self {
+        Self { config }
     }
 }
 
@@ -66,7 +57,6 @@ impl Unit for ServerUnit {
                 tunnel_state_tx,
                 certificate_tx,
                 pending_consent_tx,
-                forwarded_request_tx: self.forwarded_request_tx,
             },
         )
         .await?;
