@@ -1,3 +1,4 @@
+import type { HttpMethod } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
@@ -12,7 +13,7 @@ import { REXALL_PROFILE_URL, REXALL_STU3_BASE_URL, medicationListUrlOf } from '.
 const isRecognizedBy = (
   kind: typeof ProfileResponseKind | typeof MedicationListResponseKind,
   url: string
-): boolean => Option.isSome(kind.tryRecognize(url, Option.none()))
+): boolean => Option.isSome(kind.tryRecognize(url, Option.some('GET')))
 
 /** A carebook-style id: what a uid or pharmacy location id looks like. */
 const carebookId = fc.stringMatching(/^[A-Za-z0-9-]{1,40}$/)
@@ -45,6 +46,24 @@ describe('tunnel URLs', () => {
         }),
         { numRuns: numRunsFor({ base: 100 }) }
       )
+    })
+  })
+
+  describe('tunnelGetMatcher', () => {
+    const listUrl = medicationListUrlOf({ profileUid: 'uid-1', pharmacyLocationId: 'pharmacy-1' })
+
+    it.each([
+      { kind: ProfileResponseKind, url: REXALL_PROFILE_URL },
+      { kind: MedicationListResponseKind, url: listUrl },
+    ])("claims only a GET of $kind.name's URL", ({ kind, url }) => {
+      const recognizes = (method: Option.Option<HttpMethod>): boolean =>
+        Option.isSome(kind.tryRecognize(url, method))
+      expect(recognizes(Option.some('GET'))).toBe(true)
+      // The SPA's CORS preflight hits the same URL with no body to decode.
+      expect(recognizes(Option.some('OPTIONS'))).toBe(false)
+      expect(recognizes(Option.some('POST'))).toBe(false)
+      // A request whose method the archive dropped is not claimed.
+      expect(recognizes(Option.none())).toBe(false)
     })
   })
 

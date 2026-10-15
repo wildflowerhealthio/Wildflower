@@ -21,9 +21,11 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/tunnel-url.ts` — the tunnel's URLs: `REXALL_PROFILE_URL`,
   `REXALL_STU3_BASE_URL` (the root of every searchset `fullUrl`) and
   `medicationListUrlOf`, the prescriptions-page searchset URL for an account.
-  Both response kinds build their matchers from these, so a built URL is one a
-  kind recognizes (`tunnel-url.test.ts` pins that, and pins the built list URL
-  to the capture's).
+  Both response kinds build their matchers from these, through
+  `tunnelGetMatcher` (a `GET` only — the SPA's CORS preflight `OPTIONS` to the
+  same URL is not claimed), so a built URL is one a kind recognizes
+  (`tunnel-url.test.ts` pins that, and pins the built list URL to the
+  capture's).
 - `src/carebook.ts` — the carebook STU3 dialect's extension, identifier and
   coding-system catalogue (`CarebookExtension`, `CarebookIdentifierSystem`,
   `CarebookCodingSystem`, `RequestTypeCode`, `REXALL_SYSTEM_SOURCE`).
@@ -261,8 +263,8 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   nobody noticed. It is registered **without** the spec's `> 0` refinement, and
   that is deliberate: carebook sends `valuePositiveInt: 0` for a prescription
   with no repeats left, and a refinement failure inside an extension fails the
-  whole resource, which `medicationOrNull`'s catch-all turns into the
-  MedicationRequest silently vanishing from the list. See the deviation note in
+  whole resource — and with it the whole prescriptions list, since
+  `MedicationListResponseKind` drops only entries that are not medications. See the deviation note in
   [fhir-r4's Client Capabilities Reference](../../fhir/fhir-r4/docs/Client%20Capabilities%20Reference.md).
 
 ## Fixtures & the capture
