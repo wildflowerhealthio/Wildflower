@@ -119,7 +119,7 @@ changing how servers run or what the host notifies about them.
   Authorization (`AuthorizationButton`), which opens the server's Wildflower
   Authorization app through `server_open_authorization_app`, disabled while
   the webview is offline or the host would refuse for what the status shows,
-  never starting a server, with the host's refusal above it; and
+  never starting a server; and
   Edit, which opens the server's page, kept current by the `server-status`
   event too: its domain with Copy, its status badge, when its run started, the
   run-policy field and Launch, over three tabs in component state. Status holds the
@@ -159,6 +159,11 @@ changing how servers run or what the host notifies about them.
   privacy note, and Start now or Start later (`whileOpen` or `off`), which
   opens its page. The claim code and the token are dropped from state once
   the host has added the server.
+  Launch and Authorization report their failures, the host's refusal or why
+  a wait gave up, through `onError`, and each start through `onActionStart`
+  (`useActionError`): the card, and the page's status for its Launch, shows
+  the latest failure in one banner across it, above the buttons, until either
+  starts again. Launch's reasons stay above its own button.
   Launch opens the server's launcher through `server_launch`, signed in as
   the Owner. It is
   disabled, saying why: while the webview is offline (`navigator.onLine`),

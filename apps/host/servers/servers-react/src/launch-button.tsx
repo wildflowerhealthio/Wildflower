@@ -1,7 +1,8 @@
 import { useRouteContext } from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import { ConfirmDialog, ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import { ConfirmDialog } from '@wildflowerhealthio/react-tundraish'
 import {
+  type HostCommandError,
   LaunchError,
   type ListedServer,
   launchServer,
@@ -132,17 +133,23 @@ const useDriveStartAndLaunch = (
  *   (its relay refused its tunnel, or it hasn't been or can't be reached),
  *   it is disabled without a reason of its own, and described by
  *   `statusDescriptionId`'s element.
- * - Otherwise it launches, and shows the host's refusal when there is one.
+ * - Otherwise it launches.
  *
- * Its reason and the host's refusal sit above its buttons, never below. The
- * host refuses at once whenever a server isn't launchable; waiting for a
- * started server happens here.
+ * It reports each launch's start, as Launch is pressed, to `onActionStart`,
+ * and its failure to `onError`: the host's refusal of the launch or of the
+ * start, or why the wait gave up, which the wait in `pendingLaunches` keeps,
+ * so Launch reports it again wherever it next shows. Its parent shows the
+ * failure above the row of buttons Launch sits in. Its reason sits above its
+ * own buttons, never below. The host refuses at once whenever a server isn't
+ * launchable; waiting for a started server happens here.
  */
 const LaunchButton = ({
   server,
   runHostCommand,
   className,
   statusDescriptionId,
+  onActionStart,
+  onError,
 }: {
   readonly server: ListedServer.Type
   readonly runHostCommand: RunHostCommand
@@ -153,6 +160,10 @@ const LaunchButton = ({
    * Launch while it is disabled for what that status shows.
    */
   readonly statusDescriptionId?: string
+  /** Called as a launch starts, when Launch is pressed. */
+  readonly onActionStart: () => void
+  /** Called with the text of a launch's failure. */
+  readonly onError: (failure: string) => void
 }): JSX.Element => {
   const reasonId = useId()
   const online = useOnline()
@@ -199,33 +210,31 @@ const LaunchButton = ({
     Option.orElse(() => (disabled ? Option.fromNullable(statusDescriptionId) : Option.none())),
     Option.getOrUndefined
   )
+  const reportFailure = (error: HostCommandError): void => {
+    onError(failureText(error))
+  }
   const onLaunch = (): void => {
-    // A new attempt clears the previous one's failure.
-    setRunPolicy.reset()
+    onActionStart()
     pendingLaunches.set(domain, Option.none())
     if (refusal === 'serverNotRunning') {
       setConfirmingStart(true)
       return
     }
-    launch.mutate({ domain })
+    launch.mutate({ domain }, { onError: reportFailure })
   }
   /** Wait for the server to start, from "Start and launch" confirmed at `confirmedAt`. */
   const waitForStart = (confirmedAt: DateTime.Utc): void => {
-    launch.reset()
     setConfirmingStart(false)
     pendingLaunches.set(
       domain,
       Option.some({ kind: 'waiting', confirmedAt, unreachableSince: Option.none() })
     )
   }
-  const pendingFailure = pending.pipe(
-    Option.flatMap((launching) =>
-      launching.kind === 'failed' ? Option.some(launching.failure) : Option.none()
-    )
-  )
-  const mutationError = launch.error ?? setRunPolicy.error
-  const error =
-    mutationError === null ? Option.getOrNull(pendingFailure) : failureText(mutationError)
+  // The store's own object, which changes only when the launch does.
+  const pendingLaunch = Option.getOrUndefined(pending)
+  useEffect(() => {
+    if (pendingLaunch?.kind === 'failed') onError(pendingLaunch.failure)
+  }, [pendingLaunch, onError])
   return (
     <div className={cn(styles['launch-button'], className)}>
       {reason.pipe(
@@ -240,7 +249,6 @@ const LaunchButton = ({
         )),
         Option.getOrNull
       )}
-      <ErrorBanner error={error} />
       <div className={styles['launch-button__buttons']}>
         {starting ? (
           <>
@@ -293,8 +301,9 @@ const LaunchButton = ({
               onSuccess: () => {
                 waitForStart(confirmedAt)
               },
-              onError: () => {
+              onError: (error) => {
                 setConfirmingStart(false)
+                reportFailure(error)
               },
             }
           )

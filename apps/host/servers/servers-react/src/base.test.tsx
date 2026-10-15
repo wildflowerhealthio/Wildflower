@@ -891,6 +891,8 @@ describe('Launch', () => {
     expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: RUTH } }])
     const banner = await within(serverRow(RUTH)).findByRole('alert')
     expect(banner.textContent).toContain(golden.launchErrors[2].message)
+    expect(banner.parentElement).toBe(serverRow(RUTH))
+    expect(isBefore(banner, launchOn(RUTH))).toBe(true)
     expect(launchOn(RUTH).disabled).toBe(false)
   })
 
@@ -1564,6 +1566,31 @@ describe('Launch', () => {
     // Assert
     expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: RUTH } }])
   })
+
+  it("should show the host's refusal across the server page's status, above Launch", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = hostWith({
+      servers: () => Promise.resolve(golden.listedServers),
+      answers: { server_launch: () => Promise.reject(golden.launchErrors[2]) },
+    })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: `/servers/${RUTH}`,
+    })
+    const hero = await screen.findByRole('region', { name: 'Status' })
+    const launch = within(hero).getByRole('button', { name: 'Launch' })
+
+    // Act
+    await user.click(launch)
+
+    // Assert
+    const banner = await within(hero).findByRole('alert')
+    expect(banner.textContent).toContain(golden.launchErrors[2].message)
+    expect(banner.parentElement).toBe(hero)
+    expect(isBefore(banner, launch)).toBe(true)
+  })
 })
 
 describe('Authorization', () => {
@@ -1615,7 +1642,43 @@ describe('Authorization', () => {
     ])
     const banner = await within(serverRow(RUTH)).findByRole('alert')
     expect(banner.textContent).toContain(golden.launchErrors[2].message)
+    expect(banner.parentElement).toBe(serverRow(RUTH))
+    expect(isBefore(banner, launch)).toBe(true)
     expect(authorizationOn(RUTH).disabled).toBe(false)
+  })
+
+  it('should show one failure at a time across the card, cleared as Launch or Authorization starts', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    let launchAnswer = (): Promise<unknown> => Promise.reject(golden.launchErrors[3])
+    renderServers({
+      server_open_authorization_app: () => Promise.reject(golden.launchErrors[2]),
+      server_launch: () => launchAnswer(),
+    })
+    await screen.findByRole('listitem', { name: RUTH })
+    const launch = within(serverRow(RUTH)).getByRole('button', { name: 'Launch' })
+    await user.click(authorizationOn(RUTH))
+    await within(serverRow(RUTH)).findByRole('alert')
+
+    // Act
+    await user.click(launch)
+
+    // Assert
+    await waitFor(() => {
+      expect(within(serverRow(RUTH)).getByRole('alert').textContent).toContain(
+        golden.launchErrors[3].message
+      )
+    })
+    expect(within(serverRow(RUTH)).getAllByRole('alert')).toHaveLength(1)
+
+    // Act
+    launchAnswer = () => Promise.resolve(null)
+    await user.click(launch)
+
+    // Assert
+    await waitFor(() => {
+      expect(within(serverRow(RUTH)).queryByRole('alert')).toBeNull()
+    })
   })
 
   it('should be disabled for a server the host would refuse, described by its status', async () => {

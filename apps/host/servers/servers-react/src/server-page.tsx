@@ -23,6 +23,7 @@ import {
 import { type DateTime, Match, Option } from 'effect'
 import { type JSX, type ReactNode, useId, useState } from 'react'
 
+import { useActionError } from './action-error.ts'
 import { failureText } from './failure-text.ts'
 import { LaunchButton } from './launch-button.tsx'
 import {
@@ -131,12 +132,13 @@ type CopyOutcome = 'idle' | 'copied' | 'refused'
 /**
  * The top of a server's page: its domain, with Copy; its status, merged from
  * its run state and health; when its run started, while it runs; the
- * run-policy field; and Launch.
+ * run-policy field; the latest failure of Launch; and Launch.
  *
  * @remarks
  * Launch opens the server's launcher, or says why it can't when the status
  * row doesn't (see `LaunchButton`); disabled for what the status shows, it
- * is described by the status row. The clipboard needs a focused, secure page and may still
+ * is described by the status row. Its failure shows across the hero, above
+ * it, until it starts again. The clipboard needs a focused, secure page and may still
  * refuse; the domain is on screen to copy by hand either way, and the page
  * says so.
  */
@@ -149,6 +151,7 @@ const StatusHero = ({
 }): JSX.Element => {
   const status = statusSummary(server.status)
   const statusId = useId()
+  const { error, onActionStart, onError } = useActionError()
   const [copyOutcome, setCopyOutcome] = useState<CopyOutcome>('idle')
   const copyDomain = async (): Promise<void> => {
     try {
@@ -190,10 +193,13 @@ const StatusHero = ({
         ) : null}
       </div>
       <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
+      <ErrorBanner error={error} />
       <LaunchButton
         server={server}
         runHostCommand={runHostCommand}
         statusDescriptionId={statusId}
+        onActionStart={onActionStart}
+        onError={onError}
       />
     </section>
   )

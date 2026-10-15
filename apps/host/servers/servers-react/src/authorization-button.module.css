@@ -1,7 +1,0 @@
-/* The host's refusal, over Authorization. */
-.authorization-button {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
-}

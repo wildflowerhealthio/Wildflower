@@ -1,5 +1,4 @@
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { LaunchError, type ListedServer } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
 import type { JSX } from 'react'
@@ -8,7 +7,6 @@ import { failureText } from './failure-text.ts'
 import { useOpenServerAuthorizationApp } from './queries.ts'
 import type { RunHostCommand } from './router-context.ts'
 import { useOnline } from './use-online.ts'
-import styles from './authorization-button.module.css'
 
 /**
  * A server's Authorization: opens its Wildflower Authorization app through
@@ -20,45 +18,55 @@ import styles from './authorization-button.module.css'
  * is disabled while the webview is offline and whenever the host would refuse
  * for what the server's status shows (see `LaunchError.statusRefusalOf`),
  * described then by `statusDescriptionId`'s element; Launch beside it says
- * why when the status doesn't. It never starts a server. The host's refusal
- * shows above it, never below.
+ * why when the status doesn't. It never starts a server. It reports each
+ * open's start to `onActionStart` and the host's refusal to `onError`, for
+ * its parent to show above the row of buttons it sits in.
  */
 const AuthorizationButton = ({
   server,
   runHostCommand,
   className,
   statusDescriptionId,
+  onActionStart,
+  onError,
 }: {
   readonly server: ListedServer.Type
   readonly runHostCommand: RunHostCommand
-  /** Sizes the button's block in its parent's layout. */
+  /** Sizes the button in its parent's layout. */
   readonly className?: string
   /**
    * The id of the element showing the server's status, which describes
    * Authorization while it is disabled.
    */
   readonly statusDescriptionId?: string
+  /** Called as an open starts. */
+  readonly onActionStart: () => void
+  /** Called with the text of the host's refusal of an open. */
+  readonly onError: (failure: string) => void
 }): JSX.Element => {
   const online = useOnline()
   const openAuthorizationApp = useOpenServerAuthorizationApp(runHostCommand)
   const disabled = !online || Option.isSome(LaunchError.statusRefusalOf(server.status))
   return (
-    <div className={cn(styles['authorization-button'], className)}>
-      <ErrorBanner
-        error={openAuthorizationApp.error === null ? null : failureText(openAuthorizationApp.error)}
-      />
-      <button
-        type="button"
-        className="button-2 outline"
-        disabled={disabled || openAuthorizationApp.isPending}
-        aria-describedby={disabled ? statusDescriptionId : undefined}
-        onClick={() => {
-          openAuthorizationApp.mutate({ domain: server.domain })
-        }}
-      >
-        Authorization
-      </button>
-    </div>
+    <button
+      type="button"
+      className={cn('button-2 outline', className)}
+      disabled={disabled || openAuthorizationApp.isPending}
+      aria-describedby={disabled ? statusDescriptionId : undefined}
+      onClick={() => {
+        onActionStart()
+        openAuthorizationApp.mutate(
+          { domain: server.domain },
+          {
+            onError: (error) => {
+              onError(failureText(error))
+            },
+          }
+        )
+      }}
+    >
+      Authorization
+    </button>
   )
 }
 
