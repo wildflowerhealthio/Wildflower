@@ -156,14 +156,26 @@ const conceptKey = (concept: ConceptValue): { system: string | null; code: strin
     : null
 }
 
-/** The human label for a concept: its `text`, else a coding's `display`, else the code itself. */
-const conceptLabel = (concept: ConceptValue, code: string): string => {
+/**
+ * The human label for a concept: its `text`, else the `display` of the coding
+ * {@link conceptKey} chose, else that coding's code — never another coding's
+ * display, which would name a series after a code it is not keyed by.
+ */
+const conceptLabel = (
+  concept: ConceptValue,
+  key: { readonly system: string | null; readonly code: string }
+): string => {
   const text = concept.text
   if (text !== null && text !== undefined && text.length > 0) return text
   const display = (concept.coding ?? []).find(
-    (coding) => coding.display !== null && coding.display !== undefined && coding.display.length > 0
+    (coding) =>
+      coding.code === key.code &&
+      canonicalSystem(coding.system ?? null) === key.system &&
+      coding.display !== null &&
+      coding.display !== undefined &&
+      coding.display.length > 0
   )?.display
-  return display ?? code
+  return display ?? key.code
 }
 
 /** A decoded observation, as {@link ObservationView} reads it. */
@@ -361,8 +373,7 @@ interface Reading {
 const readingsOf = (observation: ObservationValue): readonly Reading[] => {
   const concept = observation.code ?? null
   const outerKey = concept === null ? null : conceptKey(concept)
-  const outerLabel =
-    concept === null || outerKey === null ? null : conceptLabel(concept, outerKey.code)
+  const outerLabel = concept === null || outerKey === null ? null : conceptLabel(concept, outerKey)
   const times = { scalar: effectiveTime(observation), sampled: sampledDataStart(observation) }
   const readings: Reading[] = []
 
@@ -395,7 +406,7 @@ const readingsOf = (observation: ObservationValue): readonly Reading[] => {
     const componentConcept = component.code ?? null
     const key = componentConcept === null ? null : conceptKey(componentConcept)
     if (componentConcept === null || key === null) continue
-    const componentLabel = conceptLabel(componentConcept, key.code)
+    const componentLabel = conceptLabel(componentConcept, key)
     const label = outerLabel === null ? componentLabel : `${outerLabel} · ${componentLabel}`
     push(key, label, numericValues(component, times), component.referenceRange)
   }
@@ -407,11 +418,22 @@ const readingsOf = (observation: ObservationValue): readonly Reading[] => {
 const isDated = (reading: Reading): reading is Reading & { readonly time: DateTime.Utc } =>
   reading.time !== null
 
-/** The `Observation.category` code a series is filed under. */
+/**
+ * The `Observation.category` code a series is filed under: the first coding
+ * from HL7's `observation-category` system across every category, else the
+ * first category's first coding.
+ *
+ * @remarks
+ * A server can lead with its own category system — a proprietary `Lab`
+ * coding ahead of HL7's `laboratory` — so the first coding alone would file
+ * the observation under `other`.
+ */
 const categoryOf = (observation: ObservationValue): string | null => {
-  const first = (observation.category ?? [])[0]
-  if (first === undefined) return null
-  return (first.coding ?? [])[0]?.code ?? null
+  const categories = observation.category ?? []
+  const hl7Coding = categories
+    .flatMap((category) => category.coding ?? [])
+    .find((coding) => canonicalSystem(coding.system ?? null) === Observation.CATEGORY_SYSTEM)
+  return hl7Coding?.code ?? (categories[0]?.coding ?? [])[0]?.code ?? null
 }
 
 /**
