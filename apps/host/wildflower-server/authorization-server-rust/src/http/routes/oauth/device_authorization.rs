@@ -111,6 +111,8 @@ fn device_authorization(
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .or_else(|| user_agent.and_then(device_name_from_user_agent));
+    let device_page = device_page_url(served_origin)
+        .map_err(|error| TokenError::internal("device page url", error))?;
     let device_codes = authorizer
         .start(&authenticated_client, requested_scopes, device_name)
         .map_err(|error| match error {
@@ -126,11 +128,9 @@ fn device_authorization(
         })?;
     Ok(DeviceAuthorizationResponse {
         device_code: device_codes.device_code,
-        verification_uri: device_page_url(served_origin),
-        verification_uri_complete: device_page_url_with_code(
-            served_origin,
-            &device_codes.user_code,
-        ),
+        verification_uri_complete: device_page_url_with_code(&device_page, &device_codes.user_code)
+            .into(),
+        verification_uri: device_page.into(),
         user_code: device_codes.user_code,
         expires_in: device_codes.expires_in,
         interval: device_codes.interval,

@@ -29,7 +29,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use include_dir::{include_dir, Dir};
-use url::form_urlencoded;
+use url::Url;
 
 use super::pages::{page_security_headers, request_page_location};
 use super::OAUTH_MOUNT;
@@ -51,6 +51,9 @@ const DEVICE_PAGE: &str = "device.html";
 /// [`OAUTH_MOUNT`].
 const DEVICE_PAGE_ROUTE: &str = "/device";
 
+/// The device page's query parameter that carries the code it fills in.
+const USER_CODE_PARAM: &str = "user_code";
+
 /// Vite's content-hashed output, served at `/oauth/assets/`.
 const ASSETS_DIR: &str = "assets";
 
@@ -70,21 +73,19 @@ pub(crate) fn consent_page_location(request_id: &str) -> String {
 }
 
 /// The RFC 8628 `verification_uri` of the server at `served_origin`: the
-/// device verification page.
-pub(crate) fn device_page_url(served_origin: &str) -> String {
-    format!("{served_origin}{OAUTH_MOUNT}{DEVICE_PAGE_ROUTE}")
+/// device verification page. Fails only when `served_origin` isn't a URL.
+pub(crate) fn device_page_url(served_origin: &str) -> Result<Url, url::ParseError> {
+    Url::parse(served_origin)?.join(&format!("{OAUTH_MOUNT}{DEVICE_PAGE_ROUTE}"))
 }
 
-/// The RFC 8628 `verification_uri_complete` of the server at `served_origin`:
-/// the device verification page with `user_code` in its query, which the page
-/// fills its code box from and still asks the Owner to confirm.
-pub(crate) fn device_page_url_with_code(served_origin: &str, user_code: &str) -> String {
-    let encoded_user_code =
-        form_urlencoded::byte_serialize(user_code.as_bytes()).collect::<String>();
-    format!(
-        "{}?user_code={encoded_user_code}",
-        device_page_url(served_origin)
-    )
+/// The RFC 8628 `verification_uri_complete` for `user_code`: `device_page`
+/// (see [`device_page_url`]) with the code in its query, which the page fills
+/// its code box from and still asks the Owner to confirm.
+pub(crate) fn device_page_url_with_code(device_page: &Url, user_code: &str) -> Url {
+    let mut url = device_page.clone();
+    url.query_pairs_mut()
+        .append_pair(USER_CODE_PARAM, user_code);
+    url
 }
 
 /// The routes above, serving `pages`. They read no router state.
@@ -286,17 +287,18 @@ mod tests {
 
     #[test]
     fn the_device_page_urls_are_on_the_served_origin_with_the_code_encoded() {
+        let device_page = device_page_url("https://ruth.relay.example:8443").expect("an origin");
         assert_eq!(
-            device_page_url("https://ruth.relay.example"),
-            "https://ruth.relay.example/oauth/device"
+            device_page.as_str(),
+            "https://ruth.relay.example:8443/oauth/device"
         );
         assert_eq!(
-            device_page_url_with_code("https://ruth.relay.example", "WDJB-MJHT"),
-            "https://ruth.relay.example/oauth/device?user_code=WDJB-MJHT"
+            device_page_url_with_code(&device_page, "WDJB-MJHT").as_str(),
+            "https://ruth.relay.example:8443/oauth/device?user_code=WDJB-MJHT"
         );
         assert_eq!(
-            device_page_url_with_code("https://ruth.relay.example", "a&b c"),
-            "https://ruth.relay.example/oauth/device?user_code=a%26b+c"
+            device_page_url_with_code(&device_page, "a&b c").as_str(),
+            "https://ruth.relay.example:8443/oauth/device?user_code=a%26b+c"
         );
     }
 
