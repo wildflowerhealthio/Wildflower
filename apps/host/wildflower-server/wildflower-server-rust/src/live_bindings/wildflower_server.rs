@@ -1,24 +1,22 @@
 //! The server's composition: [`set_up`] opens the server's databases, sets up
 //! every server slice, joins them through [`crate::adapters`], wraps them in
-//! the [`crate::http`] layers once per listener, binds the loopback port and
-//! opens the tunnel listener; [`WildflowerServer`] serves the result on both.
+//! the [`crate::http`] layers and opens the tunnel listener;
+//! [`WildflowerServer`] serves the result on it. The server listens nowhere
+//! else: it is reached only through its tunnel, at `https://<domain>`.
 
 use std::future::IntoFuture;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
 use axum::Router;
 use helios_auth::SessionStore;
-use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
-    authorization_server_auth_middleware, require_loopback_peer_middleware,
-    setup_authorization_server, AuthorizationServerConfig, HostConsentDecider,
-    SameDeviceSignInCodeMinter,
+    authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
+    HostConsentDecider, SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -57,18 +55,12 @@ const FHIR_UI_CLIENT_ID: &str = "5ea43272eba5e825c50de39032f96bf0";
 /// listener takes them. Past this, the tunnel waits.
 const TUNNEL_STREAM_BACKLOG: usize = 64;
 
-/// A composed server bound to the loopback port, with its tunnel listener,
-/// ready to [`serve`](Self::serve).
+/// A composed server with its tunnel listener, ready to
+/// [`serve`](Self::serve).
 pub struct WildflowerServer {
-    /// The loopback port local clients, and a front run on this machine, use.
-    loopback_listener: TcpListener,
-    /// What the loopback listener serves: the API behind the loopback-peer
-    /// gate.
-    loopback_router: Router,
     /// The visitor streams the tunnel hands over.
     tunnel_listener: TunnelListener,
-    /// What the tunnel listener serves: the API behind the tunnel front,
-    /// with no loopback-peer gate.
+    /// What the tunnel listener serves: the API behind the tunnel front.
     tunnel_router: Router,
     /// A sender onto the tunnel listener, for
     /// [`tunnel_stream_tx`](Self::tunnel_stream_tx).
@@ -135,20 +127,18 @@ impl WildflowerServer {
         self.tunnel_stream_tx.clone()
     }
 
-    /// Serve the composed API on the bound loopback port and the tunnel
-    /// listener, and run the FHIR API's bulk-export jobs, until `shutdown` is
-    /// cancelled. Cancelling stops both accepting connections and hands a
-    /// running export job back, and the call returns `Ok` once the open
-    /// connections on both close and the export worker stops. The tunnel, the reachability monitor and the certificate's
-    /// ordering and renewal stop when the call returns.
+    /// Serve the composed API on the tunnel listener, and run the FHIR API's
+    /// bulk-export jobs, until `shutdown` is cancelled. Cancelling stops the
+    /// listener accepting connections and hands a running export job back,
+    /// and the call returns `Ok` once the open connections close and the
+    /// export worker stops. The tunnel, the reachability monitor and the
+    /// certificate's ordering and renewal stop when the call returns.
     ///
     /// # Errors
     ///
     /// Returns an error if serving fails.
     pub async fn serve(self, shutdown: CancellationToken) -> anyhow::Result<()> {
         let Self {
-            loopback_listener,
-            loopback_router,
             tunnel_listener,
             tunnel_router,
             tunnel_daemon,
@@ -159,11 +149,6 @@ impl WildflowerServer {
             // decider, and the `test-support` feature's `tunnel_stream_tx`.
             ..
         } = self;
-        let loopback = axum::serve(
-            loopback_listener,
-            loopback_router.into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .with_graceful_shutdown(shutdown.clone().cancelled_owned());
         let tunnel = axum::serve(
             tunnel_listener,
             tunnel_router.into_make_service_with_connect_info::<TunnelVisitor>(),
@@ -173,7 +158,7 @@ impl WildflowerServer {
             bulk_export_worker.run(shutdown).await;
             Ok(())
         };
-        tokio::try_join!(loopback.into_future(), tunnel.into_future(), bulk_export)?;
+        tokio::try_join!(tunnel.into_future(), bulk_export)?;
         drop(reachability_monitor);
         drop(tunnel_daemon);
         drop(device_certificate);
@@ -181,9 +166,8 @@ impl WildflowerServer {
     }
 }
 
-/// Set up every server slice over the host's databases, bind the API to the
-/// loopback port and open the tunnel listener, ready to
-/// [`serve`](WildflowerServer::serve).
+/// Set up every server slice over the host's databases and open the tunnel
+/// listener, ready to [`serve`](WildflowerServer::serve).
 ///
 /// `config` is what the host derived at build time or from its paths;
 /// `observers` carries the channels the host watches the server through.
@@ -193,7 +177,7 @@ impl WildflowerServer {
 /// Returns an error if the server's domain doesn't name an origin, the
 /// server's folder or a certificate key folder can't be created, a scheduled
 /// database deletion can't be applied, a database or store can't be opened,
-/// the loopback port can't be bound, or a slice's setup fails.
+/// or a slice's setup fails.
 ///
 /// # Remarks
 ///
@@ -244,10 +228,6 @@ pub async fn set_up(
     wildflowerhealthio_databases::purge_pending_deletions(&runtime.server_dir)
         .context("failed to purge scheduled database deletions")?;
 
-    let loopback_host = runtime.loopback_base_url_ref().authority().to_string();
-    // The typed loopback base URL is the single source threaded into every
-    // slice's config that renders it (the authorization server / fhir-r4).
-    let loopback_base_url = runtime.loopback_base_url();
     let fhir_r4_config = FhirR4Config {
         log_level: "debug".to_string(),
         db_file_path: runtime.server_dir.join(HEALTH_DATA_DB),
@@ -257,7 +237,6 @@ pub async fn set_up(
         authorization_app_base: authorization_app_base.clone(),
     };
     let authorization_server_config = AuthorizationServerConfig {
-        loopback_base_url: loopback_base_url.clone(),
         server_origin: public_origin.clone(),
         host_app_client_scopes,
         wildflower_host_app_client_id,
@@ -283,15 +262,10 @@ pub async fn set_up(
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(db.clone())
         .context("failed to open token-revocation store")?;
 
-    let loopback_listener = TcpListener::bind(&loopback_host)
-        .await
-        .with_context(|| format!("failed to bind to {loopback_host}"))?;
-
     // The FHIR web UI's signed-in sessions, shared by HFS (its login and
     // REST auth) and the cookie→bearer layer in front of the gates.
     let ui_sessions = Arc::new(SessionStore::new(ui_login_config(
         &public_origin,
-        &loopback_base_url,
         FHIR_UI_CLIENT_ID,
     )));
 
@@ -348,7 +322,6 @@ pub async fn set_up(
     // UI's pages sit outside the gate (see `setup_fhir_r4`). The router serves
     // at the root through the fallback below, not as merged routes.
     let fhir_routers = setup_fhir_r4(
-        &runtime,
         &fhir_r4_config,
         // HFS-enforced auth: every FHIR request must carry a Bearer JWT signed
         // with one of the authorization server's keys, read in process, whose
@@ -507,8 +480,8 @@ pub async fn set_up(
     let gated_databases = wildflowerhealthio_databases::setup_databases(&databases_config)
         .layer(authorization_server_auth_layer);
 
-    // Every slice's routes, gated per slice, composed once: the routes each
-    // listener serves. The listener-specific layers go on top of this, below.
+    // Every slice's routes, gated per slice, composed once. The tunnel
+    // listener's layers go on top of this, below.
     let inner_router = Router::new()
         .merge(authorization_server.router)
         .merge(gated_ohif_server)
@@ -531,7 +504,7 @@ pub async fn set_up(
             fhir_routers.augmented_fhir_r4_router,
             Arc::new(not_found::NotFoundConfig {
                 launcher_base,
-                loopback_base_url: loopback_base_url.clone(),
+                server_origin: public_origin.clone(),
             }),
         ));
 
@@ -547,7 +520,7 @@ pub async fn set_up(
         inner_router,
         authorization_server.state.clone(),
         ui_sessions,
-        &loopback_base_url,
+        &public_origin,
     );
 
     // Every forwarded request is reported to the request log once its response
@@ -561,39 +534,8 @@ pub async fn set_up(
         forwarded_request_layer::report_forwarded_request,
     );
 
-    // The loopback listener's router: the inner router behind the
-    // loopback-peer gate, CORS and the forwarded-request report, innermost
-    // first.
-    let loopback_router = inner_router
-        .clone()
-        // Defense-in-depth: gate the whole surface on a loopback peer address.
-        // Every request on this listener comes from this machine: directly, or
-        // relayed by a front run on it, which proxies remote callers from
-        // loopback (and is distinguished downstream by the `Forwarded` header).
-        // A genuinely non-loopback peer is rejected with `403` before any
-        // handler runs, so even a bearer-gated, CORS-permissive endpoint like
-        // `POST /apps/{id}` (which can open a native popup on the owner's
-        // device) can't be driven by a non-loopback client. See
-        // `require_loopback_peer_middleware` for how forwarded callers pass and
-        // why re-gating the authorization server's already-gated routes is harmless.
-        .layer(require_loopback_peer_middleware())
-        // The webview page is NOT served from this origin — it loads from
-        // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
-        // asset protocol (`tauri://localhost`) in builds, while API fetches
-        // target this server absolutely (the React tauri entry's
-        // `apiBaseUrl`). So every API request is cross-origin and the API
-        // must impose no CORS restriction beyond refusing credentials (see
-        // `api_cors_layer`). Trust doesn't come from CORS here anyway: the
-        // loopback gate rejects non-local peers and auth rides the bearer
-        // header.
-        .layer(api_cors_layer())
-        // Outermost, so every response is reported as it leaves.
-        .layer(forwarded_request_report.clone());
-
     // The tunnel listener's router: the inner router behind the
-    // forwarded-request report, the tunnel front and CORS, innermost first. It
-    // has no loopback-peer gate: no tunnel connection is a local caller,
-    // whatever its peer or headers.
+    // forwarded-request report, the tunnel front and CORS, innermost first.
     let tunnel_router = inner_router
         .layer(forwarded_request_report)
         // Hold the request to the server's domain and write its
@@ -604,15 +546,15 @@ pub async fn set_up(
             TunnelFront::new(public_origin)?,
             stamp_tunnel_forwarded,
         ))
-        // Outermost, so a remote app can read even the front's `421`: the
-        // same CORS policy as the loopback listener, since a remote app's
-        // fetches are cross-origin too and auth rides the bearer header. A
-        // preflight is answered here, before the front, and isn't reported.
+        // Outermost, so a remote app can read even the front's `421`. Every
+        // app's page is served from another origin (the hosted launcher, an
+        // app's own), so its fetches are cross-origin: the API imposes no CORS
+        // restriction beyond refusing credentials (see `api_cors_layer`), and
+        // auth rides the bearer header. A preflight is answered here, before
+        // the front, and isn't reported.
         .layer(api_cors_layer());
 
     Ok(WildflowerServer {
-        loopback_listener,
-        loopback_router,
         tunnel_listener: TunnelListener::new(tunnel_stream_rx, tunnel_tls_acceptor),
         tunnel_router,
         #[cfg(feature = "test-support")]

@@ -282,10 +282,8 @@ mod tests {
     /// The web UI's session store, for this server.
     fn sessions() -> std::sync::Arc<helios_auth::SessionStore> {
         let origin = url::Url::parse(SERVER_ORIGIN).expect("origin");
-        let loopback = url::Url::parse("http://127.0.0.1:8080").expect("loopback");
         std::sync::Arc::new(helios_auth::SessionStore::new(crate::ui_login_config(
             &origin,
-            &loopback,
             "fhir-ui-client",
         )))
     }

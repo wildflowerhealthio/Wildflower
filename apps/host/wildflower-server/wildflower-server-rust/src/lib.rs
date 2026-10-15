@@ -1,17 +1,19 @@
 //! The Wildflower server: the API every slice mounts on, composed by
-//! [`set_up`] and served by [`WildflowerServer::serve`] on two listeners.
+//! [`set_up`] and served by [`WildflowerServer::serve`] on its one listener,
+//! the tunnel listener.
 //!
 //! [`set_up`] opens the host's databases, sets up each server slice
 //! (the authorization server, FHIR R4, OHIF, request log, apps, databases), gates
-//! them, and wraps the result once per listener: for the **loopback listener**
-//! in the loopback-peer gate, the CORS policy and the forwarded-request report; for the **tunnel listener** in the CORS policy,
+//! them, and wraps the result for the **tunnel listener** in the CORS policy,
 //! the forwarded-request report and the tunnel front, which holds each request
 //! to the server's domain and writes its `Forwarded` header. It starts the
 //! tunnel, which hands each visitor's stream to the tunnel listener in
 //! process, the device certificate, which the tunnel listener's TLS serves,
-//! and the reachability monitor, and binds the loopback port.
-//! [`WildflowerServer::serve`] then serves both listeners until its shutdown
-//! token is cancelled; the tunnel and the certificate's ordering and renewal
+//! and the reachability monitor. The server binds no port: it is reached only
+//! through its tunnel, at `https://<domain>`, so while the relay can't be
+//! reached nothing can reach the server.
+//! [`WildflowerServer::serve`] then serves the tunnel listener until its
+//! shutdown token is cancelled; the tunnel and the certificate's ordering and renewal
 //! run for as long as it serves, and the monitor until the server first
 //! answers through its public origin.
 //! [`WildflowerServer::consent_decider_for_host`] is how the host decides the

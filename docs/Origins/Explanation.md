@@ -7,72 +7,61 @@ depend on it. The mechanics live in `shared-structures-rust` ([`origin_string`],
 [`served_origin`]); this is the narrative those modules and their consumers
 (the authorization server, FHIR R4, apps, tunnel) point back to instead of each re-deriving it.
 
-## Two listeners
+## One listener
 
-The server answers on two listeners, and each serves its own router, built
-from the one router every slice's routes are composed into:
+The server answers on one listener, the **tunnel listener**, which serves the
+visitors who reach the server through the relay, at `https://<domain>`. It
+binds no port: the tunnel's rathole client hands each visitor's stream to it
+in process. Before HTTP, the listener reads the connection's PROXY protocol v2
+header, when it opens with one, for the visitor's address, then terminates its
+TLS with the certificate the device holds for the server's domain, ordered from
+Let's Encrypt over TLS-ALPN-01. The relay passes TLS through by its SNI, so the
+device is the only place a visitor's connection is decrypted. A handshake whose
+SNI names another host gets no certificate. Its tunnel front, outside every
+layer but CORS, holds each request to the server's domain, the same host the
+SNI named (see
+[The tunnel front writes `Forwarded`](#the-tunnel-front-writes-forwarded)).
+What the relay on that path can and can't see is the
+[Relay Explanation](../Relay/Explanation.md).
 
-- **The loopback listener** (`http://127.0.0.1:<port>/`) serves the on-device
-  webview and other local clients, and a front run on this machine (nginx)
-  that relays remote callers over the same loopback socket. Its router adds the
-  loopback-peer gate (see
-  [Loopback is the trust boundary](#loopback-is-the-trust-boundary)).
-- **The tunnel listener** serves the visitors who reach the server through
-  the relay. It binds no port: the tunnel's rathole client hands each
-  visitor's stream to it in process. Before HTTP, the listener reads the
-  connection's PROXY protocol v2 header, when it opens with one, for the
-  visitor's address, then terminates its TLS with the certificate the device
-  holds for the server's domain, ordered from Let's Encrypt over TLS-ALPN-01.
-  The relay passes TLS through by its SNI, so the device is the only place
-  a visitor's connection is decrypted. A handshake whose SNI names another
-  host gets no certificate. Its router has no loopback-peer gate,
-  so no tunnel connection is ever a local caller, whatever its peer or
-  headers. Its tunnel front, outside every layer but CORS, holds each request
-  to the server's domain, the same host the SNI named (see
-  [The tunnel front writes `Forwarded`](#the-tunnel-front-writes-forwarded)).
-  What the relay on that path can and can't see is the
-  [Relay Explanation](../Relay/Explanation.md).
+Nothing on the device reaches the server any other way, the host app and a
+browser on the same machine included: they go out to the relay and back down
+the tunnel like any remote app. So while the relay can't be reached (the
+device offline, the relay down), nothing can reach the server. That holds in
+development too.
 
-## Two origins: loopback and served
+## The served origin
 
-A request can arrive having been addressed two different ways:
+The **served origin** is the origin the client reached: for a request
+through the tunnel, the public `{scheme}://{host}` the tunnel front names,
+which is always the server's origin, `https://<domain>`. A handler recovers it
+per request with [`served_base_url_for`] (which returns the served base URL as
+a typed `Url`; the bare origin string is derived from it). A request with no
+`Forwarded` header, which only a slice's router driven directly (as its tests
+do) sees, is answered as the server's origin, which each slice is handed in
+its config.
 
-- **Loopback origin** — the private `http://127.0.0.1:<port>/` the on-device
-  webview and other local clients use. It is `ServerRuntimeConfig.loopback_base_url`,
-  parsed once at boot and threaded into the configs of the slices that render
-  it (the authorization server, FHIR R4) so nothing reassembles it from a string.
-- **Served origin** — the origin the client _actually_ reached. For a direct
-  loopback caller it is the loopback origin. For a request through the tunnel,
-  or one relayed by a front, it is the public `{scheme}://{host}` the browser
-  used. A handler recovers it per request with [`served_base_url_for`] (which
-  returns the served base URL as a typed `Url`; the bare origin string is
-  derived from it).
-
-"Served origin" is the load-bearing concept for what the server renders: a
-redirect `Location` or a discovery document's endpoints must reference the URL
-the caller really used, not the loopback origin it happened to land on. Tokens
-are the exception: they name the server, not the request (below).
+The served origin is what the server renders into a redirect `Location`. The
+URLs it names in documents (the SMART discovery document, HFS's links) and in
+tokens are the server's origin outright (below).
 
 ### Recovering the served origin from `Forwarded` (RFC 7239)
 
-Every consumer reads the served origin from one header, `Forwarded`, whichever
-listener the request arrived on. A front appends its hop to any inbound
-`Forwarded` chain and tacks the public `host`/`proto` onto that trailing
-element; the tunnel front writes a single element of its own. The host/scheme
-we trust are therefore always in the **last** forwarded-element; any
-client-supplied elements sit to its left and are ignored. Trust comes from the
-listener the request arrived on (see
-[Loopback is the trust boundary](#loopback-is-the-trust-boundary)), **not** from
-the header — the header only tells a request _which_ public origin it used.
+Every consumer reads the served origin from one header, `Forwarded`, which the
+tunnel front writes as a single element of its own. The parser reads the
+host/scheme from the **last** forwarded-element, the one a proxy appending
+its hop writes; any elements to its left are ignored. Trust comes from the
+tunnel front, which replaces whatever the visitor sent, **not** from the
+header's content — the header only tells a request _which_ public origin it
+used.
 
 Because the `host` ultimately derives from an attacker-influenced `Host` header
 and lands in a `Location` the browser follows, it is validated (`safe_host` /
 `safe_scheme`) against the delimiters that could redirect to a different
 authority. A `Forwarded` header that fails validation is **rejected** (the
-request `500`s), _not_ treated as loopback: the header's presence means the
-request was relayed, so collapsing a malformed one to loopback would let a
-relayed remote caller be mistaken for a direct-local one. Only the **absence** of the header reads as loopback. The
-parsing contract, the exact nginx directive, and the attack cases live on the
+request `500`s), _not_ treated as unforwarded: the header's presence means the
+request was relayed, so a malformed one never falls back to the server's
+origin. The parsing contract and the attack cases live on the
 [`served_origin`] module.
 
 ### The tunnel front writes `Forwarded`
@@ -93,8 +82,7 @@ the header itself:
   the connection had none; the `host` is the domain, normalized.
 
 Every reader of the served origin (the authorization server, FHIR R4, apps, the `404`, the
-request log) then sees a tunnel request exactly as it sees one a front
-relayed, served at the public origin.
+request log) then sees a tunnel request served at the public origin.
 
 ## `iss` and `aud` are the server's origin
 
@@ -116,14 +104,16 @@ served on, so they are checked against configuration, never against the request:
   `expected_audience` to the server's origin, and HFS matches `aud` exactly. A
   FHIR request is checked by the authorization server's gate and again by HFS.
 
-Two things follow. A token for this server is accepted whichever way the request
-arrived, over loopback or relayed through the tunnel. And a token
-another server minted names that server's origin, so it is refused here by
-construction, even if the two servers somehow shared a signing key.
+So a token another server minted names that server's origin, and is refused
+here by construction, even if the two servers somehow shared a signing key.
 
-The SMART discovery document reports the server's origin as its `issuer`, while
-its endpoint URLs are rendered from the served origin so the SMART app can
-reach them from where it is.
+HFS checks a token's signature against the authorization server's keys, which
+the server reads in process: validating a token never calls the server over
+HTTP.
+
+The SMART discovery document reports the server's origin as its `issuer`, and
+its endpoint URLs (`authorization_endpoint`, `token_endpoint`, `jwks_uri`,
+`wildflower_authorization_api`) are on the server's origin too.
 
 A SMART app may also declare, as `aud` on `/oauth/authorize`, the FHIR server
 it means to call. The authorization server checks that against the same configured origin:
@@ -139,17 +129,19 @@ setting is the prefix of every URL it emits (search Bundle `self`/`next` links,
 that pages by following `next` therefore goes wherever `base_url` points.
 
 So `base_url` is `https://<domain>`, where FHIR is served at the root, the
-server's domain being the one from its record, because that is how remote clients reach the
-FHIR server. Loopback callers get the public URLs too. Their tokens still work
-there: a token names the server's origin, not the origin it was used on, so a
-client that authorised over loopback can follow a public `next` link through
-the tunnel.
+server's domain being the one from its record, because that is how every
+client reaches the FHIR server.
 
 The domain can't change while the server runs, so the server hands
 fhir-r4-rust the public origin in its config ([`FhirR4Config`]) and HFS's router is
 built once with that `base_url`; a domain that can't form an origin stops
-startup. fhir-r4-rust's own overrides (`$everything`, the SMART discovery doc) still
-render the served origin per request.
+startup. `$everything` renders the served origin per request, which through
+the tunnel is the same origin.
+
+The FHIR web UI's sign-in is the one place HFS calls the server over HTTP: it
+redeems the authorization code (and refreshes the session) at
+`https://<domain>/oauth/token`, out through the relay and back down the
+tunnel.
 
 ### Every launch names the public origin
 
@@ -176,19 +168,14 @@ above the FHIR router must let those paths through unauthenticated. The canonica
 allow-list is [`UNAUTHENTICATED_FHIR_PATHS`] (fhir-r4-rust), which mirrors HFS's own
 `EXEMPT_PATHS`.
 
-## Loopback is the trust boundary
+## The tunnel front is the trust boundary
 
-On the loopback listener, the loopback-socket gate ([`require_loopback_peer`])
-is what lets every slice trust the `Forwarded` header: a non-loopback peer is
-rejected before any handler runs, so every request a handler sees came from
-this machine, directly or through a front run on it. On the tunnel listener the
-header is the tunnel front's own, and nothing there is trusted as local.
-
-The gate decides who may reach the server, not who they are: a direct-loopback
-caller presents its own bearer like any other, and one without a bearer is
-refused at every gated surface. See
-[Apps Explanation](../Apps/Explanation.md) for how this lands in the apps auth
-posture.
+Every request reaches a handler through the tunnel front, so the `Forwarded`
+header every slice reads is the front's own, and nothing is trusted as local.
+Every caller presents its own bearer (or a session cookie the server turns
+into one, from its own pages only), and one without either is refused at every
+gated surface. See [Apps Explanation](../Apps/Explanation.md) for how this
+lands in the apps auth posture.
 
 ## SMART scopes
 
@@ -213,6 +200,5 @@ restate the grammar.
 [`AuthorizationServerConfig::server_origin`]: ../../apps/host/wildflower-server/authorization-server-rust/src/config.rs
 [`served_origin`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
 [`served_base_url_for`]: ../../slices/shared-structures/shared-structures-rust/src/served_origin.rs
-[`require_loopback_peer`]: ../../apps/host/wildflower-server/authorization-server-rust/src/http/middleware/require_loopback_peer.rs
 [`UNAUTHENTICATED_FHIR_PATHS`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/lib.rs
 [`FhirR4Config`]: ../../apps/host/wildflower-server/fhir-r4-rust/src/config.rs

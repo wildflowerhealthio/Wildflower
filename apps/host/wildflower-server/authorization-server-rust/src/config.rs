@@ -4,18 +4,12 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 #[derive(Debug, Clone)]
 pub struct AuthorizationServerConfig {
-    /// The HTTP-only loopback origin the embedded API server binds to, e.g.
-    /// `http://127.0.0.1:8080/`, as a typed [`Url`]. The loopback base URL
-    /// [`served_base_url_for`](wildflowerhealthio_shared_structures::served_origin::served_base_url_for) returns when a
-    /// request carries no public-origin header (consumers then take its bare
-    /// origin via [`wildflowerhealthio_shared_structures::origin_string`]).
-    pub loopback_base_url: Url,
-
     /// The server's origin, `https://<domain>`, as a typed [`Url`]. Every token
     /// this server mints carries its bare origin (via
     /// [`wildflowerhealthio_shared_structures::origin_string`]) as both `iss` and `aud`, and
     /// the bearer gates accept only tokens that do, whichever origin a request
-    /// was served on. See `docs/Origins/Explanation.md`.
+    /// was served on. It is also the served origin of a request that carries
+    /// no `Forwarded` header. See `docs/Origins/Explanation.md`.
     pub server_origin: Url,
 
     /// The scopes the host app's client may be granted, as wire strings —

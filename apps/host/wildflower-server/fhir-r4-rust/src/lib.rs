@@ -29,7 +29,6 @@ use helios_rest::fhir_types::is_valid_resource_type;
 use helios_rest::{create_app_with_auth_bulk_and_settings, ServerConfig};
 use tower::{Layer, Service};
 use wildflowerhealthio_scopes::{Permission, Scope};
-use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 use wildflowerhealthio_token_revocation::RevocationStore;
 
@@ -163,7 +162,6 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// contain the R4 spec bundle, if the sqlite backend cannot be opened at the
 /// configured path, or if initializing its schema fails.
 pub fn setup_fhir_r4<Gate>(
-    runtime: &ServerRuntimeConfig,
     config: &FhirR4Config,
     access_token_signing_keys: Option<Arc<dyn AccessTokenSigningKeys>>,
     revocation_store: RevocationStore,
@@ -211,17 +209,9 @@ where
     sqlite_backend
         .init_schema()
         .context("failed to init sqlite schema")?;
-    let loopback_base_url = runtime.loopback_base_url();
-
     let server_origin = wildflowerhealthio_shared_structures::origin_string(&config.public_origin);
     let server_config = ServerConfig {
         base_url: server_origin.clone(),
-        // The host param only expects the ip to bind to
-        host: runtime
-            .loopback_base_url_ref()
-            .host()
-            .expect("loopback_base_url must have host")
-            .to_string(),
         log_level: config.log_level.clone(),
         max_body_size: MAX_FHIR_BODY_BYTES,
         cors_origins: "*".to_string(),
@@ -277,7 +267,6 @@ where
             get(smart_configuration_handler),
         )
         .with_state(SmartConfigState {
-            loopback_base_url: loopback_base_url.clone(),
             server_origin: server_origin.clone(),
             authorization_app_base: config.authorization_app_base.clone(),
         });
@@ -289,7 +278,7 @@ where
         .route("/Patient/{id}/$everything", get(patient_everything_handler))
         .with_state(EverythingState {
             hfs_router: hfs_router.clone(),
-            loopback_base_url,
+            public_origin: config.public_origin.clone(),
         });
 
     let hfs_router_for_delegation = hfs_router.clone();
@@ -328,10 +317,9 @@ static UI_MOUNT: Mutex<()> = Mutex::new(());
 /// `ui_sessions` and its per-user settings in `ui_settings_store`. Without a
 /// settings store the UI turns its bulk export and import pages off.
 ///
-/// The UI's conformance pages call the server's own FHIR API over HTTP. They
-/// call it at `server_origin`, never loopback: a direct-local request without a
-/// bearer is given the host owner's token, and these calls carry the signed-in
-/// user's bearer or none.
+/// The UI's conformance pages call the server's own FHIR API over HTTP, at
+/// `server_origin`, the only address the server is served at, carrying the
+/// signed-in user's bearer or none.
 fn mount_ui(
     fhir_api: Router,
     spec_dir: &std::path::Path,
@@ -386,25 +374,21 @@ const MAX_UI_BODY_BYTES: usize = 30 * 1024 * 1024;
 /// `user/*.cruds`.
 ///
 /// The browser is sent to the authorize endpoint on `public_origin`, where it
-/// reaches the server. HFS redeems the code server-side at the token endpoint on
-/// `loopback_base_url`, so the call stays on the device. The authorization
-/// server has no OpenID Connect, so there is no ID token and no end-session
-/// endpoint: the session's identity is its access token's `sub`.
+/// reaches the server, and HFS redeems the code server-side at the token
+/// endpoint there too, out through the relay and back down the tunnel: the
+/// server listens nowhere else. The authorization server has no OpenID
+/// Connect, so there is no ID token and no end-session endpoint: the session's
+/// identity is its access token's `sub`.
 #[must_use]
-pub fn ui_login_config(
-    public_origin: &url::Url,
-    loopback_base_url: &url::Url,
-    ui_client_id: &str,
-) -> LoginConfig {
+pub fn ui_login_config(public_origin: &url::Url, ui_client_id: &str) -> LoginConfig {
     let origin = wildflowerhealthio_shared_structures::origin_string(public_origin);
-    let loopback_origin = wildflowerhealthio_shared_structures::origin_string(loopback_base_url);
     LoginConfig {
         client_id: ui_client_id.to_string(),
         client_secret: None,
         redirect_uri: format!("{origin}/ui/callback"),
         scopes: Scope::fhir_user_all(Permission::ALL).to_string(),
         authorization_endpoint: format!("{origin}/oauth/authorize"),
-        token_endpoint: format!("{loopback_origin}/oauth/token"),
+        token_endpoint: format!("{origin}/oauth/token"),
         end_session_endpoint: None,
         cookie_secure: public_origin.scheme() == "https",
     }
@@ -490,15 +474,14 @@ mod tests {
     }
 
     /// The UI signs in through the browser at the public origin, redeems the
-    /// code on loopback, comes back to the redirect URI the authorization server seeds, and
-    /// asks for `user/*.cruds` as a public client; its cookie is `Secure` on an
-    /// https origin.
+    /// code there too, comes back to the redirect URI the authorization server
+    /// seeds, and asks for `user/*.cruds` as a public client; its cookie is
+    /// `Secure` on an https origin.
     #[test]
-    fn ui_login_config_points_the_browser_public_and_the_redemption_at_loopback() {
+    fn ui_login_config_points_the_browser_and_the_redemption_at_the_public_origin() {
         let public_origin = url::Url::parse("https://ruth.relay.example").expect("origin");
-        let loopback = url::Url::parse("http://127.0.0.1:8123/").expect("loopback");
 
-        let login = ui_login_config(&public_origin, &loopback, "fhir-ui-client");
+        let login = ui_login_config(&public_origin, "fhir-ui-client");
 
         assert_eq!(
             (
@@ -517,7 +500,7 @@ mod tests {
                 "https://ruth.relay.example/ui/callback",
                 "user/*.cruds",
                 "https://ruth.relay.example/oauth/authorize",
-                "http://127.0.0.1:8123/oauth/token",
+                "https://ruth.relay.example/oauth/token",
                 None,
                 true,
             )

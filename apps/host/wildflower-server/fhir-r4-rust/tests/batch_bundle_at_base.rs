@@ -14,7 +14,6 @@ use axum::Router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config};
-use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 /// Unique temp dir per test so parallel tests don't share a sqlite file.
 static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -36,10 +35,6 @@ fn build_router() -> (Router, TempDb) {
     let dir = std::env::temp_dir().join(format!("fhir-r4-rust-batch-{}-{n}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("create temp dir");
 
-    let runtime = ServerRuntimeConfig {
-        loopback_base_url: "http://127.0.0.1:8080".parse().expect("parse loopback url"),
-        server_dir: dir.clone(),
-    };
     let config = FhirR4Config {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
@@ -57,12 +52,11 @@ fn build_router() -> (Router, TempDb) {
 
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let router = setup_fhir_r4(
-        &runtime,
         &config,
         // No signing keys: HFS auth is off.
         None,
         revocation_store,
-        ui_sessions(&runtime, &config),
+        ui_sessions(&config),
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),
     )
@@ -153,13 +147,9 @@ async fn batch_bundle_posts_to_base() {
 }
 
 /// The web UI's session store `setup_fhir_r4` takes, as the host builds it.
-fn ui_sessions(
-    runtime: &ServerRuntimeConfig,
-    config: &FhirR4Config,
-) -> std::sync::Arc<helios_auth::SessionStore> {
+fn ui_sessions(config: &FhirR4Config) -> std::sync::Arc<helios_auth::SessionStore> {
     std::sync::Arc::new(helios_auth::SessionStore::new(ui_login_config(
         &config.public_origin,
-        runtime.loopback_base_url_ref(),
         "fhir-ui-client",
     )))
 }

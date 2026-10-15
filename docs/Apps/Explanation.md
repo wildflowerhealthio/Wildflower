@@ -24,12 +24,10 @@ rather than when the user installs a new desktop build.
 
 An app reaches PHI through `{origin}` in its stored launch template, and every
 launch substitutes the server's public HTTPS origin (`https://<domain>`, from the
-server's record), whoever the caller is. A loopback origin would not do: the
-first-party pages are HTTPS documents on <https://wildflowerhealth.io>, and an
-`iss={origin}` fetch from there to a loopback origin is unreachable remotely and
-refused by WebKit even on device. The launch never consults the tunnel. The
-trade-off: with the assets remote and the FHIR server reached at its public
-origin, a launch needs the network even on-device.
+server's record), whoever the caller is: it is the only origin the server is
+served at. The launch never consults the tunnel. The trade-off: with the assets
+remote and the FHIR server reached at its public origin, a launch needs the
+network even on-device.
 
 The SMART apps this repository publishes (every app that mounts
 `smart-app-react`'s `SmartAppRoot`) send nothing from the browser but their FHIR
@@ -133,7 +131,7 @@ sibling registers `http://localhost:{port}` plus the same path.
 
 ## Auth posture and the remote trust boundary
 
-The whole `/apps` API is reached through the host's loopback-peer gate, and every
+The whole `/apps` API is reached only through the server's tunnel listener, and every
 route is behind the **authorization server bearer gate** (which inserts the caller's scope
 claims). On top of that each route is **scope-gated** through the shared
 default-safe capability pattern (`scope-capabilities-rust`; see

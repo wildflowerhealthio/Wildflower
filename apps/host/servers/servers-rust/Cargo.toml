@@ -87,9 +87,9 @@ wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflo
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
 # The coalescer's property tests.
 proptest = "1"
-# The loopback port `tests/server_unit.rs`'s server binds, clear of other
-# tests' sockets.
-wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust" }
+# Opens `tests/server_unit.rs`'s server's database, to leave requests waiting
+# in it before the server runs.
+wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 # The relay's own site and signature verifier, served on a loopback port, so
 # enrolment is tested against the real relay rather than a copy of its rules.
 wildflowerhealthio-relay-server = { path = "../../../relay/relay-server" }

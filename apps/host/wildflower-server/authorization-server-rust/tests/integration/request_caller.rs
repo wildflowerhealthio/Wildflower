@@ -40,7 +40,7 @@ fn get_with_bearer(path: &str, token: Option<&str>) -> Request<Body> {
     if let Some(token) = token {
         builder = builder.header("authorization", format!("Bearer {token}"));
     }
-    loopback_request(builder, Body::empty())
+    build_request(builder, Body::empty())
 }
 
 #[tokio::test]
@@ -152,7 +152,7 @@ async fn the_bearer_gate_stamps_why_it_refused_each_401() {
 #[tokio::test]
 async fn the_session_gate_stamps_why_it_refused_each_401() {
     let (g, owner_token, db) = spin_up();
-    let no_token = loopback_request(
+    let no_token = build_request(
         Request::get("/authorization/grants").header("host", "127.0.0.1"),
         Body::empty(),
     );

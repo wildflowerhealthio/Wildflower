@@ -10,9 +10,9 @@
 //! Rather than patching helios-auth upstream, we mount this handler at
 //! `/.well-known/smart-configuration` and put HFS's router behind it as a
 //! fallback (see [`lib.rs`](crate)). The advertised endpoints are the
-//! authorization server URLs on the same origin, so the SMART app fetches discovery
-//! here, then follows links straight to the authorization server for the authorize/token
-//! dance.
+//! authorization server URLs on the server's origin, so the SMART app fetches
+//! discovery here, then follows links straight to the authorization server for
+//! the authorize/token dance.
 //!
 //! The document advertises only what is served: every endpoint URL in it is a
 //! route this server answers, apart from `management_endpoint`, the hosted
@@ -23,20 +23,15 @@
 //! fhir-r4 slice has been removed.
 
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::Json;
 use serde::Serialize;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
-use wildflowerhealthio_shared_structures::served_origin::served_base_url_for;
 
-/// State threaded to the discovery handler: the loopback origin it falls back
-/// to when a request arrives without forwarding headers (a typed
-/// [`Url`](url::Url) base URL; the handler derives the bare origin string from
-/// it), the server's origin it reports as `issuer`, and the Wildflower
-/// Authorization app it advertises as `management_endpoint`.
+/// State threaded to the discovery handler: the server's origin it reports as
+/// `issuer` and builds every endpoint URL on, and the Wildflower Authorization
+/// app it advertises as `management_endpoint`.
 #[derive(Clone)]
 pub(crate) struct SmartConfigState {
-    pub loopback_base_url: url::Url,
     /// The server's bare origin, every token's `iss` and `aud`.
     pub server_origin: String,
     pub authorization_app_base: AuthorizationAppBase,
@@ -102,24 +97,19 @@ const TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED: &[&str] =
 
 fn build_smart_configuration(
     server_origin: &str,
-    base_url: &url::Url,
     authorization_app_base: &AuthorizationAppBase,
 ) -> SmartConfiguration {
-    // The advertised endpoints are per-request URL strings; derive the bare
-    // origin (no trailing slash, no default port) once and interpolate.
-    let origin = wildflowerhealthio_shared_structures::origin_string(base_url);
     SmartConfiguration {
-        // `issuer` = the server's origin (minted tokens' `iss`); the endpoint
-        // URLs below stay per-request, derived from the served origin. See
-        // `docs/Origins/Explanation.md`.
+        // `issuer` = the server's origin (minted tokens' `iss`), and every
+        // endpoint URL below is on it too. See `docs/Origins/Explanation.md`.
         issuer: server_origin.to_owned(),
-        jwks_uri: format!("{origin}/.well-known/jwks.json"),
-        authorization_endpoint: format!("{origin}/oauth/authorize"),
-        token_endpoint: format!("{origin}/oauth/token"),
+        jwks_uri: format!("{server_origin}/.well-known/jwks.json"),
+        authorization_endpoint: format!("{server_origin}/oauth/authorize"),
+        token_endpoint: format!("{server_origin}/oauth/token"),
         management_endpoint: authorization_app_base
             .management_url(server_origin)
             .to_string(),
-        wildflower_authorization_api: format!("{origin}/authorization/"),
+        wildflower_authorization_api: format!("{server_origin}/authorization/"),
         scopes_supported: SCOPES_SUPPORTED.to_vec(),
         response_types_supported: vec!["code"],
         grant_types_supported: GRANT_TYPES_SUPPORTED.to_vec(),
@@ -142,19 +132,11 @@ fn build_smart_configuration(
 
 pub(crate) async fn smart_configuration_handler(
     State(state): State<SmartConfigState>,
-    headers: HeaderMap,
-) -> Response {
-    // No served base URL (a forwarded header that cleared validation but failed to
-    // parse) → 500 rather than a discovery doc with malformed URLs.
-    let Some(base_url) = served_base_url_for(&headers, &state.loopback_base_url) else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
+) -> Json<SmartConfiguration> {
     Json(build_smart_configuration(
         &state.server_origin,
-        &base_url,
         &state.authorization_app_base,
     ))
-    .into_response()
 }
 
 #[cfg(test)]
@@ -163,16 +145,12 @@ mod tests {
 
     const SERVER_ORIGIN: &str = "https://ruth.wildflowerhealth.io";
 
-    fn base(value: &str) -> url::Url {
-        url::Url::parse(value).unwrap()
-    }
-
-    /// The document served at `served_base`, advertising the hosted app.
-    fn document(served_base: &str) -> SmartConfiguration {
+    /// The document, advertising the hosted app.
+    fn document() -> SmartConfiguration {
         let authorization_app =
             AuthorizationAppBase::parse("https://wildflowerhealth.io/authorization/")
                 .expect("valid base");
-        build_smart_configuration(SERVER_ORIGIN, &base(served_base), &authorization_app)
+        build_smart_configuration(SERVER_ORIGIN, &authorization_app)
     }
 
     /// The committed document `authorization-core`'s discovery tests read
@@ -181,7 +159,7 @@ mod tests {
     /// `UPDATE_SMART_CONFIGURATION=1 cargo test -p wildflowerhealthio-fhir-r4 smart_configuration_snapshot`.
     #[test]
     fn smart_configuration_snapshot_is_up_to_date() {
-        let doc = document("https://ruth.wildflowerhealth.io");
+        let doc = document();
         let rendered = format!(
             "{}\n",
             serde_json::to_string_pretty(&doc).expect("serialize the discovery document")
@@ -207,7 +185,7 @@ mod tests {
 
     #[test]
     fn discovery_doc_points_authorization_endpoint_at_root_oauth() {
-        let doc = document("https://ruth.wildflowerhealth.io");
+        let doc = document();
         assert_eq!(
             doc.authorization_endpoint,
             "https://ruth.wildflowerhealth.io/oauth/authorize"
@@ -222,33 +200,30 @@ mod tests {
         );
     }
 
-    /// `issuer` is the server's origin whichever origin discovery was served
-    /// on, while the endpoint URLs follow the served origin.
+    /// `issuer` is the server's origin.
     #[test]
     fn discovery_doc_reports_the_server_origin_as_issuer() {
-        let doc = document("http://127.0.0.1:8080/");
-        assert_eq!(doc.issuer, SERVER_ORIGIN);
-        assert_eq!(doc.token_endpoint, "http://127.0.0.1:8080/oauth/token");
+        assert_eq!(document().issuer, SERVER_ORIGIN);
     }
 
     /// The management page is the hosted app pointed at the `issuer`, and the
-    /// authorization API follows the served origin like the endpoints.
+    /// authorization API is on the server's origin like the endpoints.
     #[test]
-    fn discovery_doc_points_management_at_the_app_and_the_api_at_the_served_origin() {
-        let doc = document("http://127.0.0.1:8080/");
+    fn discovery_doc_points_management_at_the_app_and_the_api_at_the_server_origin() {
+        let doc = document();
         assert_eq!(
             doc.management_endpoint,
             "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io"
         );
         assert_eq!(
             doc.wildflower_authorization_api,
-            "http://127.0.0.1:8080/authorization/"
+            "https://ruth.wildflowerhealth.io/authorization/"
         );
     }
 
     #[test]
     fn discovery_doc_advertises_smart_app_launch_capabilities() {
-        let doc = document("https://example.com");
+        let doc = document();
         assert!(doc.capabilities.contains(&"launch-ehr"));
         assert!(doc.capabilities.contains(&"permission-v2"));
         assert!(doc.grant_types_supported.contains(&"authorization_code"));
@@ -258,7 +233,7 @@ mod tests {
 
     #[test]
     fn discovery_doc_advertises_curated_public_scopes() {
-        let doc = document("https://example.com");
+        let doc = document();
         // The curated public SMART read set — standard SMART App Launch scopes,
         // not the system's internal/admin vocabulary.
         assert!(doc.scopes_supported.contains(&"openid"));

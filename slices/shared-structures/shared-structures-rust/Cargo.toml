@@ -38,10 +38,8 @@ diesel-json-text = ["dep:diesel", "dep:serde_json"]
 # (`wildflowerhealthio-recorder-tauri`, `wildflowerhealthio-browser-sniffer-tauri`, …) needs the
 # trait available unconditionally.
 serde = { workspace = true }
-# `url` is non-optional: the always-on `ServerRuntimeConfig::loopback_origin`
-# returns a `Url` — the single typed source the host threads into every slice's
-# config (apps / the authorization server / fhir-r4), so the loopback origin is parsed
-# once here rather than rebuilt from a string downstream.
+# `url` is non-optional: the always-on `origin_string`, `AuthorizationAppBase`
+# and `LauncherBase` work on a `Url`.
 url = { version = "2" }
 utoipa = { workspace = true, optional = true }
 # Only for the `diesel-json-text` feature: the shared `JsonText` column mapping.

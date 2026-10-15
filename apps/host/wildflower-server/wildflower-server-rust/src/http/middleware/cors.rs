@@ -3,8 +3,8 @@
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 
 /// The API surface's CORS policy: mirror any origin, method and request headers
-/// (every endpoint is loopback-gated and bearer-authenticated, so CORS is not the
-/// access control), and **never** allow credentials.
+/// (every gated endpoint is bearer-authenticated, so CORS is not the access
+/// control), and **never** allow credentials.
 ///
 /// Mirroring headers rather than `*` matters: the CORS spec's header wildcard
 /// excludes `Authorization`, the one header the bearer clients need. Credentials

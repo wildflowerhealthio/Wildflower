@@ -47,14 +47,15 @@ pub struct AuthorizationServerState {
     /// [`crate::setup_authorization_server`] and fhir-r4-rust's HFS adapter, so the two
     /// enforcement points read one store.
     pub(crate) revocation_store: RevocationStore,
-    /// The loopback base URL (e.g. `http://127.0.0.1:8080/`), pinned from
-    /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at
-    /// [`crate::setup_authorization_server`]. Handlers don't read it directly: it is only
-    /// the loopback fallback passed to
-    /// [`served_base_url_for`](wildflowerhealthio_shared_structures::served_origin::served_base_url_for), which resolves
-    /// each request's served base URL for the launcher links it renders. See
+    /// The server's origin as a base URL, pinned from
+    /// [`AuthorizationServerConfig::server_origin`](crate::AuthorizationServerConfig::server_origin)
+    /// at [`crate::setup_authorization_server`]. Handlers don't read it
+    /// directly: it is only the fallback passed to
+    /// [`served_base_url_for`](wildflowerhealthio_shared_structures::served_origin::served_base_url_for)
+    /// for a request with no `Forwarded` header, which resolves each request's
+    /// served base URL for the launcher links it renders. See
     /// `docs/Origins/Explanation.md`.
-    pub(crate) loopback_base_url: url::Url,
+    pub(crate) server_base_url: url::Url,
     /// The server's bare origin (`https://<domain>`), reduced once from
     /// [`AuthorizationServerConfig::server_origin`](crate::AuthorizationServerConfig::server_origin)
     /// at [`crate::setup_authorization_server`]: the `iss` and `aud` of every token this

@@ -7,9 +7,9 @@ pub mod server_runtime_config;
 pub use server_runtime_config::ServerRuntimeConfig;
 
 /// Reduce a base URL to its bare origin string — `scheme://host[:port]`, no
-/// trailing slash (e.g. `http://127.0.0.1:8080`). The one place the
+/// trailing slash (e.g. `https://ruth.relay.example`). The one place the
 /// `url::Origin::ascii_serialization` reduction is spelled, so the callers that
-/// stringify a base URL (loopback config origins, forwarded served origins, the
+/// stringify a base URL (forwarded served origins, the
 /// server's origin every token's `iss` and `aud` name) can't each render it a
 /// slightly different way — the flap PR #224 warned about. Pure `url` code, so
 /// it stays out of the axum-gated `served_origin` module and non-HTTP crates can
@@ -56,8 +56,8 @@ mod tests {
     /// here is what lets the call sites stop each re-spelling the reduction.
     #[test]
     fn reduces_to_scheme_host_port_without_trailing_slash() {
-        let loopback = Url::parse("http://127.0.0.1:8080/").expect("valid url");
-        assert_eq!(origin_string(&loopback), "http://127.0.0.1:8080");
+        let plain = Url::parse("http://127.0.0.1:8080/").expect("valid url");
+        assert_eq!(origin_string(&plain), "http://127.0.0.1:8080");
 
         // A non-default port is kept; the trailing path is dropped.
         let forwarded = Url::parse("https://emr.example.com:8443/token?x=1").expect("valid url");

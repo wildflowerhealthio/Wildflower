@@ -11,19 +11,9 @@ use wildflowerhealthio_tauri_unit_runner::{
 };
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 
-// Loopback hostname/port for the embedded API server, derived at compile time
-// from the SINGLE SOURCE OF TRUTH
-// `apps/host/host-app/tauri-shared-config.json`. `build.rs` reads that file
-// and re-emits these as `rustc-env` vars. A non-numeric port in the JSON fails
-// this `const` parse at compile time rather than at bind time.
-const LOOPBACK_HOSTNAME: &str = env!("WILDFLOWER_LOOPBACK_HOSTNAME");
-const LOOPBACK_PORT: u16 = match u16::from_str_radix(env!("WILDFLOWER_LOOPBACK_PORT"), 10) {
-    Ok(port) => port,
-    Err(_) => panic!("WILDFLOWER_LOOPBACK_PORT (from tauri-shared-config.json) must be a u16"),
-};
-
-// The scopes the host app's OAuth client may be granted, also sourced from
-// `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`):
+// The scopes the host app's OAuth client may be granted, sourced from the
+// SINGLE SOURCE OF TRUTH `apps/host/host-app/tauri-shared-config.json`
+// (re-emitted by `build.rs` as a `rustc-env` var):
 // the authorization server seeds the client's `allowed_scopes` from them.
 const HOST_APP_CLIENT_SCOPES: &str = env!("WILDFLOWER_HOST_APP_CLIENT_SCOPES");
 
@@ -126,8 +116,8 @@ fn host_app_client_scopes() -> Vec<String> {
 ///
 /// The server runs from its own folder under `data_root`, which also holds its
 /// certificates, orders them with the install's ACME account in `data_root`,
-/// from the CA its record names, and listens on the one loopback port this
-/// build names, whichever server it is.
+/// from the CA its record names. It binds no port: it is reached only through
+/// its tunnel, at `https://<domain>`.
 ///
 /// Only the desktop/iOS release build asks `app_handle` for Tauri's
 /// bundled-resource dir, where it reads the FHIR SearchParameter bundle; the dev
@@ -144,15 +134,7 @@ fn server_config(
     let authorization_app_base = AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE_URL).context(
         "authorization_app_base_url (from tauri-shared-config.json) must be an absolute URL",
     )?;
-    // Hostname/port come from the shared `tauri-shared-config.json` (see
-    // `LOOPBACK_HOSTNAME`/`LOOPBACK_PORT`).
-    let loopback_base_url = Url::parse(&format!("http://{LOOPBACK_HOSTNAME}:{LOOPBACK_PORT}"))
-        .context("the loopback base URL (from tauri-shared-config.json) must be a URL")?;
     let runtime = ServerRuntimeConfig {
-        // Loopback-only: the OS rejects non-local peers at the socket, so the
-        // bearer secret is never the only thing between LAN peers and FHIR
-        // health data.
-        loopback_base_url,
         server_dir: server.server_dir(data_root),
     };
     // The FHIR R4 SearchParameter bundle HFS indexes from is a deployed asset,

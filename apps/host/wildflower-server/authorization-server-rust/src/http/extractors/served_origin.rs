@@ -2,7 +2,7 @@
 //! [`served_base_url_for`] resolver (the single source of truth in
 //! `shared-structures-rust`; see `docs/Origins/Explanation.md`). The extractor
 //! stays here because it reaches into the authorization server's [`AuthorizationServerState`] for the
-//! `loopback_base_url` fallback, so it can't move to a state-agnostic crate
+//! `server_base_url` fallback, so it can't move to a state-agnostic crate
 //! without parameterizing.
 
 use std::sync::Arc;
@@ -17,10 +17,10 @@ use crate::http::errors;
 use crate::http::state::AuthorizationServerState;
 
 /// [`served_base_url_for`] as an axum extractor: resolves the request's served
-/// base URL from its forwarding headers and the configured loopback base URL,
+/// base URL from its forwarding headers and the server's origin,
 /// then hands handlers the bare origin string, so a handler takes
 /// `origin: ServedOrigin` instead of threading a `HeaderMap` purely to call the
-/// resolver. A request with no forwarding headers falls back to the loopback
+/// resolver. A request with no forwarding headers falls back to the server's
 /// origin; a forwarded host that cleared validation but failed to parse rejects
 /// with an opaque 500 (see [`served_base_url_for`]).
 pub(crate) struct ServedOrigin(pub String);
@@ -43,7 +43,7 @@ impl FromRequestParts<Arc<AuthorizationServerState>> for ServedOrigin {
         state: &Arc<AuthorizationServerState>,
     ) -> Result<Self, Self::Rejection> {
         let base_url =
-            served_base_url_for(&parts.headers, &state.loopback_base_url).ok_or_else(|| {
+            served_base_url_for(&parts.headers, &state.server_base_url).ok_or_else(|| {
                 errors::internal_error(
                     "served base url",
                     "forwarded header did not indicate a valid base URL",

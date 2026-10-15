@@ -53,7 +53,6 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
         pool.clone(),
         revocation_store,
         &AuthorizationServerConfig {
-            loopback_base_url: Url::parse("http://127.0.0.1:8080/").unwrap(),
             server_origin: Url::parse(&format!("https://{DOMAIN}")).unwrap(),
             host_app_client_scopes:
                 wildflowerhealthio_authorization_server::default_host_app_client_scopes(),

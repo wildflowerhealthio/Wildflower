@@ -12,7 +12,6 @@ use axum::Router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, FhirR4Config, FhirR4Routers};
-use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
 
 const PUBLIC_ORIGIN: &str = "https://abc.relay.example";
 
@@ -39,10 +38,6 @@ fn build_routers() -> (FhirR4Routers, TempDb) {
     ));
     std::fs::create_dir_all(&dir).expect("create temp dir");
 
-    let runtime = ServerRuntimeConfig {
-        loopback_base_url: "http://127.0.0.1:8080".parse().expect("parse loopback url"),
-        server_dir: dir.clone(),
-    };
     let config = FhirR4Config {
         log_level: "error".to_string(),
         db_file_path: dir.join("health-data.sqlite"),
@@ -58,12 +53,11 @@ fn build_routers() -> (FhirR4Routers, TempDb) {
 
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::always_allow();
     let routers = setup_fhir_r4(
-        &runtime,
         &config,
         // No signing keys: HFS auth is off.
         None,
         revocation_store,
-        ui_sessions(&runtime, &config),
+        ui_sessions(&config),
         // No host gate in front: these drive HFS and the UI directly.
         tower::layer::util::Identity::new(),
     )
@@ -180,9 +174,10 @@ async fn the_delegation_router_is_on_the_public_origin() {
 }
 
 /// Discovery reports the server's origin as `issuer` (every token's `iss`),
-/// even when served over loopback, where its endpoint URLs are loopback ones.
+/// and its endpoint URLs are on that origin too, even for a request with no
+/// `Forwarded` header.
 #[tokio::test]
-async fn smart_discovery_reports_the_public_origin_as_issuer() {
+async fn smart_discovery_reports_the_public_origin_as_issuer_and_endpoint_origin() {
     let (routers, _db) = build_routers();
     let (status, _, document) = send(
         &routers.augmented_fhir_r4_router,
@@ -195,18 +190,14 @@ async fn smart_discovery_reports_the_public_origin_as_issuer() {
     assert_eq!(document["issuer"], PUBLIC_ORIGIN);
     assert_eq!(
         document["token_endpoint"],
-        "http://127.0.0.1:8080/oauth/token"
+        format!("{PUBLIC_ORIGIN}/oauth/token")
     );
 }
 
 /// The web UI's session store `setup_fhir_r4` takes, as the host builds it.
-fn ui_sessions(
-    runtime: &ServerRuntimeConfig,
-    config: &FhirR4Config,
-) -> std::sync::Arc<helios_auth::SessionStore> {
+fn ui_sessions(config: &FhirR4Config) -> std::sync::Arc<helios_auth::SessionStore> {
     std::sync::Arc::new(helios_auth::SessionStore::new(ui_login_config(
         &config.public_origin,
-        runtime.loopback_base_url_ref(),
         "fhir-ui-client",
     )))
 }

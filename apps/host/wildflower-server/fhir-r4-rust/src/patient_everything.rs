@@ -112,12 +112,12 @@ const RELATED_RESOURCE_TYPES: &[RelatedType] = &[
 ];
 
 /// State threaded to the `$everything` handler: a clone of HFS's router to
-/// re-drive in-process, plus the loopback origin used as the served-origin
-/// fallback (same base the discovery override derives its URLs from).
+/// re-drive in-process, plus the server's public origin, the served origin of
+/// a request with no `Forwarded` header.
 #[derive(Clone)]
 pub(crate) struct EverythingState {
     pub hfs_router: Router,
-    pub loopback_base_url: url::Url,
+    pub public_origin: url::Url,
 }
 
 /// `$everything` URL parameters. Only `_count` is honored today; unknown params
@@ -139,7 +139,7 @@ pub(crate) async fn patient_everything_handler(
     // forwarded host that cleared validation but failed to parse leaves no base
     // URL to build links from, so 500 rather than emit a Bundle with a malformed
     // `self`/`fullUrl`.
-    let fhir_base = match served_base_url_for(&headers, &state.loopback_base_url) {
+    let fhir_base = match served_base_url_for(&headers, &state.public_origin) {
         Some(base_url) => wildflowerhealthio_shared_structures::origin_string(&base_url),
         None => return internal_error("forwarded header did not indicate a valid served base URL"),
     };

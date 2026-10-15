@@ -65,7 +65,7 @@ mod source_guards {
             ".revocation_store",
             ".wildflower_host_app_client_id",
             ".owner_approval_tx",
-            ".loopback_base_url",
+            ".server_base_url",
             ".server_origin",
             ".owner_grant",
             ".same_device_sign_in_codes",

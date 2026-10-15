@@ -6,10 +6,7 @@
 //! `/databases` request would 500 instead of 200 or 403, and only this test
 //! would catch it: each slice's own tests fabricate the extension.
 
-use std::net::SocketAddr;
-
 use axum::body::Body;
-use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use tokio::sync::watch;
 use tower::ServiceExt;
@@ -32,7 +29,6 @@ fn set_up_authorization_server(
     pool: &DieselPool,
 ) -> wildflowerhealthio_authorization_server::AuthorizationServer {
     let config = AuthorizationServerConfig {
-        loopback_base_url: Url::parse("http://127.0.0.1").expect("loopback URL"),
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
@@ -123,10 +119,7 @@ async fn bearer_gate_inserts_scope_claims_a_databases_capability_reads() {
             if let Some(token) = token {
                 builder = builder.header("authorization", format!("Bearer {token}"));
             }
-            let mut request = builder.body(Body::empty()).expect("build request");
-            request
-                .extensions_mut()
-                .insert(ConnectInfo::<SocketAddr>(([127, 0, 0, 1], 54321).into()));
+            let request = builder.body(Body::empty()).expect("build request");
             gated.oneshot(request).await.expect("oneshot").status()
         }
     };

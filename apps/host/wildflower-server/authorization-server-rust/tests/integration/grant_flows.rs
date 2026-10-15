@@ -17,7 +17,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -33,7 +33,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
     let request_id = polling_request_id(&polling);
 
     // 2. Owner approves the requested scope via the consent endpoint.
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post(format!(
             "/authorization/oauth-consents/{request_id}/approve"
         ))
@@ -75,7 +75,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize/{request_id}")),
             Body::empty(),
         ))
@@ -106,7 +106,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -142,7 +142,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -160,7 +160,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/authorization/oauth-consents/{request_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -201,7 +201,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -217,7 +217,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
     let request_id = polling_request_id(&polling);
 
     // 2. Owner approves the *narrowed* `.s` — tighter than the requested `.rs`.
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post(format!(
             "/authorization/oauth-consents/{request_id}/approve"
         ))
@@ -248,7 +248,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -307,7 +307,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize/{request_id}")),
             Body::empty(),
         ))
@@ -351,7 +351,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize/{request_id}")),
             Body::empty(),
         ))
@@ -374,7 +374,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -417,7 +417,7 @@ async fn consent_approval_persists_grant() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -470,7 +470,7 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -532,7 +532,7 @@ async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -587,7 +587,7 @@ async fn consent_approvals_union_scopes_into_grant() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -738,7 +738,7 @@ async fn auth_code_replay_revokes_issued_refresh_family() {
 
     // The refresh token from the first redemption is now revoked — rotating it
     // fails because the replay killed its family.
-    let rotate_req = loopback_request(
+    let rotate_req = build_request(
         Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
         Body::from(format!(
             "grant_type=refresh_token&client_id=test-app&refresh_token={refresh_token}"
@@ -959,7 +959,7 @@ async fn denying_a_new_app_registers_nothing() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post(format!("/authorization/oauth-consents/{request_id}/deny"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),

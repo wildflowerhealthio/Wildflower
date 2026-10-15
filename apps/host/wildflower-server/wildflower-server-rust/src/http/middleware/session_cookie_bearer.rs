@@ -132,11 +132,11 @@ impl SessionCookie {
 }
 
 /// What an instance of the layer reads: the cookie it guards, and the
-/// loopback base URL, the served origin of a request with no `Forwarded` (see
+/// server's origin, the served origin of a request with no `Forwarded` (see
 /// [`served_base_url_for`]).
 pub(crate) struct SessionCookieBearerConfig {
     pub(crate) session_cookie: SessionCookie,
-    pub(crate) loopback_base_url: Url,
+    pub(crate) server_origin: Url,
 }
 
 /// Wrap `router` in the layer once per session cookie: an Owner browser's,
@@ -150,13 +150,13 @@ pub(crate) fn present_session_cookie_bearers(
     router: Router,
     authorization_server: Arc<AuthorizationServerState>,
     ui_sessions: Arc<SessionStore>,
-    loopback_base_url: &Url,
+    server_origin: &Url,
 ) -> Router {
     let session_cookie_bearer = |session_cookie| {
         axum::middleware::from_fn_with_state(
             Arc::new(SessionCookieBearerConfig {
                 session_cookie,
-                loopback_base_url: loopback_base_url.clone(),
+                server_origin: server_origin.clone(),
             }),
             present_session_cookie_bearer,
         )
@@ -183,11 +183,7 @@ pub(crate) async fn present_session_cookie_bearer(
     let Some(cookie) = cookie_value(request.headers(), config.session_cookie.name()) else {
         return next.run(request).await;
     };
-    if !is_from_served_origin(
-        request.method(),
-        request.headers(),
-        &config.loopback_base_url,
-    ) {
+    if !is_from_served_origin(request.method(), request.headers(), &config.server_origin) {
         if request.method().is_safe() {
             return next.run(request).await;
         }
@@ -236,7 +232,7 @@ pub(crate) async fn present_session_cookie_bearer(
 /// too old to send `Sec-Fetch-Site`. A read needn't, since a browser leaves it
 /// off a same-origin `GET`. A `Forwarded` the served origin can't be read from
 /// matches no `Origin`.
-fn is_from_served_origin(method: &Method, headers: &HeaderMap, loopback_base_url: &Url) -> bool {
+fn is_from_served_origin(method: &Method, headers: &HeaderMap, server_origin: &Url) -> bool {
     if let Some(fetch_site) = headers.get("sec-fetch-site") {
         let is_same_origin = fetch_site.to_str().is_ok_and(|fetch_site| {
             fetch_site.eq_ignore_ascii_case("same-origin")
@@ -248,7 +244,7 @@ fn is_from_served_origin(method: &Method, headers: &HeaderMap, loopback_base_url
     }
     match headers.get(header::ORIGIN) {
         Some(request_origin) => {
-            served_base_url_for(headers, loopback_base_url).is_some_and(|served_base_url| {
+            served_base_url_for(headers, server_origin).is_some_and(|served_base_url| {
                 request_origin
                     .to_str()
                     .is_ok_and(|request_origin| request_origin == origin_string(&served_base_url))
@@ -287,7 +283,6 @@ mod tests {
 
     const SERVED_ORIGIN: &str = "https://ruth.relay.example";
     const FORWARDED: &str = "for=192.0.2.1;host=ruth.relay.example;proto=https";
-    const LOOPBACK_ORIGIN: &str = "http://127.0.0.1:8080";
     const SIBLING_ORIGIN: &str = "https://evil.relay.example";
 
     /// A cookie the layer guards, as the tests send it: the layer's config,
@@ -298,8 +293,8 @@ mod tests {
         bearer: String,
     }
 
-    fn loopback_base_url() -> url::Url {
-        url::Url::parse(LOOPBACK_ORIGIN).expect("loopback")
+    fn server_origin() -> url::Url {
+        url::Url::parse(SERVED_ORIGIN).expect("origin")
     }
 
     /// A real authorization server over an in-memory database, whose state
@@ -317,8 +312,7 @@ mod tests {
                 RevocationStore::new(Connection::open_in_memory().expect("revocation db"))
                     .expect("revocation store");
             let config = AuthorizationServerConfig {
-                loopback_base_url: loopback_base_url(),
-                server_origin: url::Url::parse(SERVED_ORIGIN).expect("origin"),
+                server_origin: server_origin(),
                 host_app_client_scopes:
                     wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
                 wildflower_host_app_client_id:
@@ -374,7 +368,7 @@ mod tests {
         fn owner_browser_config(&self) -> Arc<SessionCookieBearerConfig> {
             Arc::new(SessionCookieBearerConfig {
                 session_cookie: SessionCookie::OwnerBrowser(self.state.clone()),
-                loopback_base_url: loopback_base_url(),
+                server_origin: server_origin(),
             })
         }
     }
@@ -409,7 +403,7 @@ mod tests {
         GuardedCookie {
             config: Arc::new(SessionCookieBearerConfig {
                 session_cookie: SessionCookie::FhirUi(Arc::new(store_with_a_session())),
-                loopback_base_url: loopback_base_url(),
+                server_origin: server_origin(),
             }),
             cookie: "hfs_session=session-1".to_owned(),
             bearer: "Bearer session-token".to_owned(),
@@ -418,8 +412,7 @@ mod tests {
 
     fn store_with_a_session() -> SessionStore {
         let store = SessionStore::new(wildflowerhealthio_fhir_r4::ui_login_config(
-            &url::Url::parse(SERVED_ORIGIN).expect("origin"),
-            &loopback_base_url(),
+            &server_origin(),
             "fhir-ui-client",
         ));
         store.insert(Session {
@@ -562,11 +555,8 @@ mod tests {
             ],
             // A browser too old to send `Sec-Fetch-Site`.
             &[("forwarded", FORWARDED), ("origin", SERVED_ORIGIN)],
-            // A direct loopback caller's served origin is loopback.
-            &[
-                ("sec-fetch-site", "same-origin"),
-                ("origin", LOOPBACK_ORIGIN),
-            ],
+            // A request with no `Forwarded` is served at the server's origin.
+            &[("sec-fetch-site", "same-origin"), ("origin", SERVED_ORIGIN)],
         ];
         for guarded in guarded_cookies() {
             for headers in cases {
@@ -855,7 +845,7 @@ mod tests {
             echo_router(),
             authorization_server.state.clone(),
             Arc::new(store_with_a_session()),
-            &loopback_base_url(),
+            &server_origin(),
         )
     }
 

@@ -88,7 +88,7 @@ async fn device_consent_clamps_granted_scopes_to_client_allowed() {
     );
 
     // The Owner approves both scopes; the handler must drop `write`.
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}"))
@@ -131,7 +131,7 @@ async fn device_consent_threads_patient_onto_request() {
     );
 
     // The Owner approves and selects a patient context.
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}"))
@@ -180,7 +180,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
     );
 
     // The Owner grants the un-requested-but-allowed `write` on top of `read`.
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}"))
@@ -213,7 +213,7 @@ async fn device_authorization_carries_device_name_to_consent() {
     let (g, owner_token, db) = spin_up();
     seed_test_client(&db);
     // Start the flow with a device name (URL-encoded, includes a space + apostrophe).
-    let start = loopback_request(
+    let start = build_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
         Body::from(
@@ -228,7 +228,7 @@ async fn device_authorization_carries_device_name_to_consent() {
         .to_string();
 
     // The consent prompt surfaces the device name and a non-empty expansion envelope.
-    let get = loopback_request(
+    let get = build_request(
         Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}")),
@@ -253,7 +253,7 @@ async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() 
     let (g, owner_token, db) = spin_up();
     seed_test_client(&db);
     // No `device_name` in the body — only a browser User-Agent.
-    let start = loopback_request(
+    let start = build_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded")
             .header("user-agent", CHROME_MAC_USER_AGENT),
@@ -266,7 +266,7 @@ async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() 
         .expect("user_code")
         .to_string();
 
-    let get = loopback_request(
+    let get = build_request(
         Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}")),
@@ -286,7 +286,7 @@ async fn device_authorization_infers_device_name_from_user_agent_when_unnamed() 
 async fn explicit_device_name_wins_over_user_agent_inference() {
     let (g, owner_token, db) = spin_up();
     seed_test_client(&db);
-    let start = loopback_request(
+    let start = build_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded")
             .header("user-agent", CHROME_MAC_USER_AGENT),
@@ -301,7 +301,7 @@ async fn explicit_device_name_wins_over_user_agent_inference() {
         .expect("user_code")
         .to_string();
 
-    let get = loopback_request(
+    let get = build_request(
         Request::get(format!("/authorization/devices/{user_code}"))
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}")),
@@ -331,7 +331,7 @@ async fn device_consent_approver_can_adjust_device_name() {
         Utc::now() + Duration::minutes(5),
     );
 
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}"))
@@ -373,7 +373,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
     );
 
     // Approve, naming the device.
-    let approve = loopback_request(
+    let approve = build_request(
         Request::post("/authorization/devices/WILD-FLWR/approve")
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}"))
@@ -388,7 +388,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -518,7 +518,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize/{request_id}")),
             Body::empty(),
         ))
@@ -540,7 +540,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -579,7 +579,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(body.clone()),
@@ -604,7 +604,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -627,7 +627,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/oauth/token")
                 .header("content-type", "application/x-www-form-urlencoded"),
             Body::from(body),
@@ -753,7 +753,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -766,7 +766,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::delete(format!("/authorization/grants/{grant_id}"))
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),

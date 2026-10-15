@@ -68,7 +68,7 @@ async fn a_cookie_carried_token_is_not_a_credential() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/authorization/grants")
                 .header("host", "127.0.0.1")
                 .header("cookie", format!("wf_auth={owner_token}")),
@@ -87,7 +87,7 @@ async fn logout_redirects_to_the_launcher_without_cookies() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/authorization/logout")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),

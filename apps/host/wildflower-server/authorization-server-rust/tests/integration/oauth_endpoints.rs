@@ -13,7 +13,7 @@ async fn authorize_unknown_client_parks_a_pending_request() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize/{request_id}")),
             Body::empty(),
         ))
@@ -130,7 +130,7 @@ async fn authorize_validates_redirect_uri_before_pkce_method() {
         "response_type=code&code_challenge_method=plain&client_id={WILDFLOWER_HOST_APP_CLIENT_ID}&\
          scope=owner&code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz"
     );
-    let req = loopback_request(
+    let req = build_request(
         Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
@@ -149,7 +149,7 @@ async fn authorize_unsupported_response_type_redirects_back() {
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let query = "response_type=token&code_challenge_method=S256&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
-    let req = loopback_request(
+    let req = build_request(
         Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
@@ -168,7 +168,7 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let query = "response_type=code&code_challenge_method=plain&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
-    let req = loopback_request(
+    let req = build_request(
         Request::get(format!("/oauth/authorize?{query}")),
         Body::empty(),
     );
@@ -249,7 +249,7 @@ async fn deciding_an_oauth_consent_clears_the_consent_head() {
         let res = g
             .router
             .clone()
-            .oneshot(loopback_request(
+            .oneshot(build_request(
                 Request::post(format!(
                     "/authorization/oauth-consents/{request_id}/{decision}"
                 ))
@@ -358,7 +358,7 @@ async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
     );
     let res = g
         .router
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
             Body::empty(),
         ))
@@ -542,7 +542,7 @@ async fn device_authorization_happy_path() {
     let (g, _owner_token, db) = spin_up();
     seed_test_client(&db);
     let body = "client_id=integration-test-app&scope=system%2F*.cruds";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded")
             .header("forwarded", "host=ruth.relay.example;proto=https"),
@@ -590,7 +590,7 @@ async fn device_authorization_allows_scope_covered_by_client_wildcard() {
     let (g, _owner_token, db) = spin_up();
     seed_test_client(&db);
     let body = "client_id=integration-test-app&scope=system%2FObservation.rs";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
@@ -603,7 +603,7 @@ async fn device_authorization_allows_scope_covered_by_client_wildcard() {
 async fn device_authorization_unknown_client_returns_401() {
     let (g, _owner_token, _db) = spin_up();
     let body = "client_id=ghost&scope=system%2F*.cruds";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
@@ -621,7 +621,7 @@ async fn token_exchange_unknown_code_returns_400_invalid_grant() {
     let body = "grant_type=authorization_code&client_id=integration-test-app&\
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
     );
@@ -642,7 +642,7 @@ async fn token_exchange_short_code_verifier_returns_400_invalid_grant() {
     let body = "grant_type=authorization_code&client_id=integration-test-app&\
                 code=missing&code_verifier=tooshort&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
     );
@@ -662,7 +662,7 @@ async fn token_exchange_error_sets_cache_suppression_headers() {
     let body = "grant_type=authorization_code&client_id=integration-test-app&\
                 code=missing&code_verifier=verifierverifierverifierverifierverifierverifierverifier&\
                 redirect_uri=http%3A%2F%2Fexample.com%2Fcb";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
     );
@@ -687,7 +687,7 @@ async fn token_exchange_rejects_non_form_content_type() {
     let (g, _owner_token, db) = spin_up();
     seed_test_client(&db);
     let body = "grant_type=refresh_token&client_id=integration-test-app&refresh_token=whatever";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/token").header("content-type", "application/json"),
         Body::from(body),
     );
@@ -716,7 +716,7 @@ async fn token_exchange_unknown_device_code_returns_400_invalid_grant() {
     seed_test_client(&db);
     let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
                 client_id=integration-test-app&device_code=missing";
-    let req = loopback_request(
+    let req = build_request(
         Request::post("/oauth/token").header("content-type", "application/x-www-form-urlencoded"),
         Body::from(body),
     );

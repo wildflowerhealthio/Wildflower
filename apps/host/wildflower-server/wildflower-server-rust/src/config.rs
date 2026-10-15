@@ -19,8 +19,7 @@ use crate::{CertificateAuthority, CertificateState, ServerHealth};
 /// the server's record.
 #[derive(Debug, Clone)]
 pub struct WildflowerServerConfig {
-    /// The loopback base URL the API binds and the server's own folder, which
-    /// its databases live in.
+    /// The server's own folder, which its databases live in.
     pub runtime: ServerRuntimeConfig,
     /// The directory holding the FHIR R4 SearchParameter bundle HFS indexes from
     /// (see
@@ -101,11 +100,10 @@ pub struct ServerObservers {
     /// the authorization server as the run starts and after each change to the queue, for
     /// as long as the server runs.
     pub pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
-    /// Each forwarded request (every request through the tunnel, and each one
-    /// a front run on this machine relayed), reported by the forwarded-request
-    /// layer after its response is ready (see `forwarded_request_layer`). A
-    /// full channel drops the report rather than delaying the response. The
-    /// same layer sends each record to the request-log slice, over a channel
-    /// the server wires itself.
+    /// Each forwarded request (every request through the tunnel), reported by
+    /// the forwarded-request layer after its response is ready (see
+    /// `forwarded_request_layer`). A full channel drops the report rather than
+    /// delaying the response. The same layer sends each record to the
+    /// request-log slice, over a channel the server wires itself.
     pub forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
 }

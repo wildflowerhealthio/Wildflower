@@ -105,8 +105,8 @@ workout history over that core.
 The host is not a slice either: the Tauri host app, the server it runs and the
 install's list of servers live together in `apps/host` — see
 [apps/host/AGENTS.md](../apps/host/AGENTS.md). `wildflower-server-rust`'s
-`set_up` composes every server slice into one API, binds the loopback port and
-opens the tunnel listener, and `WildflowerServer::serve` serves the API on both
+`set_up` composes every server slice into one API and opens the tunnel
+listener, its only listener, and `WildflowerServer::serve` serves the API on it
 until its shutdown token is cancelled — see
 [apps/host/wildflower-server/wildflower-server-rust/AGENTS.md](../apps/host/wildflower-server/wildflower-server-rust/AGENTS.md).
 It has no `tauri` dependency; the host passes its native adapters in as trait

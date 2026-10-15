@@ -3,8 +3,7 @@
 //! connection completes its opening handshake before HTTP, in
 //! [`handshake_tunnel_connection`]: its PROXY protocol v2 header, when it has
 //! one, for the visitor's address (see [`proxy_header`]), then its TLS for
-//! the server's domain (see [`tls`]). The loopback listener never reads a PROXY
-//! header, so nobody on this machine can claim a visitor's address.
+//! the server's domain (see [`tls`]). It is the server's only listener.
 
 mod proxy_header;
 pub(crate) mod tls;

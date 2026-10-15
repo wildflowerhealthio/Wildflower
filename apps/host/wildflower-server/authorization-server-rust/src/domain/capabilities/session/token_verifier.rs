@@ -35,9 +35,8 @@ impl<S: GrantStore> TokenVerifier<S> {
     }
 
     /// Verify `token`: its `iss` and `aud` must both be this server's origin.
-    /// The origin the request was served on plays no part, so a token for this
-    /// server is accepted over loopback and through the tunnel alike, and a
-    /// token another server minted is refused by construction. See
+    /// The origin the request was served on plays no part, so a token another
+    /// server minted is refused by construction. See
     /// `docs/Origins/Explanation.md`.
     ///
     /// Revocation is the last gate: the token is cryptographically valid, but

@@ -76,8 +76,7 @@ pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
     owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
-    require_loopback_peer_middleware, AuthorizationServerAuthMiddleware, AuthorizationServerState,
-    RequireLoopbackPeerMiddleware, OWNER_BROWSER_SESSION_COOKIE,
+    AuthorizationServerAuthMiddleware, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
     OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{LaunchContextMinter, SameDeviceSignInCodeMinter, SigningKeysReader};
@@ -238,9 +237,6 @@ pub struct AuthorizationServer {
 /// the bearer gates accept no other. See
 /// `docs/Origins/Explanation.md`.
 ///
-/// The whole surface is gated by the loopback middleware — non-loopback
-/// peers receive 403 before any handler runs.
-///
 /// `revocation_store` is the shared token-revocation store the host builds once
 /// on the shared database and threads into both this setup and fhir-r4-rust's HFS
 /// adapter, so the auth gate and the FHIR server read one denylist/epoch store.
@@ -267,7 +263,7 @@ pub fn setup_authorization_server(
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
-        loopback_base_url: config.loopback_base_url.clone(),
+        server_base_url: config.server_origin.clone(),
         server_origin: server_origin.clone(),
         wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),

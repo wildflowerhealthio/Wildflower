@@ -7,7 +7,7 @@ use crate::common::*;
 
 /// An Owner-authenticated `GET` against `path`.
 fn owner_get(owner_token: &str, path: &str) -> Request<Body> {
-    loopback_request(
+    build_request(
         Request::get(path)
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {owner_token}")),
@@ -19,7 +19,7 @@ fn owner_get(owner_token: &str, path: &str) -> Request<Body> {
 async fn device_prompt_is_cache_suppressed() {
     let (g, owner_token, db) = spin_up();
     seed_test_client(&db);
-    let start = loopback_request(
+    let start = build_request(
         Request::post("/oauth/device_authorization")
             .header("content-type", "application/x-www-form-urlencoded"),
         Body::from("client_id=integration-test-app&scope=system%2F*.cruds"),
@@ -85,7 +85,7 @@ async fn unauthenticated_401_is_cache_suppressed() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/authorization/grants").header("host", "127.0.0.1"),
             Body::empty(),
         ))
@@ -120,7 +120,7 @@ async fn pending_authorization_status_is_cache_suppressed() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get(format!("/oauth/authorize/{request_id}")),
             Body::empty(),
         ))

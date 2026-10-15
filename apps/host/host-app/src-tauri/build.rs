@@ -4,8 +4,6 @@ use std::path::Path;
 /// `tauri-shared-config.json` for the contract.
 #[derive(serde::Deserialize)]
 struct TauriSharedConfig {
-    loopback_hostname: String,
-    loopback_port: u16,
     host_app_client_scopes: String,
     wildflower_host_app_client_id: String,
     launcher_base_url: String,
@@ -23,13 +21,10 @@ struct DevAppPorts {
 }
 
 fn main() {
-    // SINGLE SOURCE OF TRUTH: `apps/host/host-app/tauri-shared-config.json`
-    // pins the loopback hostname/port the embedded API server binds to.
+    // SINGLE SOURCE OF TRUTH: `apps/host/host-app/tauri-shared-config.json`.
     // Reading it here and re-emitting the values as compile-time env vars keeps
-    // the Rust runtime config from drifting from it:
-    // `src/lib.rs` reads
-    // `WILDFLOWER_LOOPBACK_HOSTNAME`/`WILDFLOWER_LOOPBACK_PORT` via `env!`, so a
-    // value that doesn't parse fails the build rather than shipping a mismatch.
+    // the Rust runtime config from drifting from it: `src/lib.rs` reads them
+    // via `env!`.
     let manifest_dir =
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is always set by cargo");
     let shared_config_path = Path::new(&manifest_dir).join("../tauri-shared-config.json");
@@ -49,14 +44,6 @@ fn main() {
         )
     });
 
-    println!(
-        "cargo:rustc-env=WILDFLOWER_LOOPBACK_HOSTNAME={}",
-        config.loopback_hostname
-    );
-    println!(
-        "cargo:rustc-env=WILDFLOWER_LOOPBACK_PORT={}",
-        config.loopback_port
-    );
     println!(
         "cargo:rustc-env=WILDFLOWER_HOST_APP_CLIENT_SCOPES={}",
         config.host_app_client_scopes

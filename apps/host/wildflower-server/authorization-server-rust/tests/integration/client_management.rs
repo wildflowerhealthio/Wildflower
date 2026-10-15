@@ -13,7 +13,7 @@ use crate::common::*;
 async fn list_clients(g: &AuthorizationServer, token: &str) -> axum::response::Response {
     g.router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::get("/authorization/clients")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {token}")),
@@ -335,7 +335,7 @@ async fn unauthenticated_callers_are_rejected() {
         let res = g
             .router
             .clone()
-            .oneshot(loopback_request(builder.header("host", "127.0.0.1"), body))
+            .oneshot(build_request(builder.header("host", "127.0.0.1"), body))
             .await
             .expect("oneshot");
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);

@@ -79,7 +79,7 @@ async fn logout_revokes_the_presented_jti() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/authorization/logout")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -192,7 +192,7 @@ async fn revocations_endpoint_requires_owner_auth() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::post("/authorization/revocations")
                 .header("host", "127.0.0.1")
                 .header("content-type", "application/json"),
@@ -226,7 +226,7 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::delete("/authorization/grants/grant-1")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -278,7 +278,7 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::delete("/authorization/grants/device-grant-1")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),
@@ -360,7 +360,7 @@ async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
     let res = g
         .router
         .clone()
-        .oneshot(loopback_request(
+        .oneshot(build_request(
             Request::delete("/authorization/grants/host-app-grant")
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}")),

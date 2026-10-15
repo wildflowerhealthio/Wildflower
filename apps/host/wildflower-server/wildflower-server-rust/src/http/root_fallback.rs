@@ -69,7 +69,7 @@ mod tests {
         let not_found_config = Arc::new(NotFoundConfig {
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
                 .expect("valid base"),
-            loopback_base_url: Url::parse("http://127.0.0.1:8080/").expect("valid loopback"),
+            server_origin: Url::parse("https://ruth.relay.example/").expect("valid origin"),
         });
         Router::new()
             .route("/apps", axum::routing::get(|| async { StatusCode::OK }))
