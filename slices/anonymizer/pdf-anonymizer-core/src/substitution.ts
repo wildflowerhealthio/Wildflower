@@ -41,22 +41,23 @@ interface SubstitutionResult {
 }
 
 /**
- * Mask every case-insensitive occurrence of `needle` in `text`. The match is
+ * Mask each case-insensitive occurrence of `needle` inside `text`, leaving the
+ * rest of `text` untouched, and count the occurrences masked. The match is
  * found in `text` itself (a `u`-flag regex, simple case folding), never on a
  * lowercased copy: `toLowerCase` can change a string's length (`İ` → `i̇`), so
  * offsets found in a lowercased copy would mask the wrong characters of the
  * original.
  */
-const maskAllCaseInsensitive = (
+const maskAllInstancesCaseInsensitive = (
   text: string,
   needle: string
-): { readonly result: string; readonly count: number } => {
+): { readonly masked: string; readonly count: number } => {
   let count = 0
-  const result = text.replace(new RegExp(EffectRegExp.escape(needle), 'giu'), (match) => {
+  const masked = text.replace(new RegExp(EffectRegExp.escape(needle), 'giu'), (match) => {
     count += 1
     return maskSameLength(match)
   })
-  return { result, count }
+  return { masked, count }
 }
 
 /**
@@ -77,9 +78,9 @@ const applySubstitutions = (
       }
       let count = 0
       const document = Document.mapText(acc.document, (text) => {
-        const replaced = maskAllCaseInsensitive(text, rule.text)
+        const replaced = maskAllInstancesCaseInsensitive(text, rule.text)
         count += replaced.count
-        return replaced.result
+        return replaced.masked
       })
       return { document, ruleMatches: [...acc.ruleMatches, { ruleId: rule.id, count }] }
     },
