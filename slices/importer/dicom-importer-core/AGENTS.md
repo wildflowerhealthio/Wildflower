@@ -30,9 +30,10 @@ carrying the one `ImagingStudy` its files make up.
   (PS3.3 C.7.6.1) and FHIR's `dateTime` demands one once a time-of-day is
   present, which is why the zone is a setting. Both reject an impossible date
   (`20240230`, which `DateTime.make` would otherwise roll forward to `Mar 1`);
-  `dicomInstant` is `None` for an absent or hour-only `TM`, and for a zone the
-  runtime cannot resolve. `TM`'s `FFFFFF` fraction is scaled by its own width,
-  so `.5` is 500ms.
+  `dicomInstant` is `None` for an absent or hour-only `TM`, for one naming no
+  clock time (`1275`, which would otherwise roll forward to `13:15`), and for a
+  zone the runtime cannot resolve. `TM`'s `FFFFFF` fraction is read by its own
+  width, so `.5` is 500ms, and truncated to the millisecond.
 - `src/fhir/to-fhir.ts` — **`toFhirResources`**: synthesizes `Patient`
   (name, identifier, birthDate, gender from M/F/O), `ServiceRequest` (emitted
   only when `AccessionNumber` is present: status completed, intent order,

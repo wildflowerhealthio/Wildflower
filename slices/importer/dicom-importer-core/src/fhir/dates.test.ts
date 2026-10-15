@@ -79,6 +79,17 @@ describe('dicomInstant', () => {
     expect(Option.map(milli, DateTime.formatIso)).toEqual(Option.some('2024-03-15T14:30:22.001Z'))
   })
 
+  it('truncates the fraction to the millisecond rather than rounding into the next day', () => {
+    const instant = dicomInstant('20240315', '235959.9996', 'UTC')
+    expect(Option.map(instant, DateTime.formatIso)).toEqual(Option.some('2024-03-15T23:59:59.999Z'))
+  })
+
+  it('is None when TM names no clock time, rather than rolling it forward', () => {
+    expect(dicomInstant('20240315', '1275', 'UTC')).toEqual(Option.none())
+    expect(dicomInstant('20240315', '2400', 'UTC')).toEqual(Option.none())
+    expect(dicomInstant('20240315', '143061', 'UTC')).toEqual(Option.none())
+  })
+
   it('defaults omitted seconds to zero', () => {
     const instant = dicomInstant('20240315', '1430', 'UTC')
     expect(Option.map(instant, DateTime.formatIso)).toEqual(Option.some('2024-03-15T14:30:00.000Z'))

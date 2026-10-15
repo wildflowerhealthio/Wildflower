@@ -255,6 +255,26 @@ describe('sectionTitle', () => {
     )
     expect(result.sections[0].title).toBe('MR · 2024-01-01')
   })
+
+  it('reads the retired YYYY.MM.DD date spelling', async () => {
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ Modality: 'MR', StudyDescription: undefined, StudyDate: '2024.01.01' }),
+        defaultDicomSettings
+      )
+    )
+    expect(result.sections[0].title).toBe('MR · 2024-01-01')
+  })
+
+  it('leaves out a date that names no real day', async () => {
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ Modality: 'MR', StudyDescription: undefined, StudyDate: '20240230' }),
+        defaultDicomSettings
+      )
+    )
+    expect(result.sections[0].title).toBe('MR')
+  })
 })
 
 /**
