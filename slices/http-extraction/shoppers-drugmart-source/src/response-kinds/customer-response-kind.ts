@@ -5,25 +5,23 @@ import {
   extractJson,
   recognizePortal,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
-import {
-  Array as Arr,
-  Effect,
-  type Option,
-  type ParseResult,
-  RegExp as EffectRegExp,
-  Schema,
-} from 'effect'
-import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
+import { Effect, type ParseResult, RegExp as EffectRegExp, Schema } from 'effect'
+
+import { DecodableEntries, MalformedAsAbsent } from '../lenient-schemas.ts'
+import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 
-/** A postal address as the customers payload carries it (all parts optional). */
+/**
+ * A postal address as the customers payload carries it: every part optional,
+ * and one that is `null` or malformed reads as absent ({@link MalformedAsAbsent}).
+ */
 const SourceAddress = Schema.Struct({
-  line1: Schema.optional(Schema.String),
-  line2: Schema.optional(Schema.String),
-  city: Schema.optional(Schema.String),
-  province: Schema.optional(Schema.String),
-  postalCode: Schema.optional(Schema.String),
+  line1: MalformedAsAbsent(Schema.String),
+  line2: MalformedAsAbsent(Schema.String),
+  city: MalformedAsAbsent(Schema.String),
+  province: MalformedAsAbsent(Schema.String),
+  postalCode: MalformedAsAbsent(Schema.String),
 })
 
 type SourceAddress = typeof SourceAddress.Type
@@ -31,40 +29,44 @@ type SourceAddress = typeof SourceAddress.Type
 /**
  * One managed person under an account (`customer.patients[]`). `id` is required
  * — the key of the demographic Patient this becomes, and the id `subject`
- * references resolve to; the rest is optional and lenient.
+ * references resolve to. Every other field is optional, and one that is `null`
+ * or malformed (a `phoneNumber` sent as a number, say) reads as absent
+ * ({@link MalformedAsAbsent}), so a person with an `id` is always kept.
  */
 const SourcePatient = Schema.Struct({
   id: Schema.String,
-  firstName: Schema.optional(Schema.String),
-  lastName: Schema.optional(Schema.String),
-  displayName: Schema.optional(Schema.String),
-  phoneNumber: Schema.optional(Schema.String),
-  address: Schema.optional(SourceAddress),
+  firstName: MalformedAsAbsent(Schema.String),
+  lastName: MalformedAsAbsent(Schema.String),
+  displayName: MalformedAsAbsent(Schema.String),
+  phoneNumber: MalformedAsAbsent(Schema.String),
+  address: MalformedAsAbsent(SourceAddress),
 })
 
 type SourcePatient = typeof SourcePatient.Type
 
 /**
  * Just-enough schema for one bespoke (non-FHIR) customers payload. Only
- * `customer.pcid` (the account id) is required; `patients` is decoded per-entry
- * so a malformed one drops-and-counts rather than failing the account.
+ * `customer.pcid` (the account id) is required; every other field reads as
+ * absent when `null` or malformed, as {@link SourcePatient}'s do. `patients`
+ * decodes entry by entry ({@link DecodableEntries}): an entry that is not a
+ * {@link SourcePatient} (no `id`, an `id` that is not a string, or not an
+ * object at all) is counted, not decoded, and never fails the account.
  */
 const CustomerPayload = Schema.Struct({
   customer: Schema.Struct({
     pcid: Schema.String,
-    firstName: Schema.optional(Schema.String),
-    lastName: Schema.optional(Schema.String),
-    email: Schema.optional(Schema.String),
-    phoneNumber: Schema.optional(Schema.String),
-    address: Schema.optional(SourceAddress),
-    patients: Schema.optional(Schema.Array(Schema.Unknown)),
+    firstName: MalformedAsAbsent(Schema.String),
+    lastName: MalformedAsAbsent(Schema.String),
+    email: MalformedAsAbsent(Schema.String),
+    phoneNumber: MalformedAsAbsent(Schema.String),
+    address: MalformedAsAbsent(SourceAddress),
+    patients: Schema.optionalWith(DecodableEntries(SourcePatient), { nullable: true }),
   }),
 })
 
 type CustomerPayload = typeof CustomerPayload.Type
 
 const decodeCustomer = Schema.decode(Schema.parseJson(CustomerPayload))
-const decodeSourcePatient = Schema.decodeUnknownOption(SourcePatient)
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 
 /**
@@ -166,12 +168,6 @@ const accountPatientWire = (
   return wire
 }
 
-/**
- * One raw `customer.patients[]` entry as a {@link SourcePatient} — `None` when
- * it does not decode (no `id`, say), so the caller can count it as dropped.
- */
-const asSourcePatient = (raw: unknown): Option.Option<SourcePatient> => decodeSourcePatient(raw)
-
 /** The demographic `Patient` for one managed person. */
 const demographicPatientOf = (
   patient: SourcePatient
@@ -197,24 +193,27 @@ const customerUrl = new RegExp(
  * per `customer.patients[]` entry plus an account `Patient` (`link.seealso`-ing
  * each). This entity — not {@link PrescriptionResponseKind} — owns the subject
  * Patient records, so a run where this XHR fails leaves those `subject`
- * references dangling (tolerated; not FK-enforced). A patient entry with no `id`
- * drops-and-counts via `Effect.logInfo`.
+ * references dangling (tolerated; not FK-enforced). A patient entry that does
+ * not decode as a {@link SourcePatient} (one with no string `id`, or not an
+ * object) drops-and-counts via `Effect.logInfo`; a malformed optional field
+ * only drops that field.
  */
 const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
   {
     name: 'CustomerResponseKind',
-    tryRecognize: recognizePortal(customerUrl, SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(portalGetMatcher(customerUrl), SHOPPERS_DRUGMART_SYSTEM),
     parse: (response) =>
       Effect.gen(function* () {
         const { customer } = yield* decodeCustomer(extractJson(response.text()))
 
-        const rawPatients = customer.patients ?? []
-        const sourcePatients = Arr.filterMap(rawPatients, asSourcePatient)
-        const dropped = rawPatients.length - sourcePatients.length
+        const { decoded: sourcePatients, undecodable } = customer.patients ?? {
+          decoded: [],
+          undecodable: 0,
+        }
         const patients = yield* Effect.forEach(sourcePatients, demographicPatientOf)
-        if (dropped > 0) {
+        if (undecodable > 0) {
           yield* Effect.logInfo(
-            `CustomerResponseKind: dropped ${dropped} of ${rawPatients.length} patient entries with no id (or undecodable)`
+            `CustomerResponseKind: dropped ${undecodable} of ${undecodable + sourcePatients.length} patient entries that do not decode (no string id, or not an object)`
           )
         }
 

@@ -17,7 +17,8 @@ import {
 } from 'effect'
 
 import { dateTimeOf, decodesAsDateTime, firstDateTime } from '../dates.ts'
-import { SHOPPERS_API_BASE_URL } from '../portal-url.ts'
+import { DecodableEntries } from '../lenient-schemas.ts'
+import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
 import {
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,
@@ -26,68 +27,6 @@ import {
 } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
-
-/**
- * Just-enough schema for one bespoke (non-FHIR) prescription-status payload. Only
- * `id` (→ `MedicationRequest.id`) and `patientId` (→ the `subject`) are required;
- * the rest is optional and lenient. `dispenses` is a flat array; the status flags
- * drive `MedicationRequest.status`.
- */
-const SourcePrescription = Schema.Struct({
-  id: Schema.String,
-  patientId: Schema.String,
-  prescriptionNumber: Schema.optional(Schema.Number),
-  brandName: Schema.optional(Schema.String),
-  chemicalName: Schema.optional(Schema.String),
-  numFillsLeft: Schema.optional(Schema.Number),
-  prescriberName: Schema.optional(Schema.String),
-  status: Schema.optional(
-    Schema.Struct({
-      label: Schema.optional(Schema.String),
-      portalLabel: Schema.optional(Schema.String),
-      labelDescription: Schema.optional(Schema.String),
-      // The portal's machine-readable status enum; the set is open, so a free string.
-      type: Schema.optional(Schema.String),
-    })
-  ),
-  din: Schema.optional(Schema.String),
-  direction: Schema.optional(Schema.String),
-  refillQuantity: Schema.optional(Schema.Number),
-  expiryDate: Schema.optional(Schema.String),
-  lastFillDate: Schema.optional(Schema.String),
-  // `lastFillDate` / `nextFillDate` bound the fill window and the supply one fill
-  // lasts (see {@link dispenseRequestWire}).
-  nextFillDate: Schema.optional(Schema.String),
-  // The store id → the store-locator link on `dispenseRequest.performer` (and
-  // each dispense's `location`); lenient on string vs number.
-  storeId: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  // `expired`/`archived` drive `MedicationRequest.status` (see {@link requestStatus});
-  // `renewable` is decoded but not mapped.
-  expired: Schema.optional(Schema.Boolean),
-  archived: Schema.optional(Schema.Boolean),
-  renewable: Schema.optional(Schema.Boolean),
-  // The prior rx's number → an identifier-only `priorPrescription` reference (its
-  // uuid is unknown).
-  previousPrescription: Schema.optional(Schema.Number),
-  dispenses: Schema.optional(Schema.Array(Schema.Unknown)),
-})
-
-type SourcePrescription = typeof SourcePrescription.Type
-
-/** One dispense record inside a prescription's `dispenses` array. */
-const SourceDispense = Schema.Struct({
-  dispenseId: Schema.optional(Schema.String),
-  quantityDispensed: Schema.optional(Schema.Number),
-  status: Schema.optional(Schema.String),
-  dispenseDate: Schema.optional(Schema.String),
-})
-
-type SourceDispense = typeof SourceDispense.Type
-
-const decodePrescription = Schema.decode(Schema.parseJson(SourcePrescription))
-const decodeSourceDispense = Schema.decodeUnknownOption(SourceDispense)
-const decodeRequest = Schema.decodeUnknown(MedicationRequest.Schema)
-const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
 /** True for a value that is itself a dispense object (carries a `dispenseId`). */
 const isDispenseLike = (value: unknown): boolean =>
@@ -109,6 +48,75 @@ const flattenDispenses = (raw: ReadonlyArray<unknown>): ReadonlyArray<unknown> =
     }
     return [entry]
   })
+
+/**
+ * One dispense record inside a prescription's `dispenses` array; every field
+ * optional, and `null` reads as absent.
+ */
+const SourceDispense = Schema.Struct({
+  dispenseId: Schema.optionalWith(Schema.String, { nullable: true }),
+  quantityDispensed: Schema.optionalWith(Schema.Number, { nullable: true }),
+  status: Schema.optionalWith(Schema.String, { nullable: true }),
+  dispenseDate: Schema.optionalWith(Schema.String, { nullable: true }),
+})
+
+type SourceDispense = typeof SourceDispense.Type
+
+/**
+ * Just-enough schema for one bespoke (non-FHIR) prescription-status payload. Only
+ * `id` (→ `MedicationRequest.id`) and `patientId` (→ the `subject`) are required;
+ * the rest is optional and lenient, and reads `null` as absent. `dispenses` is a
+ * flat array decoded entry by entry ({@link DecodableEntries}): an entry that is
+ * not a {@link SourceDispense} is counted, not decoded, and never fails the
+ * payload. The status flags drive `MedicationRequest.status`.
+ */
+const SourcePrescription = Schema.Struct({
+  id: Schema.String,
+  patientId: Schema.String,
+  prescriptionNumber: Schema.optionalWith(Schema.Number, { nullable: true }),
+  brandName: Schema.optionalWith(Schema.String, { nullable: true }),
+  chemicalName: Schema.optionalWith(Schema.String, { nullable: true }),
+  numFillsLeft: Schema.optionalWith(Schema.Number, { nullable: true }),
+  prescriberName: Schema.optionalWith(Schema.String, { nullable: true }),
+  status: Schema.optionalWith(
+    Schema.Struct({
+      label: Schema.optionalWith(Schema.String, { nullable: true }),
+      portalLabel: Schema.optionalWith(Schema.String, { nullable: true }),
+      labelDescription: Schema.optionalWith(Schema.String, { nullable: true }),
+      // The portal's machine-readable status enum; the set is open, so a free string.
+      type: Schema.optionalWith(Schema.String, { nullable: true }),
+    }),
+    { nullable: true }
+  ),
+  din: Schema.optionalWith(Schema.String, { nullable: true }),
+  direction: Schema.optionalWith(Schema.String, { nullable: true }),
+  refillQuantity: Schema.optionalWith(Schema.Number, { nullable: true }),
+  expiryDate: Schema.optionalWith(Schema.String, { nullable: true }),
+  lastFillDate: Schema.optionalWith(Schema.String, { nullable: true }),
+  // `lastFillDate` / `nextFillDate` bound the fill window and the supply one fill
+  // lasts (see {@link dispenseRequestWire}).
+  nextFillDate: Schema.optionalWith(Schema.String, { nullable: true }),
+  // The store id → the store-locator link on `dispenseRequest.performer` (and
+  // each dispense's `location`); lenient on string vs number.
+  storeId: Schema.optionalWith(Schema.Union(Schema.String, Schema.Number), { nullable: true }),
+  // `expired`/`archived` drive `MedicationRequest.status` (see {@link requestStatus});
+  // `renewable` is decoded but not mapped.
+  expired: Schema.optionalWith(Schema.Boolean, { nullable: true }),
+  archived: Schema.optionalWith(Schema.Boolean, { nullable: true }),
+  renewable: Schema.optionalWith(Schema.Boolean, { nullable: true }),
+  // The prior rx's number → an identifier-only `priorPrescription` reference (its
+  // uuid is unknown).
+  previousPrescription: Schema.optionalWith(Schema.Number, { nullable: true }),
+  dispenses: Schema.optionalWith(DecodableEntries(SourceDispense, flattenDispenses), {
+    nullable: true,
+  }),
+})
+
+type SourcePrescription = typeof SourcePrescription.Type
+
+const decodePrescription = Schema.decode(Schema.parseJson(SourcePrescription))
+const decodeRequest = Schema.decodeUnknown(MedicationRequest.Schema)
+const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
 /** Map the portal dispense status onto the FHIR R4 `MedicationDispense.status` value set. */
 const dispenseStatus = (status: string | undefined): string => {
@@ -305,19 +313,6 @@ const dispenseWire = (
 }
 
 /**
- * One raw `dispenses` entry as its `MedicationDispense` wire — `None` when it
- * does not decode as a {@link SourceDispense} or has no `dispenseId`, so the
- * caller can count it as dropped.
- */
-const dispenseWireFrom =
-  (rx: SourcePrescription, medication: Record<string, unknown> | undefined) =>
-  (raw: unknown): Option.Option<Record<string, unknown>> =>
-    pipe(
-      decodeSourceDispense(raw),
-      Option.flatMap((dispense) => Option.fromNullable(dispenseWire(dispense, rx, medication)))
-    )
-
-/**
  * The exact prescription-status XHR URL (`prescriptionStatusUrlOf`), anchored
  * and pinned to {@link SHOPPERS_API_BASE_URL} + full path with an optional
  * query; only the `<uuid>` path parameter and query vary. Disjoint from the
@@ -331,7 +326,11 @@ const prescriptionStatusUrl = new RegExp(
  * Entity for one Shoppers prescription XHR: the `prescription-status` payload the
  * dashboard fires once **per prescription**. Each is one bespoke JSON object
  * synthesized into one **`MedicationRequest`** plus one **`MedicationDispense`**
- * per `dispenses` entry (one with no `dispenseId` drops-and-logs). **No
+ * per `dispenses` entry. A dispense entry that does not decode as a
+ * {@link SourceDispense} (a `quantityDispensed` sent as a string, say, or an
+ * entry that is not an object), and one with no `dispenseId` (absent or
+ * `null`), drops-and-counts via `Effect.logInfo`; the `MedicationRequest` and
+ * the other dispenses are still emitted. **No
  * `Patient`** — the subject records come from {@link CustomerResponseKind}, so a
  * run where that XHR fails leaves these `subject` references dangling (tolerated;
  * not FK-enforced).
@@ -339,7 +338,10 @@ const prescriptionStatusUrl = new RegExp(
 const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionResponseKind',
-    tryRecognize: recognizePortal(prescriptionStatusUrl, SHOPPERS_DRUGMART_SYSTEM),
+    tryRecognize: recognizePortal(
+      portalGetMatcher(prescriptionStatusUrl),
+      SHOPPERS_DRUGMART_SYSTEM
+    ),
     parse: (response) =>
       Effect.gen(function* () {
         const rx = yield* decodePrescription(extractJson(response.text()))
@@ -347,13 +349,15 @@ const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> 
         const medication = medicationWire(rx)
         const request = yield* decodeRequest(requestWire(rx, medication))
 
-        const rawDispenses = flattenDispenses(rx.dispenses ?? [])
-        const dispenseWires = Arr.filterMap(rawDispenses, dispenseWireFrom(rx, medication))
-        const dropped = rawDispenses.length - dispenseWires.length
+        const { decoded, undecodable } = rx.dispenses ?? { decoded: [], undecodable: 0 }
+        const dispenseWires = Arr.filterMap(decoded, (dispense) =>
+          Option.fromNullable(dispenseWire(dispense, rx, medication))
+        )
+        const withoutId = decoded.length - dispenseWires.length
         const dispenses = yield* Effect.forEach(dispenseWires, (wire) => decodeDispense(wire))
-        if (dropped > 0) {
+        if (undecodable + withoutId > 0) {
           yield* Effect.logInfo(
-            `PrescriptionResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
+            `PrescriptionResponseKind: dropped ${undecodable + withoutId} of ${undecodable + decoded.length} dispense entries (${undecodable} undecodable, ${withoutId} with no dispenseId)`
           )
         }
 

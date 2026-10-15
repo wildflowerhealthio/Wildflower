@@ -32,14 +32,32 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/portal-url.ts` — the API's URLs: `SHOPPERS_API_BASE_URL` and the
   three XHR builders `customerUrlOf`, `prescriptionStatusUrlOf` and
   `prescriptionHistoryUrlOf`. The response kinds build their matchers from
-  `SHOPPERS_API_BASE_URL`, so a built URL is one exactly one kind recognizes
+  `SHOPPERS_API_BASE_URL`, through `portalGetMatcher` (no verb but `GET` —
+  a request whose method the archive dropped, as every Recorder capture's
+  is, still matches), so a built URL is one exactly one kind recognizes
   (`portal-url.test.ts` pins that).
 - The payload schemas, exported for a producer to type its bodies as their
   `.Encoded`: `CustomerPayload` and `SourcePatient` (the customers body and one
   managed person), `SourcePrescription` and `SourceDispense` (the status body
   and one of its dispenses), `HistoryPayload` and `SourceHistoryDispense` (the
   history body and one entry). Lenient: only the ids each kind keys by are
-  required, and each list is decoded entry by entry.
+  required, and every optional field reads `null` as absent. Each list
+  (`patients`, both `dispenses`) is a `DecodableEntries`, decoded entry by
+  entry: an entry that does not decode (a `quantityDispensed` sent as a
+  string, an entry that is not an object, a person with no string `id`) is
+  counted rather than failing the payload, so one bad entry never costs its
+  siblings or a prescription's `MedicationRequest`. The kinds drop-and-count
+  those, and a decoded dispense with no `dispenseId`, in one `Effect.logInfo`.
+  The customers feed goes further: every field but the ids is
+  `MalformedAsAbsent`, so a person with an `id` is kept even when, say, their
+  `phoneNumber` is a number; only the malformed field is lost.
+- `src/lenient-schemas.ts` — `DecodableEntries` (a list decoded entry by
+  entry, to the entries that decoded plus a count of those that did not) and
+  `MalformedAsAbsent` (an optional field that reads `null` or a value that
+  does not decode as absent). Both type their encoded side as the inner
+  schema's `Encoded`, so a payload's `.Encoded` stays the shape a producer
+  writes; that side is declared, not checked, since the inner decode checks
+  it.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
   (`ShoppersIdentifierSystem`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`). There is no
   Shoppers DIN system — DINs use the canonical `CanadianCodingSystem.Din`.

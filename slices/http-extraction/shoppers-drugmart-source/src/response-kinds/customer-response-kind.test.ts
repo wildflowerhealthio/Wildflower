@@ -199,6 +199,67 @@ describe('CustomerResponseKind', () => {
       ])
     })
 
+    it('keeps a patient with an id whose other fields are null or malformed, without those fields', () => {
+      // Arrange — the phone number sent as a number, a null last name, an
+      // address part that is not a string, and an account email that is null.
+      const payload = customerPayload({
+        customer: {
+          pcid: 'acct-uuid-1',
+          email: null,
+          patients: [
+            {
+              id: 'pt-uuid-1',
+              firstName: 'Dana',
+              lastName: null,
+              phoneNumber: 4165551234,
+              address: { line1: '12 Maple Ave', city: 42, province: 'ON' },
+            },
+          ],
+        },
+      })
+
+      // Act
+      const result = parse(payload)
+
+      // Assert — the person, and the account's link to them, survive.
+      expect(result).toStrictEqual([
+        decodePatient({
+          resourceType: 'Patient',
+          id: 'pt-uuid-1',
+          identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
+          name: [{ given: ['Dana'] }],
+          address: [{ line: ['12 Maple Ave'], state: 'ON' }],
+        }),
+        decodePatient({
+          resourceType: 'Patient',
+          id: 'acct-uuid-1',
+          identifier: [{ system: ShoppersIdentifierSystem.PcId, value: 'acct-uuid-1' }],
+          link: [{ other: { reference: 'Patient/pt-uuid-1' }, type: 'seealso' }],
+        }),
+      ])
+    })
+
+    it('drops a patient entry that is not an object or whose id is not a string', () => {
+      // Arrange
+      const payload = customerPayload({
+        customer: {
+          pcid: 'acct-uuid-1',
+          patients: [null, 'pt-uuid-9', { id: 7, firstName: 'Numeric' }, { id: 'pt-uuid-1' }],
+        },
+      })
+
+      // Act
+      const result = parse(payload)
+
+      // Assert
+      expect(result.map((resource) => resource.id)).toStrictEqual(['pt-uuid-1', 'acct-uuid-1'])
+    })
+
+    it('reads a null patients list as no managed people', () => {
+      const result = parse(customerPayload({ customer: { pcid: 'acct-uuid-1', patients: null } }))
+      expect(result.map((resource) => resource.id)).toStrictEqual(['acct-uuid-1'])
+    })
+
     it('emits a bare account Patient (no link) when there are no managed people', () => {
       // Act
       const result = parse(customerPayload({ customer: { pcid: 'acct-uuid-1' } }))
