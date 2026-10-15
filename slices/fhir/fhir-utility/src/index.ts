@@ -4,7 +4,8 @@
  * hand it either a decoded resource or its own mirror of the same slot.
  *
  * Today: the supply-duration parser ({@link supplyDurationToParts}), the
- * plain shape it reads ({@link SupplyDuration}), and its UCUM / spelled-out
+ * plain shape it reads ({@link SupplyDuration}), the cases it fails with
+ * ({@link UnusableSupplyDuration}), and its UCUM / spelled-out
  * unit tables ({@link UCUM_UNIT} / {@link SPELLED_UNIT}). A supply duration
  * is a FHIR concept, not a calendar one, so it lives here for every slice
  * that reads `MedicationRequest.dispenseRequest.expectedSupplyDuration` or
@@ -17,6 +18,10 @@ export {
   type PartBuilder,
   SPELLED_UNIT,
   type SupplyDuration,
+  SupplyDurationBelowOneUnit,
   supplyDurationToParts,
+  SupplyDurationValueAbsent,
+  SupplyDurationValueNotFinite,
   UCUM_UNIT,
+  type UnusableSupplyDuration,
 } from './supply-duration.ts'

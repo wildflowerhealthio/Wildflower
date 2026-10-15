@@ -1,4 +1,4 @@
-import type { DateTime } from 'effect'
+import { type DateTime, Data, Either } from 'effect'
 
 /**
  * A supply-duration quantity: a numeric `value` with a UCUM `code` and/or a
@@ -14,20 +14,52 @@ interface SupplyDuration {
   readonly code: string | null | undefined
 }
 
-// UCUM time codes and their spelled-out `unit` fallbacks -> a builder for the
-// matching `DateTime.add` part. Supply durations are almost always days, but
-// weeks/months are valid; an unrecognized or absent unit falls back to days
-// (see `supplyDurationToParts`). `Partial` keeps index access `PartBuilder | undefined`.
+/** The `supply` has no `value`. */
+class SupplyDurationValueAbsent extends Data.TaggedError('SupplyDurationValueAbsent') {}
+
+/** The `supply`'s `value` is `NaN` or infinite. */
+class SupplyDurationValueNotFinite extends Data.TaggedError('SupplyDurationValueNotFinite')<{
+  readonly value: number
+}> {}
+
+/**
+ * The `supply`'s `value` rounds to less than one of its unit: zero, negative,
+ * or a sliver under one half.
+ */
+class SupplyDurationBelowOneUnit extends Data.TaggedError('SupplyDurationBelowOneUnit')<{
+  readonly value: number
+}> {}
+
+/** Why a `SupplyDuration` gives no `DateTime.add` parts. */
+type UnusableSupplyDuration =
+  | SupplyDurationValueAbsent
+  | SupplyDurationValueNotFinite
+  | SupplyDurationBelowOneUnit
+
+/** Builds the `DateTime.add` parts for a whole number of one unit. */
 type PartBuilder = (amount: number) => Partial<DateTime.DateTime.PartsForMath>
+
+// The day builder on its own, so the unit fallback is a defined builder rather
+// than an index into a `Partial` table.
+const toDays: PartBuilder = (n) => ({ days: n })
+
+/**
+ * UCUM time codes -> a builder for the matching `DateTime.add` part. Supply
+ * durations are almost always days, but weeks/months are valid; an
+ * unrecognized or absent unit falls back to days (see
+ * {@link supplyDurationToParts}). `Partial` keeps index access
+ * `PartBuilder | undefined`.
+ */
 const UCUM_UNIT: Partial<Record<string, PartBuilder>> = {
   s: (n) => ({ seconds: n }),
   min: (n) => ({ minutes: n }),
   h: (n) => ({ hours: n }),
-  d: (n) => ({ days: n }),
+  d: toDays,
   wk: (n) => ({ weeks: n }),
   mo: (n) => ({ months: n }),
   a: (n) => ({ years: n }),
 }
+/** Spelled-out `unit` names -> the same builders as {@link UCUM_UNIT}, matched lowercased. */
 const SPELLED_UNIT: Partial<Record<string, PartBuilder>> = {
   second: UCUM_UNIT.s,
   seconds: UCUM_UNIT.s,
@@ -55,22 +87,35 @@ const partBuilderFor = (
 
 /**
  * The supply duration as `DateTime.add` parts, its `value` rounded to a whole
- * number of its unit.
+ * number of its unit. The unit is the UCUM `code` when it names one, else the
+ * spelled-out `unit`, else days.
  *
- * @returns `null` when `value` is absent, not finite, or rounds to less than
- *   one unit
+ * @returns the parts on the right; on the left, which {@link UnusableSupplyDuration}
+ *   case stops the supply from being a duration at all
  */
 const supplyDurationToParts = (
   supply: SupplyDuration
-): Partial<DateTime.DateTime.PartsForMath> | null => {
+): Either.Either<Partial<DateTime.DateTime.PartsForMath>, UnusableSupplyDuration> => {
   const { value } = supply
-  if (value === null || value === undefined || !Number.isFinite(value)) return null
+  if (value === null || value === undefined) return Either.left(new SupplyDurationValueAbsent())
+  if (!Number.isFinite(value)) return Either.left(new SupplyDurationValueNotFinite({ value }))
   const amount = Math.round(value)
-  if (amount <= 0) return null
-  const fromCode = partBuilderFor(UCUM_UNIT, supply.code)
-  const fromUnit = partBuilderFor(SPELLED_UNIT, supply.unit?.toLowerCase())
-  const build = fromCode ?? fromUnit ?? UCUM_UNIT.d
-  return build === undefined ? null : build(amount)
+  if (amount <= 0) return Either.left(new SupplyDurationBelowOneUnit({ value }))
+  const build =
+    partBuilderFor(UCUM_UNIT, supply.code) ??
+    partBuilderFor(SPELLED_UNIT, supply.unit?.toLowerCase()) ??
+    toDays
+  return Either.right(build(amount))
 }
 
-export { type PartBuilder, SPELLED_UNIT, type SupplyDuration, supplyDurationToParts, UCUM_UNIT }
+export {
+  type PartBuilder,
+  SPELLED_UNIT,
+  type SupplyDuration,
+  SupplyDurationBelowOneUnit,
+  supplyDurationToParts,
+  SupplyDurationValueAbsent,
+  SupplyDurationValueNotFinite,
+  UCUM_UNIT,
+  type UnusableSupplyDuration,
+}

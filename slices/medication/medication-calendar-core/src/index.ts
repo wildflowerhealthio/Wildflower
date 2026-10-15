@@ -1,7 +1,8 @@
 /**
  * The pure calendar layer for a patient's medication list: project the
  * next-fill / exhaustion instant off an authored date given a supply duration
- * ({@link nextFillDate}, which reads a `SupplyDuration` from `fhir-utility`),
+ * ({@link nextFillDate}, which reads a `SupplyDuration` from `fhir-utility`
+ * and names why there is no date with a {@link NextFillDateFailure}),
  * derive the dated pickup / appointment / exhausted events
  * ({@link deriveCalendarEvents}), and lay out a month's day grid
  * ({@link monthGrid}). No DOM, no FHIR wire schemas, no platform imports —
@@ -15,7 +16,12 @@
  *
  * @packageDocumentation
  */
-export { nextFillDate } from './supply.ts'
+export {
+  AuthoredDateUnparseable,
+  nextFillDate,
+  type NextFillDateFailure,
+  NextFillDatePastRepresentableRange,
+} from './supply.ts'
 
 export { type CalendarEvent, type CalendarEventKind, deriveCalendarEvents } from './calendar.ts'
 
