@@ -1,5 +1,5 @@
 import type { UrlMatcher } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Option, pipe } from 'effect'
+import { Option } from 'effect'
 
 /**
  * The Rexall tunnel's URLs: the host the portal's single-page app fetches the
@@ -60,23 +60,23 @@ const medicationListUrlOf = ({
   '&_count=2147483646'
 
 /**
- * A matcher for one tunnel XHR: a `GET` of a URL `url` matches, yielding the
- * tunnel origin as its root.
+ * A matcher for one tunnel XHR: a URL `url` matches unless the request is a
+ * known verb other than `GET`, yielding the tunnel origin as its root.
  *
  * @remarks
  * The portal only reads the tunnel, so any other verb at the same URL is not
  * the response a kind parses: a CORS preflight `OPTIONS` (the SPA's origin is
  * not the tunnel's) carries no body to decode. A request whose method the
- * archive dropped is not claimed either, as with `UrlMatch.make`.
+ * archive dropped is still claimed: the Recorder observes the response side
+ * only and writes every method as `UNKNOWN`, so refusing it would refuse every
+ * Recorder capture of the portal.
  */
 const tunnelGetMatcher =
   (url: RegExp): UrlMatcher =>
   (candidateUrl, method) =>
-    pipe(
-      method,
-      Option.filter((verb) => verb === 'GET' && url.test(candidateUrl)),
-      Option.as(REXALL_TUNNEL_ORIGIN)
-    )
+    url.test(candidateUrl) && Option.getOrElse(method, () => 'GET') === 'GET'
+      ? Option.some(REXALL_TUNNEL_ORIGIN)
+      : Option.none()
 
 export {
   REXALL_PHARMACY_LOCATION_URL,

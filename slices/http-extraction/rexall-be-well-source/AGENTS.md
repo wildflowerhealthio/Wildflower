@@ -22,8 +22,9 @@ rather than a copy, and what it writes is what the response kinds read.
   `REXALL_STU3_BASE_URL` (the root of every searchset `fullUrl`) and
   `medicationListUrlOf`, the prescriptions-page searchset URL for an account.
   Both response kinds build their matchers from these, through
-  `tunnelGetMatcher` (a `GET` only — the SPA's CORS preflight `OPTIONS` to the
-  same URL is not claimed), so a built URL is one a kind recognizes
+  `tunnelGetMatcher` (no known verb but `GET` — the SPA's CORS preflight
+  `OPTIONS` to the same URL is not claimed, while the Recorder's `UNKNOWN`
+  method is), so a built URL is one a kind recognizes
   (`tunnel-url.test.ts` pins that, and pins the built list URL to the
   capture's).
 - `src/carebook.ts` — the carebook STU3 dialect's extension, identifier and

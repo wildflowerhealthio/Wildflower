@@ -55,15 +55,15 @@ describe('tunnel URLs', () => {
     it.each([
       { kind: ProfileResponseKind, url: REXALL_PROFILE_URL },
       { kind: MedicationListResponseKind, url: listUrl },
-    ])("claims only a GET of $kind.name's URL", ({ kind, url }) => {
+    ])("claims $kind.name's URL unless the verb is a known non-GET", ({ kind, url }) => {
       const recognizes = (method: Option.Option<HttpMethod>): boolean =>
         Option.isSome(kind.tryRecognize(url, method))
       expect(recognizes(Option.some('GET'))).toBe(true)
       // The SPA's CORS preflight hits the same URL with no body to decode.
       expect(recognizes(Option.some('OPTIONS'))).toBe(false)
       expect(recognizes(Option.some('POST'))).toBe(false)
-      // A request whose method the archive dropped is not claimed.
-      expect(recognizes(Option.none())).toBe(false)
+      // The Recorder never observes the method, so a dropped one is claimed.
+      expect(recognizes(Option.none())).toBe(true)
     })
   })
 
