@@ -40,6 +40,15 @@ describe('nextFillDate', () => {
     expect(nextFillDate('2026-06-01T00:00:00Z', supply({ value: 0 }))).toBeNull()
   })
 
+  test('a supply duration that advances past the representable date range yields null', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 300_000, max: 1_000_000_000 }), (years) => {
+        expect(nextFillDate('2026-06-01T00:00:00Z', supply({ code: 'a', value: years }))).toBeNull()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   test('an unparseable authored date yields null', () => {
     expect(nextFillDate('not-a-date', supply({ code: 'd', value: 30 }))).toBeNull()
   })
