@@ -1,25 +1,25 @@
 /**
- * Pull a JSON payload out of either raw JSON or the HTML envelope
- * mobile WebViews wrap around a `application/(fhir+)json` response
- * (Chrome / Safari render the bytes inside a `<html><body><pre>…</pre></body></html>`
- * shell). The handler streams `document.documentElement.outerHTML` as
- * the synthetic page content, so by the time the entity sees
- * the response body, the JSON we actually want has been wrapped twice:
- * once by the viewer (`<pre>` injection) and once by HTML escaping
- * (`<` → `&lt;`, `&` → `&amp;`, etc.).
+ * Pull a JSON payload out of a captured response body that is either raw
+ * JSON or a browser's rendering of it. When a browser navigates straight to
+ * an `application/(fhir+)json` URL, Chrome and Safari show the bytes inside
+ * a `<html><body><pre>…</pre></body></html>` shell, and a capture of that
+ * page holds the JSON wrapped twice: once by the viewer (`<pre>` injection)
+ * and once by HTML escaping (`<` → `&lt;`, `&` → `&amp;`, etc.). JSON
+ * response kinds run their bodies through this before decoding, so either
+ * shape reaches `Schema.decode(parseJson)` as plain JSON.
  *
  * Strategy:
  *   1. If `text` already looks like JSON (`{` or `[` as the first
  *      non-whitespace character), return it as-is. This keeps direct
  *      XHR captures (where the sniffer intercepts the actual response
  *      stream before any viewer wrap) on a fast path.
- *   2. Otherwise, look for `<pre>…</pre>`. The match is greedy — most
- *      viewers emit a single pre with the whole payload inside. We pick
- *      the *longest* match to avoid clipping at a JSON-string `</pre>`
- *      substring (unlikely in FHIR but cheap to guard).
- *   3. Decode the four HTML entities the viewers emit (`&lt;`, `&gt;`,
- *      `&quot;`, `&amp;`) — order matters: `&amp;` last so a literal
- *      `&amp;lt;` round-trips as `&lt;` not `<`.
+ *   2. Otherwise, look for `<pre>…</pre>`. Each match is lazy (it ends
+ *      at the first `</pre>`) — most viewers emit a single pre with the
+ *      whole payload inside, and when there are several we keep the
+ *      *longest*.
+ *   3. Decode the HTML entities the viewers emit (`&lt;`, `&gt;`,
+ *      `&quot;`, `&#x27;`, `&#39;`, `&amp;`) — order matters: `&amp;`
+ *      last so a literal `&amp;lt;` round-trips as `&lt;` not `<`.
  *   4. If neither path produces a JSON-looking string, return the
  *      original text so the downstream `Schema.decode(parseJson)` step
  *      surfaces a `ParseError` with a usable cause.
