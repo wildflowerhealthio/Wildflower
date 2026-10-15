@@ -15,7 +15,8 @@ pub(crate) struct DicomFile {
 /// Failure modes for a DICOM file read.
 #[derive(Debug)]
 pub(crate) enum DicomFileError {
-    /// No DocumentReference with this id, or its attachment carries no data.
+    /// No DocumentReference with this id (absent, deleted, or the id isn't a
+    /// FHIR id), or its attachment carries no data.
     NotFound { id: String, detail: String },
     /// HFS refused the caller's token for this DocumentReference (or the
     /// request carried no bearer token to forward).

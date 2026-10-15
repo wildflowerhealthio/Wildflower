@@ -25,6 +25,12 @@ impl HfsDicomFileStore {
 
 impl DicomFileStore for HfsDicomFileStore {
     async fn get_file(&self, id: &str, auth_token: &str) -> Result<DicomFile, DicomFileError> {
+        if !is_fhir_id(id) {
+            return Err(DicomFileError::NotFound {
+                id: id.to_owned(),
+                detail: format!("{id:?} is not a FHIR resource id"),
+            });
+        }
         let response = delegate_get(
             &self.hfs_router,
             &format!("/DocumentReference/{id}"),
@@ -33,10 +39,10 @@ impl DicomFileStore for HfsDicomFileStore {
         .await;
 
         let status = response.status();
-        if status == StatusCode::NOT_FOUND {
+        if status == StatusCode::NOT_FOUND || status == StatusCode::GONE {
             return Err(DicomFileError::NotFound {
                 id: id.to_owned(),
-                detail: format!("HFS returned 404 for DocumentReference/{id}"),
+                detail: format!("HFS returned {status} for DocumentReference/{id}"),
             });
         }
         if status == StatusCode::FORBIDDEN || status == StatusCode::UNAUTHORIZED {
@@ -97,6 +103,16 @@ impl DicomFileStore for HfsDicomFileStore {
     }
 }
 
+/// Whether `id` matches the FHIR `id` grammar `[A-Za-z0-9\-\.]{1,64}` — the
+/// allowlist that keeps a percent-decoded path segment (`/`, `?`, `#`, spaces)
+/// from re-targeting or breaking the HFS sub-request URI.
+fn is_fhir_id(id: &str) -> bool {
+    (1..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
+}
+
 /// Re-drive HFS's router with an in-process `GET`, forwarding the bearer token.
 async fn delegate_get(
     router: &Router,
@@ -143,4 +159,21 @@ async fn read_json(response: axum::response::Response) -> Result<Value, DicomFil
         context: "parse sub-response JSON",
         source: err.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_fhir_id;
+
+    #[test]
+    fn fhir_ids_are_alphanumerics_dashes_and_dots_up_to_64() {
+        assert!(is_fhir_id("doc-1.2"));
+        assert!(is_fhir_id(&"a".repeat(64)));
+        assert!(!is_fhir_id(""));
+        assert!(!is_fhir_id(&"a".repeat(65)));
+        assert!(!is_fhir_id("doc-1/_history/1"));
+        assert!(!is_fhir_id("doc-1?_summary=true"));
+        assert!(!is_fhir_id("doc-1#fragment"));
+        assert!(!is_fhir_id("doc_1"));
+    }
 }
