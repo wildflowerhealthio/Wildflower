@@ -57,7 +57,6 @@ const APP = {
   onHomescreen: true,
   url: 'https://example.com/launch',
   isSmart: false,
-  requiresTunnel: false,
 }
 
 describe('<AppDetailPage>', () => {
@@ -94,7 +93,6 @@ describe('<AppDetailPage>', () => {
       payload: {
         name: 'My App',
         url: 'https://example.com/launch',
-        requiresTunnel: false,
       },
     })
   })

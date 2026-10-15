@@ -67,11 +67,8 @@ fn get(uri: &str) -> Request<Body> {
 }
 
 /// A create — `POST /apps` as JSON.
-fn post_create(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
-    post_json(
-        "/apps",
-        serde_json::json!({ "name": name, "url": url, "requiresTunnel": requires_tunnel }),
-    )
+fn post_create(name: &str, url: &str) -> Request<Body> {
+    post_json("/apps", serde_json::json!({ "name": name, "url": url }))
 }
 
 fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
@@ -162,11 +159,7 @@ async fn app_round_trip() {
     let router = spin_up().router;
     let create_res = router
         .clone()
-        .oneshot(post_create(
-            "Round Trip",
-            "https://example.com/launch",
-            false,
-        ))
+        .oneshot(post_create("Round Trip", "https://example.com/launch"))
         .await
         .expect("oneshot");
     assert_eq!(create_res.status(), StatusCode::OK);
@@ -228,7 +221,6 @@ async fn seeded_app_is_fully_editable() {
             serde_json::json!({
                 "name": "Renamed Chart",
                 "url": "https://example.com/replacement",
-                "requiresTunnel": true,
             }),
         ))
         .await
@@ -342,7 +334,7 @@ async fn create_rejects_javascript_url() {
     let res = apps
         .router
         .clone()
-        .oneshot(post_create("Bad", "javascript:alert(1)", false))
+        .oneshot(post_create("Bad", "javascript:alert(1)"))
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);

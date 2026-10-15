@@ -18,7 +18,7 @@ const { expectLeftToEqual, expectRightToEqual } = utilityExpectations(expect)
 
 describe('AppBodySchema', () => {
   it('accepts a well-formed body', () => {
-    const body = { name: 'My App', url: 'https://example.com/launch', requiresTunnel: false }
+    const body = { name: 'My App', url: 'https://example.com/launch' }
     expectRightToEqual(Schema.decodeUnknownEither(AppBodySchema)(body), body)
   })
 
@@ -28,7 +28,6 @@ describe('AppBodySchema', () => {
     const body = {
       name: 'X',
       url: 'https://example.com',
-      requiresTunnel: false,
       subtitle: '',
     }
     expectRightToEqual(Schema.decodeUnknownEither(AppBodySchema)(body), body)
@@ -36,9 +35,9 @@ describe('AppBodySchema', () => {
 
   it('rejects an empty name, a bad url, or a missing url', () => {
     for (const bad of [
-      { name: '', url: 'https://example.com', requiresTunnel: false },
-      { name: 'X', url: 'javascript:alert(1)', requiresTunnel: false },
-      { name: 'X', requiresTunnel: false },
+      { name: '', url: 'https://example.com' },
+      { name: 'X', url: 'javascript:alert(1)' },
+      { name: 'X' },
     ]) {
       expectLeftToEqual(
         Schema.decodeUnknownEither(AppBodySchema)(bad),
@@ -87,7 +86,6 @@ describe('AppRegistrationSchema', () => {
       name: fc.string({ minLength: 1 }),
       url: fc.string({ minLength: 1 }),
       isSmart: fc.boolean(),
-      requiresTunnel: fc.boolean(),
     })
     .chain(withOptionalSubtitle)
 
@@ -107,7 +105,6 @@ describe('AppRegistrationSchema', () => {
       name: 'X',
       url: 'https://example.com/launch?iss={origin}',
       isSmart: true,
-      requiresTunnel: true,
     }
     const { onHomescreen: _onHomescreen, ...withoutOnHomescreen } = base
     const { url: _url, ...withoutUrl } = base

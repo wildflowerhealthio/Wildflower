@@ -270,9 +270,9 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
 fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, subtitle, url, client_id, requires_tunnel) \
+             (id, position, on_homescreen, name, subtitle, url, client_id) \
          SELECT ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations), \
-                1, ?, ?, ?, ?, 0 \
+                1, ?, ?, ?, ? \
           WHERE NOT EXISTS (SELECT 1 FROM app_registrations WHERE id = ?)",
     )
     .bind::<Text, _>(app.id)
@@ -295,7 +295,7 @@ fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
 fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "UPDATE app_registrations \
-            SET name = ?, subtitle = ?, client_id = ?, requires_tunnel = 0 \
+            SET name = ?, subtitle = ?, client_id = ? \
           WHERE id = ? AND url = ?",
     )
     .bind::<Text, _>(app.name)
@@ -333,7 +333,6 @@ mod tests {
             assert_eq!(registration.name, app.name);
             assert_eq!(registration.client_id.as_deref(), Some(app.client_id));
             assert!(registration.on_homescreen);
-            assert!(!registration.requires_tunnel);
         }
     }
 
@@ -473,7 +472,7 @@ mod tests {
     /// A debug build can be opened against a real user's database. An app the
     /// user created under a dev id is NOT this seed's row (its launch URL isn't the
     /// one this seed writes), so the seed must leave every one of its columns
-    /// alone — name, flags, placement, client_id, and its launch URL — rather than
+    /// alone — name, subtitle, placement, client_id, and its launch URL — rather than
     /// adopting and rewriting it.
     #[test]
     fn never_adopts_a_user_row_that_already_holds_a_dev_id() {
@@ -482,9 +481,9 @@ mod tests {
         let mut conn = pool.get().unwrap();
         diesel::sql_query(
             "INSERT INTO app_registrations \
-                 (id, position, on_homescreen, name, subtitle, url, client_id, requires_tunnel) \
+                 (id, position, on_homescreen, name, subtitle, url, client_id) \
              VALUES ('medications-dev', 100, 0, 'My Meds', 'Mine', \
-                     'https://example.test/my-meds', NULL, 1)",
+                     'https://example.test/my-meds', NULL)",
         )
         .execute(&mut conn)
         .unwrap();
@@ -500,10 +499,6 @@ mod tests {
         );
         assert_eq!(registration.name, "My Meds", "the user's name must survive");
         assert_eq!(registration.subtitle.as_deref(), Some("Mine"));
-        assert!(
-            registration.requires_tunnel,
-            "the user's flags must survive"
-        );
         assert!(!registration.on_homescreen, "placement must survive");
         assert_eq!(
             registration.client_id, None,

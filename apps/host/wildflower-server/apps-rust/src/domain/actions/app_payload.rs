@@ -16,7 +16,6 @@ pub(crate) struct AppPayload {
     pub subtitle: Option<String>,
     /// The launch URL template, validated through the write-side [`AppUrl`] filter.
     pub url: String,
-    pub requires_tunnel: bool,
 }
 
 /// Validate the editable app fields: the name must be non-empty and the url must

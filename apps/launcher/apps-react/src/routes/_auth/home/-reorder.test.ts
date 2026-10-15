@@ -10,7 +10,6 @@ const makeApp = (id: string, onHomescreen = true): AppRegistration => ({
   onHomescreen,
   url: 'https://example.com/launch',
   isSmart: false,
-  requiresTunnel: false,
 })
 
 const apps: readonly AppRegistration[] = ['a', 'b', 'c', 'd'].map((id) => makeApp(id))

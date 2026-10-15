@@ -192,8 +192,7 @@ registered client cannot launch:
   registration and its launch URL
   (`https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}`
   since `0016_launch_first_party_apps_at_root`, and under the tile id
-  `importer` since `0019_rekey_site_apps`), `requires_tunnel = 1` (like
-  `medications`).
+  `importer` since `0019_rekey_site_apps`).
 - `apps/host/wildflower-server/authorization-server-rust/migrations/0008_seed_wildflower_importer_client/`
   — the OAuth client, re-keyed to `165cd26573e5ac72378e6ad2d2198330` by
   `0028_rekey_site_app_clients`. Its one registered redirect is

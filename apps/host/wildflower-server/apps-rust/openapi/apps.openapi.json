@@ -368,8 +368,7 @@
         "description": "The JSON body shared by `POST /apps` (create) and `PUT /apps/{id}` (content\nreplace): an app's editable content. `url` is read as a raw string so a bad\nvalue yields the structured `400 InvalidUrl` rather than a generic deserialize\nerror. Matches the TS `AppBodySchema`.",
         "required": [
           "name",
-          "url",
-          "requiresTunnel"
+          "url"
         ],
         "properties": {
           "name": {
@@ -384,9 +383,6 @@
           "url": {
             "type": "string",
             "description": "The launch URL template (`{origin}` / `{launch}` tokens), validated to\n`400 InvalidUrl` through the write-side [`AppUrl`](crate::domain::AppUrl)\nfilter."
-          },
-          "requiresTunnel": {
-            "type": "boolean"
           }
         }
       },
@@ -414,8 +410,7 @@
           "onHomescreen",
           "name",
           "url",
-          "isSmart",
-          "requiresTunnel"
+          "isSmart"
         ],
         "properties": {
           "id": {
@@ -443,10 +438,6 @@
           "isSmart": {
             "type": "boolean",
             "description": "Soft reference to an authorization server `clients.client_id`; `None` for non-SMART\napps. Never leaves the host: the wire carries the derived `isSmart` boolean."
-          },
-          "requiresTunnel": {
-            "type": "boolean",
-            "description": "The app's Tunnel pill. It has no effect on launch (every launch resolves\n`{origin}` to the server's public origin); #967 removes it."
           }
         }
       },

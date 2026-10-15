@@ -46,7 +46,6 @@ impl<S: AppsStore> AppsEditor<S> {
             name,
             subtitle,
             url,
-            requires_tunnel: payload.requires_tunnel,
             ..current
         };
         self.store.replace_app(&edited)?.ok_or_else(|| {
@@ -85,7 +84,6 @@ mod tests {
                     name: "Renamed".to_owned(),
                     subtitle: None,
                     url: "https://example.com/x".to_owned(),
-                    requires_tunnel: false,
                 },
             )
             .expect("replace");
@@ -110,7 +108,6 @@ mod tests {
                     name: "n".to_owned(),
                     subtitle: None,
                     url: "javascript:alert(1)".to_owned(),
-                    requires_tunnel: false,
                 },
             ),
             Err(AppsError::NotFound { .. })

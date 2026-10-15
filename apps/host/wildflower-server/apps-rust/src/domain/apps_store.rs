@@ -57,10 +57,10 @@ pub trait AppsStore {
     fn insert_app(&self, registration: &AppRegistration) -> Result<AppRegistration, AppsError>;
 
     /// Replace an app's editable fields from a caller-built `registration`,
-    /// located by `registration.id`: `name` / `subtitle` / `url` /
-    /// `requires_tunnel`. Never touches `position` / `on_homescreen` (the
-    /// placement single-writer) or the other columns. Returns `None` when no app
-    /// has this id, else the updated registration returned via `RETURNING`.
+    /// located by `registration.id`: `name` / `subtitle` / `url`. Never touches
+    /// `position` / `on_homescreen` (the placement single-writer) or the other
+    /// columns. Returns `None` when no app has this id, else the updated
+    /// registration returned via `RETURNING`.
     ///
     /// # Errors
     ///

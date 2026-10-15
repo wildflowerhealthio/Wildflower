@@ -39,7 +39,6 @@ diesel::table! {
         subtitle -> Nullable<Text>,
         url -> Text,
         client_id -> Nullable<Text>,
-        requires_tunnel -> Bool,
     }
 }
 
@@ -209,7 +208,6 @@ impl AppsStore for SqliteAppsStore {
                 app_registrations::name.eq(&registration.name),
                 app_registrations::subtitle.eq(&registration.subtitle),
                 app_registrations::url.eq(AppUrlColumn::from(registration.url.clone())),
-                app_registrations::requires_tunnel.eq(registration.requires_tunnel),
             ))
             .returning(AppRegistration::as_returning())
             .get_result(&mut *self.connection()?)
@@ -314,8 +312,7 @@ mod tests {
         raw.parse().expect("a valid test launch url")
     }
 
-    /// `list_registrations` reports `is_smart`, `requires_tunnel`, and the launch
-    /// template per row.
+    /// `list_registrations` reports `is_smart` and the launch template per row.
     #[test]
     fn list_registrations_reports_the_facts_per_row() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
@@ -326,7 +323,6 @@ mod tests {
                 .find(|r| r.id == id)
                 .expect("seeded row");
             assert!(reg.is_smart(), "{id} must be smart");
-            assert!(reg.requires_tunnel, "{id} requires the tunnel");
             assert!(
                 reg.url.to_string().contains("{launch}"),
                 "{id} carries its launch template",
@@ -341,7 +337,6 @@ mod tests {
         let registration = store.find_app("growth-chart").unwrap().expect("seeded");
         assert_eq!(registration.name, "Growth Chart");
         assert!(registration.is_smart());
-        assert!(registration.requires_tunnel);
         assert!(registration.url.to_string().contains("growth-chart-app"));
         assert!(store.find_app("no-such-id").unwrap().is_none());
     }
@@ -377,7 +372,6 @@ mod tests {
         assert!(inserted.on_homescreen);
         assert!(!inserted.is_smart(), "inserted app has no client_id");
         assert_eq!(inserted.url, launch_url("https://example.com/launch"));
-        assert!(!inserted.requires_tunnel);
     }
 
     /// A taken id fails the insert as an infrastructure error naming the id —
@@ -414,11 +408,9 @@ mod tests {
         };
         edited.name = "Renamed".to_owned();
         edited.subtitle = Some("the new subtitle".to_owned());
-        edited.requires_tunnel = true;
         let replaced = store.replace_app(&edited).unwrap().expect("replaced");
         assert_eq!(replaced.name, "Renamed");
         assert_eq!(replaced.subtitle.as_deref(), Some("the new subtitle"));
-        assert!(replaced.requires_tunnel);
         assert_eq!(replaced.url, launch_url("https://example.com/edited"));
         assert_eq!(store.find_app("app-x").unwrap(), Some(replaced));
     }
@@ -726,11 +718,6 @@ mod migration_tests {
             registration.client_id.as_deref(),
             Some("9769f8b274370708d0d3ebb2e3e59b7c")
         );
-        assert!(
-            registration.requires_tunnel,
-            "medications is launched from the published site, so its `iss={{origin}}` \
-             FHIR target must resolve to the server's public origin",
-        );
         assert_eq!(
             registration.url.to_string(),
             "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}",
@@ -767,11 +754,6 @@ mod migration_tests {
             registration.client_id.as_deref(),
             Some("664a01e8614050cd82ffe90350b81413")
         );
-        assert!(
-            registration.requires_tunnel,
-            "the console fetches from `{{origin}}`, which must resolve through the \
-             server's public HTTPS origin",
-        );
 
         let url = registration.url.to_string();
         assert_eq!(
@@ -800,11 +782,6 @@ mod migration_tests {
             registration.client_id.as_deref(),
             Some("165cd26573e5ac72378e6ad2d2198330")
         );
-        assert!(
-            registration.requires_tunnel,
-            "the published page's `iss={{origin}}` fetch must resolve through the \
-             server's public HTTPS origin",
-        );
         assert_eq!(
             registration.url.to_string(),
             "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}",
@@ -830,11 +807,6 @@ mod migration_tests {
             registration.client_id.as_deref(),
             Some("941de68e6b59eb9dcc32df8ede89e636")
         );
-        assert!(
-            registration.requires_tunnel,
-            "the published page's `iss={{origin}}` fetch must resolve through the \
-             server's public HTTPS origin",
-        );
         assert_eq!(
             registration.url.to_string(),
             "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
@@ -855,11 +827,6 @@ mod migration_tests {
         assert_eq!(
             registration.client_id.as_deref(),
             Some("bdf9fc5cb5a28c6683b49896b0ef8a75")
-        );
-        assert!(
-            registration.requires_tunnel,
-            "the published page's `iss={{origin}}` fetch must resolve through the \
-             server's public HTTPS origin",
         );
         assert_eq!(
             registration.url.to_string(),
@@ -1119,11 +1086,6 @@ mod migration_tests {
         );
         assert_eq!(registration.name, "Synthetic Data Loader");
         assert!(registration.on_homescreen);
-        assert!(
-            registration.requires_tunnel,
-            "the published page's `iss={{origin}}` fetch must resolve through the \
-             server's public HTTPS origin",
-        );
         assert_eq!(
             registration.url.to_string(),
             "https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}",
@@ -1175,11 +1137,6 @@ mod migration_tests {
             Some("Plot labs, vitals and doses on one chart"),
         );
         assert!(registration.on_homescreen);
-        assert!(
-            registration.requires_tunnel,
-            "the published page's `iss={{origin}}` fetch must resolve through the \
-             server's public HTTPS origin",
-        );
         assert_eq!(
             registration.url.to_string(),
             "https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}",
@@ -1560,16 +1517,16 @@ mod migration_tests {
         let mut conn = store.pool().get().unwrap();
         let without_url = sql_query(
             "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, requires_tunnel) \
-             VALUES ('x', 99, 1, 'x', 0)",
+             (id, position, on_homescreen, name) \
+             VALUES ('x', 99, 1, 'x')",
         )
         .execute(&mut conn);
         assert!(without_url.is_err(), "url is NOT NULL");
 
         let tied = sql_query(
             "INSERT INTO app_registrations \
-             (id, position, on_homescreen, name, url, requires_tunnel) \
-             VALUES ('x', 0, 1, 'x', 'https://example.com', 0)",
+             (id, position, on_homescreen, name, url) \
+             VALUES ('x', 0, 1, 'x', 'https://example.com')",
         )
         .execute(&mut conn);
         assert!(tied.is_err(), "position stays UNIQUE");
@@ -1733,7 +1690,7 @@ mod migration_tests {
         assert_eq!(positions, dense, "positions are renumbered to a dense 0..n");
     }
 
-    /// Insert a registration at the tail in the `0012`-onward layout.
+    /// Insert a registration at the tail in the `0012`–`0021` layout.
     fn insert_registration(conn: &mut SqliteConnection, id: &str, client_id: Option<&str>) {
         sql_query(
             "INSERT INTO app_registrations \
@@ -1778,5 +1735,66 @@ mod migration_tests {
 
         let store = SqliteAppsStore::new(pool).expect("0018 must apply");
         assert!(store.find_app("web-trace-app-dev").unwrap().is_some());
+    }
+
+    /// An install at `0021` loses the `requires_tunnel` column when `0022` runs,
+    /// and every app — a user's own that set the flag included — keeps its row,
+    /// placement, and launch template.
+    #[test]
+    fn an_install_already_at_0021_drops_requires_tunnel() {
+        let pool = pool_migrated_through("0021");
+        let mut conn = pool.get().unwrap();
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, requires_tunnel) \
+             VALUES ('my-app', (SELECT MAX(position) + 1 FROM app_registrations), 0, 'My App', \
+                     'https://example.com/launch', 1)",
+        )
+        .execute(&mut conn)
+        .expect("a 0021 registration insert must succeed");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool).expect("0022 must apply");
+        let user_app = store
+            .find_app("my-app")
+            .unwrap()
+            .expect("the user's app survives");
+        assert_eq!(user_app.position, i64::try_from(SEEDED_IDS.len()).unwrap());
+        assert!(!user_app.on_homescreen);
+        assert_eq!(user_app.url.to_string(), "https://example.com/launch");
+        assert_eq!(
+            store.list_registrations().unwrap().len(),
+            SEEDED_IDS.len() + 1,
+            "every app survives",
+        );
+
+        let mut conn = store.pool().get().unwrap();
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM pragma_table_info('app_registrations') \
+                 WHERE name = 'requires_tunnel'",
+            ),
+            0,
+            "the requires_tunnel column is dropped",
+        );
+    }
+
+    /// Reverting `0022` restores `requires_tunnel`, cleared on every row.
+    #[test]
+    fn reverting_0022_restores_requires_tunnel_cleared() {
+        let pool = pool_migrated_through("0022");
+        let mut conn = pool.get().unwrap();
+        embedded_migration("0022")
+            .revert(&mut conn)
+            .expect("revert 0022");
+        assert_eq!(
+            count(
+                &mut conn,
+                "SELECT COUNT(*) AS count FROM app_registrations WHERE requires_tunnel = 0",
+            ),
+            count(&mut conn, "SELECT COUNT(*) AS count FROM app_registrations"),
+            "every row reads requires_tunnel = 0",
+        );
     }
 }

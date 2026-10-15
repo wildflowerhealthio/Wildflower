@@ -39,7 +39,7 @@ describe('<NewAppBody>', () => {
     cleanup()
   })
 
-  test('posts name/url/requiresTunnel', () => {
+  test('posts name/url', () => {
     const onCreated = vi.fn()
     render(<NewAppBody onCreated={onCreated} />)
 
@@ -53,7 +53,6 @@ describe('<NewAppBody>', () => {
     expect(createStub.mutate.mock.calls[0]?.[0]).toEqual({
       name: 'My App',
       url: 'https://example.com/launch',
-      requiresTunnel: false,
     })
     // `onCreated` rides the mutation's success callback (the route navigates back).
     expect(createStub.mutate.mock.calls[0]?.[1]).toMatchObject({ onSuccess: onCreated })

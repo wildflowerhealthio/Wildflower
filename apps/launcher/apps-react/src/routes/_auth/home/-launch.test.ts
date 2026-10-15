@@ -13,7 +13,6 @@ const app: AppRegistration = {
   name: 'Growth Chart',
   url: 'https://example.com/launch',
   isSmart: false,
-  requiresTunnel: false,
 }
 
 interface RunAuthedStub {

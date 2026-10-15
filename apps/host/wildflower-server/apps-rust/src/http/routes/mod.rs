@@ -190,11 +190,8 @@ mod tests {
     }
 
     /// A create — `POST /apps` JSON.
-    fn post_create(name: &str, url: &str, requires_tunnel: bool) -> Request<Body> {
-        post_json(
-            "/apps",
-            serde_json::json!({ "name": name, "url": url, "requiresTunnel": requires_tunnel }),
-        )
+    fn post_create(name: &str, url: &str) -> Request<Body> {
+        post_json("/apps", serde_json::json!({ "name": name, "url": url }))
     }
 
     /// Seed an app directly through the store (the fixture shortcut a test uses
@@ -238,7 +235,6 @@ mod tests {
         let arr = body.as_array().unwrap();
         let growth = arr.iter().find(|v| v["id"] == "growth-chart").unwrap();
         assert_eq!(growth["isSmart"], true);
-        assert_eq!(growth["requiresTunnel"], true);
         assert!(growth["url"].as_str().unwrap().contains("{origin}"));
         for absent in ["position", "clientId"] {
             assert!(growth.get(absent).is_none(), "{absent} is not on the wire");
@@ -435,8 +431,7 @@ mod tests {
     }
 
     /// Every caller, on this machine or through the front, gets `200 { url }`
-    /// with `{origin}` resolved to the server's public origin, whatever the
-    /// app's `requires_tunnel` flag.
+    /// with `{origin}` resolved to the server's public origin.
     #[tokio::test]
     async fn launch_answers_the_url_at_the_public_origin_for_every_caller() {
         let st = state();
@@ -478,11 +473,7 @@ mod tests {
     #[tokio::test]
     async fn full_round_trip_create_update_delete() {
         let st = state();
-        let (status, body) = send(
-            &st,
-            post_create("My App", "https://example.com/launch", false),
-        )
-        .await;
+        let (status, body) = send(&st, post_create("My App", "https://example.com/launch")).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert!(body["onHomescreen"].as_bool().unwrap());
         assert_eq!(body["url"], "https://example.com/launch");
@@ -496,7 +487,6 @@ mod tests {
                 serde_json::json!({
                     "name": "Renamed",
                     "url": "https://example.com/other",
-                    "requiresTunnel": false,
                 }),
             ),
         )
@@ -517,11 +507,11 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_bad_url_and_empty_name() {
         let st = state();
-        let (status, body) = send(&st, post_create("Bad", "javascript:alert(1)", false)).await;
+        let (status, body) = send(&st, post_create("Bad", "javascript:alert(1)")).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"], "InvalidUrl");
 
-        let (status, body) = send(&st, post_create("", "https://example.com/x", false)).await;
+        let (status, body) = send(&st, post_create("", "https://example.com/x")).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error"], "InvalidName");
     }
@@ -541,7 +531,7 @@ mod tests {
             &st,
             put_json(
                 "/apps/no-such-id",
-                serde_json::json!({ "name": "x", "url": "javascript:alert(1)", "requiresTunnel": false }),
+                serde_json::json!({ "name": "x", "url": "javascript:alert(1)" }),
             ),
         )
         .await;
@@ -562,14 +552,13 @@ mod tests {
             &st,
             put_json(
                 "/apps/growth-chart",
-                serde_json::json!({ "name": "Renamed", "url": "https://example.com/x", "requiresTunnel": true }),
+                serde_json::json!({ "name": "Renamed", "url": "https://example.com/x" }),
             ),
         )
         .await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
         assert_eq!(body["name"], "Renamed");
         assert_eq!(body["url"], "https://example.com/x");
-        assert_eq!(body["requiresTunnel"], true);
         assert_eq!(body["isSmart"], true, "a replace keeps the client_id");
 
         let res = send_raw(&st, delete("/apps/growth-chart")).await;
@@ -588,7 +577,7 @@ mod tests {
                 &st,
                 post_json(
                     "/apps",
-                    serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "requiresTunnel": false, "subtitle": "" }),
+                    serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "subtitle": "" }),
                 ),
             )
             .await;
@@ -602,7 +591,7 @@ mod tests {
             &st,
             put_json(
                 &format!("/apps/{id}"),
-                serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "requiresTunnel": false, "subtitle": "hi" }),
+                serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "subtitle": "hi" }),
             ),
         )
         .await;
@@ -611,7 +600,7 @@ mod tests {
             &st,
             put_json(
                 &format!("/apps/{id}"),
-                serde_json::json!({ "name": "Sub", "url": "https://example.com/x", "requiresTunnel": false }),
+                serde_json::json!({ "name": "Sub", "url": "https://example.com/x" }),
             ),
         )
         .await;
@@ -778,7 +767,7 @@ mod tests {
         let st = state();
         let (status, body) = send_scoped(
             &st,
-            post_create("My App", "https://example.com/launch", false),
+            post_create("My App", "https://example.com/launch"),
             read_only,
         )
         .await;
