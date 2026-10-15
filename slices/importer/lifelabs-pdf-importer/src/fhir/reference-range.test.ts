@@ -55,6 +55,11 @@ describe('parseReferenceRange', () => {
     expect(parseReferenceRange('<1,200')).toEqual({ low: undefined, high: 1200, text: '<1,200' })
   })
 
+  it('reads a `-0` bound as zero', () => {
+    // `toBe` compares with `Object.is`, which tells `-0` from `0`.
+    expect(parseReferenceRange('-0 - 5').low).toBe(0)
+  })
+
   it('keeps a range with no bounds as text alone', () => {
     for (const text of ['See below', 'NEGATIVE', 'NONE/YELLOW', '', 'a - b']) {
       expect(parseReferenceRange(text)).toEqual({ low: undefined, high: undefined, text })

@@ -23,8 +23,11 @@ const PRINTED_NUMBER = String.raw`-?\d{1,3}(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?
 /** `8.0`, `-2`, `<0.1`, `>= 60`, `1,234`. */
 const NUMERIC = new RegExp(String.raw`^(<=|>=|<|>)?\s*(${PRINTED_NUMBER})$`)
 
-/** A {@link PRINTED_NUMBER} read as the number it prints. */
-const printedNumberValue = (text: string): number => Number(text.replaceAll(',', ''))
+/**
+ * A {@link PRINTED_NUMBER} read as the number it prints. `-0` prints as `-0`
+ * but means zero, so the sign is kept out of the value.
+ */
+const printedNumberValue = (text: string): number => Number(text.replaceAll(',', '')) || 0
 
 const isComparator = (text: string): text is Comparator =>
   text === '<' || text === '<=' || text === '>=' || text === '>'
@@ -41,11 +44,9 @@ const parseResultValue = (text: string): ResultValue => {
   const match = NUMERIC.exec(trimmed)
   if (match === null) return { _tag: 'text', text: trimmed }
   const [, comparatorText, numberText = ''] = match
-  // `-0` prints as `-0` but means zero; keep the sign out of the quantity.
-  const value = printedNumberValue(numberText) || 0
   return {
     _tag: 'quantity',
-    value,
+    value: printedNumberValue(numberText),
     comparator:
       comparatorText !== undefined && isComparator(comparatorText) ? comparatorText : undefined,
   }
