@@ -31,12 +31,11 @@ impl OwnerApproval for AuthorizationServerState {
     /// request unchanged (e.g. denying an older one) does not produce a
     /// spurious change of the server's status.
     ///
-    /// On a DB-read failure the watch is *cleared* to `None`: the
-    /// request dropping off the server's status on a transient query
-    /// failure is strictly better than leaving it stuck on one the user
-    /// just handled. A
-    /// surviving pending row will republish on the next mutation or
-    /// reaper tick.
+    /// On a DB-read failure the watch keeps what it holds: `None` there
+    /// says nothing is pending, which the host takes to mean every request
+    /// it notified for is settled, so a transient failure publishing it
+    /// would re-notify each one still waiting. A request handled meanwhile
+    /// drops off on the next mutation or reaper tick that reads.
     ///
     /// Either way it then pings `pending_consents_recomputed_tx`, so a
     /// [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
@@ -47,8 +46,10 @@ impl OwnerApproval for AuthorizationServerState {
             let next = match self.store.newest_pending_consent() {
                 Ok(next) => next,
                 Err(error) => {
-                    tracing::warn!("newest_pending_consent query failed; clearing it: {error}");
-                    None
+                    tracing::warn!(
+                        "newest_pending_consent query failed; keeping the last: {error}"
+                    );
+                    return false;
                 }
             };
             if *current == next {
