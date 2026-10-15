@@ -1,5 +1,5 @@
 import { createBrowserHistory } from '@tanstack/react-router'
-import { invoke } from '@tauri-apps/api/core'
+import { addPluginListener, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import 'tundra-css'
@@ -7,6 +7,8 @@ import '@wildflowerhealthio/react-tundraish/styles.css'
 import { makeTauriTransport } from '@wildflowerhealthio/effect-messaging-tauri-js'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { RecorderBridge } from '@wildflowerhealthio/recorder-core-js'
+import type { BaseGateProps } from '@wildflowerhealthio/servers-react'
+import { Effect } from 'effect'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 // Named imports, so only these fields of the host's configuration reach the
@@ -37,6 +39,21 @@ const backgroundServiceStartConfig = {
 // The base doesn't use it.
 const recorderTransport = makeTauriTransport({ bridges: [RecorderBridge] as const })
 
+// How the base hears a tap on one of the app's notifications: the
+// notification plugin's `actionPerformed`, which only a phone reports. On a
+// desktop the plugin has no listener to register, and this rejects. The base
+// listens for the page's lifetime; a failed removal is logged.
+const listenToNotificationTaps: BaseGateProps['listenToNotificationTaps'] = (handler) =>
+  addPluginListener('notification', 'actionPerformed', handler).then((listener) => () => {
+    Effect.runFork(
+      Effect.tryPromise(() => listener.unregister()).pipe(
+        Effect.catchAll((error) =>
+          Effect.logWarning('[servers] the notification tap listener was not removed', error)
+        )
+      )
+    )
+  })
+
 const rootElement = document.getElementById('root')
 if (rootElement === null) throw new Error('index.html has no #root element')
 
@@ -53,6 +70,7 @@ createRoot(rootElement).render(
       base={{
         invoke,
         listen,
+        listenToNotificationTaps,
         backgroundServiceStartConfig,
         defaultLauncherUrl: launcherBaseUrl,
         defaultAuthorizationUrl: authorizationAppBaseUrl,

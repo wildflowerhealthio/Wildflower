@@ -2,6 +2,7 @@ import { Option, Schema } from 'effect'
 
 import * as CertificateState from './certificate-state.ts'
 import * as HealthReport from './health-report.ts'
+import * as PendingConsent from './pending-consent.ts'
 
 /** Why a server's run stopped: `UnitRunner`'s stop reason. */
 const StopReasonSchema = Schema.Literal(
@@ -87,6 +88,12 @@ type TunnelState = typeof TunnelStateSchema.Type
 /** `tunnel` while a run is in progress: absent until the run first reports it. */
 const optionalTunnel = Schema.optionalWith(TunnelStateSchema, { as: 'Option', exact: true })
 
+/** `pendingConsent` while a run is in progress: absent while nothing waits there. */
+const optionalPendingConsent = Schema.optionalWith(PendingConsent.Schema, {
+  as: 'Option',
+  exact: true,
+})
+
 /**
  * One server's status on the host's unit runner, keyed by its domain, with
  * its certificate's state, as `servers_list` and the {@link EVENT} carry it.
@@ -94,7 +101,8 @@ const optionalTunnel = Schema.optionalWith(TunnelStateSchema, { as: 'Option', ex
  * @remarks
  * Narrowed by its run state: a `running` status has `runningSince`; a
  * `stopped` one has the `lastStop` of its latest run, once it has run; only
- * a run in progress has `health` and `tunnel`. Every status has
+ * a run in progress has `health`, `tunnel` and `pendingConsent`, the
+ * newest consent waiting on it. Every status has
  * `certificate`: the state the run reported, while it has reported one, or
  * else what the server's certificate cache says.
  */
@@ -105,6 +113,7 @@ const ServerStatusSchema = Schema.Union(
     health: optionalHealth,
     tunnel: optionalTunnel,
     certificate: CertificateState.Schema,
+    pendingConsent: optionalPendingConsent,
   }),
   Schema.Struct({
     domain: Schema.String,
@@ -113,6 +122,7 @@ const ServerStatusSchema = Schema.Union(
     health: optionalHealth,
     tunnel: optionalTunnel,
     certificate: CertificateState.Schema,
+    pendingConsent: optionalPendingConsent,
   }),
   Schema.Struct({
     domain: Schema.String,
@@ -149,6 +159,10 @@ const healthOf = (status: Type): Option.Option<Health> =>
 const tunnelOf = (status: Type): Option.Option<TunnelState> =>
   status.runState === 'stopped' ? Option.none() : status.tunnel
 
+/** The newest consent waiting on the server, while a run in progress reports one. */
+const pendingConsentOf = (status: Type): Option.Option<PendingConsent.Type> =>
+  status.runState === 'stopped' ? Option.none() : status.pendingConsent
+
 /** How the server's latest run stopped, while it is stopped and once it has run. */
 const lastStopOf = (status: Type): Option.Option<RunStop> =>
   status.runState === 'stopped' ? status.lastStop : Option.none()
@@ -159,6 +173,7 @@ export {
   HealthSchema,
   healthOf,
   lastStopOf,
+  pendingConsentOf,
   PlatformStopReasonSchema,
   RunStopSchema,
   ServerStatusSchema as Schema,

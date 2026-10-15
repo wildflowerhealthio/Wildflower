@@ -25,6 +25,10 @@ pub enum Error {
     /// opener's message; only constructed on desktop targets.
     #[cfg(desktop)]
     OpenDefaultBrowser(String),
+    /// A `close` on desktop, whose views are default-browser tabs the app
+    /// can't close; only constructed on desktop targets.
+    #[cfg(desktop)]
+    CloseDefaultBrowserTab,
 }
 
 impl std::fmt::Display for Error {
@@ -43,6 +47,10 @@ impl std::fmt::Display for Error {
                     f,
                     "native page browser couldn't open the default browser: {message}"
                 )
+            }
+            #[cfg(desktop)]
+            Error::CloseDefaultBrowserTab => {
+                write!(f, "native page browser can't close a default-browser tab")
             }
         }
     }

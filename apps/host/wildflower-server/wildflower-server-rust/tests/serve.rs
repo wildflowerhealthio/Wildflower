@@ -3,8 +3,8 @@
 //! `Ok`. A second server then sets up over the same folder and the same host
 //! channels, and answers `/health`. The server binds no port: two run side by
 //! side, each answering only through its own tunnel listener. While serving,
-//! the host's observers see its tunnel's state and each forwarded request, and
-//! the request log records each forwarded request and serves it back on
+//! the host's observers see its tunnel's state, and the request log records
+//! each forwarded request and serves it back on
 //! `/requests` to a token holding the request log's read scope — a token
 //! naming the server's origin as `iss` and `aud`, while one another server
 //! minted is refused.
@@ -15,8 +15,7 @@
 //! their requests by their `Host`, are served as the public origin whatever
 //! `Forwarded` or spelling of the `Host` they carry, and name the visitor from
 //! a PROXY protocol v2 header. The `/health` the reachability monitor asks
-//! through the relay is answered there, and logged but not reported to the
-//! host.
+//! through the relay is answered there, and logged.
 //!
 //! A SMART app's launch carries a `launch` the apps slice mints through
 //! the authorization server, which the app's `/oauth/authorize` consumes once.
@@ -45,6 +44,9 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{GrantStore, SqliteGrantStore};
+use wildflowerhealthio_request_log::domain::request_log::RequestLogFilter;
+use wildflowerhealthio_request_log::domain::RequestLogStore;
+use wildflowerhealthio_request_log::SqliteRequestLogStore;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::health_check::{
     ComponentType, HealthReport, HealthStatus,
@@ -123,18 +125,72 @@ fn certificate_dir(server_dir: &Path) -> PathBuf {
     server_dir.join("certificates")
 }
 
-/// Host channels whose receivers are dropped, but for the forwarded-request
-/// reports, which come back with them.
-fn observers() -> (ServerObservers, mpsc::Receiver<ForwardedRequest>) {
-    let (forwarded_request_tx, forwarded_request_rx) = mpsc::channel(8);
-    let observers = ServerObservers {
+/// Host channels whose receivers are dropped.
+fn observers() -> ServerObservers {
+    ServerObservers {
         server_health_tx: watch::channel(None).0,
         tunnel_state_tx: watch::channel(None).0,
         certificate_tx: watch::channel(None).0,
         pending_consent_tx: watch::channel(None).0,
-        forwarded_request_tx,
-    };
-    (observers, forwarded_request_rx)
+    }
+}
+
+/// The request log of the server in `server_dir`, read straight from its
+/// database as the forwarded-request layer's reports land there.
+struct LoggedRequests {
+    store: SqliteRequestLogStore,
+    /// The id of the newest request read so far.
+    newest_read: i64,
+}
+
+impl LoggedRequests {
+    /// The request log in `server_dir`, as read from now on: what it already
+    /// holds is passed over.
+    fn of(server_dir: &Path) -> Self {
+        // The server's shared database (`WILDFLOWER_DB` in `set_up`).
+        let pool = wildflowerhealthio_persistence::open_pool(&server_dir.join("wildflower.sqlite"))
+            .expect("open the server's database");
+        let store = SqliteRequestLogStore::new(pool).expect("request-log store");
+        let mut logged_requests = Self {
+            store,
+            newest_read: 0,
+        };
+        logged_requests.newest_read = logged_requests.unread().first().map_or(0, |(id, _)| *id);
+        logged_requests
+    }
+
+    /// The requests logged since the newest read, newest first, with their ids.
+    fn unread(&self) -> Vec<(i64, ForwardedRequest)> {
+        self.store
+            .requests_page(&RequestLogFilter::default())
+            .expect("read the request log")
+            .requests
+            .into_iter()
+            .filter(|logged| logged.id > self.newest_read)
+            .map(|logged| (logged.id, logged.request))
+            .collect()
+    }
+
+    /// The next request logged, waiting for it. The log keeps the order the
+    /// requests were answered in, so a request answered before it would be
+    /// logged by then: it must be the only one unread.
+    async fn next(&mut self) -> ForwardedRequest {
+        let mut unread = tokio::time::timeout(LIFECYCLE_TIMEOUT, async {
+            loop {
+                let unread = self.unread();
+                if !unread.is_empty() {
+                    return unread;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the request is logged in time");
+        assert_eq!(unread.len(), 1, "exactly one request logged: {unread:?}");
+        let (id, forwarded_request) = unread.remove(0);
+        self.newest_read = id;
+        forwarded_request
+    }
 }
 
 /// Cache a certificate for the server in `server_dir`, set the server up
@@ -392,15 +448,9 @@ fn proxy_header(source: &str) -> Vec<u8> {
     .expect("PROXY header")
 }
 
-/// The visitor address and status of the request reported next. The report is
-/// sent before the response, so it is already queued once the response has
-/// been read.
-fn next_report(
-    forwarded_request_rx: &mut mpsc::Receiver<ForwardedRequest>,
-) -> (Option<String>, u16) {
-    let forwarded_request = forwarded_request_rx
-        .try_recv()
-        .expect("the request was reported");
+/// The visitor address and status of the request logged next.
+async fn next_report(logged_requests: &mut LoggedRequests) -> (Option<String>, u16) {
+    let forwarded_request = logged_requests.next().await;
     (forwarded_request.client_address, forwarded_request.status)
 }
 
@@ -424,18 +474,17 @@ async fn serve_returns_on_shutdown_and_the_server_sets_up_again_over_its_folder(
 
     let (server_health_tx, server_health_rx) = watch::channel(None);
     let (tunnel_state_tx, mut tunnel_state_rx) = watch::channel(None);
-    let (forwarded_request_tx, mut forwarded_request_rx) = mpsc::channel(8);
     let observers = ServerObservers {
         server_health_tx,
         tunnel_state_tx,
         certificate_tx: watch::channel(None).0,
         pending_consent_tx: watch::channel(None).0,
-        forwarded_request_tx,
     };
 
     let first_shutdown = CancellationToken::new();
     let (tunnel, _handles, first) =
         start_serving(&server_dir, observers.clone(), first_shutdown.clone()).await;
+    let mut logged_requests = LoggedRequests::of(&server_dir);
     // Both databases are in the server's folder, and none in the data root.
     for database in ["wildflower.sqlite", "health-data.sqlite"] {
         assert!(
@@ -492,16 +541,14 @@ async fn serve_returns_on_shutdown_and_the_server_sets_up_again_over_its_folder(
             ("server", vec![(ComponentType::System, HealthStatus::Pass)]),
         ]
     );
-    // The `/health` above is logged but not sent to the host; a FHIR read is
-    // sent to both, with no caller (`/metadata` is unauthenticated).
+    // The `/health` above is logged, and so is a FHIR read, with no caller
+    // (`/metadata` is unauthenticated).
+    assert_eq!(logged_requests.next().await.reduced_path, "/health");
     let metadata = tunnel
         .send_from(Some(&proxy_header("192.0.2.1:4711")), get("/metadata"))
         .await;
     assert_eq!(metadata.status, StatusCode::OK);
-    let forwarded_request = tokio::time::timeout(LIFECYCLE_TIMEOUT, forwarded_request_rx.recv())
-        .await
-        .expect("the forwarded request is reported in time")
-        .expect("the test holds the report sender");
+    let forwarded_request = logged_requests.next().await;
     assert_eq!(
         (
             forwarded_request.reduced_path.as_str(),
@@ -510,10 +557,6 @@ async fn serve_returns_on_shutdown_and_the_server_sets_up_again_over_its_folder(
             forwarded_request.caller,
         ),
         ("/metadata", 200, Some("192.0.2.1"), None)
-    );
-    assert!(
-        forwarded_request_rx.try_recv().is_err(),
-        "only the FHIR read is reported"
     );
     // The host sees the server's health through its public origin only once
     // the tunnel is connected, which it never is here: well past the first
@@ -582,7 +625,7 @@ async fn the_server_listens_only_on_its_tunnel_listener() {
     for _ in 0..2 {
         let server_dir = tempfile::tempdir().expect("temp server folder");
         let (tunnel, _handles, serving) =
-            start_serving(server_dir.path(), observers().0, shutdown.clone()).await;
+            start_serving(server_dir.path(), observers(), shutdown.clone()).await;
         running.push((server_dir, tunnel, serving));
     }
 
@@ -659,7 +702,7 @@ async fn the_request_log_records_forwarded_requests_behind_its_scope() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let shutdown = CancellationToken::new();
     let (tunnel, _handles, serving) =
-        start_serving(server_dir.path(), observers().0, shutdown.clone()).await;
+        start_serving(server_dir.path(), observers(), shutdown.clone()).await;
     let request_log_scopes = wildflowerhealthio_request_log::grantable_request_log_scopes()
         .iter()
         .map(ToString::to_string)
@@ -718,7 +761,7 @@ async fn a_request_without_a_bearer_is_unauthorized() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let shutdown = CancellationToken::new();
     let (tunnel, _handles, serving) =
-        start_serving(server_dir.path(), observers().0, shutdown.clone()).await;
+        start_serving(server_dir.path(), observers(), shutdown.clone()).await;
 
     // The authorization server's admin surface, the request log, the database
     // catalogue, the apps and the FHIR API.
@@ -781,12 +824,12 @@ fn tunnel_get(path: &str, host: &str, extra_headers: &str) -> String {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
-    let (observers, mut forwarded_request_rx) = observers();
     let shutdown = CancellationToken::new();
     let (tunnel, _handles, serving) =
-        start_serving(server_dir.path(), observers, shutdown.clone()).await;
-    // `start_serving`'s TLS handshakes sent no request.
-    assert!(forwarded_request_rx.try_recv().is_err());
+        start_serving(server_dir.path(), observers(), shutdown.clone()).await;
+    // `start_serving`'s TLS handshakes sent no request: each one logged below
+    // is the only one since the last.
+    let mut logged_requests = LoggedRequests::of(server_dir.path());
 
     // The owner-gated `/apps` refuses a request with no bearer. It is reported
     // with no visitor address (no PROXY header).
@@ -795,7 +838,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         .expect("the tunnel listener answers");
     assert_eq!(status, 401);
     assert_eq!(
-        next_report(&mut forwarded_request_rx),
+        next_report(&mut logged_requests).await,
         (None, 401),
         "a tunnel request is forwarded"
     );
@@ -822,7 +865,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         format!("https://{DOMAIN}/oauth/token")
     );
     assert_eq!(
-        next_report(&mut forwarded_request_rx),
+        next_report(&mut logged_requests).await,
         (None, 200),
         "the visitor's `Forwarded` names no visitor"
     );
@@ -834,7 +877,8 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     );
 
     // A request naming a host other than the domain, over TLS for the
-    // domain, is misdirected, and not reported.
+    // domain, is misdirected, and not logged: the next one logged is the only
+    // one since the last.
     let (status, _) = tunnel_exchange(
         &tunnel,
         None,
@@ -843,7 +887,6 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     .await
     .expect("the tunnel listener answers");
     assert_eq!(status, 421);
-    assert!(forwarded_request_rx.try_recv().is_err());
     // A remote app can read the `421`: it carries the CORS headers.
     let response = raw_tunnel_exchange(
         &tunnel,
@@ -886,7 +929,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
             "a token minted for {server_origin}"
         );
         assert_eq!(
-            next_report(&mut forwarded_request_rx),
+            next_report(&mut logged_requests).await,
             (None, expected_status)
         );
     }
@@ -906,7 +949,7 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         .expect("the tunnel listener answers after a PROXY header");
         assert_eq!(status, 200);
         assert_eq!(
-            next_report(&mut forwarded_request_rx),
+            next_report(&mut logged_requests).await,
             (Some(client_address.to_owned()), 200)
         );
     }
@@ -924,11 +967,15 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
         .await,
         None
     );
-    assert!(forwarded_request_rx.try_recv().is_err());
     let (status, _) = tunnel_exchange(&tunnel, None, &tunnel_get("/metadata", DOMAIN, ""))
         .await
         .expect("the tunnel listener still answers");
     assert_eq!(status, 200);
+    assert_eq!(
+        next_report(&mut logged_requests).await,
+        (None, 200),
+        "the malformed PROXY header's request was not logged"
+    );
 
     shut_down(&shutdown, serving).await;
 }
@@ -967,7 +1014,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
     let shutdown = CancellationToken::new();
     let (tunnel, _handles, serving) =
-        start_serving(server_dir.path(), observers().0, shutdown.clone()).await;
+        start_serving(server_dir.path(), observers(), shutdown.clone()).await;
     let launcher = client_token(
         server_dir.path(),
         SERVER_ORIGIN,
@@ -1086,7 +1133,7 @@ impl UiServer {
         let server_dir = tempfile::tempdir().expect("temp server folder");
         let shutdown = CancellationToken::new();
         let (tunnel, handles, serving) =
-            start_serving(server_dir.path(), observers().0, shutdown.clone()).await;
+            start_serving(server_dir.path(), observers(), shutdown.clone()).await;
         Self {
             server_dir,
             tunnel,

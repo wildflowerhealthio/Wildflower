@@ -2,18 +2,29 @@
   "listedServers": [
     {
       "domain": "ruth.relay.example.com",
-      "relay": { "kind": "selfHostedWildflower", "baseUrl": "https://relay.example.com/" },
+      "relay": {
+        "kind": "selfHostedWildflower",
+        "baseUrl": "https://relay.example.com/"
+      },
       "tunnelName": "ruth",
       "launcherUrl": "https://wildflowerhealth.io/launcher",
       "authorizationUrl": "https://wildflowerhealth.io/authorization/",
       "certificateAuthority": "letsEncrypt",
-      "runPolicy": { "kind": "until", "at": "2026-10-06T17:42:00Z" },
+      "runPolicy": {
+        "kind": "until",
+        "at": "2026-10-06T17:42:00Z"
+      },
       "status": {
         "domain": "ruth.relay.example.com",
         "runState": "running",
         "runningSince": "2026-10-06T17:00:00Z",
-        "health": { "kind": "reachable", "status": "pass" },
-        "tunnel": { "kind": "connected" },
+        "health": {
+          "kind": "reachable",
+          "status": "pass"
+        },
+        "tunnel": {
+          "kind": "connected"
+        },
         "certificate": {
           "status": "noRenewalNeeded",
           "issuer": "letsEncrypt",
@@ -36,12 +47,16 @@
     },
     {
       "domain": "lab.rathole.example.com",
-      "relay": { "kind": "rathole" },
+      "relay": {
+        "kind": "rathole"
+      },
       "tunnelName": "lab",
       "launcherUrl": "http://localhost:5200/app",
       "authorizationUrl": "http://localhost:5300/authorization/",
       "certificateAuthority": "letsEncryptStaging",
-      "runPolicy": { "kind": "off" },
+      "runPolicy": {
+        "kind": "off"
+      },
       "status": {
         "domain": "lab.rathole.example.com",
         "runState": "stopped",
@@ -76,8 +91,13 @@
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "reachable", "status": "pass" },
-      "tunnel": { "kind": "connected" },
+      "health": {
+        "kind": "reachable",
+        "status": "pass"
+      },
+      "tunnel": {
+        "kind": "connected"
+      },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncrypt",
@@ -88,12 +108,43 @@
         }
       }
     },
+    "runningWithAPendingConsent": {
+      "domain": "ruth.relay.example.com",
+      "runState": "running",
+      "runningSince": "2026-10-06T17:00:00Z",
+      "health": {
+        "kind": "reachable",
+        "status": "pass"
+      },
+      "tunnel": {
+        "kind": "connected"
+      },
+      "certificate": {
+        "status": "noRenewalNeeded",
+        "issuer": "letsEncrypt",
+        "held": {
+          "notBefore": "2026-10-01T00:00:00Z",
+          "notAfter": "2026-12-30T00:00:00Z",
+          "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      },
+      "pendingConsent": {
+        "kind": "oauth",
+        "id": "req-1",
+        "clientName": "Lifting"
+      }
+    },
     "runningAndReachableOnStaging": {
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "reachable", "status": "pass" },
-      "tunnel": { "kind": "connected" },
+      "health": {
+        "kind": "reachable",
+        "status": "pass"
+      },
+      "tunnel": {
+        "kind": "connected"
+      },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncryptStaging",
@@ -108,8 +159,13 @@
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "reachable", "status": "pass" },
-      "tunnel": { "kind": "connected" },
+      "health": {
+        "kind": "reachable",
+        "status": "pass"
+      },
+      "tunnel": {
+        "kind": "connected"
+      },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncrypt",
@@ -136,7 +192,9 @@
     "startingCaUnreachable": {
       "domain": "ruth.relay.example.com",
       "runState": "starting",
-      "tunnel": { "kind": "connecting" },
+      "tunnel": {
+        "kind": "connecting"
+      },
       "certificate": {
         "status": "orderFailing",
         "issuer": "letsEncrypt",
@@ -150,12 +208,20 @@
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "unreachable", "error": "the relay answered 502" },
-      "tunnel": { "kind": "connected" },
+      "health": {
+        "kind": "unreachable",
+        "error": "the relay answered 502"
+      },
+      "tunnel": {
+        "kind": "connected"
+      },
       "certificate": {
         "status": "orderFailing",
         "issuer": "letsEncrypt",
-        "lastError": { "kind": "rateLimited", "retryAfter": "2026-10-06T17:59:00Z" }
+        "lastError": {
+          "kind": "rateLimited",
+          "retryAfter": "2026-10-06T17:59:00Z"
+        }
       }
     },
     "runningRenewalFailed": {
@@ -170,26 +236,40 @@
           "notAfter": "2026-12-30T00:00:00Z",
           "fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
         },
-        "lastError": { "kind": "challengeFailed", "detail": "Connection refused" }
+        "lastError": {
+          "kind": "challengeFailed",
+          "detail": "Connection refused"
+        }
       }
     },
     "runningCacheFailed": {
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "tunnel": { "kind": "connecting" },
+      "tunnel": {
+        "kind": "connecting"
+      },
       "certificate": {
         "status": "ordering",
         "issuer": "letsEncrypt",
-        "lastError": { "kind": "cache", "message": "account cache store: disk full" }
+        "lastError": {
+          "kind": "cache",
+          "message": "account cache store: disk full"
+        }
       }
     },
     "runningReconnecting": {
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "reachable", "status": "pass" },
-      "tunnel": { "kind": "reconnecting", "error": "the relay closed the connection" },
+      "health": {
+        "kind": "reachable",
+        "status": "pass"
+      },
+      "tunnel": {
+        "kind": "reconnecting",
+        "error": "the relay closed the connection"
+      },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncrypt",
@@ -204,8 +284,13 @@
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "reachable", "status": "pass" },
-      "tunnel": { "kind": "tokenRejected" },
+      "health": {
+        "kind": "reachable",
+        "status": "pass"
+      },
+      "tunnel": {
+        "kind": "tokenRejected"
+      },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncrypt",
@@ -220,8 +305,13 @@
       "domain": "ruth.relay.example.com",
       "runState": "running",
       "runningSince": "2026-10-06T17:00:00Z",
-      "health": { "kind": "reachable", "status": "pass" },
-      "tunnel": { "kind": "tunnelUnknown" },
+      "health": {
+        "kind": "reachable",
+        "status": "pass"
+      },
+      "tunnel": {
+        "kind": "tunnelUnknown"
+      },
       "certificate": {
         "status": "noRenewalNeeded",
         "issuer": "letsEncrypt",
@@ -235,7 +325,10 @@
     "neverRun": {
       "domain": "ruth.relay.example.com",
       "runState": "stopped",
-      "certificate": { "status": "notIssued", "issuer": "letsEncrypt" }
+      "certificate": {
+        "status": "notIssued",
+        "issuer": "letsEncrypt"
+      }
     },
     "stoppedWithAnError": {
       "domain": "ruth.relay.example.com",
@@ -291,16 +384,34 @@
     }
   },
   "runPolicies": [
-    { "kind": "off" },
-    { "kind": "whileOpen" },
-    { "kind": "until", "at": "2026-10-06T17:42:00Z" },
-    { "kind": "always" }
+    {
+      "kind": "off"
+    },
+    {
+      "kind": "whileOpen"
+    },
+    {
+      "kind": "until",
+      "at": "2026-10-06T17:42:00Z"
+    },
+    {
+      "kind": "always"
+    }
   ],
   "runPolicyChoices": [
-    { "kind": "off" },
-    { "kind": "whileOpen" },
-    { "kind": "for", "seconds": 1800 },
-    { "kind": "always" }
+    {
+      "kind": "off"
+    },
+    {
+      "kind": "whileOpen"
+    },
+    {
+      "kind": "for",
+      "seconds": 1800
+    },
+    {
+      "kind": "always"
+    }
   ],
   "commandErrors": [
     {
@@ -317,81 +428,21 @@
     }
   ],
   "pendingConsents": [
-    { "domain": "ruth.relay.example.com", "head": { "kind": "device", "userCode": "ABCD-EFGH" } },
-    { "domain": "lab.rathole.example.com", "head": { "kind": "oauth", "id": "req-1" } },
-    { "domain": "ruth.relay.example.com" }
-  ],
-  "consentKeys": [
-    { "kind": "device", "userCode": "ABCD-EFGH" },
-    { "kind": "oauth", "id": "req-1" }
-  ],
-  "consentDetails": {
-    "device": {
+    {
       "kind": "device",
       "userCode": "ABCD-EFGH",
-      "clientId": "pebble-sync",
-      "clientName": "Pebble sync",
-      "deviceName": "Ruth's watch",
-      "requestedScopes": ["system/Observation.rs"],
-      "registeredScopes": ["system/Observation.rs", "system/Patient.rs"]
+      "clientName": "Lifting"
     },
-    "oauthRegistered": {
-      "kind": "oauth",
-      "id": "req-1",
-      "clientId": "lifting",
-      "clientName": "Lifting",
-      "requestedScopes": ["launch/patient", "patient/Observation.rs"],
-      "redirectUri": "https://lifting.example.com/callback",
-      "launchPatient": "pat-1",
-      "registration": { "status": "registered" }
-    },
-    "oauthNew": {
-      "kind": "oauth",
-      "id": "req-2",
-      "clientId": "https://new.example.com/client",
-      "clientName": "https://new.example.com/client",
-      "requestedScopes": ["openid"],
-      "redirectUri": "https://new.example.com/cb",
-      "registration": { "status": "new" }
-    },
-    "oauthChanged": {
-      "kind": "oauth",
-      "id": "req-3",
-      "clientId": "lifting",
-      "clientName": "Lifting",
-      "requestedScopes": ["patient/Observation.rs", "patient/Condition.rs"],
-      "redirectUri": "https://lifting.example.com/elsewhere",
-      "registration": {
-        "status": "changed",
-        "redirectUriIsNew": true,
-        "newScopes": ["patient/Condition.rs"]
-      }
-    }
-  },
-  "consentApprovals": [
-    { "kind": "device", "userCode": "ABCD-EFGH", "approvedScopes": ["system/Observation.rs"] },
     {
       "kind": "oauth",
       "id": "req-1",
-      "approvedScopes": ["launch/patient"],
-      "patient": "pat-1",
-      "acknowledgedRegistration": false
-    }
-  ],
-  "approvalOutcomes": [{ "status": "approved" }, { "status": "denied" }],
-  "consentErrors": [
-    { "kind": "serverNotRunning", "message": "the server ruth.relay.example.com isn't running" },
-    {
-      "kind": "notPending",
-      "message": "the request is no longer waiting: it was answered elsewhere or expired"
-    },
-    {
-      "kind": "registrationNotAcknowledged",
-      "message": "the app is new or asks for more than it registered, so approving it needs that acknowledged"
+      "clientName": "app-client-id"
     }
   ],
   "enteredRelays": {
-    "wildflowerOfficial": { "kind": "wildflowerOfficial" },
+    "wildflowerOfficial": {
+      "kind": "wildflowerOfficial"
+    },
     "selfHostedWildflower": {
       "kind": "selfHostedWildflower",
       "baseUrl": "https://relay.example.com"
@@ -412,8 +463,15 @@
     }
   },
   "enteredCredentials": {
-    "claimCode": { "kind": "claimCode", "code": "ABCD-EFGH" },
-    "token": { "kind": "token", "tunnelName": "ruth", "token": "tunnel-token" }
+    "claimCode": {
+      "kind": "claimCode",
+      "code": "ABCD-EFGH"
+    },
+    "token": {
+      "kind": "token",
+      "tunnelName": "ruth",
+      "token": "tunnel-token"
+    }
   },
   "enrolmentErrors": {
     "invalidRelaySetting": {
@@ -436,8 +494,14 @@
       "kind": "invalidTunnelName",
       "message": "tunnel name \"Ruth\" is not a lowercase DNS label"
     },
-    "emptyToken": { "kind": "emptyToken", "message": "the tunnel token is empty" },
-    "emptyClaimCode": { "kind": "emptyClaimCode", "message": "the claim code is empty" },
+    "emptyToken": {
+      "kind": "emptyToken",
+      "message": "the tunnel token is empty"
+    },
+    "emptyClaimCode": {
+      "kind": "emptyClaimCode",
+      "message": "the claim code is empty"
+    },
     "claimCodesNotOffered": {
       "kind": "claimCodesNotOffered",
       "message": "this relay doesn't take claim codes: enter the tunnel name and token you were given instead"
@@ -465,6 +529,7 @@
   },
   "launchRefusals": {
     "runningAndReachable": null,
+    "runningWithAPendingConsent": null,
     "runningAndReachableOnStaging": "untrustedCertificate",
     "runningAndReachableWithACachedCertificate": null,
     "startingUnchecked": "serverNotRunning",
@@ -490,7 +555,10 @@
     "orderFailing": "noValidCertificate"
   },
   "launchErrors": [
-    { "kind": "serverNotRunning", "message": "the server ruth.relay.example.com isn't running" },
+    {
+      "kind": "serverNotRunning",
+      "message": "the server ruth.relay.example.com isn't running"
+    },
     {
       "kind": "notYetProbed",
       "message": "the server ruth.relay.example.com hasn't been reached through its relay yet"
@@ -518,7 +586,14 @@
     {
       "kind": "tunnelUnknown",
       "message": "the relay has no tunnel for the server ruth.relay.example.com"
+    },
+    {
+      "kind": "nothingPending",
+      "message": "nothing is waiting for your consent on the server ruth.relay.example.com"
     }
   ],
-  "browserTrustedCertificateAuthorities": { "letsEncrypt": true, "letsEncryptStaging": false }
+  "browserTrustedCertificateAuthorities": {
+    "letsEncrypt": true,
+    "letsEncryptStaging": false
+  }
 }

@@ -2,6 +2,7 @@ import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/bran
 import {
   enableBackgroundSessionRecovery,
   type BackgroundServiceStartConfig,
+  openNotifiedConsent,
   TauriInvoke,
 } from '@wildflowerhealthio/servers-core-js'
 import type { ConsentStorage } from '@wildflowerhealthio/telemetry-core'
@@ -10,7 +11,7 @@ import {
   TelemetryConsentGate,
   useConsentedTelemetryStart,
 } from '@wildflowerhealthio/telemetry-react'
-import { type Context, Effect } from 'effect'
+import { type Context, Effect, Either, Schema } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
 
 /** Where the base's telemetry goes, once the user consents to it. */
@@ -25,6 +26,15 @@ interface BaseTelemetry {
   readonly app: string
 }
 
+/**
+ * How the base hears a tap on one of the app's notifications: the
+ * notification plugin's `actionPerformed`, through `addPluginListener` from
+ * `@tauri-apps/api/core`. `handler` gets each tap's payload, which the base
+ * decodes. Resolves with the function that stops listening; rejects where
+ * the platform reports no taps, as a desktop's doesn't.
+ */
+type ListenToNotificationTaps = (handler: (tap: unknown) => void) => Promise<() => void>
+
 /** Props for {@link BaseGate}. */
 interface BaseGateProps {
   /** How the base calls the host: `invoke` from `@tauri-apps/api/core`. */
@@ -34,6 +44,8 @@ interface BaseGateProps {
    * `tauri-shared-config.json`, which the host reads too.
    */
   readonly backgroundServiceStartConfig: BackgroundServiceStartConfig
+  /** How the base hears a tap on one of the app's notifications. */
+  readonly listenToNotificationTaps: ListenToNotificationTaps
   /** Where the base's telemetry goes once the user consents to it. */
   readonly telemetry: BaseTelemetry
   /** Where the consent answer is kept. Defaults to the webview's `localStorage`. */
@@ -67,13 +79,82 @@ const useBackgroundSessionRecovery = (
   }, [invoke, backgroundServiceStartConfig])
 }
 
-/** `children`, once the background session's recovery has been asked for. */
+/**
+ * A tap on a notification, as the plugin reports it: the id the notification
+ * was posted under, the one thing about it every platform reports.
+ */
+const NotificationTapSchema = Schema.Struct({
+  notification: Schema.Struct({ id: Schema.Number }),
+})
+
+/**
+ * While mounted, open the consent each tapped consent notification announced,
+ * at its page, through the host (`openNotifiedConsent`): on a phone, from
+ * anywhere in the app. A tap the host can't open, as when its server isn't
+ * launchable yet or the request was decided meanwhile, is logged: a request
+ * still waiting waits on the server's page. A platform that reports no taps is
+ * logged too.
+ */
+const useNotifiedConsentOpening = (
+  invoke: Context.Tag.Service<TauriInvoke>,
+  listenToNotificationTaps: ListenToNotificationTaps
+): void => {
+  useEffect(() => {
+    const openTapped = (tap: unknown): void => {
+      Either.match(Schema.decodeUnknownEither(NotificationTapSchema)(tap), {
+        onLeft: (error) => {
+          Effect.runSync(Effect.logWarning("[servers] a notification tap didn't decode", error))
+        },
+        onRight: ({ notification }) => {
+          Effect.runFork(
+            openNotifiedConsent({ notificationId: notification.id }).pipe(
+              Effect.catchAll((error) =>
+                Effect.logWarning("[servers] the tapped notification's consent didn't open", error)
+              ),
+              Effect.provideService(TauriInvoke, invoke)
+            )
+          )
+        },
+      })
+    }
+    let unmounted = false
+    let stopListening: (() => void) | undefined
+    listenToNotificationTaps(openTapped).then(
+      (stop) => {
+        if (unmounted) {
+          stop()
+          return
+        }
+        stopListening = stop
+      },
+      (error: unknown) => {
+        Effect.runSync(
+          Effect.logDebug('[servers] this platform reports no notification taps', error)
+        )
+      }
+    )
+    return () => {
+      unmounted = true
+      stopListening?.()
+    }
+  }, [invoke, listenToNotificationTaps])
+}
+
+/**
+ * `children`, once the background session's recovery has been asked for,
+ * opening the consent of each tapped consent notification.
+ */
 function BackgroundSessionRecovery({
   invoke,
   backgroundServiceStartConfig,
+  listenToNotificationTaps,
   children,
-}: Pick<BaseGateProps, 'invoke' | 'backgroundServiceStartConfig' | 'children'>): JSX.Element {
+}: Pick<
+  BaseGateProps,
+  'invoke' | 'backgroundServiceStartConfig' | 'listenToNotificationTaps' | 'children'
+>): JSX.Element {
   useBackgroundSessionRecovery(invoke, backgroundServiceStartConfig)
+  useNotifiedConsentOpening(invoke, listenToNotificationTaps)
   return <>{children}</>
 }
 
@@ -87,7 +168,9 @@ function BackgroundSessionRecovery({
  * the consent dialog alone: `children` aren't mounted, so the app builds no
  * router or query cache and calls no host command. Once it is answered, the
  * gate enables the background session's recovery with
- * `backgroundServiceStartConfig` and shows `children`. The answer, stored or
+ * `backgroundServiceStartConfig`, opens the consent of each consent
+ * notification tapped (through `listenToNotificationTaps`), and shows
+ * `children`. The answer, stored or
  * new, starts telemetry through `useConsentedTelemetryStart` with
  * `telemetry`'s DSN and `app` tag. The base's consent is its own: the web app
  * asks for its own, on its own origin. Host Settings' Telemetry row reads and
@@ -98,6 +181,7 @@ function BackgroundSessionRecovery({
 function BaseGate({
   invoke,
   backgroundServiceStartConfig,
+  listenToNotificationTaps,
   telemetry,
   storage,
   children,
@@ -116,6 +200,7 @@ function BaseGate({
         <BackgroundSessionRecovery
           invoke={invoke}
           backgroundServiceStartConfig={backgroundServiceStartConfig}
+          listenToNotificationTaps={listenToNotificationTaps}
         >
           {children}
         </BackgroundSessionRecovery>
@@ -124,4 +209,4 @@ function BaseGate({
   )
 }
 
-export { BaseGate, type BaseGateProps, type BaseTelemetry }
+export { BaseGate, type BaseGateProps, type BaseTelemetry, type ListenToNotificationTaps }

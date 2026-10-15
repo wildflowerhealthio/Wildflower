@@ -13,17 +13,27 @@ import {
   type DeviceConsentResult,
 } from '@wildflowerhealthio/authorization-react'
 import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
-import { AsyncErrorView, PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import { PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { Grant, Scope } from '@wildflowerhealthio/scopes-core'
 import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
-import { Effect, Match, Schema } from 'effect'
-import { useState, type JSX } from 'react'
+import { Effect, Match, Option, Schema } from 'effect'
+import { useEffect, useState, type JSX } from 'react'
+
+import { DecidedThenBack } from '../decided-then-back.tsx'
 
 import { withoutUserCode } from './user-code-query.ts'
 import styles from './device-page.module.css'
 
-/** What the page says when this browser can't decide device requests. */
-const APPROVE_ON_SERVER = 'Approve this on the device running your server.'
+/**
+ * What the page says when this browser can't decide device requests: the
+ * request is decided on the device running the server, which notifies it.
+ */
+const APPROVE_ON_SERVER =
+  "Approve this on the device running your server: open its notification, or the server's page in the Wildflower app."
+
+/** What the page says when reading the session failed some other way. */
+const SESSION_UNREADABLE =
+  "Couldn't check this browser's session. Approve the request on the device running your server instead."
 
 /** What the page says when the code names no pending request. */
 const UNKNOWN_CODE =
@@ -34,6 +44,12 @@ interface DevicePageProps {
   readonly initialUserCode: string
   /** The runner over the Owner browser's session (see `ownerBrowserSessionRunner`). */
   readonly runAuthed: AuthorizationRouterContext.RunAuthed
+  /**
+   * In `then=back` mode (see `goBackOnceDecidedOf`), the step back out of the
+   * page once the Owner has decided, which then says it is done in place of
+   * the decision's own message. `None` keeps the page on that message.
+   */
+  readonly goBackOnceDecided: Option.Option<() => void>
 }
 
 /** What reading the request a code names answered. */
@@ -150,8 +166,15 @@ const requestView = (found: DeviceLookup | undefined, parts: RequestViewParts): 
  * server and shows no code box. The same holds if a code's read, or the
  * decision, answers `401` or `403` later (the session can end in between).
  * Either way the request stays pending.
+ *
+ * In `then=back` mode a decision says how the Owner decided and steps back out
+ * of the page, with a Close button that takes the step again.
  */
-const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Element => {
+const DevicePage = ({
+  initialUserCode,
+  runAuthed,
+  goBackOnceDecided,
+}: DevicePageProps): JSX.Element => {
   const sessionQuery = useQuery({
     queryKey: ['device-page', 'session'],
     queryFn: () => runAuthed(sessionDecidesDevices),
@@ -172,6 +195,13 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
   const [decision, setDecision] = useState<DeviceConsentResult | null>(null)
   // The code box's fill: the page's `user_code` until that code is spent.
   const [prefilledUserCode, setPrefilledUserCode] = useState(initialUserCode)
+
+  // Step back out only once the decision is on screen, so a window the
+  // browser refuses to close still says how it went.
+  const decided = decision !== null
+  useEffect(() => {
+    if (decided && Option.isSome(goBackOnceDecided)) goBackOnceDecided.value()
+  }, [decided, goBackOnceDecided])
 
   const enterNewCode = (): void => {
     lookup.reset()
@@ -203,7 +233,12 @@ const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Elemen
       {decision === null ? (
         <SessionGate sessionQuery={sessionQuery}>{pendingView}</SessionGate>
       ) : (
-        <DeviceDecided decision={decision} />
+        goBackOnceDecided.pipe(
+          Option.map((goBack) => (
+            <DecidedThenBack key="done" decision={decision.status} goBack={goBack} />
+          )),
+          Option.getOrElse(() => <DeviceDecided key="decided" decision={decision} />)
+        )
       )}
     </>
   )
@@ -223,12 +258,13 @@ interface SessionGateProps {
 /**
  * The page once the session is known to decide device requests here, or why
  * not. Only the first answer gates: once there is one, a later failed read
- * leaves the page as it is.
+ * leaves the page as it is. A read that failed other than as `401` or `403`
+ * says so in plain words, never with the error's own text.
  */
 const SessionGate = ({ sessionQuery, children }: SessionGateProps): JSX.Element => {
   if (sessionQuery.data !== undefined) return sessionQuery.data ? children : <ApproveOnServer />
   if (sessionQuery.isError) {
-    return <AsyncErrorView error={sessionQuery.error} title="Device authorization" />
+    return <p className={styles['device-page__message']}>{SESSION_UNREADABLE}</p>
   }
   return <PageLoading message="Checking your session…" />
 }

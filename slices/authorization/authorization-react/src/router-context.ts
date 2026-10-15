@@ -8,11 +8,9 @@ type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<AuthorizationServerHttpAp
 type RunAuthed = BaseRouterContext.RunAuthedWith<AuthorizationServerHttpApiClient>
 
 /**
- * Slice-local router-context — `BaseRouterContext.RouterContextWith`
- * narrowed to this slice's client. `awaitAuthReady` is inherited only to keep
- * this structural context a faithful subset of the host app's `RouterContext`;
- * the authorization server loaders don't read it — the gate guarantees the
- * token before the loader runs.
+ * The router context this slice's hooks read (`useRunAuthed`) —
+ * `BaseRouterContext.RouterContextWith` narrowed to this slice's client, a
+ * structural subset of each composing app's `RouterContext`.
  */
 type RouterContext = BaseRouterContext.RouterContextWith<AuthorizationServerHttpApiClient>
 

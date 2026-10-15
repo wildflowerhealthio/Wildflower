@@ -17,6 +17,7 @@ import {
   HostCommandFailed,
   type HostCommandError,
   type ListedServer,
+  PendingConsent,
   ServerStatus,
 } from '@wildflowerhealthio/servers-core-js'
 import { type DateTime, Match, Option } from 'effect'
@@ -27,6 +28,7 @@ import {
   type ServerHealthError,
   serverHealthQueryOptions,
   serversQueryOptions,
+  useOpenPendingConsent,
   useRemoveServer,
   useServerStatusEvents,
   useSetServerCredentials,
@@ -662,6 +664,48 @@ const DangerZone = ({
   )
 }
 
+/**
+ * The newest consent waiting on the server, `pendingConsent`: who asks, and
+ * Open, which opens it at its page in a browser signed in as the Owner. The
+ * host's refusal to open it, or the browser's failure, takes the row's text,
+ * until Open is pressed again.
+ */
+const PendingRequest = ({
+  domain,
+  pendingConsent,
+  runHostCommand,
+}: {
+  readonly domain: string
+  readonly pendingConsent: PendingConsent.Type
+  readonly runHostCommand: RunHostCommand
+}): JSX.Element => {
+  const openPendingConsent = useOpenPendingConsent(runHostCommand)
+  const open = (
+    <button
+      type="button"
+      className="button-2 filled"
+      disabled={openPendingConsent.isPending}
+      onClick={() => {
+        openPendingConsent.mutate({ domain })
+      }}
+    >
+      Open
+    </button>
+  )
+  const item = { id: 'pending-request', title: 'Pending request', actions: open } as const
+  return (
+    <ItemList
+      title="Access"
+      maxLines={3}
+      items={[
+        openPendingConsent.error === null
+          ? { ...item, subtitle: `${pendingConsent.clientName} wants access.` }
+          : { ...item, subtitle: failureText(openPendingConsent.error), tone: 'danger' },
+      ]}
+    />
+  )
+}
+
 /** The server page's tabs, by their id. */
 const TABS = [
   { id: 'status', label: 'Status' },
@@ -674,7 +718,8 @@ type Tab = (typeof TABS)[number]['id']
 
 /**
  * A server's page, `/servers/$domain`, opened by its card's Edit: its
- * status, with when it runs, over three tabs. Status holds its connection,
+ * status, with when it runs, and the newest consent waiting on it, if any,
+ * over three tabs. Status holds its connection,
  * its `/health` report while it runs, its launcher, its Authorization app and
  * its removal; Relay, its relay and tunnel, with a new tunnel token;
  * Certificate, its certificate's state.
@@ -746,6 +791,17 @@ const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
     <>
       <PageHeader title="Server" backHref="/" backLabel="Servers" />
       <StatusHero server={server} runHostCommand={runHostCommand} />
+      {ServerStatus.pendingConsentOf(server.status).pipe(
+        Option.map((pendingConsent) => (
+          <PendingRequest
+            key={PendingConsent.keyOf(pendingConsent)}
+            domain={server.domain}
+            pendingConsent={pendingConsent}
+            runHostCommand={runHostCommand}
+          />
+        )),
+        Option.getOrNull
+      )}
       <div className={styles['server-page__tabs']} role="tablist" aria-label="Server details">
         {TABS.map(({ id, label }) => (
           <button

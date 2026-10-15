@@ -7,7 +7,7 @@ use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-use crate::domain::pending_consent::PendingConsentHead;
+use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 
@@ -201,15 +201,15 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.pending_authorization_request_by_user_code(user_code))
     }
 
-    /// See [`GrantTx::oldest_pending_consent_head`].
+    /// See [`GrantTx::newest_pending_consent`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GrantTx::oldest_pending_consent_head`]'s error.
-    fn oldest_pending_consent_head(
+    /// Propagates [`GrantTx::newest_pending_consent`]'s error.
+    fn newest_pending_consent(
         &self,
-    ) -> Result<Option<PendingConsentHead>, AuthorizationServerError> {
-        self.with_connection(|tx| tx.oldest_pending_consent_head())
+    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
+        self.with_connection(|tx| tx.newest_pending_consent())
     }
 
     /// See [`GrantTx::insert_authorization_request`].

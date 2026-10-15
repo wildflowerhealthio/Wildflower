@@ -7,7 +7,7 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
-use crate::domain::pending_consent::PendingConsentHead;
+use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 
@@ -142,8 +142,8 @@ pub trait GrantTx {
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError>;
 
-    /// The oldest pending, non-expired authorization request across both grant
-    /// flows — the FIFO head the host popup surfaces — or `None` when none
+    /// The newest pending, non-expired authorization request across both grant
+    /// flows — the one the host notifies and opens — or `None` when none
     /// exists. A device row is admitted only with a `user_code` (its lookup key
     /// on the consent surface); a code row is keyed by `id`.
     ///
@@ -151,9 +151,9 @@ pub trait GrantTx {
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the read fails or the selected
     /// columns can't be decoded.
-    fn oldest_pending_consent_head(
+    fn newest_pending_consent(
         &mut self,
-    ) -> Result<Option<PendingConsentHead>, AuthorizationServerError>;
+    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError>;
 
     /// Persist a freshly-constructed `AuthorizationRequest`.
     ///

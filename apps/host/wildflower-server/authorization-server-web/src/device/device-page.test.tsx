@@ -3,7 +3,7 @@ import type { HttpClientRequest } from '@effect/platform'
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -33,8 +33,15 @@ interface SeenRequest {
   readonly session: string | undefined
 }
 
-/** How the stub server answers one request, by method and path. */
-type Answer = (request: SeenRequest) => { readonly status: number; readonly body: unknown }
+/**
+ * How the stub server answers one request, by method and path: a JSON `body`,
+ * or a `text` body sent as it is.
+ */
+type Answer = (
+  request: SeenRequest
+) =>
+  | { readonly status: number; readonly body: unknown }
+  | { readonly status: number; readonly text: string }
 
 let seen: SeenRequest[] = []
 let answer: Answer = () => ({ status: 404, body: {} })
@@ -54,14 +61,19 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       session: request.headers[OWNER_BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
-    const { status, body } = answer(seenRequest)
+    const reply = answer(seenRequest)
     return Effect.succeed(
       HttpClientResponse.fromWeb(
         request,
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { 'content-type': 'application/json' },
-        })
+        'text' in reply
+          ? new Response(reply.text, {
+              status: reply.status,
+              headers: { 'content-type': 'text/plain' },
+            })
+          : new Response(JSON.stringify(reply.body), {
+              status: reply.status,
+              headers: { 'content-type': 'application/json' },
+            })
       )
     )
   })
@@ -104,8 +116,11 @@ const serverHolding =
     return { status: 404, body: {} }
   }
 
+const goBack = vi.fn<() => void>()
+
 beforeEach(() => {
   seen = []
+  goBack.mockReset()
   // jsdom has no scrollIntoView; the card scrolls its error banner into view.
   Element.prototype.scrollIntoView = vi.fn()
 })
@@ -114,8 +129,12 @@ afterEach(() => {
   cleanup()
 })
 
+/** How the page was opened: plainly, or with `then=back`. */
+type OpenedWith = 'no-then' | 'then-back'
+
 const renderPage = (
-  initialUserCode: string
+  initialUserCode: string,
+  openedWith: OpenedWith = 'no-then'
 ): { readonly user: ReturnType<typeof userEvent.setup>; readonly queryClient: QueryClient } => {
   const queryClient = new QueryClient()
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
@@ -125,6 +144,7 @@ const renderPage = (
     <DevicePage
       initialUserCode={initialUserCode}
       runAuthed={ownerBrowserSessionRunner(SERVER_ORIGIN, stubServer)}
+      goBackOnceDecided={openedWith === 'then-back' ? Option.some(goBack) : Option.none()}
     />,
     { wrapper }
   )
@@ -236,6 +256,7 @@ describe('DevicePage — deciding', () => {
     expect(decisions().map((request) => request.path)).toEqual([
       '/authorization/devices/WDJB-MJHT/deny',
     ])
+    expect(goBack).not.toHaveBeenCalled()
   })
 
   test('a request that expired before the decision says so, and the Owner can enter a new code', async () => {
@@ -264,7 +285,71 @@ describe('DevicePage — deciding', () => {
   })
 })
 
+describe('DevicePage — then=back', () => {
+  test.each([
+    ['approving', 'Approve', 'approved', 'approve', 'Approved. You can close this.'],
+    ['declining', 'Decline', 'denied', 'deny', 'Declined. You can close this.'],
+  ])('%s says how it went and steps back', async (_case, button, status, decisionPath, decided) => {
+    answer = serverHolding('WDJB-MJHT', { status })
+    const { user } = renderPage('WDJB-MJHT', 'then-back')
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: button }))
+
+    expect(await screen.findByText(decided)).toBeDefined()
+    expect(goBack).toHaveBeenCalledOnce()
+    expect(decisions().map((request) => request.path)).toEqual([
+      `/authorization/devices/WDJB-MJHT/${decisionPath}`,
+    ])
+  })
+
+  test('a page the step left open steps back again on Close', async () => {
+    answer = serverHolding('WDJB-MJHT', { status: 'approved' })
+    const { user } = renderPage('WDJB-MJHT', 'then-back')
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Approve' }))
+    expect(goBack).toHaveBeenCalledOnce()
+
+    await user.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(goBack).toHaveBeenCalledTimes(2)
+  })
+
+  test('a browser that cannot decide here is still told to approve on the server', async () => {
+    answer = () => ({ status: 401, body: {} })
+    renderPage('WDJB-MJHT', 'then-back')
+
+    expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
+    expect(goBack).not.toHaveBeenCalled()
+  })
+})
+
+/** What the page says when this browser can't decide device requests. */
+const APPROVE_ON_SERVER =
+  "Approve this on the device running your server: open its notification, or the server's page in the Wildflower app."
+
 describe('DevicePage — a browser that cannot decide here', () => {
+  test('no session, as the server answers it (a 401 with no body), is told to approve on the server', async () => {
+    answer = () => ({ status: 401, text: '' })
+    renderPage('WDJB-MJHT')
+
+    expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
+    expect(screen.queryByLabelText('Code')).toBeNull()
+  })
+
+  test('a session read that fails some other way says so in plain words', async () => {
+    answer = () => ({ status: 500, text: 'not JSON' })
+    renderPage('WDJB-MJHT')
+
+    expect(
+      await screen.findByText(
+        "Couldn't check this browser's session. Approve the request on the device running your server instead."
+      )
+    ).toBeDefined()
+    expect(screen.queryByText(/JSON/)).toBeNull()
+    expect(screen.queryByLabelText('Code')).toBeNull()
+  })
+
   test.each([
     ['no session', () => ({ status: 401, body: {} })],
     ['a session without the device scopes', serverHolding('WDJB-MJHT', {}, ['openid'])],
@@ -274,9 +359,7 @@ describe('DevicePage — a browser that cannot decide here', () => {
       answer = server
       renderPage('WDJB-MJHT')
 
-      expect(
-        await screen.findByText('Approve this on the device running your server.')
-      ).toBeDefined()
+      expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
       expect(screen.queryByLabelText('Code')).toBeNull()
       expect(seen.map((request) => request.path)).toEqual([SESSION_PATH])
     }
@@ -296,9 +379,7 @@ describe('DevicePage — a browser that cannot decide here', () => {
 
       await user.click(await screen.findByRole('button', { name: 'Continue' }))
 
-      expect(
-        await screen.findByText('Approve this on the device running your server.')
-      ).toBeDefined()
+      expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
       expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
       expect(decisions()).toEqual([])
     }
@@ -317,9 +398,7 @@ describe('DevicePage — a browser that cannot decide here', () => {
       await user.click(await screen.findByRole('button', { name: 'Continue' }))
       await user.click(await screen.findByRole('button', { name: 'Approve' }))
 
-      expect(
-        await screen.findByText('Approve this on the device running your server.')
-      ).toBeDefined()
+      expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
       expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
     }
   )

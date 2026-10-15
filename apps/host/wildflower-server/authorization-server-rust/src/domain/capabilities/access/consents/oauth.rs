@@ -147,9 +147,9 @@ pub(crate) fn approve_oauth_consent(
         registration_to_widen,
     )?;
 
-    // This request was the popup head (or queued behind one) until the approval
-    // above flipped it out of `pending`, so the head has to be recomputed — the
-    // popup must close, or advance to whatever was queued behind it.
+    // This request was pending until the approval above flipped it out of
+    // `pending`, so the newest pending consent has to be recomputed — the host
+    // drops it, or moves on to the newest still pending.
     owner_approval.republish_active();
 
     let client_callback_url = request.client_state.as_deref().map(|client_state| {

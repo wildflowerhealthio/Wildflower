@@ -245,10 +245,10 @@ describe('redirectedUrl', () => {
   it('should send a deep link to the app root with the route in ?redirect=', () => {
     expect(
       redirectedUrl(
-        { pathname: '/authorization/devices/ABCD', search: '?server=https%3A%2F%2Fx', hash: '' },
+        { pathname: '/settings/requests', search: '?server=https%3A%2F%2Fx', hash: '' },
         '/'
       )
-    ).toBe('/?server=https%3A%2F%2Fx&redirect=%2Fauthorization%2Fdevices%2FABCD')
+    ).toBe('/?server=https%3A%2F%2Fx&redirect=%2Fsettings%2Frequests')
   })
 
   it('should leave the app root and paths outside the app alone', () => {

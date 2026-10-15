@@ -7,7 +7,6 @@ mod consent_card;
 mod device_code;
 mod device_page;
 mod grant_flows;
-mod host_consent_decider;
 mod oauth_endpoints;
 mod request_caller;
 mod revocation;

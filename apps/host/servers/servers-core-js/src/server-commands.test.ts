@@ -13,6 +13,7 @@ import * as RunPolicy from './run-policy.ts'
 import {
   addServer,
   listServers,
+  openNotifiedConsent,
   removeServer,
   setServerCredentials,
   setServerRunPolicy,
@@ -67,6 +68,19 @@ describe('ServerStatus', () => {
       Option.some({ kind: 'reachable', status: 'pass' })
     )
     expect(ServerStatus.lastStopOf(status)).toEqual(Option.none())
+  })
+
+  it('should decode the newest consent waiting on a running server', () => {
+    // Act
+    const status = decode(golden.serverStatuses.runningWithAPendingConsent)
+
+    // Assert
+    expect(ServerStatus.pendingConsentOf(status)).toEqual(
+      Option.some({ kind: 'oauth', id: 'req-1', clientName: 'Lifting' })
+    )
+    expect(
+      ServerStatus.pendingConsentOf(decode(golden.serverStatuses.runningAndReachable))
+    ).toEqual(Option.none())
   })
 
   it('should decode a starting status with no health yet', () => {
@@ -367,6 +381,9 @@ describe('the server commands', () => {
         }),
         () => Promise.resolve(null)
       ),
+      runAgainstHostAnswering(openNotifiedConsent({ notificationId: 1_534_013_825 }), () =>
+        Promise.resolve(null)
+      ),
     ])
 
     // Assert
@@ -407,6 +424,7 @@ describe('the server commands', () => {
           },
         },
       ],
+      [{ command: 'server_open_notified_consent', args: { notificationId: 1_534_013_825 } }],
     ])
     expect(runs[0]?.exit).toEqual(Exit.succeed({ kind: 'until', at: utc('2026-10-06T17:42:00Z') }))
   })

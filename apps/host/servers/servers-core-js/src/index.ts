@@ -1,14 +1,4 @@
 export { readAppVersion } from './app-version.ts'
-export * as ApprovalOutcome from './approval-outcome.ts'
-export {
-  approveConsent,
-  denyConsent,
-  listPendingConsents,
-  readConsent,
-} from './consent-commands.ts'
-export * as ConsentApproval from './consent-approval.ts'
-export * as ConsentDetails from './consent-details.ts'
-export * as ConsentKey from './consent-key.ts'
 export {
   HostAnswerUndecodable,
   HostCommandFailed,
@@ -40,6 +30,8 @@ export {
   addServer,
   launchServer,
   listServers,
+  openNotifiedConsent,
+  openPendingConsent,
   openServerAuthorizationApp,
   removeServer,
   setServerCredentials,

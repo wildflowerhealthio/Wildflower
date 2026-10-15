@@ -73,11 +73,15 @@ pub(crate) fn internal_error(context: &str, err: impl std::fmt::Display) -> Resp
 /// cache-suppresses the rendered 500 per RFC 6749 §5.1 by wrapping it.)
 pub(crate) use wildflowerhealthio_shared_structures::http_errors::InternalError;
 
-/// Plain 401 used by the auth middleware when a request lacks a valid bearer
-/// token, stamped with `refusal` (why it lacks one) for the host's
-/// forwarded-request observer (see `wildflowerhealthio_shared_structures::request_caller`).
+/// Bare 401 used by the auth middleware when a request lacks a valid bearer
+/// token, stamped with `refusal` (why it lacks one) for the forwarded-request
+/// report (see `wildflowerhealthio_shared_structures::request_caller`).
+///
+/// No body, as the clients' `HttpApiError.Unauthorized` declares it: a body
+/// that isn't JSON fails their decode, and the page sees a parse error
+/// instead of a `401`.
 pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
-    let mut response = (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    let mut response = StatusCode::UNAUTHORIZED.into_response();
     response.extensions_mut().insert(refusal);
     response
 }
@@ -381,6 +385,16 @@ mod tests {
 
     fn stamped_refusal(response: &Response) -> Option<RequestRefusal> {
         response.extensions().get::<RequestRefusal>().copied()
+    }
+
+    #[tokio::test]
+    async fn a_401_has_no_body() {
+        let response = unauthorized(RequestRefusal::MissingToken);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read the body");
+        assert!(body.is_empty(), "{body:?}");
     }
 
     #[test]

@@ -374,7 +374,6 @@ mod tests {
     use std::time::Duration;
 
     use serde::Deserialize;
-    use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
     use wildflowerhealthio_rathole_settings::{
         ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
@@ -495,13 +494,11 @@ mod tests {
     /// runs, and no run builds a config.
     fn servers_on(runner: &TauriUnitRunner<ServerDetail>) -> (tempfile::TempDir, ServersState) {
         let data_root = tempfile::tempdir().unwrap();
-        let (forwarded_request_tx, _) = mpsc::channel(1);
         let server_units = ServerUnits::new(
             runner.clone(),
             Arc::new(|record: &ServerRecord| {
                 anyhow::bail!("no config for {} in these tests", record.domain())
             }),
-            forwarded_request_tx,
         );
         let servers = ServersState::new(
             Arc::new(JsonServerRegistry::in_data_root(
@@ -1306,9 +1303,9 @@ mod tests {
                     ..run_certificate
                 }),
                 pending_consent: None,
-                consent_decider: None,
                 launch_minter: None,
                 sign_in_code_minter: None,
+                consent_watcher: None,
             }),
         };
 

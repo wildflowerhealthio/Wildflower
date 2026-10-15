@@ -22,8 +22,7 @@ import {
  * context, provide it, run it as a Promise, surface failures — is
  * identical for either verb, and the GET
  * avoids constructing a full FHIR `Patient` request body that the PUT
- * payload schema requires. The decode of the canned bundle is itself
- * covered by `patients.test.ts`.
+ * payload schema requires.
  *
  * The hook reads `runtimeLayer` via
  * `useRouteContext({ from: '__root__', select })`. fhir-r4-react

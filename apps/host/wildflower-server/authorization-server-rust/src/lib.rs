@@ -51,18 +51,8 @@ pub use seeding::seed_dev_app_clients;
 // `SqliteGrantStore` adapter. `GrantStore` is the transaction seam
 // (and carries the standalone-convenience default methods); `GrantTx` is
 // the primitive contract a composed transaction hands out.
-pub use domain::pending_consent::PendingConsentHead;
+pub use domain::pending_consent::{ConsentKey, NewestPendingConsent};
 pub use domain::{GrantStore, GrantTx};
-
-// The pending consents as the host's Owner reads and decides them in-process
-// (`HostConsentDecider`, built from `AuthorizationServer::state`), and the shapes it
-// reads and decides them in.
-pub use domain::capabilities::{
-    ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
-    OAuthConsentView,
-};
-pub use domain::client_registration::ClientRegistrationVerdict;
-pub use live_bindings::HostConsentDecider;
 
 // Re-exported so the host can name the pool type at the `setup_authorization_server`
 // call site without a direct diesel dependency; the canonical home is
@@ -79,7 +69,9 @@ pub use http::{
     AuthorizationServerAuthMiddleware, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
     OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
-pub use live_bindings::{InProcessTokenVerifier, LaunchContextMinter, SameDeviceSignInCodeMinter};
+pub use live_bindings::{
+    InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
+};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
@@ -120,9 +112,9 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The Owner's scopes: the authority the Owner approves consents with (in the
-/// launcher, or in-process through [`HostConsentDecider`]), what an Owner
-/// browser's session holds, and the Owner-browser client's `allowed_scopes`.
+/// The Owner's scopes: the authority the Owner approves consents with, what an
+/// Owner browser's session holds, and the Owner-browser client's
+/// `allowed_scopes`.
 /// An approval can't delegate a resource scope these don't cover.
 ///
 /// [`WILDFLOWER_WIDEST_SCOPES`] (the owner *identity*) plus `wildflower/launch`,
@@ -179,10 +171,10 @@ const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from
 /// says.
 const RETENTION_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// How often the background reaper re-runs the popup-head query so the
-/// watch channel drops a row whose `expires_at` has passed without any
+/// How often the background reaper re-runs the newest-pending-consent query
+/// so the watch channel drops a row whose `expires_at` has passed without any
 /// HTTP mutation arriving to trigger a republish. Picked well under the
-/// 5-minute `DEVICE_AUTHORIZATION_TTL` so a freshly-expired head clears
+/// 5-minute `DEVICE_AUTHORIZATION_TTL` so a freshly-expired request clears
 /// within seconds; the query itself is a single indexed `LIMIT 1` and the
 /// watch sender suppresses no-op publishes.
 const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
@@ -190,7 +182,8 @@ const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration:
 /// Result of `setup_authorization_server`: the public router that should be merged
 /// into the app's root router, the shared `Arc<AuthorizationServerState>` needed to
 /// gate fhir-r4-rust traffic, the minter app launches mint their `launch`
-/// values through, and the minter the host mints same-device sign-in codes through.
+/// values through, the minter the host mints same-device sign-in codes through,
+/// and the watcher it waits on for a pending consent to settle.
 pub struct AuthorizationServer {
     pub router: axum::Router,
     pub state: Arc<AuthorizationServerState>,
@@ -200,6 +193,9 @@ pub struct AuthorizationServer {
     /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
     /// Owner with — for the host, in-process.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
+    /// Waits for a pending consent to be decided or expire — for the host,
+    /// in-process, which closes the page it opened the request at.
+    pub pending_consent_watcher: PendingConsentWatcher,
     /// Verifies access tokens as the authorization server's own gates do —
     /// for the host's FHIR server, which verifies each bearer through it
     /// in-process.
@@ -211,12 +207,12 @@ pub struct AuthorizationServer {
 /// other diesel-backed slices ride). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, essential-client seed), and:
 ///
-///  - publishes the current head of the pending consent queue — device-code
-///    and authorization-code requests share one FIFO slot — on
-///    `owner_approval_tx`. On the Tauri host, the server's run
-///    reports it as its detail, from which the host emits the base's
-///    `pending-consent` event and brings the desktop window forward when
-///    the server gets one. Seeding at boot means a request that was pending
+///  - publishes the newest pending consent — device-code and
+///    authorization-code requests alike — on `owner_approval_tx`. On the
+///    Tauri host, the server's run reports it as its detail, which the base's
+///    server status carries and from which the host notifies each new
+///    request.
+///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
@@ -230,6 +226,8 @@ pub struct AuthorizationServer {
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
 ///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
+///  - returns the [`PendingConsentWatcher`] the host waits on for a pending
+///    consent it opened to be decided or expire;
 ///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
 ///    each bearer through, in-process.
 ///
@@ -249,7 +247,7 @@ pub fn setup_authorization_server(
     pool: DieselPool,
     revocation_store: RevocationStore,
     config: &AuthorizationServerConfig,
-    owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
+    owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
 ) -> anyhow::Result<AuthorizationServer> {
     let store = seeding::open_and_seed_store(
         pool,
@@ -261,6 +259,7 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
+    let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
@@ -269,6 +268,7 @@ pub fn setup_authorization_server(
         wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
+        pending_consents_recomputed_tx,
         owner_grant: Grant::new(OWNER_SCOPES.to_vec()),
         same_device_sign_in_codes: same_device_sign_in_codes.clone(),
         sign_in_destinations: Arc::new(SignInDestinations::new(
@@ -279,10 +279,10 @@ pub fn setup_authorization_server(
             config.authorization_url.clone(),
         )),
     });
-    // Seed the popup head from SQLite so a request that was pending
-    // across an app restart still drives the modal on first webview
-    // load — the `watch` value itself doesn't survive the process, but
-    // the row does.
+    // Seed the newest pending consent from SQLite so a request that was
+    // pending across an app restart is reported in the run's first detail —
+    // the `watch` value itself doesn't survive the process, but the row
+    // does.
     ports::OwnerApproval::republish_active(state.as_ref());
     spawn_device_consent_reaper(state.clone());
     // Reclaim the authorization server rows past their retention window: once at startup, then
@@ -295,11 +295,14 @@ pub fn setup_authorization_server(
     let in_process_token_verifier = InProcessTokenVerifier::new(&state);
     let same_device_sign_in_code_minter =
         SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
+    let pending_consent_watcher =
+        PendingConsentWatcher::new(state.store.clone(), pending_consents_recomputed_rx);
     Ok(AuthorizationServer {
         router,
         state,
         launch_context_minter,
         same_device_sign_in_code_minter,
+        pending_consent_watcher,
         in_process_token_verifier,
     })
 }
@@ -378,13 +381,13 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
     });
 }
 
-/// Spawn the background reaper that periodically re-runs the popup-head
-/// query. Mutation-driven republishing alone leaves the watch advertising
-/// a `user_code` whose row has expired in the meantime — without this
-/// task, an idle host stays stuck on the now-expired head until some
-/// unrelated handler happens to write. The reaper drops the stale head
-/// within `DEVICE_CONSENT_REAPER_INTERVAL`, and `send_if_modified`
-/// suppresses ticks that leave the head unchanged so an idle queue
+/// Spawn the background reaper that periodically re-runs the
+/// newest-pending-consent query. Mutation-driven republishing alone leaves
+/// the watch advertising a request whose row has expired in the meantime —
+/// without this task, an idle host stays stuck on the now-expired request
+/// until some unrelated handler happens to write. The reaper drops the stale
+/// request within `DEVICE_CONSENT_REAPER_INTERVAL`, and `send_if_modified`
+/// suppresses ticks that leave it unchanged so an idle server
 /// publishes nothing.
 fn spawn_device_consent_reaper(state: Arc<AuthorizationServerState>) {
     tokio::spawn(async move {

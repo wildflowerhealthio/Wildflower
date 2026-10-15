@@ -6,15 +6,20 @@
 //! (RFC 8252). See `docs/Explanation.md` for why this is its own plugin.
 //!
 //! Backends:
-//! - **iOS** — Swift `SFSafariViewController`, in the app's colours. An `open`
-//!   replaces a showing view.
+//! - **iOS** — Swift `SFSafariViewController`, in the app's colours. A
+//!   [`OpenMode::Replace`] `open` replaces the showing views, a
+//!   [`OpenMode::Stack`] one presents over them, and `close` dismisses a view
+//!   with the views over it.
 //! - **Android** — Kotlin `androidx.browser` Custom Tab sliding in from the
 //!   right, in the app's colours, which asks its browser to keep the app alive
 //!   under it; the default browser when no Custom Tabs provider is installed.
-//!   An `open` joins a view still launching, and returns an error while the
-//!   app is in the background.
+//!   A [`OpenMode::Replace`] `open` joins a `Replace` view still launching, a
+//!   [`OpenMode::Stack`] one launches its own, and either returns an error
+//!   while the app is in the background. A Custom Tab can't be closed, so
+//!   `close` returns an error.
 //! - **Desktop** — the default browser, through `tauri-plugin-opener`. A browser
-//!   tab isn't a window the app owns, so desktop never reports a close.
+//!   tab isn't a window the app owns, so desktop never reports a close, and
+//!   `close` returns an error.
 //!
 //! On every platform a URL that doesn't parse or isn't `http(s)` returns
 //! [`Error::InvalidUrl`] before any backend sees it. On iOS and Android the
@@ -28,7 +33,9 @@
 //! main thread:
 //! ```ignore
 //! use tauri::ipc::Channel;
-//! use tauri_plugin_native_page_browser::{BrowserEvent, NativePageBrowserExt, OpenRequest};
+//! use tauri_plugin_native_page_browser::{
+//!     BrowserEvent, CloseRequest, NativePageBrowserExt, OpenMode, OpenRequest,
+//! };
 //!
 //! let events: Channel<BrowserEvent> = Channel::new(move |body| {
 //!     // body: tauri::ipc::InvokeResponseBody — deserialise as BrowserEvent.
@@ -36,14 +43,19 @@
 //! });
 //! app.native_page_browser().open(OpenRequest {
 //!     url: "https://example.test/".to_owned(),
+//!     view: "page-1".to_owned(),
+//!     mode: OpenMode::Stack,
 //!     events,
 //! })
 //! .await?;
+//! // iOS: dismiss it again.
+//! app.native_page_browser().close(CloseRequest { view: "page-1".to_owned() }).await?;
 //! ```
 //!
 //! JS callers can also drive the plugin through
-//! `invoke('plugin:native-page-browser|open', { url, events })` with a
-//! `new Channel<BrowserEvent>()`.
+//! `invoke('plugin:native-page-browser|open', { url, view, mode, events })`
+//! with a `new Channel<BrowserEvent>()`, and
+//! `invoke('plugin:native-page-browser|close', { view })`.
 
 use tauri::{
     plugin::{Builder, TauriPlugin},
@@ -51,7 +63,7 @@ use tauri::{
 };
 
 pub use error::{Error, Result};
-pub use models::{BrowserEvent, OpenRequest};
+pub use models::{BrowserEvent, CloseRequest, OpenMode, OpenRequest};
 
 mod commands;
 mod error;
@@ -85,7 +97,7 @@ impl<R: Runtime, T: Manager<R>> NativePageBrowserExt<R> for T {
 /// `.plugin(tauri_plugin_native_page_browser::init())`.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("native-page-browser")
-        .invoke_handler(tauri::generate_handler![commands::open])
+        .invoke_handler(tauri::generate_handler![commands::open, commands::close])
         .setup(|app, api| {
             #[cfg(mobile)]
             let browser = mobile::init(app, api)?;

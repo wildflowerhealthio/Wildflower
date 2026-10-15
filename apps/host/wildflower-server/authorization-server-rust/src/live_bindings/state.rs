@@ -22,7 +22,7 @@ use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
 use crate::domain::essential_client_guard::EssentialClientGuard;
-use crate::domain::pending_consent::PendingConsentHead;
+use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
 use crate::ports::Revocation;
@@ -73,15 +73,19 @@ pub struct AuthorizationServerState {
     /// The hosted launcher logout lands the browser on, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
     pub(crate) launcher_base: LauncherBase,
-    /// Watch sender publishing the [`PendingConsentHead`] the host webview
-    /// surfaces in its popup. Handlers whose write may change the head call the
+    /// Watch sender publishing the [`NewestPendingConsent`] the host notifies
+    /// and the base shows on the server's page. Handlers whose write may change it call the
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
-    pub(crate) owner_approval_tx: watch::Sender<Option<PendingConsentHead>>,
-    /// The Owner's grant, [`crate::OWNER_SCOPES`] — the approving authority
-    /// when the host decides a consent in-process through
-    /// [`HostConsentDecider`](crate::HostConsentDecider), and what an Owner
-    /// browser's session holds.
+    pub(crate) owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
+    /// Pinged each time
+    /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
+    /// recomputes the newest pending consent, whether or not it changed: what
+    /// the [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
+    /// request on.
+    pub(crate) pending_consents_recomputed_tx: watch::Sender<()>,
+    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what an Owner browser's
+    /// session holds, the authority it decides consents with.
     pub(crate) owner_grant: wildflowerhealthio_scopes::Grant,
     /// The outstanding same-device sign-in codes: minted in-process by the
     /// [`SameDeviceSignInCodeMinter`](crate::SameDeviceSignInCodeMinter)

@@ -12,7 +12,7 @@ publish.workspace = true
 anyhow.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
-# Posting the stop and request notifications.
+# Posting the stop and consent notifications.
 tauri-plugin-notification = "2"
 # Opening a server's launcher in the in-app browser, and hearing its view close.
 tauri-plugin-native-page-browser = { path = "../../tauri-plugin-native-page-browser" }
@@ -27,9 +27,6 @@ wildflowerhealthio-wildflower-server = { path = "../../wildflower-server/wildflo
 # The authorization server's failure a consent or launch command that couldn't run
 # answers with.
 wildflowerhealthio-authorization-server = { path = "../../wildflower-server/authorization-server-rust" }
-# `ForwardedRequest`, which the servers report and the request notifications
-# count.
-wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
 # `TunnelName`, which the commands parse the entered tunnel name into.
 wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-settings-rust" }
 # The relay base URL enrolment builds a relay client for.
@@ -39,11 +36,11 @@ url = "2"
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 # The instant enrolment chooses a new server's run policy at.
 chrono = { workspace = true, features = ["clock"] }
-# `sync` for the lock ordering registry writes with their pushes, the
-# forwarded-request channel and `TauriUnitRunner`'s statuses; `time` for the
-# request-notification timer; `macros` for `select!`; `rt` for the commands'
-# registry reads and writes on a blocking thread.
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+# `sync` for the lock ordering registry writes with their pushes and
+# `TauriUnitRunner`'s statuses; `rt` for the commands' registry reads and
+# writes on a blocking thread; `macros` for the wait on a consent's view,
+# until its request settles or the view closes.
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
@@ -51,8 +48,8 @@ workspace = true
 
 [dev-dependencies]
 async-trait = "0.1"
-# An authorization server over a temporary database, whose consents the consent commands'
-# tests decide.
+# An authorization server over a temporary database, which the launch
+# commands' tests mint through.
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 wildflowerhealthio-token-revocation = { path = "../../wildflower-server/token-revocation-rust" }
 serde.workspace = true
@@ -61,6 +58,9 @@ tempfile = "3"
 # The tunnel states a launchable or refused run's detail carries in the
 # launch command's tests.
 wildflowerhealthio-tunnel = { path = "../../wildflower-server/tunnel-rust" }
+# The launcher and Authorization app bases the tests' authorization server
+# runs with, and the health reports a launchable run's detail carries.
+wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
 # The shutdown token the tests' units keep, to see whether a command stopped
 # their run.

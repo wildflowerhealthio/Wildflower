@@ -46,7 +46,7 @@ pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
 };
 pub use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 pub use wildflowerhealthio_authorization_server::{
-    GrantStore, PendingConsentHead, SqliteGrantStore,
+    ConsentKey, GrantStore, NewestPendingConsent, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
 pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -59,12 +59,12 @@ pub use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 pub struct TestDb {
     pool: DieselPool,
     revocation_conn: Connection,
-    /// Live receiver on the pending-consent head the slice publishes — the same
-    /// channel the Tauri host forwards to the webview popup. Held (not dropped)
-    /// so tests can assert *what the popup would show* after a request lands,
+    /// Live receiver on the newest pending consent the slice publishes — the
+    /// same channel the Tauri host notifies from. Held (not dropped) so tests
+    /// can assert *what the host would notify* after a request lands,
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
-    pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
 }
 
 /// Set up the authorization server over a fresh in-memory database, and mint
@@ -89,7 +89,7 @@ pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
         authorization_url: Url::parse(AUTHORIZATION_URL).expect("AUTHORIZATION_URL is a valid URL"),
     };
     let (pending_consent_tx, pending_consent_rx) =
-        watch::channel::<Option<PendingConsentHead>>(None);
+        watch::channel::<Option<NewestPendingConsent>>(None);
     // The shared revocation store lives on the rusqlite connection the host
     // wires into both the authorization server and the FHIR server (#269). A second handle on
     // the same connection (see `revocation_store_handle`) lets tests
@@ -147,9 +147,9 @@ pub fn mint_client_token(db: &TestDb, client_id: &str, scopes: &[&str]) -> Strin
     .expect("mint token")
 }
 
-/// The head the host popup would currently be showing — the latest value on the
-/// slice's pending-consent watch channel.
-pub fn pending_consent_head(db: &TestDb) -> Option<PendingConsentHead> {
+/// The pending consent the host would currently be showing — the latest value
+/// on the slice's pending-consent watch channel.
+pub fn newest_pending_consent(db: &TestDb) -> Option<NewestPendingConsent> {
     db.pending_consent_rx.borrow().clone()
 }
 
@@ -321,6 +321,7 @@ pub fn plant_authorization_code(
             device_name: None,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         })
         .expect("insert request");
     store
@@ -372,6 +373,7 @@ pub fn plant_device_request(
             device_name: None,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         })
         .expect("insert device request");
 }

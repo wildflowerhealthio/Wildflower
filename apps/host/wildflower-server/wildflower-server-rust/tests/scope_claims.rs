@@ -14,7 +14,7 @@ use url::Url;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    GrantStore, PendingConsentHead, SqliteGrantStore,
+    GrantStore, NewestPendingConsent, SqliteGrantStore,
 };
 use wildflowerhealthio_persistence::{Connection, DieselPool};
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -46,7 +46,7 @@ fn set_up_authorization_server(
             .expect("authorization URL"),
     };
     let (pending_consent_tx, _pending_consent_rx) =
-        watch::channel::<Option<PendingConsentHead>>(None);
+        watch::channel::<Option<NewestPendingConsent>>(None);
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(
         Connection::open_in_memory().expect("open revocation db"),
     )

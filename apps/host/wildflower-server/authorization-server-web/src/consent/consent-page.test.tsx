@@ -3,7 +3,7 @@ import type { HttpClientRequest } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
@@ -35,8 +35,15 @@ interface SeenRequest {
   readonly session: string | undefined
 }
 
-/** How the stub server answers one request, by method and path. */
-type Answer = (request: SeenRequest) => { readonly status: number; readonly body: unknown }
+/**
+ * How the stub server answers one request, by method and path: a JSON `body`,
+ * or a `text` body sent as it is.
+ */
+type Answer = (
+  request: SeenRequest
+) =>
+  | { readonly status: number; readonly body: unknown }
+  | { readonly status: number; readonly text: string }
 
 let seen: SeenRequest[] = []
 let answer: Answer = () => ({ status: 404, body: {} })
@@ -58,14 +65,19 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       session: request.headers[OWNER_BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
-    const { status, body } = answer(seenRequest)
+    const reply = answer(seenRequest)
     return Effect.succeed(
       HttpClientResponse.fromWeb(
         request,
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { 'content-type': 'application/json' },
-        })
+        'text' in reply
+          ? new Response(reply.text, {
+              status: reply.status,
+              headers: { 'content-type': 'text/plain' },
+            })
+          : new Response(JSON.stringify(reply.body), {
+              status: reply.status,
+              headers: { 'content-type': 'application/json' },
+            })
       )
     )
   })
@@ -98,10 +110,12 @@ const serverHolding =
   }
 
 const leaveFor = vi.fn<(destination: URL) => void>()
+const goBack = vi.fn<() => void>()
 
 beforeEach(() => {
   seen = []
   leaveFor.mockReset()
+  goBack.mockReset()
   // jsdom has no scrollIntoView; the card scrolls its error banner into view.
   Element.prototype.scrollIntoView = vi.fn()
 })
@@ -110,7 +124,12 @@ afterEach(() => {
   cleanup()
 })
 
-const renderPage = (): { readonly user: ReturnType<typeof userEvent.setup> } => {
+/** How the page was opened: by the browser that made the request, or with `then=back`. */
+type OpenedWith = 'no-then' | 'then-back'
+
+const renderPage = (
+  openedWith: OpenedWith = 'no-then'
+): { readonly user: ReturnType<typeof userEvent.setup> } => {
   const queryClient = new QueryClient()
   const wrapper = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -121,6 +140,7 @@ const renderPage = (): { readonly user: ReturnType<typeof userEvent.setup> } => 
       runAuthed={ownerBrowserSessionRunner(SERVER_ORIGIN, stubServer)}
       waitPage={WAIT_PAGE}
       leaveFor={leaveFor}
+      goBackOnceDecided={openedWith === 'then-back' ? Option.some(goBack) : Option.none()}
     />,
     { wrapper }
   )
@@ -149,6 +169,7 @@ describe('ConsentPage — exit', () => {
       expect(leaveFor).toHaveBeenCalledWith(new URL('https://app.example/cb?code=c&state=s'))
     })
     expect(screen.getByText('Returning you to the app…')).toBeDefined()
+    expect(goBack).not.toHaveBeenCalled()
   })
 
   test('a denial leaves for the access_denied callback its answer carries', async () => {
@@ -187,7 +208,109 @@ describe('ConsentPage — exit', () => {
   })
 })
 
+describe('ConsentPage — then=back', () => {
+  test.each([
+    [
+      'an approval',
+      'Allow access',
+      'approve',
+      'https://app.example/cb?code=c&state=s',
+      'Approved. You can close this.',
+    ],
+    [
+      'a denial',
+      'Deny',
+      'deny',
+      'https://app.example/cb?error=access_denied&state=s',
+      'Declined. You can close this.',
+    ],
+  ])(
+    '%s says how it went and steps back, without leaving for the callback',
+    async (_case, button, decisionPath, callback, decided) => {
+      answer = serverHolding(consentFor(['user/Observation.rs']), {
+        status: decisionPath === 'approve' ? 'approved' : 'denied',
+        redirect: callback,
+      })
+      const { user } = renderPage('then-back')
+
+      await user.click(await screen.findByRole('button', { name: button }))
+
+      expect(await screen.findByText(decided)).toBeDefined()
+      await waitFor(() => {
+        expect(goBack).toHaveBeenCalledOnce()
+      })
+      expect(leaveFor).not.toHaveBeenCalled()
+      expect(seen.map((request) => request.path)).toContain(
+        `/authorization/oauth-consents/req-1/${decisionPath}`
+      )
+    }
+  )
+
+  test('a page the step left open steps back again on Close', async () => {
+    answer = serverHolding(consentFor(['user/Observation.rs']), {
+      status: 'approved',
+      redirect: 'https://app.example/cb?code=c&state=s',
+    })
+    const { user } = renderPage('then-back')
+    await user.click(await screen.findByRole('button', { name: 'Allow access' }))
+    await waitFor(() => {
+      expect(goBack).toHaveBeenCalledOnce()
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(goBack).toHaveBeenCalledTimes(2)
+  })
+
+  test('a request no longer pending says so and steps back, without the wait page', async () => {
+    answer = () => ({ status: 404, body: { error: 'OAuthConsentNotFound', id: 'req-1' } })
+    renderPage('then-back')
+
+    expect(
+      await screen.findByText(
+        'This request was already decided or has expired. You can close this.'
+      )
+    ).toBeDefined()
+    await waitFor(() => {
+      expect(goBack).toHaveBeenCalledOnce()
+    })
+    expect(leaveFor).not.toHaveBeenCalled()
+  })
+
+  test('a browser that cannot decide here still goes to the wait page', async () => {
+    answer = () => ({ status: 401, body: {} })
+    renderPage('then-back')
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    })
+    expect(goBack).not.toHaveBeenCalled()
+  })
+})
+
 describe('ConsentPage — a browser that cannot decide here', () => {
+  test('no session, as the server answers it (a 401 with no body), goes to the wait page', async () => {
+    answer = () => ({ status: 401, text: '' })
+    renderPage()
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    })
+  })
+
+  test('a read that fails some other way says so in plain words', async () => {
+    answer = () => ({ status: 500, text: 'not JSON' })
+    renderPage()
+
+    expect(
+      await screen.findByText(
+        "Couldn't read this request. Approve it on the device running your server instead."
+      )
+    ).toBeDefined()
+    expect(screen.queryByText(/JSON/)).toBeNull()
+    expect(leaveFor).not.toHaveBeenCalled()
+  })
+
   test.each([
     ['not signed in as the Owner', 401, {}],
     ['signed in without the scope', 403, { error: 'InsufficientScope', missingScopes: [] }],

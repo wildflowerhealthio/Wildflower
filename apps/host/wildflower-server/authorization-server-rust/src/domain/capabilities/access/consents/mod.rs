@@ -49,9 +49,8 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
 }
 
 // ---------------------------------------------------------------------------
-// Read models the launcher renders — the shapes the `GET` consent handlers
-// return, and `HostConsentDecider` hands the host. Pure domain data (no axum),
-// produced by `ConsentReader`.
+// Read models the consent pages render — the shapes the `GET` consent
+// handlers return. Pure domain data (no axum), produced by `ConsentReader`.
 // ---------------------------------------------------------------------------
 
 /// A consent prompt loaded for the launcher or the host to render — the data a

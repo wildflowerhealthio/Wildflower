@@ -5,9 +5,7 @@
 
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
 use wildflowerhealthio_servers::{ServerDetail, ServerRecord, ServerUnit};
-use wildflowerhealthio_shared_structures::request_caller::ForwardedRequest;
 use wildflowerhealthio_tauri_unit_runner::{RunPolicy, TauriUnitRunner, UnitId, UnitStatuses};
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 
@@ -19,30 +17,20 @@ pub type ServerConfigBuilder =
 
 /// Pushes the install's servers to `TauriUnitRunner`, each as a unit whose id
 /// is the server's domain, and reads their statuses back.
-///
-/// The forwarded-request channel is the host's, shared by every run of every
-/// server.
 #[derive(Clone)]
 pub struct ServerUnits {
     runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
-    forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
 }
 
 impl ServerUnits {
     /// Server units on `runner`, whose runs read the config `server_config`
-    /// builds and report each request their tunnels relay on
-    /// `forwarded_request_tx`.
+    /// builds.
     #[must_use]
-    pub fn new(
-        runner: TauriUnitRunner<ServerDetail>,
-        server_config: ServerConfigBuilder,
-        forwarded_request_tx: mpsc::Sender<ForwardedRequest>,
-    ) -> Self {
+    pub fn new(runner: TauriUnitRunner<ServerDetail>, server_config: ServerConfigBuilder) -> Self {
         Self {
             runner,
             server_config,
-            forwarded_request_tx,
         }
     }
 
@@ -56,12 +44,8 @@ impl ServerUnits {
         let unit_id = UnitId::new(record.domain());
         let run_policy = record.run_policy;
         let server_config = Arc::clone(&self.server_config);
-        let forwarded_request_tx = self.forwarded_request_tx.clone();
         self.runner.set_unit(unit_id, run_policy, move || {
-            Ok(ServerUnit::new(
-                server_config(&record)?,
-                forwarded_request_tx.clone(),
-            ))
+            Ok(ServerUnit::new(server_config(&record)?))
         });
     }
 

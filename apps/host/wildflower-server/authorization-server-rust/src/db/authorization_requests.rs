@@ -11,10 +11,11 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
+use crate::db::clients::clients;
 use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::pending_consent::PendingConsentHead;
+use crate::domain::pending_consent::NewestPendingConsent;
 
 diesel::table! {
     authorization_requests (id) {
@@ -37,8 +38,11 @@ diesel::table! {
         device_name -> Nullable<Text>,
         launch -> Nullable<Text>,
         launch_bound_patient -> Nullable<Text>,
+        requested_by_owner_browser -> Bool,
     }
 }
+
+diesel::allow_tables_to_appear_in_same_query!(authorization_requests, clients);
 
 // The request `status` discriminant, stored as its strum wire string. Only the
 // authorization request binds it, so its mapping lives here.
@@ -70,6 +74,7 @@ struct Row {
     device_name: Option<String>,
     launch: Option<String>,
     launch_bound_patient: Option<String>,
+    requested_by_owner_browser: bool,
 }
 
 impl From<Row> for AuthorizationRequest {
@@ -94,6 +99,7 @@ impl From<Row> for AuthorizationRequest {
             device_name: row.device_name,
             launch: row.launch,
             launch_bound_patient: row.launch_bound_patient,
+            requested_by_owner_browser: row.requested_by_owner_browser,
         }
     }
 }
@@ -120,6 +126,7 @@ impl From<&AuthorizationRequest> for Row {
             device_name: request.device_name.clone(),
             launch: request.launch.clone(),
             launch_bound_patient: request.launch_bound_patient.clone(),
+            requested_by_owner_browser: request.requested_by_owner_browser,
         }
     }
 }
@@ -186,19 +193,24 @@ pub(super) fn pending_authorization_request_by_user_code(
         .map(|row| row.map(AuthorizationRequest::from))
 }
 
-/// Return the [`PendingConsentHead`] of the oldest pending, non-expired
+/// Return the [`NewestPendingConsent`] of the newest pending, non-expired
 /// authorization request across **both** grant flows, or `None` when none
 /// exists. See `slices/authorization/docs/Jargon Explanation.md`
-/// ("Pending-consent queue") for what drives this and who consumes it.
+/// ("Pending consents") for what drives this and who consumes it.
 ///
 /// The `user_code IS NOT NULL` guard is scoped to the **device** branch, not
 /// applied to the whole query: a code row legitimately has no `user_code` (it is
 /// keyed by `id`), while a device row without one is a malformed half-row that
-/// would float to the head with no key the consent fetch could resolve.
-pub(super) fn oldest_pending_consent_head(
+/// would surface with no key the consent fetch could resolve.
+///
+/// The client's name comes from its registration through a left join: a
+/// client trusted on first use has none until the Owner approves it, and is
+/// named by its `client_id`, as the consent card names it.
+pub(super) fn newest_pending_consent(
     conn: &mut SqliteConnection,
-) -> Result<Option<PendingConsentHead>, AuthorizationServerError> {
+) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
     authorization_requests::table
+        .left_join(clients::table.on(clients::client_id.eq(authorization_requests::client_id)))
         .filter(authorization_requests::status.eq(RequestStatus::Pending))
         .filter(authorization_requests::expires_at.gt(Utc::now()))
         .filter(
@@ -208,32 +220,51 @@ pub(super) fn oldest_pending_consent_head(
                     .eq(GrantType::DeviceCode)
                     .and(authorization_requests::user_code.is_not_null())),
         )
-        .order(authorization_requests::requested_at.asc())
+        .order(authorization_requests::requested_at.desc())
         .select((
             authorization_requests::grant_type,
             authorization_requests::id,
             authorization_requests::user_code,
+            authorization_requests::client_id,
+            clients::name.nullable(),
+            authorization_requests::requested_by_owner_browser,
         ))
-        .first::<(GrantType, String, Option<String>)>(conn)
+        .first::<PendingConsentRow>(conn)
         .optional()
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure("oldest_pending_consent_head failed", e)
-        })
-        .map(|row| row.and_then(head_from_row))
+        .map_err(|e| AuthorizationServerError::infrastructure("newest_pending_consent failed", e))
+        .map(|row| row.and_then(newest_pending_consent_from_row))
 }
 
-/// Build the head from the three selected columns. The `None` arm is
-/// unreachable through [`oldest_pending_consent_head`]'s `WHERE`; reaching it
-/// means the filter drifted, and dropping the head keeps the popup closed rather
-/// than opening it on a key nothing can fetch.
-fn head_from_row(
-    (grant_type, id, user_code): (GrantType, String, Option<String>),
-) -> Option<PendingConsentHead> {
+/// The columns [`newest_pending_consent`] selects: the grant type, the
+/// request id, its `user_code`, its `client_id`, the registered client's
+/// name, if it has a registration, and whether the Owner's browser made it.
+type PendingConsentRow = (
+    GrantType,
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    bool,
+);
+
+/// Build the pending consent from the selected columns. The `None` arm is
+/// unreachable through [`newest_pending_consent`]'s `WHERE`; reaching it
+/// means the filter drifted, and dropping the request keeps the host from
+/// opening a key nothing can fetch.
+fn newest_pending_consent_from_row(
+    (grant_type, id, user_code, client_id, registered_name, requested_by_owner_browser): PendingConsentRow,
+) -> Option<NewestPendingConsent> {
+    let client_name = registered_name.unwrap_or(client_id);
     match grant_type {
-        GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id }),
-        GrantType::DeviceCode => {
-            user_code.map(|user_code| PendingConsentHead::Device { user_code })
-        }
+        GrantType::AuthorizationCode => Some(NewestPendingConsent::OAuth {
+            id,
+            client_name,
+            requested_by_owner_browser,
+        }),
+        GrantType::DeviceCode => user_code.map(|user_code| NewestPendingConsent::Device {
+            user_code,
+            client_name,
+        }),
     }
 }
 
@@ -438,6 +469,7 @@ mod tests {
             device_name in prop::option::of("[ -~]{1,40}"),
             launch in prop::option::of("[A-Za-z0-9_-]{43}"),
             launch_bound_patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
+            requested_by_owner_browser in any::<bool>(),
         ) -> AuthorizationRequest {
             AuthorizationRequest {
                 id,
@@ -459,6 +491,7 @@ mod tests {
                 device_name,
                 launch,
                 launch_bound_patient,
+                requested_by_owner_browser,
             }
         }
     }
@@ -504,6 +537,7 @@ mod tests {
             device_name: None,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         }
     }
 
@@ -704,12 +738,39 @@ mod tests {
         assert_eq!(after.status, RequestStatus::Expired);
     }
 
+    /// The client every device request these tests insert is from.
+    const UNREGISTERED_CLIENT_ID: &str = "device-client";
+
+    /// The pending consent of a device request from the unregistered test
+    /// client, named
+    /// by its `client_id`.
+    fn unregistered_device_consent(user_code: &str) -> NewestPendingConsent {
+        NewestPendingConsent::Device {
+            user_code: user_code.to_string(),
+            client_name: UNREGISTERED_CLIENT_ID.to_string(),
+        }
+    }
+
+    /// The client every code request these tests insert is from.
+    const UNREGISTERED_CODE_CLIENT_ID: &str = "code-client";
+
+    /// The pending consent of a code request from its unregistered test
+    /// client, named by
+    /// its `client_id`.
+    fn unregistered_code_consent(id: &str) -> NewestPendingConsent {
+        NewestPendingConsent::OAuth {
+            id: id.to_string(),
+            client_name: UNREGISTERED_CODE_CLIENT_ID.to_string(),
+            requested_by_owner_browser: false,
+        }
+    }
+
     fn device_request(id: &str, user_code: &str, status: RequestStatus) -> AuthorizationRequest {
         let now = Utc::now();
         AuthorizationRequest {
             id: id.to_string(),
             grant_type: GrantType::DeviceCode,
-            client_id: "device-client".to_string(),
+            client_id: UNREGISTERED_CLIENT_ID.to_string(),
             requested_scopes: vec!["openid".to_string()],
             code_challenge: None,
             code_challenge_method: None,
@@ -726,6 +787,7 @@ mod tests {
             device_name: None,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         }
     }
 
@@ -735,7 +797,7 @@ mod tests {
         AuthorizationRequest {
             id: id.to_string(),
             grant_type: GrantType::AuthorizationCode,
-            client_id: "code-client".to_string(),
+            client_id: UNREGISTERED_CODE_CLIENT_ID.to_string(),
             code_challenge: Some("c".repeat(43)),
             code_challenge_method: Some("S256".to_string()),
             redirect_uri: Some(
@@ -747,23 +809,19 @@ mod tests {
         }
     }
 
-    // FIFO head selector across both grant flows: the oldest pending,
-    // non-expired row wins whichever flow it came from, because the two share
-    // one popup slot. A non-pending row and an expired row are both ignored —
-    // proves each filter pulls its weight.
+    // The newest pending, non-expired row wins whichever flow it came from,
+    // because the host notifies one request per server. Deciding the newest
+    // brings back the one before it, like a stack.
     #[test]
-    fn oldest_pending_consent_head_picks_the_fifo_head_across_both_flows() {
+    fn newest_pending_consent_picks_the_newest_request_across_both_flows() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
 
         // Empty → None.
-        assert_eq!(
-            store.oldest_pending_consent_head().expect("query empty"),
-            None
-        );
+        assert_eq!(store.newest_pending_consent().expect("query empty"), None);
 
         // Insert two pending device rows with explicit requested_at ordering;
         // proptest's arbitrary timestamps would let one shadow the other
-        // without the FIFO discriminator being visible.
+        // without the ordering being visible.
         let now = Utc::now();
         let mut older = device_request("dev-older", "AAA-111", RequestStatus::Pending);
         older.requested_at = now - chrono::Duration::seconds(30);
@@ -777,66 +835,54 @@ mod tests {
             .expect("insert newer");
 
         assert_eq!(
-            store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::Device {
-                user_code: "AAA-111".to_string()
-            })
+            store.newest_pending_consent().expect("query"),
+            Some(unregistered_device_consent("BBB-222"))
         );
 
-        // A code-flow row with an older requested_at *does* take the head: the
-        // queue is shared, so a parked `/oauth/authorize` request outranks a
-        // later device pairing. (This is the regression the device-only query
-        // had — a code row could never surface, so its popup never appeared.)
-        let mut code_row = code_request("code-older", RequestStatus::Pending);
-        code_row.requested_at = now - chrono::Duration::seconds(120);
+        // A code-flow row with a later requested_at takes over: one ordering
+        // spans both flows, so a parked `/oauth/authorize` request outranks an
+        // earlier device pairing.
+        let mut code_row = code_request("code-newest", RequestStatus::Pending);
+        code_row.requested_at = now + chrono::Duration::seconds(30);
         store
             .insert_authorization_request(&code_row)
             .expect("insert code row");
         assert_eq!(
-            store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::OAuth {
-                id: "code-older".to_string()
-            })
+            store.newest_pending_consent().expect("query"),
+            Some(unregistered_code_consent("code-newest"))
         );
 
-        // Denying the head promotes the next pending row — across flows.
+        // Denying the newest brings back the one before it — across flows.
         store
-            .deny_authorization_request("code-older")
+            .deny_authorization_request("code-newest")
             .expect("deny code row");
         assert_eq!(
-            store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::Device {
-                user_code: "AAA-111".to_string()
-            })
+            store.newest_pending_consent().expect("query"),
+            Some(unregistered_device_consent("BBB-222"))
         );
 
-        store
-            .deny_authorization_request("dev-older")
-            .expect("deny older");
-        assert_eq!(
-            store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::Device {
-                user_code: "BBB-222".to_string()
-            })
-        );
-
-        // Denying the last pending row leaves no head.
         store
             .deny_authorization_request("dev-newer")
             .expect("deny newer");
         assert_eq!(
-            store.oldest_pending_consent_head().expect("query final"),
-            None
+            store.newest_pending_consent().expect("query"),
+            Some(unregistered_device_consent("AAA-111"))
         );
+
+        // Denying the last pending row leaves none.
+        store
+            .deny_authorization_request("dev-older")
+            .expect("deny older");
+        assert_eq!(store.newest_pending_consent().expect("query final"), None);
     }
 
-    // Expired pending rows are filtered out, in both flows: the FIFO head must
+    // Expired pending rows are filtered out, in both flows: the query must
     // skip a row whose `expires_at` is in the past. The regular insert prunes
     // via `expires_at < now`, but a row inserted *first* sits in the table
-    // until the next insert sweeps it — the popup query must not pick it
+    // until the next insert sweeps it — the query must not pick it
     // up in that window either.
     #[test]
-    fn oldest_pending_consent_head_skips_expired_rows() {
+    fn newest_pending_consent_skips_expired_rows() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut expired_device = device_request("dev-expired", "EXP-000", RequestStatus::Pending);
         expired_device.expires_at = Utc::now() - chrono::Duration::minutes(1);
@@ -857,23 +903,23 @@ mod tests {
             .authorization_request_by_id("code-expired")
             .expect("query")
             .is_some());
-        // Popup-head query filters them out.
-        assert_eq!(store.oldest_pending_consent_head().expect("query"), None);
+        // The query filters them out.
+        assert_eq!(store.newest_pending_consent().expect("query"), None);
     }
 
     // A device row whose `user_code` is NULL is malformed: there is no key the
     // consent surface could fetch by. It must be skipped entirely rather than
-    // surfacing as a head — and in particular must not be misread as a code-flow
-    // head keyed by `id`, which would send the popup to the wrong endpoint.
+    // surfacing — and in particular must not be misread as a code-flow request
+    // keyed by `id`, which would send the host to the wrong endpoint.
     #[test]
-    fn oldest_pending_consent_head_skips_a_device_row_without_a_user_code() {
+    fn newest_pending_consent_skips_a_device_row_without_a_user_code() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
         let mut malformed = device_request("dev-malformed", "unused", RequestStatus::Pending);
         malformed.user_code = None;
-        malformed.requested_at = now - chrono::Duration::seconds(60);
+        malformed.requested_at = now;
         let mut code_row = code_request("code-1", RequestStatus::Pending);
-        code_row.requested_at = now;
+        code_row.requested_at = now - chrono::Duration::seconds(60);
         store
             .insert_authorization_request(&malformed)
             .expect("insert malformed device row");
@@ -881,19 +927,55 @@ mod tests {
             .insert_authorization_request(&code_row)
             .expect("insert code row");
 
-        // The malformed row is older, so only the guard keeps it off the head.
+        // The malformed row is newer, so only the guard keeps it from winning.
         assert_eq!(
-            store.oldest_pending_consent_head().expect("query"),
-            Some(PendingConsentHead::OAuth {
-                id: "code-1".to_string()
+            store.newest_pending_consent().expect("query"),
+            Some(unregistered_code_consent("code-1"))
+        );
+    }
+
+    // The pending consent names the client that asks: its registered name once it has a
+    // registration, its `client_id` until then, as the consent card does.
+    #[test]
+    fn newest_pending_consent_names_a_registered_client_by_its_name() {
+        use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        store
+            .insert_authorization_request(&code_request("code-1", RequestStatus::Pending))
+            .expect("insert code row");
+        assert_eq!(
+            store.newest_pending_consent().expect("query"),
+            Some(unregistered_code_consent("code-1"))
+        );
+
+        store
+            .upsert_client(&Client {
+                client_id: UNREGISTERED_CODE_CLIENT_ID.to_string(),
+                name: "Lifting".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![],
+                allowed_scopes: vec!["openid".to_string()],
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+            })
+            .expect("register the client");
+        assert_eq!(
+            store.newest_pending_consent().expect("query"),
+            Some(NewestPendingConsent::OAuth {
+                id: "code-1".to_string(),
+                client_name: "Lifting".to_string(),
+                requested_by_owner_browser: false,
             })
         );
     }
 
     // Only `pending` rows are candidates: an approved or denied row of either
-    // flow is a decided request and must never re-raise the popup.
+    // flow is a decided request and must never be notified.
     #[test]
-    fn oldest_pending_consent_head_ignores_decided_rows() {
+    fn newest_pending_consent_ignores_decided_rows() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
             .insert_authorization_request(&device_request(
@@ -905,7 +987,7 @@ mod tests {
         store
             .insert_authorization_request(&code_request("code-denied", RequestStatus::Denied))
             .expect("insert denied code row");
-        assert_eq!(store.oldest_pending_consent_head().expect("query"), None);
+        assert_eq!(store.newest_pending_consent().expect("query"), None);
     }
 
     // A request that is not `approved` is never claimable and is left untouched

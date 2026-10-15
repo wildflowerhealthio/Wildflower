@@ -15,7 +15,8 @@ import { buildHostRouter } from './router.ts'
 interface HostRootProps {
   /**
    * What the base needs: its gate's (`invoke`, the background service's start
-   * config, its telemetry and where the consent answer is kept) and its
+   * config, how it hears notification taps, its telemetry and where the
+   * consent answer is kept) and its
    * routes' (`listen`, the default launcher and Authorization app, and the
    * HTTP client).
    */
@@ -92,6 +93,7 @@ function HostRoot({ base, history, recorderTransport, revealFile }: HostRootProp
     <BaseGate
       invoke={base.invoke}
       backgroundServiceStartConfig={base.backgroundServiceStartConfig}
+      listenToNotificationTaps={base.listenToNotificationTaps}
       telemetry={base.telemetry}
       storage={base.storage}
     >

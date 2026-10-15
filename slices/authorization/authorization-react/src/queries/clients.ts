@@ -37,7 +37,7 @@ const clientsQueryOptions = (
         )
       ),
     // Approving an unknown app (trust on first use) creates a client row from
-    // the host's consent sheet, outside this React tree — refetch on mount so it shows
+    // the server's consent card, outside this React tree — refetch on mount so it shows
     // up, for the same reason the grants list does.
     refetchOnMount: 'always',
   })

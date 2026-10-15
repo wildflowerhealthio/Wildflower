@@ -250,12 +250,8 @@ pub fn run() {
             wildflowerhealthio_servers_tauri::server_remove,
             wildflowerhealthio_servers_tauri::server_launch,
             wildflowerhealthio_servers_tauri::server_open_authorization_app,
-            // The base's consent commands, granted to the `main` webview only
-            // (`allow-server-consents`).
-            wildflowerhealthio_servers_tauri::pending_consents_list,
-            wildflowerhealthio_servers_tauri::server_consent_get,
-            wildflowerhealthio_servers_tauri::server_consent_approve,
-            wildflowerhealthio_servers_tauri::server_consent_deny,
+            wildflowerhealthio_servers_tauri::server_open_pending_consent,
+            wildflowerhealthio_servers_tauri::server_open_notified_consent,
             // The Recorder page's save folder, granted to the `main` webview
             // only (`allow-recorder`).
             wildflowerhealthio_recorder_tauri::recorder_save_folder,

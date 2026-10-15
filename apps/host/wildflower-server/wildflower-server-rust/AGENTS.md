@@ -122,8 +122,8 @@ only it composes. Rust-only, no `-core`.
     CAs, so it fails while no certificate is deployed, and against a staging
     certificate. `WildflowerServer` holds the monitor
     like the tunnel daemon, so it also stops when the server stops serving.
-    The forwarded-request report skips `/health`, so the probes stay out of
-    the request log and the request notifications.
+    The forwarded-request report logs the probes like any other forwarded
+    request.
   - **Session cookies.** A browser on the server's own pages carries a
     cookie and no `Authorization`: an Owner browser's
     `__Host-owner_browser_session`, whose value is the token `/oauth/sign-in`
@@ -142,7 +142,9 @@ only it composes. Rust-only, no `-core`.
     either cookie from any other origin gets `403`. No route is singled out;
     the gates check the token's scopes and revocation. The Wildflower host
     app mints the one-time same-device sign-in codes through
-    `WildflowerServer::same_device_sign_in_code_minter`, in-process.
+    `WildflowerServer::same_device_sign_in_code_minter`, and waits for a
+    consent it opened to settle through
+    `WildflowerServer::pending_consent_watcher`, in-process.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig` with its `DeviceCertificateConfig`, and
     `ServerObservers`); `domain/`
@@ -191,16 +193,15 @@ only it composes. Rust-only, no `-core`.
   as long as the server runs, on a channel the host makes for each run; the
   server's `CertificateState`, published by the device certificate for as
   long as the server runs, on a channel the host makes for each run; the
-  head of the authorization server's pending-consent queue, published as the run starts and
-  after each change to the queue, on a channel the host makes for each run;
-  and each forwarded request (every request through the tunnel), on a
-  channel the host
-  shares across runs, reported by the forwarded-request layer as a
-  `ForwardedRequest` record: the
-  visitor's address (from its `TunnelVisitor`), the path reduced to its route, the status, and the
-  `RequestCaller` or `RequestRefusal` the authorization server bearer gates stamped on the
-  response. The layer sends the same record to the request-log slice.
-  A full report channel drops the report; it never delays a response.
+  authorization server's newest pending consent, published as the run starts and
+  after each change to its pending consents, on a channel the host makes for
+  each run. Each forwarded request (every request through the tunnel) goes
+  to the request-log slice, reported by the forwarded-request layer as a
+  `ForwardedRequest` record: the visitor's address (from its
+  `TunnelVisitor`), the path reduced to its route, the status, and the
+  `RequestCaller` or `RequestRefusal` the authorization server bearer gates
+  stamped on the response. A full report channel drops the report; it never
+  delays a response.
 - **Background tasks die with the runtime.** Slices `tokio::spawn` long-lived
   tasks onto the runtime that runs `set_up`; cancelling `shutdown` stops the
   listeners, not those tasks (the tunnel's supervisor, the reachability

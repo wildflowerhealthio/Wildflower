@@ -9,8 +9,7 @@ import pageLayout from '../../styles/page-layout.module.css'
 type DeviceCodeEntryFormProps = {
   /**
    * Called with a validated `XXXX-XXXX` code when the owner submits: the
-   * launcher's `/authorization/devices` route navigates to its device-consent
-   * route, the authorization server's device page reads the request.
+   * authorization server's device page reads the request.
    */
   readonly onSubmit: (code: string) => void
   /**
@@ -25,9 +24,8 @@ type DeviceCodeEntryFormProps = {
 }
 
 /**
- * The device-code entry form of the launcher's public `/authorization/devices`
- * route and the authorization server's device page. Renders no header itself —
- * the surface supplies its own.
+ * The device-code entry form of the authorization server's device page.
+ * Renders no header itself — the surface supplies its own.
  */
 const DeviceCodeEntryForm = ({
   onSubmit,

@@ -5,8 +5,8 @@
 //! so redeeming one is proof of that device. The token it earns is the
 //! Owner's, issued to the Owner-browser client
 //! ([`OWNER_BROWSER_CLIENT_ID`]) and holding the Owner's grant
-//! ([`OWNER_SCOPES`](crate::OWNER_SCOPES)), the grant the
-//! [`HostConsentDecider`](crate::HostConsentDecider) acts under.
+//! ([`OWNER_SCOPES`](crate::OWNER_SCOPES)), with which the Owner decides
+//! consents on the server's own consent pages.
 
 use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;

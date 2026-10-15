@@ -101,6 +101,10 @@ pub struct AuthorizationRequest {
     /// The patient the consumed launch context binds, if any. When set, an
     /// approval must name this patient (see [`Self::admits_patient`]).
     pub launch_bound_patient: Option<String>,
+    /// Whether the browser that made the request carried the Owner browser
+    /// session (auth-code flow only; `false` for a device request). That
+    /// browser is sent to the consent card itself.
+    pub requested_by_owner_browser: bool,
 }
 
 /// Inputs to start an authorization-code flow request.
@@ -125,6 +129,9 @@ pub struct StartCodeAuthorizationArgs {
     /// The launch context `/authorize` consumed for this request, or `None` for
     /// a plain OAuth request.
     pub launch_context: Option<LaunchContext>,
+    /// Whether the browser calling `/authorize` carries the Owner browser
+    /// session.
+    pub requested_by_owner_browser: bool,
 }
 
 /// Inputs to start a device-code flow request.
@@ -192,6 +199,7 @@ impl AuthorizationRequest {
             device_name: None,
             launch,
             launch_bound_patient,
+            requested_by_owner_browser: input.requested_by_owner_browser,
         }
     }
 
@@ -218,6 +226,7 @@ impl AuthorizationRequest {
             device_name: input.device_name,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         }
     }
 }

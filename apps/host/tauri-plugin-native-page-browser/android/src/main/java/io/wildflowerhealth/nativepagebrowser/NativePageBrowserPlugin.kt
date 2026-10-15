@@ -25,15 +25,20 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 /**
- * Arguments decoded from `invoke('plugin:native-page-browser|open', { url, events })`.
+ * Arguments decoded from
+ * `invoke('plugin:native-page-browser|open', { url, view, mode, events })`.
  * Keys match `OpenRequest`'s camelCase serde wire shape (see `models.rs`).
- * `events` is a Tauri `Channel<BrowserEvent>` that hears `{"event":"keptAlive"}`
- * when the view's browser keeps the app alive, and `{"event":"closed"}` once
- * this view is gone.
+ * `view` is the caller's name for the view, which `close` takes; a Custom Tab
+ * can't be closed, so nothing here reads it. `mode` is `models.rs` `OpenMode`:
+ * `"replace"` or `"stack"`. `events` is a Tauri `Channel<BrowserEvent>`
+ * that hears `{"event":"keptAlive"}` when the view's browser keeps the app
+ * alive, and `{"event":"closed"}` once this view is gone.
  */
 @InvokeArg
 class OpenArgs {
     lateinit var url: String
+    lateinit var view: String
+    lateinit var mode: String
     lateinit var events: Channel
 }
 
@@ -52,17 +57,21 @@ class OpenArgs {
  * arrives before the session has connected waits up to
  * [SESSION_WAIT_MILLIS] for it, then launches without one.
  *
- * One view shows at a time, and a Custom Tab can't be closed programmatically.
- * An `open` arriving while the host is in front can only find a view still
- * launching (a second tap before the tab covers the host): it joins that view
- * instead of launching another, and resolves as that view's `open` does.
- * `open` rejects while the host activity isn't in front: Android blocks
+ * A Custom Tab can't be closed programmatically, so `close` rejects. An `open`
+ * arriving while the host is in front can only find views still launching (a
+ * second tap before the tab covers the host). A `replace` open joins the
+ * latest of them, when a `replace` open launched it, instead of launching
+ * another, and resolves as that view's `open` does; over a `stack` open's
+ * view, it launches its own, so its URL opens. A `stack` open launches a view
+ * of its own, which shows over them. `open` rejects while the host activity isn't in front: Android blocks
  * activity starts from the background. Every other `open` launches its view
  * and resolves.
  *
  * A view counts as closed when the host activity resumes after pausing under
  * it, and that resume sends `{"event":"closed"}` on the channel of each `open`
- * that launched or joined it: exactly once per resolved `open`. Switching apps
+ * that launched or joined it: exactly once per resolved `open`. Views stacked
+ * one over another are all in the host's task, so the host resumes only once
+ * the last of them is closed, and every one reports its close then. Switching apps
  * from the view (to a password manager or an authenticator, mid-sign-in) leaves
  * the view on top of the host's task, so the host doesn't resume and the view
  * stays open.
@@ -91,14 +100,17 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
         /** How long an `open` waits for the Custom Tabs session to connect. */
         private const val SESSION_WAIT_MILLIS = 1_000L
+
+        /** `models.rs` `OpenMode::Stack`, as [OpenArgs.mode] carries it. */
+        private const val MODE_STACK = "stack"
     }
 
     /**
      * One view, from its `open` until its close, with the channel of each
      * `open` that launched or joined it, and the joined `open`s still waiting
-     * for the launch.
+     * for the launch. `stacked`: a `stack` open launched it.
      */
-    private class Page(events: Channel) {
+    private class Page(events: Channel, val stacked: Boolean) {
         private val eventChannels = mutableListOf(events)
         private val invokesAwaitingLaunch = mutableListOf<Invoke>()
 
@@ -152,8 +164,8 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         }
     }
 
-    /** The view from its `open` until its close, or null. UI thread only, like every field below. */
-    private var showing: Page? = null
+    /** The views from their `open` until their close, oldest first. UI thread only, like every field below. */
+    private val showing = mutableListOf<Page>()
 
     /** The host activity is resumed. Tracked by [HostLifecycle]. */
     private var hostInFront = true
@@ -177,7 +189,7 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
     init {
         activity.application.registerActivityLifecycleCallbacks(HostLifecycle())
-        KeepAliveService.onBound = { showing?.reportKeptAlive() }
+        KeepAliveService.onBound = { showing.forEach { it.reportKeptAlive() } }
         connectSession()
     }
 
@@ -237,15 +249,22 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
                 return@runOnUiThread
             }
             // The host is in front, so a showing view hasn't covered it yet.
-            val launching = showing
-            if (launching != null) {
+            val stacked = args.mode == MODE_STACK
+            val launching = showing.lastOrNull()
+            if (launching != null && !stacked && !launching.stacked) {
                 launching.join(invoke, args.events)
                 return@runOnUiThread
             }
-            val page = Page(args.events)
-            showing = page
+            val page = Page(args.events, stacked)
+            showing.add(page)
             whenSessionReady { launch(page, invoke, Uri.parse(args.url)) }
         }
+    }
+
+    /** A Custom Tab can't be closed programmatically: rejects, whichever view it names. */
+    @Command
+    fun close(invoke: Invoke) {
+        invoke.reject("native-page-browser: a Custom Tab can't be closed by the app")
     }
 
     /** Launch `page`'s view of `url`, unless the host left while it waited for the session. */
@@ -267,7 +286,7 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
             invoke.resolve()
             return
         }
-        showing = null
+        showing.remove(page)
         val message = "native-page-browser: could not open $url: $failure"
         page.rejectJoined(message)
         invoke.reject(message)
@@ -331,16 +350,15 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
     private fun hostPaused() {
         hostInFront = false
         // A view still waiting for the session hasn't covered the host.
-        showing?.takeIf { it.launched }?.hostLeft = true
+        showing.filter { it.launched }.forEach { it.hostLeft = true }
     }
 
-    /** The host is back in front, so the view that was up over it is gone. */
+    /** The host is back in front, so the views that were up over it are gone. */
     private fun hostResumed() {
         hostInFront = true
-        val page = showing ?: return
-        if (!page.hostLeft) return
-        showing = null
-        page.reportClosed()
+        val gone = showing.filter { it.hostLeft }
+        showing.removeAll(gone)
+        gone.forEach { it.reportClosed() }
     }
 
     /** Hears the host activity pause and resume; ignores every other activity. */
