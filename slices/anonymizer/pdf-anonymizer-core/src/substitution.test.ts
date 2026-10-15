@@ -3,6 +3,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Document } from '@wildflowerhealthio/positioned-text'
+import { matchKey } from './match-key.ts'
 import { applySubstitutions, maskSameLength } from './substitution.ts'
 
 describe('maskSameLength', () => {
@@ -48,7 +49,7 @@ describe('maskSameLength', () => {
 
   it('should always preserve the code-point count of the input', () => {
     fc.assert(
-      fc.property(fc.string(), (input) => {
+      fc.property(fc.string({ unit: 'binary' }), (input) => {
         // Act
         const result = maskSameLength(input)
 
@@ -61,7 +62,7 @@ describe('maskSameLength', () => {
 
   it('should always be idempotent', () => {
     fc.assert(
-      fc.property(fc.string(), (input) => {
+      fc.property(fc.string({ unit: 'binary' }), (input) => {
         // Act
         const once = maskSameLength(input)
         const twice = maskSameLength(once)
@@ -103,8 +104,16 @@ describe('maskSameLength', () => {
     expect(maskSameLength('ǅ')).toBe('X')
   })
 
-  it('should keep emoji verbatim', () => {
-    expect(maskSameLength('👋🌍')).toBe('👋🌍')
+  it('should mask combining marks to x', () => {
+    expect(maskSameLength('राम')).toBe('xxx')
+    expect(maskSameLength('สมชาย')).toBe('xxxxx')
+    expect(maskSameLength('Jose\u0301')).toBe('Xxxxx')
+  })
+
+  it('should mask symbols to x', () => {
+    expect(maskSameLength('Ⓙⓞⓗⓝ')).toBe('xxxx')
+    expect(maskSameLength('👋🌍')).toBe('xx')
+    expect(maskSameLength('+$')).toBe('xx')
   })
 
   it('should handle mixed ASCII and unicode', () => {
@@ -196,6 +205,84 @@ describe('applySubstitutions', () => {
     expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 1 }])
   })
 
+  it('should mask a matched name together with its combining marks', () => {
+    // Arrange
+    const doc = docWith('Patient: राम')
+    const rules = [{ id: 'r1', text: 'राम' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('Patient: xxx')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 1 }])
+  })
+
+  it('should match a decomposed spelling of a composed rule', () => {
+    // Arrange — the run carries NFD (`e` + U+0301), the rule NFC (`é`)
+    const doc = docWith('Jose\u0301 Ruiz')
+    const rules = [{ id: 'r1', text: 'José' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('Xxxxx Ruiz')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 1 }])
+  })
+
+  it('should match a Turkish dotted capital I against a plain i', () => {
+    // Arrange
+    const doc = docWith('İBRAHİM YILMAZ')
+    const rules = [{ id: 'r1', text: 'Ibrahim' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('XXXXXXX YILMAZ')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 1 }])
+  })
+
+  it('should match compatibility variants such as full-width and circled letters', () => {
+    // Arrange
+    const doc = docWith('ＪＯＨＮ / Ⓙⓞⓗⓝ')
+    const rules = [{ id: 'r1', text: 'john' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('XXXX / xxxx')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 2 }])
+  })
+
+  it('should mask a ligature once when two occurrences share it', () => {
+    // Arrange — `ﬀ` keys as `ff`, so the rule `f` occurs twice inside it
+    const doc = docWith('eﬀort')
+    const rules = [{ id: 'r1', text: 'f' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('exort')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 2 }])
+  })
+
+  it('should skip a rule of only combining marks', () => {
+    // Arrange
+    const doc = docWith('Jose\u0301')
+    const rules = [{ id: 'r1', text: '\u0301' }]
+
+    // Act
+    const { document, ruleMatches } = applySubstitutions(doc, rules)
+
+    // Assert
+    expect(textOf(document)).toBe('Jose\u0301')
+    expect(ruleMatches).toEqual([{ ruleId: 'r1', count: 0 }])
+  })
+
   it('should mask a matched name written in a caseless script', () => {
     // Arrange
     const doc = docWith('Patient: 王小明')
@@ -262,19 +349,23 @@ describe('applySubstitutions', () => {
 
   it('should leave non-matching runs byte-identical', () => {
     fc.assert(
-      fc.property(fc.string({ minLength: 1 }), fc.string({ minLength: 1 }), (runText, ruleText) => {
-        fc.pre(!runText.toLowerCase().includes(ruleText.toLowerCase()))
+      fc.property(
+        fc.string({ unit: 'binary', minLength: 1 }),
+        fc.string({ unit: 'binary', minLength: 1 }),
+        (runText, ruleText) => {
+          fc.pre(!matchKey(runText).includes(matchKey(ruleText)))
 
-        // Arrange
-        const doc = docWith(runText)
-        const rules = [{ id: 'r1', text: ruleText }]
+          // Arrange
+          const doc = docWith(runText)
+          const rules = [{ id: 'r1', text: ruleText }]
 
-        // Act
-        const { document } = applySubstitutions(doc, rules)
+          // Act
+          const { document } = applySubstitutions(doc, rules)
 
-        // Assert
-        expect(textOf(document)).toBe(runText)
-      }),
+          // Assert
+          expect(textOf(document)).toBe(runText)
+        }
+      ),
       { numRuns: numRunsFor({ base: 200 }) }
     )
   })
@@ -286,34 +377,42 @@ describe('applySubstitutions', () => {
       // survives. The prefix stays fully arbitrary; only the rule text is
       // constrained, since it is the rule text's own mask that would otherwise
       // bridge with a neighbour.
-      fc.property(fc.string({ minLength: 1 }), maskDisjointText(), (prefix, ruleText) => {
-        // Arrange
-        const doc = docWith(prefix + ruleText)
-        const rules = [{ id: 'r1', text: ruleText }]
+      fc.property(
+        fc.string({ unit: 'binary', minLength: 1 }),
+        maskDisjointText(),
+        (prefix, ruleText) => {
+          // Arrange
+          const doc = docWith(prefix + ruleText)
+          const rules = [{ id: 'r1', text: ruleText }]
 
-        // Act
-        const { document } = applySubstitutions(doc, rules)
+          // Act
+          const { document } = applySubstitutions(doc, rules)
 
-        // Assert
-        expect(textOf(document).toLowerCase()).not.toContain(ruleText.toLowerCase())
-      }),
+          // Assert
+          expect(matchKey(textOf(document))).not.toContain(matchKey(ruleText))
+        }
+      ),
       { numRuns: numRunsFor({ base: 200 }) }
     )
   })
 
   it('should always preserve the code-point count of each run', () => {
     fc.assert(
-      fc.property(fc.string({ minLength: 1 }), fc.string({ minLength: 1 }), (runText, ruleText) => {
-        // Arrange
-        const doc = docWith(runText)
-        const rules = [{ id: 'r1', text: ruleText }]
+      fc.property(
+        fc.string({ unit: 'binary', minLength: 1 }),
+        fc.string({ unit: 'binary', minLength: 1 }),
+        (runText, ruleText) => {
+          // Arrange
+          const doc = docWith(runText)
+          const rules = [{ id: 'r1', text: ruleText }]
 
-        // Act
-        const { document } = applySubstitutions(doc, rules)
+          // Act
+          const { document } = applySubstitutions(doc, rules)
 
-        // Assert
-        expect(Array.from(textOf(document)).length).toBe(Array.from(runText).length)
-      }),
+          // Assert
+          expect(Array.from(textOf(document)).length).toBe(Array.from(runText).length)
+        }
+      ),
       { numRuns: numRunsFor({ base: 200 }) }
     )
   })
@@ -325,18 +424,22 @@ describe('applySubstitutions', () => {
       // mask characters can create a fresh match on the second pass — the same
       // single-pass boundary artifact, excluded here. The run text stays
       // arbitrary.
-      fc.property(fc.string({ minLength: 1 }), maskDisjointText(), (runText, ruleText) => {
-        // Arrange
-        const doc = docWith(runText)
-        const rules = [{ id: 'r1', text: ruleText }]
+      fc.property(
+        fc.string({ unit: 'binary', minLength: 1 }),
+        maskDisjointText(),
+        (runText, ruleText) => {
+          // Arrange
+          const doc = docWith(runText)
+          const rules = [{ id: 'r1', text: ruleText }]
 
-        // Act
-        const once = applySubstitutions(doc, rules)
-        const twice = applySubstitutions(once.document, rules)
+          // Act
+          const once = applySubstitutions(doc, rules)
+          const twice = applySubstitutions(once.document, rules)
 
-        // Assert
-        expect(textOf(twice.document)).toBe(textOf(once.document))
-      }),
+          // Assert
+          expect(textOf(twice.document)).toBe(textOf(once.document))
+        }
+      ),
       { numRuns: numRunsFor({ base: 200 }) }
     )
   })
