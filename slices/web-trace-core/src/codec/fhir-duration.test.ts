@@ -3,7 +3,7 @@ import { Duration, Effect, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { DurationFromFhirDuration, UCUM_TIME_CODES } from './fhir-duration.ts'
+import { DurationFromFhirDuration, UcumTimeCode } from './fhir-duration.ts'
 import { UCUM_MILLISECOND_CODE, UCUM_SYSTEM } from './systems.ts'
 
 const decode = Schema.decodeUnknown(DurationFromFhirDuration)
@@ -68,11 +68,11 @@ describe('DurationFromFhirDuration', () => {
   })
 
   // `mo` and `a` are UCUM time codes, so the only thing keeping them out is the
-  // deliberate omission from the table — neither has a fixed length.
+  // deliberate omission from the literal set — neither has a fixed length.
   test.each(['mo', 'a'])(
     '%s has no fixed length, so it is rejected rather than averaged',
     async (code) => {
-      expect(UCUM_TIME_CODES.has(code)).toBe(false)
+      expect(Schema.is(UcumTimeCode)(code)).toBe(false)
       expect(await failureOf({ value: 1, code, system: UCUM_SYSTEM })).toContain(code)
     }
   )

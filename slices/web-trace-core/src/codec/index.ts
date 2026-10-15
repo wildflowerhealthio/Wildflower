@@ -30,7 +30,7 @@ export {
   TraceExchangeFromFhirJson,
   traceExchangeToWire,
 } from './document-reference-codec.ts'
-export { DurationFromFhirDuration, UCUM_TIME_CODES } from './fhir-duration.ts'
+export { DurationFromFhirDuration, UCUM_TIME_CODE_SPANS, UcumTimeCode } from './fhir-duration.ts'
 export {
   BODY_SKIPPED_REASON_EXTENSION,
   HAR_ARCHIVE_CODE,

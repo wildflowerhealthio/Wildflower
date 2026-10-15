@@ -12,26 +12,39 @@ import { UCUM_MILLISECOND_CODE, UCUM_SYSTEM } from './systems.ts'
  */
 
 /**
- * The UCUM time codes that name a fixed span, and what one of each is worth.
+ * The UCUM time codes that name a fixed span.
  *
  * @remarks
  * `mo` and `a` (month, year) are deliberately absent: neither has a fixed
  * length, so neither converts to a `Duration` without inventing a calendar.
  * A trace timing is never expressed in months anyway — rejecting them is
  * better than picking an average.
- *
- * A `Map` rather than an object literal: the code is read off the resource, and
- * an object lookup would answer `constructor` or `toString` with a prototype
- * method instead of "no such unit".
  */
-const UCUM_TIME_CODES: ReadonlyMap<string, Duration.Duration> = new Map([
-  ['ms', Duration.millis(1)],
-  ['s', Duration.seconds(1)],
-  ['min', Duration.minutes(1)],
-  ['h', Duration.hours(1)],
-  ['d', Duration.days(1)],
-  ['wk', Duration.weeks(1)],
-])
+const UcumTimeCode = Schema.Literal('ms', 's', 'min', 'h', 'd', 'wk')
+
+/** One of the {@link UcumTimeCode} literals. */
+type UcumTimeCode = typeof UcumTimeCode.Type
+
+/**
+ * What one of each {@link UcumTimeCode} is worth.
+ *
+ * @remarks
+ * Keyed by the literal type, so only a valid code can look a span up. The
+ * code read off a resource is decoded with {@link UcumTimeCode} first: that
+ * decode is an exact match against the six literals, so `constructor` or
+ * `toString` fail it as "no such unit" and never reach this object's
+ * prototype.
+ */
+const UCUM_TIME_CODE_SPANS: { readonly [Code in UcumTimeCode]: Duration.Duration } = {
+  ms: Duration.millis(1),
+  s: Duration.seconds(1),
+  min: Duration.minutes(1),
+  h: Duration.hours(1),
+  d: Duration.days(1),
+  wk: Duration.weeks(1),
+}
+
+const isUcumTimeCode = Schema.is(UcumTimeCode)
 
 /**
  * A `Duration`, read from and written as a FHIR R4 `Duration` (a UCUM
@@ -71,8 +84,7 @@ const DurationFromFhirDuration: Schema.Schema<Duration.Duration, FhirR4.Duration
           new ParseResult.Type(ast, quantity, `Duration unit system is not UCUM: ${system}`)
         )
       }
-      const unit = code === undefined ? undefined : UCUM_TIME_CODES.get(code)
-      if (unit === undefined) {
+      if (!isUcumTimeCode(code)) {
         return ParseResult.fail(
           new ParseResult.Type(
             ast,
@@ -83,7 +95,8 @@ const DurationFromFhirDuration: Schema.Schema<Duration.Duration, FhirR4.Duration
       }
       // Every supported code is a whole number of milliseconds, so scaling in
       // millis is exact for the fractional values a timing actually carries.
-      return ParseResult.succeed(Duration.millis(value * Duration.toMillis(unit)))
+      const span = UCUM_TIME_CODE_SPANS[code]
+      return ParseResult.succeed(Duration.millis(value * Duration.toMillis(span)))
     },
     encode: (duration) =>
       ParseResult.decodeUnknown(FhirDuration.Schema)({
@@ -97,4 +110,4 @@ const DurationFromFhirDuration: Schema.Schema<Duration.Duration, FhirR4.Duration
     description: 'An elapsed time, carried as a FHIR R4 Duration in UCUM units.',
   })
 
-export { DurationFromFhirDuration, UCUM_TIME_CODES }
+export { DurationFromFhirDuration, UCUM_TIME_CODE_SPANS, UcumTimeCode }
