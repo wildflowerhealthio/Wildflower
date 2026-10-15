@@ -63,7 +63,8 @@ jobs:
           # doesn't leave every PR cold.
           cache-on-failure: true
 
-      - name: Build workspace (dependencies + all targets)
-        # Compile-only sibling of ci-rust.yml's `clippy-all`, with its exact
-        # selection so the cached artifacts match what that step looks for.
+      - name: Build and check workspace (dependencies + all targets)
+        # Builds what ci-rust.yml's test shards compile and checks what its
+        # `clippy-all` checks, with their exact selection so the cached
+        # artifacts match what those steps look for.
         run: ./scripts/checks/rust.sh build-all

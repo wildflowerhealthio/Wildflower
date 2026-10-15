@@ -33,16 +33,16 @@ by hand:
 
 ## The shared keys
 
-| Key                   | Jobs                                                   | Environment                                                             |
-| --------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `workspace-linux-dev` | `ci-rust.yml` → `rust`; `rust-cache-warm.yml` → `warm` | Full workspace, `ubuntu-latest`, dev profile, default rustflags         |
-| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)          | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app  |
-| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)        | Release profile, rustflags add `-C link-arg=advapi32.lib`               |
-| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)          | Release profile, `ubuntu-22.04` — a different image from CI's           |
-| `release-ios`         | `tauri-release-publish.yml` → `build-ios`              | Release profile, `aarch64-apple-ios`                                    |
-| `release-android`     | `tauri-release-publish.yml` → `build-android`          | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`      |
-| `release-relay`       | `deploy-relay.yml` → `build`                           | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04` |
-| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                | No compile at all; `cache-targets: false`, registry and git only        |
+| Key                   | Jobs                                                           | Environment                                                             |
+| --------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `workspace-linux-dev` | `ci-rust.yml` → `lint`, `test`; `rust-cache-warm.yml` → `warm` | Full workspace, `ubuntu-latest`, dev profile, default rustflags         |
+| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)                  | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app  |
+| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)                | Release profile, rustflags add `-C link-arg=advapi32.lib`               |
+| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)                  | Release profile, `ubuntu-22.04` — a different image from CI's           |
+| `release-ios`         | `tauri-release-publish.yml` → `build-ios`                      | Release profile, `aarch64-apple-ios`                                    |
+| `release-android`     | `tauri-release-publish.yml` → `build-android`                  | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`      |
+| `release-relay`       | `deploy-relay.yml` → `build`                                   | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04` |
+| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                        | No compile at all; `cache-targets: false`, registry and git only        |
 
 Every one of them pins `cache-on-failure: true` — also the action's own default,
 stated outright because the scheme depends on it: a red run still saves the
@@ -85,12 +85,23 @@ It reproduces `ci-rust.yml`'s environment exactly — same runner image, same
 toolchain action with no extra `CARGO*`/`RUST*` env or rustflags, same
 GTK/webkit libs, same stubbed bundles — because anything that differs there
 would fork the env hash and leave the two jobs with separate entries anyway.
-It compiles through `scripts/checks/rust.sh build-all`, the compile-only sibling
-of `clippy-all` / `test-all`, which reuses `clippy-all`'s
-`--workspace --all-targets --all-features` selection — a superset of the targets
-`test-all` builds: feature unification and target selection are part of an
-artifact's fingerprint, so a warm-up that differed on either would cache
-artifacts CI then rebuilds.
+It compiles through `scripts/checks/rust.sh build-all`, which reuses
+`clippy-all`'s `--workspace --all-targets --all-features` selection — a superset
+of the targets the `test-shard` runs build: feature unification and target
+selection are part of an artifact's fingerprint, so a warm-up that differed on
+either would cache artifacts CI then rebuilds. That is also why each test shard
+builds the whole workspace and narrows only which tests run: a `-p` subset
+unifies dependency features differently and would recompile them.
+
+`build-all` runs twice over that selection, `cargo build` then `cargo clippy`,
+because CI reads two kinds of dependency artifact. The test shards link
+against `cargo build`'s; clippy reads the check-only metadata a build never
+writes. Without the clippy pass, the lint job would re-check every dependency
+(about three minutes) on every run.
+
+Within a run, only `ci-rust.yml`'s `lint` job saves; the parallel test shards
+restore only (`cache-save-if: false`), so they don't race for the same
+write-once key.
 
 Two things drop the warm entry: GitHub evicts any entry untouched for 7 days,
 and it evicts least-recently-used entries once the repository passes its 10 GB

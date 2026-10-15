@@ -18,17 +18,21 @@
 # Subcommands:
 #   fmt | clippy | test            non-Tauri workspace partition
 #   tauri-clippy | tauri-test      the GTK/webkit Tauri crates partition
-#   clippy-all | test-all          the FULL workspace incl. Tauri, in one pass
-#                                  (the merged ci-rust.yml job, where the
-#                                  GTK/webkit libs are installed)
-#   build-all                      compile that same full workspace without
-#                                  linting or running anything — the CI cache
-#                                  warmer (.github/workflows/rust-cache-warm.yml)
+#   clippy-all                     clippy over the FULL workspace incl. Tauri
+#                                  (ci-rust.yml's lint job, where the GTK/webkit
+#                                  libs are installed)
+#   test-shard <filterset>         build the FULL workspace's tests, run those
+#                                  the nextest filterset selects (one
+#                                  ci-rust.yml test shard; scripts/ci/rust-shards.ts
+#                                  plans them)
+#   build-all                      compile and clippy-check that same full
+#                                  workspace without running anything — the CI
+#                                  cache warmer (.github/workflows/rust-cache-warm.yml)
 #   pre-commit                     fmt + clippy + tauri-clippy   (lint/format)
 #   pre-push                       test + tauri-test             (tests)
 set -euo pipefail
 
-step="${1:?usage: rust.sh <fmt|clippy|test|tauri-clippy|tauri-test|clippy-all|test-all|build-all|pre-commit|pre-push>}"
+step="${1:?usage: rust.sh <fmt|clippy|test|tauri-clippy|tauri-test|clippy-all|test-shard <filterset>|build-all|pre-commit|pre-push>}"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -38,10 +42,10 @@ if ! have cargo; then
 fi
 
 # The workspace partitions: everything except the GTK/webkit-dependent Tauri
-# crates vs. the Tauri crates themselves. ci-rust.yml now compiles the FULL
-# workspace in one job (clippy-all / test-all), so these partitions are used by
-# the changed-crate hooks (pre-commit / pre-push) and the local Tauri degrade
-# path — not to split CI into two jobs.
+# crates vs. the Tauri crates themselves. ci-rust.yml compiles the FULL
+# workspace in every job (clippy-all / test-shard), so these partitions are
+# used by the changed-crate hooks (pre-commit / pre-push) and the local Tauri
+# degrade path — not to split CI.
 non_tauri=(--workspace
   --exclude host-app
   --exclude wildflowerhealthio-browser-sniffer-tauri
@@ -112,11 +116,11 @@ do_tauri_test() {
 }
 
 # Full-workspace clippy/test — no exclusions, so the Tauri crates compile in the
-# same pass as everything else. Used by the merged ci-rust.yml job, which
-# installs the GTK/webkit libs so `--workspace` builds end to end. Locally it
-# degrades to the non-Tauri partition when those libs are absent (same escape
-# hatch as do_tauri_*), so a frontend-only contributor running it isn't blocked;
-# CI still gates the full set on PRs.
+# same pass as everything else. Used by ci-rust.yml's jobs, which install the
+# GTK/webkit libs so `--workspace` builds end to end. Locally they degrade to the
+# non-Tauri partition when those libs are absent (same escape hatch as
+# do_tauri_*), so a frontend-only contributor running them isn't blocked; CI
+# still gates the full set on PRs.
 do_clippy_all() {
   if tauri_capable; then
     cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -124,23 +128,32 @@ do_clippy_all() {
     do_clippy
   fi
 }
-do_test_all() {
+# A test shard builds the whole workspace even though it runs only some crates'
+# tests: a `-p` subset would unify dependency features differently from the
+# warmed cache's `--workspace` build and recompile the dependencies that moved.
+# Filtersets are nextest's, so this step has no `cargo test` fallback.
+do_test_shard() { # usage: do_test_shard <nextest filterset>
   if tauri_capable; then
-    run_tests --workspace
+    cargo nextest run --workspace --all-features --no-tests=warn -E "$1"
   else
-    do_test
+    cargo nextest run "${non_tauri[@]}" --all-features --no-tests=warn -E "$1"
   fi
 }
 
 # Compile-only pass with clippy-all's exact selection: feature unification and
 # target selection are part of an artifact's fingerprint, so a warm-up build
 # differing on either caches artifacts CI then rebuilds
-# (docs/Rust/CI Build Cache Explanation.md).
+# (docs/Rust/CI Build Cache Explanation.md). It builds twice because CI needs
+# two kinds of dependency artifact: `cargo build`'s for the test shards, and
+# the check-only metadata clippy reads, which a build doesn't produce. No
+# `-D warnings`: a lint on main must not stop the warm-up.
 do_build_all() {
   if tauri_capable; then
     cargo build --workspace --all-targets --all-features
+    cargo clippy --workspace --all-targets --all-features
   else
     cargo build "${non_tauri[@]}" --all-targets --all-features
+    cargo clippy "${non_tauri[@]}" --all-targets --all-features
   fi
 }
 
@@ -213,7 +226,7 @@ case "$step" in
   tauri-clippy) do_tauri_clippy ;;
   tauri-test) do_tauri_test ;;
   clippy-all) do_clippy_all ;;
-  test-all) do_test_all ;;
+  test-shard) do_test_shard "${2:?usage: rust.sh test-shard <nextest filterset>}" ;;
   build-all) do_build_all ;;
   pre-commit)
     # fmt is compile-free and fast, so keep it whole-workspace; scope the

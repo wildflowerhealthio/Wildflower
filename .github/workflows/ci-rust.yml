@@ -4,19 +4,17 @@ on:
   # Called by ci.yml, which runs this only on pull requests that touch
   # Rust; the paths are its `changes` filter.
   #
-  # It compiles, lints, and tests the ENTIRE Cargo workspace in one job,
-  # including the crates that pull in `tauri = "2"` (host-app,
+  # It lints and tests the ENTIRE Cargo workspace, including the crates
+  # that pull in `tauri = "2"` (host-app,
   # wildflowerhealthio-browser-sniffer-tauri,
   # wildflowerhealthio-recorder-tauri, wildflowerhealthio-servers-tauri,
   # tauri-plugin-native-webview, tauri-plugin-native-page-browser,
   # wildflowerhealthio-tauri-unit-runner).
-  # Those need GTK/webkit system libs, so the job installs them and stubs the
-  # generated web bundles the Tauri crates `include_str!` (and the relay's
-  # admin UI, which wildflowerhealthio-relay-server embeds).
-  # (This used to be a separate ci-rust-tauri.yml; the split saved little
-  # because most Rust PRs touch a Tauri crate anyway.)
+  # Those need GTK/webkit system libs, so every compiling job installs them
+  # and stubs the generated web bundles the Tauri crates `include_str!` (and
+  # the relay's admin UI, which wildflowerhealthio-relay-server embeds).
   #
-  # The full-workspace test pass also runs each slice's
+  # The test shards also run each slice's
   # `openapi_spec_snapshot_is_up_to_date` test — the Rust half of the OpenAPI
   # drift gate. So a snapshot-only regen with no *.rs change is matched via
   # the committed JSON path in ci.yml's `rust` filter; api-sync.yml keeps only
@@ -25,21 +23,106 @@ on:
 
 permissions:
   contents: read
-  # dorny/paths-filter (the in-job bootstrap detector below) reads the PR's
+  # dorny/paths-filter (the test runners' bootstrap detector) reads the PR's
   # changed-file list from the GitHub API.
   pull-requests: read
 
 jobs:
-  # One job for fmt + clippy + nextest + doctests across the WHOLE workspace: a
-  # single checkout, toolchain setup, nextest install, GTK/webkit apt install,
-  # and one compiled-artifact cache mean the workspace is compiled ONCE, then
-  # clippy and the tests reuse those artifacts. Previously the Tauri crates were
-  # split into their own workflow to avoid the GTK install on non-Tauri PRs, but
-  # that isolation rarely paid off, so it's folded back in here.
-  rust:
-    name: Lint + Test
+  # Three jobs start together, except `test`, which waits only on the small
+  # `shards` plan: `lint` (fmt + clippy over the whole workspace), `shards`
+  # (which crates' tests each runner gets, for only the crates the PR can
+  # affect), and `test`, one runner per shard. Every compiling job pays its own
+  # GTK/webkit install, toolchain setup and cache restore; in exchange, the
+  # lint and the tests no longer queue behind each other, and the tests split
+  # over several runners. Draft PRs are skipped.
+  lint:
+    name: Lint
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Cached per runner image: docs/Rust/CI Build Cache Explanation.md.
+      - name: Install Tauri system dependencies
+        uses: ./.github/actions/setup-tauri-linux-deps
+
+      # clippy only type-checks, so the sniffer bootstrap's contents never
+      # matter here; a placeholder serves even when its source changed.
+      - name: Stub the embedded web bundles
+        run: ./scripts/ci/stub-embedded-bundles.sh all
+
+      - name: Set up Rust toolchain
+        # Reads rust-toolchain.toml, caches the cargo registry + `target/`, and
+        # registers the clippy/rustfmt problem matchers. `workspace-linux-dev`
+        # names this build environment; rust-cache-warm.yml warms that entry on
+        # `main`, the only ref a `pull_request` run can restore from. This job
+        # is the one that saves this PR's entry; the test runners restore only.
+        # Key scheme: docs/Rust/CI Build Cache Explanation.md.
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-shared-key: workspace-linux-dev
+          cache-on-failure: true
+      # fmt / clippy go through scripts/checks/rust.sh — the single source of
+      # truth shared with the git hooks (.vite-hooks + the `staged` block in
+      # vite.config.ts). clippy-all runs the full --workspace (no Tauri
+      # exclusions); the GTK/webkit libs installed above let those crates
+      # build, so none of the script's local-only skip paths trigger here.
+      - name: rustfmt
+        run: ./scripts/checks/rust.sh fmt
+      - name: clippy (deny warnings)
+        run: ./scripts/checks/rust.sh clippy-all
+
+  # Plans the test matrix: a fixed set of crate groups, and only those holding
+  # a crate the PR changes or reaches through the workspace path deps. A change
+  # to the toolchain, the lockfile, the root manifest or this CI plumbing runs
+  # them all. Rules: scripts/ci/rust-shards.ts.
+  shards:
+    name: Plan test shards
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shard-count: ${{ steps.plan.outputs.shard-count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Need history + origin/main for the plan to compute the merge-base.
+          fetch-depth: 0
+
+      # The planner imports only Node builtins, so this job skips `vp install`.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+
+      # `cargo metadata --no-deps` only reads the manifests, so the runner
+      # image's own stable toolchain serves; RUSTUP_TOOLCHAIN stops rustup
+      # from first installing the version rust-toolchain.toml pins. Assigned
+      # first, then written: a failure inside `echo "...$(...)"` would not
+      # fail the step.
+      - name: Plan test shards
+        id: plan
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: |
+          matrix=$(node scripts/ci/rust-shards.ts)
+          shard_count=$(jq '.include | length' <<< "$matrix")
+          {
+            echo "matrix=$matrix"
+            echo "shard-count=$shard_count"
+          } >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test (${{ matrix.name }})
+    needs: shards
+    # GitHub fails a job whose matrix is empty, so a plan with no shards skips
+    # the job instead; a skipped job counts as passing for `Required`.
+    if: github.event.pull_request.draft != true && needs.shards.outputs.shard-count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one failing group doesn't hide another's.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.shards.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -88,31 +171,23 @@ jobs:
       - name: Stub authorization server pages
         run: ./scripts/ci/stub-embedded-bundles.sh authorization-server-web
 
+      # Restore only: `lint` saves this PR's entry, so the parallel runners
+      # don't race for the same write-once key.
       - name: Set up Rust toolchain
-        # Reads rust-toolchain.toml, caches the cargo registry + `target/`, and
-        # registers the clippy/rustfmt problem matchers. `workspace-linux-dev`
-        # names this build environment; rust-cache-warm.yml warms that entry on
-        # `main`, the only ref a `pull_request` run can restore from. Key scheme:
-        # docs/Rust/CI Build Cache Explanation.md.
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           cache-shared-key: workspace-linux-dev
-          cache-on-failure: true
+          cache-save-if: 'false'
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2.87.27
         with:
           tool: nextest
-      # fmt / clippy / nextest go through scripts/checks/rust.sh — the single
-      # source of truth shared with the git hooks (.vite-hooks + the `staged`
-      # block in vite.config.ts). clippy-all / test-all run the full --workspace
-      # (no Tauri exclusions); the GTK/webkit libs installed above let those
-      # crates build, so none of the script's local-only skip paths trigger here.
-      - name: rustfmt
-        run: ./scripts/checks/rust.sh fmt
-      - name: clippy (deny warnings)
-        run: ./scripts/checks/rust.sh clippy-all
+      # Builds the whole workspace's tests and runs this shard's crates'; see
+      # scripts/checks/rust.sh for why not a `-p` subset.
       - name: Run tests (nextest)
-        run: ./scripts/checks/rust.sh test-all
+        env:
+          FILTER: ${{ matrix.filter }}
+        run: ./scripts/checks/rust.sh test-shard "$FILTER"
 
   # Supply-chain gate. Kept as its own job because cargo-deny doesn't reuse the
   # compiled-workspace artifacts above, so merging it in would only serialize
