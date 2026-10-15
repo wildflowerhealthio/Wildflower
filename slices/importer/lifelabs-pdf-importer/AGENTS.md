@@ -62,7 +62,8 @@ function.
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
   Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
   `dateTime`), `reference-range.ts` (printed reference range to bounds),
-  `result-value.ts` (printed result to quantity or text), `units.ts` (the
+  `result-value.ts` (printed result to quantity or text), `printed-number.ts`
+  (the printed-number grammar and reading those two share), `units.ts` (the
   LifeLabs display-unit → UCUM mapping `quantityWire` stamps as
   `Quantity.system` / `Quantity.code` beside the printed spelling; a spelling
   not in the table is carried as `unit` alone rather than guessing a code).
