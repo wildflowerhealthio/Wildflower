@@ -14,8 +14,9 @@
 //! domain: its connections are held to the server's domain by their SNI and
 //! their requests by their `Host`, are served as the public origin whatever
 //! `Forwarded` or spelling of the `Host` they carry, and name the visitor from
-//! a PROXY protocol v2 header. The `/health` the reachability monitor asks through the relay is
-//! answered there, and logged but not reported to the host.
+//! a PROXY protocol v2 header. The `/health` the reachability monitor asks
+//! through the relay is answered there, and logged but not reported to the
+//! host.
 //!
 //! A SMART app's launch carries a `launch` the apps slice mints through
 //! the authorization server, which the app's `/oauth/authorize` consumes once.
