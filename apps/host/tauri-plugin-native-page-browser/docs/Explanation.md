@@ -38,11 +38,14 @@ What an `open` does while a view is showing is its mode's, and differs by platfo
   - A `stack` open presents the new one from the top-most view controller, which may be a view of the plugin's, and leaves the others where they are.
   - `close(view)` dismisses the view the caller named the same way, with every view over it, and sends each one's `Closed`. Dismissing a view dismisses whatever is presented over it, so closing a view under another closes both. A view already gone closes nothing, and `close` resolves.
   - An `open` or a `close` that arrives while a view is still animating in or out is rejected, because UIKit ignores a dismiss or present started mid-transition and never calls its completion.
-- **Android** can't replace a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front. It doesn't need to, though: a showing view covers the host, so an `open` from the app can only arrive while the view is still launching (a second tap before the tab slides in). That `open` joins the launching view instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events. An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
+- **Android** can't replace or close a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front, so `close` is rejected. A showing view covers the host, so an `open` from the app can only arrive while the views it finds are still launching (a second tap before the tab slides in), or after the host came back in front, which reports the views it was under closed (as a notification tap can bring it).
+  - A `replace` open that finds a view still launching joins the latest one instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events.
+  - A `stack` open launches its own view, over any still launching. Each tab is an activity in the host's task, so closing the top one reveals the one under it, and the host resumes, reporting every view's `Closed`, only once the last is closed.
+  - An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
 
 ## How Android hears the close
 
-A Custom Tab runs in the browser's process, so the plugin watches the host activity instead. Launching a view pauses the host under it; when the host next resumes, the view is gone, and the plugin reports its `Closed` to every `open` that launched or joined it. The `ACTION_VIEW` fallback to the default browser, when no Custom Tabs provider is installed, closes the same way.
+A Custom Tab runs in the browser's process, so the plugin watches the host activity instead. Launching a view pauses the host under it; when the host next resumes, the views it was under are gone, and the plugin reports each one's `Closed` to every `open` that launched or joined it. The `ACTION_VIEW` fallback to the default browser, when no Custom Tabs provider is installed, closes the same way.
 
 The plugin hears the host pause and resume through `Application.registerActivityLifecycleCallbacks`, filtered to the host activity, not through `Plugin.onPause` / `onResume`. Tauri's generated `TauriActivity` defines `TauriLifecycleObserver`, which forwards those, but never registers it, so they never run. Even registered, it would observe `ProcessLifecycleOwner`, which reports the whole process and delivers a pause about 700 ms late.
 
@@ -105,8 +108,8 @@ apps/host/tauri-plugin-native-page-browser/
       ├─ iOS/Android: run_mobile_plugin_async("open", { url, view, mode, events }).await
       │     → iOS replace: dismiss the showing views, if any → channel.send({ event:"closed" }) on EACH one's channel
       │       iOS stack: present over the top-most view
-      │       Android: reject if the app is in the background; join a view still launching;
-      │                wait up to 1 s for the Custom Tabs session
+      │       Android: reject if the app is in the background; replace: join a view still launching;
+      │                stack: launch another; wait up to 1 s for the Custom Tabs session
       │     → present SFSafariViewController / launch the Custom Tab (with the keep-alive extra)
       │     → Android: the browser binds KeepAliveService → channel.send({ event:"keptAlive" })
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler
@@ -144,7 +147,9 @@ second `replace` open replaces the first and reports `Closed` for it on iOS; a
 reveals the first, still on its page, and reports `Closed` for the second only;
 `close` of the first with the second over it reports `Closed` for both. On Android
 a launch after the first view closed opens a new view, and a double-tapped
-launch opens one view whose close reports `Closed` to both. With Chrome as the
+launch opens one view whose close reports `Closed` to both; a `stack` open
+while a view launches opens a second tab over it, and the host's resume after
+both are closed reports `Closed` for each. With Chrome as the
 Custom Tabs provider, `adb shell dumpsys netpolicy` shows the host's uid at
 `procState=BTOP` with `effective=NONE` (no network block) while a view is open,
 and `adb shell dumpsys activity services <package>` shows Chrome bound to
