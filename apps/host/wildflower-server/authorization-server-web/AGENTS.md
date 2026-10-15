@@ -16,9 +16,12 @@ the server's own origin, so the address bar names the server being approved:
 This package composes them over the Owner browser's session. The host app
 also opens either page with `?then=back`, in a browser signed in as the Owner,
 to decide a request another browser or device made: after Allow or Deny the
-page says "Done. You can close this." and steps back out (`history.back()`
-when there is history, else `window.close()`) instead of leaving for the
-client callback or showing the decision's own message. See "Consent
+page says how it went ("Approved. You can close this." or "Declined. You can
+close this.") and steps back out (`history.back()` when there is history, else
+`window.close()`) instead of leaving for the client callback or showing the
+decision's own message. A Close button under that takes the step again, for a
+browser that kept the page open (`DecidedThenBack`). On iOS the host closes
+the page itself once the request settles. See "Consent
 card" and "Device page" in the
 [Jargon Explanation](../../../../slices/authorization/docs/Jargon%20Explanation.md).
 

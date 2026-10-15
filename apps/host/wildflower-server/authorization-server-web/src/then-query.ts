@@ -7,9 +7,6 @@ import { Option } from 'effect'
  */
 const THEN_PARAM = 'then'
 
-/** What a page in `then=back` mode says once the Owner has decided. */
-const DONE_MESSAGE = 'Done. You can close this.'
-
 /** The parts of the browser window {@link goBackOrClose} acts on. */
 interface BrowserWindow {
   readonly history: Pick<History, 'length' | 'back'>
@@ -19,7 +16,8 @@ interface BrowserWindow {
 /**
  * Step back out of a decided page: back through `history` when there is an
  * entry to go back to, else close the window. A browser may refuse to close a
- * window no script opened; the page then stays on its {@link DONE_MESSAGE}.
+ * window no script opened; the page then stays on what it says once decided
+ * (`DecidedThenBack`).
  */
 const goBackOrClose = (browserWindow: BrowserWindow): void => {
   if (browserWindow.history.length > 1) {
@@ -45,4 +43,4 @@ const goBackOnceDecidedOf = (
       })
     : Option.none()
 
-export { DONE_MESSAGE, goBackOnceDecidedOf, goBackOrClose }
+export { goBackOnceDecidedOf, goBackOrClose }

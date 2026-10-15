@@ -19,7 +19,7 @@ import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-c
 import { Effect, Match, Option, Schema } from 'effect'
 import { useEffect, useState, type JSX } from 'react'
 
-import { DONE_MESSAGE } from '../then-query.ts'
+import { DecidedThenBack } from '../decided-then-back.tsx'
 
 import { withoutUserCode } from './user-code-query.ts'
 import styles from './device-page.module.css'
@@ -167,8 +167,8 @@ const requestView = (found: DeviceLookup | undefined, parts: RequestViewParts): 
  * decision, answers `401` or `403` later (the session can end in between).
  * Either way the request stays pending.
  *
- * In `then=back` mode a decision shows the done message and steps back out of
- * the page.
+ * In `then=back` mode a decision says how the Owner decided and steps back out
+ * of the page, with a Close button that takes the step again.
  */
 const DevicePage = ({
   initialUserCode,
@@ -196,8 +196,8 @@ const DevicePage = ({
   // The code box's fill: the page's `user_code` until that code is spent.
   const [prefilledUserCode, setPrefilledUserCode] = useState(initialUserCode)
 
-  // Step back out only once the done message is on screen, so a window the
-  // browser refuses to close still says the decision went through.
+  // Step back out only once the decision is on screen, so a window the
+  // browser refuses to close still says how it went.
   const decided = decision !== null
   useEffect(() => {
     if (decided && Option.isSome(goBackOnceDecided)) goBackOnceDecided.value()
@@ -234,10 +234,8 @@ const DevicePage = ({
         <SessionGate sessionQuery={sessionQuery}>{pendingView}</SessionGate>
       ) : (
         goBackOnceDecided.pipe(
-          Option.map(() => (
-            <p key="done" className={styles['device-page__message']}>
-              {DONE_MESSAGE}
-            </p>
+          Option.map((goBack) => (
+            <DecidedThenBack key="done" decision={decision.status} goBack={goBack} />
           )),
           Option.getOrElse(() => <DeviceDecided key="decided" decision={decision} />)
         )

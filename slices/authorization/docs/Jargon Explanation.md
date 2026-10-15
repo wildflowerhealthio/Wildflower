@@ -492,9 +492,12 @@ The host app opens the card as `/oauth/authorize/{id}/consent?then=back` in a
 browser signed in as the Owner (the desktop's default browser, an in-app
 browser on mobile) to decide a request another browser made. In that mode the
 card leaves for no callback: the other browser's wait page sees the decision
-and finishes the flow. After Allow or Deny it says "Done. You can close this."
-and goes back in the browser's history, or closes the window when there is no
-history to go back to.
+and finishes the flow. After Allow or Deny it says how it went ("Approved. You
+can close this." or "Declined. You can close this.") and goes back in the
+browser's history, or closes the window when there is no history to go back
+to, and its Close button does the same again for a browser that kept the page
+open. On iOS the host closes the in-app browser's view itself once the request
+settles.
 
 ### Device page
 
@@ -508,8 +511,9 @@ On the [Owner browser](#owner-browser)'s session it reads
 `GET /authorization/devices/{userCode}` and shows `authorization-react`'s
 `DeviceConsentCard`, which posts `/approve` or `/deny`; then it tells the Owner
 they can return to the device. Opened by the host app as
-`/oauth/device?user_code=…&then=back`, it instead says "Done. You can close
-this." and goes back, or closes the window, as the consent card does. It follows the API's answers rather than
+`/oauth/device?user_code=…&then=back`, it instead says how it went and goes
+back, or closes the window, with a Close button that does it again, as the
+consent card does. It follows the API's answers rather than
 checking who is signed in. On load it reads `GET /authorization/session`: with
 no session, or one whose scopes don't cover `wildflower/AuthorizationRequest.r`
 and `.u`, it says to approve the request on the device running the server (its

@@ -210,11 +210,23 @@ describe('ConsentPage — exit', () => {
 
 describe('ConsentPage — then=back', () => {
   test.each([
-    ['an approval', 'Allow access', 'approve', 'https://app.example/cb?code=c&state=s'],
-    ['a denial', 'Deny', 'deny', 'https://app.example/cb?error=access_denied&state=s'],
+    [
+      'an approval',
+      'Allow access',
+      'approve',
+      'https://app.example/cb?code=c&state=s',
+      'Approved. You can close this.',
+    ],
+    [
+      'a denial',
+      'Deny',
+      'deny',
+      'https://app.example/cb?error=access_denied&state=s',
+      'Declined. You can close this.',
+    ],
   ])(
-    '%s says it is done and steps back, without leaving for the callback',
-    async (_case, button, decisionPath, callback) => {
+    '%s says how it went and steps back, without leaving for the callback',
+    async (_case, button, decisionPath, callback, decided) => {
       answer = serverHolding(consentFor(['user/Observation.rs']), {
         status: decisionPath === 'approve' ? 'approved' : 'denied',
         redirect: callback,
@@ -223,7 +235,7 @@ describe('ConsentPage — then=back', () => {
 
       await user.click(await screen.findByRole('button', { name: button }))
 
-      expect(await screen.findByText('Done. You can close this.')).toBeDefined()
+      expect(await screen.findByText(decided)).toBeDefined()
       await waitFor(() => {
         expect(goBack).toHaveBeenCalledOnce()
       })
@@ -233,6 +245,22 @@ describe('ConsentPage — then=back', () => {
       )
     }
   )
+
+  test('a page the step left open steps back again on Close', async () => {
+    answer = serverHolding(consentFor(['user/Observation.rs']), {
+      status: 'approved',
+      redirect: 'https://app.example/cb?code=c&state=s',
+    })
+    const { user } = renderPage('then-back')
+    await user.click(await screen.findByRole('button', { name: 'Allow access' }))
+    await waitFor(() => {
+      expect(goBack).toHaveBeenCalledOnce()
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(goBack).toHaveBeenCalledTimes(2)
+  })
 
   test('a browser that cannot decide here still goes to the wait page', async () => {
     answer = () => ({ status: 401, body: {} })

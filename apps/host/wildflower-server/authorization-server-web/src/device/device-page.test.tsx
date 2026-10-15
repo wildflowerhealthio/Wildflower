@@ -287,20 +287,32 @@ describe('DevicePage — deciding', () => {
 
 describe('DevicePage — then=back', () => {
   test.each([
-    ['approving', 'Approve', 'approved', 'approve'],
-    ['declining', 'Decline', 'denied', 'deny'],
-  ])('%s says it is done and steps back', async (_case, button, status, decisionPath) => {
+    ['approving', 'Approve', 'approved', 'approve', 'Approved. You can close this.'],
+    ['declining', 'Decline', 'denied', 'deny', 'Declined. You can close this.'],
+  ])('%s says how it went and steps back', async (_case, button, status, decisionPath, decided) => {
     answer = serverHolding('WDJB-MJHT', { status })
     const { user } = renderPage('WDJB-MJHT', 'then-back')
 
     await user.click(await screen.findByRole('button', { name: 'Continue' }))
     await user.click(await screen.findByRole('button', { name: button }))
 
-    expect(await screen.findByText('Done. You can close this.')).toBeDefined()
+    expect(await screen.findByText(decided)).toBeDefined()
     expect(goBack).toHaveBeenCalledOnce()
     expect(decisions().map((request) => request.path)).toEqual([
       `/authorization/devices/WDJB-MJHT/${decisionPath}`,
     ])
+  })
+
+  test('a page the step left open steps back again on Close', async () => {
+    answer = serverHolding('WDJB-MJHT', { status: 'approved' })
+    const { user } = renderPage('WDJB-MJHT', 'then-back')
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+    await user.click(await screen.findByRole('button', { name: 'Approve' }))
+    expect(goBack).toHaveBeenCalledOnce()
+
+    await user.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(goBack).toHaveBeenCalledTimes(2)
   })
 
   test('a browser that cannot decide here is still told to approve on the server', async () => {
