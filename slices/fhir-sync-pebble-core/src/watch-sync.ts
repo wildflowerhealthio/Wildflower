@@ -99,7 +99,7 @@ interface Step {
  *   changed mid-sync), so writing would mark the wrong record synced: answer
  *   failure and send the watch its settings again;
  * - `Nothing` — nothing to write: answer success without a request;
- * - `Transaction` — PUT `bundle` to the FHIR base URL.
+ * - `Transaction` — POST `bundle` to the FHIR base URL.
  */
 type WritePlan =
   | { readonly _tag: 'WrongConnection' }
