@@ -1,6 +1,8 @@
 import { Document } from '@wildflowerhealthio/positioned-text'
 import { Array as Arr, Order, pipe } from 'effect'
 
+import { matchKey } from './match-key.ts'
+
 interface FrequentSubstring {
   readonly text: string
   readonly count: number
@@ -110,7 +112,8 @@ const byFrequencyThenLength: readonly Order.Order<FrequentSubstring>[] = [
 /**
  * Extract frequently occurring substrings from a positioned-text document.
  * Builds word n-grams (1–3 words) from each run, counts them
- * case-insensitively (keeping the casing of the first occurrence), filters
+ * by {@link matchKey} — the equivalence a substitution rule matches by —
+ * (keeping the spelling of the first occurrence), filters
  * out stopwords and low-frequency entries, and returns the top results sorted
  * by frequency descending, then by text length descending.
  */
@@ -123,7 +126,7 @@ const extractFrequentSubstrings = (doc: Document.Type): readonly FrequentSubstri
     Arr.flatMap((run) => ngramsOf(splitWords(run.text))),
     Arr.filter(isCandidate),
     Arr.reduce(new Map<string, FrequentSubstring>(), (acc, { phrase }) => {
-      const key = phrase.toLowerCase()
+      const key = matchKey(phrase)
       const seen = acc.get(key)
       return acc.set(
         key,

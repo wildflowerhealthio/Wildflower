@@ -1,6 +1,7 @@
 import {
   applySubstitutions,
   extractFrequentSubstrings,
+  matchKey,
   type SubstitutionRule,
 } from '@wildflowerhealthio/pdf-anonymizer-core'
 import type { Document } from '@wildflowerhealthio/positioned-text'
@@ -60,12 +61,9 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
   const allSuggestions = useMemo(() => extractFrequentSubstrings(value), [value])
 
   const filteredSuggestions = useMemo(() => {
-    const ruleTexts = new Set(rules.map((r) => r.text.toLowerCase()).filter((t) => t !== ''))
+    const ruleKeys = new Set(rules.map((r) => matchKey(r.text)).filter((k) => k !== ''))
     return allSuggestions
-      .filter(
-        (s) =>
-          !ruleTexts.has(s.text.toLowerCase()) && !dismissedSuggestions.has(s.text.toLowerCase())
-      )
+      .filter((s) => !ruleKeys.has(matchKey(s.text)) && !dismissedSuggestions.has(matchKey(s.text)))
       .slice(0, MAX_DISPLAYED_SUGGESTIONS)
   }, [allSuggestions, rules, dismissedSuggestions])
 
@@ -74,7 +72,7 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
   }, [])
 
   const onDismissSuggestion = useCallback((text: string) => {
-    setDismissedSuggestions((current) => new Set([...current, text.toLowerCase()]))
+    setDismissedSuggestions((current) => new Set([...current, matchKey(text)]))
   }, [])
 
   const onRunClick = useCallback((text: string) => {
