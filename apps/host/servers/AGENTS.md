@@ -129,7 +129,8 @@ changing how servers run or what the host notifies about them.
   tunnel), or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
   itself, with Refresh; its launcher and its Authorization app, each with
-  Reset to default (`PageUrlForm`); and
+  Reset to default (`PageUrlForm`), named "Reset Launcher URL to default" and
+  "Reset Authorization Manager URL to default" for assistive technology; and
   its removal, said in full, behind a confirm that asks for the domain to be
   typed. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
   password field that starts empty, a `relayIdentityChanged` refusal shown

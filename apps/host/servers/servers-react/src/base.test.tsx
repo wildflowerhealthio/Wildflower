@@ -2418,9 +2418,9 @@ describe('the server page', () => {
     })
 
     // Act
-    await user.click(
-      within(await formOf('Launcher')).getByRole('button', { name: 'Reset to default' })
-    )
+    const reset = await screen.findByRole('button', { name: 'Reset Launcher URL to default' })
+    expect(reset.textContent).toBe('Reset to default')
+    await user.click(reset)
 
     // Assert
     expect(host.seen).toContainEqual({
@@ -2432,10 +2432,8 @@ describe('the server page', () => {
         certificateAuthority: 'letsEncryptStaging',
       },
     })
-    await waitFor(async () => {
-      expect(
-        within(await formOf('Launcher')).queryByRole('button', { name: 'Reset to default' })
-      ).toBeNull()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Reset Launcher URL to default' })).toBeNull()
     })
     expect(screen.getByLabelText('Launcher')).toHaveProperty('value', DEFAULT_LAUNCHER_URL)
     cleanup()
@@ -2445,7 +2443,7 @@ describe('the server page', () => {
 
     // Assert
     expect(await screen.findByLabelText('Launcher')).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Reset to default' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reset Launcher URL to default' })).toBeNull()
   })
 
   it('should reset the Authorization app to the default at once, keeping the launcher', async () => {
@@ -2457,9 +2455,11 @@ describe('the server page', () => {
     })
 
     // Act
-    await user.click(
-      within(await formOf('Authorization')).getByRole('button', { name: 'Reset to default' })
-    )
+    const reset = await screen.findByRole('button', {
+      name: 'Reset Authorization Manager URL to default',
+    })
+    expect(reset.textContent).toBe('Reset to default')
+    await user.click(reset)
 
     // Assert
     expect(host.seen).toContainEqual({
@@ -2471,18 +2471,16 @@ describe('the server page', () => {
         certificateAuthority: 'letsEncryptStaging',
       },
     })
-    await waitFor(async () => {
+    await waitFor(() => {
       expect(
-        within(await formOf('Authorization')).queryByRole('button', { name: 'Reset to default' })
+        screen.queryByRole('button', { name: 'Reset Authorization Manager URL to default' })
       ).toBeNull()
     })
     expect(screen.getByLabelText('Authorization')).toHaveProperty(
       'value',
       DEFAULT_AUTHORIZATION_URL
     )
-    expect(
-      within(await formOf('Launcher')).getByRole('button', { name: 'Reset to default' })
-    ).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Reset Launcher URL to default' })).toBeDefined()
   })
 
   it.each([
@@ -2500,7 +2498,9 @@ describe('the server page', () => {
 
       // Assert
       expect(await screen.findByLabelText('Launcher')).toHaveProperty('value', launcherUrl)
-      expect(screen.queryByRole('button', { name: 'Reset to default' }) !== null).toBe(offersReset)
+      expect(screen.queryByRole('button', { name: 'Reset Launcher URL to default' }) !== null).toBe(
+        offersReset
+      )
     }
   )
 

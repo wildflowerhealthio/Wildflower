@@ -584,17 +584,22 @@ type PageUrlField = 'launcherUrl' | 'authorizationUrl'
 
 /** How a {@link PageUrlForm} names its field, for each of the page URLs. */
 const PAGE_URL_COPY: Readonly<
-  Record<PageUrlField, { label: string; description: string; saveLabel: string }>
+  Record<
+    PageUrlField,
+    { label: string; description: string; saveLabel: string; resetLabel: string }
+  >
 > = {
   launcherUrl: {
     label: 'Launcher',
     description: "The page this server's apps are launched from.",
     saveLabel: 'Save Launcher URL',
+    resetLabel: 'Reset Launcher URL to default',
   },
   authorizationUrl: {
     label: 'Authorization',
     description: 'The Wildflower Authorization app this server opens.',
     saveLabel: 'Save Authorization Manager URL',
+    resetLabel: 'Reset Authorization Manager URL to default',
   },
 }
 
@@ -602,7 +607,8 @@ const PAGE_URL_COPY: Readonly<
  * One of the pages the server opens, its launcher or its Authorization app:
  * a field starting at the saved URL, Save once it is changed, and, while the
  * saved URL isn't `defaultUrl`, the one the host gives a new server, compared
- * as URLs, Reset to default, which saves the default at once. The server's
+ * as URLs, Reset to default, which saves the default at once, named for its
+ * field (`resetLabel`) so the page's two resets are told apart. The server's
  * other page and its certificate authority are saved unchanged, and the
  * host's refusal shows under the field.
  */
@@ -619,7 +625,7 @@ const PageUrlForm = ({
 }): JSX.Element => {
   const updateServer = useUpdateServer(runHostCommand)
   const [url, setUrl] = useState(server[field])
-  const { label, description, saveLabel } = PAGE_URL_COPY[field]
+  const { label, description, saveLabel, resetLabel } = PAGE_URL_COPY[field]
   const save = (saved: string): void => {
     updateServer.mutate({
       domain: server.domain,
@@ -659,6 +665,7 @@ const PageUrlForm = ({
             type="button"
             className={`button-2 ghost ${styles['server-page__form-action']}`}
             disabled={updateServer.isPending}
+            aria-label={resetLabel}
             onClick={() => {
               setUrl(defaultUrl)
               save(defaultUrl)
