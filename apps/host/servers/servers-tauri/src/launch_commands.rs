@@ -44,6 +44,7 @@ use std::future::Future;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tauri::ipc::Channel;
 use tauri::AppHandle;
@@ -428,14 +429,41 @@ async fn close_once_settled_view(
                 log::warn!("[servers] watching the consent opened on {domain} failed: {error}");
                 return;
             }
-            match launch_browser.close(&launch_view.name).await {
-                Ok(()) => log::info!("[servers] closed the settled consent's view on {domain}"),
-                Err(error) => log::warn!(
-                    "[servers] closing the settled consent's view on {domain} failed: {error}"
-                ),
-            }
+            close_settled_view(&launch_browser, &launch_view.name, &domain).await;
         }
         () = launch_view.closed.notified() => {}
+    }
+}
+
+/// How many times the base tries to close a settled consent's view: iOS
+/// refuses a close while a view is still opening or closing, which lasts a
+/// moment.
+const SETTLED_VIEW_CLOSE_TRIES: u32 = 8;
+
+/// How long the base waits between tries to close a settled consent's view.
+const SETTLED_VIEW_CLOSE_RETRY_DELAY: Duration = Duration::from_millis(250);
+
+/// Close `view`, a settled consent's on the server `domain`, in
+/// `launch_browser`, trying again a few times while it refuses, as iOS does
+/// while a view is still opening or closing. The outcome is logged.
+async fn close_settled_view(launch_browser: &impl LaunchBrowser, view: &str, domain: &str) {
+    for attempt in 1..=SETTLED_VIEW_CLOSE_TRIES {
+        match launch_browser.close(view).await {
+            Ok(()) => {
+                log::info!("[servers] closed the settled consent's view on {domain}");
+                return;
+            }
+            Err(error) if attempt < SETTLED_VIEW_CLOSE_TRIES => {
+                log::debug!(
+                    "[servers] closing the settled consent's view on {domain} failed, \
+                     trying again: {error}"
+                );
+                tokio::time::sleep(SETTLED_VIEW_CLOSE_RETRY_DELAY).await;
+            }
+            Err(error) => log::warn!(
+                "[servers] closing the settled consent's view on {domain} failed: {error}"
+            ),
+        }
     }
 }
 
@@ -613,11 +641,14 @@ mod tests {
         views: Arc<Mutex<BrowserViews>>,
     }
 
-    /// Each URL a [`PhoneBrowser`] opened, and the views showing, bottom first.
+    /// Each URL a [`PhoneBrowser`] opened, the views showing, bottom first,
+    /// and how many closes it refuses next, as iOS refuses one while a view is
+    /// still opening or closing.
     #[derive(Default)]
     struct BrowserViews {
         opened: Vec<Url>,
         showing: Vec<ShowingView>,
+        refused_closes: usize,
     }
 
     /// A view a [`PhoneBrowser`] shows: its name, and how it reports its
@@ -713,6 +744,13 @@ mod tests {
                 matches!(self.phone, Phone::Ios),
                 "the base closes no Custom Tab"
             );
+            {
+                let mut views = self.views.lock().unwrap();
+                if views.refused_closes > 0 {
+                    views.refused_closes -= 1;
+                    return Err(tauri_plugin_native_page_browser::Error::CloseDefaultBrowserTab);
+                }
+            }
             let index = self
                 .views
                 .lock()
@@ -1453,6 +1491,28 @@ mod tests {
 
         assert_eq!(browser.showing(), [launch_view]);
         assert_eq!(presence.views().len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_settled_consent_s_view_closes_once_a_transition_lets_it() {
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let presence = OpenLaunchViews::default();
+        let (consent_view, launch_view) = consent_over_a_launch(&browser, &presence).await;
+        browser.views.lock().unwrap().refused_closes = 2;
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            close_once_settled_view(
+                browser.clone(),
+                async { Ok(()) },
+                consent_view,
+                DOMAIN.to_owned(),
+            ),
+        )
+        .await
+        .expect("it closes");
+
+        assert_eq!(browser.showing(), [launch_view]);
     }
 
     #[tokio::test(flavor = "multi_thread")]
