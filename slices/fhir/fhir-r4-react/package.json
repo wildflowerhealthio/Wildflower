@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/fhir-r4-react",
   "version": "0.0.0",
   "private": true,
-  "description": "React surface for the FHIR R4 slice — a tokenless `buildFhirR4ResourcesClientLayer()` (the host's `HttpClient` carries the credential) + structural router-context (`sliceRuntimeLayer`, `useFhirR4ResourcesRuntimeLayer`) the host app merges into its composed `runtimeLayer`, plus the `Patient` TanStack-Query read. Mirrors authorization-react's migrated pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
+  "description": "React surface for the FHIR R4 slice — a tokenless `buildFhirR4ResourcesClientLayer()` (the host's `HttpClient` carries the credential) + structural router-context (`sliceRuntimeLayer`, `useFhirR4ResourcesRuntimeLayer`) the host app merges into its composed `runtimeLayer`, and the `useRunAuthed` hook a consumer's queries read it through. Mirrors authorization-react's migrated pattern; names are FhirR4-specific so future FHIR-version slices can coexist.",
   "type": "module",
   "exports": {
     ".": {
