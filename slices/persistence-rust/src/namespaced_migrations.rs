@@ -54,7 +54,7 @@ struct VersionRow {
 /// applied versions per `(namespace, version)` in [`TRACKING_TABLE`] so slices
 /// sharing one database never collide on a version number.
 ///
-/// `migrations` is append-only (never reorder or rewrite a shipped entry). Each
+/// `source` is append-only (never reorder or rewrite a shipped migration). Each
 /// pending migration runs in its own transaction together with the row that
 /// records it, so a migration and its bookkeeping land atomically.
 ///
