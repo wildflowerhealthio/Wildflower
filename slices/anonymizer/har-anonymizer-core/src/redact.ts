@@ -3,7 +3,14 @@ import { Data, Effect, Schema } from 'effect'
 import type { HttpArchive } from '@wildflowerhealthio/http-archive'
 import type { TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import { hmac, importExportKey, type ExportKey, type WebCryptoUnavailable } from './hmac.ts'
-import { type JsonLeaf, type LeafVisitor, mapEntryLeaves, mapExchangeLeaves } from './leaves.ts'
+import {
+  type JsonLeaf,
+  type LeafVisitor,
+  mapEntryLeaves,
+  mapExchangeLeaves,
+  URL_PASSWORD_PATH,
+  URL_USERNAME_PATH,
+} from './leaves.ts'
 import { detectShape, fakeBase64Url, generateFake, prngFromBytes } from './shapes.ts'
 
 /**
@@ -122,6 +129,17 @@ const CODE_TOKEN = /^[A-Za-z][A-Za-z_-]*$/
  */
 const isCodeToken = (value: string): boolean =>
   value === '' || (value.length <= CODE_TOKEN_MAX_LENGTH && CODE_TOKEN.test(value))
+
+/**
+ * Paths whose values are secrets whatever they look like, so no carve-out may
+ * export them.
+ *
+ * @remarks
+ * A password of lowercase letters passes {@link isCodeToken}, and one session's
+ * URLs usually carry a single credential, so the threshold would export it
+ * verbatim. Only an explicit per-path override can.
+ */
+const CREDENTIAL_PATHS: ReadonlySet<string> = new Set([URL_USERNAME_PATH, URL_PASSWORD_PATH])
 
 /** The longest value the carve-out will treat as a namespace URI. */
 const NAMESPACE_URI_MAX_LENGTH = 256
@@ -398,6 +416,9 @@ const decidePolicy = (
           verbatim: override === 'verbatim',
           decidedBy: 'override',
         }
+      }
+      if (CREDENTIAL_PATHS.has(path)) {
+        return { path, distinctValues: values.size, verbatim: false, decidedBy: 'notCode' }
       }
       // Settled before the code carve-out and outside it: own switch, and no
       // count. A portal with forty private extensions has forty keys, not

@@ -493,5 +493,7 @@ export {
   mapExchangeLeaves,
   pathTemplate,
   queryPath,
+  URL_PASSWORD_PATH,
+  URL_USERNAME_PATH,
   urlSegmentPath,
 }

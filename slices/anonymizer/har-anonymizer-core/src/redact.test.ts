@@ -843,6 +843,20 @@ describe('URL and cookie parts outside a named field', () => {
     }
   })
 
+  test('URL credentials are pseudonymized even when they look like codes', async () => {
+    const session = [traceExchange({ url: 'https://admin:hunter@portal.example.com/patients' })]
+    const policy = await Effect.runPromise(buildRedactionPolicy(session, { salt: SALT_A }))
+    for (const path of ['url:username', 'url:password']) {
+      expect(policy.stats.find((stat) => stat.path === path)).toMatchObject({
+        verbatim: false,
+        decidedBy: 'notCode',
+      })
+    }
+    const [redacted] = await Effect.runPromise(redactSession(policy, session))
+    expect(redacted?.url).not.toContain('admin')
+    expect(redacted?.url).not.toContain('hunter')
+  })
+
   test('a cookie with no name is pseudonymized like any other cookie value', async () => {
     const [redacted] = await redactWith(
       [traceExchange({ headers: [['Cookie', 'theme=dark; sessionAda8813; =tokenLovelace']] })],
