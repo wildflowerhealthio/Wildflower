@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+import { drugNameSlug, plainDrugName } from './drug-name.ts'
 import { allProvinces, parseProvinceList } from './province.ts'
 import type { SponsoredDrug } from './sponsor.ts'
 
@@ -19,19 +20,6 @@ type InnovicaresRaw = typeof InnovicaresRaw.Type
 /** The innoviCares file is a bare array of drug entries. */
 const InnovicaresFile = Schema.Array(InnovicaresRaw)
 
-const stripMarks = (value: string): string =>
-  value
-    .replace(/<[^>]*>/g, '')
-    .replace(/[\u00ae\u2122\u00a9]/g, '')
-    .trim()
-
-const slug = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/<[^>]*>/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-
 /** Where an innoviCares entry with no per-drug page links instead. */
 const INNOVICARES_HOME = 'https://www.innovicares.ca/en/'
 
@@ -46,11 +34,12 @@ const innovicaresToDrug = (raw: InnovicaresRaw): SponsoredDrug => {
     raw.provinces !== undefined && raw.provinces.trim().length > 0
       ? parseProvinceList(raw.provinces)
       : allProvinces
+  const brandName = plainDrugName(raw.title)
   return {
     sponsor: 'innovicares',
-    id: slug(raw.title),
-    brandName: stripMarks(raw.title),
-    genericName: raw.subtitle ?? '',
+    id: drugNameSlug(brandName),
+    brandName,
+    genericName: plainDrugName(raw.subtitle ?? ''),
     provinces: listed,
     url: raw.url !== undefined && raw.url.trim().length > 0 ? raw.url : INNOVICARES_HOME,
   }

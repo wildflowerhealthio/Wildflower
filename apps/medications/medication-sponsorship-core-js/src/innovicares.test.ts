@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vite-plus/test'
 
 import { decodeInnovicaresFile, innovicaresToDrug } from './innovicares.ts'
+import { matchDrug } from './match.ts'
 import { allProvinces } from './province.ts'
 
 // The exact sample shape supplied for the innoviCares list.
@@ -19,6 +20,15 @@ describe('innovicaresToDrug', () => {
     expect(drug.genericName).toBe('aripiprazole')
     expect(drug.url).toBe(abilify.url)
     expect(drug.id).toBe('abilify')
+  })
+
+  test('a plain-letters TM glued to the brand is a trademark mark, not part of the name', () => {
+    const myrbetriq = innovicaresToDrug({ title: 'MyrbetriqTM', subtitle: 'mirabegron' })
+    expect(myrbetriq.brandName).toBe('Myrbetriq')
+    expect(myrbetriq.id).toBe('myrbetriq')
+    expect(
+      matchDrug({ id: 'm1', displayName: 'Myrbetriq 25 mg extended-release tablet' }, myrbetriq)
+    ).toMatchObject({ field: 'brand', confidence: 'strong' })
   })
 
   test('parses the comma-separated province list (QC absent → not covered)', () => {
