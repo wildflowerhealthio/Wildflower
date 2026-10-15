@@ -39,8 +39,8 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   `sizeOf` read through it.
 - **`ValueAxis`** (`src/value-axis.ts`) — one value axis per series: `assign`
   (sides alternate in selection order, `CAP` = 4 axes), `domainFor` (fitted as
-  the series' `valueScale` says), `niceDomain`, `ticksFor` (never `-0`),
-  `normalise` / `denormalise`.
+  the series' `valueScale` says), `niceDomain`, `ticksFor` (never `-0`; a
+  `niceDomain` result is labelled at both ends), `normalise` / `denormalise`.
 - **`Buckets`** (`src/buckets.ts`) — a dense point series summarised for
   drawing: `of(points, xDomain, bucketCount)` splits the domain into
   fixed-width, half-open slices (`start`, `end`) and keeps each slice holding
