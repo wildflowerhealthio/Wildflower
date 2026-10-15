@@ -87,7 +87,7 @@ const harBytesOf = (exchanges: readonly TraceExchange[]): Uint8Array =>
 /** The registered sources' kinds flattened — the flat pool recognition routes against. */
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
-/** The four-way extraction of running the FHIR pool over a decoded HAR. */
+/** The five-way extraction of running the FHIR pool over a decoded HAR. */
 const extract = (harBytes: Uint8Array): ExtractionResult<FhirResource> =>
   Effect.runSync(
     decodeHar(harBytes, defaultHarSettings).pipe(

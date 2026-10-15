@@ -1,12 +1,12 @@
 /**
- * Pull a JSON payload out of either raw JSON or the HTML envelope
- * mobile WebViews wrap around a `application/(fhir+)json` response
- * (Chrome / Safari render the bytes inside a `<html><body><pre>…</pre></body></html>`
- * shell). The handler streams `document.documentElement.outerHTML` as
- * the synthetic page content, so by the time the entity sees
- * the response body, the JSON we actually want has been wrapped twice:
- * once by the viewer (`<pre>` injection) and once by HTML escaping
- * (`<` → `&lt;`, `&` → `&amp;`, etc.).
+ * Pull a JSON payload out of a captured response body that is either raw
+ * JSON or a browser's rendering of it. When a browser navigates straight to
+ * an `application/(fhir+)json` URL, Chrome and Safari show the bytes inside
+ * a `<html><body><pre>…</pre></body></html>` shell, and a capture of that
+ * page holds the JSON wrapped twice: once by the viewer (`<pre>` injection)
+ * and once by HTML escaping (`<` → `&lt;`, `&` → `&amp;`, etc.). JSON
+ * response kinds run their bodies through this before decoding, so either
+ * shape reaches `Schema.decode(parseJson)` as plain JSON.
  *
  * Strategy:
  *   1. If `text` already looks like JSON (`{` or `[` as the first

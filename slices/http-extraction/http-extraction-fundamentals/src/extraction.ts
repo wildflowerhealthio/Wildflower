@@ -142,18 +142,20 @@ const LATIN1 = new TextDecoder('latin1')
 
 /**
  * The dedup key one response is compared under: verb (or an explicit `absent`
- * marker for `Option.none()`), URL, and body bytes, NUL-separated (written as
- * the `\u0000` escape so the source stays text to git and grep). `bodyAbsent` inputs are
- * excluded from the pass entirely — an un-captured body is its own fact and
- * two absent-body entries at the same URL are not "the same response
- * captured twice".
+ * marker for `Option.none()`), URL length, URL, and body bytes, NUL-separated
+ * (written as the `\u0000` escape so the source stays text to git and grep).
+ * The length prefix makes the key injective even when a URL contains a NUL:
+ * the verb never contains one, and the length fixes where the URL ends, so
+ * everything after it is the body. `bodyAbsent` inputs are excluded from the
+ * pass entirely — an un-captured body is its own fact and two absent-body
+ * entries at the same URL are not "the same response captured twice".
  */
 const dedupeKeyOf = (response: Input): string => {
   const method = Option.match(response.method, {
     onNone: () => 'absent',
     onSome: (verb) => verb,
   })
-  return `${method}\u0000${response.url}\u0000${LATIN1.decode(response.body)}`
+  return `${method}\u0000${response.url.length}\u0000${response.url}\u0000${LATIN1.decode(response.body)}`
 }
 
 /**

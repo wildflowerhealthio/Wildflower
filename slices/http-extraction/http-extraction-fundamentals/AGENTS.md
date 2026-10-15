@@ -47,10 +47,10 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `HttpResponse.Data` + `bodyAbsent`). Infallible — failures are data, not
   errors. It never persists. The batch runner (`runExtraction`, the five-way
   `batches` / `unmatched` / `parseFailures` / `bodyAbsent` / `duplicates`
-  accounting) lives in
-  `test-helpers`, not production — production reviews interactively over
-  `recognize` / `parseWith` — as the executable reference model fixture suites
-  (`har-importer-core`'s `decode-har.test.ts`) pin against.
+  accounting) lives in `test-helpers`, not production — production reviews
+  interactively over `recognize` / `parseWith` — as the executable reference
+  model fixture suites (`har-importer-core`'s `decode-har.test.ts`) pin
+  against.
 - **`SourceDescriptor`** (`src/source-descriptor.ts`) — "a source package" as
   one first-class value: `name`, `display` strings, the `responseKinds` the
   source contributes, and an optional `mergeResources`. Recognition and identity

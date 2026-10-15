@@ -43,5 +43,9 @@ describe('recognizePortal', () => {
     it("is None under a verb the matcher doesn't declare", () => {
       expect(tryRecognize('https://portal.example/rx', Option.some('POST'))).toEqual(Option.none())
     })
+
+    it('is None when the method is unknown', () => {
+      expect(tryRecognize('https://portal.example/rx', Option.none())).toEqual(Option.none())
+    })
   })
 })
