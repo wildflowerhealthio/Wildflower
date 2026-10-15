@@ -1319,6 +1319,7 @@ mod tests {
         NewestPendingConsent::OAuth {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
+            requested_by_owner_browser: false,
         }
     }
 

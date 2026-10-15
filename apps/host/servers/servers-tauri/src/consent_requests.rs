@@ -170,6 +170,7 @@ mod tests {
             pending_consent: newest.map(|id| NewestPendingConsent::OAuth {
                 id: id.to_owned(),
                 client_name: "Lifting".to_owned(),
+                requested_by_owner_browser: false,
             }),
             launch_minter: None,
             sign_in_code_minter: None,

@@ -38,6 +38,7 @@ diesel::table! {
         device_name -> Nullable<Text>,
         launch -> Nullable<Text>,
         launch_bound_patient -> Nullable<Text>,
+        requested_by_owner_browser -> Bool,
     }
 }
 
@@ -73,6 +74,7 @@ struct Row {
     device_name: Option<String>,
     launch: Option<String>,
     launch_bound_patient: Option<String>,
+    requested_by_owner_browser: bool,
 }
 
 impl From<Row> for AuthorizationRequest {
@@ -97,6 +99,7 @@ impl From<Row> for AuthorizationRequest {
             device_name: row.device_name,
             launch: row.launch,
             launch_bound_patient: row.launch_bound_patient,
+            requested_by_owner_browser: row.requested_by_owner_browser,
         }
     }
 }
@@ -123,6 +126,7 @@ impl From<&AuthorizationRequest> for Row {
             device_name: request.device_name.clone(),
             launch: request.launch.clone(),
             launch_bound_patient: request.launch_bound_patient.clone(),
+            requested_by_owner_browser: request.requested_by_owner_browser,
         }
     }
 }
@@ -223,6 +227,7 @@ pub(super) fn newest_pending_consent(
             authorization_requests::user_code,
             authorization_requests::client_id,
             clients::name.nullable(),
+            authorization_requests::requested_by_owner_browser,
         ))
         .first::<PendingConsentRow>(conn)
         .optional()
@@ -231,20 +236,31 @@ pub(super) fn newest_pending_consent(
 }
 
 /// The columns [`newest_pending_consent`] selects: the grant type, the
-/// request id, its `user_code`, its `client_id` and the registered client's
-/// name, if it has a registration.
-type PendingConsentRow = (GrantType, String, Option<String>, String, Option<String>);
+/// request id, its `user_code`, its `client_id`, the registered client's
+/// name, if it has a registration, and whether the Owner's browser made it.
+type PendingConsentRow = (
+    GrantType,
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    bool,
+);
 
 /// Build the pending consent from the selected columns. The `None` arm is
 /// unreachable through [`newest_pending_consent`]'s `WHERE`; reaching it
 /// means the filter drifted, and dropping the request keeps the host from
 /// opening a key nothing can fetch.
 fn newest_pending_consent_from_row(
-    (grant_type, id, user_code, client_id, registered_name): PendingConsentRow,
+    (grant_type, id, user_code, client_id, registered_name, requested_by_owner_browser): PendingConsentRow,
 ) -> Option<NewestPendingConsent> {
     let client_name = registered_name.unwrap_or(client_id);
     match grant_type {
-        GrantType::AuthorizationCode => Some(NewestPendingConsent::OAuth { id, client_name }),
+        GrantType::AuthorizationCode => Some(NewestPendingConsent::OAuth {
+            id,
+            client_name,
+            requested_by_owner_browser,
+        }),
         GrantType::DeviceCode => user_code.map(|user_code| NewestPendingConsent::Device {
             user_code,
             client_name,
@@ -453,6 +469,7 @@ mod tests {
             device_name in prop::option::of("[ -~]{1,40}"),
             launch in prop::option::of("[A-Za-z0-9_-]{43}"),
             launch_bound_patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
+            requested_by_owner_browser in any::<bool>(),
         ) -> AuthorizationRequest {
             AuthorizationRequest {
                 id,
@@ -474,6 +491,7 @@ mod tests {
                 device_name,
                 launch,
                 launch_bound_patient,
+                requested_by_owner_browser,
             }
         }
     }
@@ -519,6 +537,7 @@ mod tests {
             device_name: None,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         }
     }
 
@@ -742,6 +761,7 @@ mod tests {
         NewestPendingConsent::OAuth {
             id: id.to_string(),
             client_name: UNREGISTERED_CODE_CLIENT_ID.to_string(),
+            requested_by_owner_browser: false,
         }
     }
 
@@ -767,6 +787,7 @@ mod tests {
             device_name: None,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         }
     }
 
@@ -946,6 +967,7 @@ mod tests {
             Some(NewestPendingConsent::OAuth {
                 id: "code-1".to_string(),
                 client_name: "Lifting".to_string(),
+                requested_by_owner_browser: false,
             })
         );
     }

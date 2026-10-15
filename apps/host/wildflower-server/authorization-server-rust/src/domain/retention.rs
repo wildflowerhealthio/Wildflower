@@ -136,6 +136,7 @@ mod tests {
             device_name: None,
             launch: None,
             launch_bound_patient: None,
+            requested_by_owner_browser: false,
         }
     }
 

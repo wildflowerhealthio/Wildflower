@@ -414,6 +414,7 @@ pub(crate) mod tests {
                         Some(NewestPendingConsent::OAuth {
                             id: "req-1".to_owned(),
                             client_name: "Lifting".to_owned(),
+                            requested_by_owner_browser: false,
                         });
                     waiting
                 }),

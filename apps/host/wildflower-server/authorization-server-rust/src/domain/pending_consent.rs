@@ -41,6 +41,9 @@ pub enum NewestPendingConsent {
         /// The name of the client that asks, as for
         /// [`Device`](Self::Device).
         client_name: String,
+        /// Whether the browser that made the request carried the Owner
+        /// browser session, so it shows the request's consent card itself.
+        requested_by_owner_browser: bool,
     },
 }
 
