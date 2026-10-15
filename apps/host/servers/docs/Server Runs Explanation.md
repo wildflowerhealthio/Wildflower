@@ -162,6 +162,10 @@ binds the same port again when it turns back on. The manifest and plist tests
 check what the files declare, not what the Android manifest merger or iOS make
 of them, and the mobile background session can only be verified on a device.
 
+On macOS, `tauri-plugin-notification` posts a dev build's notifications as
+Terminal (`com.apple.Terminal`, by `tauri::is_dev()`), so they show only while
+Terminal's notifications are allowed in System Settings → Notifications.
+
 ### Device test plan
 
 Android (13 or later, with a server added):
