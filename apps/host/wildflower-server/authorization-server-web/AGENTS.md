@@ -44,8 +44,8 @@ Security Policy (below).
   presses Continue (RFC 8628 §5.4), then reads
   `GET /authorization/devices/{userCode}` and shows the card, which posts
   `/approve` or `/deny`. A `404` keeps the code box with an error; a `401` or
-  `403` (the session ended or changed since load) says to approve on the
-  server too. The request stays pending in both cases. A request that expires before the decision shows
+  `403` on the read or the decision (the session ended or changed since load)
+  says to approve on the server too. The request stays pending in both cases. A request that expires before the decision shows
   `ExpiredDeviceConsent`'s copy on the card.
 - `src/owner-browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.

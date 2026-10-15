@@ -11,6 +11,7 @@ import {
   type DeviceConsentMutation,
   type DeviceConsentResult,
 } from '@wildflowerhealthio/authorization-react'
+import { unwrapFiberFailure } from '@wildflowerhealthio/kitchen-sink'
 import { AsyncErrorView, PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { Grant, Scope } from '@wildflowerhealthio/scopes-core'
 import { isInsufficientScopeBody } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
@@ -94,7 +95,8 @@ interface RequestViewParts {
 /**
  * The page before a decision, for the answer to the last confirmed code
  * (`undefined` before one): the code entry until a code names a request, then
- * the card, or where to decide instead.
+ * the card, or where to decide instead. A decision that answers `401` or `403`
+ * swaps the card for where to decide too.
  */
 const requestView = (
   found: DeviceLookup | undefined,
@@ -104,14 +106,17 @@ const requestView = (
     ? codeEntry
     : Match.value(found).pipe(
         Match.discriminatorsExhaustive('kind')({
-          decidable: ({ consent }) => (
-            <DeviceConsentCard
-              key={consent.userCode}
-              consent={consent}
-              consentMutation={consentMutation}
-              onDone={onDone}
-            />
-          ),
+          decidable: ({ consent }) =>
+            isUndecidableHere(unwrapFiberFailure(consentMutation.error)) ? (
+              <ApproveOnServer />
+            ) : (
+              <DeviceConsentCard
+                key={consent.userCode}
+                consent={consent}
+                consentMutation={consentMutation}
+                onDone={onDone}
+              />
+            ),
           'undecidable-here': () => <ApproveOnServer />,
           'unknown-code': () => codeEntry,
         })
@@ -128,9 +133,9 @@ const requestView = (
  * page shows follows the API's answers, not who the session is. On load it
  * reads the session's scopes: with none (`401`), or without the device
  * routes' scopes, it says to approve the request on the device running the
- * server and shows no code box. The same holds if a code's read answers
- * `401` or `403` later (the session can end in between). Either way the
- * request stays pending.
+ * server and shows no code box. The same holds if a code's read, or the
+ * decision, answers `401` or `403` later (the session can end in between).
+ * Either way the request stays pending.
  */
 const DevicePage = ({ initialUserCode, runAuthed }: DevicePageProps): JSX.Element => {
   const sessionQuery = useQuery({

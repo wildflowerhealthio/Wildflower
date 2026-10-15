@@ -1148,6 +1148,9 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../../../slices/fhir/fhir-r4
+      '@wildflowerhealthio/kitchen-sink':
+        specifier: workspace:*
+        version: link:../../../../global/kitchen-sink
       '@wildflowerhealthio/react-kitchen-sink':
         specifier: workspace:*
         version: link:../../../../global/react-kitchen-sink

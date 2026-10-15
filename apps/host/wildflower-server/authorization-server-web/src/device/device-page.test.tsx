@@ -294,4 +294,24 @@ describe('DevicePage — a browser that cannot decide here', () => {
       expect(decisions()).toEqual([])
     }
   )
+
+  test.each([
+    ['ended', 401, {}],
+    ['lost the scope', 403, { error: 'InsufficientScope', missingScopes: [] }],
+  ])(
+    'a session that %s before the decision is told to approve on the server, with no Approve to retry',
+    async (_case, status, body) => {
+      const holding = serverHolding('WDJB-MJHT', { status: 'approved' })
+      answer = (request) => (request.method === 'POST' ? { status, body } : holding(request))
+      const { user } = renderPage('WDJB-MJHT')
+
+      await user.click(await screen.findByRole('button', { name: 'Continue' }))
+      await user.click(await screen.findByRole('button', { name: 'Approve' }))
+
+      expect(
+        await screen.findByText('Approve this on the device running your server.')
+      ).toBeDefined()
+      expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    }
+  )
 })

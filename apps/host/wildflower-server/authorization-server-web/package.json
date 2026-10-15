@@ -18,6 +18,7 @@
     "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/authorization-react": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/scopes-core": "workspace:*",
