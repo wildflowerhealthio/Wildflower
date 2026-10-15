@@ -226,8 +226,8 @@ the namespace URIs that name what those codes mean. Both are off by default in
 the export UI.
 
 Pseudonymized, because it identifies: every JSON leaf value, header values,
-cookie values, query values, the body digest, and URL path segments that look
-like identifiers. A path segment "looks like an identifier" when it carries a
+cookie values, query values, URL credentials and fragments, the body digest, and
+URL path segments that look like identifiers. A path segment "looks like an identifier" when it carries a
 digit or matches a recognized identifier shape — so `patients` and `v2` survive
 as the route structure a source author needs, while `10432` and
 `8a3f…` do not.

@@ -822,6 +822,39 @@ describe('bodies the pseudonymizer cannot walk', () => {
   })
 })
 
+describe('URL and cookie parts outside a named field', () => {
+  test('URL credentials and the fragment are pseudonymized', async () => {
+    const [redacted] = await redactWith(
+      [
+        traceExchange({
+          url: 'https://ada.lovelace:hunter2secret@portal.example.com/patients#access_token=eyAda8813&state=Lovelace',
+        }),
+      ],
+      { salt: SALT_A }
+    )
+    const url = new URL(redacted?.url ?? '')
+    expect(url.host).toBe('portal.example.com')
+    expect(url.pathname).toBe('/patients')
+    expect(url.username).not.toBe('')
+    expect(url.password).not.toBe('')
+    expect(url.hash).not.toBe('')
+    for (const original of ['ada.lovelace', 'hunter2secret', 'eyAda8813', 'Lovelace']) {
+      expect(redacted?.url).not.toContain(original)
+    }
+  })
+
+  test('a cookie with no name is pseudonymized like any other cookie value', async () => {
+    const [redacted] = await redactWith(
+      [traceExchange({ headers: [['Cookie', 'theme=dark; sessionAda8813; =tokenLovelace']] })],
+      { salt: SALT_A }
+    )
+    const cookie = redacted?.headers.find(([name]) => name === 'Cookie')?.[1] ?? ''
+    expect(cookie).toMatch(/^theme=\w+; \w+; =\w+$/)
+    expect(cookie).not.toContain('sessionAda8813')
+    expect(cookie).not.toContain('tokenLovelace')
+  })
+})
+
 describe('.NET JSON date tokens', () => {
   const Row = Schema.Struct({ collectionDate: Schema.String, testId: Schema.String })
   const rows = (dates: readonly string[]): readonly TraceExchange[] =>

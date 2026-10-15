@@ -122,6 +122,18 @@ const cookieAttributePath = (name: string): string => `cookie-attr:${name.toLowe
 /** Path key for a JSON body leaf, with array indices collapsed so cardinality does not fragment paths. */
 const bodyPath = (jsonPath: string): string => `body:${jsonPath}`
 
+/** Path key for the username in a URL's credentials. */
+const URL_USERNAME_PATH = 'url:username'
+
+/** Path key for the password in a URL's credentials. */
+const URL_PASSWORD_PATH = 'url:password'
+
+/**
+ * Path key for a URL's fragment, walked as one leaf — an OAuth implicit-flow
+ * redirect carries its `access_token` there.
+ */
+const URL_FRAGMENT_PATH = 'url:fragment'
+
 /** Path key for the body digest, which is a fingerprint of the original bytes. */
 const BODY_HASH_PATH = 'body:hash'
 
@@ -165,6 +177,15 @@ const mapUrl = <E>(url: string, visit: LeafVisitor<E>): Effect.Effect<string, E>
     // than picked apart with a hand-rolled parser.
     if (parsed === null) return yield* visit.visitString('url', url)
 
+    // The setters percent-encode what the visitor returns, so the visitor sees
+    // the decoded text a reader would.
+    if (parsed.username !== '') {
+      parsed.username = yield* visit.visitString(URL_USERNAME_PATH, decodeSegment(parsed.username))
+    }
+    if (parsed.password !== '') {
+      parsed.password = yield* visit.visitString(URL_PASSWORD_PATH, decodeSegment(parsed.password))
+    }
+
     const template = pathTemplate(parsed)
     const segments = parsed.pathname.split('/')
     const rewritten: string[] = []
@@ -185,6 +206,10 @@ const mapUrl = <E>(url: string, visit: LeafVisitor<E>): Effect.Effect<string, E>
       query.append(name, value === '' ? value : yield* visit.visitString(queryPath(name), value))
     }
     parsed.search = query.toString()
+
+    if (parsed.hash !== '') {
+      parsed.hash = yield* visit.visitString(URL_FRAGMENT_PATH, decodeSegment(parsed.hash.slice(1)))
+    }
     return parsed.toString()
   })
 
@@ -193,14 +218,19 @@ const mapCookieHeader = <E>(value: string, visit: LeafVisitor<E>): Effect.Effect
     const pairs: string[] = []
     for (const pair of value.split(';')) {
       const trimmed = pair.trim()
-      const equals = trimmed.indexOf('=')
-      if (equals <= 0) {
+      if (trimmed === '') {
         pairs.push(trimmed)
         continue
       }
-      const name = trimmed.slice(0, equals)
-      const cookieValue = trimmed.slice(equals + 1)
-      pairs.push(`${name}=${yield* visit.visitString(cookiePath(name), cookieValue)}`)
+      const equals = trimmed.indexOf('=')
+      // A pair with no `=` is a cookie with an empty name whose value is the
+      // whole pair — still a value, so it is visited like any other.
+      const name = equals < 0 ? '' : trimmed.slice(0, equals)
+      const cookieValue = yield* visit.visitString(
+        cookiePath(name),
+        equals < 0 ? trimmed : trimmed.slice(equals + 1)
+      )
+      pairs.push(equals < 0 ? cookieValue : `${name}=${cookieValue}`)
     }
     return pairs.join('; ')
   })
@@ -210,12 +240,13 @@ const mapSetCookieHeader = <E>(value: string, visit: LeafVisitor<E>): Effect.Eff
     const [first = '', ...attributes] = value.split(';')
     const trimmed = first.trim()
     const equals = trimmed.indexOf('=')
-    const name = equals > 0 ? trimmed.slice(0, equals) : trimmed
-    const cookieValue = equals > 0 ? trimmed.slice(equals + 1) : ''
-    const head =
-      equals > 0
-        ? `${name}=${yield* visit.visitString(cookiePath(name), cookieValue)}`
-        : yield* visit.visitString(cookiePath(name), trimmed)
+    // No `=` means an empty name, as in a `Cookie` pair.
+    const name = equals < 0 ? '' : trimmed.slice(0, equals)
+    const cookieValue = yield* visit.visitString(
+      cookiePath(name),
+      equals < 0 ? trimmed : trimmed.slice(equals + 1)
+    )
+    const head = equals < 0 ? cookieValue : `${name}=${cookieValue}`
 
     const rewrittenAttributes: string[] = []
     for (const attribute of attributes) {
