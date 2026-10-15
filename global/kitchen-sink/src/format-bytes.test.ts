@@ -21,6 +21,12 @@ describe('formatBytes', () => {
     expect(formatBytes(12.6 * 1024)).toBe('13 KB')
   })
 
+  it('renders a value that only reaches 10 after rounding as a whole number (no "10.0 KB")', () => {
+    expect(formatBytes(9.94 * 1024)).toBe('9.9 KB')
+    expect(formatBytes(9.96 * 1024)).toBe('10 KB')
+    expect(formatBytes(10239)).toBe('10 KB')
+  })
+
   it('promotes a value that only reaches 1024 after rounding (no "1024 KB")', () => {
     // 1023.75 KB → rounds to "1024", which must read as the next unit up.
     expect(formatBytes(1048320)).toBe('1.0 MB')
