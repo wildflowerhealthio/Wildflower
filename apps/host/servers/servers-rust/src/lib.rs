@@ -48,7 +48,8 @@
 //! through which it mints the code that signs the browser in as the Owner
 //! first, at its [`sign_in_url`]; the server's Authorization app opens the
 //! same way, at its [`authorization_app_url`], and the consent waiting on it
-//! at its page, through [`consent_sign_in_url`]. What the host notifies about
+//! at its page, through [`consent_sign_in_url`], which the
+//! [`ServerConsentWatcher`] says when to close. What the host notifies about
 //! its servers is decided here too: the notifications for each stop of a
 //! server's run ([`StopNotificationCoalescer`]) and those for each new
 //! consent waiting on a server ([`ConsentNotificationCoalescer`]).
@@ -75,8 +76,9 @@
 //!    never sent.
 //!  - `live_bindings` — [`ServerUnit`], a server bound to
 //!    `wildflower-server-rust` as a unit `UnitRunner` runs, and
-//!    [`ServerLaunchMinter`] and [`ServerSignInCodeMinter`], a run's launches
-//!    and sign-in codes bound to `authorization-server-rust`.
+//!    [`ServerLaunchMinter`], [`ServerSignInCodeMinter`] and
+//!    [`ServerConsentWatcher`], a run's launches, sign-in codes and consent
+//!    watch bound to `authorization-server-rust`.
 
 pub mod domain;
 
@@ -100,6 +102,7 @@ pub use domain::{
     RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
     ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
+pub use live_bindings::server_consent_watcher::ServerConsentWatcher;
 pub use live_bindings::server_launch_minter::ServerLaunchMinter;
 pub use live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 pub use live_bindings::server_unit::ServerUnit;

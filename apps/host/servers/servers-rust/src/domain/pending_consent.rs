@@ -1,5 +1,6 @@
 //! [`PendingConsent`], the newest consent waiting on a server as the base
-//! receives it in the server's status, and the [`ConsentKey`] that names it.
+//! receives it in the server's status, and the [`ConsentKey`] that names it,
+//! the authorization server's.
 //!
 //! A server's authorization server publishes the newest of the consents
 //! waiting for the Owner, device-code and authorization-code requests alike,
@@ -12,30 +13,11 @@
 //! ```
 
 use serde::Serialize;
+pub use wildflowerhealthio_authorization_server::ConsentKey;
 use wildflowerhealthio_authorization_server::NewestPendingConsent;
 use wildflowerhealthio_unit_runner::UnitStatus;
 
 use crate::domain::ServerDetail;
-
-/// One consent on a server, by the key its page looks it up by: a
-/// device-code request's `user_code`, an authorization-code request's `id`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind")]
-pub enum ConsentKey {
-    /// An RFC 8628 device-code request, decided at the server's device page.
-    #[serde(rename = "device", rename_all = "camelCase")]
-    Device {
-        /// The code the device shows its user.
-        user_code: String,
-    },
-    /// An RFC 6749 §4.1 request an app's `/authorize` parked, decided at its
-    /// consent card.
-    #[serde(rename = "oauth")]
-    OAuth {
-        /// The authorization request's id.
-        id: String,
-    },
-}
 
 /// The newest consent waiting on a server: which request, and the name of the
 /// client that asks.

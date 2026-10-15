@@ -5,7 +5,7 @@ use tokio::sync::watch;
 use url::Url;
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AuthorizationServerConfig, LaunchContextMinter,
-    NewestPendingConsent, SameDeviceSignInCodeMinter,
+    NewestPendingConsent, PendingConsentWatcher, SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -18,6 +18,7 @@ pub(crate) const DOMAIN: &str = "ruth.relay.example.com";
 pub(crate) struct TestAuthorizationServer {
     pub(crate) launch_context_minter: LaunchContextMinter,
     pub(crate) same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
+    pub(crate) pending_consent_watcher: PendingConsentWatcher,
     _pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
     database_dir: tempfile::TempDir,
 }
@@ -71,6 +72,7 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
     TestAuthorizationServer {
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
+        pending_consent_watcher: authorization_server.pending_consent_watcher,
         _pending_consent_rx: pending_consent_rx,
         database_dir,
     }

@@ -46,7 +46,7 @@ pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
 };
 pub use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 pub use wildflowerhealthio_authorization_server::{
-    GrantStore, NewestPendingConsent, SqliteGrantStore,
+    ConsentKey, GrantStore, NewestPendingConsent, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
 pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;

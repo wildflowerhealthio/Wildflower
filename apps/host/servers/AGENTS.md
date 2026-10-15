@@ -48,8 +48,9 @@ changing how servers run or what the host notifies about them.
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
     `ServerLaunchMinter`, bound to `authorization-server-rust`'s
-    `LaunchContextMinter`; and `ServerSignInCodeMinter`, bound to its
-    `SameDeviceSignInCodeMinter`. `tests/server_unit.rs` runs the real
+    `LaunchContextMinter`; `ServerSignInCodeMinter`, bound to its
+    `SameDeviceSignInCodeMinter`; and `ServerConsentWatcher`, bound to its
+    `PendingConsentWatcher`. `tests/server_unit.rs` runs the real
     server through `UnitRunner`, the consent waiting on it included.
 - **`servers-tauri`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through

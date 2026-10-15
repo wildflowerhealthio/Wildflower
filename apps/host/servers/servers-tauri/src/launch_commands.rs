@@ -497,7 +497,8 @@ mod tests {
     use wildflowerhealthio_authorization_server::NewestPendingConsent;
     use wildflowerhealthio_rathole_settings::TunnelName;
     use wildflowerhealthio_servers::{
-        CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerRecord, TunnelToken,
+        CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerConsentWatcher,
+        ServerRecord, TunnelToken,
     };
     use wildflowerhealthio_shared_structures::health_check::HealthReport;
     use wildflowerhealthio_tauri_unit_runner::RunState;
@@ -705,6 +706,9 @@ mod tests {
             )),
             sign_in_code_minter: Some(ServerSignInCodeMinter::new(
                 authorization_server.same_device_sign_in_code_minter.clone(),
+            )),
+            consent_watcher: Some(ServerConsentWatcher::new(
+                authorization_server.pending_consent_watcher.clone(),
             )),
         };
         change(&mut detail);

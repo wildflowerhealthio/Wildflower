@@ -16,6 +16,9 @@
 //! - [`SameDeviceSignInCodeMinter`] is the in-process mint of the one-time codes
 //!   `/oauth/sign-in` signs a browser in as the Owner with, handed out the
 //!   same way, to the host.
+//! - [`PendingConsentWatcher`] waits for one pending consent to be decided or
+//!   expire, handed out the same way, to the host, which closes the page it
+//!   opened the request at.
 //! - [`InProcessTokenVerifier`] is the token verifier both authN gates run,
 //!   handed out the same way, for the host's FHIR server to verify bearers
 //!   with in-process.
@@ -36,6 +39,7 @@ mod grants_revoker;
 mod in_process_token_verifier;
 mod launch_context_minter;
 mod oauth_front_door;
+mod pending_consent_watcher;
 mod same_device_sign_in_code_minter;
 mod session;
 
@@ -56,6 +60,7 @@ pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
     LivePublicKeysReader, LiveSameDeviceSignIn,
 };
+pub use pending_consent_watcher::PendingConsentWatcher;
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
 pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};
 pub use state::AuthorizationServerState;

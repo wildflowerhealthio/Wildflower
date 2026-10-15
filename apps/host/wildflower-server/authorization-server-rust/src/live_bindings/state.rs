@@ -78,6 +78,12 @@ pub struct AuthorizationServerState {
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
     pub(crate) owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
+    /// Pinged each time
+    /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
+    /// recomputes the newest pending consent, whether or not it changed: what
+    /// the [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
+    /// request on.
+    pub(crate) pending_consents_recomputed_tx: watch::Sender<()>,
     /// The Owner's grant, [`crate::OWNER_SCOPES`] — what an Owner browser's
     /// session holds, the authority it decides consents with.
     pub(crate) owner_grant: wildflowerhealthio_scopes::Grant,

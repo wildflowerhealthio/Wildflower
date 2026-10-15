@@ -271,6 +271,58 @@ async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
     }
 }
 
+/// The host's [`PendingConsentWatcher`] sees a request settle even when it
+/// isn't the newest: denying an older request while a newer one waits leaves
+/// the newest pending consent unchanged, so nothing reaches the host through
+/// that.
+#[tokio::test]
+async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one() {
+    let (g, owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    let older_id =
+        parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
+    let newer_id =
+        parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
+    let watcher = g.pending_consent_watcher.clone();
+    let older_key = ConsentKey::OAuth {
+        id: older_id.clone(),
+    };
+    let older_settled = tokio::spawn(async move { watcher.until_settled(older_key).await });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(
+        !older_settled.is_finished(),
+        "the older request still waits"
+    );
+
+    let res = g
+        .router
+        .clone()
+        .oneshot(build_request(
+            Request::post(format!("/authorization/oauth-consents/{older_id}/deny"))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {owner_token}"))
+                .header("content-type", "application/json"),
+            Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), older_settled)
+        .await
+        .expect("the watcher sees the older request settle")
+        .expect("the watcher's task")
+        .expect("the watcher's reads");
+    assert_eq!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            id: newer_id,
+            client_name: "Integration Test Client".to_owned(),
+        }),
+        "the newer request is still the newest",
+    );
+}
+
 /// The grant fast path approves inside `/authorize` itself, so its request is
 /// never awaiting a human — it must not be published on its way through
 /// `pending`. A spurious notification here would ask the Owner to re-approve something

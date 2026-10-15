@@ -142,7 +142,9 @@ only it composes. Rust-only, no `-core`.
     either cookie from any other origin gets `403`. No route is singled out;
     the gates check the token's scopes and revocation. The Wildflower host
     app mints the one-time same-device sign-in codes through
-    `WildflowerServer::same_device_sign_in_code_minter`, in-process.
+    `WildflowerServer::same_device_sign_in_code_minter`, and waits for a
+    consent it opened to settle through
+    `WildflowerServer::pending_consent_watcher`, in-process.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig` with its `DeviceCertificateConfig`, and
     `ServerObservers`); `domain/`

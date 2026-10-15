@@ -16,7 +16,7 @@ use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    SameDeviceSignInCodeMinter,
+    PendingConsentWatcher, SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -79,6 +79,8 @@ pub struct WildflowerServer {
     /// Mints the one-time codes this server's `/oauth/sign-in` signs a
     /// browser in as the Owner with.
     same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
+    /// Waits for a pending consent of this server's to be decided or expire.
+    pending_consent_watcher: PendingConsentWatcher,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
@@ -109,6 +111,15 @@ impl WildflowerServer {
         self.same_device_sign_in_code_minter.clone()
     }
 
+    /// A handle that waits for a pending consent of this server's to be
+    /// decided or expire, for the host to close the page it opened the
+    /// request at. Clone it before [`serve`](Self::serve); it watches for as
+    /// long as this run serves.
+    #[must_use]
+    pub fn pending_consent_watcher(&self) -> PendingConsentWatcher {
+        self.pending_consent_watcher.clone()
+    }
+
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
     /// sent is served as a visitor's connection through the tunnel. Test
     /// support only (the `test-support` feature).
@@ -136,8 +147,8 @@ impl WildflowerServer {
             reachability_monitor,
             device_certificate,
             bulk_export_worker,
-            // The launch context and sign-in code minters, the host's consent
-            // decider, and the `test-support` feature's `tunnel_stream_tx`.
+            // The launch context and sign-in code minters, the pending consent
+            // watcher, and the `test-support` feature's `tunnel_stream_tx`.
             ..
         } = self;
         let tunnel = axum::serve(
@@ -547,6 +558,7 @@ pub async fn set_up(
         reachability_monitor,
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
+        pending_consent_watcher: authorization_server.pending_consent_watcher,
         device_certificate,
         bulk_export_worker: fhir_routers.bulk_export_worker,
     })

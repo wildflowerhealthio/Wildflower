@@ -37,6 +37,11 @@ impl OwnerApproval for AuthorizationServerState {
     /// just handled. A
     /// surviving pending row will republish on the next mutation or
     /// reaper tick.
+    ///
+    /// Either way it then pings `pending_consents_recomputed_tx`, so a
+    /// [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
+    /// request: one decided or expired while a newer one stays newest
+    /// changes nothing on the watch above.
     fn republish_active(&self) {
         self.owner_approval_tx.send_if_modified(|current| {
             let next = match self.store.newest_pending_consent() {
@@ -53,5 +58,6 @@ impl OwnerApproval for AuthorizationServerState {
                 true
             }
         });
+        self.pending_consents_recomputed_tx.send_replace(());
     }
 }

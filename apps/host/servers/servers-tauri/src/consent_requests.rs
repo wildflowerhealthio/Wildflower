@@ -140,6 +140,7 @@ mod tests {
             }),
             launch_minter: None,
             sign_in_code_minter: None,
+            consent_watcher: None,
         };
         [(
             UnitId::new(RUTH),

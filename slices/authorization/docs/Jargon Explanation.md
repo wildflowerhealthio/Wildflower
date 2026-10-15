@@ -422,6 +422,13 @@ A request that the [grant](#grant) fast path fully pre-approves is never pending
 reaper re-runs the query so an idle host doesn't stay stuck on a request whose
 TTL lapsed.
 
+The host also watches one request it opened, through the
+`PendingConsentWatcher` the authorization server hands it: it rereads that
+request, by its `ConsentKey` (the device request's `user_code` or the code
+request's `id`), each time the newest is recomputed, changed or not, so it
+sees the request decided or expired even while a newer one stays newest. On
+iOS the host closes the page it opened the request at once it settles.
+
 Leaving the consent page undecided decides nothing: the request stays pending
 and answerable from the server's page in the host until it expires, while the
 requesting browser keeps waiting (on the [wait page](#wait-page) for a code

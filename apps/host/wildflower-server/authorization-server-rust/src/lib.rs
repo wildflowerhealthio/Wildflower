@@ -51,7 +51,7 @@ pub use seeding::seed_dev_app_clients;
 // `SqliteGrantStore` adapter. `GrantStore` is the transaction seam
 // (and carries the standalone-convenience default methods); `GrantTx` is
 // the primitive contract a composed transaction hands out.
-pub use domain::pending_consent::NewestPendingConsent;
+pub use domain::pending_consent::{ConsentKey, NewestPendingConsent};
 pub use domain::{GrantStore, GrantTx};
 
 // Re-exported so the host can name the pool type at the `setup_authorization_server`
@@ -69,7 +69,9 @@ pub use http::{
     AuthorizationServerAuthMiddleware, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
     OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
-pub use live_bindings::{InProcessTokenVerifier, LaunchContextMinter, SameDeviceSignInCodeMinter};
+pub use live_bindings::{
+    InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
+};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
@@ -180,7 +182,8 @@ const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration:
 /// Result of `setup_authorization_server`: the public router that should be merged
 /// into the app's root router, the shared `Arc<AuthorizationServerState>` needed to
 /// gate fhir-r4-rust traffic, the minter app launches mint their `launch`
-/// values through, and the minter the host mints same-device sign-in codes through.
+/// values through, the minter the host mints same-device sign-in codes through,
+/// and the watcher it waits on for a pending consent to settle.
 pub struct AuthorizationServer {
     pub router: axum::Router,
     pub state: Arc<AuthorizationServerState>,
@@ -190,6 +193,9 @@ pub struct AuthorizationServer {
     /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
     /// Owner with — for the host, in-process.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
+    /// Waits for a pending consent to be decided or expire — for the host,
+    /// in-process, which closes the page it opened the request at.
+    pub pending_consent_watcher: PendingConsentWatcher,
     /// Verifies access tokens as the authorization server's own gates do —
     /// for the host's FHIR server, which verifies each bearer through it
     /// in-process.
@@ -220,6 +226,8 @@ pub struct AuthorizationServer {
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
 ///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
+///  - returns the [`PendingConsentWatcher`] the host waits on for a pending
+///    consent it opened to be decided or expire;
 ///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
 ///    each bearer through, in-process.
 ///
@@ -251,6 +259,7 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
+    let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
         revocation_store: revocation_store.clone(),
@@ -259,6 +268,7 @@ pub fn setup_authorization_server(
         wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
+        pending_consents_recomputed_tx,
         owner_grant: Grant::new(OWNER_SCOPES.to_vec()),
         same_device_sign_in_codes: same_device_sign_in_codes.clone(),
         sign_in_destinations: Arc::new(SignInDestinations::new(
@@ -285,11 +295,14 @@ pub fn setup_authorization_server(
     let in_process_token_verifier = InProcessTokenVerifier::new(&state);
     let same_device_sign_in_code_minter =
         SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
+    let pending_consent_watcher =
+        PendingConsentWatcher::new(state.store.clone(), pending_consents_recomputed_rx);
     Ok(AuthorizationServer {
         router,
         state,
         launch_context_minter,
         same_device_sign_in_code_minter,
+        pending_consent_watcher,
         in_process_token_verifier,
     })
 }
