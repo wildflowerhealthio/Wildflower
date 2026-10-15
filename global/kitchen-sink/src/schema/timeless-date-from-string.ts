@@ -10,7 +10,7 @@ import { Predicate, Schema } from 'effect'
  * The decoded type is a branded string (`string & Brand<"TimelessDate">`),
  * not a plain string, so it cannot be confused with arbitrary strings.
  *
- * Includes custom arbitraries constrained to years 1900–2100.
+ * Includes a custom arbitrary drawing dates uniformly from years 1900–2100 (UTC).
  */
 export const TimelessDateFromString = Schema.String.pipe(
   Schema.pattern(/^\d{4}-\d{2}-\d{2}$/),
@@ -38,8 +38,11 @@ export const TimelessDateFromString = Schema.String.pipe(
   Schema.annotations({
     arbitrary: (): Arbitrary.LazyArbitrary<string> => (fc: typeof FastCheck) =>
       fc
-        .date()
-        .filter((date) => date.getFullYear() >= 1900 && date.getFullYear() <= 2100)
+        .date({
+          min: new Date('1900-01-01T00:00:00Z'),
+          max: new Date('2100-12-31T23:59:59.999Z'),
+          noInvalidDate: true,
+        })
         .map((date) => date.toISOString().slice(0, 10)),
   }),
   Schema.brand('TimelessDate')
