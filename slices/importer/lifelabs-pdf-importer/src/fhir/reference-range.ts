@@ -1,3 +1,5 @@
+import { PRINTED_NUMBER, printedNumberValue } from './result-value.ts'
+
 /**
  * A printed reference range read into bounds, or kept as text when it has
  * none (`See below`, `NEGATIVE`, `NONE/YELLOW`).
@@ -9,8 +11,8 @@ interface ReferenceRange {
   readonly text: string
 }
 
-const NUMBER = String.raw`-?\d+(?:\.\d+)?`
-/** `4.0 - 11.0`, `120- 160`, `135-145`. */
+const NUMBER = `(?:${PRINTED_NUMBER})`
+/** `4.0 - 11.0`, `120- 160`, `135-145`, `1,000 - 4,000`. */
 const BOUNDED = new RegExp(`^(${NUMBER})\\s*-\\s*(${NUMBER})$`)
 /** `<36`, `< 1.8`, `<=7.0`. */
 const BELOW = new RegExp(`^<\\s*=?\\s*(${NUMBER})$`)
@@ -33,12 +35,19 @@ const parseReferenceRange = (text: string): ReferenceRange => {
   const trimmed = text.trim()
   const bounded = BOUNDED.exec(trimmed)
   if (bounded !== null) {
-    return { low: Number(bounded[1]), high: Number(bounded[2]), text: trimmed }
+    const [, low = '', high = ''] = bounded
+    return { low: printedNumberValue(low), high: printedNumberValue(high), text: trimmed }
   }
   const below = BELOW.exec(trimmed)
-  if (below !== null) return { low: undefined, high: Number(below[1]), text: trimmed }
+  if (below !== null) {
+    const [, high = ''] = below
+    return { low: undefined, high: printedNumberValue(high), text: trimmed }
+  }
   const above = ABOVE.exec(trimmed)
-  if (above !== null) return { low: Number(above[1]), high: undefined, text: trimmed }
+  if (above !== null) {
+    const [, low = ''] = above
+    return { low: printedNumberValue(low), high: undefined, text: trimmed }
+  }
   return { low: undefined, high: undefined, text: trimmed }
 }
 

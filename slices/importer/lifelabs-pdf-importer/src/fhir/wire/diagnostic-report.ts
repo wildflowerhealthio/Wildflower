@@ -29,7 +29,6 @@ const diagnosticReportWire = (
   const wire: Wire = {
     resourceType: 'DiagnosticReport',
     id,
-    identifier: [{ system: LifeLabsIdentifierSystem.LabNumber, value: report.labNo }],
     status: reportStatus(report),
     category: [
       { coding: [{ system: REPORT_CATEGORY_SYSTEM, code: 'LAB', display: 'Laboratory' }] },
@@ -42,6 +41,10 @@ const diagnosticReportWire = (
     ...timingWire(report, timeZone),
     result: observationIds.map((observationId) => ({ reference: `Observation/${observationId}` })),
   }
+  // A report whose pages print no `Lab No` has no identifier, not an empty one.
+  if (report.labNo !== '') {
+    wire['identifier'] = [{ system: LifeLabsIdentifierSystem.LabNumber, value: report.labNo }]
+  }
   if (resultsInterpreterIds.length > 0) {
     wire['resultsInterpreter'] = resultsInterpreterIds.map((practitionerId) => ({
       reference: `Practitioner/${practitionerId}`,
@@ -52,7 +55,13 @@ const diagnosticReportWire = (
       section.groups.flatMap((group) => group.rows.map((row) => row.labLicence))
     )
   )
-  const performer = [...licences].flatMap((licence) => performerWire(report, licence))
+  // Rows above the first printed licence carry none; their address-only
+  // performer is the same lab the licensed entries already name, so it is
+  // listed only when no row prints a licence at all.
+  const printed = [...licences].filter((licence) => licence !== '')
+  const performer = (printed.length > 0 ? printed : ['']).flatMap((licence) =>
+    performerWire(report, licence)
+  )
   if (performer.length > 0) wire['performer'] = performer
   const sectionComments = report.sections.flatMap((section) => section.comments)
   if (sectionComments.length > 0) wire['conclusion'] = sectionComments.join('\n')
