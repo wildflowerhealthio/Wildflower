@@ -79,7 +79,7 @@ fn owner_browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
 /// # Errors
 ///
 /// The server-side [`VerifyError`]s, when a key, revocation or browser-session
-/// store can't be read, so whether the session has ended can't be told.
+/// store can't be read, so the session can't be checked.
 pub fn owner_browser_session_has_ended(
     state: &Arc<AuthorizationServerState>,
     owner_browser_token: &str,
@@ -99,7 +99,7 @@ pub fn owner_browser_session_has_ended(
 /// # Errors
 ///
 /// The server-side [`VerifyError`]s, when a key, revocation or browser-session
-/// store can't be read, so whether the browser is signed in can't be told.
+/// store can't be read, so the session can't be checked.
 pub(crate) fn carried_owner_browser_session(
     token_verifier: &LiveTokenVerifier,
     headers: &HeaderMap,

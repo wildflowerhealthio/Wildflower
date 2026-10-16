@@ -117,8 +117,8 @@ impl SessionCookie {
     ///
     /// # Errors
     ///
-    /// The authorization server's server-side [`VerifyError`]s, when whether
-    /// an Owner browser session has ended can't be told.
+    /// The authorization server's server-side [`VerifyError`]s, when it can't
+    /// check whether an Owner browser session has ended.
     async fn session(&self, value: String) -> Result<CookieSession, VerifyError> {
         Ok(match self {
             SessionCookie::OwnerBrowser(authorization_server) => {
@@ -213,7 +213,7 @@ pub(crate) async fn present_session_cookie_bearer(
             tracing::error!(
                 cookie = config.session_cookie.name(),
                 error = %error,
-                "whether a session cookie's session has ended can't be told"
+                "couldn't check whether a session cookie's session has ended"
             );
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }

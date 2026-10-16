@@ -127,13 +127,14 @@ pub(crate) fn approve_oauth_consent(
             .map(|()| denial_outcome(&pending_request));
     };
 
-    let issued_code = match RequestApprover::over(store).approve_for_code(
+    let code_approval = RequestApprover::over(store).approve_for_code(
         CodeAuthority::OwnerDelegated(&delegated_scopes),
         &pending_request,
         input.patient.as_deref(),
         generate_code(),
         now,
-    )? {
+    )?;
+    let issued_code = match code_approval {
         CodeApproval::Issued(issued_code) => issued_code,
         CodeApproval::RequestNotPending => return Err(make_consent_not_found()),
         // The approver denied the request instead: tell the client so.
