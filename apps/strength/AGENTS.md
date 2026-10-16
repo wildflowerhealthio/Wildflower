@@ -1,6 +1,6 @@
 # AGENTS.md — apps/strength
 
-**Lifting**, a SMART-on-FHIR strength-training app: the app itself is
+**Strength**, a SMART-on-FHIR strength-training app: the app itself is
 [`strength-web`](./strength-web/AGENTS.md), published at
 <https://wildflowerhealth.io/lifting/>, and the packages beside it are the
 pure core and the screens it composes.

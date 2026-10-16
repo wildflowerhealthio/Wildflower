@@ -1,6 +1,6 @@
 # AGENTS.md — apps/strength/strength-web
 
-Lifting, a SMART-on-FHIR strength-training app published to
+Strength, a SMART-on-FHIR strength-training app published to
 <https://wildflowerhealth.io/lifting/> (package `strength-web`), launched
 from the `strength-dev` tile under the vite dev server. See [README.md](./README.md)
 for the boot structure, the reads, the tabs, the writes and the scopes.
@@ -104,7 +104,7 @@ they cover.
 - `ids/*.test.ts` — property tests: set ids are FHIR ids and sort in set
   order, long exercise ids stay apart, and a minter names one resource with
   one id on every call.
-- `app-root.test.tsx` — that `AppRoot` mounts the shared shell as Lifting
+- `app-root.test.tsx` — that `AppRoot` mounts the shared shell as Strength
   (the landing `h1` is `APP_DESCRIPTIONS.strength.name`), reporting to its own
   Sentry project; the shell itself is tested in `smart-app-react`.
 - `main.test.tsx` — the Pages 404 redirect is completed before anything reads
@@ -112,7 +112,7 @@ they cover.
 
 ## References
 
-- [apps/strength/AGENTS.md](../AGENTS.md) — the lifting packages this
+- [apps/strength/AGENTS.md](../AGENTS.md) — the Strength packages this
   app composes.
 - [apps/plots/plots-web/README.md](../../plots/plots-web/README.md) — the template.
 - [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — `fhir-r4-react/smart`'s

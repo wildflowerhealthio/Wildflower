@@ -108,8 +108,8 @@ function navHref(link: NavLink, ctx: NavContext): string {
  */
 const HEADER_NAV_LINKS: readonly NavLink[] = [
   { kind: 'section', label: 'Medications', section: 'medications' },
-  { kind: 'section', label: 'Health viewer', section: 'plots' },
-  { kind: 'section', label: 'Lifting', section: 'strength' },
+  { kind: 'section', label: 'Plots', section: 'plots' },
+  { kind: 'section', label: 'Strength', section: 'strength' },
   { kind: 'section', label: 'Importer', section: 'importer' },
   { kind: 'section', label: 'Server docs', section: 'serverDocs' },
   { kind: 'section', label: 'Imaging', section: 'ohifViewer' },

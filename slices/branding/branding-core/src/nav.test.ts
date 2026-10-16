@@ -112,8 +112,8 @@ describe('HEADER_NAV_LINKS', () => {
   it('should link directly into the six apps, in design order', () => {
     expect(HEADER_NAV_LINKS.map((link) => link.label)).toStrictEqual([
       'Medications',
-      'Health viewer',
-      'Lifting',
+      'Plots',
+      'Strength',
       'Importer',
       'Server docs',
       'Imaging',

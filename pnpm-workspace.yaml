@@ -11,7 +11,7 @@ packages:
   # FHIR Sync for Pebble: the watchapp and its settings page. The core both
   # build on is slices/fhir-sync-pebble-core.
   - apps/fhir-sync-pebble/*
-  # The Health Viewer: the app and the core, sources and chart it is built
+  # Plots: the app and the core, sources and chart it is built
   # from.
   - apps/plots/*
   # The host: the Tauri host app and the packages it is built from.
@@ -25,7 +25,7 @@ packages:
   - apps/launcher/*
   - apps/launcher/databases/*
   - apps/launcher/request-log/*
-  # Lifting: the app and the core and screens it is built from.
+  # Strength: the app and the core and screens it is built from.
   - apps/strength/*
   # Medications: the app and the calendar, interaction and sponsorship
   # features only it uses.

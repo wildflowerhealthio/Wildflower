@@ -1,6 +1,6 @@
 # AGENTS.md — apps/plots/plots-core-js
 
-The health viewer's **assembly**: the closed list of domain sources a
+Plots' **assembly**: the closed list of domain sources a
 patient's record is read through, and the decisions that span sources — the
 catalogue panel, the x-axis range presets, and the URL a selection is shared
 through. Chart math lives in `plots-fundamentals`; what a record means

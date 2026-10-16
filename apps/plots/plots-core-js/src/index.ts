@@ -1,5 +1,5 @@
 /**
- * The health viewer's assembly: the closed list of domain sources a patient's
+ * Plots' assembly: the closed list of domain sources a patient's
  * record is read through, the catalogue panel's grouping and search, the
  * x-axis range presets, and the URL codec a shared link round-trips through.
  * No DOM, no React, no platform imports.

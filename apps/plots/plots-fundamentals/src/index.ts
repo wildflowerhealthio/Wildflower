@@ -1,5 +1,5 @@
 /**
- * The health viewer's plot vocabulary, free of any medical domain, exposed as
+ * Plots' plot vocabulary, free of any medical domain, exposed as
  * one namespace per module in the `effect` style: the file is the noun, the
  * principal type shares its name (`PointSeries.PointSeries`), and functions
  * read in the namespace's context (`ValueAxis.assign`, `Crosshair.stops`,

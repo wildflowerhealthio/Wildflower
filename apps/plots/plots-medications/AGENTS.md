@@ -1,6 +1,6 @@
 # AGENTS.md — apps/plots/plots-medications
 
-The health viewer's **medication source**: how a patient's FHIR R4
+Plots' **medication source**: how a patient's FHIR R4
 `MedicationRequest`s become plottable dose lines, exported as one
 `SeriesSource` value — `medicationSource`. Reading a dose regimen off a request
 is medication knowledge and lives in `medication-core/fhir`

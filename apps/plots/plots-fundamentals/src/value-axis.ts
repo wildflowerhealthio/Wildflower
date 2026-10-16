@@ -261,7 +261,7 @@ const domainFor = (series: Series): Domain => {
  */
 const assign = (selected: readonly Series[]): readonly ValueAxis[] => {
   if (selected.length > CAP) {
-    throw new Error(`The health viewer plots at most ${CAP} series at once; got ${selected.length}`)
+    throw new Error(`Plots draws at most ${CAP} series at once; got ${selected.length}`)
   }
   return selected.map((series, position): ValueAxis => {
     const domain = domainFor(series)

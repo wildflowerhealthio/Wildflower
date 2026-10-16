@@ -48,7 +48,7 @@ afterEach(() => {
 })
 
 describe('AppRoot', () => {
-  it('should mount the shell as the lifting app when not launched', () => {
+  it('should mount the shell as Strength when not launched', () => {
     // Arrange / Act
     render(<AppRoot launched={false} />)
 

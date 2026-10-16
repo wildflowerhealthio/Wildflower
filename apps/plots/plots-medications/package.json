@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/plots-medications",
   "version": "0.0.0",
   "private": true,
-  "description": "The health viewer's medication source: FHIR R4 `MedicationRequest`s read through medication-core's dose regimens into plots-fundamentals `LevelSeries` (one step line per medication, dose unit and dose basis), the `m:` series-id grammar, and the Medications catalogue group — exported as one `SeriesSource` value. No DOM, no React.",
+  "description": "Plots' medication source: FHIR R4 `MedicationRequest`s read through medication-core's dose regimens into plots-fundamentals `LevelSeries` (one step line per medication, dose unit and dose basis), the `m:` series-id grammar, and the Medications catalogue group — exported as one `SeriesSource` value. No DOM, no React.",
   "license": "MIT",
   "type": "module",
   "exports": {

@@ -48,7 +48,7 @@ afterEach(() => {
 })
 
 describe('AppRoot', () => {
-  it('should mount the shell as the Synthesized Health Viewer when not launched', () => {
+  it('should mount the shell as Plots when not launched', () => {
     // Arrange / Act
     render(<AppRoot launched={false} />)
 

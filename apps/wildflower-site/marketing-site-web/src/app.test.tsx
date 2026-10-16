@@ -117,10 +117,10 @@ describe('App', () => {
     expect(
       screen.getByRole('link', { name: /Open the Synthetic Data Loader/ }).getAttribute('href')
     ).toBe('./synthetic-data')
-    expect(
-      screen.getByRole('link', { name: /Open the Synthesized Health Viewer/ }).getAttribute('href')
-    ).toBe('./health-viewer')
-    expect(screen.getByRole('link', { name: /Open Lifting/ }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: /Open Plots/ }).getAttribute('href')).toBe(
+      './health-viewer'
+    )
+    expect(screen.getByRole('link', { name: /Open Strength/ }).getAttribute('href')).toBe(
       './lifting'
     )
   })

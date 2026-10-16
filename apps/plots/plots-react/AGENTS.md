@@ -1,6 +1,6 @@
 # AGENTS.md — apps/plots/plots-react
 
-The health viewer's **browser layer**: one Observable Plot figure that draws
+Plots' **browser layer**: one Observable Plot figure that draws
 the `PointSeries` and `LevelSeries` of `plots-fundamentals` on the value
 axes `ValueAxis.assign` gives them, and the controls around it — the series
 panel over `plots-core-js`'s catalogue, the range presets, and the page

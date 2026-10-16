@@ -1,6 +1,6 @@
 # AGENTS.md — apps/plots
 
-The **Synthesized Health Viewer**: a patient's own observations and
+**Plots**: a patient's own observations and
 medications plotted on one time axis, so a reader can see a lab result against
 the dose that was running when it was taken. The app and every package it is
 built from live here; only the medication fundamentals it reads

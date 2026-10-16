@@ -202,7 +202,7 @@ const APP_DESCRIPTIONS: {
     launchesFromUrl: true,
   },
   plots: {
-    name: 'Synthesized Health Viewer',
+    name: 'Plots',
     tagline:
       "Plots labs, vitals and prescribed doses from a patient's FHIR record on one chart, " +
       'so a dose change can be read against the numbers it is meant to move.',
@@ -216,7 +216,7 @@ const APP_DESCRIPTIONS: {
     ],
     anchor: 'built',
     launch: {
-      label: 'Open the Synthesized Health Viewer',
+      label: 'Open Plots',
       note: 'Plot observations and doses for a patient on any FHIR server, including our demo',
     },
     launchesFromUrl: true,
@@ -251,7 +251,7 @@ const APP_DESCRIPTIONS: {
     launchesFromUrl: true,
   },
   strength: {
-    name: 'Lifting',
+    name: 'Strength',
     tagline:
       'A strength-training program, the workout due today and every set you lift, ' +
       'kept on your own FHIR record.',
@@ -269,7 +269,7 @@ const APP_DESCRIPTIONS: {
     ],
     anchor: 'built',
     launch: {
-      label: 'Open Lifting',
+      label: 'Open Strength',
       note: 'Plan and log workouts on any FHIR server, including our demo',
     },
     launchesFromUrl: true,
