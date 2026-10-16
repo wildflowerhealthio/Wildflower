@@ -152,8 +152,9 @@ changing how servers run or what the host notifies about them.
   the clipboard refused; under it its status badge and, while it runs, when its run
   started; over six tabs on `RouteTabs`, each a child route of
   `/servers/$domain` (`status`, `access`, `default-apps`, `relay`,
-  `certificate`, `destructive-actions`), each in its own route file under
-  `routes/servers/$domain/` with the parts only it uses beside it.
+  `certificate`, `destructive-actions`), each in its own folder under
+  `routes/servers/$domain/`, its `route.tsx` with the parts and tests only
+  it uses beside it.
   The page's `beforeLoad` reads the server from the cached server list,
   showing a read that fails, with Retry, and a domain the list doesn't hold;
   the page and its open tab read the server from the same cached list
