@@ -52,6 +52,11 @@ describe('regimenEndOf', () => {
     expect(regimenEndOf(request, januaryFirst)).toEqual(at('2026-06-01T00:00:00Z'))
   })
 
+  test('counts a date-only validity end through that whole day, in UTC', () => {
+    const request = januaryRequest({ dispenseRequest: { validityPeriod: { end: '2026-03-31' } } })
+    expect(regimenEndOf(request, januaryFirst)).toEqual(at('2026-03-31T23:59:59.999Z'))
+  })
+
   test('without a validity end, is when the first fill and every repeat have run out', () => {
     const request = januaryRequest({
       dispenseRequest: {

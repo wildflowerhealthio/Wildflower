@@ -220,7 +220,8 @@ describe('FhirR4Procedure', () => {
   })
 
   test('performedPeriod bounds re-encode as UTC instants, not the wire literal', () => {
-    // Arrange — an offset-bearing start and a date-only end
+    // Arrange — an offset-bearing start and a date-only end, which re-encodes
+    // as the last instant of its day
     const wire = {
       ...Schema.encodeSync(Procedure.Schema)(sampleProcedure),
       performedPeriod: { start: '2026-09-30T18:00:00-04:00', end: '2026-09-30' },
@@ -234,7 +235,7 @@ describe('FhirR4Procedure', () => {
     // Assert
     expect(reEncoded.performedPeriod).toMatchObject({
       start: '2026-09-30T22:00:00.000Z',
-      end: '2026-09-30T00:00:00.000Z',
+      end: '2026-09-30T23:59:59.999Z',
     })
   })
 

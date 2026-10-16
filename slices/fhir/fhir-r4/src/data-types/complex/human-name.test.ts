@@ -203,6 +203,23 @@ describe('displayName', () => {
     expect(HumanName.displayName(names, now)).toBe('Jane Doe')
   })
 
+  it('should keep a decoded name current through the whole day its period ends on', () => {
+    // Arrange — a date-only end decodes to the last instant of that day
+    const names = [
+      Schema.decodeUnknownSync(HumanName.Schema)({
+        use: 'official',
+        family: 'Smith',
+        given: ['Jane'],
+        period: { end: '2024-06-01' },
+      }),
+      Schema.decodeUnknownSync(HumanName.Schema)({ use: 'usual', family: 'Doe', given: ['Jane'] }),
+    ]
+
+    // Act / Assert
+    expect(HumanName.displayName(names, instant('2024-06-01T12:00:00Z'))).toBe('Jane Smith')
+    expect(HumanName.displayName(names, instant('2024-06-02T00:00:00Z'))).toBe('Jane Doe')
+  })
+
   it('should still name the person when every name on record is a former one', () => {
     expect(
       HumanName.displayName([
