@@ -89,17 +89,6 @@ impl ConsentViews {
             claim,
         })
     }
-
-    /// Whether the consent `key` on the server `domain` shows in a view, or
-    /// is opening in one.
-    #[must_use]
-    pub fn is_showing(&self, domain: &str, key: &ConsentKey) -> bool {
-        self.showing
-            .lock()
-            .showing
-            .iter()
-            .any(|showing| showing.domain == domain && showing.key == *key)
-    }
 }
 
 /// A consent's claim on the view it opens in, from [`ConsentViews::claim`].
@@ -151,8 +140,8 @@ mod tests {
         let later = views.claim(RUTH, &oauth("a"), IfShowing::TakeOver).unwrap();
 
         drop(earlier);
-        assert!(views.is_showing(RUTH, &oauth("a")));
+        assert!(views.claim(RUTH, &oauth("a"), IfShowing::Skip).is_none());
         drop(later);
-        assert!(!views.is_showing(RUTH, &oauth("a")));
+        assert!(views.claim(RUTH, &oauth("a"), IfShowing::Skip).is_some());
     }
 }

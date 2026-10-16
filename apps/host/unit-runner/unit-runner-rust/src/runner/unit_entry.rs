@@ -4,6 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use tokio::sync::watch;
+use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::erased_unit::UnitFactory;
@@ -142,18 +143,29 @@ impl<D: Clone + Send + Sync + 'static> UnitRun<D> {
 /// A restart waiting out the restart delay. Dropping it (when it is
 /// cancelled, replaced, done, or its unit removed) cancels its timer.
 pub(crate) struct PendingRestart {
+    /// When the restart's delay runs out.
+    restart_at: Instant,
     /// Cancels the timer's token when this restart is dropped.
     _cancel_timer_when_dropped: DropGuard,
 }
 
 impl PendingRestart {
-    /// A pending restart, and the token its timer waits with.
-    pub(crate) fn new() -> (Self, CancellationToken) {
+    /// A pending restart whose delay runs out at `restart_at`, and the token
+    /// its timer waits with.
+    pub(crate) fn new(restart_at: Instant) -> (Self, CancellationToken) {
         let restart_token = CancellationToken::new();
         let pending_restart = Self {
+            restart_at,
             _cancel_timer_when_dropped: restart_token.clone().drop_guard(),
         };
         (pending_restart, restart_token)
+    }
+
+    /// Whether the restart's delay has run out, so it starts the unit's next
+    /// run as soon as its timer fires: a restart that waits for nothing, as
+    /// the first in a row does.
+    pub(crate) fn is_due(&self) -> bool {
+        self.restart_at <= Instant::now()
     }
 }
 
@@ -163,11 +175,11 @@ mod tests {
 
     #[test]
     fn replacing_or_dropping_a_pending_restart_cancels_its_timer() {
-        let (first, first_token) = PendingRestart::new();
+        let (first, first_token) = PendingRestart::new(Instant::now());
         let mut pending_restart = Some(first);
         assert!(!first_token.is_cancelled());
 
-        let (second, second_token) = PendingRestart::new();
+        let (second, second_token) = PendingRestart::new(Instant::now());
         drop(pending_restart.replace(second));
         assert!(first_token.is_cancelled(), "the replaced restart's timer");
         assert!(!second_token.is_cancelled());

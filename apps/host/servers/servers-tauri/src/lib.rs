@@ -76,7 +76,9 @@
 //!   [`server_open_notified_consent`], invoked as
 //!   `invoke('server_open_notified_consent', { notificationId })` for a
 //!   tapped notification, opens the consent of the server whose consent
-//!   notification it is, and nothing for any other.
+//!   notification it is once the server can open it, answering at once, and
+//!   nothing for any other notification. The tap wins over the arrival in the
+//!   foreground it brings: it ends every other consent open still waiting.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -106,6 +108,9 @@ mod server_status;
 mod server_units;
 #[cfg(test)]
 mod test_authorization_server;
+#[cfg(test)]
+mod test_statuses;
+mod waiting_consent_opens;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -229,7 +234,6 @@ pub fn host_servers(
             data_root: data_root.to_path_buf(),
             server_units: server_units.clone(),
             statuses_rx: runner.subscribe(),
-            latest_opens: std::sync::Mutex::default(),
         },
         runner.clone(),
     ));

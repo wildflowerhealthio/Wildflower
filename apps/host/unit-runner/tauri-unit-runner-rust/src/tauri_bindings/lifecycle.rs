@@ -1,6 +1,6 @@
 //! `TauriUnitRunner`'s lifecycle plugin: whether the app is present, and its
-//! returns to the foreground, from its window events and the in-app browser
-//! views the app reports; the background session's
+//! departures from and returns to the foreground, from its window events and
+//! the in-app browser views the app reports; the background session's
 //! end reasons from the background-service plugin's events; and attaching the
 //! background-service plugin as `UnitRunner`'s background-session platform
 //! once the app is ready.
@@ -120,9 +120,29 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
         self.record_window_event(|window_state| window_state.browser_view_closed(view));
     }
 
+    /// The app went fully to the background with the in-app browser view
+    /// `view` over it, the user leaving for the home screen or another app,
+    /// as the view's browser reports (Android). The view keeps the app
+    /// present, so this is what says it left the foreground.
+    pub fn browser_view_moved_to_background(&self, view: &str) {
+        self.record_window_event(|window_state| {
+            window_state.browser_view_moved_to_background(view)
+        });
+    }
+
+    /// The app came back from fully in the background with the in-app
+    /// browser view `view` still over it, as the view's browser reports
+    /// (Android): an arrival in the foreground.
+    pub fn browser_view_returned_to_foreground(&self, view: &str) {
+        self.record_window_event(|window_state| {
+            window_state.browser_view_returned_to_foreground(view)
+        });
+    }
+
     /// Record a window event with `record_on_window_state`, and pass what it
     /// means on to `UnitRunner`. Running units restart first, so units the
-    /// change starts aren't restarted too.
+    /// change starts aren't restarted too; the app's presence comes before
+    /// whether it left or came back to the foreground while present.
     fn record_window_event(
         &self,
         record_on_window_state: impl FnOnce(&mut WindowState) -> WindowStateChange,
@@ -142,5 +162,9 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
         }
         self.unit_runner
             .set_app_presence(change.presence_after_event);
+        if let Some(in_foreground) = change.in_foreground_while_present {
+            self.unit_runner
+                .set_in_foreground_while_present(in_foreground);
+        }
     }
 }

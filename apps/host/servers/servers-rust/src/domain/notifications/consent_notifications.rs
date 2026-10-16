@@ -135,7 +135,8 @@ pub struct ConsentNotificationCoalescer {
     /// first report, or once a run that started since stops before it
     /// reports, while a run that was stopping at the arrival, as one the iOS
     /// restart stops, stops without ending its wait; all leave once one opens
-    /// a request.
+    /// a request, or the arrival's wait ends
+    /// ([`end_arrival_wait`](ConsentNotificationCoalescer::end_arrival_wait)).
     awaiting_first_report: BTreeMap<UnitId, bool>,
     /// The requests each server notified for or opened, and those the
     /// Owner's own browser made, earliest first.
@@ -288,6 +289,14 @@ impl ConsentNotificationCoalescer {
         changes
     }
 
+    /// End the latest arrival's wait for a server's first report, so the
+    /// first request a server on its way up reports notifies as usual instead
+    /// of opening: as when the app leaves the foreground, where nothing can
+    /// open, or a tap on a notification opens the consent it announced.
+    pub fn end_arrival_wait(&mut self) {
+        self.awaiting_first_report.clear();
+    }
+
     /// Follow the run of the server `unit_id`, not reporting, now
     /// `run_state`, while its first report is awaited: a run starting is the
     /// one awaited, and once one that started stops, its server's first
@@ -325,7 +334,8 @@ impl ConsentNotificationCoalescer {
     /// Failing a candidate, each server in `units_to_run` whose run isn't
     /// reporting, as one starting at the app's start, is on its way up: the
     /// first of those to report a request opens it instead of notifying, even
-    /// one it notified for before, and none after. A server whose run the
+    /// one it notified for before, and none after, until the arrival's wait
+    /// ends ([`end_arrival_wait`](Self::end_arrival_wait)). A server whose run the
     /// arrival started stops before it reports, or that isn't on its way up,
     /// as one whose policy is off or the Owner turns on later, notifies as
     /// usual. A request the Owner's own browser made opens neither way, as it
@@ -1004,6 +1014,23 @@ mod tests {
         );
         assert_eq!(summary(&arrived.opened), [(RUTH, oauth_key("a"))]);
         assert!(arrived.posted.is_empty());
+    }
+
+    #[test]
+    fn on_a_phone_a_first_report_after_the_arrival_s_wait_ends_notifies() {
+        let mut coalescer = notifying();
+        come_to_foreground(
+            &mut coalescer,
+            &statuses([(RUTH, UnitStatus::never_run())]),
+            &[RUTH],
+        );
+        coalescer.record(&statuses([(RUTH, not_reporting(RunState::Starting))]));
+
+        // The app left the foreground before RUTH's first report.
+        coalescer.end_arrival_wait();
+        let reported = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        assert_eq!(summary(&reported.posted), [(RUTH, oauth_key("a"))]);
+        assert!(reported.opened.is_empty());
     }
 
     #[test]

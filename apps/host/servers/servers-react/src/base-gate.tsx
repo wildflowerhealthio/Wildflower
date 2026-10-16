@@ -90,10 +90,9 @@ const NotificationTapSchema = Schema.Struct({
 /**
  * While mounted, open the consent each tapped consent notification announced,
  * at its page, through the host (`openNotifiedConsent`): on a phone, from
- * anywhere in the app. A tap the host can't open, as when its server isn't
- * launchable yet or the request was decided meanwhile, is logged: a request
- * still waiting waits on the server's page. A platform that reports no taps is
- * logged too.
+ * anywhere in the app. The host opens it once its server can, and logs a
+ * request decided meanwhile; a tap the host refuses is logged here. A
+ * platform that reports no taps is logged too.
  */
 const useNotifiedConsentOpening = (
   invoke: Context.Tag.Service<TauriInvoke>,

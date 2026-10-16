@@ -8,8 +8,8 @@ use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig
 use tokio::sync::{broadcast, watch};
 
 use wildflowerhealthio_unit_runner::{
-    BackgroundSessionLength, RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner,
-    UnitStatuses,
+    BackgroundSessionLength, ForegroundArrivals, RunPolicy, RunStopped, SystemClock, Unit, UnitId,
+    UnitRunner, UnitStatuses,
 };
 
 use crate::tauri_bindings::TauriBindings;
@@ -147,14 +147,17 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
         self.unit_runner.subscribe_stops()
     }
 
-    /// The app's arrivals in the foreground: how many times it has become
-    /// present after being absent, its first window opening and each return
-    /// to the foreground alike. Each arrival changes it once the runs it
-    /// starts and stops are asked for, on iOS after this host has asked every
-    /// running unit's run to stop for the restart a return brings; a slow
-    /// reader sees one change for several arrivals.
+    /// The app's arrivals in the foreground, and whether it is in the
+    /// foreground. An arrival is the app becoming present after being
+    /// absent, its first window opening and each return to the foreground
+    /// alike, or, on Android, coming back to the foreground it left while an
+    /// in-app browser view showed over it. Each arrival changes it once the
+    /// runs it starts and stops are asked for, on iOS after this host has
+    /// asked every running unit's run to stop for the restart a return
+    /// brings; so does the app leaving the foreground. A slow reader sees one
+    /// change for several.
     #[must_use]
-    pub fn subscribe_foreground_arrivals(&self) -> watch::Receiver<u64> {
+    pub fn subscribe_foreground_arrivals(&self) -> watch::Receiver<ForegroundArrivals> {
         self.unit_runner.subscribe_foreground_arrivals()
     }
 }

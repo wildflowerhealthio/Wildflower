@@ -1,6 +1,7 @@
 //! [`WindowState`]: the app's presence, from its window events and the in-app
-//! browser views it opens, and which returns to the foreground call for
-//! restarting every running unit.
+//! browser views it opens, which returns to the foreground call for
+//! restarting every running unit, and when the app leaves the foreground and
+//! comes back to it while present all along.
 
 use std::collections::BTreeSet;
 
@@ -66,11 +67,18 @@ pub struct WindowStateChange {
     /// foreground on a platform where
     /// [`backgrounding_breaks_sockets`](PlatformKind::backgrounding_breaks_sockets).
     pub unit_restarts_needed: bool,
+    /// `Some(false)` when the app went fully to the background while it stays
+    /// present, and `Some(true)` when it came back from there: on Android,
+    /// the user left for the home screen or another app while an in-app
+    /// browser view over the app kept it present, and returned. `None`
+    /// otherwise, its presence saying whether it left or came back.
+    pub in_foreground_while_present: Option<bool>,
 }
 
 /// The app's open windows, the in-app browser views it opened that move it to
 /// the background and which of those their browser keeps the app alive under,
-/// and whether a phone app is in the background.
+/// whether a phone app is in the background, and whether it went fully to the
+/// background under those views.
 ///
 /// Only a return to the foreground that follows a move to the background
 /// counts as one, so the resume a window reports as it first appears does
@@ -83,7 +91,14 @@ pub struct WindowState {
     /// The open browser views whose browser keeps the app alive under them;
     /// each is also in `open_browser_views`.
     kept_alive_browser_views: BTreeSet<String>,
+    /// The app's windows are in the background: the app left them, or an
+    /// in-app browser view covers them (Android).
     in_background: bool,
+    /// The app went fully to the background, the user leaving it for the
+    /// home screen or another app, while an in-app browser view over it kept
+    /// it present (Android); unlike `in_background`, a view covering the app
+    /// doesn't set it.
+    fully_in_background: bool,
 }
 
 impl WindowState {
@@ -96,6 +111,7 @@ impl WindowState {
             open_browser_views: BTreeSet::new(),
             kept_alive_browser_views: BTreeSet::new(),
             in_background: false,
+            fully_in_background: false,
         }
     }
 
@@ -153,15 +169,50 @@ impl WindowState {
         not(any(target_os = "ios", target_os = "android", test)),
         allow(dead_code, reason = "only phones move to the background")
     )]
+    /// On Android, the app's activity resuming also brings it back from
+    /// fully in the background, as when the user opens it from its icon,
+    /// which closes the in-app browser views over it.
     pub fn returned_to_foreground(&mut self) -> WindowStateChange {
         let was_in_background = std::mem::take(&mut self.in_background);
-        self.change(was_in_background && self.platform.backgrounding_breaks_sockets())
+        let mut change =
+            self.change(was_in_background && self.platform.backgrounding_breaks_sockets());
+        if std::mem::take(&mut self.fully_in_background) {
+            change.in_foreground_while_present = Some(true);
+        }
+        change
+    }
+
+    /// The app went fully to the background, the user leaving it for the
+    /// home screen or another app, with the open in-app browser view `view`
+    /// over it, as the view's browser reports (Android). The view keeps the
+    /// app present, so this is the one sign it left. A view not kept is
+    /// ignored.
+    pub fn browser_view_moved_to_background(&mut self, view: &str) -> WindowStateChange {
+        let mut change = self.change(false);
+        if self.open_browser_views.contains(view) && !self.fully_in_background {
+            self.fully_in_background = true;
+            change.in_foreground_while_present = Some(false);
+        }
+        change
+    }
+
+    /// The app came back from fully in the background with the open in-app
+    /// browser view `view` over it, as the view's browser reports (Android):
+    /// the user returned to it, from the app switcher, say, the view still
+    /// on top.
+    pub fn browser_view_returned_to_foreground(&mut self, view: &str) -> WindowStateChange {
+        let mut change = self.change(false);
+        if self.open_browser_views.contains(view) && std::mem::take(&mut self.fully_in_background) {
+            change.in_foreground_while_present = Some(true);
+        }
+        change
     }
 
     fn change(&self, unit_restarts_needed: bool) -> WindowStateChange {
         WindowStateChange {
             presence_after_event: self.app_presence(),
             unit_restarts_needed,
+            in_foreground_while_present: None,
         }
     }
 
@@ -358,5 +409,66 @@ mod tests {
                 "each move to the background counts for one return"
             );
         }
+    }
+
+    #[test]
+    fn an_android_app_that_leaves_under_a_browser_view_returns_when_it_comes_back() {
+        let mut window_state = WindowState::new(PlatformKind::Android);
+        window_state.window_opened("main");
+        window_state.browser_view_opened("view");
+        window_state.moved_to_background();
+        window_state.browser_view_kept_alive("view");
+
+        // The user goes home with the view on top, and comes back to it from
+        // the app switcher.
+        let left = window_state.browser_view_moved_to_background("view");
+        assert_eq!(left.presence_after_event, Presence::Present);
+        assert_eq!(left.in_foreground_while_present, Some(false));
+        assert_eq!(
+            window_state
+                .browser_view_moved_to_background("view")
+                .in_foreground_while_present,
+            None,
+            "it left once"
+        );
+        let returned = window_state.browser_view_returned_to_foreground("view");
+        assert_eq!(returned.in_foreground_while_present, Some(true));
+
+        // Then home again, and back through the app's icon, which resumes
+        // the app and closes the view.
+        window_state.browser_view_moved_to_background("view");
+        assert_eq!(
+            window_state
+                .returned_to_foreground()
+                .in_foreground_while_present,
+            Some(true)
+        );
+        assert_eq!(
+            window_state
+                .browser_view_closed("view")
+                .in_foreground_while_present,
+            None
+        );
+    }
+
+    #[test]
+    fn closing_a_browser_view_back_onto_the_app_is_no_return() {
+        let mut window_state = WindowState::new(PlatformKind::Android);
+        window_state.window_opened("main");
+        window_state.browser_view_opened("view");
+        window_state.moved_to_background();
+
+        let resumed = window_state.returned_to_foreground();
+        assert_eq!(resumed.in_foreground_while_present, None);
+        let closed = window_state.browser_view_closed("view");
+        assert_eq!(closed.in_foreground_while_present, None);
+        assert_eq!(closed.presence_after_event, Presence::Present);
+        assert_eq!(
+            window_state
+                .browser_view_returned_to_foreground("view")
+                .in_foreground_while_present,
+            None,
+            "nor is a view that isn't open"
+        );
     }
 }

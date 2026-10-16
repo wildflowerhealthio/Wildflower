@@ -1,6 +1,7 @@
 //! [`AppPresence`]: whether the app is present, whether the platform keeps it
 //! alive while it is ([`Presence`]), and the grace period `WhileOpen` units
-//! keep running for after it becomes absent.
+//! keep running for after it becomes absent; and [`ForegroundArrivals`], the
+//! app's arrivals in the foreground.
 
 use std::time::Duration;
 
@@ -53,6 +54,20 @@ pub enum PresenceChange {
     BecameAbsent,
     /// No change.
     Unchanged,
+}
+
+/// The app's arrivals in the foreground, and whether it is in the foreground
+/// now, as `UnitRunner` publishes them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ForegroundArrivals {
+    /// How many times the app has arrived in the foreground: become
+    /// [`Presence::Present`] after being absent, its first window opening
+    /// and each return alike, or come back to the foreground it left while
+    /// present all along (Android, under an in-app browser view).
+    pub arrivals: u64,
+    /// Whether the app is in the foreground: since its latest arrival, until
+    /// it becomes absent or leaves the foreground while present.
+    pub in_foreground: bool,
 }
 
 /// Whether the app is present, and when its current grace period began.

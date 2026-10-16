@@ -176,7 +176,8 @@ const openPendingConsent = ({
 /**
  * Open the consent the tapped notification `notificationId` announced, as
  * {@link openPendingConsent} opens a server's; a tap on any other
- * notification opens nothing. Only a phone reports taps.
+ * notification opens nothing. The host answers at once, and opens it once its
+ * server can, logging each try. Only a phone reports taps.
  */
 const openNotifiedConsent = ({
   notificationId,

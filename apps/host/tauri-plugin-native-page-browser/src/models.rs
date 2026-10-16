@@ -29,7 +29,10 @@ pub struct OpenRequest {
     pub mode: OpenMode,
     /// Hears this view's events: exactly one [`BrowserEvent::Closed`] on iOS
     /// and Android once `open` returns `Ok`, after at most one
-    /// [`BrowserEvent::KeptAlive`] on Android; nothing on desktop or after an
+    /// [`BrowserEvent::KeptAlive`] on Android, and on Android a
+    /// [`BrowserEvent::MovedToBackground`] and
+    /// [`BrowserEvent::ReturnedToForeground`] for each time the app leaves
+    /// and comes back with the view over it; nothing on desktop or after an
     /// `Err`. On iOS a newer [`OpenMode::Replace`] `open`, or a `close` of
     /// this view or one under it, sends this view's `Closed`; on Android a
     /// [`OpenMode::Replace`] `open` that joins a view still launching (one a
@@ -66,7 +69,8 @@ pub struct CloseRequest {
 /// An event from an open in-app browser view, sent on its
 /// [`OpenRequest::events`] channel.
 ///
-/// Internally tagged on `event` (`{"event":"closed"}`, `{"event":"keptAlive"}`)
+/// Internally tagged on `event` (`{"event":"closed"}`, `{"event":"keptAlive"}`,
+/// `{"event":"movedToBackground"}`, `{"event":"returnedToForeground"}`)
 /// — the tags are pinned so the Swift/Kotlin `channel.send([...])` callsites
 /// can hand-roll the dictionary. Drift between this tag and what the native sides emit would
 /// fail the Rust handler's deserialise (the tests below guard the wire shape).
@@ -87,6 +91,19 @@ pub enum BrowserEvent {
     /// window the app owns.
     #[serde(rename = "closed")]
     Closed,
+    /// Android: the app went fully to the background with the view over it,
+    /// the user leaving for the home screen or another app, as the view's
+    /// browser letting go of the app says. Sent to every open view, once per
+    /// departure, and only by a browser that kept the app alive
+    /// ([`KeptAlive`](Self::KeptAlive)). Closing the view back onto the app
+    /// sends none.
+    #[serde(rename = "movedToBackground")]
+    MovedToBackground,
+    /// Android: the app came back from fully in the background with the
+    /// view still over it, as from the app switcher. Sent to every open view,
+    /// once per return after a [`MovedToBackground`](Self::MovedToBackground).
+    #[serde(rename = "returnedToForeground")]
+    ReturnedToForeground,
 }
 
 #[cfg(test)]
@@ -147,6 +164,28 @@ mod tests {
         let event: BrowserEvent = serde_json::from_str(json).expect("de");
         assert_eq!(event, BrowserEvent::KeptAlive);
         assert_eq!(serde_json::to_string(&event).expect("ser"), json);
+    }
+
+    /// The app's departure and return under a view are
+    /// `{ "event":"movedToBackground" }` and
+    /// `{ "event":"returnedToForeground" }` both ways — what the Kotlin
+    /// `channel.send(…)` calls emit.
+    #[test]
+    fn browser_events_for_the_app_leaving_and_returning_round_trip_with_camel_case_tags() {
+        for (json, expected) in [
+            (
+                r#"{"event":"movedToBackground"}"#,
+                BrowserEvent::MovedToBackground,
+            ),
+            (
+                r#"{"event":"returnedToForeground"}"#,
+                BrowserEvent::ReturnedToForeground,
+            ),
+        ] {
+            let event: BrowserEvent = serde_json::from_str(json).expect("de");
+            assert_eq!(event, expected);
+            assert_eq!(serde_json::to_string(&event).expect("ser"), json);
+        }
     }
 
     /// `OpenMode` is `"replace"` or `"stack"`, the raw values the Swift
