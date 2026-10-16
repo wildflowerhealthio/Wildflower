@@ -8,8 +8,9 @@
 //! device. The layer sits on those two routes alone, so it covers every
 //! method axum serves them on (`HEAD /oauth/authorize` too) and no other
 //! route. A request from a browser signed in as the Owner (it carries a live
-//! Owner browser session, as [`carries_owner_browser_session`] reads it)
-//! passes without asking the gate, so it spends nothing. Every other request
+//! Owner browser session, as [`carried_owner_browser_session`] reads it)
+//! passes without asking the gate, so it spends nothing. A session the store
+//! can't vouch for doesn't pass; it asks the gate like any other request. Every other request
 //! asks the gate, before the request is parsed, so every attempt counts,
 //! however malformed; one it refuses is answered `429 Too Many Requests`.
 //!
@@ -25,7 +26,7 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-use crate::http::owner_browser_session_cookie::carries_owner_browser_session;
+use crate::http::owner_browser_session_cookie::carried_owner_browser_session;
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
@@ -42,8 +43,10 @@ pub(crate) async fn limit_authorization_starts(
     next: Next,
 ) -> Response {
     let token_verifier = LiveTokenVerifier::from_state(&state);
-    if carries_owner_browser_session(&token_verifier, request.headers())
-        || state.authorization_start_gate.admit(request.extensions())
+    if matches!(
+        carried_owner_browser_session(&token_verifier, request.headers()),
+        Ok(Some(_))
+    ) || state.authorization_start_gate.admit(request.extensions())
     {
         return next.run(request).await;
     }
