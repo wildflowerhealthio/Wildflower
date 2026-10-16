@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ElementType, type JSX, type ReactNode } from 'react'
 
 import {
-  HEADER_NAV_LINKS,
+  HEADER_NAV_GROUPS,
   navHref,
   sectionUrl,
   type NavContext,
@@ -22,15 +22,15 @@ type TitleComponent = ElementType<{
 
 /**
  * Static top bar shared by the marketing homepage and every app: the brand
- * lockup on the left, direct links into the seven apps on the right, one
+ * lockup on the left, a hamburger menu of the apps on the right, one
  * hairline against the page. No sticky positioning, no translucent backdrop,
  * no CTA pill — the app surfaces and the homepage read as one site.
  *
  * The link *set* is the same everywhere; only href resolution follows the
  * `nav` context (root-relative on marketing, absolute from an app — see
- * `navHref`). At ≥840px the four links sit inline; below that they collapse
- * behind a hamburger toggle into a right-aligned dropdown (full-width below
- * 640px) that closes on selection, outside pointer-down, or Escape.
+ * `navHref`). At every width the links sit behind a hamburger toggle, in a
+ * right-aligned dropdown of titled groups (full-width below 640px) that closes
+ * on selection, outside pointer-down, or Escape.
  *
  * `--header-height` is still derived from this bar (padding + the 34px brand
  * mark + the hairline); it remains available for `scroll-margin-top` on
@@ -106,27 +106,42 @@ function SiteHeader({
             className={styles['site-header__menu']}
             data-open={menuOpen ? 'true' : 'false'}
           >
-            <p className={styles['site-header__menu-title']}>Apps</p>
-            <ul className={styles['site-header__menu-list']}>
-              {HEADER_NAV_LINKS.map((link) => (
-                <li key={link.label}>
-                  <a
-                    className={styles['site-header__link']}
-                    href={navHref(link, nav)}
-                    onClick={() => {
-                      setMenuOpen(false)
-                    }}
-                  >
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            {HEADER_NAV_GROUPS.map((group) => (
+              <section
+                key={group.label}
+                className={styles['site-header__group']}
+                aria-labelledby={groupHeadingId(group.label)}
+              >
+                <p id={groupHeadingId(group.label)} className={styles['site-header__menu-title']}>
+                  {group.label}
+                </p>
+                <ul className={styles['site-header__menu-list']}>
+                  {group.links.map((link) => (
+                    <li key={link.label}>
+                      <a
+                        className={styles['site-header__link']}
+                        href={navHref(link, nav)}
+                        onClick={() => {
+                          setMenuOpen(false)
+                        }}
+                      >
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
           </div>
         </nav>
       </div>
     </header>
   )
+}
+
+/** Id of a menu group's heading, which labels the group. */
+function groupHeadingId(label: string): string {
+  return `site-header-group-${label.toLowerCase().replaceAll(' ', '-')}`
 }
 
 /** Three-bar hamburger glyph; decorative — the button carries the label. */

@@ -76,19 +76,58 @@ function navHref(link: NavLink, ctx: NavContext): string {
   return link.href
 }
 
+/** A titled group of links in the header's menu. */
+type NavGroup = {
+  readonly label: string
+  readonly links: readonly NavLink[]
+}
+
 /**
- * Primary nav links rendered in every site header — the marketing homepage
- * and each app share one bar with direct links into the six apps, each at its
- * published origin; see {@link navHref}.
+ * The header menu rendered in every site header — the marketing homepage and
+ * each app share one hamburger menu of grouped links into the apps, each at
+ * its published origin; see {@link navHref}.
  */
-const HEADER_NAV_LINKS: readonly NavLink[] = [
-  { kind: 'section', label: 'Medications', section: 'medications' },
-  { kind: 'section', label: 'Plots', section: 'plots' },
-  { kind: 'section', label: 'Strength', section: 'strength' },
-  { kind: 'section', label: 'Importer', section: 'importer' },
-  { kind: 'section', label: 'Server docs', section: 'serverDocs' },
-  { kind: 'section', label: 'Imaging', section: 'ohifViewer' },
+const HEADER_NAV_GROUPS: readonly NavGroup[] = [
+  {
+    label: 'Your health',
+    links: [
+      { kind: 'section', label: 'Wildflower Medications', section: 'medications' },
+      { kind: 'section', label: 'Wildflower Plots', section: 'plots' },
+      { kind: 'section', label: 'Wildflower Imaging', section: 'ohifViewer' },
+    ],
+  },
+  {
+    label: 'Your data',
+    links: [
+      { kind: 'section', label: 'Wildflower Importer', section: 'importer' },
+      { kind: 'section', label: 'Wildflower Launcher', section: 'launcher' },
+      { kind: 'section', label: 'Wildflower Authorization', section: 'authorization' },
+    ],
+  },
+  {
+    label: 'Fitness',
+    links: [
+      { kind: 'section', label: 'FHIR Sync for Pebble', section: 'fhirSyncPebble' },
+      { kind: 'section', label: 'WatchLifts', section: 'watchLifts' },
+      { kind: 'section', label: 'Wildflower Strength', section: 'strength' },
+    ],
+  },
+  {
+    label: 'Developer',
+    links: [
+      { kind: 'section', label: 'Wildflower Server Docs', section: 'serverDocs' },
+      { kind: 'section', label: 'Wildflower Synthetic Data Loader', section: 'syntheticData' },
+    ],
+  },
 ]
 
-export { HEADER_NAV_LINKS, MARKETING_ANCHORS, anchorHref, fromApp, navHref, onMarketingSite }
-export type { AbsoluteNavLink, AnchorNavLink, MarketingAnchor, NavContext, NavLink, SectionNavLink }
+export { HEADER_NAV_GROUPS, MARKETING_ANCHORS, anchorHref, fromApp, navHref, onMarketingSite }
+export type {
+  AbsoluteNavLink,
+  AnchorNavLink,
+  MarketingAnchor,
+  NavContext,
+  NavGroup,
+  NavLink,
+  SectionNavLink,
+}

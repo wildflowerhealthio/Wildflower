@@ -149,14 +149,14 @@ hold the sites to it. The core tests pin the slugs.
   `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
   the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
   this slice, and every surface picks it up. Both the homepage and the apps show
-  `HEADER_NAV_LINKS` (direct links into the six apps); only the anchors'
+  `HEADER_NAV_GROUPS` (grouped links into the apps); only the anchors'
   hrefs differ by `NavContext`. The `SiteFooter` is the minimal "not a company"
   footer (paragraph + contact + mono stamp) carrying `id="note"`; the homepage's
   `app.test.tsx` asserts an element exists for every `MARKETING_ANCHORS` id
   (`#note` among them, plus the anchors `AppLanding`'s "rest of the project"
   links resolve to).
-- **`SiteHeader` is static, no backdrop, one hairline.** The four app links sit
-  inline at ≥840px and collapse behind a hamburger dropdown below that. `titleAs`
+- **`SiteHeader` is static, no backdrop, one hairline.** The app links always
+  sit behind a hamburger dropdown, in titled groups. `titleAs`
   picks the element wrapping the brand lockup — `'div'` by default so an app's
   own page heading (and the homepage's hero manifesto) stays the only `h1`; a
   surface whose brand _is_ the page heading passes `'h1'`.

@@ -1,7 +1,7 @@
 export { APP_DESCRIPTIONS, APP_SECTION_IDS, SMART_APP_LAUNCH_PAGES } from './app-descriptions.ts'
 export type { AppDescription, AppSectionId, SmartAppLaunchPage } from './app-descriptions.ts'
 export {
-  HEADER_NAV_LINKS,
+  HEADER_NAV_GROUPS,
   MARKETING_ANCHORS,
   anchorHref,
   fromApp,
@@ -13,6 +13,7 @@ export type {
   AnchorNavLink,
   MarketingAnchor,
   NavContext,
+  NavGroup,
   NavLink,
   SectionNavLink,
 } from './nav.ts'

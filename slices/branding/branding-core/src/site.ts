@@ -24,8 +24,8 @@ const APP_SLUGS = {
   plots: 'plots',
   syntheticData: 'synthetic-data',
   strength: 'strength',
-  // The WatchLifts watchapp's settings page: not a SMART app, so it has no nav
-  // link and no app description.
+  // The WatchLifts watchapp's settings page: not a SMART app, so it has no app
+  // description.
   watchLifts: 'watch-lifts',
   // The hosted launcher (`apps/launcher/launcher-web`), cross-origin to the API.
   launcher: 'launcher',

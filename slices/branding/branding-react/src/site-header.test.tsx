@@ -20,7 +20,7 @@ describe('SiteHeader', () => {
   it.each([
     ['the marketing site', onMarketingSite],
     ['an app', fromApp],
-  ])("should link directly into the six apps' published origins from %s", (_, nav) => {
+  ])("should link directly into the apps' published origins from %s", (_, nav) => {
     // Arrange / Act
     render(<SiteHeader nav={nav} />)
 
@@ -32,10 +32,15 @@ describe('SiteHeader', () => {
     expect(hrefs).toStrictEqual([
       sectionUrl('medications'),
       sectionUrl('plots'),
-      sectionUrl('strength'),
-      sectionUrl('importer'),
-      sectionUrl('serverDocs'),
       sectionUrl('ohifViewer'),
+      sectionUrl('importer'),
+      sectionUrl('launcher'),
+      sectionUrl('authorization'),
+      sectionUrl('fhirSyncPebble'),
+      sectionUrl('watchLifts'),
+      sectionUrl('strength'),
+      sectionUrl('serverDocs'),
+      sectionUrl('syntheticData'),
     ])
   })
 
@@ -79,6 +84,19 @@ describe('SiteHeader', () => {
     expect(within(heading).getByRole('link', { name: 'Wildflower, home' })).toBeDefined()
   })
 
+  it('should title each group of links', () => {
+    // Arrange / Act
+    render(<SiteHeader nav={onMarketingSite} />)
+
+    // Assert
+    const yourHealth = screen.getByRole('region', { name: 'Your health' })
+    expect(
+      within(yourHealth)
+        .getAllByRole('link')
+        .map((link) => link.textContent)
+    ).toStrictEqual(['Wildflower Medications', 'Wildflower Plots', 'Wildflower Imaging'])
+  })
+
   it('should toggle the collapsed nav dropdown open and closed', () => {
     // Arrange
     const { container } = render(<SiteHeader nav={onMarketingSite} />)
@@ -111,7 +129,7 @@ describe('SiteHeader', () => {
     expect(menu?.getAttribute('data-open')).toBe('true')
 
     // Act
-    fireEvent.click(screen.getByRole('link', { name: 'Medications' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Wildflower Medications' }))
 
     // Assert
     expect(menu?.getAttribute('data-open')).toBe('false')

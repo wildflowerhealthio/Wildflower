@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  HEADER_NAV_LINKS,
+  HEADER_NAV_GROUPS,
   MARKETING_ANCHORS,
   anchorHref,
   fromApp,
@@ -80,20 +80,20 @@ describe('navHref', () => {
   })
 })
 
-describe('HEADER_NAV_LINKS', () => {
-  it('should link directly into the six apps, in design order', () => {
-    expect(HEADER_NAV_LINKS.map((link) => link.label)).toStrictEqual([
-      'Medications',
-      'Plots',
-      'Strength',
-      'Importer',
-      'Server docs',
-      'Imaging',
+describe('HEADER_NAV_GROUPS', () => {
+  it('should group the apps under their menu headings, in design order', () => {
+    expect(
+      HEADER_NAV_GROUPS.map((group) => [group.label, group.links.map((link) => link.label)])
+    ).toStrictEqual([
+      ['Your health', ['Wildflower Medications', 'Wildflower Plots', 'Wildflower Imaging']],
+      ['Your data', ['Wildflower Importer', 'Wildflower Launcher', 'Wildflower Authorization']],
+      ['Fitness', ['FHIR Sync for Pebble', 'WatchLifts', 'Wildflower Strength']],
+      ['Developer', ['Wildflower Server Docs', 'Wildflower Synthetic Data Loader']],
     ])
   })
 
   it('should be section links, so every bar links the published apps', () => {
-    for (const link of HEADER_NAV_LINKS) {
+    for (const link of HEADER_NAV_GROUPS.flatMap((group) => group.links)) {
       expect(link.kind).toBe('section')
     }
   })

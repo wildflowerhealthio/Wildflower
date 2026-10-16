@@ -1,8 +1,7 @@
 /*
  * The header is shared by the marketing homepage and every app: static, no
- * background of its own, a single hairline against the page. The four app
- * links sit inline at ≥840px and collapse behind a hamburger dropdown below
- * that. Keep the look in step across surfaces — the whole point is that the
+ * background of its own, a single hairline against the page. The app links
+ * always sit behind a hamburger dropdown, in titled groups. Keep the look in step across surfaces — the whole point is that the
  * apps and the homepage read as one site.
  */
 
@@ -53,10 +52,7 @@
   align-items: center;
 }
 
-/*
- * Hamburger toggle. Shown only below 840px; from 840px up the four links sit
- * inline and the toggle is hidden.
- */
+/* Hamburger toggle, shown at every width. */
 .site-header__toggle {
   display: inline-flex;
   align-items: center;
@@ -69,9 +65,8 @@
 }
 
 /*
- * The four app links. Below 840px they collapse into a dropdown panel — an
- * "Apps" title over the stacked links — anchored to the header's right
- * gutter; below 640px the panel spans the full width.
+ * The app links: a dropdown panel of titled groups, anchored to the header's
+ * right gutter; below 640px the panel spans the full width.
  */
 .site-header__menu {
   font-size: var(--font-size-3);
@@ -87,8 +82,8 @@
   right: var(--page-padding-x);
   z-index: 20;
   display: grid;
-  gap: var(--space-6);
-  min-width: 220px;
+  gap: var(--space-9);
+  min-width: 260px;
   padding: var(--space-8) var(--space-9);
   border: 1px solid var(--color-divider);
   border-radius: var(--card-border-radius);
@@ -96,7 +91,12 @@
   box-shadow: var(--shadow-float-panel);
 }
 
-/* Quiet mono label at the top of the dropdown; hidden in the inline row. */
+.site-header__group {
+  display: grid;
+  gap: var(--space-6);
+}
+
+/* Quiet mono label over each group of links. */
 .site-header__menu-title {
   margin: 0;
   color: var(--color-neutral-5);
@@ -132,35 +132,5 @@
     min-width: 0;
     border-inline: none;
     border-radius: 0;
-  }
-}
-
-@media (min-width: 840px) {
-  .site-header__toggle,
-  .site-header__menu-title {
-    display: none;
-  }
-
-  /*
-   * Inline nav row: the links sit in a flat row regardless of toggle state
-   * (which stays closed at this width), so the dropdown chrome is dropped.
-   */
-  .site-header__menu,
-  .site-header__menu[data-open='false'],
-  .site-header__menu[data-open='true'] {
-    position: static;
-    display: block;
-    min-width: 0;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-  }
-
-  .site-header__menu-list {
-    display: flex;
-    align-items: center;
-    gap: var(--space-11);
   }
 }
