@@ -6,8 +6,10 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   type CatalogGroup,
   type CatalogRow,
+  capIsFull,
   matchesSearch,
   normaliseForSearch,
+  selectionCapsOf,
 } from '@wildflowerhealthio/plots-core-js'
 import {
   type Series,
@@ -45,41 +47,6 @@ const COUNTED_NOUN: Readonly<Record<Series.Series['kind'], string>> = {
   levels: 'period',
   spans: 'span',
 }
-
-/** How many of each cap the selection uses, and whether each is full. */
-interface SelectionCaps {
-  readonly valueSeriesCount: number
-  readonly laneCount: number
-  readonly valueSeriesFull: boolean
-  readonly lanesFull: boolean
-}
-
-/**
- * How the selection stands against its two caps — `ValueAxis.CAP` value
- * series and `SpanSeries.LANE_CAP` lanes — read off the catalogue rows'
- * `seriesKind`, so the panel never parses an id. A selected id with no row
- * counts against neither.
- */
-const selectionCapsOf = (
-  catalogGroups: readonly CatalogGroup[],
-  selectedSeriesIdSet: ReadonlySet<string>
-): SelectionCaps => {
-  const selectedRows = catalogGroups
-    .flatMap((group) => group.rows)
-    .filter((row) => selectedSeriesIdSet.has(row.id))
-  const laneCount = selectedRows.filter((row) => row.seriesKind === 'spans').length
-  const valueSeriesCount = selectedRows.length - laneCount
-  return {
-    valueSeriesCount,
-    laneCount,
-    valueSeriesFull: valueSeriesCount >= ValueAxis.CAP,
-    lanesFull: laneCount >= SpanSeries.LANE_CAP,
-  }
-}
-
-/** Whether selecting `row` would pass the cap its kind counts against. */
-const rowIsCapped = (row: CatalogRow, caps: SelectionCaps): boolean =>
-  row.seriesKind === 'spans' ? caps.lanesFull : caps.valueSeriesFull
 
 /** `amount` with its noun, pluralised with a plain `s`. */
 const formatCount = (amount: number, noun: string): string =>
@@ -202,11 +169,12 @@ const SeriesRow = ({ row, checked, disabled, onToggle }: SeriesRowProps): JSX.El
  * axes are assigned in. Once `ValueAxis.CAP` point or level series are
  * selected every unchecked point or level row is disabled and a hint says why
  * — the checked rows stay enabled so one can be swapped out; span rows count
- * against `SpanSeries.LANE_CAP` the same way, on their own. Search filters through the core's
- * `matchesSearch`, hides groups left empty, and counts each group's matches
- * against its size while a query is typed; fold state is local, and every
- * group starts open. Ids are opaque here: the panel compares them and never
- * reads them.
+ * against `SpanSeries.LANE_CAP` the same way, on their own. Both caps are
+ * counted by the core's `selectionCapsOf`, from the selected ids themselves,
+ * so a selected series whose catalogue row has not loaded yet still counts.
+ * Search filters through the core's `matchesSearch`, hides groups left empty,
+ * and counts each group's matches against its size while a query is typed;
+ * fold state is local, and every group starts open.
  */
 const SeriesPanel = ({
   catalogGroups,
@@ -226,13 +194,13 @@ const SeriesPanel = ({
     [catalogGroups, searchQuery]
   )
   const emptyMessage = emptyMessageFor(catalogGroups, groupsWithMatches, searchQuery)
-  const caps = selectionCapsOf(catalogGroups, selectedSeriesIdSet)
-  const hasLanes =
-    caps.laneCount > 0 ||
-    catalogGroups.some((group) => group.rows.some((row) => row.seriesKind === 'spans'))
+  const caps = useMemo(() => selectionCapsOf(selectedSeriesIds), [selectedSeriesIds])
+  const hasLanes = catalogGroups.some((group) =>
+    group.rows.some((row) => row.seriesKind === 'spans')
+  )
   const capHints = [
-    ...(caps.valueSeriesFull ? [CAP_REACHED_HINT] : []),
-    ...(caps.lanesFull ? [LANE_CAP_REACHED_HINT] : []),
+    ...(capIsFull(caps, 'points') ? [CAP_REACHED_HINT] : []),
+    ...(capIsFull(caps, 'spans') ? [LANE_CAP_REACHED_HINT] : []),
   ]
   const searchIsActive = normaliseForSearch(searchQuery) !== ''
 
@@ -299,7 +267,7 @@ const SeriesPanel = ({
                           key={row.id}
                           row={row}
                           checked={rowIsSelected}
-                          disabled={rowIsCapped(row, caps) && !rowIsSelected}
+                          disabled={capIsFull(caps, row.seriesKind) && !rowIsSelected}
                           onToggle={(checked) => {
                             onSelectionChange(
                               toggleSeriesInSelection(selectedSeriesIds, row.id, checked)

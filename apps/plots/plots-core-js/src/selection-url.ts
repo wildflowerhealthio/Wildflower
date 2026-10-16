@@ -1,4 +1,4 @@
-import { SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { type Series, SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 import { seriesKindOfId } from './series-sources.ts'
 import { type RangePreset, isRangePreset } from './time-range.ts'
@@ -17,6 +17,43 @@ interface Selection {
    */
   readonly series: readonly string[]
   readonly range: RangePreset
+}
+
+/**
+ * How many of each of a selection's two caps it uses: point and level series
+ * against `ValueAxis.CAP`, span series (lanes) against `SpanSeries.LANE_CAP`.
+ */
+interface SelectionCaps {
+  readonly valueSeriesCount: number
+  readonly laneCount: number
+}
+
+/** The caps an empty selection uses. */
+const NO_CAPS_USED: SelectionCaps = { valueSeriesCount: 0, laneCount: 0 }
+
+/** Whether `caps` has no room left for another series of `kind`. */
+const capIsFull = (caps: SelectionCaps, kind: Series.Series['kind']): boolean =>
+  kind === 'spans' ? caps.laneCount >= SpanSeries.LANE_CAP : caps.valueSeriesCount >= ValueAxis.CAP
+
+/** `caps` with one more series of `kind` counted. */
+const withSeriesOfKind = (caps: SelectionCaps, kind: Series.Series['kind']): SelectionCaps =>
+  kind === 'spans'
+    ? { ...caps, laneCount: caps.laneCount + 1 }
+    : { ...caps, valueSeriesCount: caps.valueSeriesCount + 1 }
+
+/**
+ * How the series `ids` stand against the two caps, each id counted by the
+ * kind its source reads it as (`seriesKindOfId`) — so an id counts whether or
+ * not the catalogue has a row for it yet. An id no source reads counts
+ * against neither.
+ */
+const selectionCapsOf = (ids: Iterable<string>): SelectionCaps => {
+  let caps = NO_CAPS_USED
+  for (const id of ids) {
+    const kind = seriesKindOfId(id)
+    if (kind !== null) caps = withSeriesOfKind(caps, kind)
+  }
+  return caps
 }
 
 /** Query key repeated once per selected series. */
@@ -65,16 +102,12 @@ const withSelection = (params: URLSearchParams, selection: Selection): URLSearch
  */
 const decodeSelection = (params: URLSearchParams): Selection => {
   const series: string[] = []
-  let valueSeriesCount = 0
-  let spanSeriesCount = 0
+  let caps = NO_CAPS_USED
   for (const id of new Set(params.getAll(SERIES_PARAM))) {
     const kind = seriesKindOfId(id)
-    if (kind === 'spans' && spanSeriesCount < SpanSeries.LANE_CAP) {
+    if (kind !== null && !capIsFull(caps, kind)) {
       series.push(id)
-      spanSeriesCount += 1
-    } else if ((kind === 'points' || kind === 'levels') && valueSeriesCount < ValueAxis.CAP) {
-      series.push(id)
-      valueSeriesCount += 1
+      caps = withSeriesOfKind(caps, kind)
     }
   }
   const range = params.get(RANGE_PARAM)
@@ -84,5 +117,14 @@ const decodeSelection = (params: URLSearchParams): Selection => {
   }
 }
 
-export type { Selection }
-export { DEFAULT_RANGE, RANGE_PARAM, SERIES_PARAM, decodeSelection, encodeSelection, withSelection }
+export type { Selection, SelectionCaps }
+export {
+  DEFAULT_RANGE,
+  RANGE_PARAM,
+  SERIES_PARAM,
+  capIsFull,
+  decodeSelection,
+  encodeSelection,
+  selectionCapsOf,
+  withSelection,
+}

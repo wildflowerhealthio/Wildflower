@@ -20,12 +20,14 @@ export { PRESET_LOOKBACK, RANGE_PRESETS, isRangePreset, xDomain } from './time-r
 export type { CatalogGroup, CatalogRow } from './catalog.ts'
 export { groupForPanel, matchesSearch, normaliseForSearch } from './catalog.ts'
 
-export type { Selection } from './selection-url.ts'
+export type { Selection, SelectionCaps } from './selection-url.ts'
 export {
   DEFAULT_RANGE,
   RANGE_PARAM,
   SERIES_PARAM,
+  capIsFull,
   decodeSelection,
   encodeSelection,
+  selectionCapsOf,
   withSelection,
 } from './selection-url.ts'

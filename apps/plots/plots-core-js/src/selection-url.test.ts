@@ -10,8 +10,10 @@ import {
   RANGE_PARAM,
   SERIES_PARAM,
   type Selection,
+  capIsFull,
   decodeSelection,
   encodeSelection,
+  selectionCapsOf,
   withSelection,
 } from './selection-url.ts'
 
@@ -238,5 +240,36 @@ describe('encodeSelection / decodeSelection', () => {
         { numRuns: RUNS }
       )
     })
+  })
+})
+
+describe('selectionCapsOf / capIsFull', () => {
+  test('counts each id against the cap its kind reads as, and junk against neither', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(seriesIdArb, { maxLength: ValueAxis.CAP + 2 }),
+        fc.uniqueArray(spanSeriesIdArb, { maxLength: SpanSeries.LANE_CAP + 2 }),
+        (valueIds, spanIds) => {
+          const caps = selectionCapsOf([...valueIds, 'not a series id', ...spanIds])
+          expect(caps).toEqual({ valueSeriesCount: valueIds.length, laneCount: spanIds.length })
+          expect(capIsFull(caps, 'points')).toBe(valueIds.length >= ValueAxis.CAP)
+          expect(capIsFull(caps, 'levels')).toBe(valueIds.length >= ValueAxis.CAP)
+          expect(capIsFull(caps, 'spans')).toBe(spanIds.length >= SpanSeries.LANE_CAP)
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('a decoded selection never fills past either cap', () => {
+    fc.assert(
+      fc.property(fc.array(fc.oneof(seriesIdArb, spanSeriesIdArb, fc.string())), (ids) => {
+        const params = new URLSearchParams(ids.map((id) => [SERIES_PARAM, id]))
+        const caps = selectionCapsOf(decodeSelection(params).series)
+        expect(caps.valueSeriesCount).toBeLessThanOrEqual(ValueAxis.CAP)
+        expect(caps.laneCount).toBeLessThanOrEqual(SpanSeries.LANE_CAP)
+      }),
+      { numRuns: RUNS }
+    )
   })
 })
