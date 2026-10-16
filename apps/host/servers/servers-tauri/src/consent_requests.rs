@@ -1,34 +1,35 @@
 //! Notifying each new consent waiting on the servers: a notification for each, "‹client› wants
 //! access to ‹domain›", withdrawn once the request is no longer the server's newest, and opening
 //! requests in the in-app browser, signed in as the Owner, as the server's page's Open does. On a
-//! phone a tap on the notification opens its request, and the first fresh request a server reports
-//! at the app's start opens instead of notifying, so a request whose notification launched the app
-//! opens too; a return to the foreground opens a pending request the same way, so coming back to
-//! the app after seeing a notification opens its request. On the desktop, which reports no taps,
-//! each request opens in the default browser as it notifies. A request the Owner's own browser made
-//! does neither. Which request notifies or opens is [`ConsentNotificationCoalescer`]'s decision.
+//! phone a tap on the notification opens its request, and each arrival of the app in the foreground
+//! opens one: the request notified latest that is still its server's newest, so coming back to the
+//! app after seeing a notification opens its request, or failing one, the first request a server on
+//! its way up reports, so a request whose notification launched the app opens too, instead of
+//! notifying. On the desktop, which reports no taps, each request opens in the default browser as
+//! it notifies. A request the Owner's own browser made does neither. Which request notifies or opens is [`ConsentNotificationCoalescer`]'s decision.
 
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::AppHandle;
 use tauri_plugin_log::log;
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 use wildflowerhealthio_servers::{
     ConsentNotificationChanges, ConsentNotificationCoalescer, ConsentOpening, ConsentRequest,
     ServerDetail, ServerRegistry,
 };
-use wildflowerhealthio_tauri_unit_runner::{AppReturn, UnitStatuses};
+use wildflowerhealthio_tauri_unit_runner::{TauriUnitRunner, UnitId, UnitStatuses};
 
 use crate::notifications::{post_notification, withdraw_consent_notification};
 use crate::pending_consent_badge::{PendingConsentBadge, ShownBadgeCount};
 use crate::ServerUnits;
 
 /// Which consent requests open on this platform: on a phone, a tap opens
-/// one, and the first a server reports at the app's start; on the desktop,
-/// which reports no taps, each that notifies.
+/// one, and each arrival of the app in the foreground; on the desktop, which
+/// reports no taps, each that notifies.
 const CONSENT_OPENING: ConsentOpening = if cfg!(any(target_os = "ios", target_os = "android")) {
-    ConsentOpening::FirstAtStart
+    ConsentOpening::OnArrival
 } else {
     ConsentOpening::AsNotified
 };
@@ -56,6 +57,11 @@ pub(crate) struct AppConsentRequestNotifier {
     /// `TauriUnitRunner`'s statuses, which a request not openable yet is
     /// opened again on as they change.
     pub(crate) statuses_rx: watch::Receiver<UnitStatuses<ServerDetail>>,
+    /// For each server, by domain, what ends the wait of its latest open
+    /// once dropped, which a later open for the server does as it takes the
+    /// place: each server has at most one open waiting, however many opens
+    /// a server that doesn't run, as one whose policy is off, gets.
+    pub(crate) latest_opens: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 impl ConsentRequestNotifier for AppConsentRequestNotifier {
@@ -69,28 +75,37 @@ impl ConsentRequestNotifier for AppConsentRequestNotifier {
 
     /// Open `request` signed in as the Owner, stacked over the views
     /// showing, as a tap on its notification does. A server that can't open
-    /// it now, as one not yet launchable at the app's start, opens it once it
-    /// can, while it is still the server's newest request; each try logs its
-    /// outcome.
+    /// it now, as one not yet launchable at the app's start or whose run is
+    /// stopping or starting, opens it once it can, while it is still the
+    /// server's newest request; each try logs its outcome. A later open for
+    /// the same server ends this one's wait.
     fn open(&self, request: &ConsentRequest) {
         let registry = Arc::clone(&self.registry);
         let data_root = self.data_root.clone();
         let statuses_rx = self.statuses_rx.clone();
-        let domain = request.domain.clone();
-        let consent = request.pending_consent.key.clone();
         let launch_browser = crate::launch_commands::NativePageLaunchBrowser {
             app: self.app.clone(),
         };
         let server_units = self.server_units.clone();
+        let request = request.clone();
+        let (take_over, taken_over) = oneshot::channel();
+        // Replacing the earlier open's sender drops it, which ends its wait.
+        self.latest_opens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(request.domain.clone(), take_over);
         tauri::async_runtime::spawn(async move {
             crate::launch_commands::open_consent_once_openable(
                 registry,
                 &data_root,
                 statuses_rx,
-                domain,
-                &consent,
+                &request,
                 launch_browser,
                 server_units,
+                async {
+                    // Dropped, or sent nothing ever.
+                    let _taken_over = taken_over.await;
+                },
             )
             .await;
         });
@@ -98,53 +113,62 @@ impl ConsentRequestNotifier for AppConsentRequestNotifier {
 }
 
 /// Announce and open each consent request through `notifier`, every time
-/// `TauriUnitRunner`'s statuses change or the app returns to the foreground
-/// (`returns`), as [`ConsentNotificationCoalescer`] decides for
-/// [`CONSENT_OPENING`].
+/// `runner`'s statuses change or the app arrives in the foreground, as
+/// [`ConsentNotificationCoalescer`] decides for [`CONSENT_OPENING`].
 pub(crate) async fn notify_consent_requests(
     notifier: impl ConsentRequestNotifier,
-    badge: impl PendingConsentBadge,
-    statuses: watch::Receiver<UnitStatuses<ServerDetail>>,
-    returns: watch::Receiver<AppReturn<ServerDetail>>,
+    runner: TauriUnitRunner<ServerDetail>,
 ) {
-    notify_and_open_consent_requests(notifier, statuses, returns, CONSENT_OPENING).await;
+    let statuses = runner.subscribe();
+    let arrivals = runner.subscribe_foreground_arrivals();
+    notify_and_open_consent_requests(
+        notifier,
+        statuses,
+        arrivals,
+        move || runner.units_to_run(),
+        CONSENT_OPENING,
+    )
+    .await;
 }
 
-/// [`notify_consent_requests`], opening as `opening` says.
+/// [`notify_consent_requests`] with the servers' `statuses`, the app's
+/// `arrivals` in the foreground, and the servers the unit runner runs now
+/// (`units_to_run`), opening as `opening` says.
 ///
-/// A return reaches the coalescer before the statuses read after it, so the
-/// coalescer knows which runs the return found before it reads their
-/// servers' next reports: a report counts as a resumed server's first since
-/// the return only when a run other than the one the return found makes it.
+/// An arrival before this starts, as the first window's, which opens before
+/// the host sets the servers on the unit runner, counts as one as it starts,
+/// so a request a server reports as the app starts in the foreground opens.
 async fn notify_and_open_consent_requests(
     notifier: impl ConsentRequestNotifier,
     badge: impl PendingConsentBadge,
     mut statuses: watch::Receiver<UnitStatuses<ServerDetail>>,
-    mut returns: watch::Receiver<AppReturn<ServerDetail>>,
+    mut arrivals: watch::Receiver<u64>,
+    units_to_run: impl Fn() -> BTreeSet<UnitId>,
     opening: ConsentOpening,
 ) {
     let mut coalescer = ConsentNotificationCoalescer::new(opening);
-    // A return `returns.changed()` woke the loop for, which marks it seen.
-    let mut returned = false;
-    loop {
-        let Ok(returned_meanwhile) = returns.has_changed() else {
-            log_returns_closed();
-            return;
-        };
-        if std::mem::take(&mut returned) || returned_meanwhile {
-            let app_return = returns.borrow_and_update().clone();
-            apply(&notifier, &coalescer.returned_to_foreground(&app_return));
-        }
-        let current = statuses.borrow_and_update().clone();
+    let arrived_before = *arrivals.borrow_and_update() > 0;
+    let current = statuses.borrow_and_update().clone();
+    if arrived_before {
+        apply(
+            &notifier,
+            &coalescer.came_to_foreground(&current, &units_to_run()),
+        );
+    } else {
         apply(&notifier, &coalescer.record(&current));
+    }
+    loop {
         tokio::select! {
-            biased;
-            changed = returns.changed() => {
+            changed = arrivals.changed() => {
                 if changed.is_err() {
-                    log_returns_closed();
+                    log::error!(
+                        "[servers] the unit runner's foreground arrivals closed; consent \
+                         notifications stopped"
+                    );
                     return;
                 }
-                returned = true;
+                let current = statuses.borrow_and_update().clone();
+                apply(&notifier, &coalescer.came_to_foreground(&current, &units_to_run()));
             }
             changed = statuses.changed() => {
                 if changed.is_err() {
@@ -153,15 +177,11 @@ async fn notify_and_open_consent_requests(
                     );
                     return;
                 }
+                let current = statuses.borrow_and_update().clone();
+                apply(&notifier, &coalescer.record(&current));
             }
         }
     }
-}
-
-/// Log that the unit runner's returns to the foreground closed, which stops
-/// the consent notifications.
-fn log_returns_closed() {
-    log::error!("[servers] the unit runner's returns closed; consent notifications stopped");
 }
 
 /// Withdraw, announce and open through `notifier` as `changes` says.
@@ -181,10 +201,9 @@ fn apply(notifier: &impl ConsentRequestNotifier, changes: &ConsentNotificationCh
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use std::sync::OnceLock;
     use wildflowerhealthio_authorization_server::NewestPendingConsent;
 
-    use wildflowerhealthio_servers::{ConsentKey, ServerRunId};
+    use wildflowerhealthio_servers::ConsentKey;
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
     use super::*;
@@ -242,17 +261,9 @@ mod tests {
     }
 
     /// The servers' statuses with [`RUTH`] running, the request `newest`
-    /// the newest waiting there, if any, the same run each time.
+    /// the newest waiting there, if any.
     fn ruth_waiting_on(newest: Option<&str>) -> UnitStatuses<ServerDetail> {
-        static THE_RUN: OnceLock<ServerRunId> = OnceLock::new();
-        ruth_reporting(*THE_RUN.get_or_init(ServerRunId::next), newest)
-    }
-
-    /// The servers' statuses with [`RUTH`]'s run `run` reporting, the request
-    /// `newest` the newest waiting there, if any.
-    fn ruth_reporting(run: ServerRunId, newest: Option<&str>) -> UnitStatuses<ServerDetail> {
         let detail = ServerDetail {
-            run,
             health: None,
             tunnel: None,
             certificate: None,
@@ -280,31 +291,57 @@ mod tests {
         ConsentKey::OAuth { id: id.to_owned() }
     }
 
-    /// The servers' statuses with [`RUTH`]'s run stopped.
-    fn ruth_stopped() -> UnitStatuses<ServerDetail> {
-        [(UnitId::new(RUTH), UnitStatus::never_run())].into()
+    /// The servers' statuses with [`RUTH`]'s run running and reporting
+    /// nothing, as while it starts, or stops for the restart a return brings
+    /// on iOS.
+    fn ruth_not_reporting() -> UnitStatuses<ServerDetail> {
+        let status = UnitStatus {
+            run_state: RunState::Running,
+            running_since: None,
+            detail: None,
+        };
+        [(UnitId::new(RUTH), status)].into()
     }
 
-    /// Send `statuses`, the servers' or a return's, then yield to the
-    /// notifier, on the test's one thread, until it is waiting for the next
-    /// change again.
-    async fn send_and_let_it_read<T>(statuses_tx: &watch::Sender<T>, statuses: T) {
-        statuses_tx.send(statuses).unwrap();
+    /// Yield to the notifier, on the test's one thread, until it is waiting
+    /// for the next change again.
+    async fn let_it_read() {
         for _ in 0..10 {
             tokio::task::yield_now().await;
         }
     }
 
+    /// Send `statuses`, then let the notifier read them.
+    async fn send_and_let_it_read(
+        statuses_tx: &watch::Sender<UnitStatuses<ServerDetail>>,
+        statuses: UnitStatuses<ServerDetail>,
+    ) {
+        statuses_tx.send(statuses).unwrap();
+        let_it_read().await;
+    }
+
+    /// Return to the foreground, then let the notifier read it.
+    async fn return_and_let_it_read(arrivals_tx: &watch::Sender<u64>) {
+        arrivals_tx.send_modify(|arrivals| *arrivals += 1);
+        let_it_read().await;
+    }
+
+    /// The servers the unit runner runs: [`RUTH`].
+    fn ruth_to_run() -> BTreeSet<UnitId> {
+        [UnitId::new(RUTH)].into()
+    }
+
     #[tokio::test]
     async fn each_new_request_is_announced_once_and_one_seen_before_is_not() {
         let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(Some("a")));
-        let (_returns_tx, returns_rx) = watch::channel(AppReturn::default());
+        let (_arrivals_tx, arrivals_rx) = watch::channel(0);
         let recorded = RecordedRequests::default();
         let notifying = tokio::spawn(notify_and_open_consent_requests(
             recorded.clone(),
             RecordedCounts::default(),
             statuses_rx,
-            returns_rx,
+            arrivals_rx,
+            ruth_to_run,
             ConsentOpening::AsNotified,
         ));
         for _ in 0..10 {
@@ -332,14 +369,16 @@ mod tests {
     #[tokio::test]
     async fn on_a_phone_the_request_waiting_at_start_opens_and_a_later_one_notifies() {
         let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(Some("a")));
-        let (_returns_tx, returns_rx) = watch::channel(AppReturn::default());
+        // The first window opened before the notifications started.
+        let (_arrivals_tx, arrivals_rx) = watch::channel(1);
         let recorded = RecordedRequests::default();
         let notifying = tokio::spawn(notify_and_open_consent_requests(
             recorded.clone(),
             RecordedCounts::default(),
             statuses_rx,
-            returns_rx,
-            ConsentOpening::FirstAtStart,
+            arrivals_rx,
+            ruth_to_run,
+            ConsentOpening::OnArrival,
         ));
         for _ in 0..10 {
             tokio::task::yield_now().await;
@@ -356,19 +395,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_a_phone_each_return_opens_the_announced_request_once_its_server_reports_it() {
-        let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(None));
-        let (returns_tx, returns_rx) = watch::channel(AppReturn::default());
+    async fn on_a_phone_the_first_request_a_server_starting_at_start_reports_opens() {
+        let (statuses_tx, statuses_rx) =
+            watch::channel([(UnitId::new(RUTH), UnitStatus::never_run())].into());
+        // The first window opened before the notifications started.
+        let (_arrivals_tx, arrivals_rx) = watch::channel(1);
         let recorded = RecordedRequests::default();
         let notifying = tokio::spawn(notify_and_open_consent_requests(
             recorded.clone(),
             statuses_rx,
-            returns_rx,
-            ConsentOpening::FirstAtStart,
+            arrivals_rx,
+            ruth_to_run,
+            ConsentOpening::OnArrival,
         ));
-        for _ in 0..10 {
-            tokio::task::yield_now().await;
-        }
+        let_it_read().await;
+
+        send_and_let_it_read(&statuses_tx, ruth_not_reporting()).await;
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("b"))).await;
+        drop(statuses_tx);
+        notifying.await.unwrap();
+
+        assert_eq!(recorded.opened_keys(), [oauth("a")]);
+        assert_eq!(recorded.keys(), [oauth("b")], "a later request notifies");
+    }
+
+    #[tokio::test]
+    async fn on_a_phone_each_return_opens_the_announced_request() {
+        let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(None));
+        let (arrivals_tx, arrivals_rx) = watch::channel(0);
+        let recorded = RecordedRequests::default();
+        let notifying = tokio::spawn(notify_and_open_consent_requests(
+            recorded.clone(),
+            statuses_rx,
+            arrivals_rx,
+            ruth_to_run,
+            ConsentOpening::OnArrival,
+        ));
+        let_it_read().await;
         send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
         assert_eq!(recorded.keys(), [oauth("a")]);
         assert!(
@@ -376,29 +440,15 @@ mod tests {
             "a later request notifies"
         );
 
-        // Back with the server still running: "a" opens now.
-        let carried_on = AppReturn {
-            carried_on: ruth_waiting_on(Some("a")),
-            resumed: UnitStatuses::new(),
-        };
-        send_and_let_it_read(&returns_tx, carried_on).await;
+        // Back with the server's run carrying on: "a" opens.
+        return_and_let_it_read(&arrivals_tx).await;
         assert_eq!(recorded.opened_keys(), [oauth("a")]);
 
-        // Back with the server's run asked to restart, as on iOS: its old run
-        // still reports "a" until it stops, then the new run reports it.
-        let restarted = AppReturn {
-            carried_on: UnitStatuses::new(),
-            resumed: ruth_waiting_on(Some("a")),
-        };
-        send_and_let_it_read(&returns_tx, restarted).await;
+        // Back with the server's run asked to stop for a restart, as on iOS:
+        // "a" opens again, its open waiting for the new run to report it.
+        send_and_let_it_read(&statuses_tx, ruth_not_reporting()).await;
+        return_and_let_it_read(&arrivals_tx).await;
         send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
-        assert_eq!(
-            recorded.opened_keys(),
-            [oauth("a")],
-            "the old run's report isn't the new run's first"
-        );
-        send_and_let_it_read(&statuses_tx, ruth_stopped()).await;
-        send_and_let_it_read(&statuses_tx, ruth_reporting(ServerRunId::next(), Some("a"))).await;
         drop(statuses_tx);
         notifying.await.unwrap();
 
@@ -407,17 +457,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_returns_closing_stops_the_notifications() {
+    async fn the_arrivals_closing_stops_the_notifications() {
         let (_statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(None));
-        let (returns_tx, returns_rx) = watch::channel(AppReturn::default());
+        let (arrivals_tx, arrivals_rx) = watch::channel(0);
         let notifying = tokio::spawn(notify_and_open_consent_requests(
             RecordedRequests::default(),
             statuses_rx,
-            returns_rx,
-            ConsentOpening::FirstAtStart,
+            arrivals_rx,
+            ruth_to_run,
+            ConsentOpening::OnArrival,
         ));
 
-        drop(returns_tx);
+        drop(arrivals_tx);
 
         tokio::time::timeout(std::time::Duration::from_secs(5), notifying)
             .await

@@ -1,14 +1,15 @@
 //! [`TauriUnitRunner`], what the app builds before its Tauri builder and pushes
 //! its units to.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
 use tokio::sync::{broadcast, watch};
 
 use wildflowerhealthio_unit_runner::{
-    AppReturn, BackgroundSessionLength, RunPolicy, RunStopped, SystemClock, Unit, UnitId,
-    UnitRunner, UnitStatuses,
+    BackgroundSessionLength, RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner,
+    UnitStatuses,
 };
 
 use crate::tauri_bindings::TauriBindings;
@@ -124,6 +125,13 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
         self.unit_runner.statuses()
     }
 
+    /// The units that should run now: each whose run is up, starting, or
+    /// about to start.
+    #[must_use]
+    pub fn units_to_run(&self) -> BTreeSet<UnitId> {
+        self.unit_runner.units_to_run()
+    }
+
     /// Every unit's status, as it changes. The receiver always holds the
     /// current statuses; a slow reader sees the latest, not every step.
     #[must_use]
@@ -139,14 +147,14 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
         self.unit_runner.subscribe_stops()
     }
 
-    /// The app's returns to the foreground: each time it becomes present
-    /// after being absent, having been present before, an [`AppReturn`]: the
-    /// units whose run carries on across the return, and those it resumes. A
-    /// run the return restarts, as every running unit's on iOS, doesn't carry
-    /// on. The receiver holds no units until the first return; a slow reader
-    /// sees the latest return, not every one.
+    /// The app's arrivals in the foreground: how many times it has become
+    /// present after being absent, its first window opening and each return
+    /// to the foreground alike. Each arrival changes it once the runs it
+    /// starts and stops are asked for, on iOS after this host has asked every
+    /// running unit's run to stop for the restart a return brings; a slow
+    /// reader sees one change for several arrivals.
     #[must_use]
-    pub fn subscribe_returns(&self) -> watch::Receiver<AppReturn<D>> {
-        self.unit_runner.subscribe_returns()
+    pub fn subscribe_foreground_arrivals(&self) -> watch::Receiver<u64> {
+        self.unit_runner.subscribe_foreground_arrivals()
     }
 }

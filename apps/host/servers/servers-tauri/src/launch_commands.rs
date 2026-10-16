@@ -18,7 +18,7 @@
 //! another browser or device opens the same way at its page, with `then=back`
 //! ([`consent_sign_in_url`](wildflowerhealthio_servers::consent_sign_in_url)),
 //! once the server is launchable: from the server's page in the base, from a
-//! tap on its notification on a phone, at the app's start or a return to the
+//! tap on its notification on a phone, at an arrival of the app in the
 //! foreground on a phone, or, on a desktop, which reports no taps, as its
 //! notification posts. Each consent shows in one view ([`ConsentViews`]), as
 //! a tap and the return it brings both open it.
@@ -45,6 +45,7 @@
 
 use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,7 +60,7 @@ use tokio::sync::{watch, Notify};
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
-    ConsentKey, ConsentViewClaim, ConsentViews, IfShowing, LaunchError, ListedServer,
+    ConsentRequest, ConsentViewClaim, ConsentViews, IfShowing, LaunchError, ListedServer,
     PendingConsent, RegistryError, ServerConsentWatcher, ServerDetail, ServerLaunchMinter,
     ServerRecord, ServerRegistry, ServerSignInCodeMinter,
 };
@@ -155,7 +156,7 @@ pub async fn server_open_pending_consent(
 /// plugin posted under `notificationId`, as its tap reports it. Invoked as
 /// `invoke('server_open_notified_consent', { notificationId })`; answers with
 /// nothing, opening nothing, for a notification that isn't a consent's, or
-/// for a consent already showing, as one the return to the foreground the
+/// for a consent already showing, as one the arrival in the foreground the
 /// tap brought opened.
 ///
 /// # Errors
@@ -186,32 +187,46 @@ pub async fn server_open_notified_consent(
     .await
 }
 
-/// Open the consent `consent` waiting on the server `domain` in
-/// `launch_browser`, as [`open_pending_consent`] does with the statuses
+/// Open `request`, a consent waiting on its server, in `launch_browser`, as [`open_pending_consent`] does with the statuses
 /// `statuses_rx` holds, now and on each change until it opens, while it is
-/// still the server's newest request. Each try logs its outcome; a refusal
-/// leaves the request at its notification and the server's page meanwhile.
+/// still the server's newest request. A server whose run isn't reporting, as
+/// one stopping, stopped or starting, as across the restart a return to the
+/// foreground brings on iOS, is waited for until a run reports; the wait ends
+/// once a run reports another request newest, or nothing pending, or the
+/// server is gone, or once `superseded` resolves, as when a later open of a
+/// request on the same server takes over; an open under way always finishes.
+/// Each try logs its outcome; a refusal leaves the request at its
+/// notification and the server's page meanwhile.
 ///
 /// Each request `consent_requests` opens, opens this way: on the desktop
-/// each it notifies for, in the default browser, and on a phone the first a
-/// server reports at the app's start, and one at each return to the
-/// foreground. A consent already showing in a view, as one a tap on its
+/// each it notifies for, in the default browser, and on a phone one at each
+/// arrival of the app in the foreground. A consent already showing in a view, as one a tap on its
 /// notification opened, opens in no other.
 pub(crate) async fn open_consent_once_openable(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,
     mut statuses_rx: watch::Receiver<UnitStatuses<ServerDetail>>,
-    domain: String,
-    consent: &ConsentKey,
+    request: &ConsentRequest,
     launch_browser: impl LaunchBrowser + Clone,
     launch_presence: impl LaunchPresence,
+    superseded: impl Future<Output = ()>,
 ) {
+    let domain = &request.domain;
+    let consent = &request.pending_consent.key;
+    let mut superseded = std::pin::pin!(superseded);
     loop {
         let statuses = statuses_rx.borrow_and_update().clone();
-        let still_newest = statuses
-            .get(&UnitId::new(&domain))
-            .and_then(PendingConsent::of_run)
-            .is_some_and(|newest| newest.key == *consent);
+        let Some(unit_status) = statuses.get(&UnitId::new(domain)) else {
+            return;
+        };
+        if unit_status.detail.is_none() {
+            if !changed_unless_superseded(&mut statuses_rx, superseded.as_mut()).await {
+                return;
+            }
+            continue;
+        }
+        let still_newest =
+            PendingConsent::of_run(unit_status).is_some_and(|newest| newest.key == *consent);
         if !still_newest {
             return;
         }
@@ -225,9 +240,22 @@ pub(crate) async fn open_consent_once_openable(
             IfShowing::Skip,
         )
         .await;
-        if opened.is_ok() || statuses_rx.changed().await.is_err() {
+        if opened.is_ok() || !changed_unless_superseded(&mut statuses_rx, superseded.as_mut()).await
+        {
             return;
         }
+    }
+}
+
+/// Wait for the statuses `statuses_rx` holds to change: `false` once they
+/// closed, or `superseded` resolved first.
+async fn changed_unless_superseded(
+    statuses_rx: &mut watch::Receiver<UnitStatuses<ServerDetail>>,
+    superseded: Pin<&mut impl Future<Output = ()>>,
+) -> bool {
+    tokio::select! {
+        changed = statuses_rx.changed() => changed.is_ok(),
+        () = superseded => false,
     }
 }
 
@@ -720,8 +748,8 @@ mod tests {
     use wildflowerhealthio_authorization_server::NewestPendingConsent;
     use wildflowerhealthio_rathole_settings::TunnelName;
     use wildflowerhealthio_servers::{
-        CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerConsentWatcher,
-        ServerRecord, ServerRunId, TunnelToken,
+        CertificateAuthority, ConsentKey, JsonServerRegistry, RelayKind, RunPolicy,
+        ServerConsentWatcher, ServerRecord, TunnelToken,
     };
     use wildflowerhealthio_shared_structures::health_check::HealthReport;
     use wildflowerhealthio_tauri_unit_runner::RunState;
@@ -1040,7 +1068,6 @@ mod tests {
         change: impl FnOnce(&mut ServerDetail),
     ) -> UnitStatuses<ServerDetail> {
         let mut detail = ServerDetail {
-            run: ServerRunId::next(),
             health: Some(ServerHealth::Reachable(HealthReport::pass())),
             tunnel: Some(TunnelState::Connected),
             certificate: Some(CertificateState {
@@ -1433,6 +1460,14 @@ mod tests {
         running_with(authorization_server, |detail| {
             detail.pending_consent = Some(newest);
         })
+    }
+
+    /// The request `req-1` waiting on the server [`DOMAIN`].
+    fn req_1() -> ConsentRequest {
+        ConsentRequest {
+            domain: DOMAIN.to_owned(),
+            pending_consent: oauth_consent("req-1").into(),
+        }
     }
 
     fn oauth_consent(id: &str) -> NewestPendingConsent {
@@ -1913,12 +1948,10 @@ mod tests {
                     registry,
                     &data_root,
                     statuses_rx,
-                    DOMAIN.to_owned(),
-                    &ConsentKey::OAuth {
-                        id: "req-1".to_owned(),
-                    },
+                    &req_1(),
                     browser,
                     OpenLaunchViews::default(),
+                    std::future::pending(),
                 )
                 .await;
             })
@@ -1957,12 +1990,10 @@ mod tests {
                     registry,
                     &data_root,
                     statuses_rx,
-                    DOMAIN.to_owned(),
-                    &ConsentKey::OAuth {
-                        id: "req-1".to_owned(),
-                    },
+                    &req_1(),
                     browser,
                     OpenLaunchViews::default(),
+                    std::future::pending(),
                 )
                 .await;
             })
@@ -1979,6 +2010,87 @@ mod tests {
             .expect("it stops")
             .unwrap();
 
+        assert!(browser.opened().is_empty());
+    }
+
+    /// The servers' statuses with the server's run not reporting, as while
+    /// it is asked to stop for a restart.
+    fn not_reporting() -> UnitStatuses<ServerDetail> {
+        let status = UnitStatus {
+            run_state: RunState::Running,
+            running_since: None,
+            detail: None,
+        };
+        [(UnitId::new(DOMAIN), status)].into()
+    }
+
+    /// Open the consent `req-1` once openable in `browser`, with the
+    /// statuses `statuses_rx` holds, until `superseded` resolves.
+    fn open_req_1_once_openable(
+        browser: &PhoneBrowser,
+        statuses_rx: watch::Receiver<UnitStatuses<ServerDetail>>,
+        superseded: impl Future<Output = ()> + Send + 'static,
+    ) -> tokio::task::JoinHandle<()> {
+        let (data_root, registry) = registry();
+        let browser = browser.clone();
+        tokio::spawn(async move {
+            open_consent_once_openable(
+                registry,
+                data_root.path(),
+                statuses_rx,
+                &req_1(),
+                browser,
+                OpenLaunchViews::default(),
+                superseded,
+            )
+            .await;
+        })
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_notified_consent_opens_once_a_run_reports_it_again() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let (statuses_tx, statuses_rx) = watch::channel(not_reporting());
+        let opening = open_req_1_once_openable(&browser, statuses_rx, std::future::pending());
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(browser.opened().is_empty(), "no run reports yet");
+
+        statuses_tx
+            .send(launchable_waiting_on(
+                &authorization_server,
+                oauth_consent("req-1"),
+            ))
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), opening)
+            .await
+            .expect("it opens and stops")
+            .unwrap();
+
+        assert_eq!(browser.opened().len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_superseded_open_stops_waiting_and_a_removed_server_s_never_waits() {
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let (_statuses_tx, statuses_rx) = watch::channel(not_reporting());
+        let (supersede, superseded) = tokio::sync::oneshot::channel::<()>();
+        let opening = open_req_1_once_openable(&browser, statuses_rx, async {
+            let _superseded = superseded.await;
+        });
+
+        drop(supersede);
+        tokio::time::timeout(Duration::from_secs(5), opening)
+            .await
+            .expect("it stops")
+            .unwrap();
+
+        let (_statuses_tx, statuses_rx) = watch::channel(UnitStatuses::new());
+        let opening = open_req_1_once_openable(&browser, statuses_rx, std::future::pending());
+        tokio::time::timeout(Duration::from_secs(5), opening)
+            .await
+            .expect("it stops")
+            .unwrap();
         assert!(browser.opened().is_empty());
     }
 

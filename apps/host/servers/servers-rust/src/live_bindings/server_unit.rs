@@ -8,7 +8,7 @@ use wildflowerhealthio_wildflower_server::{
     CertificateState, ServerHealth, ServerObservers, WildflowerServerConfig,
 };
 
-use crate::domain::{ServerDetail, ServerRunId};
+use crate::domain::ServerDetail;
 use crate::live_bindings::server_consent_watcher::ServerConsentWatcher;
 use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
 use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
@@ -64,7 +64,6 @@ impl Unit for ServerUnit {
         .await?;
         tokio::spawn(report_detail(
             DetailSources {
-                run: ServerRunId::next(),
                 launch_minter: ServerLaunchMinter::new(server.launch_context_minter()),
                 sign_in_code_minter: ServerSignInCodeMinter::new(
                     server.same_device_sign_in_code_minter(),
@@ -86,8 +85,6 @@ impl Unit for ServerUnit {
 
 /// What a run's detail is read from.
 struct DetailSources {
-    /// The run, the same in every detail it sets.
-    run: ServerRunId,
     /// The run's launch minter, the same in every detail the run sets.
     launch_minter: ServerLaunchMinter,
     /// The run's sign-in code minter, the same in every detail the run sets.
@@ -168,7 +165,6 @@ async fn report_detail(mut sources: DetailSources, ctx: RunContext<ServerDetail>
     loop {
         let channels = &mut sources.channels;
         ctx.set_detail(ServerDetail {
-            run: sources.run,
             health: channels.server_health_rx.borrow_and_update().clone(),
             tunnel: channels.tunnel_state_rx.borrow_and_update().clone(),
             certificate: channels.certificate_rx.borrow_and_update().clone(),

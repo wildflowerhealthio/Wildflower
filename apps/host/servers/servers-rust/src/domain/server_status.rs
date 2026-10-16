@@ -313,8 +313,6 @@ impl ServerStatusTracker {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::sync::OnceLock;
-
     use chrono::TimeZone;
     use wildflowerhealthio_shared_structures::health_check::HealthReport;
     use wildflowerhealthio_unit_runner::RunPolicy;
@@ -325,9 +323,7 @@ pub(crate) mod tests {
     use wildflowerhealthio_authorization_server::NewestPendingConsent;
 
     use super::*;
-    use crate::domain::{
-        CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError, ServerRunId,
-    };
+    use crate::domain::{CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError};
 
     pub(crate) const RUTH: &str = "ruth.relay.example.com";
     pub(crate) const LAB: &str = "lab.rathole.example.com";
@@ -346,12 +342,6 @@ pub(crate) mod tests {
         }
     }
 
-    /// The run every status these tests build reports from.
-    fn the_run() -> ServerRunId {
-        static THE_RUN: OnceLock<ServerRunId> = OnceLock::new();
-        *THE_RUN.get_or_init(ServerRunId::next)
-    }
-
     /// A run that is up, its `/health` answering `pass` through the relay,
     /// with a valid certificate.
     pub(crate) fn running_and_reachable() -> UnitStatus<ServerDetail> {
@@ -359,7 +349,6 @@ pub(crate) mod tests {
             run_state: RunState::Running,
             running_since: Some(at(0)),
             detail: Some(ServerDetail {
-                run: the_run(),
                 health: Some(ServerHealth::Reachable(HealthReport::pass())),
                 tunnel: Some(TunnelState::Connected),
                 certificate: Some(CertificateState {
@@ -473,7 +462,6 @@ pub(crate) mod tests {
                     run_state: RunState::Starting,
                     running_since: None,
                     detail: Some(ServerDetail {
-                        run: the_run(),
                         health: None,
                         tunnel: Some(TunnelState::Connecting),
                         certificate: Some(CertificateState {
@@ -498,7 +486,6 @@ pub(crate) mod tests {
                     run_state: RunState::Running,
                     running_since: Some(at(0)),
                     detail: Some(ServerDetail {
-                        run: the_run(),
                         health: Some(ServerHealth::Unreachable {
                             error: "the relay answered 502".to_owned(),
                         }),
@@ -524,7 +511,6 @@ pub(crate) mod tests {
                     run_state: RunState::Running,
                     running_since: Some(at(0)),
                     detail: Some(ServerDetail {
-                        run: the_run(),
                         health: None,
                         tunnel: None,
                         certificate: Some(CertificateState {
@@ -548,7 +534,6 @@ pub(crate) mod tests {
                     run_state: RunState::Running,
                     running_since: Some(at(0)),
                     detail: Some(ServerDetail {
-                        run: the_run(),
                         health: None,
                         tunnel: Some(TunnelState::Connecting),
                         certificate: Some(CertificateState {

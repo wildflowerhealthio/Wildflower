@@ -1,6 +1,6 @@
 //! [`ConsentViews`]: the consents showing in a view of the in-app browser, so
 //! a consent opened twice at once, as by a tap on its notification and by the
-//! return to the foreground that tap brings, shows in one view.
+//! arrival in the foreground that tap brings, shows in one view.
 
 use std::sync::Arc;
 

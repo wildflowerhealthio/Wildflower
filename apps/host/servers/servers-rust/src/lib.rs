@@ -101,7 +101,7 @@ pub use domain::{
     remove_server, set_run_policy, set_server_credentials, sign_in_url, update_server,
     CertificateAuthority, ConsentKey, EnrolmentError, EnteredCredentials, EnteredRelay,
     LaunchError, ListedServer, PendingConsent, RegistryError, RelayIdentity, RelayKind,
-    RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerRunId, ServerStatus,
+    RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
     ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_consent_watcher::ServerConsentWatcher;

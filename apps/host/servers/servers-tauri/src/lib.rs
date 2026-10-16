@@ -19,10 +19,7 @@
 //!   `TauriUnitRunner`'s statuses, and a notification for each new consent
 //!   waiting on a server, opening the request as the server's page's Open
 //!   does: on the desktop each one at once, in the default browser, and on a
-//!   phone the first one waiting at the app's start, instead of notifying;
-//!   and shows on the app icon's badge how many servers have a consent
-//!   request pending, counted through a run that stops as its notification
-//!   stays, and cleared once none does (`pending_consent_badge`);
+//!   phone one at each arrival of the app in the foreground;
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
@@ -232,10 +229,9 @@ pub fn host_servers(
             data_root: data_root.to_path_buf(),
             server_units: server_units.clone(),
             statuses_rx: runner.subscribe(),
+            latest_opens: std::sync::Mutex::default(),
         },
-        pending_consent_badge::AppIconBadge { app: app.clone() },
-        runner.subscribe(),
-        runner.subscribe_returns(),
+        runner.clone(),
     ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),

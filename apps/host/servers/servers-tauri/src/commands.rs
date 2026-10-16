@@ -379,7 +379,7 @@ mod tests {
         ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
     };
     use wildflowerhealthio_servers::{
-        JsonServerRegistry, RelayKind, ServerDetail, ServerRecord, ServerRunId, SERVERS_FILE_NAME,
+        JsonServerRegistry, RelayKind, ServerDetail, ServerRecord, SERVERS_FILE_NAME,
     };
     use wildflowerhealthio_tauri_unit_runner::{
         BackgroundServiceStartConfig, BackgroundSessionLength, RunContext, RunState, RunStop,
@@ -1296,7 +1296,6 @@ mod tests {
             run_state: RunState::Running,
             running_since: Some(chrono::Utc::now()),
             detail: Some(ServerDetail {
-                run: ServerRunId::next(),
                 health: None,
                 tunnel: None,
                 certificate: Some(CertificateState {

@@ -2,7 +2,7 @@
 //! app is present, the background session, and starting and stopping runs per
 //! policy.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -30,7 +30,7 @@ use crate::domain::unit_plan::{backed_off_restart_delay, plan_unit, restarts_aft
 use crate::ports::background_session_platform::BackgroundSessionPlatform;
 use crate::ports::wall_clock::WallClock;
 use crate::run_context::RunContext;
-use crate::status::{AppReturn, PlatformStopReason, RunStopped, StopReason, UnitStatuses};
+use crate::status::{PlatformStopReason, RunStopped, StopReason, UnitStatuses};
 use crate::unit::{Unit, UnitId};
 
 /// Runs an app's units, free of any platform: holds the units, starts and stops
@@ -57,9 +57,9 @@ pub struct UnitRunner<D> {
     timings: RunnerTimings,
     background_session_length: BackgroundSessionLength,
     session_demand_tx: watch::Sender<SessionDemand>,
-    /// The app's latest return to the foreground (see
-    /// [`subscribe_returns`](Self::subscribe_returns)).
-    returns_tx: watch::Sender<AppReturn<D>>,
+    /// How many times the app has arrived in the foreground (see
+    /// [`subscribe_foreground_arrivals`](Self::subscribe_foreground_arrivals)).
+    foreground_arrivals_tx: watch::Sender<u64>,
     /// Wakes the wall-clock ticker when the next deadline moves.
     pub(super) next_start_and_stop_runs_moved: Notify,
 }
@@ -128,7 +128,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             timings,
             background_session_length,
             session_demand_tx: watch::Sender::new(SessionDemand::default()),
-            returns_tx: watch::Sender::new(AppReturn::default()),
+            foreground_arrivals_tx: watch::Sender::new(0),
             next_start_and_stop_runs_moved: Notify::new(),
         });
         unit_runner
@@ -158,6 +158,24 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         self.status_publisher.snapshot()
     }
 
+    /// The units that should run now, as runs are started and stopped per
+    /// policy: each whose run is up, starting, or about to start, as one the
+    /// app's arrival in the foreground just asked to start, whose status
+    /// still says how its last run stopped until the run begins.
+    #[must_use]
+    pub fn units_to_run(&self) -> BTreeSet<UnitId> {
+        let state = self.lock_state();
+        let now = self.clock.now();
+        let app_present_or_in_grace = state.app_presence.present_or_in_grace(now);
+        let runs_discouraged = self.runs_discouraged(&state, app_present_or_in_grace);
+        state
+            .units
+            .iter()
+            .filter(|(_, entry)| entry.should_run(now, app_present_or_in_grace, runs_discouraged))
+            .map(|(unit_id, _)| unit_id.clone())
+            .collect()
+    }
+
     /// Every unit's status, as it changes. The receiver always holds the
     /// current statuses; a slow reader sees the latest, not every step.
     #[must_use]
@@ -176,19 +194,15 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         self.status_publisher.subscribe_stops()
     }
 
-    /// The app's returns to the foreground: each time it becomes
-    /// [`Presence::Present`] after being absent, having been present before
-    /// (its first window opening, or its first time in the foreground, is no
-    /// return), an [`AppReturn`]: the units whose run carries on across the
-    /// return, in progress and not asked to stop, and those the return
-    /// resumes, including each whose run a host asked to stop before it
-    /// reported a return that breaks them
-    /// ([`restart_running_units`](Self::restart_running_units)). The receiver
-    /// holds no units until the first return; a slow reader sees the latest
-    /// return, not every one.
+    /// The app's arrivals in the foreground: how many times it has become
+    /// [`Presence::Present`] after being absent, its first window opening and
+    /// each return to the foreground alike, though not leaving the
+    /// background on Android. Each arrival changes it once the runs it starts
+    /// and stops are asked for; a slow reader sees one change for several
+    /// arrivals.
     #[must_use]
-    pub fn subscribe_returns(&self) -> watch::Receiver<AppReturn<D>> {
-        self.returns_tx.subscribe()
+    pub fn subscribe_foreground_arrivals(&self) -> watch::Receiver<u64> {
+        self.foreground_arrivals_tx.subscribe()
     }
 
     pub(crate) fn subscribe_session_demand(&self) -> watch::Receiver<SessionDemand> {
@@ -311,9 +325,9 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// The app's `presence` now. Becoming [`Presence::Present`] clears an end
     /// of the background session by the platform, and starts every unit's
     /// restarts over, so a unit waiting out its restart delay starts at once.
-    /// Becoming present again after being absent is a return to the
-    /// foreground, which [`subscribe_returns`](Self::subscribe_returns)
-    /// reports before any run it starts.
+    /// Becoming present after being absent is an arrival in the foreground,
+    /// which [`subscribe_foreground_arrivals`](Self::subscribe_foreground_arrivals)
+    /// reports once the runs it starts and stops are asked for.
     pub fn set_app_presence(self: &Arc<Self>, presence: Presence) {
         let mut state = self.lock_state();
         let now = self.clock.now();
@@ -329,35 +343,14 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             }
             PresenceChange::BecameAbsent | PresenceChange::Unchanged => {}
         }
-        if change == PresenceChange::ReturnedToTheForeground {
-            self.publish_return_locked(&state);
-        }
         self.start_and_stop_runs_per_policy_locked(&mut state);
-    }
-
-    /// Report a return to the foreground: the statuses of the units whose run
-    /// is in progress and not asked to stop, and of those that should run but
-    /// whose run doesn't carry on.
-    fn publish_return_locked(&self, state: &UnitRunnerState<D>) {
-        let now = self.clock.now();
-        let app_present_or_in_grace = state.app_presence.present_or_in_grace(now);
-        let runs_discouraged = self.runs_discouraged(state, app_present_or_in_grace);
-        let mut app_return = AppReturn::default();
-        for (unit_id, unit_status) in self.status_publisher.snapshot() {
-            let Some(entry) = state.units.get(&unit_id) else {
-                continue;
-            };
-            let carries_on = entry
-                .current_run
-                .as_ref()
-                .is_some_and(|run| !run.stop_requested());
-            if carries_on {
-                app_return.carried_on.insert(unit_id, unit_status);
-            } else if entry.should_run(now, app_present_or_in_grace, runs_discouraged) {
-                app_return.resumed.insert(unit_id, unit_status);
-            }
+        if matches!(
+            change,
+            PresenceChange::FirstBecamePresent | PresenceChange::ReturnedToTheForeground
+        ) {
+            self.foreground_arrivals_tx
+                .send_modify(|arrivals| *arrivals += 1);
         }
-        self.returns_tx.send_replace(app_return);
     }
 
     /// Restart every unit that should be running: each run in progress

@@ -1,7 +1,5 @@
 //! [`ServerDetail`], what a server's run reports to `UnitRunner` beyond its
-//! run state, and [`ServerRunId`], the run that reports it.
-
-use std::sync::atomic::{AtomicU64, Ordering};
+//! run state.
 
 use wildflowerhealthio_authorization_server::NewestPendingConsent;
 use wildflowerhealthio_tunnel::TunnelState;
@@ -17,10 +15,6 @@ use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
 /// A run reports it once the server is set up.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerDetail {
-    /// The run that reports this detail, the same in every detail a run
-    /// sets, so a report from a run the host started again tells from one
-    /// its earlier run left in the status.
-    pub run: ServerRunId,
     /// Whether the server's `/health` has answered through its public origin
     /// (the relay and the tunnel), as the server's reachability monitor
     /// publishes it; `None` until its first probe.
@@ -50,18 +44,4 @@ pub struct ServerDetail {
     /// sets it; it is `None` only in a detail built without a server, as the
     /// domain's tests build theirs.
     pub consent_watcher: Option<ServerConsentWatcher>,
-}
-
-/// One run of a server, among every run of any server since the app started:
-/// no two runs have the same id.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ServerRunId(u64);
-
-impl ServerRunId {
-    /// An id no earlier run had, for a run starting.
-    #[must_use]
-    pub fn next() -> Self {
-        static RUNS_STARTED: AtomicU64 = AtomicU64::new(0);
-        Self(RUNS_STARTED.fetch_add(1, Ordering::Relaxed))
-    }
 }
