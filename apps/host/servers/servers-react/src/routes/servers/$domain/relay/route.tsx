@@ -8,10 +8,10 @@ import {
 import { Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { failureText } from '../../../failure-text.ts'
-import { useSetServerCredentials } from '../../../queries.ts'
-import { useRunHostCommand } from '../../../router-context.ts'
-import { useListedServer } from './-listed-server.ts'
+import { useListedServer } from '../-listed-server.ts'
+import { failureText } from '../../../../failure-text.ts'
+import { useSetServerCredentials } from '../../../../queries.ts'
+import { useRunHostCommand } from '../../../../router-context.ts'
 import styles from './-relay.module.css'
 
 /** What the Relay row says of each kind of relay. */

@@ -4,14 +4,14 @@ import type { ListedServer } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { failureText } from '../../../failure-text.ts'
-import { useUpdateServer } from '../../../queries.ts'
+import { useListedServer } from '../-listed-server.ts'
+import { failureText } from '../../../../failure-text.ts'
+import { useUpdateServer } from '../../../../queries.ts'
 import {
   useDefaultAuthorizationUrl,
   useDefaultLauncherUrl,
   useRunHostCommand,
-} from '../../../router-context.ts'
-import { useListedServer } from './-listed-server.ts'
+} from '../../../../router-context.ts'
 import styles from './-default-apps.module.css'
 
 /** A URL as the URL parser normalises it, or nothing when it doesn't parse. */

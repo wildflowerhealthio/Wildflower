@@ -8,14 +8,14 @@ import {
 import { Equivalence, Option } from 'effect'
 import { type JSX, useState } from 'react'
 
+import { useListedServer } from '../-listed-server.ts'
 import {
   type AuthorizationAppOpening,
   useAuthorizationAppOpening,
-} from '../../../authorization-app-opening.ts'
-import { failureText } from '../../../failure-text.ts'
-import { useOpenPendingConsent } from '../../../queries.ts'
-import { useRunHostCommand } from '../../../router-context.ts'
-import { useListedServer } from './-listed-server.ts'
+} from '../../../../authorization-app-opening.ts'
+import { failureText } from '../../../../failure-text.ts'
+import { useOpenPendingConsent } from '../../../../queries.ts'
+import { useRunHostCommand } from '../../../../router-context.ts'
 
 /** Opening the newest consent waiting on a server. */
 interface PendingConsentOpening {

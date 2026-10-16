@@ -8,9 +8,9 @@ import {
 import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
-import { formatInstant } from '../../../server-status-text.ts'
-import { useHasPassed } from '../../../use-has-passed.ts'
-import { useListedServer } from './-listed-server.ts'
+import { useListedServer } from '../-listed-server.ts'
+import { formatInstant } from '../../../../server-status-text.ts'
+import { useHasPassed } from '../../../../use-has-passed.ts'
 
 /** What the Certificate authority row says of each CA. */
 const CERTIFICATE_AUTHORITY_TEXT: Readonly<Record<CertificateAuthority.Type, string>> = {

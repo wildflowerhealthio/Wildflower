@@ -3,10 +3,10 @@ import { ConfirmDialog, ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Option } from 'effect'
 import { type JSX, useId, useState } from 'react'
 
-import { failureText } from '../../../failure-text.ts'
-import { useRemoveServer } from '../../../queries.ts'
-import { useRunHostCommand } from '../../../router-context.ts'
-import { useListedServer } from './-listed-server.ts'
+import { useListedServer } from '../-listed-server.ts'
+import { failureText } from '../../../../failure-text.ts'
+import { useRemoveServer } from '../../../../queries.ts'
+import { useRunHostCommand } from '../../../../router-context.ts'
 import styles from './-destructive-actions.module.css'
 
 /** The removal's state and what it can do. */

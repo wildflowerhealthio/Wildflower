@@ -9,15 +9,15 @@ import {
 import { type DateTime, Match, Option } from 'effect'
 import type { JSX, ReactNode } from 'react'
 
-import { type ServerHealthError, serverHealthQueryOptions } from '../../../queries.ts'
-import { useRunHttpRequest } from '../../../router-context.ts'
+import { useListedServer } from '../-listed-server.ts'
+import { type ServerHealthError, serverHealthQueryOptions } from '../../../../queries.ts'
+import { useRunHttpRequest } from '../../../../router-context.ts'
 import {
   formatInstant,
   lastStopText,
   PLATFORM_STOP_REASON_TEXT,
-} from '../../../server-status-text.ts'
+} from '../../../../server-status-text.ts'
 import { healthCheckTitle } from './-health-check-title.ts'
-import { useListedServer } from './-listed-server.ts'
 
 /**
  * What the Connection row says: the host's own check of the server's
