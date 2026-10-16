@@ -148,8 +148,10 @@ describe('makeSerializedEventBus', () => {
 
   describe('dropped emit surfacing', () => {
     it('reports a rejected emit via console.error and keeps the chain alive', async () => {
-      // A rejected emit must be surfaced (not swallowed) and must not
-      // poison the chain for later messages.
+      // The wrapper captures console.error at construction time; spy before
+      // constructing so the captured reference is the spy. A rejected emit
+      // must be surfaced (not swallowed) and must not poison the chain for
+      // later messages.
       const spy = vi.spyOn(globalThis.console, 'error').mockImplementation(() => {})
       try {
         let attempts = 0

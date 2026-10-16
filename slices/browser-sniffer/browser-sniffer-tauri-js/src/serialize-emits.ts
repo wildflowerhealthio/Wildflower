@@ -21,6 +21,11 @@ import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-j
 const makeSerializedEventBus = (eventBus: TauriEventApi): TauriEventApi => {
   let emitChain: Promise<void> = Promise.resolve()
 
+  // Capture console.error at construction, before page scripts can replace it:
+  // a page override that fetches (sniffed → emit) would loop while the bridge
+  // is failing, and one that throws would poison the chain.
+  const reportDroppedEmit = globalThis.console.error.bind(globalThis.console)
+
   const enqueueEmit = (eventName: string, payload?: unknown): Promise<void> => {
     // `.catch` keeps the chain alive after a rejected emit while still surfacing
     // it: a poisoned chain would drop every later message, and a silently
@@ -29,8 +34,7 @@ const makeSerializedEventBus = (eventBus: TauriEventApi): TauriEventApi => {
     emitChain = emitChain
       .then(() => eventBus.emit(eventName, payload))
       .catch((error: unknown) => {
-        // oxlint-disable-next-line no-console -- the page's devtools console is where a dropped emit is reported
-        console.error(`[browser-sniffer] bridge emit dropped (${eventName}): ${String(error)}`)
+        reportDroppedEmit(`[browser-sniffer] bridge emit dropped (${eventName}): ${String(error)}`)
       })
     return emitChain
   }
