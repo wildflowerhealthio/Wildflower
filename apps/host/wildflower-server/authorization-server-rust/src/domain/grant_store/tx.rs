@@ -329,6 +329,16 @@ pub trait GrantTx {
         sid: &str,
     ) -> Result<Option<BrowserSession>, AuthorizationServerError>;
 
+    /// Whether the browser session `sid` has been revoked, without loading
+    /// it. A `sid` that names no session counts as revoked: a session is
+    /// pruned only once nothing it minted can still be live, so a missing row
+    /// fails closed.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails.
+    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError>;
+
     /// Stamp the browser session `sid` revoked at `now`, returning `true` iff a
     /// session that wasn't already revoked was transitioned. The row is kept.
     ///

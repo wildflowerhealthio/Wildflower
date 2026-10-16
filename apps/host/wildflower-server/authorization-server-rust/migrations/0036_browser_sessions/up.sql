@@ -4,8 +4,7 @@
 -- Owner approved). `name` is the name an approved browser was given, NULL for
 -- an Owner browser; `scopes` is the session's grant as compact JSON TEXT.
 -- `revoked_at` is set when the session is revoked, which ends everything it
--- minted; `last_seen_at` is set when the row is created. Timestamps are the
--- diesel chrono text encoding (`%F %T%.f%:z`).
+-- minted. Timestamps are the diesel chrono text encoding (`%F %T%.f%:z`).
 CREATE TABLE browser_sessions (
     sid TEXT PRIMARY KEY NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('owner', 'approved')),
@@ -13,8 +12,7 @@ CREATE TABLE browser_sessions (
     scopes TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    revoked_at TEXT,
-    last_seen_at TEXT NOT NULL
+    revoked_at TEXT
 ) STRICT;
 
 -- The browser session each request, code and refresh family was made under,
@@ -26,5 +24,6 @@ ALTER TABLE authorization_requests ADD COLUMN sid TEXT;
 ALTER TABLE authorization_codes ADD COLUMN sid TEXT;
 ALTER TABLE refresh_token_families ADD COLUMN sid TEXT;
 
--- The retention sweep's "does a family still name this session?" probe.
+-- The retention sweep's session prune asks, per ended session, whether a
+-- family alive at the cutoff still names it; this index answers by `sid`.
 CREATE INDEX refresh_token_families_sid_idx ON refresh_token_families(sid);

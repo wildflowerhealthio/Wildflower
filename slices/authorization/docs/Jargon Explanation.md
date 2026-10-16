@@ -603,8 +603,7 @@ A browser the server has signed in, one row in `browser_sessions`, keyed by
 its `sid`. Its `kind` says how the browser came to hold it: `owner` for an
 [Owner browser](#owner-browser), signed in with a same-device sign-in code.
 An Owner session has no `name`, holds `OWNER_SCOPES`, and expires 8 hours
-(`OWNER_BROWSER_SESSION_TTL`) after the sign-in; `last_seen_at` is the
-sign-in.
+(`OWNER_BROWSER_SESSION_TTL`) after the sign-in.
 
 Everything minted under a session names it as its [`sid`](#sid-session-id):
 the browser's own token, and an authorization request made in that browser,
@@ -612,8 +611,9 @@ the code it earns, and that code's access tokens and refresh family.
 **Revoking** a session sets its `revoked_at` and ends all of them: the token
 verifier refuses a token whose `sid` names a revoked session, on the
 `/authorization` gates and the FHIR server alike, and refresh redemption
-refuses a family whose `sid` does. A `sid` that names no row is treated as
-revoked. Whether a session's _expiry_ ends a refresh family is the client's
+refuses a family whose `sid` does. A request still pending when its session
+is revoked is denied when it is approved, so the app gets `access_denied`
+rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the client's
 refresh policy; today it doesn't. Tokens, requests and families with no
 `sid` (the host app's in-process tokens, the device flow, a browser with no
 session) have no session to check.

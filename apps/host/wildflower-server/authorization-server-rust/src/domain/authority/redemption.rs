@@ -29,7 +29,6 @@ use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{
     device_grant_name, AuthorizationRequest, GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
 };
-use crate::domain::browser_session::browser_session_is_revoked;
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::domain::GrantStore;
@@ -426,7 +425,7 @@ impl ValidatedRefreshToken {
         // Revoking a browser session ends every family minted under it. A
         // family with no session (the device flow) has none to check.
         if let Some(sid) = family.sid.as_deref() {
-            if browser_session_is_revoked(store, sid)? {
+            if store.browser_session_is_revoked(sid)? {
                 return Err(TokenExchangeError::InvalidGrant(
                     InvalidGrantReason::RefreshTokenSessionRevoked {
                         family_id: family.family_id,

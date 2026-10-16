@@ -349,6 +349,10 @@ impl GrantTx for SqliteGrantTx<'_> {
         browser_sessions::browser_session_by_sid(self.conn, sid)
     }
 
+    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
+        browser_sessions::browser_session_is_revoked(self.conn, sid)
+    }
+
     fn revoke_browser_session(
         &mut self,
         sid: &str,

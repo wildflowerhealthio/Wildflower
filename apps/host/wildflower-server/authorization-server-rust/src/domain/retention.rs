@@ -77,8 +77,6 @@ pub(crate) fn purge_expired(
     let authorization_cutoff = now - AUTHORIZATION_RETENTION;
     let browser_session_cutoff = now - BROWSER_SESSION_RETENTION;
     store.transaction(|tx| {
-        // Families go first, so a session only a reclaimed family named goes
-        // in the same pass.
         Ok(PurgedCounts {
             refresh_token_families: tx
                 .delete_refresh_token_families_expired_before(family_cutoff)?,
@@ -182,7 +180,6 @@ mod tests {
             created_at: expires_at - Duration::hours(8),
             expires_at,
             revoked_at: None,
-            last_seen_at: expires_at - Duration::hours(8),
         }
     }
 

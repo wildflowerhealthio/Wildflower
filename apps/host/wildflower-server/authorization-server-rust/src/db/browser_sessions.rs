@@ -3,6 +3,7 @@
 //! families minted under each record.
 
 use chrono::{DateTime, Utc};
+use diesel::dsl::{exists, not};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -20,7 +21,6 @@ diesel::table! {
         created_at -> TimestamptzSqlite,
         expires_at -> TimestamptzSqlite,
         revoked_at -> Nullable<TimestamptzSqlite>,
-        last_seen_at -> TimestamptzSqlite,
     }
 }
 
@@ -57,6 +57,21 @@ pub(super) fn browser_session_by_sid(
         .map_err(|e| AuthorizationServerError::infrastructure("browser_session_by_sid failed", e))
 }
 
+/// Whether the browser session `sid` is revoked or missing: no row with that
+/// `sid` and `revoked_at IS NULL` exists.
+pub(super) fn browser_session_is_revoked(
+    conn: &mut SqliteConnection,
+    sid: &str,
+) -> Result<bool, AuthorizationServerError> {
+    diesel::select(not(exists(
+        browser_sessions::table
+            .find(sid)
+            .filter(browser_sessions::revoked_at.is_null()),
+    )))
+    .get_result(conn)
+    .map_err(|e| AuthorizationServerError::infrastructure("browser_session_is_revoked failed", e))
+}
+
 /// Stamp the browser session `sid` revoked at `now`, returning `true` iff a
 /// standing session was transitioned. The `revoked_at IS NULL` guard keeps the
 /// first revocation's instant.
@@ -79,15 +94,17 @@ pub(super) fn revoke_browser_session(
 /// Delete every browser session that expired or was revoked before `cutoff`
 /// and that no refresh-token family alive at `cutoff` names, returning how
 /// many went. A family that outlives its session's expiry keeps the row, so
-/// its refresh still finds the session it was minted under.
+/// its refresh still finds the session it was minted under. The family probe
+/// is correlated on `sid`, so `refresh_token_families_sid_idx` answers it.
 pub(super) fn delete_browser_sessions_ended_before(
     conn: &mut SqliteConnection,
     cutoff: DateTime<Utc>,
 ) -> Result<usize, AuthorizationServerError> {
-    let named_by_a_family_alive_at_cutoff = refresh_token_families::table
-        .filter(refresh_token_families::expires_at.ge(cutoff))
-        .filter(refresh_token_families::sid.is_not_null())
-        .select(refresh_token_families::sid.assume_not_null());
+    let named_by_a_family_alive_at_cutoff = exists(
+        refresh_token_families::table
+            .filter(refresh_token_families::sid.eq(browser_sessions::sid.nullable()))
+            .filter(refresh_token_families::expires_at.ge(cutoff)),
+    );
     diesel::delete(
         browser_sessions::table
             .filter(
@@ -95,7 +112,7 @@ pub(super) fn delete_browser_sessions_ended_before(
                     .lt(cutoff)
                     .or(browser_sessions::revoked_at.lt(cutoff)),
             )
-            .filter(browser_sessions::sid.ne_all(named_by_a_family_alive_at_cutoff)),
+            .filter(not(named_by_a_family_alive_at_cutoff)),
     )
     .execute(conn)
     .map_err(|e| {
@@ -136,6 +153,7 @@ mod tests {
 
     /// A started session round-trips through the table, and revoking it stamps
     /// it once: a second revoke keeps the first instant and reports `false`.
+    /// It reads as revoked once revoked, and so does a `sid` with no row.
     #[test]
     fn a_session_round_trips_and_is_revoked_once() {
         let store = store();
@@ -156,6 +174,12 @@ mod tests {
             .browser_session_by_sid("no-such-sid")
             .expect("read")
             .is_none());
+        assert!(!store
+            .browser_session_is_revoked(&session.sid)
+            .expect("read"));
+        assert!(store
+            .browser_session_is_revoked("no-such-sid")
+            .expect("read"));
 
         let revoked_at = now + Duration::minutes(1);
         assert!(store
@@ -169,6 +193,9 @@ mod tests {
             .expect("read")
             .expect("still there");
         assert_eq!(stored.revoked_at, Some(revoked_at));
+        assert!(store
+            .browser_session_is_revoked(&session.sid)
+            .expect("read"));
         assert!(!store
             .revoke_browser_session("no-such-sid", now)
             .expect("revoke"));

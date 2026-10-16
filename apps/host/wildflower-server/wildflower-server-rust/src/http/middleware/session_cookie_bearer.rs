@@ -63,6 +63,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Router;
 use helios_auth::{cookie_value, AccessOutcome, SessionStore, SESSION_COOKIE};
 use url::Url;
+use wildflowerhealthio_authorization_server::domain::token::VerifyError;
 use wildflowerhealthio_authorization_server::{
     ensure_bearer_header, owner_browser_session_clearing_set_cookie,
     owner_browser_session_has_ended, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
@@ -113,10 +114,15 @@ impl SessionCookie {
     /// The session the cookie's `value` stands for: an Owner browser
     /// cookie's own token, unless its session has ended, or the bearer of the
     /// UI session it names, while that session lives.
-    async fn session(&self, value: String) -> CookieSession {
-        match self {
+    ///
+    /// # Errors
+    ///
+    /// The authorization server's server-side [`VerifyError`]s, when whether
+    /// an Owner browser session has ended can't be told.
+    async fn session(&self, value: String) -> Result<CookieSession, VerifyError> {
+        Ok(match self {
             SessionCookie::OwnerBrowser(authorization_server) => {
-                if owner_browser_session_has_ended(authorization_server, &value) {
+                if owner_browser_session_has_ended(authorization_server, &value)? {
                     CookieSession::Ended
                 } else {
                     CookieSession::Live(value)
@@ -126,7 +132,7 @@ impl SessionCookie {
                 AccessOutcome::Token(access_token) => CookieSession::Live(access_token),
                 AccessOutcome::NoSession => CookieSession::Absent,
             },
-        }
+        })
     }
 }
 
@@ -173,9 +179,11 @@ pub(crate) fn present_session_cookie_bearers(
 /// server's origin is refused. With no `Authorization` of its own, a request
 /// from the server's origin carrying a cookie that stands for a live session
 /// gets `Authorization: Bearer <its token>`, and one whose Owner browser
-/// session has ended passes without it and has the cookie cleared. One that
-/// asks for another session than the cookie's passes without it. Anything
-/// else passes as it came, for the gates to judge.
+/// session has ended passes without it and has the cookie cleared. One whose
+/// Owner browser session can't be judged, because the authorization server's
+/// stores can't be read, is a 500. One that asks for another session than the
+/// cookie's passes without it. Anything else passes as it came, for the gates
+/// to judge.
 pub(crate) async fn present_session_cookie_bearer(
     State(config): State<Arc<SessionCookieBearerConfig>>,
     mut request: Request,
@@ -199,7 +207,18 @@ pub(crate) async fn present_session_cookie_bearer(
     {
         return next.run(request).await;
     }
-    match config.session_cookie.session(cookie).await {
+    let session = match config.session_cookie.session(cookie).await {
+        Ok(session) => session,
+        Err(error) => {
+            tracing::error!(
+                cookie = config.session_cookie.name(),
+                error = %error,
+                "whether a session cookie's session has ended can't be told"
+            );
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    match session {
         CookieSession::Live(access_token) => {
             let Ok(bearer) = HeaderValue::from_str(&format!("Bearer {access_token}")) else {
                 tracing::error!(
@@ -753,6 +772,35 @@ mod tests {
             set_cookies(&response),
             [CLEARED_OWNER_BROWSER_COOKIE],
             "revoked with its subject"
+        );
+    }
+
+    /// An Owner browser cookie whose session can't be judged, because the
+    /// authorization server's key store can't be read, fails closed: a 500,
+    /// with no bearer presented and the cookie left alone.
+    #[tokio::test]
+    async fn an_owner_browser_session_that_cannot_be_judged_is_a_server_error() {
+        use diesel::RunQueryDsl as _;
+
+        let authorization_server = AuthorizationServerFixture::new();
+        let token = authorization_server.owner_browser_token(Duration::hours(8));
+        diesel::sql_query("DROP TABLE signing_keys")
+            .execute(&mut authorization_server.pool.get().expect("connection"))
+            .expect("drop the key store");
+        let cookie = format!("__Host-owner_browser_session={token}");
+        let response = send(
+            echo_router().layer(axum::middleware::from_fn_with_state(
+                authorization_server.owner_browser_config(),
+                present_session_cookie_bearer,
+            )),
+            Method::GET,
+            &[("cookie", &cookie), ("sec-fetch-site", "same-origin")],
+        )
+        .await;
+        assert!(set_cookies(&response).is_empty());
+        assert_eq!(
+            status_and_authorization(response).await,
+            (StatusCode::INTERNAL_SERVER_ERROR, None)
         );
     }
 

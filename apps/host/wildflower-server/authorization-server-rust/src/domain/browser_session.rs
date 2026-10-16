@@ -12,8 +12,6 @@ use strum::{AsRefStr, Display, EnumString};
 
 use crate::db::browser_sessions::browser_sessions;
 use crate::db::shared::JsonStrings;
-use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GrantStore;
 
 /// The longest a browser session may last: a day. No token the server mints
 /// lives longer than a session may, so this is also the floor below which a
@@ -56,8 +54,6 @@ pub struct BrowserSession {
     /// When the session was revoked, ending everything it minted; `None`
     /// while it stands.
     pub revoked_at: Option<DateTime<Utc>>,
-    /// When the browser was last seen: its sign-in.
-    pub last_seen_at: DateTime<Utc>,
 }
 
 impl BrowserSession {
@@ -73,38 +69,14 @@ impl BrowserSession {
             created_at: now,
             expires_at: now + ttl,
             revoked_at: None,
-            last_seen_at: now,
         }
     }
-
-    /// Whether the session has been revoked.
-    #[must_use]
-    pub fn is_revoked(&self) -> bool {
-        self.revoked_at.is_some()
-    }
-}
-
-/// Whether the session `sid` names has been revoked. A `sid` that names no
-/// session counts as revoked: a session is pruned only once nothing it minted
-/// can still be live, so a missing row fails closed.
-///
-/// # Errors
-///
-/// [`AuthorizationServerError::Infrastructure`] if the session can't be read.
-pub(crate) fn browser_session_is_revoked(
-    store: &impl GrantStore,
-    sid: &str,
-) -> Result<bool, AuthorizationServerError> {
-    Ok(store
-        .browser_session_by_sid(sid)?
-        .is_none_or(|session| session.is_revoked()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::capabilities::oauth::OWNER_BROWSER_SESSION_TTL;
-    use crate::domain::test_fake::FakeGrantStore;
 
     #[test]
     fn an_owner_session_is_unnamed_and_lasts_its_ttl() {
@@ -114,27 +86,12 @@ mod tests {
         assert_eq!(session.kind, BrowserSessionKind::Owner);
         assert_eq!(session.name, None);
         assert_eq!(session.expires_at - session.created_at, Duration::hours(8));
-        assert_eq!(session.last_seen_at, now);
-        assert!(!session.is_revoked());
+        assert_eq!(session.revoked_at, None);
         assert_ne!(
             session.sid,
             BrowserSession::new_owner(vec![], Duration::hours(8), now).sid,
             "every session gets its own sid"
         );
-    }
-
-    #[test]
-    fn a_missing_or_revoked_session_is_revoked() {
-        let store = FakeGrantStore::default();
-        let now = Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        store.insert_browser_session(&session).expect("insert");
-        assert!(!browser_session_is_revoked(&store, &session.sid).expect("read"));
-        assert!(store
-            .revoke_browser_session(&session.sid, now)
-            .expect("revoke"));
-        assert!(browser_session_is_revoked(&store, &session.sid).expect("read"));
-        assert!(browser_session_is_revoked(&store, "no-such-sid").expect("read"));
     }
 
     /// The Owner's session is no longer than the longest session, which the

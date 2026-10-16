@@ -30,7 +30,7 @@ pub(crate) use access_token_minter::AccessTokenMinter;
 pub(crate) use browser_session_writer::BrowserSessionWriter;
 pub(crate) use grant_recorder::GrantRecorder;
 pub(crate) use refresh_family_writer::RefreshFamilyWriter;
-pub(crate) use request_approver::{CodeAuthority, RequestApprover};
+pub(crate) use request_approver::{CodeApproval, CodeAuthority, RequestApprover};
 
 #[cfg(test)]
 mod tests {

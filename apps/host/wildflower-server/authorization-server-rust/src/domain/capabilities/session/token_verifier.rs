@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use crate::domain::browser_session::browser_session_is_revoked;
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
@@ -77,7 +76,9 @@ impl<S: GrantStore> TokenVerifier<S> {
             return Err(VerifyError::Revoked);
         }
         if let Some(sid) = claims.sid.as_deref() {
-            if browser_session_is_revoked(&self.store, sid)
+            if self
+                .store
+                .browser_session_is_revoked(sid)
                 .map_err(VerifyError::BrowserSessionStoreUnavailable)?
             {
                 return Err(VerifyError::Revoked);

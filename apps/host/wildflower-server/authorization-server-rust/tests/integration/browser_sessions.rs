@@ -48,7 +48,6 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
         wildflowerhealthio_authorization_server::owner_scopes()
     );
     assert_eq!(session.expires_at - session.created_at, Duration::hours(8));
-    assert_eq!(session.last_seen_at, session.created_at);
     assert_eq!(session.revoked_at, None);
     let token_expires_at = decode_jwt_payload(&owner_browser_token)["exp"]
         .as_i64()
@@ -208,4 +207,57 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
         g.in_process_token_verifier.verify(access_token),
         Err(VerifyError::Revoked)
     ));
+}
+
+/// A request made in a browser session that is revoked before the Owner
+/// approves it is denied instead: the approval sends the app `access_denied`,
+/// not a code whose tokens would be refused.
+#[tokio::test]
+async fn approving_a_request_whose_session_was_revoked_denies_it() {
+    let (g, owner_token, db) = spin_up();
+    let owner_browser_token = signed_in_owner_browser_token(&g).await;
+
+    let res = g
+        .router
+        .clone()
+        .oneshot(build_request(
+            Request::get(format!(
+                "/oauth/authorize?{}",
+                authorize_query("brand-new-app", "read")
+            ))
+            .header(
+                "cookie",
+                format!("__Host-owner_browser_session={owner_browser_token}"),
+            ),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let consent_card = location_of(&res);
+    let request_id = consent_card
+        .strip_prefix("authorize/")
+        .and_then(|rest| rest.strip_suffix("/consent"))
+        .unwrap_or_else(|| panic!("a consent-card redirect, got {consent_card}"))
+        .to_owned();
+
+    assert!(store_handle(&db)
+        .revoke_browser_session(&sid_of(&owner_browser_token), Utc::now())
+        .expect("revoke"));
+
+    let res = approve_oauth_consent(
+        &g,
+        &owner_token,
+        &request_id,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#.to_string(),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let decision = body_json(res.into_body()).await;
+    assert_eq!(decision["status"], "denied");
+    let redirect =
+        Url::parse(decision["redirect"].as_str().expect("a redirect")).expect("redirect URL");
+    let query: Vec<(String, String)> = redirect.query_pairs().into_owned().collect();
+    assert!(query.contains(&("error".to_owned(), "access_denied".to_owned())));
+    assert!(query.iter().all(|(name, _)| name != "code"));
 }

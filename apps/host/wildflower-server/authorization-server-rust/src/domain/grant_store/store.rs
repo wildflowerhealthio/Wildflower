@@ -337,6 +337,15 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.browser_session_by_sid(sid))
     }
 
+    /// See [`GrantTx::browser_session_is_revoked`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::browser_session_is_revoked`]'s error.
+    fn browser_session_is_revoked(&self, sid: &str) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.browser_session_is_revoked(sid))
+    }
+
     /// See [`GrantTx::revoke_browser_session`].
     ///
     /// # Errors

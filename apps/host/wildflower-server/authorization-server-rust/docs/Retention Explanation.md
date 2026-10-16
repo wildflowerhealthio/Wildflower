@@ -38,7 +38,7 @@ The refresh-token window deletes families **and** the token rows descended from 
 
 `setup_authorization_server` spawns the sweep on a `tokio` interval whose first tick is immediate — one sweep at startup, then one a day. This is the same shape as the neighbouring revocation-denylist purge, and the reason is the same: the desktop app has no cron and shouldn't need one. Daily is far finer than the coarsest window it enforces, so a row is never retained meaningfully longer than the policy says, and a machine that is switched off for a month sweeps once on the next boot rather than replaying a month of missed ticks (`MissedTickBehavior::Delay`).
 
-The four deletes run in one transaction, families before sessions so a session only a reclaimed family named goes in the same pass,, so a failure rolls back to the pre-sweep set rather than leaving a half-swept database; the sweep logs and retries on the next tick.
+The four deletes run in one transaction, so a failure rolls back to the pre-sweep set rather than leaving a half-swept database; the sweep logs and retries on the next tick.
 
 ## Why the insert-path prune shrank
 

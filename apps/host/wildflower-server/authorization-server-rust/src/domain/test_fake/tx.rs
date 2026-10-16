@@ -360,6 +360,15 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(self.store.browser_sessions.borrow().get(sid).cloned())
     }
 
+    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .browser_sessions
+            .borrow()
+            .get(sid)
+            .is_none_or(|session| session.revoked_at.is_some()))
+    }
+
     fn revoke_browser_session(
         &mut self,
         sid: &str,

@@ -18,7 +18,7 @@ use crate::domain::authority::{GrantCoverage, StandingGrantCoverage};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
+use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
 use crate::domain::client::Client;
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
 use crate::domain::oauth_error_code::OAuthErrorCode;
@@ -294,7 +294,8 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
 
     /// The fast path's approval: issue `code` for `parked_request` under the
     /// standing grant, recompute the popup head, and send the user-agent back
-    /// to the client with the code.
+    /// to the client with the code, or with `access_denied` when the browser
+    /// session the request was made in was revoked meanwhile.
     fn issue_under_standing_grant(
         &self,
         standing_grant_coverage: &StandingGrantCoverage,
@@ -304,7 +305,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         code: String,
         now: DateTime<Utc>,
     ) -> Result<AuthorizeNextStep, AuthorizationStartError> {
-        let issued_code = RequestApprover::over(&self.store).approve_for_code(
+        let code_approval = RequestApprover::over(&self.store).approve_for_code(
             CodeAuthority::StandingGrant(standing_grant_coverage),
             parked_request,
             standing_grant_coverage.patient(),
@@ -312,14 +313,19 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             now,
         )?;
         self.owner_approval.republish_active();
-        let Some(issued_code) = issued_code else {
-            return Err(AuthorizationStartError::RequestNotPending);
-        };
-        Ok(AuthorizeNextStep::RedirectToClient {
-            redirect_uri: requested_redirect_uri,
-            code: issued_code.code,
-            client_state: client_state.to_owned(),
-        })
+        match code_approval {
+            CodeApproval::Issued(issued_code) => Ok(AuthorizeNextStep::RedirectToClient {
+                redirect_uri: requested_redirect_uri,
+                code: issued_code.code,
+                client_state: client_state.to_owned(),
+            }),
+            CodeApproval::RequestNotPending => Err(AuthorizationStartError::RequestNotPending),
+            CodeApproval::BrowserSessionRevoked => Err(AuthorizationStartError::Redirectable {
+                redirect_uri: requested_redirect_uri,
+                error: OAuthErrorCode::AccessDenied,
+                client_state: client_state.to_owned(),
+            }),
+        }
     }
 
     /// Whether `client_id`'s registration is fixed — defined by the server
@@ -539,6 +545,53 @@ mod tests {
             .expect("parked_request");
         assert_eq!(parked_request.status, RequestStatus::Approved);
         assert_eq!(parked_request.patient.as_deref(), Some("pat-1"));
+        assert_eq!(owner_approval.count(), 1);
+    }
+
+    /// On the fast path, a request made in a browser session that no longer
+    /// stands is denied and sent back to the client with `access_denied`
+    /// rather than a code whose tokens would be refused.
+    #[test]
+    fn the_fast_path_denies_a_request_whose_browser_session_is_revoked() {
+        let store = FakeGrantStore::default();
+        store
+            .upsert_client(&client("app", &["patient/Patient.r"]))
+            .unwrap();
+        store
+            .create_authorization_code_grant(&AuthorizationCodeGrant {
+                scopes: vec!["patient/*.cruds".to_owned()],
+                ..code_grant("g1", "app")
+            })
+            .unwrap();
+        let (code_authorization_starter, owner_approval) = starter(store);
+        let outcome = code_authorization_starter.start(
+            &AuthorizeRequest {
+                sid: Some("no-such-sid"),
+                ..request("app", "patient/Patient.r")
+            },
+            ids(),
+            Utc::now(),
+        );
+        assert!(matches!(
+            outcome,
+            Err(AuthorizationStartError::Redirectable {
+                error: OAuthErrorCode::AccessDenied,
+                ..
+            })
+        ));
+        let parked_request = code_authorization_starter
+            .store
+            .authorization_request_by_id("req-1")
+            .unwrap()
+            .expect("parked_request");
+        assert_eq!(parked_request.status, RequestStatus::Denied);
+        assert_eq!(
+            code_authorization_starter
+                .store
+                .authorization_code_by_request_id("req-1")
+                .unwrap(),
+            None
+        );
         assert_eq!(owner_approval.count(), 1);
     }
 
