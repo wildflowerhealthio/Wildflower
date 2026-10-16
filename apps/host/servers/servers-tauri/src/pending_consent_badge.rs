@@ -1,9 +1,9 @@
 //! The app icon's badge: how many servers have a consent request pending
 //! ([`ConsentNotificationCoalescer::pending_server_count`]), shown while any
-//! does, and cleared once none does: the dock's badge on macOS, the
-//! launcher's on a Linux desktop that shows one, and the app icon's on iOS.
-//! Windows and Android show no badge count, so the badge is set there to no
-//! effect. The consent notifications' task sets it, from the coalescer that
+//! does, and cleared once none does: the dock's badge on macOS, and the
+//! launcher's on a Linux desktop that shows one. Windows shows no badge
+//! count, so the badge is set there to no effect, and Tauri sets none on a
+//! phone. The consent notifications' task sets it, from the coalescer that
 //! decides them, so the count holds through a stopped run as the
 //! notifications do.
 //!
@@ -38,12 +38,13 @@ impl PendingConsentBadge for AppIconBadge {
             .app
             .get_webview_window(BASE_WEBVIEW_LABEL)
             .context("the base's window is gone")?;
-        #[cfg(desktop)]
-        {
-            // `None` clears the badge: macOS would show a 0.
-            let badge_count = (count > 0).then(|| i64::try_from(count).unwrap_or(i64::MAX));
-            window.set_badge_count(badge_count)?;
-        }
+        // `None` clears the badge: macOS would show a 0.
+        let badge_count = (count > 0).then(|| i64::try_from(count).unwrap_or(i64::MAX));
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
+        window.set_badge_count(badge_count)?;
+        // Tauri's badge is desktop-only.
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let _ = (window, badge_count);
         Ok(())
     }
 }
