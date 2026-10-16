@@ -16,16 +16,14 @@ published site from an app.
   repository), navigation link data
   as discriminated unions (anchor, absolute, and section links), the `NavContext`
   type that lets the same header/footer resolve hrefs differently on the
-  marketing site vs. from an app, the `anchorHref` / `sectionHref` / `navHref`
+  marketing site vs. from an app, the `anchorHref` / `navHref`
   resolvers, and `APP_DESCRIPTIONS` — the per-app introduction copy
   (name, tagline, status, first-person "why" paragraphs, homepage anchor, and
   launch link text) that the homepage's app rows and each app's landing page
   both render. An entry's `launchesFromUrl` says the app's root starts its
-  SMART launch from `?iss=` (and `&launch=`); `smartAppLaunchPages` lists
-  the entries that set it, with the root's URL in a copy of the site
-  (`sectionUrlIn`), and `siteRootFor` finds the copy a section's page belongs
-  to (a PR preview's `/staging/pr-<n>/`, or the published site). The launcher's Home on
-  a plain SMART server lists its apps from these. Beside it, `TELEMETRY_CONSENT_COPY` is the telemetry consent
+  SMART launch from `?iss=` (and `&launch=`); `SMART_APP_LAUNCH_PAGES` lists
+  the entries that set it, each at its published origin (`sectionUrl`). The
+  launcher's Home on a plain SMART server lists its apps from these. Beside it, `TELEMETRY_CONSENT_COPY` is the telemetry consent
   dialog's words and the copy version a visitor's answer is stored with
   (`telemetry-react` renders it; raising the version asks everyone again), and
   `WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY` the same dialog worded for the
@@ -91,22 +89,19 @@ reason.
 ## The NavContext idea
 
 All chrome components take a `NavContext` that says where the marketing page
-lives relative to the current surface (`marketingBase`), and which copy of the
-site its section links go into (`siteRoot`, from `siteRootFor`):
+lives relative to the current surface (`marketingBase`):
 
-- `onMarketingSiteAt(pageUrl)` (`marketingBase: ''`) — anchors resolve to
-  fragment-only hrefs like `#built`. Section links go into the page's own copy
-  of the site: each app's own origin (`https://medications.wildflowerhealth.io/`)
-  on the published homepage, and the preview's build beside it
-  (`…/staging/pr-<n>/medications/`) on a PR preview's.
-  `marketing-site-web` passes `document.baseURI`.
+- `onMarketingSite` (`marketingBase: ''`) — anchors resolve to fragment-only
+  hrefs like `#built`.
 - `fromApp` (`marketingBase: 'https://wildflowerhealth.io/'`) — anchors
-  resolve to absolute URLs like `https://wildflowerhealth.io/#built`; section
-  links to each app's own origin, wherever the app is served.
+  resolve to absolute URLs like `https://wildflowerhealth.io/#built`.
 
-`navHref` dispatches over the link kind; section links resolve through
-`sectionUrlIn`, and the brand link checks `marketingBase === ''` to choose
-between `#top` and the marketing site's URL.
+Section links resolve to each app's published origin (`sectionUrl`,
+`https://medications.wildflowerhealth.io/`) from every context, so a PR
+preview of one app links the other apps' production builds; links within an
+app are relative. `navHref` dispatches over the link kind, and the brand link
+checks `marketingBase === ''` to choose between `#top` and the marketing
+site's URL.
 
 ## Consuming the styles
 
@@ -148,11 +143,11 @@ slugs.
   left out of `APP_SECTION_IDS`, the homepage's list.
 - **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
   apps.** `apps/wildflower-site/marketing-site-web` consumes them just like the apps do (passing
-  `onMarketingSiteAt(document.baseURI)`); it no longer keeps a page-local header/footer. A change to
+  `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
   the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
   this slice, and every surface picks it up. Both the homepage and the apps show
-  `HEADER_NAV_LINKS` (direct links into the six apps); only href resolution
-  differs by `NavContext`. The `SiteFooter` is the minimal "not a company"
+  `HEADER_NAV_LINKS` (direct links into the six apps); only the anchors'
+  hrefs differ by `NavContext`. The `SiteFooter` is the minimal "not a company"
   footer (paragraph + contact + mono stamp) carrying `id="note"`; the homepage's
   `app.test.tsx` asserts an element exists for every `MARKETING_ANCHORS` id
   (`#note` among them, plus the anchors `AppLanding`'s "rest of the project"

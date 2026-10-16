@@ -1,4 +1,4 @@
-export { APP_DESCRIPTIONS, APP_SECTION_IDS, smartAppLaunchPages } from './app-descriptions.ts'
+export { APP_DESCRIPTIONS, APP_SECTION_IDS, SMART_APP_LAUNCH_PAGES } from './app-descriptions.ts'
 export type { AppDescription, AppSectionId, SmartAppLaunchPage } from './app-descriptions.ts'
 export {
   HEADER_NAV_LINKS,
@@ -6,8 +6,7 @@ export {
   anchorHref,
   fromApp,
   navHref,
-  onMarketingSiteAt,
-  sectionHref,
+  onMarketingSite,
 } from './nav.ts'
 export type {
   AbsoluteNavLink,
@@ -25,8 +24,6 @@ export {
   SITE_ORIGIN,
   policyUrl,
   sectionUrl,
-  sectionUrlIn,
-  siteRootFor,
 } from './site.ts'
 export type { HostedAppId, PolicyId, SectionId } from './site.ts'
 export {

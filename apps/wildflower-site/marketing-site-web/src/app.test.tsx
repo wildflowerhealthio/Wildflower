@@ -61,17 +61,14 @@ describe('App', () => {
     const hrefs = within(nav)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
-    // Into the copy of the site the page was served from — see `sectionHref`
-    // in branding-core. The test page is not on the published origin, so,
-    // like a PR preview's homepage, it links each app's build beside it.
-    const siteRoot = new URL('./', document.baseURI).href
+    // Each app's published origin, wherever the homepage itself is served.
     expect(hrefs).toStrictEqual([
-      `${siteRoot}medications/`,
-      `${siteRoot}plots/`,
-      `${siteRoot}strength/`,
-      `${siteRoot}importer/`,
-      `${siteRoot}server-docs/`,
-      `${siteRoot}ohif-viewer/`,
+      'https://medications.wildflowerhealth.io/',
+      'https://plots.wildflowerhealth.io/',
+      'https://strength.wildflowerhealth.io/',
+      'https://importer.wildflowerhealth.io/',
+      'https://server-docs.wildflowerhealth.io/',
+      'https://ohif-viewer.wildflowerhealth.io/',
     ])
   })
 
@@ -103,17 +100,22 @@ describe('App', () => {
     // Arrange / Act
     render(<App />)
 
-    // Assert — the apps' builds beside this (unpublished) test page
-    const siteRoot = new URL('./', document.baseURI).href
+    // Assert — each app's published origin
     const hrefOf = (name: RegExp): string | null =>
       screen.getByRole('link', { name }).getAttribute('href')
-    expect(hrefOf(/Open the Medication Viewer/)).toBe(`${siteRoot}medications/`)
-    expect(hrefOf(/Read the Wildflower server docs/)).toBe(`${siteRoot}server-docs/`)
-    expect(hrefOf(/Open the Importer/)).toBe(`${siteRoot}importer/`)
-    expect(hrefOf(/Open FHIR Sync for Pebble/)).toBe(`${siteRoot}fhir-sync-pebble/`)
-    expect(hrefOf(/Open the Synthetic Data Loader/)).toBe(`${siteRoot}synthetic-data/`)
-    expect(hrefOf(/Open Plots/)).toBe(`${siteRoot}plots/`)
-    expect(hrefOf(/Open Strength/)).toBe(`${siteRoot}strength/`)
+    expect(hrefOf(/Open the Medication Viewer/)).toBe('https://medications.wildflowerhealth.io/')
+    expect(hrefOf(/Read the Wildflower server docs/)).toBe(
+      'https://server-docs.wildflowerhealth.io/'
+    )
+    expect(hrefOf(/Open the Importer/)).toBe('https://importer.wildflowerhealth.io/')
+    expect(hrefOf(/Open FHIR Sync for Pebble/)).toBe(
+      'https://fhir-sync-pebble.wildflowerhealth.io/'
+    )
+    expect(hrefOf(/Open the Synthetic Data Loader/)).toBe(
+      'https://synthetic-data.wildflowerhealth.io/'
+    )
+    expect(hrefOf(/Open Plots/)).toBe('https://plots.wildflowerhealth.io/')
+    expect(hrefOf(/Open Strength/)).toBe('https://strength.wildflowerhealth.io/')
   })
 
   it('should render Wildflower FHIR server download links pulled from versions.json', () => {

@@ -8,20 +8,12 @@ import {
   anchorHref,
   fromApp,
   navHref,
-  onMarketingSiteAt,
-  sectionHref,
+  onMarketingSite,
 } from './nav.ts'
-import { APP_SLUGS, SITE_ORIGIN, sectionUrl } from './site.ts'
-
-/** The homepage on the published site. */
-const onMarketingSite = onMarketingSiteAt('https://wildflowerhealth.io/')
-
-/** The homepage of a PR preview. */
-const previewBase = 'https://wildflowerhealthio.github.io/staging/pr-607/'
-const onPreviewMarketingSite = onMarketingSiteAt(`${previewBase}index.html`)
+import { SITE_ORIGIN, sectionUrl } from './site.ts'
 
 const anchorArb = fc.constantFrom(...MARKETING_ANCHORS)
-const contextArb = fc.constantFrom(onMarketingSite, onPreviewMarketingSite, fromApp)
+const contextArb = fc.constantFrom(onMarketingSite, fromApp)
 
 describe('anchorHref', () => {
   it('should produce fragment-only hrefs on the marketing site', () => {
@@ -64,42 +56,6 @@ describe('anchorHref', () => {
   })
 })
 
-describe('sectionHref', () => {
-  it("should link each app's own origin from the published homepage", () => {
-    expect(sectionHref(onMarketingSite, 'medications')).toBe(
-      'https://medications.wildflowerhealth.io/'
-    )
-    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe(
-      'https://server-docs.wildflowerhealth.io/'
-    )
-  })
-
-  it("should link each app's own origin from an app", () => {
-    expect(sectionHref(fromApp, 'medications')).toBe('https://medications.wildflowerhealth.io/')
-  })
-
-  it("should link a PR preview's homepage to that preview's builds", () => {
-    expect(sectionHref(onPreviewMarketingSite, 'medications')).toBe(`${previewBase}medications/`)
-    expect(sectionHref(onPreviewMarketingSite, 'plots')).toBe(`${previewBase}plots/`)
-  })
-
-  it('should match sectionUrl from the published homepage and an app, and the slug in a preview', () => {
-    const sectionArb = fc.constantFrom(
-      ...(['medications', 'importer', 'serverDocs', 'ohifViewer', 'plots', 'strength'] as const)
-    )
-    fc.assert(
-      fc.property(sectionArb, (section) => {
-        expect(sectionHref(onMarketingSite, section)).toBe(sectionUrl(section))
-        expect(sectionHref(fromApp, section)).toBe(sectionUrl(section))
-        expect(sectionHref(onPreviewMarketingSite, section)).toBe(
-          `${previewBase}${APP_SLUGS[section]}/`
-        )
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-})
-
 describe('navHref', () => {
   it('should resolve an anchor link like anchorHref', () => {
     expect(navHref({ kind: 'anchor', label: 'Top', anchor: 'top' }, onMarketingSite)).toBe('#top')
@@ -110,10 +66,17 @@ describe('navHref', () => {
     expect(navHref({ kind: 'absolute', label: 'Contact', href }, fromApp)).toBe(href)
   })
 
-  it('should resolve a section link like sectionHref', () => {
-    const link = { kind: 'section', label: 'Medications', section: 'medications' } as const
-    expect(navHref(link, onMarketingSite)).toBe(sectionHref(onMarketingSite, 'medications'))
-    expect(navHref(link, fromApp)).toBe(sectionHref(fromApp, 'medications'))
+  it("should resolve a section link to the section's published URL from every context", () => {
+    const sectionArb = fc.constantFrom(
+      ...(['medications', 'importer', 'serverDocs', 'ohifViewer', 'plots', 'strength'] as const)
+    )
+    fc.assert(
+      fc.property(contextArb, sectionArb, (ctx, section) => {
+        const link = { kind: 'section', label: 'App', section } as const
+        expect(navHref(link, ctx)).toBe(sectionUrl(section))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 
@@ -129,7 +92,7 @@ describe('HEADER_NAV_LINKS', () => {
     ])
   })
 
-  it('should be section links so the same bar resolves per context', () => {
+  it('should be section links, so every bar links the published apps', () => {
     for (const link of HEADER_NAV_LINKS) {
       expect(link.kind).toBe('section')
     }

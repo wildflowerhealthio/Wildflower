@@ -1,8 +1,6 @@
 import type { JSX } from 'react'
 
-import { APP_DESCRIPTIONS, sectionHref } from '@wildflowerhealthio/branding-core'
-
-import { homepageNav } from '../homepage-nav.ts'
+import { APP_DESCRIPTIONS, sectionUrl } from '@wildflowerhealthio/branding-core'
 
 import { wildflowerServerImages } from '../assets/remote-images.ts'
 import { AppRow } from './app-row.tsx'
@@ -39,7 +37,7 @@ function Infrastructure(): JSX.Element {
               <>
                 <DownloadLinks />
                 <Launcher
-                  href={sectionHref(homepageNav, 'serverDocs')}
+                  href={sectionUrl('serverDocs')}
                   label="Read the Wildflower server docs"
                   note="View the docs and available endpoints with tools to send requests to a live server"
                 />
@@ -58,7 +56,7 @@ function Infrastructure(): JSX.Element {
             placeholderLabel="screenshot — Importer"
             launcher={
               <Launcher
-                href={sectionHref(homepageNav, 'importer')}
+                href={sectionUrl('importer')}
                 label={importer.launch.label}
                 note={importer.launch.note}
               />

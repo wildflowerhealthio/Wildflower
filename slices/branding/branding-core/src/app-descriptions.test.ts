@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   APP_DESCRIPTIONS,
   APP_SECTION_IDS,
-  smartAppLaunchPages,
+  SMART_APP_LAUNCH_PAGES,
   type AppSectionId,
 } from './app-descriptions.ts'
 import { MARKETING_ANCHORS } from './nav.ts'
-import { APP_SLUGS, SITE_ORIGIN, sectionUrl, siteRootFor } from './site.ts'
+import { APP_SLUGS, sectionUrl } from './site.ts'
 
 /**
  * Every described app: the homepage's SMART apps, and the launcher and
@@ -69,10 +69,10 @@ describe('APP_DESCRIPTIONS', () => {
   })
 })
 
-describe('smartAppLaunchPages', () => {
+describe('SMART_APP_LAUNCH_PAGES', () => {
   it('should list the five first-party SMART apps, at their own origins on the published site', () => {
     // Act
-    const launchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
+    const launchPages = SMART_APP_LAUNCH_PAGES
 
     // Assert
     expect(launchPages).toStrictEqual([
@@ -91,7 +91,7 @@ describe('smartAppLaunchPages', () => {
     )
 
     // Act
-    const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
+    const listedApps = SMART_APP_LAUNCH_PAGES.map(({ app }) => app)
 
     // Assert
     expect(listedApps.toSorted()).toStrictEqual(launchedApps.toSorted())
@@ -101,44 +101,15 @@ describe('smartAppLaunchPages', () => {
   })
 
   it('should leave out the launcher, Wildflower Authorization and FHIR Sync for Pebble, which no URL launches', () => {
-    const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
+    const listedApps = SMART_APP_LAUNCH_PAGES.map(({ app }) => app)
     expect(listedApps).not.toContain('launcher')
     expect(listedApps).not.toContain('authorization')
     expect(listedApps).not.toContain('fhirSyncPebble')
   })
 
-  it("should resolve every launch page to the app's own origin from the published launcher", () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom('https://launcher.wildflowerhealth.io/', 'http://localhost:5173/'),
-        (launcherBaseUrl) => {
-          // Arrange
-          const siteRoot = siteRootFor('launcher', launcherBaseUrl)
-
-          // Act
-          const launchPages = smartAppLaunchPages(siteRoot)
-
-          // Assert
-          for (const { app, launchPageUrl } of launchPages) {
-            expect(launchPageUrl).toBe(sectionUrl(app))
-          }
-        }
-      ),
-      { numRuns: numRunsFor({ base: 10 }) }
-    )
-  })
-
-  it("should resolve every launch page to the preview's build from a PR preview's launcher", () => {
-    // Arrange
-    const previewRoot = 'https://wildflowerhealthio.github.io/staging/pr-7/'
-    const siteRoot = siteRootFor('launcher', `${previewRoot}launcher/`)
-
-    // Act
-    const launchPages = smartAppLaunchPages(siteRoot)
-
-    // Assert
-    for (const { app, launchPageUrl } of launchPages) {
-      expect(launchPageUrl).toBe(`${previewRoot}${APP_SLUGS[app]}/`)
+  it("should resolve every launch page to the app's own origin", () => {
+    for (const { app, launchPageUrl } of SMART_APP_LAUNCH_PAGES) {
+      expect(launchPageUrl).toBe(sectionUrl(app))
     }
   })
 })

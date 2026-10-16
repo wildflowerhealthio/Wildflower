@@ -43,84 +43,18 @@ type HostedAppId = keyof typeof APP_SLUGS
 /** Identifies one section of the site: the marketing site or a hosted app. */
 type SectionId = 'marketing' | HostedAppId
 
-/** The site root {@link siteRootFor} answers for anything but a PR preview. */
-const PUBLISHED_SITE_ROOT = `${SITE_ORIGIN}/`
-
 /**
- * Absolute, slash-terminated URL of a section on the published site.
+ * Absolute, slash-terminated URL of a section on the published site. Links
+ * from one section to another always use it, so a PR preview of one app links
+ * the other apps' production builds.
  *
  * @param id - The section to resolve.
  * @returns `https://wildflowerhealth.io/` for marketing,
  *   `https://<slug>.wildflowerhealth.io/` for a hosted app.
  */
 function sectionUrl(id: SectionId): string {
-  if (id === 'marketing') return PUBLISHED_SITE_ROOT
+  if (id === 'marketing') return `${SITE_ORIGIN}/`
   return `https://${APP_SLUGS[id]}.${SITE_HOST}/`
-}
-
-/**
- * Absolute, slash-terminated URL of a section in one copy of the site.
- *
- * @param id - The section to resolve.
- * @param siteRoot - The copy's root, from {@link siteRootFor}.
- * @returns {@link sectionUrl} when `siteRoot` is the published site's, where
- *   each app has its own origin; otherwise the section's directory under
- *   `siteRoot`, where a PR preview assembles every app under one path.
- *
- * @example
- * ```ts
- * sectionUrlIn('plots', 'https://wildflowerhealth.io/') // → 'https://plots.wildflowerhealth.io/'
- * sectionUrlIn('plots', 'https://wildflowerhealthio.github.io/staging/pr-7/')
- * // → 'https://wildflowerhealthio.github.io/staging/pr-7/plots/'
- * ```
- */
-function sectionUrlIn(id: SectionId, siteRoot: string): string {
-  if (siteRoot === PUBLISHED_SITE_ROOT) return sectionUrl(id)
-  return id === 'marketing' ? siteRoot : new URL(`${APP_SLUGS[id]}/`, siteRoot).href
-}
-
-/**
- * The root of the copy of the site a section's page is served from, as the
- * base its sibling sections resolve against ({@link sectionUrlIn}).
- *
- * @param section - The section `sectionBaseUrl` serves.
- * @param sectionBaseUrl - The absolute URL of the directory the section's page
- *   is served from, e.g. the launcher's origin plus its router basepath.
- * @returns For a hosted app, `sectionBaseUrl` with the app's slug taken off,
- *   slash-terminated, when it ends in that slug — a PR preview's
- *   `https://wildflowerhealthio.github.io/staging/pr-7/` — and
- *   `https://wildflowerhealth.io/` for any other URL. For marketing, which is
- *   the root of its copy, its own directory, unless that is on the published
- *   origin.
- *
- * @remarks
- * A PR preview publishes every section under its own `/staging/pr-<n>/`, so a
- * link from one preview section reaches the same preview's build of another.
- * A hosted app served anywhere else (its own origin, or a dev server at its
- * origin root) is not part of an assembled preview, so its links go to the
- * published site, as `fromApp`'s do.
- *
- * @example
- * ```ts
- * siteRootFor('launcher', 'https://wildflowerhealthio.github.io/staging/pr-7/launcher/')
- * // → 'https://wildflowerhealthio.github.io/staging/pr-7/'
- * siteRootFor('launcher', 'https://launcher.wildflowerhealth.io/') // → 'https://wildflowerhealth.io/'
- * siteRootFor('marketing', 'https://wildflowerhealthio.github.io/staging/pr-7/')
- * // → 'https://wildflowerhealthio.github.io/staging/pr-7/'
- * ```
- */
-function siteRootFor(section: SectionId, sectionBaseUrl: string): string {
-  const sectionBase = new URL(sectionBaseUrl)
-  const directory = sectionBase.pathname.replace(/\/+$/, '')
-  if (section === 'marketing') {
-    return sectionBase.origin === SITE_ORIGIN
-      ? PUBLISHED_SITE_ROOT
-      : `${sectionBase.origin}${directory}/`
-  }
-  const sectionSuffix = `/${APP_SLUGS[section]}`
-  return directory.endsWith(sectionSuffix)
-    ? `${sectionBase.origin}${directory.slice(0, -sectionSuffix.length)}/`
-    : PUBLISHED_SITE_ROOT
 }
 
 /**
@@ -164,15 +98,5 @@ function policyUrl(id: PolicyId): string {
   return `${SITE_ORIGIN}/${POLICY_PATHS[id]}/`
 }
 
-export {
-  APP_SLUGS,
-  POLICY_IDS,
-  POLICY_LABELS,
-  POLICY_PATHS,
-  SITE_ORIGIN,
-  policyUrl,
-  sectionUrl,
-  sectionUrlIn,
-  siteRootFor,
-}
+export { APP_SLUGS, POLICY_IDS, POLICY_LABELS, POLICY_PATHS, SITE_ORIGIN, policyUrl, sectionUrl }
 export type { HostedAppId, PolicyId, SectionId }

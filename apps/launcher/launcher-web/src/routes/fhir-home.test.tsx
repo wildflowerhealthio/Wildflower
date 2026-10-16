@@ -6,7 +6,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { APP_DESCRIPTIONS, smartAppLaunchPages } from '@wildflowerhealthio/branding-core'
+import { APP_DESCRIPTIONS, SMART_APP_LAUNCH_PAGES } from '@wildflowerhealthio/branding-core'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { FhirServerHome } from './fhir-home.tsx'
@@ -17,9 +17,6 @@ const LAUNCHER_FHIR_BASE_URL =
 
 /** A plain SMART server that is not the launcher. */
 const OTHER_FHIR_BASE_URL = 'https://fhir.example.org/r4'
-
-/** A PR preview's site root, so the links are seen to follow it. */
-const PREVIEW_SITE_ROOT = 'https://wildflowerhealthio.github.io/staging/pr-7/'
 
 /**
  * Mount {@link FhirServerHome} at `/fhir-home` inside a minimal router (its
@@ -35,7 +32,7 @@ const renderFhirServerHome = (
   const fhirHomeRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/fhir-home',
-    component: () => <FhirServerHome server={server} siteRoot={PREVIEW_SITE_ROOT} />,
+    component: () => <FhirServerHome server={server} />,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([fhirHomeRoute]),
@@ -84,7 +81,7 @@ describe('FhirServerHome', () => {
     const appLinks = await findAppLinks()
     const appTiles = appLinks.map((link) => link.textContent)
     expect(appTiles).toStrictEqual(
-      smartAppLaunchPages(PREVIEW_SITE_ROOT).map(
+      SMART_APP_LAUNCH_PAGES.map(
         ({ app }) => `${APP_DESCRIPTIONS[app].name}${APP_DESCRIPTIONS[app].tagline}`
       )
     )
@@ -92,18 +89,18 @@ describe('FhirServerHome', () => {
     expect(screen.queryByRole('link', { name: /FHIR Sync for Pebble/ })).toBeNull()
   })
 
-  test("links each app's root on the site root it is given", async () => {
+  test("links each app's root at its published origin", async () => {
     // Act
     renderFhirServerHome()
 
     // Assert
     const appLinks = await findAppLinks()
     expect(appLinks.map((link) => link.href.split('?')[0])).toStrictEqual([
-      `${PREVIEW_SITE_ROOT}medications/`,
-      `${PREVIEW_SITE_ROOT}importer/`,
-      `${PREVIEW_SITE_ROOT}plots/`,
-      `${PREVIEW_SITE_ROOT}synthetic-data/`,
-      `${PREVIEW_SITE_ROOT}strength/`,
+      'https://medications.wildflowerhealth.io/',
+      'https://importer.wildflowerhealth.io/',
+      'https://plots.wildflowerhealth.io/',
+      'https://synthetic-data.wildflowerhealth.io/',
+      'https://strength.wildflowerhealth.io/',
     ])
   })
 
