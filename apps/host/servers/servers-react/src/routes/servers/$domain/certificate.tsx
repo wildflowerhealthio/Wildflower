@@ -8,8 +8,8 @@ import {
 import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
-import { formatInstant } from '../../../../server-status-text.ts'
-import { useHasPassed } from '../../../../use-has-passed.ts'
+import { formatInstant } from '../../../server-status-text.ts'
+import { useHasPassed } from '../../../use-has-passed.ts'
 import { useListedServer } from './-listed-server.ts'
 
 /** What the Certificate authority row says of each CA. */
@@ -154,6 +154,6 @@ const ServerCertificateTab = (): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_servers/servers/$domain/certificate')({
+export const Route = createFileRoute('/servers/$domain/certificate')({
   component: ServerCertificateTab,
 })

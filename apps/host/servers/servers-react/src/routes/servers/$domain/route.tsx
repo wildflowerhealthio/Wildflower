@@ -2,15 +2,15 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { GateCard, PageBodyError, PageHeader, RouteTabs } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
 
-import { useServerStatusEvents } from '../../../../queries.ts'
-import { useListenToHostEvent, useRunHostCommand } from '../../../../router-context.ts'
+import { useServerStatusEvents } from '../../../queries.ts'
+import { useListenToHostEvent, useRunHostCommand } from '../../../router-context.ts'
 import { ensureListedServer, useListedServer } from './-listed-server.ts'
 import { StatusHero } from './-status-hero.tsx'
 
 /** The page's header while it can't show the server: its title and domain, with the way back. */
 const PlaceholderHeader = (): JSX.Element => {
   const { domain } = Route.useParams()
-  return <PageHeader title="Server" subtitle={domain} backHref="/" backLabel="Servers" />
+  return <PageHeader title="Server" subtitle={domain} backHref="/servers" backLabel="Servers" />
 }
 
 /** The page while the server list is read. */
@@ -63,7 +63,7 @@ function ServerPage(): JSX.Element {
   const params = { domain: server.domain }
   return (
     <>
-      <PageHeader title="Server" backHref="/" backLabel="Servers" />
+      <PageHeader title="Server" backHref="/servers" backLabel="Servers" />
       <StatusHero server={server} runHostCommand={runHostCommand} />
       <RouteTabs
         tabs={[
@@ -90,7 +90,7 @@ function ServerPage(): JSX.Element {
  * read that fails shows here, with Retry, and a domain the list doesn't hold
  * says so, each under the page's header with the way back.
  */
-const Route = createFileRoute('/_servers/servers/$domain')({
+const Route = createFileRoute('/servers/$domain')({
   beforeLoad: async ({ context, params }) => {
     await ensureListedServer(context.queryClient, context.runHostCommand, params.domain)
   },

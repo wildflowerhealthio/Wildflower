@@ -8,9 +8,9 @@ import {
 import { Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { failureText } from '../../../../failure-text.ts'
-import { useSetServerCredentials } from '../../../../queries.ts'
-import { type RunHostCommand, useRunHostCommand } from '../../../../router-context.ts'
+import { failureText } from '../../../failure-text.ts'
+import { useSetServerCredentials } from '../../../queries.ts'
+import { type RunHostCommand, useRunHostCommand } from '../../../router-context.ts'
 import { useListedServer } from './-listed-server.ts'
 import styles from './-relay.module.css'
 
@@ -127,6 +127,6 @@ const ServerRelayTab = (): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_servers/servers/$domain/relay')({
+export const Route = createFileRoute('/servers/$domain/relay')({
   component: ServerRelayTab,
 })

@@ -2,11 +2,11 @@ import { type QueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { notFound, useParams } from '@tanstack/react-router'
 import type { ListedServer } from '@wildflowerhealthio/servers-core-js'
 
-import { listedServerQueryOptions, serversQueryOptions } from '../../../../queries.ts'
-import { type RunHostCommand, useRunHostCommand } from '../../../../router-context.ts'
+import { listedServerQueryOptions, serversQueryOptions } from '../../../queries.ts'
+import { type RunHostCommand, useRunHostCommand } from '../../../router-context.ts'
 
 /** The id of the server page's route, whose not-found boundary a missing server reaches. */
-const SERVER_PAGE_ROUTE_ID = '/_servers/servers/$domain'
+const SERVER_PAGE_ROUTE_ID = '/servers/$domain'
 
 /** The server `domain` in `servers`, or a not-found for the server page's route. */
 const listedServerIn = (

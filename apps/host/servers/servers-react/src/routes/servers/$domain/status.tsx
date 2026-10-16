@@ -9,13 +9,13 @@ import {
 import { type DateTime, Match, Option } from 'effect'
 import type { JSX, ReactNode } from 'react'
 
-import { type ServerHealthError, serverHealthQueryOptions } from '../../../../queries.ts'
-import { useRunHttpRequest } from '../../../../router-context.ts'
+import { type ServerHealthError, serverHealthQueryOptions } from '../../../queries.ts'
+import { useRunHttpRequest } from '../../../router-context.ts'
 import {
   formatInstant,
   lastStopText,
   PLATFORM_STOP_REASON_TEXT,
-} from '../../../../server-status-text.ts'
+} from '../../../server-status-text.ts'
 import { healthCheckTitle } from './-health-check-title.ts'
 import { useListedServer } from './-listed-server.ts'
 
@@ -214,6 +214,6 @@ const ServerStatusTab = (): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_servers/servers/$domain/status')({
+export const Route = createFileRoute('/servers/$domain/status')({
   component: ServerStatusTab,
 })

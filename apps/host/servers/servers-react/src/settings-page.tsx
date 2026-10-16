@@ -91,7 +91,7 @@ const SettingsPage = (): JSX.Element => {
   const version = useQuery(appVersionQueryOptions(runHostCommand))
   return (
     <>
-      <PageHeader title="Host Settings" backHref="/" backLabel="Servers" />
+      <PageHeader title="Host Settings" backHref="/servers" backLabel="Servers" />
       <ItemList title="Notifications" items={[notificationsItem]} maxLines={3} />
       <ItemList
         title="Privacy"

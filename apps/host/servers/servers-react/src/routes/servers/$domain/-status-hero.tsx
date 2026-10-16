@@ -3,13 +3,13 @@ import { type ListedServer, RunPolicy } from '@wildflowerhealthio/servers-core-j
 import { Duration } from 'effect'
 import { type JSX, useId, useState } from 'react'
 
-import { useActionError } from '../../../../action-error.ts'
-import { AuthorizationButton } from '../../../../authorization-button.tsx'
-import { LaunchButton } from '../../../../launch-button.tsx'
-import type { RunHostCommand } from '../../../../router-context.ts'
-import { runPolicyText } from '../../../../run-policy-text.ts'
-import { formatInstant, statusSummary } from '../../../../server-status-text.ts'
-import { useNow } from '../../../../use-now.ts'
+import { useActionError } from '../../../action-error.ts'
+import { AuthorizationButton } from '../../../authorization-button.tsx'
+import { LaunchButton } from '../../../launch-button.tsx'
+import type { RunHostCommand } from '../../../router-context.ts'
+import { runPolicyText } from '../../../run-policy-text.ts'
+import { formatInstant, statusSummary } from '../../../server-status-text.ts'
+import { useNow } from '../../../use-now.ts'
 import styles from './-status-hero.module.css'
 
 /** Where copying the domain to the clipboard stands. */

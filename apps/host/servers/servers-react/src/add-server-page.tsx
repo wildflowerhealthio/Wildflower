@@ -682,7 +682,7 @@ const AddServerPage = (): JSX.Element => {
   )
   return (
     <>
-      <PageHeader title="Add server" backHref="/" backLabel="Servers" />
+      <PageHeader title="Add server" backHref="/servers" backLabel="Servers" />
       {body}
     </>
   )

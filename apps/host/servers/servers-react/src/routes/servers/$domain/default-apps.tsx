@@ -4,14 +4,14 @@ import type { ListedServer } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { failureText } from '../../../../failure-text.ts'
-import { useUpdateServer } from '../../../../queries.ts'
+import { failureText } from '../../../failure-text.ts'
+import { useUpdateServer } from '../../../queries.ts'
 import {
   type RunHostCommand,
   useDefaultAuthorizationUrl,
   useDefaultLauncherUrl,
   useRunHostCommand,
-} from '../../../../router-context.ts'
+} from '../../../router-context.ts'
 import { useListedServer } from './-listed-server.ts'
 import styles from './-default-apps.module.css'
 
@@ -157,6 +157,6 @@ const ServerDefaultAppsTab = (): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_servers/servers/$domain/default-apps')({
+export const Route = createFileRoute('/servers/$domain/default-apps')({
   component: ServerDefaultAppsTab,
 })

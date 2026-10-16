@@ -4,9 +4,9 @@ import { PendingConsent, ServerStatus } from '@wildflowerhealthio/servers-core-j
 import { Option } from 'effect'
 import type { JSX } from 'react'
 
-import { failureText } from '../../../../failure-text.ts'
-import { useOpenPendingConsent } from '../../../../queries.ts'
-import { type RunHostCommand, useRunHostCommand } from '../../../../router-context.ts'
+import { failureText } from '../../../failure-text.ts'
+import { useOpenPendingConsent } from '../../../queries.ts'
+import { type RunHostCommand, useRunHostCommand } from '../../../router-context.ts'
 import { useListedServer } from './-listed-server.ts'
 import styles from './-access.module.css'
 
@@ -74,6 +74,6 @@ const ServerAccessTab = (): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_servers/servers/$domain/access')({
+export const Route = createFileRoute('/servers/$domain/access')({
   component: ServerAccessTab,
 })

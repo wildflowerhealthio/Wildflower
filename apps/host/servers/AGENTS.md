@@ -107,14 +107,17 @@ changing how servers run or what the host notifies about them.
   the `TAURI_ENV_PLATFORM` the Tauri CLI builds it with (the base never
   detects it),
   `@tauri-apps/api/event`'s `listen` and the default launcher
-  and Authorization app from `tauri-shared-config.json`; `BaseLayout`, the page shell;
-  and the route bucket `routes/_servers/`, which the app mounts
-  under a pathless `_servers` layout whose component is `BaseLayout`:
-  `/` the server list, `/servers/new` Add server, `/servers/$domain` a
-  server's page and `/settings` Host Settings, for the app on this device rather than any one
+  and Authorization app from `tauri-shared-config.json`; and its routes,
+  which the app mounts at the same paths: `routes/servers/`, `/servers`,
+  whose component is `BaseLayout`, the page shell, over `/servers/` the
+  server list, `/servers/new` Add server and `/servers/$domain` a server's
+  page; and `routes/settings.tsx`, `/settings` Host Settings, in its own
+  `BaseLayout`, for the app on this device rather than any one
   server (Notifications, Telemetry, Legal — the privacy policy, consumer health data
   policy, terms of use and deletion page on the canonical site, opened in the system browser — and
-  About). The server list is a card per
+  About). `/servers` and `/settings` each carry `BASE_SCREEN_STATIC_DATA`
+  in their route's `staticData`, which the app's bar reads (`isBaseScreen`)
+  to tell the base's screens from its own. The server list is a card per
   server, kept current by the `server-status` event: its domain and a status
   dot merged from its run state, its tunnel's state and its health, a
   refused or reconnecting tunnel taking priority over a `reachable` health
@@ -145,7 +148,7 @@ changing how servers run or what the host notifies about them.
   width; over six tabs on `RouteTabs`, each a child route of
   `/servers/$domain` (`status`, `access`, `default-apps`, `relay`,
   `certificate`, `destructive-actions`), each in its own route file under
-  `routes/_servers/servers/$domain/` with the parts only it uses beside it.
+  `routes/servers/$domain/` with the parts only it uses beside it.
   The page's `beforeLoad` reads the server from the cached server list,
   showing a read that fails, with Retry, and a domain the list doesn't hold;
   the page and its open tab read the server from the same cached list

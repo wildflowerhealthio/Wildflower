@@ -11,8 +11,10 @@ stores, and the packages beside it that only the host uses. The app itself is
   loads, which owns the one TanStack router, behind the base's telemetry
   consent gate (`servers-react`'s `BaseGate`). Its `routes.config.ts` composes
   its root layout, a bar of two TanStack `<Link>`s over every route, **Servers**
-  (the base's screens, `servers-react`'s `routes/_servers/` mounted under a
-  pathless `_servers` layout, `BaseLayout`) and **Recorder** (`/recorder`,
+  (the base's screens, `servers-react`'s `routes/servers/` mounted at
+  `/servers` and its `routes/settings.tsx` at `/settings`, each marked as a
+  base screen in its `staticData`, which the bar reads to send Servers back
+  to the base's last screen; `/` opens `/servers`) and **Recorder** (`/recorder`,
   `recorder-react`'s `RecorderPage`, over an `effect-messaging-tauri-js`
   transport for `RecorderBridge`, whose `RecorderProvider` the layout holds
   so a recording outlives the route), with a Page not found under the bar for

@@ -2,9 +2,9 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ConfirmDialog, ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { type JSX, useId, useState } from 'react'
 
-import { failureText } from '../../../../failure-text.ts'
-import { useRemoveServer } from '../../../../queries.ts'
-import { useRunHostCommand } from '../../../../router-context.ts'
+import { failureText } from '../../../failure-text.ts'
+import { useRemoveServer } from '../../../queries.ts'
+import { useRunHostCommand } from '../../../router-context.ts'
 import { useListedServer } from './-listed-server.ts'
 import styles from './-destructive-actions.module.css'
 
@@ -19,7 +19,7 @@ const DestructiveActionsTab = (): JSX.Element => {
   const headingId = useId()
   const navigate = useNavigate()
   const removeServer = useRemoveServer(useRunHostCommand(), () => {
-    void navigate({ to: '/' })
+    void navigate({ to: '/servers' })
   })
   const [confirmingRemoval, setConfirmingRemoval] = useState(false)
   return (
@@ -69,6 +69,6 @@ const DestructiveActionsTab = (): JSX.Element => {
   )
 }
 
-export const Route = createFileRoute('/_servers/servers/$domain/destructive-actions')({
+export const Route = createFileRoute('/servers/$domain/destructive-actions')({
   component: DestructiveActionsTab,
 })

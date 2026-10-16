@@ -15,7 +15,7 @@ type BaseUnderTestProps = Omit<BaseGateProps, 'children'> &
 
 /**
  * The base as the host app composes it: its gate around a router over its
- * routes, under the package-local root (`BaseLayout`), at `path` on a memory
+ * routes, under the package-local root, at `path` on a memory
  * history, with the query cache `ServersRouterContext.make` builds.
  */
 function BaseUnderTest({ path, ...props }: BaseUnderTestProps): JSX.Element {

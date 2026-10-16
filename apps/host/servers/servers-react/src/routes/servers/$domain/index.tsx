@@ -16,7 +16,7 @@ import { ensureListedServer } from './-listed-server.ts'
  * arrives while the page is open doesn't move it off the tab it is on: the
  * request's approval page opens itself.
  */
-const Route = createFileRoute('/_servers/servers/$domain/')({
+const Route = createFileRoute('/servers/$domain/')({
   beforeLoad: async ({ context, params }) => {
     const server = await ensureListedServer(
       context.queryClient,

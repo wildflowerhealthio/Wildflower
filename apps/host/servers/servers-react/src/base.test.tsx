@@ -224,7 +224,7 @@ const DEFAULT_AUTHORIZATION_URL = 'https://authorization.wildflowerhealth.io/'
 const renderBase = ({
   invoke,
   storage,
-  path = '/',
+  path = '/servers',
   platform = 'desktop',
   events = fakeEvents(),
   taps = fakeTaps(),

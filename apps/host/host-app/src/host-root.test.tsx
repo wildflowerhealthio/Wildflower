@@ -152,9 +152,9 @@ describe('HostRoot', () => {
     expect(screen.queryByRole('navigation', { name: 'Wildflower Host' })).toBeNull()
   })
 
-  it('should open on the base at /, with the Servers link current and Recorder beside it', async () => {
+  it('should open the server list from /, with the Servers link current and Recorder beside it', async () => {
     // Act
-    await renderHost()
+    const history = await renderHost()
 
     // Assert
     const nav = await findNav()
@@ -164,6 +164,7 @@ describe('HostRoot', () => {
         .map((link) => link.textContent)
     ).toEqual(['Servers', 'Recorder'])
     expect(await screen.findByText('No servers yet')).toBeDefined()
+    expect(history.location.pathname).toBe('/servers')
     expect(linkOf('Servers').getAttribute('aria-current')).toBe('page')
     expect(linkOf('Recorder').getAttribute('aria-current')).toBeNull()
     expect(linkOf('Recorder').getAttribute('href')).toBe('/recorder')
@@ -260,6 +261,6 @@ describe('HostRoot', () => {
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeDefined()
     expect(linkOf('Servers').getAttribute('aria-current')).toBeNull()
     expect(linkOf('Recorder').getAttribute('aria-current')).toBeNull()
-    expect(linkOf('Servers').getAttribute('href')).toBe('/')
+    expect(linkOf('Servers').getAttribute('href')).toBe('/servers')
   })
 })
