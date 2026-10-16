@@ -43,7 +43,7 @@ export { pageLayoutStyles, type PageLayoutClassName } from './page-layout-styles
 export { PageLoading, type PageLoadingProps } from './page-loading.tsx'
 export { PartialBanner, type PartialBannerProps } from './partial-banner.tsx'
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './radio-group.tsx'
-export { RouteTabs, type RouteTab, type RouteTabsProps } from './route-tabs.tsx'
+export { RouteTabs, type RouteTabLabel, type RouteTabsProps } from './route-tabs.tsx'
 export {
   SegmentedToggle,
   type SegmentedToggleOption,

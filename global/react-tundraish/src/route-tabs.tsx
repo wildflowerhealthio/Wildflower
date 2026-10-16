@@ -1,152 +1,271 @@
-import { Link } from '@tanstack/react-router'
+import { Link, Outlet, useLocation } from '@tanstack/react-router'
+import type {
+  AnyRouter,
+  LinkComponentProps,
+  RegisteredRouter,
+  ValidateLinkOptionsArray,
+} from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import { useEffect, useRef, useState } from 'react'
-import type { JSX, ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { JSX } from 'react'
 
+import { readHiddenEnds, scrollToReveal } from './route-tabs-scroll.ts'
+import type { HiddenEnds, StripScroll, TabSpan } from './route-tabs-scroll.ts'
 import styles from './route-tabs.module.css'
 
-/** One tab in a {@link RouteTabs} strip: the `tab` search value it sets, and its label. */
-interface RouteTab<T extends string> {
-  readonly id: T
+/** What a tab shows: its label, beside the link options that say where it goes. */
+interface RouteTabLabel {
   readonly label: string
 }
 
-interface RouteTabsProps<T extends string> {
-  /** The open tab, as the caller's route reads it from its `tab` search param. */
-  readonly current: T
-  readonly tabs: readonly RouteTab<T>[]
+interface RouteTabsProps<
+  TRouter extends AnyRouter = RegisteredRouter,
+  TTabs extends readonly RouteTabLabel[] = readonly RouteTabLabel[],
+  TFrom extends string = string,
+> {
+  /**
+   * One entry per tab, in strip order: the `<Link>` options of the child
+   * route it opens (`to`, `params`, `search`…, type-checked against the
+   * router like a `<Link>`'s), and its `label`. Labels are unique within a
+   * strip.
+   */
+  readonly tabs: ValidateLinkOptionsArray<TRouter, TTabs, TFrom>
   /** Accessible name announced for the `<nav>` (e.g. "Server details"). */
   readonly 'aria-label': string
-  /** The open tab's panel, drawn under the strip. */
-  readonly children: ReactNode
+  /**
+   * Size the shape to the component's own width instead of the viewport's:
+   * the wide shape from this many pixels of it, the narrow one below.
+   * Measured with a `ResizeObserver`, so the component needs a definite
+   * width (a block in normal flow, a stretched flex or grid item); in a
+   * shrink-to-fit parent its width would follow its own content.
+   */
+  readonly wideFromOwnWidth?: number
 }
 
-/** Which ends of the strip have tabs scrolled out of sight past them. */
-interface HiddenTabs {
-  readonly before: boolean
-  readonly after: boolean
+/** One tab as the strip renders it: a `<Link>`'s options and its label. */
+type RouteTab = LinkComponentProps & RouteTabLabel
+
+/** Which rule picks the shape: the viewport media query, or the measured own width. */
+type RouteTabsShape = 'sized-by-viewport' | 'narrow' | 'wide'
+
+const shapeClassNames: Record<RouteTabsShape, string | undefined> = {
+  'sized-by-viewport': styles['route-tabs--sized-by-viewport'],
+  narrow: undefined,
+  wide: styles['route-tabs--wide'],
 }
 
-const NO_HIDDEN_TABS: HiddenTabs = { before: false, after: false }
-
-/** Reads which ends of `strip` have tabs scrolled out past them. */
-const hiddenTabsOf = (strip: HTMLElement): HiddenTabs => ({
-  before: strip.scrollLeft > 0,
-  // A pixel of slack absorbs the sub-pixel `scrollLeft` a zoomed page reports.
-  after: strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1,
-})
+const NO_HIDDEN_ENDS: HiddenEnds = { before: false, after: false }
 
 /**
- * The `scrollLeft` that brings `tab` fully into view inside `strip`, moving
- * the strip as little as it can; the current `scrollLeft` when the tab is
- * already in view. The strip is the tab's offset parent, so `offsetLeft` is
- * measured from the strip's scrolled content edge.
+ * Converts a computed `scroll-padding-inline-*` value to pixels. A computed
+ * length is always in `px`, and the other computed value, `auto`, is no
+ * padding.
  */
-const scrollLeftRevealing = (strip: HTMLElement, tab: HTMLElement): number => {
-  const tabEnd = tab.offsetLeft + tab.offsetWidth
-  if (tab.offsetLeft < strip.scrollLeft) {
-    return tab.offsetLeft
+const pixelsOfScrollPadding = (computedLength: string): number =>
+  computedLength.endsWith('px') ? Number.parseFloat(computedLength) : 0
+
+/** Measures `strip`'s scroll offset, widths and scroll padding. */
+const measureStripScroll = (strip: HTMLElement): StripScroll => {
+  const stripStyle = getComputedStyle(strip)
+  return {
+    offset: strip.scrollLeft,
+    viewportWidth: strip.clientWidth,
+    contentWidth: strip.scrollWidth,
+    paddingStart: pixelsOfScrollPadding(stripStyle.scrollPaddingInlineStart),
+    paddingEnd: pixelsOfScrollPadding(stripStyle.scrollPaddingInlineEnd),
   }
-  if (tabEnd > strip.scrollLeft + strip.clientWidth) {
-    return tabEnd - strip.clientWidth
-  }
-  return strip.scrollLeft
 }
 
 /**
- * A route-linked tab strip above the caller's panel. Each tab is a TanStack
- * `<Link>` to the current route with its `tab` search param set (the route's
- * other search params kept), navigating with `replace` so Back leaves the
- * page rather than stepping back through its tabs. The caller reads `tab` in
- * its route's `validateSearch`, passes it as `current`, and renders that
- * tab's panel as `children`.
+ * Measures where `tab` sits along `strip`'s scrollable content, from the
+ * content's start edge (the strip's padding edge, where a zero offset puts
+ * it), so the strip's own padding counts toward the tab's start.
+ */
+const measureTabSpan = (strip: HTMLElement, tab: HTMLElement): TabSpan => {
+  const stripRect = strip.getBoundingClientRect()
+  const tabRect = tab.getBoundingClientRect()
+  const start = tabRect.left - stripRect.left - strip.clientLeft + strip.scrollLeft
+  return { start, end: start + tabRect.width }
+}
+
+/**
+ * Scrolls `strip` so its current tab (the link the router marks
+ * `aria-current="page"`) sits clear of the end fades, moving it as little
+ * as it can, and returns the ends left with tabs hidden past them.
+ * Scrolling the strip itself, rather than calling `scrollIntoView`, never
+ * moves the page around it.
+ */
+const scrollStripToCurrentTab = (strip: HTMLElement, behavior: ScrollBehavior): HiddenEnds => {
+  const currentTab = strip.querySelector<HTMLElement>('[aria-current="page"]')
+  if (currentTab !== null) {
+    const revealedScroll = scrollToReveal(
+      measureStripScroll(strip),
+      measureTabSpan(strip, currentTab)
+    )
+    strip.scrollTo({ left: revealedScroll.offset, behavior })
+  }
+  // Mid-way through a smooth scroll this reads where it starts; the
+  // strip's scroll events re-read the ends as it moves.
+  return readHiddenEnds(measureStripScroll(strip))
+}
+
+const prefersReducedMotion = (): boolean =>
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/**
+ * Picks the shape: `'sized-by-viewport'` without a `wideFromOwnWidth`,
+ * leaving it to the CSS media query; otherwise `'wide'` or `'narrow'` from
+ * `root`'s width, re-measured on every resize. The first measurement runs
+ * before paint, so the first frame has the measured shape.
+ */
+const useRouteTabsShape = (
+  root: { readonly current: HTMLElement | null },
+  wideFromOwnWidth: number | undefined
+): RouteTabsShape => {
+  const [isWide, setIsWide] = useState(false)
+  useLayoutEffect(() => {
+    const rootElement = root.current
+    if (wideFromOwnWidth === undefined || rootElement === null) {
+      return undefined
+    }
+    const measure = (): void => {
+      setIsWide(rootElement.getBoundingClientRect().width >= wideFromOwnWidth)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(rootElement)
+    return () => {
+      observer.disconnect()
+    }
+  }, [root, wideFromOwnWidth])
+  if (wideFromOwnWidth === undefined) {
+    return 'sized-by-viewport'
+  }
+  return isWide ? 'wide' : 'narrow'
+}
+
+/**
+ * A tab strip over the router's child routes. Each tab is a TanStack
+ * `<Link>` to a child route of the caller's route, navigating with
+ * `replace` so Back leaves the page rather than stepping back through its
+ * tabs. The caller's route renders `<RouteTabs>` in its component, and the
+ * panel under the strip is an `<Outlet />` the open child route fills. The
+ * router decides which tab is current, through each `<Link>`'s active
+ * state.
+ *
+ * A route with tabs opens on its first one by redirecting its index route
+ * there, with `replace` so the bare path doesn't stay in history:
+ *
+ * ```ts
+ * createRoute({
+ *   getParentRoute: () => serverRoute,
+ *   path: '/',
+ *   beforeLoad: ({ params }) => {
+ *     throw redirect({ to: '/servers/$id/status', params, replace: true })
+ *   },
+ * })
+ * ```
  *
  * The strip is a `<nav>` of links with the current one `aria-current="page"`:
  * these are navigation, not a `role="tablist"`, so Tab moves between them
  * and there is no arrow-key handling. For a one-of-N choice that isn't
  * navigation, reach for `SegmentedToggle`.
  *
- * The shape follows the component's own width, through a container query.
- * From 560px it is a pill track sized to its labels above an unframed panel.
- * Below that it is the top edge of a card holding the panel, the strip
- * running the card's full width. In both shapes the current tab is a raised
- * neutral chip in the panel's surface colour, and a strip whose tabs don't
- * fit scrolls sideways (no visible scrollbar, snapping to tabs, a fade on
- * each end with tabs past it) and keeps the current tab scrolled into view.
+ * From a 768px-wide viewport it is a pill track sized to its labels above an
+ * unframed panel. Below that it is the top edge of a card holding the panel,
+ * the strip running the card's full width. `wideFromOwnWidth` switches on
+ * the component's own width instead. In both shapes the current tab is a
+ * raised neutral chip in the panel's surface colour, and a strip whose tabs
+ * don't fit scrolls sideways (no visible scrollbar, a fade on each end with
+ * tabs past it), keeping the current tab clear of the fades as it changes
+ * and as the strip resizes.
  */
-const RouteTabs = <T extends string>({
-  current,
+function RouteTabs<
+  TRouter extends AnyRouter = RegisteredRouter,
+  const TTabs extends readonly RouteTabLabel[] = readonly RouteTabLabel[],
+  TFrom extends string = string,
+>(props: RouteTabsProps<TRouter, TTabs, TFrom>): JSX.Element
+function RouteTabs({
   tabs,
   'aria-label': ariaLabel,
-  children,
-}: RouteTabsProps<T>): JSX.Element => {
+  wideFromOwnWidth,
+}: {
+  readonly tabs: readonly RouteTab[]
+  readonly 'aria-label': string
+  readonly wideFromOwnWidth?: number
+}): JSX.Element {
+  const rootRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLElement>(null)
-  const [hiddenTabs, setHiddenTabs] = useState<HiddenTabs>(NO_HIDDEN_TABS)
+  const rowRef = useRef<HTMLDivElement>(null)
+  const [hiddenEnds, setHiddenEnds] = useState<HiddenEnds>(NO_HIDDEN_ENDS)
+  const shape = useRouteTabsShape(rootRef, wideFromOwnWidth)
+  // Subscribing to the location re-renders this component on every
+  // navigation, which a child route change otherwise needn't do, so the
+  // effect below sees each new current tab.
+  const locationHref = useLocation({ select: (location) => location.href })
+  /** The location the strip last scrolled its current tab into view for. */
+  const scrolledForHrefRef = useRef<string | null>(null)
 
-  // Re-read the faded ends whenever the strip's width changes: a container
-  // that widens past its tabs drops the fade, one that narrows gains it.
-  useEffect(() => {
+  // Bring the current tab into view as the location changes: at once on the
+  // first render, smoothly after (at once for reduced motion). A layout
+  // effect, so the first frame is already scrolled.
+  useLayoutEffect(() => {
     const strip = stripRef.current
     if (strip === null) {
+      return
+    }
+    const behavior =
+      scrolledForHrefRef.current !== null && !prefersReducedMotion() ? 'smooth' : 'instant'
+    scrolledForHrefRef.current = locationHref
+    setHiddenEnds(scrollStripToCurrentTab(strip, behavior))
+  }, [locationHref])
+
+  // Re-reveal the current tab whenever the strip or its row of tabs
+  // resizes: a narrowing strip, a web font landing, or relabelled tabs can
+  // each move it out of view.
+  useEffect(() => {
+    const strip = stripRef.current
+    const row = rowRef.current
+    if (strip === null || row === null) {
       return undefined
     }
     const observer = new ResizeObserver(() => {
-      setHiddenTabs(hiddenTabsOf(strip))
+      setHiddenEnds(scrollStripToCurrentTab(strip, 'instant'))
     })
     observer.observe(strip)
+    observer.observe(row)
     return () => {
       observer.disconnect()
     }
   }, [])
 
-  const currentIndex = tabs.findIndex((tab) => tab.id === current)
-  useEffect(() => {
-    const strip = stripRef.current
-    const currentTab = strip?.children.item(currentIndex)
-    if (strip === null || !(currentTab instanceof HTMLElement)) {
-      return
-    }
-    // Setting `scrollLeft` rather than calling `scrollIntoView` moves only
-    // the strip, never the page around it.
-    strip.scrollLeft = scrollLeftRevealing(strip, currentTab)
-    setHiddenTabs(hiddenTabsOf(strip))
-  }, [currentIndex])
-
   return (
-    <div className={styles['route-tabs']}>
-      <div className={styles['route-tabs__frame']}>
-        <nav
-          ref={stripRef}
-          className={cn(
-            styles['route-tabs__strip'],
-            hiddenTabs.before ? styles['route-tabs__strip--hidden-before'] : null,
-            hiddenTabs.after ? styles['route-tabs__strip--hidden-after'] : null
-          )}
-          aria-label={ariaLabel}
-          onScroll={(event) => {
-            setHiddenTabs(hiddenTabsOf(event.currentTarget))
-          }}
-        >
-          {tabs.map((tab) => (
-            <Link
-              key={tab.id}
-              to="."
-              search={(previous: Readonly<Record<string, unknown>>) => ({
-                ...previous,
-                tab: tab.id,
-              })}
-              replace
-              className={styles['route-tabs__tab']}
-              aria-current={tab.id === current ? 'page' : undefined}
-            >
-              {tab.label}
+    <div ref={rootRef} className={cn(styles['route-tabs'], shapeClassNames[shape])}>
+      <nav
+        ref={stripRef}
+        className={cn(
+          styles['route-tabs__strip'],
+          hiddenEnds.before ? styles['route-tabs__strip--hidden-before'] : null,
+          hiddenEnds.after ? styles['route-tabs__strip--hidden-after'] : null
+        )}
+        aria-label={ariaLabel}
+        onScroll={(event) => {
+          setHiddenEnds(readHiddenEnds(measureStripScroll(event.currentTarget)))
+        }}
+      >
+        <div ref={rowRef} className={styles['route-tabs__row']}>
+          {tabs.map(({ label, ...linkOptions }) => (
+            <Link key={label} {...linkOptions} replace className={styles['route-tabs__tab']}>
+              {label}
             </Link>
           ))}
-        </nav>
-        <div className={styles['route-tabs__panel']}>{children}</div>
+        </div>
+      </nav>
+      <div className={styles['route-tabs__panel']}>
+        <Outlet />
       </div>
     </div>
   )
 }
 
-export { RouteTabs, type RouteTab, type RouteTabsProps }
+export { RouteTabs, type RouteTabLabel, type RouteTabsProps }
