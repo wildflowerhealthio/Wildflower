@@ -10,7 +10,8 @@ function ServerRoute(): JSX.Element {
 }
 
 /**
- * `/servers/$domain`, one server's page: its status and run policy, its relay
- * and tunnel, its launcher, its certificate and its removal.
+ * `/servers/$domain`, one server's page: its status hero over its tabs,
+ * each a child route — `status`, `access`, `default-apps`, `relay` and
+ * `certificate` — whose panel the open one fills.
  */
 export const Route = createFileRoute('/_servers/servers/$domain')({ component: ServerRoute })

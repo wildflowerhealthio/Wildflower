@@ -1,13 +1,15 @@
 import { ErrorBanner, StatusBadge } from '@wildflowerhealthio/react-tundraish'
-import type { ListedServer } from '@wildflowerhealthio/servers-core-js'
+import { type ListedServer, RunPolicy } from '@wildflowerhealthio/servers-core-js'
+import { Duration } from 'effect'
 import { type JSX, useId, useState } from 'react'
 
 import { useActionError } from './action-error.ts'
 import { AuthorizationButton } from './authorization-button.tsx'
 import { LaunchButton } from './launch-button.tsx'
 import type { RunHostCommand } from './router-context.ts'
-import { RunPolicyPicker } from './run-policy-picker.tsx'
+import { runPolicyText } from './run-policy-text.ts'
 import { formatInstant, statusSummary } from './server-status-text.ts'
+import { useNow } from './use-now.ts'
 import styles from './status-hero.module.css'
 
 /** Where copying the domain to the clipboard stands. */
@@ -15,9 +17,10 @@ type CopyOutcome = 'idle' | 'copied' | 'refused'
 
 /**
  * The top of a server's page: its domain, with Copy; its status, merged from
- * its run state and health; when its run started, while it runs; the
- * run-policy field; the latest failure of Launch or Authorization; and
- * Launch and Authorization.
+ * its run state and health; when its run started, while it runs; under
+ * them, when it runs, in the words of the server card's run-policy picker,
+ * which is where it changes; the latest failure of Launch or Authorization;
+ * and Launch and Authorization.
  *
  * @remarks
  * Launch opens the server's launcher, or says why it can't when the status
@@ -27,7 +30,8 @@ type CopyOutcome = 'idle' | 'copied' | 'refused'
  * status shows, each is described by the status row. Their latest failure
  * shows across the hero, above them, until either starts again. The
  * clipboard needs a focused, secure page and may still refuse; the domain is
- * on screen to copy by hand either way, and the page says so.
+ * on screen to copy by hand either way, and the page says so. A live
+ * `until` policy's time left ticks down each minute, as the picker's does.
  */
 const StatusHero = ({
   server,
@@ -37,6 +41,7 @@ const StatusHero = ({
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
   const status = statusSummary(server.status)
+  const now = useNow(Duration.minutes(1), RunPolicy.deadlineOf(server.runPolicy))
   const statusId = useId()
   const { error, onActionStart, onError } = useActionError()
   const [copyOutcome, setCopyOutcome] = useState<CopyOutcome>('idle')
@@ -79,7 +84,9 @@ const StatusHero = ({
           </span>
         ) : null}
       </div>
-      <RunPolicyPicker server={server} tone={status.tone} runHostCommand={runHostCommand} />
+      <p className={`text-body-3 ${styles['status-hero__note']}`}>
+        {runPolicyText(server.runPolicy, now)}
+      </p>
       <ErrorBanner error={error} />
       <LaunchButton
         server={server}

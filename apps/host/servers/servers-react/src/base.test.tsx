@@ -263,7 +263,26 @@ const dialogMethodDescriptors = (['showModal', 'close'] as const).map(
     [method, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, method)] as const
 )
 
+/**
+ * A `ResizeObserver` that never fires: jsdom has no layout, and nothing these
+ * tests check hangs on a resize (the server page's `RouteTabs` observes its
+ * strip).
+ */
+class InertResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+/** `Element.scrollTo` as it was before each test, which jsdom leaves undefined. */
+const scrollToDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo')
+
 beforeEach(() => {
+  // `RouteTabs` scrolls its strip to the current tab, and asks whether
+  // motion is reduced, through APIs jsdom lacks.
+  vi.stubGlobal('ResizeObserver', InertResizeObserver)
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  Element.prototype.scrollTo = () => {}
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '')
   }
@@ -275,6 +294,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
+  if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
+  else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
   initConsentedTelemetryMock.mockClear()
   redactServerHostMock.mockReset()
   for (const [method, descriptor] of dialogMethodDescriptors) {
@@ -2009,16 +2031,19 @@ describe('the server page', () => {
 
   /**
    * Render the page of the server `domain` on a host listing `servers`, with
-   * `/health` answered by `health`.
+   * `/health` answered by `health`: at its bare path, or at the child route
+   * `tab` names.
    */
   const renderServerPage = ({
     domain,
+    tab,
     servers = golden.listedServers,
     answers = {},
     health = fakeHealth(() => Response.json(passingReport)),
     events = fakeEvents(),
   }: {
     readonly domain: string
+    readonly tab?: string
     readonly servers?: readonly unknown[]
     readonly answers?: Readonly<Record<string, () => Promise<unknown>>>
     readonly health?: FakeHealth
@@ -2028,7 +2053,7 @@ describe('the server page', () => {
     renderBase({
       invoke: host.invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
-      path: `/servers/${domain}`,
+      path: tab === undefined ? `/servers/${domain}` : `/servers/${domain}/${tab}`,
       events,
       httpClient: health.layer,
     })
@@ -2037,6 +2062,57 @@ describe('the server page', () => {
 
   /** The page's status hero. */
   const hero = (): Promise<HTMLElement> => screen.findByRole('region', { name: 'Status' })
+
+  /** The section of the list or form titled `title`. */
+  const sectionTitled = (title: string): HTMLElement => {
+    const section = screen.getByRole('heading', { name: title }).closest('section')
+    if (section === null) throw new Error(`no ${title} section`)
+    return section
+  }
+
+  /** The server page's tab strip. */
+  const tabStrip = (): Promise<HTMLElement> =>
+    screen.findByRole('navigation', { name: 'Server details' })
+
+  /** The name of the server page's open tab, once the page has opened one. */
+  const openTabName = async (): Promise<string | null> =>
+    waitFor(async () => {
+      const current = (await tabStrip()).querySelector('[aria-current="page"]')
+      if (current === null) throw new Error('no tab is open')
+      return current.textContent
+    })
+
+  /** Open the server page's tab named `name`. */
+  const openTab = async (name: string): Promise<void> => {
+    await userEvent.click(within(await tabStrip()).getByRole('link', { name }))
+  }
+
+  it.each([
+    ['Access', 'a request waits', 'runningWithAPendingConsent'],
+    ['Status', 'nothing waits', 'runningAndReachable'],
+  ] as const)('should open on its %s tab when %s', async (tabName, _, statusName) => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+    })
+
+    // Assert
+    expect(await openTabName()).toBe(tabName)
+  })
+
+  it('should open the tab its path names', async () => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      tab: 'relay',
+      servers: listedWithRuthStatus(golden.serverStatuses.runningWithAPendingConsent),
+    })
+
+    // Assert
+    expect(await openTabName()).toBe('Relay')
+    expect(await screen.findByRole('heading', { name: 'Relay and tunnel' })).toBeDefined()
+  })
 
   describe('a pending request', () => {
     it('should list the client waiting on the server, and open it', async () => {
@@ -2047,7 +2123,7 @@ describe('the server page', () => {
         servers: listedWithRuthStatus(golden.serverStatuses.runningWithAPendingConsent),
         answers: { server_open_pending_consent: () => Promise.resolve(null) },
       })
-      await hero()
+      await screen.findByRole('heading', { name: 'Access' })
       const access = sectionTitled('Access')
 
       // Act
@@ -2070,7 +2146,7 @@ describe('the server page', () => {
         servers: listedWithRuthStatus(golden.serverStatuses.runningWithAPendingConsent),
         answers: { server_open_pending_consent: () => Promise.reject(nothingPending) },
       })
-      await hero()
+      await screen.findByRole('heading', { name: 'Access' })
 
       // Act
       await user.click(within(sectionTitled('Access')).getByRole('button', { name: 'Open' }))
@@ -2082,21 +2158,20 @@ describe('the server page', () => {
       expect(sectionTitled('Access').textContent).not.toContain('Lifting wants access.')
     })
 
-    it('should not show for a server with nothing waiting', async () => {
-      // Arrange
+    it('should say none waits for a server with nothing waiting', async () => {
+      // Act
       renderServerPage({
         domain: 'ruth.relay.example.com',
+        tab: 'access',
         servers: listedWithRuthStatus(golden.serverStatuses.runningAndReachable),
       })
 
-      // Act
-      await hero()
-
       // Assert
+      expect(await screen.findByText('No requests waiting.')).toBeDefined()
       expect(screen.queryByRole('heading', { name: 'Access' })).toBeNull()
     })
 
-    it("should show once the server's status carries a request", async () => {
+    it("should show once the server's status carries a request, without leaving the open tab", async () => {
       // Arrange
       const events = fakeEvents()
       renderServerPage({
@@ -2104,7 +2179,7 @@ describe('the server page', () => {
         servers: listedWithRuthStatus(golden.serverStatuses.runningAndReachable),
         events,
       })
-      await hero()
+      expect(await openTabName()).toBe('Status')
 
       // Act
       act(() => {
@@ -2112,21 +2187,16 @@ describe('the server page', () => {
       })
 
       // Assert
+      expect(await openTabName()).toBe('Status')
+
+      // Act
+      await openTab('Access')
+
+      // Assert
       expect(await screen.findByRole('heading', { name: 'Access' })).toBeDefined()
+      expect(screen.queryByText('No requests waiting.')).toBeNull()
     })
   })
-
-  /** The section of the list or form titled `title`. */
-  const sectionTitled = (title: string): HTMLElement => {
-    const section = screen.getByRole('heading', { name: title }).closest('section')
-    if (section === null) throw new Error(`no ${title} section`)
-    return section
-  }
-
-  /** Open the server page's tab named `name`. */
-  const openTab = async (name: string): Promise<void> => {
-    await userEvent.click(await screen.findByRole('tab', { name }))
-  }
 
   /** The open confirm dialog. */
   const confirmDialog = (): HTMLDialogElement => {
@@ -2151,15 +2221,23 @@ describe('the server page', () => {
     // Assert
     expect(await screen.findByRole('heading', { name: 'Server' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'ruth.relay.example.com' })).toBeDefined()
-    expect(screen.getByRole('tab', { name: 'Status', selected: true })).toBeDefined()
+    expect(await openTabName()).toBe('Status')
+    expect(screen.getByRole('heading', { name: 'Destructive actions' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
+    expect(screen.queryByLabelText('Launcher')).toBeNull()
+
+    // Act
+    await openTab('Default Apps')
+
+    // Assert
     expect(screen.getByLabelText('Launcher')).toHaveProperty(
       'value',
       'https://launcher.wildflowerhealth.io/'
     )
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
+    expect(screen.getByLabelText('Authorization')).toBeDefined()
 
     // Act
-    await user.click(screen.getByRole('tab', { name: 'Relay' }))
+    await openTab('Relay')
 
     // Assert
     expect(
@@ -2169,7 +2247,7 @@ describe('the server page', () => {
     expect(screen.queryByLabelText('Launcher')).toBeNull()
 
     // Act
-    await user.click(screen.getByRole('tab', { name: 'Certificate' }))
+    await openTab('Certificate')
 
     // Assert
     expect(screen.getByText("Let's Encrypt")).toBeDefined()
@@ -2209,7 +2287,25 @@ describe('the server page', () => {
       const status = within(await hero()).getByRole('status')
       expect(status.textContent).toMatch(new RegExp(`${label}$`))
       expect(within(await hero()).queryByText(/^Since /) !== null).toBe(running)
-      expect(within(await hero()).getByRole('combobox', { name: /runs$/ })).toBeDefined()
+    }
+  )
+
+  it.each([
+    ['an ended until', golden.listedServers[0].runPolicy, /^Ended at /],
+    ['off', { kind: 'off' }, /^Off$/],
+    ['always', { kind: 'always' }, /^Always on$/],
+  ] as const)(
+    "should say a run policy of %s under the status, in the picker's words, with no picker",
+    async (_, runPolicy, text) => {
+      // Act
+      renderServerPage({
+        domain: 'ruth.relay.example.com',
+        servers: [{ ...golden.listedServers[0], runPolicy }, golden.listedServers[1]],
+      })
+
+      // Assert
+      expect(paragraphsOf(await hero())).toEqual([expect.stringMatching(text)])
+      expect(screen.queryByRole('combobox')).toBeNull()
     }
   )
 
@@ -2231,7 +2327,7 @@ describe('the server page', () => {
       const description = document.getElementById(launch.getAttribute('aria-describedby') ?? '')
       expect(description?.contains(within(await hero()).getByRole('status'))).toBe(true)
       expect(within(await hero()).getByRole('status').textContent).toMatch(new RegExp(`${label}$`))
-      expect(paragraphsOf(await hero())).toEqual([])
+      expect(paragraphsOf(await hero())).toEqual([expect.stringMatching(/^Ended at /)])
     }
   )
 
@@ -2514,7 +2610,7 @@ describe('the server page', () => {
     renderBase({
       invoke: host.invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
-      path: '/servers/ruth.relay.example.com',
+      path: '/servers/ruth.relay.example.com/default-apps',
     })
 
     // Act
@@ -2734,6 +2830,7 @@ describe('the server page', () => {
     const user = userEvent.setup()
     const host = renderServerPage({
       domain: 'lab.rathole.example.com',
+      tab: 'default-apps',
       answers: { server_update: () => Promise.resolve(null) },
     })
     const field = await screen.findByLabelText('Launcher')
@@ -2765,6 +2862,7 @@ describe('the server page', () => {
     const user = userEvent.setup()
     const host = renderServerPage({
       domain: 'lab.rathole.example.com',
+      tab: 'default-apps',
       answers: { server_update: () => Promise.resolve(null) },
     })
     const field = await screen.findByLabelText('Authorization')
@@ -2802,6 +2900,7 @@ describe('the server page', () => {
     }
     renderServerPage({
       domain: 'lab.rathole.example.com',
+      tab: 'default-apps',
       answers: { server_update: () => Promise.reject(refusal) },
     })
     const field = await screen.findByLabelText('Authorization')
@@ -2822,6 +2921,7 @@ describe('the server page', () => {
     const user = userEvent.setup()
     const host = renderServerPage({
       domain: 'lab.rathole.example.com',
+      tab: 'default-apps',
       answers: { server_update: () => Promise.resolve(null) },
     })
 
@@ -2847,7 +2947,7 @@ describe('the server page', () => {
     cleanup()
 
     // Act
-    renderServerPage({ domain: 'ruth.relay.example.com' })
+    renderServerPage({ domain: 'ruth.relay.example.com', tab: 'default-apps' })
 
     // Assert
     expect(await screen.findByLabelText('Launcher')).toBeDefined()
@@ -2859,6 +2959,7 @@ describe('the server page', () => {
     const user = userEvent.setup()
     const host = renderServerPage({
       domain: 'lab.rathole.example.com',
+      tab: 'default-apps',
       answers: { server_update: () => Promise.resolve(null) },
     })
 
@@ -2901,6 +3002,7 @@ describe('the server page', () => {
       // Act
       renderServerPage({
         domain: 'ruth.relay.example.com',
+        tab: 'default-apps',
         servers: [{ ...golden.listedServers[0], launcherUrl }, golden.listedServers[1]],
       })
 

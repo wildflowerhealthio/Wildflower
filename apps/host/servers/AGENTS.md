@@ -139,21 +139,28 @@ changing how servers run or what the host notifies about them.
   the webview is offline or the host would refuse for what the status shows,
   never starting a server; and
   Edit, which opens the server's page, kept current by the `server-status`
-  event too: its domain with Copy, its status badge, when its run started, the
-  run-policy field, and Launch with Authorization under it, each full width;
-  while a consent waits on the server, a Pending request row, "‹client› wants
-  access.", with Open (`server_open_pending_consent`), the host's refusal
-  taking the row's text; over three tabs in component state. Status holds the
-  host's last check of its connection (said to be from before, once the
+  event too: its domain with Copy, its status badge, when its run started,
+  under them when it runs in the run-policy field's words (the field itself
+  is the card's alone), and Launch with Authorization under it, each full
+  width; over five tabs on `RouteTabs`, each a child route of
+  `/servers/$domain` (`status`, `access`, `default-apps`, `relay`,
+  `certificate`), the open one reading the server from
+  `ListedServerContext`. The bare `/servers/$domain` opens Access while a
+  consent waits on the server and Status otherwise, replacing itself in
+  history; a consent that arrives while the page is open leaves the tab as it
+  is. Status holds the host's last check of its connection (said to be from before, once the
   tunnel has dropped or been refused since), with its tunnel's connection to
   the relay while a run reports it (a failure once the relay refused the
   tunnel), or how its latest run stopped, and
   while it runs its `/health` report with each check, read by the webview
-  itself, with Refresh; its launcher and its Authorization app, each with
-  Reset to default (`PageUrlForm`), named "Reset Launcher URL to default" and
-  "Reset Authorization Manager URL to default" for assistive technology; and
-  its removal, said in full, behind a confirm that asks for the domain to be
-  typed. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
+  itself, with Refresh; and, under Destructive actions, its removal, said in
+  full, behind a confirm that asks for the domain to be typed. Access holds,
+  while a consent waits on the server, a Pending request row, "‹client› wants
+  access.", with Open (`server_open_pending_consent`), the host's refusal
+  taking the row's text, and otherwise "No requests waiting.". Default Apps
+  holds its launcher and its Authorization app, each with Reset to default
+  (`PageUrlForm`), named "Reset Launcher URL to default" and "Reset
+  Authorization Manager URL to default" for assistive technology. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
   password field that starts empty, a `relayIdentityChanged` refusal shown
   as a warning that the relay may be impersonated, with no retry.
   Certificate holds its certificate's state (its `certificate`): the status in words,

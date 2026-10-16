@@ -6,13 +6,14 @@ import {
   RunPolicy,
   type RunPolicyChoice,
 } from '@wildflowerhealthio/servers-core-js'
-import { DateTime, Duration, Option } from 'effect'
+import type { DateTime } from 'effect'
+import { Duration, Option } from 'effect'
 import { type ChangeEvent, type JSX, useId } from 'react'
 
 import { failureText } from './failure-text.ts'
 import { useSetServerRunPolicy } from './queries.ts'
 import type { RouterContext, RunHostCommand } from './router-context.ts'
-import { formatInstant } from './server-status-text.ts'
+import { runPolicyText } from './run-policy-text.ts'
 import { useNow } from './use-now.ts'
 import styles from './run-policy-picker.module.css'
 
@@ -36,34 +37,6 @@ const UNTIL_VALUE = 'until'
 /** The control's value for `policy`: its own kind, or {@link UNTIL_VALUE}. */
 const runPolicyValue = (policy: RunPolicy.Type): string =>
   policy.kind === 'until' ? UNTIL_VALUE : policy.kind
-
-/** What the field says of when the server runs, for every policy but `until`. */
-const RUN_POLICY_TEXT: Readonly<Record<Exclude<RunPolicy.Kind, 'until'>, string>> = {
-  off: 'Off',
-  whileOpen: 'On while Wildflower is open',
-  always: 'Always on',
-}
-
-/**
- * The time from `now` to `at`, which is ahead of it, rounded up: in minutes
- * under an hour, so never "0 min", and in whole hours from an hour.
- */
-const remainingText = (now: DateTime.Utc, at: DateTime.Utc): string => {
-  const remaining = DateTime.distanceDuration(now, at)
-  const minutes = Math.ceil(Duration.toMinutes(remaining))
-  return minutes < 60 ? `${minutes} min` : `${Math.ceil(Duration.toHours(remaining))} h`
-}
-
-/**
- * What the field says of when the server runs; for a stored `until`, the
- * picker's own option says the same.
- */
-const runPolicyText = (policy: RunPolicy.Type, now: DateTime.Utc): string => {
-  if (policy.kind !== 'until') return RUN_POLICY_TEXT[policy.kind]
-  return RunPolicy.hasEndedAt(policy, now)
-    ? `Ended at ${formatInstant(policy.at)}`
-    : `On for ${remainingText(now, policy.at)} — until ${formatInstant(policy.at)}`
-}
 
 /**
  * Whether `policy` asks the server to run with the app closed: `always`, or
