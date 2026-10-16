@@ -1078,8 +1078,8 @@ mod tests {
     #[test]
     fn an_install_already_at_0024_rekeys_the_lifting_clients() {
         use diesel::connection::SimpleConnection as _;
-        const LIFTING: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
-        const LIFTING_DEV: &str = "8467e680a05f1e92e22864e923144e5a";
+        const STRENGTH: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
+        const STRENGTH_DEV: &str = "8467e680a05f1e92e22864e923144e5a";
 
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
         wildflowerhealthio_persistence::run_diesel_migrations(
@@ -1111,11 +1111,11 @@ mod tests {
         assert!(column_for_client(&mut conn, "client_id", "lifting-app").is_empty());
         assert!(column_for_client(&mut conn, "client_id", "lifting-app-dev").is_empty());
         assert_eq!(
-            column_for_client(&mut conn, "redirect_uris", LIFTING)[0].name,
+            column_for_client(&mut conn, "redirect_uris", STRENGTH)[0].name,
             r#"["https://wildflowerhealth.io/lifting/"]"#,
         );
         assert_eq!(
-            column_for_client(&mut conn, "redirect_uris", LIFTING_DEV)[0].name,
+            column_for_client(&mut conn, "redirect_uris", STRENGTH_DEV)[0].name,
             r#"["http://localhost:5199/"]"#,
         );
         let launch: Vec<Name> = diesel::sql_query(
@@ -1123,7 +1123,7 @@ mod tests {
         )
         .load(&mut conn)
         .expect("read the launch");
-        assert_eq!(launch[0].name, LIFTING);
+        assert_eq!(launch[0].name, STRENGTH);
 
         let migration_0025 = MIGRATIONS
             .migrations()

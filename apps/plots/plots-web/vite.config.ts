@@ -16,10 +16,10 @@ export default defineConfig({
   ...base,
   base: './',
   plugins: [react()],
-  // The homescreen's "Health Viewer (Dev)" tile launches this port's
+  // The homescreen's "Plots (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
   // `vp run -F @wildflowerhealthio/plots-web dev`.
-  server: devAppServer('health-viewer-dev'),
+  server: devAppServer('plots-dev'),
   build: {
     // Emitted for the deploy's Sentry upload, unreferenced from the bundle;
     // the deploy deletes them before publishing (.github/actions/sentry-sourcemaps).

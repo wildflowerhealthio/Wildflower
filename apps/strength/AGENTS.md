@@ -158,7 +158,7 @@ template rather than a special case.
 - `strength-web` — [the app](./strength-web/AGENTS.md), which composes core
   and react around a SMART shell: it reads the lifter's record, mints the ids,
   reads the clock and writes what core returns. Its homescreen tile is
-  `lifting` (`lifting-dev` in a debug build).
+  `strength` (`strength-dev` in a debug build).
 
 ## Rules
 

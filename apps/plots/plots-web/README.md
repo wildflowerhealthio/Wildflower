@@ -108,9 +108,9 @@ device.
 
 ## Registration
 
-`src/config.ts`'s `clientId` is the `health-viewer` tile's client,
+`src/config.ts`'s `clientId` is the `plots` tile's client,
 `474e103de61f9141c4b640d59bfa130e`, in a production build and the
-`health-viewer-dev` tile's, `e7efc7c805f5f8f640bb3b3d48a2d7aa`, under the vite
+`plots-dev` tile's, `e7efc7c805f5f8f640bb3b3d48a2d7aa`, under the vite
 dev server (random ids, not the tile ids). Each must equal the `client_id` of
 the app row it is launched through — a launch checks the caller's grant against
 that client's scopes, and `/authorize` matches the redirect against that
@@ -118,16 +118,16 @@ client's registered URIs — and its scope string must equal the client's allowe
 scopes; `authorization-server-rust`'s `seeding.rs` test reads `config.ts` to hold both
 clients to it.
 
-- **`health-viewer`** is a row (apps migration
+- **`plots`** is a row (apps migration
   `0015_seed_health_viewer_app`, its URL as
   `0016_launch_first_party_apps_at_root` left it, re-keyed by
-  `0019_rekey_site_apps`) launching
+  `0019_rekey_site_apps` and `0023_rekey_plots_strength_apps`) launching
   `https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}`.
   Its public OAuth
   client (the authorization server migration `0022_seed_health_viewer_app_client`, re-keyed by
   `0028_rekey_site_app_clients`) redirects to
   `https://wildflowerhealth.io/health-viewer/`.
-- **`health-viewer-dev`** is seeded in debug builds only, at runtime rather
+- **`plots-dev`** is seeded in debug builds only, at runtime rather
   than by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
   `http://localhost:<port>/` (`authorization-server-rust/src/seeding.rs`).
@@ -143,9 +143,9 @@ connect menu (the SMART Health IT sandbox works), sign in, and choose a patient
 (or All patients) in the app.
 
 **From a Wildflower host**: debug builds of the host seed a
-`health-viewer-dev` row on that port plus its own OAuth client
+`plots-dev` row on that port plus its own OAuth client
 (`apps-rust`'s `seed_dev_apps` / `authorization-server-rust`'s `seed_dev_app_clients`),
-so the homescreen carries a "Health Viewer (Dev)" tile that launches whatever is
+so the homescreen carries a "Plots (Dev)" tile that launches whatever is
 serving that port — the vite dev server when it is up, nothing when it is down.
 A launch with a patient in context opens on that patient. The port has a
 single source, `dev-app-ports.json`: `vite.config.ts` reads it through the shared
@@ -153,5 +153,5 @@ single source, `dev-app-ports.json`: `vite.config.ts` reads it through the share
 it, so the dev server and the row cannot drift.
 
 The seed only ever writes rows it owns. If an app you uploaded already holds the
-`health-viewer-dev` id, the seed logs a warning and leaves it untouched
+`plots-dev` id, the seed logs a warning and leaves it untouched
 rather than adopting it — you get no dev tile until that app is renamed.

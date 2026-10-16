@@ -2,9 +2,8 @@
 //! apps' local vite dev servers.
 //!
 //! The first-party apps (Medications, Importer, the OHIF imaging
-//! viewer, Server Docs, the Synthesized Health Viewer, the Synthetic Data
-//! Loader, Lifting) ship as rows served from
-//! <https://wildflowerhealth.io> (apps migration
+//! viewer, Server Docs, Plots, the Synthetic Data Loader, Strength) ship as
+//! rows served from <https://wildflowerhealth.io> (apps migration
 //! `0005_first_party_apps_to_cloud`). That is the right production target and
 //! the wrong development one: a developer editing `apps/medications/medications-web` wants
 //! the homescreen tile to open the vite dev server they are running, not the
@@ -43,9 +42,9 @@ use crate::db::SqliteAppsStore;
 const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
 const SERVER_DOCS_DEV_CLIENT_ID: &str = "022dcbd37461a19669e24caf6345e8bb";
 const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
-const HEALTH_VIEWER_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+const PLOTS_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
 const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
-const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 
 /// One debug-only row: an app id, its display fields, its OAuth client, and the
@@ -103,12 +102,12 @@ struct DevAppPorts {
     importer_dev: i32,
     #[serde(rename = "ohif-viewer-dev")]
     ohif_viewer_dev: i32,
-    #[serde(rename = "health-viewer-dev")]
-    health_viewer_dev: i32,
+    #[serde(rename = "plots-dev")]
+    plots_dev: i32,
     #[serde(rename = "synthetic-data-dev")]
     synthetic_data_dev: i32,
-    #[serde(rename = "lifting-dev")]
-    lifting_dev: i32,
+    #[serde(rename = "strength-dev")]
+    strength_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -152,11 +151,11 @@ fn dev_apps() -> [DevApp; 7] {
             url: ohif_viewer_dev_url(ports.ohif_viewer_dev),
         },
         DevApp {
-            id: "health-viewer-dev",
-            client_id: HEALTH_VIEWER_DEV_CLIENT_ID,
-            name: "Health Viewer (Dev)",
+            id: "plots-dev",
+            client_id: PLOTS_DEV_CLIENT_ID,
+            name: "Plots (Dev)",
             subtitle: "Local vite dev server for apps/plots/plots-web",
-            url: dev_launch_url(ports.health_viewer_dev),
+            url: dev_launch_url(ports.plots_dev),
         },
         DevApp {
             id: "synthetic-data-dev",
@@ -166,11 +165,11 @@ fn dev_apps() -> [DevApp; 7] {
             url: dev_launch_url(ports.synthetic_data_dev),
         },
         DevApp {
-            id: "lifting-dev",
-            client_id: LIFTING_DEV_CLIENT_ID,
-            name: "Lifting (Dev)",
+            id: "strength-dev",
+            client_id: STRENGTH_DEV_CLIENT_ID,
+            name: "Strength (Dev)",
             subtitle: "Local vite dev server for apps/strength/strength-web",
-            url: dev_launch_url(ports.lifting_dev),
+            url: dev_launch_url(ports.strength_dev),
         },
     ]
 }
@@ -359,15 +358,15 @@ mod tests {
     }
 
     #[test]
-    fn the_health_viewer_dev_row_launches_its_dev_server() {
+    fn the_plots_dev_row_launches_its_dev_server() {
         let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
-        let port = ports.health_viewer_dev;
-        let registration = dev_row(&store, "health-viewer-dev");
-        assert_eq!(registration.name, "Health Viewer (Dev)");
+        let port = ports.plots_dev;
+        let registration = dev_row(&store, "plots-dev");
+        assert_eq!(registration.name, "Plots (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
             Some("Local vite dev server for apps/plots/plots-web"),
@@ -399,22 +398,22 @@ mod tests {
     }
 
     #[test]
-    fn the_lifting_dev_row_launches_its_dev_server() {
+    fn the_strength_dev_row_launches_its_dev_server() {
         let pool = wildflowerhealthio_persistence::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
-        let port = ports.lifting_dev;
-        let registration = dev_row(&store, "lifting-dev");
-        assert_eq!(registration.name, "Lifting (Dev)");
+        let port = ports.strength_dev;
+        let registration = dev_row(&store, "strength-dev");
+        assert_eq!(registration.name, "Strength (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
             Some("Local vite dev server for apps/strength/strength-web"),
         );
         assert_eq!(
             registration.client_id.as_deref(),
-            Some(LIFTING_DEV_CLIENT_ID)
+            Some(STRENGTH_DEV_CLIENT_ID)
         );
         assert_eq!(
             registration.url.to_string(),
@@ -432,8 +431,8 @@ mod tests {
             ("medications", "9769f8b274370708d0d3ebb2e3e59b7c"),
             ("importer", "165cd26573e5ac72378e6ad2d2198330"),
             ("ohif-viewer", "941de68e6b59eb9dcc32df8ede89e636"),
-            ("lifting", "bdf9fc5cb5a28c6683b49896b0ef8a75"),
-            ("health-viewer", "474e103de61f9141c4b640d59bfa130e"),
+            ("strength", "bdf9fc5cb5a28c6683b49896b0ef8a75"),
+            ("plots", "474e103de61f9141c4b640d59bfa130e"),
             ("synthetic-data", "225ba6af034a3acec6be7ff8010df67f"),
             ("server-docs", "664a01e8614050cd82ffe90350b81413"),
         ] {

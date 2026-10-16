@@ -2,7 +2,7 @@
 
 The Synthesized Health Viewer, a SMART-on-FHIR app published to
 <https://wildflowerhealth.io/health-viewer/> (package `plots-web`),
-with a `health-viewer-dev` row in debug builds. See [README.md](./README.md)
+with a `plots-dev` row in debug builds. See [README.md](./README.md)
 for the boot structure, the page and how to run it.
 
 `apps/medications/medications-web` is the template: the same one HTML entry, relative

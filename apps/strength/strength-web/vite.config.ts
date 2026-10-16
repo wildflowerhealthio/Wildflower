@@ -16,10 +16,10 @@ export default defineConfig({
   ...base,
   base: './',
   plugins: [react()],
-  // The homescreen's "Lifting (Dev)" tile launches this port's
+  // The homescreen's "Strength (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
   // `vp run -F @wildflowerhealthio/strength-web dev`.
-  server: devAppServer('lifting-dev'),
+  server: devAppServer('strength-dev'),
   build: {
     rolldownOptions: {
       input: {

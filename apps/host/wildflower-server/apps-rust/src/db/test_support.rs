@@ -13,8 +13,8 @@ pub(crate) const SEEDED_IDS: [&str; 10] = [
     "server-docs",
     "importer",
     "ohif-viewer",
-    "lifting",
-    "health-viewer",
+    "strength",
+    "plots",
     "synthetic-data",
 ];
 

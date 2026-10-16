@@ -12,7 +12,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  *
  * The seeded OAuth clients carry exactly this set — the production client
  * (the authorization server migration `0022_seed_health_viewer_app_client`) and the
- * debug-only `health-viewer-dev` client in `authorization-server-rust`'s
+ * debug-only `plots-dev` client in `authorization-server-rust`'s
  * `seed_dev_app_clients` — so a scope added here alone fails `/authorize`
  * against a Wildflower host.
  *
@@ -30,9 +30,9 @@ const PLOTS_SCOPE =
  *
  * - A **production** build is published to
  *   `https://wildflowerhealth.io/health-viewer/` and launches as the
- *   `health-viewer` tile's client, `474e103de61f9141c4b640d59bfa130e`.
+ *   `plots` tile's client, `474e103de61f9141c4b640d59bfa130e`.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/plots-web dev`, on the port
- *   `dev-app-ports.json` pins) launches as the `health-viewer-dev`
+ *   `dev-app-ports.json` pins) launches as the `plots-dev`
  *   tile's client, `e7efc7c805f5f8f640bb3b3d48a2d7aa`.
  *
  * The ids are random (`openssl rand -hex 16`), not the tile ids. Either way

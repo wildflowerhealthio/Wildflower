@@ -126,8 +126,8 @@ async fn fresh_install_lists_the_default_set() {
             "server-docs",
             "importer",
             "ohif-viewer",
-            "lifting",
-            "health-viewer",
+            "strength",
+            "plots",
             "synthetic-data",
         ],
     );
@@ -260,9 +260,9 @@ async fn seeded_app_is_fully_editable() {
 async fn home_screen_reorders_and_disables_an_app() {
     let apps = spin_up();
     let router = apps.router.clone();
-    // Move lifting to the front and disable it; keep the rest in order.
+    // Move Strength to the front and disable it; keep the rest in order.
     let body = serde_json::json!([
-        { "id": "lifting", "onHomescreen": false },
+        { "id": "strength", "onHomescreen": false },
         { "id": "growth-chart", "onHomescreen": true },
         { "id": "medication-viewer", "onHomescreen": true },
         { "id": "precise-hbr", "onHomescreen": true },
@@ -270,7 +270,7 @@ async fn home_screen_reorders_and_disables_an_app() {
         { "id": "server-docs", "onHomescreen": true },
         { "id": "importer", "onHomescreen": true },
         { "id": "ohif-viewer", "onHomescreen": true },
-        { "id": "health-viewer", "onHomescreen": true },
+        { "id": "plots", "onHomescreen": true },
         { "id": "synthetic-data", "onHomescreen": true },
     ]);
     let res = router
@@ -288,7 +288,7 @@ async fn home_screen_reorders_and_disables_an_app() {
     assert_eq!(
         ids,
         vec![
-            "lifting",
+            "strength",
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
@@ -296,12 +296,12 @@ async fn home_screen_reorders_and_disables_an_app() {
             "server-docs",
             "importer",
             "ohif-viewer",
-            "health-viewer",
+            "plots",
             "synthetic-data",
         ],
     );
-    let lifting = arr.iter().find(|v| v["id"] == "lifting").unwrap();
-    assert_eq!(lifting["onHomescreen"], false);
+    let strength = arr.iter().find(|v| v["id"] == "strength").unwrap();
+    assert_eq!(strength["onHomescreen"], false);
 }
 
 /// A deleted seeded app stays deleted (migration runner seeds once).

@@ -148,10 +148,10 @@ search is scoped with `patient=` (or unscoped for All patients).
 `system/Patient.rs` reads the patients the picker lists and the one named
 under the title. `crus` is create + read + update + search: every write is an
 update to a client-minted id that creates the resource the first time, and the
-app never deletes. That one string is what the `lifting` tile's OAuth client
+app never deletes. That one string is what the `strength` tile's OAuth client
 (authorization server migrations `0019_seed_lifting_app_client`,
 `0020_first_party_apps_pick_the_patient` and `0025_rekey_lifting_app_clients`)
-and the debug-only `lifting-dev` tile's client (`seed_dev_app_clients` in
+and the debug-only `strength-dev` tile's client (`seed_dev_app_clients` in
 `authorization-server-rust/src/seeding.rs`) allow, exactly; a test there reads
 `src/config.ts` and pins both clients to it.
 
@@ -177,16 +177,16 @@ caller's grant against that client's scopes, and `/authorize` matches the
 redirect against that client's registered URIs — and its scope string must
 equal the client's allowed scopes.
 
-- **`lifting`** is a row (apps migration `0010_seed_lifting_app`, its URL as
+- **`strength`** is a row (apps migration `0010_seed_lifting_app`, its URL as
   `0016_launch_first_party_apps_at_root` left it, re-keyed by
-  `0017_rekey_lifting_app`) launching
+  `0017_rekey_lifting_app` and `0023_rekey_plots_strength_apps`) launching
   `https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}`.
   Its public
   OAuth client (the authorization server migration `0019_seed_lifting_app_client`, its
   scopes as `0020_first_party_apps_pick_the_patient` left them, re-keyed by
   `0025_rekey_lifting_app_clients`) redirects to
   `https://wildflowerhealth.io/lifting/`.
-- **`lifting-dev`** is seeded in debug builds only, at runtime rather than
+- **`strength-dev`** is seeded in debug builds only, at runtime rather than
   by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to
   `http://localhost:<port>/` (`authorization-server-rust/src/seeding.rs`).
@@ -199,5 +199,5 @@ vp run -F @wildflowerhealthio/strength-web dev     # strictPort, from dev-app-po
 
 Open the printed `http://localhost:<port>/`, pick a server on the connect menu,
 sign in, and choose a patient (or All patients) in the app. The port has a single source,
-`dev-app-ports.json` (`lifting-dev`): `vite.config.ts` reads it
+`dev-app-ports.json` (`strength-dev`): `vite.config.ts` reads it
 through the shared `devAppServer` helper in the root `vite.config.base.ts`.
