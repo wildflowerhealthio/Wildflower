@@ -22,8 +22,7 @@ const remainingText = (now: DateTime.Utc, at: DateTime.Utc): string => {
 
 /**
  * What the run-policy field says of when the server runs; for a stored
- * `until`, the picker's own option says the same, and the server page's
- * status hero says it under the status.
+ * `until`, the picker's own option says the same.
  */
 const runPolicyText = (policy: RunPolicy.Type, now: DateTime.Utc): string => {
   if (policy.kind !== 'until') return RUN_POLICY_TEXT[policy.kind]

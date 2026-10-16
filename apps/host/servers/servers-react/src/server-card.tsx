@@ -89,7 +89,6 @@ const ServerCard = ({
         />
         <AuthorizationButton
           server={server}
-          runHostCommand={runHostCommand}
           className={styles['server-card__action']}
           statusDescriptionId={statusId}
           onActionStart={onActionStart}

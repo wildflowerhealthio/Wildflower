@@ -4,23 +4,16 @@ import {
   type HostCommandError,
   LaunchError,
   type ListedServer,
-  launchServer,
   RunPolicy,
 } from '@wildflowerhealthio/servers-core-js'
-import { DateTime, Effect, Either, Option } from 'effect'
+import { DateTime, Option } from 'effect'
 import { type JSX, useEffect, useId, useState } from 'react'
 
 import { failureText } from './failure-text.ts'
-import {
-  isStatusShownRefusal,
-  REFUSAL_REASON,
-  unreachableGraceEndOf,
-  unreachableSinceOf,
-  waitOutcomeOf,
-} from './launch-wait.ts'
-import { type PendingLaunches, usePendingLaunch, type WaitingLaunch } from './pending-launches.ts'
+import { isStatusShownRefusal, REFUSAL_REASON, waitOutcomeOf } from './launch-wait.ts'
 import { useLaunchServer, useSetServerRunPolicy } from './queries.ts'
 import { type RunHostCommand, usePendingLaunches } from './router-context.ts'
+import { useStartAndLaunch } from './start-and-launch.ts'
 import { useHasPassed } from './use-has-passed.ts'
 import { useOnline } from './use-online.ts'
 import styles from './launch-button.module.css'
@@ -38,75 +31,6 @@ const notRunningReason = (server: ListedServer.Type): Option.Option<string> =>
     : Option.some("The server isn't running yet. It starts again on its own.")
 
 /**
- * While the server `server`'s start-and-launch is waiting, launch it once its
- * status is launchable and the webview is online, or end the wait once
- * waiting can't help (see `waitOutcomeOf`): with its failure when it has
- * one, or else with none, leaving the server's status or Launch's reason to
- * say why. The launch's outcome ends it too, unless it was cancelled
- * meanwhile.
- *
- * @remarks
- * It keeps the wait's `unreachableSince` current from each status, and looks
- * again when `unreachableGraceHasPassed` turns true at the end of that
- * grace: the host sends a status only when it changes, so a server still
- * unreachable sends none then.
- */
-const useDriveStartAndLaunch = (
-  server: ListedServer.Type,
-  online: boolean,
-  unreachableGraceHasPassed: boolean,
-  pendingLaunches: PendingLaunches,
-  runHostCommand: RunHostCommand
-): void => {
-  // The store's own object, which changes only when the launch does.
-  const pending = Option.getOrUndefined(usePendingLaunch(pendingLaunches, server.domain))
-  const { domain, status } = server
-  useEffect(() => {
-    if (pending?.kind !== 'waiting') return
-    const unreachableSince = unreachableSinceOf(
-      status,
-      pending.unreachableSince,
-      DateTime.unsafeNow()
-    )
-    if (Option.isSome(unreachableSince) !== Option.isSome(pending.unreachableSince)) {
-      pendingLaunches.set(domain, Option.some({ ...pending, unreachableSince }))
-      return
-    }
-    const outcome = waitOutcomeOf(status, pending.confirmedAt, unreachableGraceHasPassed)
-    if (outcome.kind === 'gaveUp') {
-      pendingLaunches.set(
-        domain,
-        Option.map(outcome.failure, (failure) => ({ kind: 'failed', failure }))
-      )
-      return
-    }
-    if (outcome.kind !== 'launchable' || !online) return
-    pendingLaunches.set(domain, Option.some({ kind: 'launching' }))
-    const settle = (failure: Option.Option<string>): void => {
-      // A wait cancelled while it launched stays cancelled.
-      if (pendingLaunches.snapshotOf(domain)?.kind !== 'launching') return
-      pendingLaunches.set(
-        domain,
-        Option.map(failure, (text) => ({ kind: 'failed', failure: text }))
-      )
-    }
-    void runHostCommand(Effect.either(launchServer({ domain }))).then(
-      (launched) => {
-        settle(
-          Either.match(launched, {
-            onLeft: (error) => Option.some(failureText(error)),
-            onRight: () => Option.none(),
-          })
-        )
-      },
-      (defect: unknown) => {
-        settle(Option.some(`Launching failed: ${String(defect)}`))
-      }
-    )
-  }, [pending, status, online, domain, pendingLaunches, runHostCommand, unreachableGraceHasPassed])
-}
-
-/**
  * A server's Launch: opens its launcher through `server_launch`, or says why
  * it can't when the server's status around it doesn't.
  *
@@ -120,8 +44,9 @@ const useDriveStartAndLaunch = (
  *   (kept current by `server-status` events) is launchable, and launches it
  *   once. The wait gives up once waiting can't help (see `waitOutcomeOf`),
  *   showing its failure when it has one, and Launch is back. The wait is in
- *   the router context's `pendingLaunches`, so it carries on when Edit opens
- *   the server's page, whose Launch shows it too.
+ *   the router context's `pendingLaunches`, driven by `useStartAndLaunch`,
+ *   so it carries on while Edit has the server's page open, and Launch shows
+ *   where it stands, or how it ended, on coming back.
  * - For a server waiting to start again while its policy still wants it
  *   running, it is disabled and says so; while such a server is starting,
  *   its status says so: launching never changes an active policy or extends
@@ -170,14 +95,7 @@ const LaunchButton = ({
   const launch = useLaunchServer(runHostCommand)
   const setRunPolicy = useSetServerRunPolicy(runHostCommand)
   const [confirmingStart, setConfirmingStart] = useState(false)
-  const pending = usePendingLaunch(pendingLaunches, server.domain)
-  const unreachableGraceHasPassed = useHasPassed(
-    pending.pipe(
-      Option.filter((launching): launching is WaitingLaunch => launching.kind === 'waiting'),
-      Option.flatMap(({ unreachableSince }) => unreachableGraceEndOf(unreachableSince))
-    )
-  )
-  useDriveStartAndLaunch(server, online, unreachableGraceHasPassed, pendingLaunches, runHostCommand)
+  const { pending, unreachableGraceHasPassed } = useStartAndLaunch(server)
   const policyHasEnded = useHasPassed(RunPolicy.deadlineOf(server.runPolicy))
   const policyIsInactive = server.runPolicy.kind === 'off' || policyHasEnded
   const refusal = Option.getOrNull(LaunchError.statusRefusalOf(server.status))

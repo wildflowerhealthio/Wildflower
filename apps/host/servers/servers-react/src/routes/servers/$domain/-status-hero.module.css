@@ -1,36 +1,106 @@
-/* The top of a server's page: a card, as the list's server card is. */
+/*
+ * The top of a server's page, set as its title rather than in a card: the
+ * domain's line over the status's.
+ */
 .status-hero {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
   min-width: 0;
-  padding: var(--space-7) var(--space-9);
-  border: 1px solid var(--card-color-border);
-  border-radius: var(--card-border-radius);
-  background: var(--card-color-background);
-  box-shadow: var(--card-box-shadow);
 }
 
-.status-hero__domain-row {
+.status-hero__title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-5);
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 /*
- * A domain is a machine string, so it is set in mono; it wraps anywhere
- * rather than being cut short, as this is where it is read and copied whole.
+ * A domain is a machine string, so it is set in mono, at a page title's
+ * size, on one line that scrolls sideways with no visible scrollbar, as
+ * `RouteTabs`' strip does, with a fade on each end with text past it. The
+ * modifiers set the fade widths; with neither, the mask is solid.
  */
 .status-hero__domain {
+  --status-hero-fade-before: 0px;
+  --status-hero-fade-after: 0px;
   min-width: 0;
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: var(--font-size-4);
-  font-weight: var(--font-weight-2);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
   line-height: var(--line-height-3);
   color: var(--color-neutral-1);
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--status-hero-fade-before),
+    #000 calc(100% - var(--status-hero-fade-after)),
+    transparent
+  );
+}
+
+.status-hero__domain::-webkit-scrollbar {
+  display: none;
+}
+
+.status-hero__domain--hidden-before {
+  --status-hero-fade-before: var(--space-10);
+}
+
+.status-hero__domain--hidden-after {
+  --status-hero-fade-after: var(--space-10);
+}
+
+/* The domain itself, as text: a tap copies it, and it can still be selected by hand. */
+.status-hero__copy {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-1);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: copy;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.status-hero__copy:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+@keyframes status-hero-bounce {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* The check mark beside the domain once it is copied. */
+.status-hero__copied {
+  display: inline-flex;
+  flex: none;
+  font-size: var(--font-size-4);
+  color: var(--color-success);
+  animation: status-hero-bounce 0.35s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-hero__copied {
+    animation: none;
+  }
 }
 
 .status-hero__status-row {

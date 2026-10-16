@@ -3,7 +3,8 @@ import { GateCard, PageBodyError, PageHeader, RouteTabs } from '@wildflowerhealt
 import type { JSX } from 'react'
 
 import { useServerStatusEvents } from '../../../queries.ts'
-import { useListenToHostEvent, useRunHostCommand } from '../../../router-context.ts'
+import { useListenToHostEvent } from '../../../router-context.ts'
+import { useStartAndLaunch } from '../../../start-and-launch.ts'
 import { ensureListedServer, useListedServer } from './-listed-server.ts'
 import { StatusHero } from './-status-hero.tsx'
 
@@ -52,19 +53,19 @@ const ServerPageNotFound = (): JSX.Element => (
  * `/health` report while it runs; Access, the newest consent waiting on it;
  * Default Apps, its launcher and its Authorization app; Relay, its relay and
  * tunnel, with a new tunnel token; Certificate, its certificate's state;
- * Destructive actions, its removal. The
- * `server-status` event keeps the cached server list, and so the page,
- * current while it is open.
+ * Destructive actions, its removal. The `server-status` event keeps the
+ * cached server list, and so the page, current while it is open, and a
+ * start-and-launch begun on its card carries on while it is.
  */
 function ServerPage(): JSX.Element {
   useServerStatusEvents(useListenToHostEvent())
   const server = useListedServer()
-  const runHostCommand = useRunHostCommand()
+  useStartAndLaunch(server)
   const params = { domain: server.domain }
   return (
     <>
       <PageHeader title="Server" backHref="/servers" backLabel="Servers" />
-      <StatusHero server={server} runHostCommand={runHostCommand} />
+      <StatusHero server={server} />
       <RouteTabs
         tabs={[
           { to: '/servers/$domain/status', params, label: 'Status' },

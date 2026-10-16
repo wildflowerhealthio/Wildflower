@@ -1759,7 +1759,7 @@ describe('Launch', () => {
     })
   })
 
-  it("should keep waiting on the server's page once Edit opens it, and launch from there", async () => {
+  it("should keep waiting while Edit has the server's page open, and launch from there", async () => {
     // Arrange
     const user = userEvent.setup()
     const { host, events } = renderLaunching({
@@ -1774,8 +1774,7 @@ describe('Launch', () => {
     await user.click(within(serverRow(LAB)).getByRole('link', { name: 'Edit' }))
 
     // Assert
-    const hero = await screen.findByRole('region', { name: 'Status' })
-    expect(within(hero).getByRole('button', { name: 'Starting…' })).toBeDefined()
+    expect(await screen.findByRole('region', { name: 'Status' })).toBeDefined()
     expect(launchesSeen(host)).toEqual([])
 
     // Act
@@ -1783,55 +1782,8 @@ describe('Launch', () => {
 
     // Assert
     await waitFor(() => {
-      expect(within(hero).queryByRole('button', { name: 'Starting…' })).toBeNull()
+      expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
     })
-    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: LAB } }])
-  })
-
-  it("should launch from the server page's status", async () => {
-    // Arrange
-    const user = userEvent.setup()
-    const host = hostWith({
-      servers: () => Promise.resolve(golden.listedServers),
-      answers: { server_launch: () => Promise.resolve(null) },
-    })
-    renderBase({
-      invoke: host.invoke,
-      storage: storageAnswered({ crashReports: false, performance: false }),
-      path: `/servers/${RUTH}`,
-    })
-    const hero = await screen.findByRole('region', { name: 'Status' })
-
-    // Act
-    await user.click(within(hero).getByRole('button', { name: 'Launch' }))
-
-    // Assert
-    expect(launchesSeen(host)).toEqual([{ command: 'server_launch', args: { domain: RUTH } }])
-  })
-
-  it("should show the host's refusal across the server page's status, above Launch", async () => {
-    // Arrange
-    const user = userEvent.setup()
-    const host = hostWith({
-      servers: () => Promise.resolve(golden.listedServers),
-      answers: { server_launch: () => Promise.reject(golden.launchErrors[2]) },
-    })
-    renderBase({
-      invoke: host.invoke,
-      storage: storageAnswered({ crashReports: false, performance: false }),
-      path: `/servers/${RUTH}`,
-    })
-    const hero = await screen.findByRole('region', { name: 'Status' })
-    const launch = within(hero).getByRole('button', { name: 'Launch' })
-
-    // Act
-    await user.click(launch)
-
-    // Assert
-    const banner = await within(hero).findByRole('alert')
-    expect(banner.textContent).toContain(golden.launchErrors[2].message)
-    expect(banner.parentElement).toBe(hero)
-    expect(isBefore(banner, launch)).toBe(true)
   })
 })
 
@@ -1953,7 +1905,7 @@ describe('Authorization', () => {
       })
     }
   })
-  it("should open the Authorization app from the server page's status, under Launch, and show its refusal there", async () => {
+  it("should open the Authorization app from the server page's Access tab, and show its refusal in its row", async () => {
     // Arrange
     const user = userEvent.setup()
     const host = hostWith({
@@ -1963,42 +1915,37 @@ describe('Authorization', () => {
     renderBase({
       invoke: host.invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
-      path: `/servers/${RUTH}`,
+      path: `/servers/${RUTH}/access`,
     })
-    const hero = await screen.findByRole('region', { name: 'Status' })
-    const launch = within(hero).getByRole('button', { name: 'Launch' })
-    const authorization = within(hero).getByRole('button', { name: 'Authorization' })
+    const open = await screen.findByRole('button', { name: 'Open Authorization app' })
+    const row = open.closest('li')
+    expect(row?.textContent).toContain('Lists the apps and devices with access to this server.')
 
     // Act
-    await user.click(authorization)
+    await user.click(open)
 
     // Assert
-    expect(isBefore(launch, authorization)).toBe(true)
-    expect(authorization.parentElement).toBe(hero)
     expect(host.seen.filter(({ command }) => command === 'server_open_authorization_app')).toEqual([
       { command: 'server_open_authorization_app', args: { domain: RUTH } },
     ])
-    const banner = await within(hero).findByRole('alert')
-    expect(banner.textContent).toContain(golden.launchErrors[2].message)
-    expect(banner.parentElement).toBe(hero)
-    expect(isBefore(banner, launch)).toBe(true)
+    await waitFor(() => {
+      expect(row?.textContent).toContain(golden.launchErrors[2].message)
+    })
   })
 
-  it("should be disabled on the server page's status for a server the host would refuse, described by its status", async () => {
+  it("should be disabled on the server page's Access tab for a server the host would refuse", async () => {
     // Arrange
     renderBase({
       invoke: hostWith({ servers: () => Promise.resolve(golden.listedServers) }).invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
-      path: `/servers/${LAB}`,
+      path: `/servers/${LAB}/access`,
     })
-    const hero = await screen.findByRole('region', { name: 'Status' })
 
     // Assert
-    const authorization = within(hero).getByRole('button', { name: 'Authorization' })
-    expect(authorization).toHaveProperty('disabled', true)
-    const describedBy = authorization.getAttribute('aria-describedby')
-    expect(describedBy).not.toBeNull()
-    expect(hero.contains(document.getElementById(describedBy ?? ''))).toBe(true)
+    expect(await screen.findByRole('button', { name: 'Open Authorization app' })).toHaveProperty(
+      'disabled',
+      true
+    )
   })
 })
 
@@ -2062,6 +2009,15 @@ describe('the server page', () => {
 
   /** The page's status hero. */
   const hero = (): Promise<HTMLElement> => screen.findByRole('region', { name: 'Status' })
+
+  /** The hero's status badge: the last of its live regions, after the copy announcement. */
+  const heroBadge = async (): Promise<HTMLElement> => {
+    const badge = within(await hero())
+      .getAllByRole('status')
+      .at(-1)
+    if (badge === undefined) throw new Error('the hero has no status badge')
+    return badge
+  }
 
   /** The section of the list or form titled `title`. */
   const sectionTitled = (title: string): HTMLElement => {
@@ -2168,7 +2124,7 @@ describe('the server page', () => {
 
       // Assert
       expect(await screen.findByText('No requests waiting.')).toBeDefined()
-      expect(screen.queryByRole('heading', { name: 'Access' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Open Authorization app' })).toBeDefined()
     })
 
     it("should show once the server's status carries a request, without leaving the open tab", async () => {
@@ -2316,52 +2272,31 @@ describe('the server page', () => {
       })
 
       // Assert
-      const status = within(await hero()).getByRole('status')
-      expect(status.textContent).toMatch(new RegExp(`${label}$`))
+      expect((await heroBadge()).textContent).toMatch(new RegExp(`${label}$`))
       expect(within(await hero()).queryByText(/^Since /) !== null).toBe(running)
     }
   )
 
-  it.each([
-    ['an ended until', golden.listedServers[0].runPolicy, /^Ended at /],
-    ['off', { kind: 'off' }, /^Off$/],
-    ['always', { kind: 'always' }, /^Always on$/],
-  ] as const)(
-    "should say a run policy of %s under the status, in the picker's words, with no picker",
-    async (_, runPolicy, text) => {
-      // Act
-      renderServerPage({
-        domain: 'ruth.relay.example.com',
-        servers: [{ ...golden.listedServers[0], runPolicy }, golden.listedServers[1]],
-      })
+  it('should show the domain and status as its title, with no run policy, Launch or Authorization', async () => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      servers: [
+        { ...golden.listedServers[0], runPolicy: { kind: 'always' } },
+        golden.listedServers[1],
+      ],
+    })
 
-      // Assert
-      expect(paragraphsOf(await hero())).toEqual([expect.stringMatching(text)])
-      expect(screen.queryByRole('combobox')).toBeNull()
-    }
-  )
-
-  it.each([
-    ['runningTokenRejected', "The relay rejected this server's tunnel token"],
-    ['runningUnreachable', 'Running, not reachable yet'],
-  ] as const)(
-    'should disable Launch for a %s status, described by the status row alone',
-    async (statusName, label) => {
-      // Act
-      renderServerPage({
-        domain: 'ruth.relay.example.com',
-        servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
-      })
-
-      // Assert
-      const launch = within(await hero()).getByRole('button', { name: 'Launch' })
-      expect(launch.hasAttribute('disabled')).toBe(true)
-      const description = document.getElementById(launch.getAttribute('aria-describedby') ?? '')
-      expect(description?.contains(within(await hero()).getByRole('status'))).toBe(true)
-      expect(within(await hero()).getByRole('status').textContent).toMatch(new RegExp(`${label}$`))
-      expect(paragraphsOf(await hero())).toEqual([expect.stringMatching(/^Ended at /)])
-    }
-  )
+    // Assert
+    const heroRegion = await hero()
+    expect(
+      within(heroRegion)
+        .getAllByRole('button')
+        .map((button) => button.textContent)
+    ).toEqual(['ruth.relay.example.com'])
+    expect(heroRegion.textContent).not.toContain('Always on')
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
 
   it.each([
     ['runningAndReachable', 'Connected.', false],
@@ -2437,22 +2372,27 @@ describe('the server page', () => {
     }
   )
 
-  it('should copy the domain, and say so when the clipboard refuses', async () => {
+  it('should copy the domain when it is tapped, and say so, or that the clipboard refused', async () => {
     // Arrange
     const user = userEvent.setup()
     renderServerPage({ domain: 'ruth.relay.example.com' })
-    const copy = within(await hero()).getByRole('button', { name: 'Copy' })
+    const heading = within(await hero()).getByRole('heading', { name: 'ruth.relay.example.com' })
+    const domain = within(heading).getByRole('button', { name: 'ruth.relay.example.com' })
 
     // Act
-    await user.click(copy)
+    await user.click(domain)
 
     // Assert
     expect(await navigator.clipboard.readText()).toBe('ruth.relay.example.com')
-    expect(within(await hero()).getByRole('button', { name: 'Copied' })).toBeDefined()
+    expect(
+      within(await hero())
+        .getByText('Copied')
+        .getAttribute('role')
+    ).toBe('status')
 
     // Act
     vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('not allowed'))
-    await user.click(within(await hero()).getByRole('button', { name: 'Copied' }))
+    await user.click(domain)
 
     // Assert
     expect(
@@ -2558,7 +2498,7 @@ describe('the server page', () => {
     // Assert
     expect(await screen.findByText('The system ended its time in the background.')).toBeDefined()
     expect(screen.getByText("The system's time limit for background work ran out.")).toBeDefined()
-    expect(within(await hero()).getByRole('status').textContent).toMatch(/Stopped$/)
+    expect((await heroBadge()).textContent).toMatch(/Stopped$/)
     expect(screen.queryByRole('heading', { name: 'Health checks' })).toBeNull()
 
     // Act
@@ -2570,7 +2510,7 @@ describe('the server page', () => {
     // Assert
     expect(await screen.findByText('Its /health answers pass.')).toBeDefined()
     expect(health.urls).toHaveLength(2)
-    expect(within(await hero()).getByRole('status').textContent).toMatch(/Running$/)
+    expect((await heroBadge()).textContent).toMatch(/Running$/)
   })
 
   /** `instant`, an RFC 3339 string, as the page shows its dates. */

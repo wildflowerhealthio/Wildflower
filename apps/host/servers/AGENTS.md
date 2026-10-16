@@ -142,10 +142,12 @@ changing how servers run or what the host notifies about them.
   the webview is offline or the host would refuse for what the status shows,
   never starting a server; and
   Edit, which opens the server's page, kept current by the `server-status`
-  event too: its domain with Copy, its status badge, when its run started,
-  under them when it runs in the run-policy field's words (the field itself
-  is the card's alone), and Launch with Authorization under it, each full
-  width; over six tabs on `RouteTabs`, each a child route of
+  event too: set as its title rather than in a card, its domain on one line
+  that scrolls sideways, fading at an end with text past it, and copies
+  itself when tapped, a check mark bouncing in beside it (without the
+  bounce under reduced motion) and a live region saying "Copied" or that
+  the clipboard refused; under it its status badge and, while it runs, when its run
+  started; over six tabs on `RouteTabs`, each a child route of
   `/servers/$domain` (`status`, `access`, `default-apps`, `relay`,
   `certificate`, `destructive-actions`), each in its own route file under
   `routes/servers/$domain/` with the parts only it uses beside it.
@@ -162,10 +164,12 @@ changing how servers run or what the host notifies about them.
   while it runs its `/health` report with each check, titled by its key in
   Title Case (`healthCheckTitle`), read by the webview itself, with Refresh.
   Destructive actions holds its removal, said in full, behind a confirm that
-  asks for the domain to be typed. Access holds,
-  while a consent waits on the server, a Pending request row, "‹client› wants
-  access.", with Open (`server_open_pending_consent`), the host's refusal
-  taking the row's text, and otherwise "No requests waiting.". Default Apps
+  asks for the domain to be typed. Access holds, while a consent waits on the server, a Pending request row,
+  "‹client› wants access.", with Open (`server_open_pending_consent`), the
+  host's refusal taking the row's text, and otherwise "No requests
+  waiting."; and an Authorization app row, which lists the apps and devices
+  with access, with Open (`server_open_authorization_app`), disabled as the
+  card's Authorization is, its refusal taking the row's text. Default Apps
   holds its launcher and its Authorization app, each with Reset to default
   (`PageUrlForm`), named "Reset Launcher URL to default" and "Reset
   Authorization Manager URL to default" for assistive technology. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
@@ -197,9 +201,8 @@ changing how servers run or what the host notifies about them.
   the host has added the server.
   Launch and Authorization report their failures, the host's refusal or why
   a wait gave up, through `onError`, and each start through `onActionStart`
-  (`useActionError`): the card, and the page's status, shows
-  the latest failure in one banner across it, above the buttons, until either
-  starts again. Launch's reasons stay above its own button.
+  (`useActionError`): the card shows the latest failure in one banner
+  across it, above the buttons, until either starts again. Launch's reasons stay above its own button.
   Launch opens the server's launcher through `server_launch`, signed in as
   the Owner. It is
   disabled, saying why: while the webview is offline (`navigator.onLine`),
@@ -224,8 +227,9 @@ changing how servers run or what the host notifies about them.
   seconds without a break (any other status starts that again: the host
   probes only once the tunnel is connected, first after 400 ms and then
   after twice the last wait, so the grace spans the first few probes). The wait is held in the router
-  context's `pendingLaunches`, a store keyed by domain, so it carries on
-  when Edit opens the server's page, whose Launch shows the same wait.
+  context's `pendingLaunches`, a store keyed by domain, and driven by the
+  server's page too (`useStartAndLaunch`), so it carries on while Edit has
+  the page open.
   Launching never changes an active policy or extends an `until`.
   The base decides no consent itself: Open, and a tap on a consent
   notification on a phone, open the server's own consent page in a browser
