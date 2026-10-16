@@ -15,9 +15,11 @@
 #   build, plus the `CNAME` naming the custom domain, `.nojekyll` and the
 #   `404.html`, which Pages reads only from the branch root.
 # - preview replaces `pr-<n>/` with the build, minus any `CNAME`, and writes
-#   `.nojekyll` and `404.html` at the root if the branch has none yet: a
-#   preview never replaces the root `404.html` the production deploy keeps
-#   current.
+#   `.nojekyll` and `404.html` at the root. On a branch with a production
+#   site (a root `CNAME`) the preview writes `404.html` only if there is none
+#   yet, leaving it to the production deploy to keep current; on a branch that
+#   only holds previews, such as the marketing site's staging branch, every
+#   preview refreshes it.
 # - teardown removes `pr-<n>/`.
 #
 # The branch is a build output with no history worth keeping, so every publish
@@ -117,7 +119,9 @@ stage() {
       cp -R "$build_dir"/. "$site/$preview_dir"/
       rm -f "$site/$preview_dir/CNAME"
       [[ -e $site/.nojekyll ]] || : > "$site/.nojekyll"
-      [[ -e $site/404.html ]] || cp "$not_found_page" "$site/404.html"
+      if [[ ! -e $site/CNAME || ! -e $site/404.html ]]; then
+        cp "$not_found_page" "$site/404.html"
+      fi
       ;;
     teardown)
       rm -rf "${site:?}/$preview_dir"

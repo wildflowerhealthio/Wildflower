@@ -120,6 +120,15 @@ describe('publish-pages-branch.sh', () => {
     )
   })
 
+  it('should refresh the root 404.html on a branch that holds only previews', () => {
+    publish('preview', '7', build('seven', app), notFoundPage('a'))
+
+    const result = publish('preview', '12', build('twelve', app), notFoundPage('b'))
+
+    expect(result.status).toBe(0)
+    expect(branchFile('404.html')).toBe('b')
+  })
+
   it('should keep every preview through a production deploy, and drop stale production files', () => {
     publish('production', build('one', { ...app, 'old.js': 'old' }), 'x.example', notFoundPage('a'))
     publish('preview', '7', build('seven', app), notFoundPage('a'))

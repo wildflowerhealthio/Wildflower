@@ -76,7 +76,8 @@ jobs:
     name: App
     needs: plan
     strategy:
-      # Every app publishes, so one failing build doesn't hold the others back.
+      # Every app publishes, so one failing build doesn't hold the others back
+      # (or the apex, which deploys after them regardless).
       fail-fast: false
       matrix:
         site: ${{ fromJSON(needs.plan.outputs.sites) }}
@@ -92,11 +93,13 @@ jobs:
       target: production
     secrets: inherit
 
-  # After every app: the redirect pages at the apps' old apex paths go live
-  # only once the apps they send to have.
+  # After every app, whether or not each one published: the apex deploys
+  # even when an app's build fails, so a broken app never holds back the
+  # homepage or the policy pages.
   marketing:
     name: Build the marketing site
     needs: apps
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # configure-pages reads this repository's Pages settings.
     permissions:
@@ -136,6 +139,7 @@ jobs:
   deploy:
     name: Deploy the apex
     needs: marketing
+    if: ${{ !cancelled() && needs.marketing.result == 'success' }}
     runs-on: ubuntu-latest
     # Only the job that publishes needs pages + id-token, to deploy through
     # the GitHub Pages deployment API.

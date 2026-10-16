@@ -24,11 +24,14 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
 
-# One preview run per PR. Cancelling an in-progress run is safe here (unlike
-# the production deploy): the preview is disposable, and the newest push — or
-# the close that tears it down — is what counts.
+# One preview run per PR, and one teardown run per PR, in separate groups so
+# a reopen never cancels a teardown partway through. Cancelling an in-progress
+# preview is safe (unlike the production deploy): the preview is disposable,
+# and the newest push is what counts. A teardown and a deploy to the same
+# Pages branch and PR still never interleave: their jobs share the
+# `pages-<repository>-<pr>` group.
 concurrency:
-  group: pr-preview-${{ github.event.number }}
+  group: pr-preview-${{ github.event.number }}-${{ github.event.action == 'closed' && 'teardown' || 'deploy' }}
   cancel-in-progress: true
 
 # `pull-requests: write` lets the comment steps post and edit the preview
@@ -185,6 +188,9 @@ jobs:
   comment-teardown:
     name: Comment the previews' removal
     needs: teardown
+    # Whatever the teardowns' result, so the comment never keeps live-looking
+    # links to previews that are gone; it says which failed to go.
+    if: ${{ !cancelled() && github.event.action == 'closed' && needs.teardown.result != 'skipped' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -196,7 +202,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.number }}
+          TEARDOWN_RESULT: ${{ needs.teardown.result }}
         run: |
           body=$(mktemp)
-          echo "The previews of this PR have been removed." > "$body"
+          if [[ $TEARDOWN_RESULT == success ]]; then
+            echo "The previews of this PR have been removed." > "$body"
+          else
+            echo "Some previews of this PR could not be removed; see the [run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)." > "$body"
+          fi
           scripts/ci/upsert-preview-comment.sh "$body" --update-only
