@@ -17,8 +17,9 @@ const HEALTH_SERVICE_SYSTEM =
  * The order is the palette's validated adjacency: the pairs that sit side by
  * side in a lane — sleeping and restful sleeping, walking and running,
  * running and an open workout — are the neighbours the palette separates.
- * `span-categories.test.ts` reads each code from FHIR Sync for Pebble's own
- * writer, so a renamed code fails there rather than turning grey here.
+ * `observation-span-series.test.ts` reads each code from FHIR Sync for
+ * Pebble's own writer, so a renamed code fails there rather than turning grey
+ * here.
  */
 const ACTIVITY_CODES_IN_COLOUR_ORDER: readonly string[] = [
   'HealthActivitySleep',
