@@ -105,6 +105,36 @@ describe("the server page's Access tab", () => {
       expect(await screen.findByRole('heading', { name: 'Access' })).toBeDefined()
       expect(screen.queryByText('No requests waiting.')).toBeNull()
     })
+
+    it('should drop the failure to open a request once another waits in its place', async () => {
+      // Arrange
+      const user = userEvent.setup()
+      const events = fakeEvents()
+      const nothingPending = golden.launchErrors[8]
+      renderServerPage({
+        domain: RUTH,
+        servers: listedWithRuthStatus(golden.serverStatuses.runningWithAPendingConsent),
+        answers: { server_open_pending_consent: () => Promise.reject(nothingPending) },
+        events,
+      })
+      await screen.findByRole('heading', { name: 'Access' })
+      await user.click(within(sectionTitled('Access')).getByRole('button', { name: 'Open' }))
+      await waitFor(() => {
+        expect(sectionTitled('Access').textContent).toContain(nothingPending.message)
+      })
+
+      // Act
+      act(() => {
+        events.emit('server-status', {
+          ...golden.serverStatuses.runningWithAPendingConsent,
+          pendingConsent: { ...golden.pendingConsents[0], clientName: 'Plots' },
+        })
+      })
+
+      // Assert
+      expect(await within(sectionTitled('Access')).findByText('Plots wants access.')).toBeDefined()
+      expect(sectionTitled('Access').textContent).not.toContain(nothingPending.message)
+    })
   })
 
   it("should open the Authorization app from the server page's Access tab, and show its refusal in its row", async () => {

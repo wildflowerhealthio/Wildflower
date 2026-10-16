@@ -1,6 +1,7 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { createMemoryHistory } from '@tanstack/react-router'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 
 import golden from '../../../../../servers-wire-golden.json' with { type: 'json' }
 import {
@@ -213,13 +214,110 @@ describe('the server page', () => {
     ).toBe('status')
 
     // Act
-    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('not allowed'))
+    const writeText = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockRejectedValue(new Error('not allowed'))
+    onTestFinished(() => {
+      writeText.mockRestore()
+    })
     await user.click(domain)
 
     // Assert
     expect(
       await screen.findByText('The clipboard refused. Select the domain to copy it by hand.')
     ).toBeDefined()
+  })
+
+  it('should read the server list no more as its tabs are switched', async () => {
+    // Arrange
+    const host = renderServerPage({ domain: 'ruth.relay.example.com' })
+    expect(await openTabName()).toBe('Status')
+    // The page's `beforeLoad` reads the list, and its `server-status` listener reads it again once up.
+    await waitFor(() => {
+      expect(listReads(host)).toBe(2)
+    })
+
+    // Act
+    await openTab('Access')
+    await openTab('Relay')
+    await openTab('Certificate')
+    await openTab('Status')
+
+    // Assert
+    expect(await openTabName()).toBe('Status')
+    expect(listReads(host)).toBe(2)
+  })
+
+  it('should say so once the server list stops holding the server', async () => {
+    // Arrange
+    const events = fakeEvents()
+    let listed: readonly unknown[] = golden.listedServers
+    const host = hostWith({ servers: () => Promise.resolve(listed) })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: '/servers/ruth.relay.example.com',
+      events,
+    })
+    expect(await openTabName()).toBe('Status')
+
+    // Act — a status for a server the list doesn't hold reads it again.
+    listed = [golden.listedServers[1]]
+    act(() => {
+      events.emit('server-status', {
+        ...golden.serverStatuses.startingUnchecked,
+        domain: 'new.relay.example.com',
+      })
+    })
+
+    // Assert
+    expect(await screen.findByText('This device has no server at this address.')).toBeDefined()
+    expect(screen.queryByRole('navigation', { name: 'Server details' })).toBeNull()
+  })
+
+  it('should replace its bare path in history with the tab it opens', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const history = createMemoryHistory({ initialEntries: ['/servers'] })
+    renderBase({
+      invoke: hostWith({ servers: () => Promise.resolve(golden.listedServers) }).invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      history,
+    })
+    const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+    await user.click(within(ruth).getByRole('link', { name: 'Edit' }))
+    expect(await openTabName()).toBe('Status')
+
+    // Act
+    act(() => {
+      history.back()
+    })
+
+    // Assert
+    expect(await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })).toBeDefined()
+    expect(history.location.pathname).toBe('/servers')
+  })
+
+  it('should stop saying the domain was copied once the mark has shown', async () => {
+    // Arrange
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderServerPage({ domain: 'ruth.relay.example.com' })
+      await user.click(within(await hero()).getByRole('button', { name: 'ruth.relay.example.com' }))
+      const announcement = within(await hero()).getByText('Copied')
+
+      // Act
+      act(() => {
+        vi.advanceTimersByTime(1500)
+      })
+
+      // Assert
+      expect(announcement.textContent).toBe('')
+      expect(announcement.getAttribute('role')).toBe('status')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   describe('a start-and-launch begun on its card', () => {
@@ -321,3 +419,9 @@ describe('the server page', () => {
     })
   })
 })
+
+// Helpers
+
+/** How many times `host` was asked for the server list. */
+const listReads = (host: FakeHost): number =>
+  host.seen.filter(({ command }) => command === 'servers_list').length

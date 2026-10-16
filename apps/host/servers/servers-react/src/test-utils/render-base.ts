@@ -1,4 +1,5 @@
 import type { HttpClient } from '@effect/platform'
+import type { RouterHistory } from '@tanstack/react-router'
 import { cleanup, render, type RenderResult } from '@testing-library/react'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import type { HostPlatform, TauriInvoke } from '@wildflowerhealthio/servers-core-js'
@@ -78,8 +79,8 @@ const DEFAULT_LAUNCHER_URL = 'https://launcher.wildflowerhealth.io/'
 const DEFAULT_AUTHORIZATION_URL = 'https://authorization.wildflowerhealth.io/'
 
 /**
- * Render the base as the host app composes it, at `path`, over `invoke` and
- * `storage`, with `/health` answered by `httpClient` (passing by default).
+ * Render the base as the host app composes it, at `path` or on `history`,
+ * over `invoke` and `storage`, with `/health` answered by `httpClient` (passing by default).
  */
 const renderBase = ({
   invoke,
@@ -89,6 +90,7 @@ const renderBase = ({
   events = fakeEvents(),
   taps = fakeTaps(),
   httpClient = fakeHealth(() => Response.json({ status: 'pass' })).layer,
+  history,
 }: {
   readonly invoke: Context.Tag.Service<TauriInvoke>
   readonly storage: ConsentStorage
@@ -97,6 +99,7 @@ const renderBase = ({
   readonly events?: FakeEvents
   readonly taps?: FakeTaps
   readonly httpClient?: Layer.Layer<HttpClient.HttpClient>
+  readonly history?: RouterHistory
 }): RenderResult =>
   render(
     createElement(BaseUnderTest, {
@@ -110,6 +113,7 @@ const renderBase = ({
       telemetry: { dsn: BASE_DSN, app: 'host-app' },
       httpClient,
       path,
+      history,
       storage,
     })
   )

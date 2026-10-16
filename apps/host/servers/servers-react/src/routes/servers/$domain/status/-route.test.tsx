@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { DateTime } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -11,6 +12,7 @@ import {
   sectionTitled,
 } from '../-server-page-test-utils.ts'
 import golden from '../../../../../../servers-wire-golden.json' with { type: 'json' }
+import { formatInstant } from '../../../../server-status-text.ts'
 import { fakeEvents, fakeHealth } from '../../../../test-utils/host-fakes.ts'
 import { setUpEachBaseTest } from '../../../../test-utils/render-base.ts'
 
@@ -202,5 +204,91 @@ describe("the server page's Status tab", () => {
     expect(await screen.findByText('Its /health answers pass.')).toBeDefined()
     expect(health.urls).toHaveLength(2)
     expect((await heroBadge()).textContent).toMatch(/Running$/)
+  })
+
+  it.each([
+    ['neverRun', "It hasn't run yet."],
+    ['startingUnchecked', 'Starting.'],
+    ['startingCaUnreachable', 'Starting.'],
+    ['runningUnreachable', 'Not reachable yet: the relay answered 502'],
+  ] as const)('should show the connection of a %s status as "%s"', async (statusName, text) => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      servers: listedWithRuthStatus(golden.serverStatuses[statusName]),
+    })
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Connection' })).toBeDefined()
+    expect(within(sectionTitled('Connection')).getByText(text)).toBeDefined()
+  })
+
+  it.each([
+    ['stoppedWithAnError', false],
+    ['stoppedByThePlatform', true],
+    ['stoppedAsItsPolicyEnded', false],
+  ] as const)(
+    "should say when a %s server stopped, with the platform's reason only when it gave one",
+    async (statusName, hasPlatformReason) => {
+      // Arrange
+      const status = golden.serverStatuses[statusName]
+
+      // Act
+      renderServerPage({ domain: 'ruth.relay.example.com', servers: listedWithRuthStatus(status) })
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Connection' })).toBeDefined()
+      const connection = within(sectionTitled('Connection'))
+      expect(connection.getByText('Stopped').closest('li')?.textContent).toContain(
+        formatInstant(DateTime.unsafeMake(status.lastStop.stoppedAt))
+      )
+      expect(connection.queryByText('Platform reason') !== null).toBe(hasPlatformReason)
+    }
+  )
+
+  it('should show no stop for a server that has never run', async () => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      servers: listedWithRuthStatus(golden.serverStatuses.neverRun),
+    })
+
+    // Assert
+    expect(await screen.findByText("It hasn't run yet.")).toBeDefined()
+    const connection = within(sectionTitled('Connection'))
+    expect(connection.queryByText('Stopped')).toBeNull()
+    expect(connection.queryByText('Platform reason')).toBeNull()
+  })
+
+  it('should mark a failing /health, and only its failing checks, as failures', async () => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      health: fakeHealth(() =>
+        Response.json(
+          {
+            status: 'fail',
+            checks: { server: [healthCheck('pass')], connectivity: [healthCheck('fail')] },
+          },
+          { status: 503 }
+        )
+      ),
+    })
+
+    // Assert
+    const report = (await screen.findByText('Its /health answers fail.')).closest('li')
+    expect(report?.className).toMatch(/tone-danger/)
+    const checks = within(sectionTitled('Health checks'))
+    expect(checks.getByText('Connectivity').closest('li')?.className).toMatch(/tone-danger/)
+    expect(checks.getByText('Server').closest('li')?.className).not.toMatch(/tone-danger/)
+  })
+
+  it('should not mark a passing /health as a failure', async () => {
+    // Act
+    renderServerPage({ domain: 'ruth.relay.example.com' })
+
+    // Assert
+    const report = (await screen.findByText('Its /health answers pass.')).closest('li')
+    expect(report?.className).not.toMatch(/tone-danger/)
   })
 })

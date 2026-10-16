@@ -96,4 +96,35 @@ describe("the server page's Destructive actions tab", () => {
     )
     expect(screen.getByRole('heading', { name: 'Server' })).toBeDefined()
   })
+  it('should close the confirm once the host refuses, and ask again on Remove', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    const host = renderServerPage({
+      domain: 'lab.rathole.example.com',
+      tab: 'destructive-actions',
+      answers: { server_remove: () => Promise.reject(golden.commandErrors[2]) },
+    })
+    await user.click(await screen.findByRole('button', { name: 'Remove' }))
+    await user.type(
+      within(confirmDialog()).getByLabelText('Type lab.rathole.example.com to confirm'),
+      'lab.rathole.example.com'
+    )
+
+    // Act
+    await user.click(within(confirmDialog()).getByRole('button', { name: 'Remove' }))
+
+    // Assert
+    expect(await screen.findByRole('alert')).toBeDefined()
+    expect(openDialog()).toBeNull()
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+
+    // Assert
+    expect(within(confirmDialog()).getByRole('button', { name: 'Remove' })).toHaveProperty(
+      'disabled',
+      true
+    )
+    expect(host.seen.filter(({ command }) => command === 'server_remove')).toHaveLength(1)
+  })
 })

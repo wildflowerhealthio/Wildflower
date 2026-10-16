@@ -44,4 +44,4 @@ const useHiddenEnds = (ref: RefObject<HTMLElement | null>): HiddenEnds => {
   return hiddenEnds
 }
 
-export { useHiddenEnds, type HiddenEnds }
+export { readHiddenEnds, useHiddenEnds, type HiddenEnds }

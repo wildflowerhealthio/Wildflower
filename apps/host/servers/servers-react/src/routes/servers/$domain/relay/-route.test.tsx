@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { openTab, renderServerPage } from '../-server-page-test-utils.ts'
+import { openTab, renderServerPage, sectionTitled } from '../-server-page-test-utils.ts'
 import golden from '../../../../../../servers-wire-golden.json' with { type: 'json' }
 import { setUpEachBaseTest } from '../../../../test-utils/render-base.ts'
 
@@ -79,5 +79,47 @@ describe("the server page's Relay tab", () => {
     expect(within(warning).getByText(refusal.message)).toBeDefined()
     expect(screen.queryByRole('button', { name: /retry/i })).toBeNull()
     expect(document.body.textContent).not.toContain('tunnel-token-123')
+  })
+  it.each([
+    ['the Wildflower relay', { kind: 'wildflowerOfficial' }, 'Wildflower relay'],
+    [
+      'a self-hosted Wildflower relay',
+      golden.listedServers[0].relay,
+      'Self-hosted Wildflower relay at https://relay.example.com/',
+    ],
+    ['a rathole server', golden.listedServers[1].relay, 'Rathole server'],
+  ] as const)("should name %s as the server's relay", async (_, relay, text) => {
+    // Act
+    renderServerPage({
+      domain: 'ruth.relay.example.com',
+      tab: 'relay',
+      servers: [{ ...golden.listedServers[0], relay }, golden.listedServers[1]],
+    })
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Relay and tunnel' })).toBeDefined()
+    const relayRow = within(sectionTitled('Relay and tunnel')).getByText('Relay').closest('li')
+    expect(relayRow?.textContent).toContain(text)
+  })
+
+  it('should offer Save token only once a token other than spaces is entered', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    renderServerPage({ domain: 'ruth.relay.example.com', tab: 'relay' })
+    const field = await screen.findByLabelText('New tunnel token')
+    const save = screen.getByRole('button', { name: 'Save token' })
+    expect(save).toHaveProperty('disabled', true)
+
+    // Act
+    await user.type(field, '   ')
+
+    // Assert
+    expect(save).toHaveProperty('disabled', true)
+
+    // Act
+    await user.type(field, 'tunnel-token-123')
+
+    // Assert
+    expect(save).toHaveProperty('disabled', false)
   })
 })
