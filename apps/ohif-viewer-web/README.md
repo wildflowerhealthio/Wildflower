@@ -3,7 +3,7 @@
 The [OHIF Viewer](https://ohif.org) with the
 [FHIR Viewer mode](https://ohif.org/modes/fhir-viewer) (the
 `@ohif/fhir-viewer` extension from `node-on-fhir/ohif-fhir-viewer`), published
-at <https://wildflowerhealth.io/ohif-viewer>. It launches from an EHR with
+at <https://ohif-viewer.wildflowerhealth.io>. It launches from an EHR with
 SMART on FHIR URL parameters and reads imaging studies from the FHIR server
 that launched it.
 
@@ -48,26 +48,27 @@ so `vp run pack` and the wildflower-site-web assembly stay green.
 
 The published viewer is path-agnostic: the prebuilt bundle is built with a
 relative `PUBLIC_URL`, and `app-config.js` derives `routerBasename` from its
-own script URL. The same build therefore serves `wildflowerhealth.io/ohif-viewer/`
-and a PR preview under `…/staging/pr-N/ohif-viewer/`.
+own script URL. The same build therefore serves its own origin's root,
+`ohif-viewer.wildflowerhealth.io/`, and a PR preview under `…/staging/pr-N/ohif-viewer/`.
 
 The worklist at the basename is the launch entry point. An EHR launches
 
 ```text
-https://wildflowerhealth.io/ohif-viewer/?iss=<FHIR base URL>&launch=<launch id>
+https://ohif-viewer.wildflowerhealth.io/?iss=<FHIR base URL>&launch=<launch id>
 ```
 
 The FHIR data source (the default, per `app-config.js`) discovers the server's
 SMART configuration, redirects to authorize, and the server redirects back to
-`https://wildflowerhealth.io/ohif-viewer/` with the code. Picking a study on the
+`https://ohif-viewer.wildflowerhealth.io/` with the code. Picking a study on the
 worklist then navigates client-side into the `fhir-viewer` mode.
 
 GitHub Pages serves a site-wide `404.html` for unknown paths. That page probes
-ancestor directories for an `index.html`, finds `/ohif-viewer/index.html`, and
-redirects there with `?redirect=/fhir-viewer&…`. The redirect restoration block
+ancestor directories for an `index.html`, finds the viewer's (`/index.html` on
+its origin, `/staging/pr-N/ohif-viewer/index.html` in a preview), and
+redirects there with the requested path in `?redirect=`. The redirect restoration block
 in `config/app-config.js` reads that parameter and rewrites the URL with
 `history.replaceState` before the OHIF router initialises, so deep links like
-`/ohif-viewer/fhir-viewer?iss=…` work on a fresh page load.
+`/fhir-viewer?iss=…` work on a fresh page load.
 
 The first-party apps do the same through `restoreRedirectedUrl` in
 `branding-core` (`spa-redirect.ts`). This viewer cannot: the bundle is
@@ -92,7 +93,10 @@ The Wildflower server seeds what the viewer needs:
   another migration). `0029_rekey_ohif_viewer_clients` re-keys it to a
   random id (`941de68e6b59eb9dcc32df8ede89e636`) and the dev client to another,
   and apps migration `0020_rekey_ohif_viewer_clients` points the tiles and their
-  launch URLs' `clientId` at them.
+  launch URLs' `clientId` at them. `0036_add_app_origin_redirect_uris` adds
+  `https://ohif-viewer.wildflowerhealth.io/fhir-viewer` in front of that
+  redirect, and apps migration `0024_launch_apps_from_their_own_origins`
+  moves the tile's launch URL to the viewer's origin.
 
 `app-config.js` sends that client ID as `smartClientId` and a `smartScope` that
 must stay equal, element for element, to that client's `allowed_scopes` (and to

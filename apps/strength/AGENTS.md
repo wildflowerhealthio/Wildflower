@@ -2,7 +2,7 @@
 
 **Strength**, a SMART-on-FHIR strength-training app: the app itself is
 [`strength-web`](./strength-web/AGENTS.md), published at
-<https://wildflowerhealth.io/lifting/>, and the packages beside it are the
+<https://strength.wildflowerhealth.io/>, and the packages beside it are the
 pure core and the screens it composes.
 
 **Strength-training plans**: a person's lifting program as the FHIR R4

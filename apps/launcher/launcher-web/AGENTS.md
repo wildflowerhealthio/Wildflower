@@ -1,7 +1,7 @@
 # AGENTS.md — apps/launcher/launcher-web
 
 The launcher: the web app that manages a Wildflower server, published at
-`/launcher/`. Its entry, `main-web` (`src/main-web.tsx`), hands
+<https://launcher.wildflowerhealth.io/>. Its entry, `main-web` (`src/main-web.tsx`), hands
 `session/consented-entry-root.tsx`'s `ConsentedEntryRoot` a `bootApp` that
 redeems any sign-in and then calls `app-root.tsx`'s `buildAppTree`
 (`RenderAppOptions`). It runs cross-origin to its API server and signs in by

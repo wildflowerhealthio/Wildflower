@@ -50,7 +50,7 @@ The hosts replaced are matched case-insensitively, with any port and any subdoma
 
 `telemetry-web` builds the redactor once and rebuilds it only when `redactServerHost` learns a new host.
 
-Kept hosts (`localhost`, `tauri.localhost`, `wildflowerhealth.io`) stay as written.
+Kept hosts (`localhost`, `tauri.localhost`, `wildflowerhealth.io` and each hosted app's own subdomain of it, such as `launcher.wildflowerhealth.io`) stay as written.
 
 ## Consent lives in the origin's storage
 
@@ -90,7 +90,7 @@ The apps keep the plain `FetchHttpClient.layer`.
 
 ## The launcher
 
-`apps/launcher/launcher-web`'s web entry (`main-web`, the launcher published at `/launcher/`) asks first, like the SMART apps.
+`apps/launcher/launcher-web`'s web entry (`main-web`, the launcher published at `https://launcher.wildflowerhealth.io/`) asks first, like the SMART apps.
 
 It mounts `ConsentedEntryRoot`, which puts the whole app behind the gate: until the user answers, the page is the dialog alone, so no sign-in is redeemed and no router, query client, transport or Effect runtime exists. The answer, stored or new, starts telemetry through `useConsentedTelemetryStart` (tags `app: launcher-web` and `entry`) and only then boots the app, once: a stored yes has Sentry and the tracer provider running before the router is built. While the boot runs (on a return leg, it redeems the sign-in over the network), the page shows the brand bar over a loading line. A `CrashReportingBoundary` reports a boot that fails. The answer is kept in the page's `localStorage`. On the published site the launcher shares its origin with the SMART apps, so a visitor who answered in one of them is not asked again.
 

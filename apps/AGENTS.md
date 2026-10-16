@@ -82,7 +82,7 @@ unscoped name:
 | Rust crate (and binary)                    | `wildflowerhealthio-` + its folder's name, less a trailing `-rust`                                                                       | `wildflowerhealthio-relay-server`     |
 | A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `medication-interaction-core-js`      |
 | Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `medication-calendar-react`           |
-| Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/medications/`                       |
+| Published origin                           | `https://<product>.wildflowerhealth.io/` (`APP_SLUGS` in `branding-core`)                                                                | `medications.wildflowerhealth.io`     |
 | Homescreen tile id                         | `<product>`                                                                                                                              | `medications`                         |
 | Dev tile id and `dev-app-ports.json` key   | `<product>-dev`                                                                                                                          | `medications-dev`                     |
 | OAuth client id                            | random, from `openssl rand -hex 16`                                                                                                      | `9769f8b2…`                           |
@@ -105,9 +105,10 @@ names the iOS Xcode project and scheme, `gen/apple/host-app.xcodeproj`, the
 binary and the Linux AppImage after the package). No crate is published: the
 workspace sets `publish = false`.
 
-Two products are off the table's published paths: Plots is published at
-`/health-viewer/` and Strength at `/lifting/`, and their OAuth clients are
-named "Synthesized Health Viewer" and "Lifting". Their tile ids follow it.
+An app's path on the apex, `https://wildflowerhealth.io/<product>/`, serves
+only a redirect to its origin (`APEX_REDIRECT_PATHS` in `wildflower-site-web`).
+Two are off the pattern: Plots' is `/health-viewer/` and Strength's
+`/lifting/`.
 
 ### Moving a product in
 

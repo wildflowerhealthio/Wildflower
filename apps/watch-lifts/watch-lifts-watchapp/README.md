@@ -24,7 +24,7 @@ on the `PATH`. To build the bundle alone, `vp run -F @wildflowerhealthio/watch-l
 ## Settings
 
 The weights are set on the phone, on the page at
-`https://wildflowerhealth.io/watch-lifts/`: a table of every person's weight at
+`https://watch-lifts.wildflowerhealth.io/`: a table of every person's weight at
 every exercise, in whole pounds from 0 to 999, built from
 [`apps/watch-lifts/watch-lifts-web`](../watch-lifts-web/AGENTS.md). It follows
 developer.repebble.com's "App Configuration (Static)", as

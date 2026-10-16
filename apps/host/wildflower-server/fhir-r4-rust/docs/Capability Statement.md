@@ -32,7 +32,7 @@ HFS's built-in discovery doc is shaped for **SMART Backend Services** — it adv
 
 The document advertises only what is served. Every endpoint URL in it is a route on the server's origin (`wildflower-server-rust`'s `every_endpoint_smart_discovery_advertises_is_routed` walks them), except `management_endpoint`:
 
-- **`management_endpoint`** is the hosted Wildflower Authorization app, pointed at this server: `<AuthorizationAppBase>?iss=<issuer>`. The host sets the base (`authorization_app_base_url` in `tauri-shared-config.json`, `https://wildflowerhealth.io/authorization/`).
+- **`management_endpoint`** is the hosted Wildflower Authorization app, pointed at this server: `<AuthorizationAppBase>?iss=<issuer>`. The host sets the base (`authorization_app_base_url` in `tauri-shared-config.json`, `https://authorization.wildflowerhealth.io/`).
 - **`wildflower_authorization_api`**, a Wildflower extension field, is the authorization server's JSON API base, `<origin>/authorization/`. The app reads it, so it never hardcodes a server path.
 - **`grant_types_supported`** and **`token_endpoint_auth_methods_supported`** are what `/oauth/token` accepts: the `authorization_code`, `refresh_token` and device-code grants; a client secret in a Basic header or the form body, or `none` for a public client.
 - There is no `registration_endpoint`, `revocation_endpoint` or `introspection_endpoint`: none is served. `/authorization/revocations` takes `{jti, expiresAt}` or `{subject}`, not RFC 7009's `token`, so it isn't advertised as one.

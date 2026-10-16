@@ -89,8 +89,8 @@ The header toggle switches `<App />` between views over the same loaded
 
 `vp build` writes this package's default `dist/`, and that build is served in
 one place: **the published site**, at
-[`/medications`](https://wildflowerhealth.io/medications).
-`wildflower-site-web` copies `dist/` into the Pages artifact
+<https://medications.wildflowerhealth.io/>.
+`wildflower-site-web` publishes `dist/` as that origin's Pages site
 ([wildflower-site-web's README](../../wildflower-site/wildflower-site-web/README.md)). This is the
 **production** launch target: the `medications` registry row points at that
 URL. Nothing ships on device — in development the

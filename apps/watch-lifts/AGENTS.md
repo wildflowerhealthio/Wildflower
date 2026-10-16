@@ -12,8 +12,8 @@ every exercise, and what the PebbleKit JS does with what the page saves.
 - `watch-lifts-watchapp` — the Pebble app: its `package.json` is the Pebble
   manifest, with the PebbleKit JS build in `pkjs/` (`watch-lifts-pkjs`) and
   the host-side C tests in `test/` (`watch-lifts-test`).
-- `watch-lifts-web` — the settings page, published at `/watch-lifts` on the
-  GitHub Pages site.
+- `watch-lifts-web` — the settings page, published at
+  <https://watch-lifts.wildflowerhealth.io/>.
 - `watch-lifts-core-js` — the pure layer.
   Namespace modules, all re-exported from the package index. For the settings
   page: `LiftSettings` (the weights as an Effect Schema, whole pounds from 0

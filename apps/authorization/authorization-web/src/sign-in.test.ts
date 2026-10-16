@@ -139,7 +139,7 @@ const plainSmartConfiguration = {
 }
 
 /**
- * The published page at `/authorization/`, over a `fetch` that answers the
+ * The published page at its origin's root, over a `fetch` that answers the
  * SMART configuration with `smartConfiguration` and the token endpoint with a
  * bearer, and a `sessionStorage` kept in `store`.
  */

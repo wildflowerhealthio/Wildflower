@@ -2,8 +2,8 @@
 
 The settings page of the [WatchLifts](../watch-lifts-watchapp/README.md) Pebble
 watchapp: a table of every person's weight at every exercise, and a save that
-sends them to the watch. It is served from the published GitHub Pages site
-(`/watch-lifts`). The Pebble phone app opens it; there is no sign-in.
+sends them to the watch. It is served from its own origin on GitHub Pages
+(<https://watch-lifts.wildflowerhealth.io/>). The Pebble phone app opens it; there is no sign-in.
 
 `apps/fhir-sync-pebble/fhir-sync-pebble-web` is the template for the shape (a relative `base`,
 one `index.html` entry, a build into the package's own `dist/`). What differs:
@@ -26,8 +26,8 @@ nothing navigates away before the save.
   [`pebble-configuration`](../../../global/pebble/pebble-configuration/README.md)
   (`ReturnTarget`).
 
-The npm package is `watch-lifts-web`, and the published path segment is
-`watch-lifts` (`SECTION_PATHS.watchLifts`). It is not a SMART app, so it has no
+The npm package is `watch-lifts-web`, and its slug is `watch-lifts`
+(`APP_SLUGS.watchLifts`). It is not a SMART app, so it has no
 nav link, no app description, no OAuth client and no homescreen tile.
 
 ## The Pebble configuration handoff

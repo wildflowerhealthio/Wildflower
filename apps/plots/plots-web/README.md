@@ -97,11 +97,11 @@ alike; the page components do not change.
 
 `vp build` writes this package's default `dist/`, and that build is served in
 one place: **the published site**, at
-[`/health-viewer`](https://wildflowerhealth.io/health-viewer/).
-`wildflower-site-web` copies `dist/` into the Pages artifact
+<https://plots.wildflowerhealth.io/>.
+`wildflower-site-web` publishes `dist/` as that origin's Pages site
 ([wildflower-site-web's README](../../wildflower-site/wildflower-site-web/README.md)), and each pull request's
 `pr-preview.yml` build publishes the same tree under
-`https://wildflowerhealthio.github.io/staging/pr-<n>/health-viewer/`.
+`https://wildflowerhealthio.github.io/staging/pr-<n>/plots/`.
 The published page launches standalone against any SMART server, such as the
 [SMART Health IT sandbox](https://launch.smarthealthit.org/). Nothing ships on
 device.
@@ -122,11 +122,11 @@ clients to it.
   `0015_seed_health_viewer_app`, its URL as
   `0016_launch_first_party_apps_at_root` left it, re-keyed by
   `0019_rekey_site_apps` and `0023_rekey_plots_strength_apps`) launching
-  `https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}`.
+  `https://plots.wildflowerhealth.io/?launch={launch}&iss={origin}`.
   Its public OAuth
   client (the authorization server migration `0022_seed_health_viewer_app_client`, re-keyed by
   `0028_rekey_site_app_clients`) redirects to
-  `https://wildflowerhealth.io/health-viewer/`.
+  `https://plots.wildflowerhealth.io/`.
 - **`plots-dev`** is seeded in debug builds only, at runtime rather
   than by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to

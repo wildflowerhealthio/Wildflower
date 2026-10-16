@@ -1,6 +1,7 @@
 # AGENTS.md — apps/authorization
 
-**Wildflower Authorization**, published at `/authorization/`: where the Owner
+**Wildflower Authorization**, published at
+<https://authorization.wildflowerhealth.io/>: where the Owner
 manages what a Wildflower server has authorized. It is a SMART client of the
 server `?iss=` names, and every Wildflower server advertises it, pointed at
 itself, as its SMART `management_endpoint`

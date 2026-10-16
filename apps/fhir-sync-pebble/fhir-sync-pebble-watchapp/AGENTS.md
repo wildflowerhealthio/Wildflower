@@ -38,7 +38,7 @@ the host `cc`.
 ## Layout
 
 - `pkjs/src/index.ts` — the PebbleKit JS, thin glue over the core. Opens
-  `https://wildflowerhealth.io/fhir-sync-pebble/` on `showConfiguration`, and
+  `https://fhir-sync-pebble.wildflowerhealth.io/` on `showConfiguration`, and
   on `webviewclosed` decodes the response (`PhoneSettings.decodeResponse`),
   keeps the full settings and when they arrived in `localStorage`
   (`PhoneSettings.toStored`) and sends the watch its part

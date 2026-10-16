@@ -84,11 +84,13 @@ vp build    # production build to dist/
 
 ## Deployment
 
-This site is the root (`/`) of the published GitHub Pages artifact assembled by
-`apps/wildflower-site/wildflower-site-web`, which `.github/workflows/deploy-github-pages.yml` builds
-and publishes on pushes to `main` that touch any assembled section. It is
-served at the custom domain in `public/CNAME` (`wildflowerhealth.io`) — the
-assembly copies that file to the artifact root. The Vite `base` is relative
+This site is the root of the apex site, `https://wildflowerhealth.io`,
+assembled by `apps/wildflower-site/wildflower-site-web`, which
+`.github/workflows/deploy-github-pages.yml` builds and publishes on pushes to
+`main`. It is served at the custom domain in `public/CNAME`
+(`wildflowerhealth.io`) — the assembly copies that file to the apex site's
+root. Its links into the apps go to each app's own origin, or to the preview's
+build of it when the page is a PR preview's (`homepage-nav.ts`). The Vite `base` is relative
 (`./`) so the same build also works from the project URL while the domain's DNS
 propagates.
 

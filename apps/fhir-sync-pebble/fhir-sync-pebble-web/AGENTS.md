@@ -2,8 +2,8 @@
 
 FHIR Sync for Pebble: the settings page of a Pebble watchapp that syncs the
 steps, sleep and heart rate the Pebble already records to a FHIR server. It is
-a SMART-on-FHIR app served from the published GitHub Pages site
-(`/fhir-sync-pebble`). The Pebble phone app opens it; the user signs in to a
+a SMART-on-FHIR app served from its own origin on GitHub Pages
+(<https://fhir-sync-pebble.wildflowerhealth.io/>). The Pebble phone app opens it; the user signs in to a
 FHIR server, picks the patient from the server's list, and saves, which hands
 the watch what its PebbleKit JS needs to write that data as Observations on the
 patient's record.

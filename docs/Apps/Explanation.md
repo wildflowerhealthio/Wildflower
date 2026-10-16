@@ -12,7 +12,7 @@ reaches the patient's data; every app reaches the FHIR server at the server's
 public origin.
 
 The homescreen is the server's **launcher**, a web page (the hosted
-`launcher-web` at <https://wildflowerhealth.io/launcher> unless the server's
+`launcher-web` at <https://launcher.wildflowerhealth.io> unless the server's
 record names another), never a page the server serves. The base opens it with
 an EHR launch: the host mints a `launch` through the server's authorization
 server and opens the server's launcher URL with `iss`, the server's FHIR base,
@@ -27,8 +27,8 @@ Medications (`medications`), the Server Docs
 console (`server-docs`), Importer (`importer`), the OHIF imaging viewer
 (`ohif-viewer`), Strength (`strength`), Plots (`plots`) and the
 Synthetic Data Loader (`synthetic-data`) — are
-published to
-<https://wildflowerhealth.io> by `apps/wildflower-site/wildflower-site-web` and launched from there.
+published by `apps/wildflower-site/wildflower-site-web`, each on its own
+origin, `https://<app>.wildflowerhealth.io/`, and launched from there.
 Serving the deployed copy means a shipped app updates when the site deploys
 rather than when the user installs a new desktop build.
 
@@ -135,8 +135,9 @@ ones), each guarded by its own seed test, rather than by the database.
 
 A client's redirect URIs are absolute URLs, matched by exact equality at
 `/authorize`. Each first-party client registers its published callback page —
-the app root `https://wildflowerhealth.io/<app>/` for most apps,
-`https://wildflowerhealth.io/ohif-viewer/fhir-viewer` for OHIF; its `<app>-dev`
+the root of its own origin, `https://<app>.wildflowerhealth.io/`, for most apps,
+`https://ohif-viewer.wildflowerhealth.io/fhir-viewer` for OHIF, each followed
+by the app's path on `https://wildflowerhealth.io`, which redirects there; its `<app>-dev`
 sibling registers `http://localhost:{port}` plus the same path.
 
 ## Auth posture and the remote trust boundary

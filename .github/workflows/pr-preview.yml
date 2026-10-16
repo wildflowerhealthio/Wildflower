@@ -1,9 +1,11 @@
 name: PR Preview
 
 # Builds the same assembled static site as deploy-github-pages.yml
-# (apps/wildflower-site/wildflower-site-web/dist) and publishes it to the
+# (apps/wildflower-site/wildflower-site-web/dist) and publishes it as is to the
 # `wildflowerhealthio/staging` repo under `pr-<n>/` on the `main` branch, which
-# that repo serves via GitHub Pages. On PR close the preview is torn down.
+# that repo serves via GitHub Pages: every app of a preview sits in its slug's
+# directory under one origin, where the production deploy gives each its own.
+# On PR close the preview is torn down.
 #
 # Prerequisites (one-time):
 #   - The `wildflowerhealthio/staging` repo exists and has GitHub Pages

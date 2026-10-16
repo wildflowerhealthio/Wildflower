@@ -2,7 +2,7 @@
 
 **Medications**, a SMART-on-FHIR app for a patient's medication list: the app
 itself is [`medications-web`](./medications-web/README.md), published at
-<https://wildflowerhealth.io/medications/>, and the packages beside it are the
+<https://medications.wildflowerhealth.io/>, and the packages beside it are the
 two features only it uses — drug-interaction checking (**DDInter**) and
 patient-support / drug-sponsorship programs (**innoviCares**, **RxHelp**) — and
 its calendar screen. They build on the shared matching base and calendar

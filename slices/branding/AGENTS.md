@@ -4,13 +4,16 @@ Shared Wildflower chrome for every web surface — the marketing homepage and th
 apps alike: the full site header and footer, a slim brand bar for SMART-launched
 apps and the Tauri desktop shell, the app icon, and the layout tokens that
 position them. The homepage and the apps render the **same** `SiteHeader` /
-`SiteFooter`; only the `NavContext` differs, so links resolve root-relative on
-the homepage and absolute from an app.
+`SiteFooter`; only the `NavContext` differs, so links stay in the homepage's
+own copy of the site (the published one or a PR preview) and go to the
+published site from an app.
 
 ## Package roles
 
-- **`branding-core`** — the pure layer: site origin, section paths (the deploy
-  contract matching `apps/wildflower-site/wildflower-site-web/src/assembly.ts`), navigation link data
+- **`branding-core`** — the pure layer: the site origin, each hosted app's
+  slug (`APP_SLUGS`: its origin `https://<slug>.wildflowerhealth.io/`, its
+  directory in a PR preview, and its `wildflowerhealthio/<slug>-web` Pages
+  repository), navigation link data
   as discriminated unions (anchor, absolute, and section links), the `NavContext`
   type that lets the same header/footer resolve hrefs differently on the
   marketing site vs. from an app, the `anchorHref` / `sectionHref` / `navHref`
@@ -19,9 +22,9 @@ the homepage and absolute from an app.
   launch link text) that the homepage's app rows and each app's landing page
   both render. An entry's `launchesFromUrl` says the app's root starts its
   SMART launch from `?iss=` (and `&launch=`); `smartAppLaunchPages` lists
-  the entries that set it, with the root's URL under a site root, and
-  `siteRootFor` finds the root a section's copy is published under (a PR
-  preview's `/staging/pr-<n>/`, or the canonical site). The launcher's Home on
+  the entries that set it, with the root's URL in a copy of the site
+  (`sectionUrlIn`), and `siteRootFor` finds the copy a section's page belongs
+  to (a PR preview's `/staging/pr-<n>/`, or the published site). The launcher's Home on
   a plain SMART server lists its apps from these. Beside it, `TELEMETRY_CONSENT_COPY` is the telemetry consent
   dialog's words and the copy version a visitor's answer is stored with
   (`telemetry-react` renders it; raising the version asks everyone again), and
@@ -37,7 +40,9 @@ the homepage and absolute from an app.
 
 ## The 404 redirect
 
-GitHub Pages serves one `404.html` for every path it has no file for.
+GitHub Pages serves one `404.html` for every path it has no file for, and
+every published site (the apex, each app's own origin, the staging site of
+the PR previews) carries the same one.
 `apps/wildflower-site/wildflower-site-web/404.html` probes ancestor directories for an `index.html`,
 redirects to the deepest one that answers, and passes the requested path along,
 site-absolute, as `?redirect=<path>` (an app-relative route named like the
@@ -86,18 +91,22 @@ reason.
 ## The NavContext idea
 
 All chrome components take a `NavContext` that says where the marketing page
-lives relative to the current surface:
+lives relative to the current surface (`marketingBase`), and which copy of the
+site its section links go into (`siteRoot`, from `siteRootFor`):
 
-- `onMarketingSite` (`{ marketingBase: '' }`) — anchors resolve to fragment-only
-  hrefs like `#built`; section links resolve to root-relative paths like
-  `/medications` (so they keep working on preview/staging deploys).
-- `fromApp` (`{ marketingBase: 'https://wildflowerhealth.io/' }`) — anchors
+- `onMarketingSiteAt(pageUrl)` (`marketingBase: ''`) — anchors resolve to
+  fragment-only hrefs like `#built`. Section links go into the page's own copy
+  of the site: each app's own origin (`https://medications.wildflowerhealth.io/`)
+  on the published homepage, and the preview's build beside it
+  (`…/staging/pr-<n>/medications/`) on a PR preview's.
+  `marketing-site-web` passes `document.baseURI`.
+- `fromApp` (`marketingBase: 'https://wildflowerhealth.io/'`) — anchors
   resolve to absolute URLs like `https://wildflowerhealth.io/#built`; section
-  links to absolute URLs like `https://wildflowerhealth.io/medications` (so an
-  app served from its own origin points back at the canonical site).
+  links to each app's own origin, wherever the app is served.
 
-`navHref` dispatches over the link kind; the brand link and section links both
-check `marketingBase === ''` to choose between the same-origin and absolute form.
+`navHref` dispatches over the link kind; section links resolve through
+`sectionUrlIn`, and the brand link checks `marketingBase === ''` to choose
+between `#top` and the marketing site's URL.
 
 ## Consuming the styles
 
@@ -113,9 +122,12 @@ importing them (the first-party SMART apps rely on this).
 
 ## Deploy contract
 
-`SECTION_PATHS` in `branding-core/src/site.ts` must match the `destPath` values
-in `apps/wildflower-site/wildflower-site-web/src/assembly.ts`. A mismatch breaks cross-section links on
-the assembled GitHub Pages site. The core tests pin the exact five paths.
+`APP_SLUGS` in `branding-core/src/site.ts` names each hosted app's origin, its
+directory in the assembled site
+(`apps/wildflower-site/wildflower-site-web/src/assembly.ts`, whose tests hold
+every `destPath` to it), and its Pages repository, `wildflowerhealthio/<slug>-web`,
+whose push token `deploy-github-pages.yml` mints. The core tests pin the
+slugs.
 
 ## Guardrails
 
@@ -136,7 +148,7 @@ the assembled GitHub Pages site. The core tests pin the exact five paths.
   left out of `APP_SECTION_IDS`, the homepage's list.
 - **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
   apps.** `apps/wildflower-site/marketing-site-web` consumes them just like the apps do (passing
-  `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
+  `onMarketingSiteAt(document.baseURI)`); it no longer keeps a page-local header/footer. A change to
   the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
   this slice, and every surface picks it up. Both the homepage and the apps show
   `HEADER_NAV_LINKS` (direct links into the six apps); only href resolution

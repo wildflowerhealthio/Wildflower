@@ -17,7 +17,7 @@ Loader's Pebble generator writes through it too.
   (`fhir-sync-pebble-pkjs`) and the host-side C tests in `test/`
   (`fhir-sync-pebble-test`).
 - `fhir-sync-pebble-web` — the settings page, published at
-  `/fhir-sync-pebble` on the GitHub Pages site.
+  <https://fhir-sync-pebble.wildflowerhealth.io/>.
 - `fhir-sync-pebble-core` (in `slices/`) — the pure layer.
   Namespace modules, all re-exported from the package index. For the settings
   page: `PatientSummary` (a patient the settings page lists, read leniently
