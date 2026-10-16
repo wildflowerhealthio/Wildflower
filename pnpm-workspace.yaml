@@ -13,7 +13,7 @@ packages:
   - apps/fhir-sync-pebble/*
   # The Health Viewer: the app and the core, sources and chart it is built
   # from.
-  - apps/health-viewer/*
+  - apps/plots/*
   # The host: the Tauri host app and the packages it is built from.
   - apps/host/*
   - apps/host/recorder/*
@@ -26,7 +26,7 @@ packages:
   - apps/launcher/databases/*
   - apps/launcher/request-log/*
   # Lifting: the app and the core and screens it is built from.
-  - apps/lifting/*
+  - apps/strength/*
   # Medications: the app and the calendar, interaction and sponsorship
   # features only it uses.
   - apps/medications/*

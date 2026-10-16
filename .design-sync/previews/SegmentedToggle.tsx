@@ -23,7 +23,7 @@ export const Views = () => {
 
 type Range = '7d' | '30d' | '90d' | '1y'
 
-/** Short-label range presets (health-viewer), a middle option pressed. */
+/** Short-label range presets (plots), a middle option pressed. */
 export const RangePresets = () => {
   const [range, setRange] = useState<Range>('30d')
   return (

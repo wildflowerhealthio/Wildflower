@@ -17,10 +17,10 @@ import layout from './layout.module.css'
  * `Launcher` opens that landing page.
  */
 function Built(): JSX.Element {
-  const healthViewer = APP_DESCRIPTIONS.healthViewer
+  const plots = APP_DESCRIPTIONS.plots
   const medications = APP_DESCRIPTIONS.medications
   const pebble = APP_DESCRIPTIONS.fhirSyncPebble
-  const lifting = APP_DESCRIPTIONS.lifting
+  const strength = APP_DESCRIPTIONS.strength
 
   return (
     <section className={layout['section']} id="built">
@@ -36,15 +36,15 @@ function Built(): JSX.Element {
         </div>
         <div className={`${rows['rows']} ${rows['rows--after-intro']}`}>
           <AppRow
-            title={healthViewer.name}
-            status={healthViewer.status}
-            paragraphs={healthViewer.paragraphs}
+            title={plots.name}
+            status={plots.status}
+            paragraphs={plots.paragraphs}
             placeholderLabel="screenshot — meds and labs timeline"
             launcher={
               <Launcher
-                href={sectionHref(onMarketingSite, 'healthViewer')}
-                label={healthViewer.launch.label}
-                note={healthViewer.launch.note}
+                href={sectionHref(onMarketingSite, 'plots')}
+                label={plots.launch.label}
+                note={plots.launch.note}
               />
             }
           />
@@ -75,15 +75,15 @@ function Built(): JSX.Element {
             }
           />
           <AppRow
-            title={lifting.name}
-            status={lifting.status}
-            paragraphs={lifting.paragraphs}
+            title={strength.name}
+            status={strength.status}
+            paragraphs={strength.paragraphs}
             placeholderLabel="screenshot — today's workout, one set at a time"
             launcher={
               <Launcher
-                href={sectionHref(onMarketingSite, 'lifting')}
-                label={lifting.launch.label}
-                note={lifting.launch.note}
+                href={sectionHref(onMarketingSite, 'strength')}
+                label={strength.launch.label}
+                note={strength.launch.note}
               />
             }
           />

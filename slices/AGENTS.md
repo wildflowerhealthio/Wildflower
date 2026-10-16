@@ -33,14 +33,14 @@ The databases, the request log and the app registry are not slices: each was use
 
 The Health Viewer is not a slice: it plots a patient's own observations and
 medications on one time axis, and its packages live with the app in
-`apps/health-viewer` — see [apps/health-viewer/AGENTS.md](../apps/health-viewer/AGENTS.md). Like
+`apps/plots` — see [apps/plots/AGENTS.md](../apps/plots/AGENTS.md). Like
 `http-extraction`, it layers a domain-free vocabulary under per-domain packages:
-`health-viewer-fundamentals` holds the plot vocabulary and chart math (point and
-level series, value axes, the crosshair), `health-viewer-observations` reads FHIR
-`Observation`s into it, `health-viewer-medications` reads `medication-core`'s
-dose regimens into it, and `health-viewer-core-js` assembles the sources with the
+`plots-fundamentals` holds the plot vocabulary and chart math (point and
+level series, value axes, the crosshair), `plots-observations` reads FHIR
+`Observation`s into it, `plots-medications` reads `medication-core`'s
+dose regimens into it, and `plots-core-js` assembles the sources with the
 catalogue, range presets and the URL codec a shared link round-trips through —
-all pure functions, property-tested without a DOM. `health-viewer-react` draws
+all pure functions, property-tested without a DOM. `plots-react` draws
 the fundamentals' series with Observable Plot, importing no domain package.
 
 FHIR Sync for Pebble's watchapp and settings page live in
@@ -93,12 +93,12 @@ by `apps/synthetic-data/synthetic-data-web`.
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
 Lifting is not a slice either: a person's strength-training plan, its screens
-and the SMART app around them live together in `apps/lifting` — see
-[apps/lifting/AGENTS.md](../apps/lifting/AGENTS.md). Its `lifting-core-js` is
+and the SMART app around them live together in `apps/strength` — see
+[apps/strength/AGENTS.md](../apps/strength/AGENTS.md). Its `strength-core-js` is
 the plan as FHIR R4 resources (a `PlanDefinition`, the `ServiceRequest` the
 lifter works at per exercise, a `Procedure` per workout and an `Observation`
 per set) and the increment / hold / deload decision over completed workouts,
-as pure functions; its `lifting-react` renders the planned workout, the
+as pure functions; its `strength-react` renders the planned workout, the
 submitted workout's outcome, starting a program, the plan editor and the
 workout history over that core.
 

@@ -16,9 +16,9 @@ that owns it, and this package places those outputs at their public URLs.
 | `/server-docs`          | `server-docs-web` (`apps/server-docs-web`)                            |
 | `/ohif-viewer`          | `ohif-viewer-web` (`apps/ohif-viewer-web`)                            |
 | `/fhir-sync-pebble`     | `fhir-sync-pebble-web` (`apps/fhir-sync-pebble/fhir-sync-pebble-web`) |
-| `/health-viewer`        | `health-viewer-web` (`apps/health-viewer/health-viewer-web`)          |
+| `/health-viewer`        | `plots-web` (`apps/plots/plots-web`)                                  |
 | `/synthetic-data`       | `synthetic-data-web` (`apps/synthetic-data/synthetic-data-web`)       |
-| `/lifting`              | `lifting-web` (`apps/lifting/lifting-web`)                            |
+| `/lifting`              | `strength-web` (`apps/strength/strength-web`)                         |
 | `/watch-lifts`          | `watch-lifts-web` (`apps/watch-lifts/watch-lifts-web`)                |
 | `/launcher`             | `launcher-web` (`apps/launcher/launcher-web`, `dist-web`)             |
 | `/authorization`        | `authorization-web` (`apps/authorization/authorization-web`)          |

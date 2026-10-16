@@ -13,9 +13,9 @@ const SECTION_PATHS = {
   serverDocs: 'server-docs',
   ohifViewer: 'ohif-viewer',
   fhirSyncPebble: 'fhir-sync-pebble',
-  healthViewer: 'health-viewer',
+  plots: 'health-viewer',
   syntheticData: 'synthetic-data',
-  lifting: 'lifting',
+  strength: 'lifting',
   // The WatchLifts watchapp's settings page: not a SMART app, so it has no nav
   // link and no app description.
   watchLifts: 'watch-lifts',

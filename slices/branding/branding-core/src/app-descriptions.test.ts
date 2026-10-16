@@ -82,14 +82,14 @@ describe('smartAppLaunchPages', () => {
       },
       { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer/' },
       {
-        app: 'healthViewer',
+        app: 'plots',
         launchPageUrl: 'https://wildflowerhealth.io/health-viewer/',
       },
       {
         app: 'syntheticData',
         launchPageUrl: 'https://wildflowerhealth.io/synthetic-data/',
       },
-      { app: 'lifting', launchPageUrl: 'https://wildflowerhealth.io/lifting/' },
+      { app: 'strength', launchPageUrl: 'https://wildflowerhealth.io/lifting/' },
     ])
   })
 

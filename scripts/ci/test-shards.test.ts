@@ -152,7 +152,7 @@ describe('test-shards / selectionFor', () => {
   // A slice package two apps build on, and an app nothing depends on.
   const packages = [
     pkg('fhir-r4', 'slices/fhir/fhir-r4'),
-    pkg('lifting-web', 'apps/lifting/lifting-web', ['fhir-r4']),
+    pkg('strength-web', 'apps/strength/strength-web', ['fhir-r4']),
     pkg('launcher-web', 'apps/launcher/launcher-web', ['fhir-r4']),
     pkg('relay-react', 'apps/relay/relay-react'),
     pkg('kitchen-sink', 'global/kitchen-sink'),
@@ -169,8 +169,8 @@ describe('test-shards / selectionFor', () => {
 
   const everyShard = [
     'apps/launcher',
-    'apps/lifting',
     'apps/relay',
+    'apps/strength',
     'global',
     'scripts',
     'slices 1/2',
@@ -180,7 +180,7 @@ describe('test-shards / selectionFor', () => {
   it("runs a changed package's area, its dependers' areas, and scripts", () => {
     expect(shardsFor(['slices/fhir/fhir-r4/src/index.ts'])).toEqual([
       'apps/launcher',
-      'apps/lifting',
+      'apps/strength',
       'scripts',
       'slices 1/2',
       'slices 2/2',

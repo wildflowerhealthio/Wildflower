@@ -113,23 +113,19 @@ describe('site layout', () => {
   })
 
   it('serves the health viewer from /health-viewer with its one SMART entry', () => {
-    const [healthViewer] = resolveSections(repoRoot, outDir, [
-      sectionFor('@wildflowerhealthio/health-viewer-web'),
-    ])
-    expect(healthViewer?.from).toBe(
-      join(repoRoot, 'apps', 'health-viewer', 'health-viewer-web', 'dist')
-    )
-    expect(healthViewer?.to).toBe(join(outDir, 'health-viewer'))
-    expect(healthViewer?.requiredPaths).toEqual([join(outDir, 'health-viewer', 'index.html')])
+    const [plots] = resolveSections(repoRoot, outDir, [sectionFor('@wildflowerhealthio/plots-web')])
+    expect(plots?.from).toBe(join(repoRoot, 'apps', 'plots', 'plots-web', 'dist'))
+    expect(plots?.to).toBe(join(outDir, 'health-viewer'))
+    expect(plots?.requiredPaths).toEqual([join(outDir, 'health-viewer', 'index.html')])
   })
 
   it('serves the lifting app from /lifting with its one SMART entry', () => {
-    const [lifting] = resolveSections(repoRoot, outDir, [
-      sectionFor('@wildflowerhealthio/lifting-web'),
+    const [strength] = resolveSections(repoRoot, outDir, [
+      sectionFor('@wildflowerhealthio/strength-web'),
     ])
-    expect(lifting?.from).toBe(join(repoRoot, 'apps', 'lifting', 'lifting-web', 'dist'))
-    expect(lifting?.to).toBe(join(outDir, 'lifting'))
-    expect(lifting?.requiredPaths).toEqual([join(outDir, 'lifting', 'index.html')])
+    expect(strength?.from).toBe(join(repoRoot, 'apps', 'strength', 'strength-web', 'dist'))
+    expect(strength?.to).toBe(join(outDir, 'lifting'))
+    expect(strength?.requiredPaths).toEqual([join(outDir, 'lifting', 'index.html')])
   })
 
   it('serves the WatchLifts settings page from /watch-lifts with its one entry', () => {
@@ -290,7 +286,7 @@ describe('layout reconciliation with the packages it assembles', () => {
       appDir: 'fhir-sync-pebble/fhir-sync-pebble-web',
     },
     { packageName: '@wildflowerhealthio/watch-lifts-web', appDir: 'watch-lifts/watch-lifts-web' },
-    { packageName: '@wildflowerhealthio/lifting-web', appDir: 'lifting/lifting-web' },
+    { packageName: '@wildflowerhealthio/strength-web', appDir: 'strength/strength-web' },
   ] as const
 
   it.each(firstPartyApps)(

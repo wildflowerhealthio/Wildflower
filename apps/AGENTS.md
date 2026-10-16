@@ -14,10 +14,10 @@ An app that has packages built only for it lives with them in one folder per
 product, `apps/<product>/`: [`authorization`](./authorization/AGENTS.md),
 [`relay`](./relay/AGENTS.md),
 [`fhir-sync-pebble`](./fhir-sync-pebble/AGENTS.md),
-[`watch-lifts`](./watch-lifts/AGENTS.md), [`lifting`](./lifting/AGENTS.md),
+[`watch-lifts`](./watch-lifts/AGENTS.md), [`strength`](./strength/AGENTS.md),
 [`launcher`](./launcher/AGENTS.md), [`host`](./host/AGENTS.md),
 [`medications`](./medications/AGENTS.md),
-[`health-viewer`](./health-viewer/AGENTS.md) and
+[`plots`](./plots/AGENTS.md) and
 [`synthetic-data`](./synthetic-data/AGENTS.md).
 [`wildflower-site`](./wildflower-site/AGENTS.md) is a product folder for
 grouping alone: the site assembly and the marketing homepage share no package
@@ -40,7 +40,7 @@ check every `package.json` that depends on it, and every Rust crate that
 depends on its Rust half.
 
 - **A whole slice** folds in when nothing else uses any of it, in either
-  language (`slices/lifting` → `apps/lifting/`, `slices/relay` → `apps/relay/`,
+  language (`slices/lifting` → `apps/strength/`, `slices/relay` → `apps/relay/`,
   Rust binary included).
 - **A slice splits by language** when one product is the only consumer of its
   TypeScript packages and the host the only consumer of its Rust crates. The
@@ -74,20 +74,20 @@ Everything that identifies the product takes the folder's name. Every npm
 package is scoped `@wildflowerhealthio/`; every other identifier uses the
 unscoped name:
 
-| What                                       | Name                                                                                                                                     | Lifting                           |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Folder                                     | `apps/<product>/`                                                                                                                        | `apps/lifting/`                   |
-| The app's folder                           | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`; a store-shipped Tauri app: `<product>-app`) | `lifting-web`                     |
-| The app's npm package                      | `@wildflowerhealthio/<folder>`                                                                                                           | `@wildflowerhealthio/lifting-web` |
-| Rust crate (and binary)                    | `wildflowerhealthio-` + its folder's name, less a trailing `-rust`                                                                       | `wildflowerhealthio-relay-server` |
-| A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `lifting-core-js`                 |
-| Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `lifting-react`                   |
-| Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/lifting/`                       |
-| Homescreen tile id                         | `<product>`                                                                                                                              | `lifting`                         |
-| Dev tile id and `dev-app-ports.json` key   | `<product>-dev`                                                                                                                          | `lifting-dev`                     |
-| OAuth client id                            | random, from `openssl rand -hex 16`                                                                                                      | `bdf9fc5c…`                       |
-| Sentry DSN build variable                  | `VITE_SENTRY_DSN_<PACKAGE>`                                                                                                              | `VITE_SENTRY_DSN_LIFTING_WEB`     |
-| Sentry `app` tag and OpenTelemetry service | the unscoped package name                                                                                                                | `lifting-web`                     |
+| What                                       | Name                                                                                                                                     | Medications                           |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Folder                                     | `apps/<product>/`                                                                                                                        | `apps/medications/`                   |
+| The app's folder                           | `<product>-web` (a Pebble watchapp: `<product>-watchapp`; a Rust binary: `<product>-server`; a store-shipped Tauri app: `<product>-app`) | `medications-web`                     |
+| The app's npm package                      | `@wildflowerhealthio/<folder>`                                                                                                           | `@wildflowerhealthio/medications-web` |
+| Rust crate (and binary)                    | `wildflowerhealthio-` + its folder's name, less a trailing `-rust`                                                                       | `wildflowerhealthio-relay-server`     |
+| A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `medication-interaction-core-js`      |
+| Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `medication-calendar-react`           |
+| Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/medications/`                       |
+| Homescreen tile id                         | `<product>`                                                                                                                              | `medications`                         |
+| Dev tile id and `dev-app-ports.json` key   | `<product>-dev`                                                                                                                          | `medications-dev`                     |
+| OAuth client id                            | random, from `openssl rand -hex 16`                                                                                                      | `9769f8b2…`                           |
+| Sentry DSN build variable                  | `VITE_SENTRY_DSN_<PACKAGE>`                                                                                                              | `VITE_SENTRY_DSN_MEDICATIONS_WEB`     |
+| Sentry `app` tag and OpenTelemetry service | the unscoped package name                                                                                                                | `medications-web`                     |
 
 A client id is never a name: the consent prompts show the client's registered
 `name`, and nothing looks an app up by its client id, so a tile id and its
@@ -105,7 +105,8 @@ names the iOS Xcode project and scheme, `gen/apple/host-app.xcodeproj`, the
 binary and the Linux AppImage after the package). No crate is published: the
 workspace sets `publish = false`.
 
-Ids that predate this are tracked in
+Ids that predate this, among them the `health-viewer` and `lifting` ids
+Plots and Strength are still published and registered under, are tracked in
 [#1042](https://github.com/wildflowerhealthio/Wildflower/issues/1042).
 
 ### Moving a product in
