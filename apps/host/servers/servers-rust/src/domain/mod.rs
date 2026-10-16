@@ -13,8 +13,7 @@
 //! [`launch_url`], [`authorization_app_url`], [`sign_in_url`] and
 //! [`LaunchError`], and opening the consent waiting on a server at its page,
 //! [`consent_sign_in_url`]; [`PendingConsent`], the consent waiting on a
-//! server, named by its [`ConsentKey`], and [`pending_consent_server_count`],
-//! how many servers have one waiting; [`ServerStatus`], a server's
+//! server, named by its [`ConsentKey`]; [`ServerStatus`], a server's
 //! status on `UnitRunner` as the base receives it, with [`ServerStatusTracker`], and [`ListedServer`], a server as the
 //! base lists it; and [`notifications`], what the host notifies about its
 //! servers. Nothing here touches the network, and only [`remove_server`] the
@@ -26,7 +25,6 @@ mod enrolment_error;
 mod launch_error;
 mod listed_server;
 mod pending_consent;
-mod pending_consent_count;
 mod registry_error;
 mod run_policy_choice;
 mod server_change_error;
@@ -45,7 +43,6 @@ pub use enrolment_error::EnrolmentError;
 pub use launch_error::LaunchError;
 pub use listed_server::ListedServer;
 pub use pending_consent::{ConsentKey, PendingConsent};
-pub use pending_consent_count::pending_consent_server_count;
 pub use registry_error::RegistryError;
 pub use run_policy_choice::RunPolicyChoice;
 pub use server_change_error::ServerChangeError;
