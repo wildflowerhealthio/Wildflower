@@ -145,10 +145,7 @@ pub async fn server_open_pending_consent(
         domain,
         NativePageLaunchBrowser { app },
         servers.server_units.clone(),
-        ConsentViewOpening {
-            if_showing: IfShowing::TakeOver,
-            close_once_settled: CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
-        },
+        IfShowing::TakeOver,
     )
     .await
 }
@@ -184,10 +181,7 @@ pub async fn server_open_notified_consent(
         domain.to_owned(),
         NativePageLaunchBrowser { app },
         servers.server_units.clone(),
-        ConsentViewOpening {
-            if_showing: IfShowing::Skip,
-            close_once_settled: CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
-        },
+        IfShowing::Skip,
     )
     .await
 }
@@ -228,10 +222,7 @@ pub(crate) async fn open_consent_once_openable(
             domain.clone(),
             launch_browser.clone(),
             launch_presence.clone(),
-            ConsentViewOpening {
-                if_showing: IfShowing::Skip,
-                close_once_settled: CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
-            },
+            IfShowing::Skip,
         )
         .await;
         if opened.is_ok() || statuses_rx.changed().await.is_err() {
@@ -240,22 +231,30 @@ pub(crate) async fn open_consent_once_openable(
     }
 }
 
-/// How a consent opens in its view of the in-app browser.
-#[derive(Debug, Clone, Copy)]
-struct ConsentViewOpening {
-    /// What opens while a view of the same request shows.
-    if_showing: IfShowing,
-    /// Close the view once the run's [`ServerConsentWatcher`] says the request
-    /// is decided or expired.
-    close_once_settled: bool,
+/// Who closes a view of an in-app browser, and whether the base hears it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ViewCloses {
+    /// The base can close a view, and hears each close, the user's
+    /// included: iOS's in-app browser, so the base closes a consent's view
+    /// once its request is decided or expires, revealing the page under it.
+    ByTheBaseOrTheUser,
+    /// Only the user closes a view, and the base hears it: Android's Custom
+    /// Tab, whose close is reported as the app resumes from under it. The
+    /// page says the decision went through and the user leaves it.
+    ByTheUserOnly,
+    /// The base can't close a view, and never hears one close: a desktop's
+    /// default-browser tab.
+    Unheard,
 }
 
-/// Whether the base closes a consent's view once its request is decided or
-/// expires: on iOS, where the in-app browser can close the view it stacked
-/// over the page under it. A Custom Tab (Android) and a default-browser tab
-/// (desktop) can't be closed by the app, so there the page says the decision
-/// went through and the user leaves it.
-const CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED: bool = cfg!(target_os = "ios");
+/// Who closes a view of the in-app browser on this platform.
+const NATIVE_PAGE_VIEW_CLOSES: ViewCloses = if cfg!(target_os = "ios") {
+    ViewCloses::ByTheBaseOrTheUser
+} else if cfg!(target_os = "android") {
+    ViewCloses::ByTheUserOnly
+} else {
+    ViewCloses::Unheard
+};
 
 /// Hears a launch's in-app browser view's events: that its browser keeps the
 /// app alive under it (Android), and that it is gone.
@@ -301,6 +300,9 @@ pub(crate) trait LaunchBrowser: Send + Sync + 'static {
         &self,
         view: &str,
     ) -> impl Future<Output = Result<(), tauri_plugin_native_page_browser::Error>> + Send;
+
+    /// Who closes this browser's views, and whether the base hears it.
+    fn view_closes(&self) -> ViewCloses;
 }
 
 /// Hears each launch's in-app browser view open and close, so an open view
@@ -438,11 +440,13 @@ async fn open_authorization_app(
 /// server's status in `statuses`, with its certificate state (its run's, or
 /// what its cache in `data_root` says), is launchable, and tell
 /// `launch_presence` its view is open until the browser reports it closed, as
-/// a launch does. The consent shows in `launch_presence`'s [`ConsentViews`]
-/// until its view closes or the run's [`ServerConsentWatcher`] says the
-/// request is decided or expired; a consent showing there already opens
-/// nothing, unless `opening` says to open it even so. `opening` also says
-/// whether its view closes once the request settles.
+/// a launch does. The consent shows in `launch_presence`'s [`ConsentViews`],
+/// a consent showing there already opening as `if_showing` says, until its
+/// view closes, where `launch_browser` reports closes; where the base can
+/// close the view ([`ViewCloses::ByTheBaseOrTheUser`]), until the run's
+/// [`ServerConsentWatcher`] says the request is decided or expired too,
+/// closing the view then. Where no close is heard ([`ViewCloses::Unheard`]),
+/// it shows only while its view opens.
 async fn open_pending_consent(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,
@@ -450,7 +454,7 @@ async fn open_pending_consent(
     domain: String,
     launch_browser: impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
-    opening: ConsentViewOpening,
+    if_showing: IfShowing,
 ) -> Result<(), LaunchError> {
     let result = async {
         let server = listed_server(registry, data_root, statuses, domain.clone()).await?;
@@ -462,11 +466,11 @@ async fn open_pending_consent(
                     domain: domain.clone(),
                 }
             })?;
-        let Some(claim) = launch_presence.consent_views().claim(
-            &domain,
-            &pending_consent.key,
-            opening.if_showing,
-        ) else {
+        let Some(claim) =
+            launch_presence
+                .consent_views()
+                .claim(&domain, &pending_consent.key, if_showing)
+        else {
             return Ok(false);
         };
         let sign_in_url = wildflowerhealthio_servers::consent_sign_in_url(
@@ -482,15 +486,27 @@ async fn open_pending_consent(
             OpenMode::Stack,
         )
         .await?;
-        let settled = async move { consent_watcher.until_settled(pending_consent.key).await };
-        tokio::spawn(follow_consent_view(
-            launch_browser,
-            settled,
-            launch_view,
-            domain.clone(),
-            opening.close_once_settled,
-            claim,
-        ));
+        match launch_browser.view_closes() {
+            ViewCloses::ByTheBaseOrTheUser => {
+                let settled =
+                    async move { consent_watcher.until_settled(pending_consent.key).await };
+                tokio::spawn(close_once_settled_view(
+                    launch_browser,
+                    settled,
+                    launch_view,
+                    domain.clone(),
+                    claim,
+                ));
+            }
+            ViewCloses::ByTheUserOnly => {
+                tokio::spawn(async move {
+                    launch_view.closed.notified().await;
+                    drop(claim);
+                });
+            }
+            // Nothing would end a wait for its close.
+            ViewCloses::Unheard => drop(claim),
+        }
         Ok(true)
     }
     .await;
@@ -504,35 +520,29 @@ async fn open_pending_consent(
     result.map(|_opened| ())
 }
 
-/// Follow `launch_view`, the view a consent on the server `domain` opened in,
-/// in `launch_browser`, until it no longer shows its request, then release
-/// `claim`, the view's in its [`ConsentViews`]: once the view closes, or
-/// `settled`, the run's [`ServerConsentWatcher`] waiting on the request, says
-/// it is decided or expired, closing the view then with `close_once_settled`.
-/// A watch that fails, as when the run ends under the view, leaves the view
-/// showing the request until it closes. The outcome is logged.
-async fn follow_consent_view(
+/// Close `launch_view`, the view a consent on the server `domain` opened in,
+/// in `launch_browser` once `settled`, the run's [`ServerConsentWatcher`]
+/// waiting on the request, says it is decided or expired; stop waiting once
+/// the view closes first, or the watch fails, as when the run ends under the
+/// view. Then release `claim`, the view's in its [`ConsentViews`], so after a
+/// failed watch a later open may show the request again. The outcome is
+/// logged.
+async fn close_once_settled_view(
     launch_browser: impl LaunchBrowser,
     settled: impl Future<Output = Result<(), AuthorizationServerError>> + Send,
     launch_view: LaunchView,
     domain: String,
-    close_once_settled: bool,
     claim: ConsentViewClaim,
 ) {
     tokio::select! {
         settled = settled => match settled {
-            Ok(()) if close_once_settled => {
-                close_settled_view(&launch_browser, &launch_view.name, &domain).await;
-            }
-            Ok(()) => {}
+            Ok(()) => close_settled_view(&launch_browser, &launch_view.name, &domain).await,
             Err(error) => {
                 log::warn!("[servers] watching the consent opened on {domain} failed: {error}");
-                launch_view.closed.notified().await;
             }
         },
         () = launch_view.closed.notified() => {}
     }
-    // The view no longer shows the request.
     drop(claim);
 }
 
@@ -694,6 +704,10 @@ impl LaunchBrowser for NativePageLaunchBrowser {
                 view: view.to_owned(),
             })
             .await
+    }
+
+    fn view_closes(&self) -> ViewCloses {
+        NATIVE_PAGE_VIEW_CLOSES
     }
 }
 
@@ -869,6 +883,13 @@ mod tests {
             }
             Ok(())
         }
+
+        fn view_closes(&self) -> ViewCloses {
+            match self.phone {
+                Phone::Ios => ViewCloses::ByTheBaseOrTheUser,
+                Phone::Android => ViewCloses::ByTheUserOnly,
+            }
+        }
     }
 
     /// An in-app browser that can't open anything.
@@ -889,6 +910,38 @@ mod tests {
 
         async fn close(&self, _: &str) -> Result<(), tauri_plugin_native_page_browser::Error> {
             unreachable!("nothing opened, so nothing closes")
+        }
+
+        fn view_closes(&self) -> ViewCloses {
+            ViewCloses::Unheard
+        }
+    }
+
+    /// A desktop's default browser: each URL it opened, in a tab whose close
+    /// it never reports, and which it can't close.
+    #[derive(Clone, Default)]
+    struct DesktopBrowser {
+        opened: Arc<Mutex<Vec<Url>>>,
+    }
+
+    impl LaunchBrowser for DesktopBrowser {
+        async fn open(
+            &self,
+            url: Url,
+            _: &str,
+            _: OpenMode,
+            _: LaunchViewEvents,
+        ) -> Result<(), LaunchError> {
+            self.opened.lock().unwrap().push(url);
+            Ok(())
+        }
+
+        async fn close(&self, _: &str) -> Result<(), tauri_plugin_native_page_browser::Error> {
+            Err(tauri_plugin_native_page_browser::Error::CloseDefaultBrowserTab)
+        }
+
+        fn view_closes(&self) -> ViewCloses {
+            ViewCloses::Unheard
         }
     }
 
@@ -1391,13 +1444,12 @@ mod tests {
     }
 
     /// Open the consent waiting on the server [`DOMAIN`], whose statuses are
-    /// `statuses`, in `browser`, with `presence` hearing its view, closing the
-    /// view once the request settles when `close_once_settled`.
+    /// `statuses`, in `browser`, with `presence` hearing its view, as the
+    /// host opens a consent itself.
     async fn open_consent(
         statuses: &UnitStatuses<ServerDetail>,
         browser: impl LaunchBrowser,
         presence: &OpenLaunchViews,
-        close_once_settled: bool,
     ) -> Result<(), LaunchError> {
         let (data_root, registry) = registry();
         open_pending_consent(
@@ -1407,10 +1459,7 @@ mod tests {
             DOMAIN.to_owned(),
             browser,
             presence.clone(),
-            ConsentViewOpening {
-                if_showing: IfShowing::Skip,
-                close_once_settled,
-            },
+            IfShowing::Skip,
         )
         .await
     }
@@ -1429,6 +1478,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn an_app_s_waiting_consent_opens_at_its_card_through_the_sign_in() {
         let authorization_server = test_authorization_server();
+        authorization_server.park_consent("req-1");
         let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
 
@@ -1436,7 +1486,6 @@ mod tests {
             &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
-            false,
         )
         .await
         .unwrap();
@@ -1472,7 +1521,6 @@ mod tests {
             ),
             browser.clone(),
             &OpenLaunchViews::default(),
-            false,
         )
         .await
         .unwrap();
@@ -1497,7 +1545,6 @@ mod tests {
             &launchable(&authorization_server),
             browser.clone(),
             &presence,
-            true,
         )
         .await;
 
@@ -1523,7 +1570,6 @@ mod tests {
             &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
-            true,
         )
         .await
         .unwrap();
@@ -1554,7 +1600,6 @@ mod tests {
             &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
-            true,
         )
         .await
         .unwrap();
@@ -1606,7 +1651,7 @@ mod tests {
         let (consent_view, launch_view) = consent_over_a_launch(&browser, &presence).await;
         let (settle, settled) = tokio::sync::oneshot::channel::<()>();
         let views = ConsentViews::default();
-        let closing = tokio::spawn(follow_consent_view(
+        let closing = tokio::spawn(close_once_settled_view(
             browser.clone(),
             async move {
                 settled.await.unwrap();
@@ -1614,7 +1659,6 @@ mod tests {
             },
             consent_view,
             DOMAIN.to_owned(),
-            true,
             claim_in(&views),
         ));
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1641,12 +1685,11 @@ mod tests {
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            follow_consent_view(
+            close_once_settled_view(
                 browser.clone(),
                 async { Ok(()) },
                 consent_view,
                 DOMAIN.to_owned(),
-                true,
                 claim_in(&ConsentViews::default()),
             ),
         )
@@ -1662,12 +1705,11 @@ mod tests {
         let presence = OpenLaunchViews::default();
         let (consent_view, launch_view) = consent_over_a_launch(&browser, &presence).await;
         let views = ConsentViews::default();
-        let closing = tokio::spawn(follow_consent_view(
+        let closing = tokio::spawn(close_once_settled_view(
             browser.clone(),
             std::future::pending(),
             consent_view,
             DOMAIN.to_owned(),
-            true,
             claim_in(&views),
         ));
 
@@ -1682,35 +1724,32 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_consent_s_view_whose_run_ends_under_it_shows_its_request_until_it_closes() {
+    async fn a_failed_watch_releases_the_consent_s_claim_and_leaves_its_view() {
         let browser = PhoneBrowser::new(Phone::Ios);
         let presence = OpenLaunchViews::default();
-        let (consent_view, launch_view) = consent_over_a_launch(&browser, &presence).await;
+        let (consent_view, _launch_view) = consent_over_a_launch(&browser, &presence).await;
         let views = ConsentViews::default();
-        let following = tokio::spawn(follow_consent_view(
-            browser.clone(),
-            async {
-                Err(AuthorizationServerError::infrastructure(
-                    "watching a pending consent",
-                    "the authorization server stopped",
-                ))
-            },
-            consent_view,
-            DOMAIN.to_owned(),
-            true,
-            claim_in(&views),
-        ));
-        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // As when the run ends under the view.
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            close_once_settled_view(
+                browser.clone(),
+                async {
+                    Err(AuthorizationServerError::infrastructure(
+                        "watching a pending consent",
+                        "the authorization server stopped",
+                    ))
+                },
+                consent_view,
+                DOMAIN.to_owned(),
+                claim_in(&views),
+            ),
+        )
+        .await
+        .expect("it ends without waiting for the view to close");
+
         assert_eq!(browser.showing().len(), 2, "the view stays");
-        assert!(views.is_showing(DOMAIN, &consent_key()));
-
-        browser.close_top();
-
-        tokio::time::timeout(Duration::from_secs(5), following)
-            .await
-            .expect("the wait stops")
-            .unwrap();
-        assert_eq!(browser.showing(), [launch_view]);
         assert!(!views.is_showing(DOMAIN, &consent_key()));
     }
 
@@ -1723,7 +1762,6 @@ mod tests {
             &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
-            false,
         )
         .await
         .unwrap();
@@ -1749,7 +1787,6 @@ mod tests {
             &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
             browser.clone(),
             &presence,
-            false,
         )
         .await
         .unwrap();
@@ -1769,12 +1806,12 @@ mod tests {
         let statuses = launchable_waiting_on(&authorization_server, oauth_consent("req-1"));
         let browser = PhoneBrowser::new(Phone::Android);
         let presence = OpenLaunchViews::default();
-        open_consent(&statuses, browser.clone(), &presence, false)
+        open_consent(&statuses, browser.clone(), &presence)
             .await
             .unwrap();
 
         // As a tap on its notification does after the return it brought.
-        open_consent(&statuses, browser.clone(), &presence, false)
+        open_consent(&statuses, browser.clone(), &presence)
             .await
             .unwrap();
         assert_eq!(browser.opened().len(), 1, "it shows once");
@@ -1788,7 +1825,7 @@ mod tests {
         })
         .await
         .expect("its close is heard");
-        open_consent(&statuses, browser.clone(), &presence, false)
+        open_consent(&statuses, browser.clone(), &presence)
             .await
             .unwrap();
         assert_eq!(
@@ -1799,41 +1836,13 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_settled_consent_no_longer_shows_though_its_view_stays() {
-        let authorization_server = test_authorization_server();
-        let browser = PhoneBrowser::new(Phone::Android);
-        let presence = OpenLaunchViews::default();
-
-        // "req-1" isn't pending on the authorization server: decided, as far
-        // as its watcher can tell.
-        open_consent(
-            &launchable_waiting_on(&authorization_server, oauth_consent("req-1")),
-            browser.clone(),
-            &presence,
-            false,
-        )
-        .await
-        .unwrap();
-
-        let key = consent_key();
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while presence.consent_views().is_showing(DOMAIN, &key) {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .expect("its settling is heard");
-        assert_eq!(browser.showing().len(), 1, "a Custom Tab stays");
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
     async fn the_owner_s_open_opens_a_consent_even_while_it_shows() {
         let authorization_server = test_authorization_server();
         authorization_server.park_consent("req-1");
         let statuses = launchable_waiting_on(&authorization_server, oauth_consent("req-1"));
         let browser = PhoneBrowser::new(Phone::Android);
         let presence = OpenLaunchViews::default();
-        open_consent(&statuses, browser.clone(), &presence, false)
+        open_consent(&statuses, browser.clone(), &presence)
             .await
             .unwrap();
 
@@ -1845,15 +1854,33 @@ mod tests {
             DOMAIN.to_owned(),
             browser.clone(),
             presence.clone(),
-            ConsentViewOpening {
-                if_showing: IfShowing::TakeOver,
-                close_once_settled: false,
-            },
+            IfShowing::TakeOver,
         )
         .await
         .unwrap();
 
         assert_eq!(browser.opened().len(), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn on_the_desktop_a_consent_shows_only_while_its_tab_opens() {
+        let authorization_server = test_authorization_server();
+        authorization_server.park_consent("req-1");
+        let statuses = launchable_waiting_on(&authorization_server, oauth_consent("req-1"));
+        let browser = DesktopBrowser::default();
+        let presence = OpenLaunchViews::default();
+        open_consent(&statuses, browser.clone(), &presence)
+            .await
+            .unwrap();
+
+        assert!(
+            !presence.consent_views().is_showing(DOMAIN, &consent_key()),
+            "no close of its tab would ever release it"
+        );
+        open_consent(&statuses, browser.clone(), &presence)
+            .await
+            .unwrap();
+        assert_eq!(browser.opened.lock().unwrap().len(), 2);
     }
 
     /// The servers' statuses with the server running over
@@ -1964,13 +1991,7 @@ mod tests {
             detail.health = None;
         });
 
-        let refused = open_consent(
-            &statuses,
-            browser.clone(),
-            &OpenLaunchViews::default(),
-            true,
-        )
-        .await;
+        let refused = open_consent(&statuses, browser.clone(), &OpenLaunchViews::default()).await;
 
         assert!(
             matches!(&refused, Err(LaunchError::NotYetProbed { domain }) if domain == DOMAIN),
