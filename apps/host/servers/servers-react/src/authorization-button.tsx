@@ -10,8 +10,8 @@ import { useAuthorizationAppOpening } from './authorization-app-opening.ts'
  *
  * @remarks
  * While unavailable it is disabled, described then by
- * `statusDescriptionId`'s element; Launch beside it says why when the status
- * doesn't. It reports each open's start to `onActionStart` and the host's
+ * `statusDescriptionId`'s element; the card says why above it when the
+ * status doesn't. It reports each open's start to `onActionStart` and the host's
  * refusal to `onError`, for its parent to show above the row of buttons it
  * sits in.
  */

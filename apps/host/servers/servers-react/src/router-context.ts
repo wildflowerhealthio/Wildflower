@@ -57,8 +57,8 @@ interface RouterContext {
    */
   readonly defaultAuthorizationUrl: string
   /**
-   * The servers' pending start-and-launches, which every Launch of a server
-   * reads, so a wait outlives the screen it began on.
+   * The servers' pending start-and-launches, which a server's card and
+   * page both drive, so a wait outlives the screen it began on.
    */
   readonly pendingLaunches: PendingLaunches
 }

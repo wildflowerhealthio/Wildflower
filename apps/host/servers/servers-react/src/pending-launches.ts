@@ -31,7 +31,7 @@ type PendingLaunch =
 /**
  * The servers' pending start-and-launches, by domain: one store for the base,
  * in the router context, so a wait outlives the Launch that began it, as when
- * Edit opens the server's page, whose Launch shows the same wait.
+ * Edit opens the server's page, which drives the same wait.
  */
 interface PendingLaunches {
   /** The server `domain`'s pending launch, or `undefined`. */
