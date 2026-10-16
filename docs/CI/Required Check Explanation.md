@@ -40,6 +40,13 @@ request, prefixed with the area, such as `CI / Rust / Lint` or
 result of its whole workflow: one failed job inside it, including one leg of a
 matrix such as the TypeScript test shards, fails the area and so `Required`.
 
+`Rust Dependency Check` (`rust-deny` in `ci.yml`) is the one exception: it runs
+on Rust pull requests but sits outside `Required`'s `needs`. A new RustSec
+advisory or a yanked release lands on unchanged dependencies, so gating on it
+would block every Rust pull request until someone triages it. It still reports a
+failed check on the pull request, and `advisories-rust.yml` runs the advisory
+half weekly.
+
 ## Why `always()` and not `!cancelled()`
 
 GitHub treats a skipped required check as passing. If `Required` ran only on

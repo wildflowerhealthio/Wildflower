@@ -189,24 +189,3 @@ jobs:
         env:
           FILTER: ${{ matrix.filter }}
         run: ./scripts/checks/rust.sh test-shard "$FILTER"
-
-  # Supply-chain gate. Kept as its own job because cargo-deny doesn't reuse the
-  # compiled-workspace artifacts above, so merging it in would only serialize
-  # unrelated work. cargo-deny-action runs in its own container and compiles
-  # nothing, so this job configures no Rust cache.
-  deny:
-    name: Dependency Check
-    if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: cargo-deny — advisories + sources
-        # Security advisories (RustSec) and source pinning (crates.io only).
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check advisories sources
-      - name: cargo-deny — licenses + bans
-        # License allowlist + duplicate/banned-crate policy from deny.toml.
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check licenses bans
