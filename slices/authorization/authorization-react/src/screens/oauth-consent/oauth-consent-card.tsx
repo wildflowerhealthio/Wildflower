@@ -286,6 +286,15 @@ const OAuthConsentCard = ({
       <ScopePicker subjectName={appName} request={request} draft={draft} onDraftChange={setDraft} />
 
       <div className={styles['footer']}>
+        {/* Stopgap until the FHIR server enforces patient compartments (#416):
+            a patient-context scope is checked like a system one. Tracks the
+            draft, so it goes once every patient-context scope is unticked. */}
+        {draftHasPatientContextScope ? (
+          <p role="note" className={styles['patient-scope-warning']}>
+            This server can't yet limit an app to one patient. If you allow this, the app can read
+            the records it asks for for every patient on this server.
+          </p>
+        ) : null}
         <div className={styles['buttons']}>
           <button
             type="button"

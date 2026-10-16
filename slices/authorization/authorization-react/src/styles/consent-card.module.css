@@ -158,6 +158,12 @@
   border-top: 1.5px solid var(--color-divider);
 }
 
+/* The patient-scope stopgap warning (#416), above the actions. */
+.patient-scope-warning {
+  margin: 0;
+  color: var(--color-neutral-5);
+}
+
 .buttons {
   display: flex;
   gap: var(--space-5);
