@@ -104,20 +104,14 @@ const relayConnectionItems = ({ status, tunnelName }: ListedServer.Type): readon
 
 /** The rows for how a stopped server's latest run stopped: the platform's reason, and when. */
 const lastStopItems = (status: ServerStatus.Type): readonly ItemListItem[] =>
-  ServerStatus.lastStopOf(status).pipe(
-    Option.map((stop): readonly ItemListItem[] => [
-      ...stop.platformReason.pipe(
-        Option.map((reason): ItemListItem => ({
-          id: 'platform-reason',
-          title: 'Platform reason',
-          subtitle: PLATFORM_STOP_REASON_TEXT[reason],
-        })),
-        Option.toArray
-      ),
-      { id: 'stopped-at', title: 'Stopped', subtitle: formatInstant(stop.stoppedAt) },
-    ]),
-    Option.getOrElse((): readonly ItemListItem[] => [])
-  )
+  Option.toArray(ServerStatus.lastStopOf(status)).flatMap((stop): readonly ItemListItem[] => [
+    ...Option.toArray(stop.platformReason).map((reason): ItemListItem => ({
+      id: 'platform-reason',
+      title: 'Platform reason',
+      subtitle: PLATFORM_STOP_REASON_TEXT[reason],
+    })),
+    { id: 'stopped-at', title: 'Stopped', subtitle: formatInstant(stop.stoppedAt) },
+  ])
 
 /**
  * The Health report row: the overall status `/health` answered with, or

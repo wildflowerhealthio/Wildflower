@@ -108,32 +108,24 @@ const certificateItems = (
     title: 'Certificate authority',
     subtitle: CERTIFICATE_AUTHORITY_TEXT[certificateAuthority],
   },
-  ...(certificate.issuer === certificateAuthority
-    ? []
-    : [
-        {
-          id: 'certificate-issuer',
-          title: 'State shown for',
-          subtitle: CERTIFICATE_AUTHORITY_TEXT[certificate.issuer],
-        },
-      ]),
-  ...certificate.held.pipe(
-    Option.map((held): readonly ItemListItem[] => [
-      { id: 'valid-from', title: 'Valid from', subtitle: formatInstant(held.notBefore) },
-      { id: 'valid-until', title: 'Valid until', subtitle: formatInstant(held.notAfter) },
-      { id: 'fingerprint', title: 'SHA-256 fingerprint', subtitle: held.fingerprint },
-    ]),
-    Option.getOrElse((): readonly ItemListItem[] => [])
-  ),
-  ...certificate.lastError.pipe(
-    Option.map((error): ItemListItem => ({
-      id: 'last-error',
-      title: 'Last error',
-      subtitle: certificateErrorText(error, retryHasPassed),
-      tone: 'danger',
-    })),
-    Option.toArray
-  ),
+  ...Option.toArray(
+    Option.liftPredicate(certificate.issuer, (issuer) => issuer !== certificateAuthority)
+  ).map((issuer): ItemListItem => ({
+    id: 'certificate-issuer',
+    title: 'State shown for',
+    subtitle: CERTIFICATE_AUTHORITY_TEXT[issuer],
+  })),
+  ...Option.toArray(certificate.held).flatMap((held): readonly ItemListItem[] => [
+    { id: 'valid-from', title: 'Valid from', subtitle: formatInstant(held.notBefore) },
+    { id: 'valid-until', title: 'Valid until', subtitle: formatInstant(held.notAfter) },
+    { id: 'fingerprint', title: 'SHA-256 fingerprint', subtitle: held.fingerprint },
+  ]),
+  ...Option.toArray(certificate.lastError).map((error): ItemListItem => ({
+    id: 'last-error',
+    title: 'Last error',
+    subtitle: certificateErrorText(error, retryHasPassed),
+    tone: 'danger',
+  })),
 ]
 
 /**
