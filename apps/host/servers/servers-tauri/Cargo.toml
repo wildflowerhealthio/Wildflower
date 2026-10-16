@@ -8,7 +8,8 @@ publish.workspace = true
 # `TauriUnitRunner`, the notifications about them, and the base's commands over
 # `wildflowerhealthio-servers`, which holds every decision and its tests.
 [dependencies]
-# A server config builder's error, which fails the run it was building.
+# A server config builder's error, which fails the run it was building, and
+# the app badge's, which is logged.
 anyhow.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"

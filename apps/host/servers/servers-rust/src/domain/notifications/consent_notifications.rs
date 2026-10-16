@@ -118,6 +118,11 @@ const NOTIFIED_PER_SERVER: usize = 32;
 /// can come back, keeping at most [`NOTIFIED_PER_SERVER`] meanwhile. A run
 /// that isn't reporting, as while it stops or starts, leaves them, and its
 /// notification, as they are. A server that is removed is forgotten.
+///
+/// The servers it remembers requests for are the ones with a request
+/// pending, as their run last reported:
+/// [`pending_server_count`](Self::pending_server_count), what the app icon's
+/// badge shows.
 #[derive(Debug)]
 pub struct ConsentNotificationCoalescer {
     /// Which requests open.
@@ -128,7 +133,8 @@ pub struct ConsentNotificationCoalescer {
     /// ([`ConsentOpening::FirstAtStart`]).
     opened_at_start: bool,
     /// The keys of the requests each server notified for, or opened, earliest
-    /// first.
+    /// first, for each server with a request pending as its run last
+    /// reported.
     notified: BTreeMap<UnitId, VecDeque<ConsentKey>>,
     /// The key of the request each server's notification announces, for each
     /// server with one posted and not withdrawn.
@@ -244,6 +250,22 @@ impl ConsentNotificationCoalescer {
         changes.withdrawn.sort();
         changes
     }
+
+    /// How many servers have a request pending, as their run last reported
+    /// to [`record`](Self::record): what the app icon's badge shows.
+    ///
+    /// A server counts from its run's report of a pending request until its
+    /// run reports nothing pending or it is removed, when its notification is
+    /// withdrawn too. A run that isn't reporting, as while it stops or
+    /// starts, keeps its server counted, as it keeps the server's
+    /// notification posted. A server counts once however many requests wait
+    /// on it, and a request that didn't notify counts all the same: one the
+    /// Owner's own browser made, one opened at the app's start, or one that
+    /// came back once a newer one was decided.
+    #[must_use]
+    pub fn pending_server_count(&self) -> usize {
+        self.notified.len()
+    }
 }
 
 #[cfg(test)]
@@ -252,7 +274,7 @@ mod tests {
     use wildflowerhealthio_unit_runner::{RunState, UnitStatus};
 
     use super::*;
-    use crate::domain::server_status::tests::{LAB, RUTH};
+    use crate::domain::server_status::tests::{statuses, LAB, RUTH};
 
     /// A phone's coalescer whose one open at the app's start is spent, so it
     /// only notifies.
@@ -291,15 +313,6 @@ mod tests {
             user_code: user_code.to_owned(),
             client_name: "Pebble".to_owned(),
         }
-    }
-
-    fn statuses(
-        entries: impl IntoIterator<Item = (&'static str, UnitStatus<ServerDetail>)>,
-    ) -> UnitStatuses<ServerDetail> {
-        entries
-            .into_iter()
-            .map(|(domain, status)| (UnitId::from(domain), status))
-            .collect()
     }
 
     /// The domain and key of each request, to compare at a glance.
@@ -590,6 +603,70 @@ mod tests {
             summary(&requests.posted),
             [(LAB, oauth_key("a")), (RUTH, oauth_key("a"))]
         );
+    }
+
+    #[test]
+    fn each_server_with_a_request_pending_counts_once() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([
+            (RUTH, running_with(Some(oauth("a")))),
+            (LAB, running_with(Some(device("WXYZ-1234")))),
+        ]));
+        assert_eq!(coalescer.pending_server_count(), 2);
+
+        coalescer.record(&statuses([
+            (RUTH, running_with(Some(oauth("b")))),
+            (LAB, running_with(Some(device("WXYZ-1234")))),
+        ]));
+        assert_eq!(coalescer.pending_server_count(), 2, "a newer request");
+    }
+
+    #[test]
+    fn a_server_counts_until_nothing_is_pending_or_it_is_removed() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([
+            (RUTH, running_with(Some(oauth("a")))),
+            (LAB, running_with(Some(oauth("b")))),
+        ]));
+
+        let settled = coalescer.record(&statuses([
+            (RUTH, running_with(None)),
+            (LAB, running_with(Some(oauth("b")))),
+        ]));
+        assert_eq!(settled.withdrawn, [RUTH]);
+        assert_eq!(coalescer.pending_server_count(), 1);
+
+        let removed = coalescer.record(&statuses([(RUTH, running_with(None))]));
+        assert_eq!(removed.withdrawn, [LAB]);
+        assert_eq!(coalescer.pending_server_count(), 0);
+    }
+
+    #[test]
+    fn a_run_not_reporting_keeps_its_server_counted() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+
+        let stopped = coalescer.record(&statuses([(RUTH, UnitStatus::never_run())]));
+        assert!(stopped.withdrawn.is_empty());
+        assert_eq!(coalescer.pending_server_count(), 1);
+    }
+
+    #[test]
+    fn a_run_not_reporting_from_the_start_does_not_count() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([(RUTH, UnitStatus::never_run())]));
+        assert_eq!(coalescer.pending_server_count(), 0);
+    }
+
+    #[test]
+    fn a_request_that_did_not_notify_counts() {
+        let mut coalescer = ConsentNotificationCoalescer::new(ConsentOpening::FirstAtStart);
+        let start = coalescer.record(&statuses([
+            (RUTH, running_with(Some(oauth("a")))),
+            (LAB, running_with(Some(oauth_from_owner_browser("b")))),
+        ]));
+        assert!(start.posted.is_empty());
+        assert_eq!(coalescer.pending_server_count(), 2);
     }
 
     #[test]

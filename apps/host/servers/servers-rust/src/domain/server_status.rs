@@ -742,7 +742,8 @@ pub(crate) mod tests {
         }
     }
 
-    fn statuses(
+    /// The servers' statuses, each under its domain.
+    pub(crate) fn statuses(
         entries: impl IntoIterator<Item = (&'static str, UnitStatus<ServerDetail>)>,
     ) -> UnitStatuses<ServerDetail> {
         entries

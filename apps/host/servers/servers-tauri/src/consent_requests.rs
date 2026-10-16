@@ -8,6 +8,8 @@
 //! reports no taps, each request opens in the default browser as it
 //! notifies. A request the Owner's own browser made does neither. Which
 //! request notifies or opens is [`ConsentNotificationCoalescer`]'s decision.
+//! The same coalescer counts the servers with a request pending, which the
+//! app icon's badge shows.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,6 +23,7 @@ use wildflowerhealthio_servers::{
 use wildflowerhealthio_tauri_unit_runner::UnitStatuses;
 
 use crate::notifications::{post_notification, withdraw_consent_notification};
+use crate::pending_consent_badge::{PendingConsentBadge, ShownBadgeCount};
 use crate::ServerUnits;
 
 /// Which consent requests open on this platform: on a phone, a tap opens
@@ -96,35 +99,36 @@ impl ConsentRequestNotifier for AppConsentRequestNotifier {
     }
 }
 
-/// Announce and open each consent request through `notifier`, every time
-/// `TauriUnitRunner`'s statuses change, as [`ConsentNotificationCoalescer`]
-/// decides for [`CONSENT_OPENING`].
+/// Announce and open each consent request through `notifier`, and show on
+/// `badge` how many servers have one pending, every time `TauriUnitRunner`'s
+/// statuses change, as [`ConsentNotificationCoalescer`] decides for
+/// [`CONSENT_OPENING`].
 pub(crate) async fn notify_consent_requests(
     notifier: impl ConsentRequestNotifier,
+    badge: impl PendingConsentBadge,
     statuses: watch::Receiver<UnitStatuses<ServerDetail>>,
 ) {
-    notify_and_open_consent_requests(notifier, statuses, CONSENT_OPENING).await;
+    notify_and_open_consent_requests(notifier, badge, statuses, CONSENT_OPENING).await;
 }
 
 /// [`notify_consent_requests`], opening as `opening` says.
 async fn notify_and_open_consent_requests(
     notifier: impl ConsentRequestNotifier,
+    badge: impl PendingConsentBadge,
     mut statuses: watch::Receiver<UnitStatuses<ServerDetail>>,
     opening: ConsentOpening,
 ) {
     let mut coalescer = ConsentNotificationCoalescer::new(opening);
+    let mut shown_badge_count = ShownBadgeCount::default();
     loop {
         let current = statuses.borrow_and_update().clone();
-        let changes = coalescer.record(&current);
-        for domain in &changes.withdrawn {
-            notifier.withdraw(domain);
-        }
-        for request in &changes.posted {
-            notifier.notify(request);
-        }
-        for request in &changes.opened {
-            notifier.open(request);
-        }
+        record_statuses(
+            &mut coalescer,
+            &mut shown_badge_count,
+            &current,
+            &notifier,
+            &badge,
+        );
         if statuses.changed().await.is_err() {
             log::error!(
                 "[servers] the unit runner's statuses closed; consent notifications stopped"
@@ -132,6 +136,29 @@ async fn notify_and_open_consent_requests(
             return;
         }
     }
+}
+
+/// Withdraw, announce and open through `notifier` what `coalescer` decides
+/// from `statuses`, then show on `badge` how many servers have a request
+/// pending.
+fn record_statuses(
+    coalescer: &mut ConsentNotificationCoalescer,
+    shown_badge_count: &mut ShownBadgeCount,
+    statuses: &UnitStatuses<ServerDetail>,
+    notifier: &impl ConsentRequestNotifier,
+    badge: &impl PendingConsentBadge,
+) {
+    let changes = coalescer.record(statuses);
+    for domain in &changes.withdrawn {
+        notifier.withdraw(domain);
+    }
+    for request in &changes.posted {
+        notifier.notify(request);
+    }
+    for request in &changes.opened {
+        notifier.open(request);
+    }
+    shown_badge_count.show_on(badge, coalescer.pending_server_count());
 }
 
 #[cfg(test)]
@@ -143,6 +170,7 @@ mod tests {
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
 
     use super::*;
+    use crate::pending_consent_badge::tests::RecordedCounts;
 
     const RUTH: &str = "ruth.relay.example.com";
 
@@ -244,6 +272,7 @@ mod tests {
         let recorded = RecordedRequests::default();
         let notifying = tokio::spawn(notify_and_open_consent_requests(
             recorded.clone(),
+            RecordedCounts::default(),
             statuses_rx,
             ConsentOpening::AsNotified,
         ));
@@ -275,6 +304,7 @@ mod tests {
         let recorded = RecordedRequests::default();
         let notifying = tokio::spawn(notify_and_open_consent_requests(
             recorded.clone(),
+            RecordedCounts::default(),
             statuses_rx,
             ConsentOpening::FirstAtStart,
         ));
@@ -290,5 +320,47 @@ mod tests {
 
         assert_eq!(recorded.keys(), [oauth("b")]);
         assert_eq!(recorded.opened_keys(), [oauth("a")]);
+    }
+
+    #[test]
+    fn the_badge_counts_a_server_while_a_request_is_pending_on_it_through_a_stopped_run() {
+        let mut coalescer = ConsentNotificationCoalescer::new(ConsentOpening::AsNotified);
+        let mut shown_badge_count = ShownBadgeCount::default();
+        let recorded = RecordedRequests::default();
+        let badge = RecordedCounts::default();
+        let mut record = |statuses: UnitStatuses<ServerDetail>| {
+            record_statuses(
+                &mut coalescer,
+                &mut shown_badge_count,
+                &statuses,
+                &recorded,
+                &badge,
+            );
+        };
+
+        // The first statuses clear a badge left from before.
+        record(ruth_waiting_on(None));
+        assert_eq!(badge.shown(), [0]);
+
+        record(ruth_waiting_on(Some("a")));
+        assert_eq!(badge.shown(), [0, 1]);
+
+        // A newer request is announced, and leaves the count as it is, so
+        // the badge isn't set again.
+        record(ruth_waiting_on(Some("b")));
+        assert_eq!(recorded.keys(), [oauth("a"), oauth("b")]);
+        assert_eq!(badge.shown(), [0, 1]);
+
+        // The run stops with "b" pending: its notification stays, and so
+        // does the badge.
+        record([(UnitId::new(RUTH), UnitStatus::never_run())].into());
+        assert!(recorded.1.lock().unwrap().is_empty());
+        assert_eq!(badge.shown(), [0, 1]);
+
+        // Started again, the run reports nothing pending: the notification
+        // is withdrawn and the badge clears.
+        record(ruth_waiting_on(None));
+        assert_eq!(*recorded.1.lock().unwrap(), [RUTH]);
+        assert_eq!(badge.shown(), [0, 1, 0]);
     }
 }

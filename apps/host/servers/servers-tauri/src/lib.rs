@@ -20,6 +20,9 @@
 //!   waiting on a server, opening the request as the server's page's Open
 //!   does: on the desktop each one at once, in the default browser, and on a
 //!   phone the first one waiting at the app's start, instead of notifying;
+//!   and shows on the app icon's badge how many servers have a consent
+//!   request pending, counted through a run that stops as its notification
+//!   stays, and cleared once none does (`pending_consent_badge`);
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
@@ -101,6 +104,7 @@ mod commands;
 mod consent_requests;
 mod launch_commands;
 mod notifications;
+mod pending_consent_badge;
 mod server_status;
 mod server_units;
 #[cfg(test)]
@@ -229,6 +233,7 @@ pub fn host_servers(
             server_units: server_units.clone(),
             statuses_rx: runner.subscribe(),
         },
+        pending_consent_badge::AppIconBadge { app: app.clone() },
         runner.subscribe(),
     ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(

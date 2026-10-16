@@ -26,7 +26,8 @@ changing how servers run or what the host notifies about them.
   certificate state its run reported or its cache holds; `PendingConsent`,
   the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the stop notification for each new stop of a server's run, and the consent
-  notification for each new request waiting on a server.
+  notification for each new request waiting on a server, with the count of
+  servers with a request pending that the app icon's badge shows.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
@@ -56,8 +57,10 @@ changing how servers run or what the host notifies about them.
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
   `ServerUnits::push`, emits the `server-status` event, posts the stop
   and consent notifications, opening each consent's request in the
-  default browser on the desktop, and manages the commands'
-  `ServersState`. The base's Tauri commands: `servers_list`, `server_add`,
+  default browser on the desktop, sets the app icon's badge to how many
+  servers have a consent request pending, as the consent notifications'
+  coalescer counts them (`pending_consent_badge`), and manages the
+  commands' `ServersState`. The base's Tauri commands: `servers_list`, `server_add`,
   `server_set_credentials`, `server_set_run_policy`, `server_update` and
   `server_remove`, each writing the registry and then pushing what it wrote;
   and `server_launch`, `server_open_authorization_app`,
