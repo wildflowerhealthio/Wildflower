@@ -56,13 +56,17 @@ until it expires the same way.
 **The base's run-policy field says how long is left, and what a phone
 allows.** A live `until` reads as the time left, rounded up (minutes under an
 hour, never "0 min", then whole hours), and its deadline: "On for 2 h — until
-5:42 pm". Its clock ticks each minute, on the deadline's minutes, so the
-field reads "Ended at 5:42 pm" once the deadline passes, with no change of
-policy. On iOS and Android, while the policy is `always` or a live `until`, a
-note above the field says "On a phone, the server keeps running only while
-Wildflower is open, plus a short grace after you leave.", as the Android
-and iOS paragraphs above describe. The host app reads the platform once, from
-`tauri-plugin-os`, and passes it to the base's router context.
+5:42 pm". Its clock ticks each minute, on the deadline's minutes, and reads
+the time again as the page is shown, since a suspended app's timers run late,
+so the field reads "Ended at 5:42 pm" once the deadline passes, with no change
+of policy. On iOS and Android, while the policy is `always` or a live `until`,
+a note above the field, which describes its picker, says what that phone
+allows, as the Android and iOS paragraphs above describe: on Android, the
+2-minute grace period; on iOS, about 25 seconds (the background time, less the
+5 the plugin keeps to stop cleanly), then only the short spells of the
+`BGTask`s iOS launches. The host app maps the platform once from the
+`TAURI_ENV_PLATFORM` the Tauri CLI builds it with, and passes it to the base's
+router context.
 
 ## Packages
 

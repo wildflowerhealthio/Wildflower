@@ -1,49 +1,40 @@
 import { DateTime, Duration, Option } from 'effect'
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback } from 'react'
+
+import { type Ticks, useLatestTick } from './use-latest-tick.ts'
 
 /**
  * The time now, as of its latest tick, rendering again at each: ticks fall
- * `every` apart, on `alignedTo` and each whole `every` either side of it,
- * or on the epoch's with no instant.
+ * `every` apart, on `until` and each whole `every` before it, and stop once
+ * `until` passes. With no `until` it never ticks, and says the time as of
+ * the render, to the whole `every`.
  *
  * @remarks
  * Between ticks the answer stays the same, as `useSyncExternalStore` needs
- * of its snapshot. Aligned to a deadline, a tick falls on the deadline
- * itself and on each whole `every` before it: the time left from the answer,
- * rounded up to a whole `every`, is the time left from the clock rounded the
- * same way, and the deadline is seen to pass as it passes.
+ * of its snapshot. As a tick falls on `until` itself and on each whole
+ * `every` before it, the time left from the answer, rounded up to a whole
+ * `every`, is the time left from the clock rounded the same way, and `until`
+ * is seen to pass as it passes. The clock is `useLatestTick`'s, which
+ * `useHasPassed` shares.
  */
 const useNow = (
   every: Duration.DurationInput,
-  alignedTo: Option.Option<DateTime.Utc>
+  until: Option.Option<DateTime.Utc>
 ): DateTime.Utc => {
   const everyMillis = Duration.toMillis(every)
-  const alignedToMillis = alignedTo.pipe(
-    Option.map(DateTime.toEpochMillis),
-    Option.getOrElse(() => 0)
-  )
-  const latestTick = useCallback((): number => {
-    const sinceAligned = DateTime.unsafeNow().epochMillis - alignedToMillis
-    return alignedToMillis + Math.floor(sinceAligned / everyMillis) * everyMillis
-  }, [everyMillis, alignedToMillis])
-  const subscribeToTicks = useCallback(
-    (onTick: () => void): (() => void) => {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      const waitForNextTick = (): void => {
-        const untilNextTick = latestTick() + everyMillis - DateTime.unsafeNow().epochMillis
-        timer = setTimeout(() => {
-          onTick()
-          waitForNextTick()
-        }, untilNextTick)
-      }
-      waitForNextTick()
-      return () => {
-        clearTimeout(timer)
+  const untilMillis = until.pipe(Option.map(DateTime.toEpochMillis), Option.getOrNull)
+  const ticksAt = useCallback(
+    (nowMillis: number): Ticks => {
+      const alignedTo = untilMillis ?? 0
+      const latest = alignedTo + Math.floor((nowMillis - alignedTo) / everyMillis) * everyMillis
+      return {
+        latest,
+        next: untilMillis !== null && latest < untilMillis ? latest + everyMillis : undefined,
       }
     },
-    [latestTick, everyMillis]
+    [everyMillis, untilMillis]
   )
-  return DateTime.unsafeMake(useSyncExternalStore(subscribeToTicks, latestTick))
+  return DateTime.unsafeMake(useLatestTick(ticksAt))
 }
 
 export { useNow }

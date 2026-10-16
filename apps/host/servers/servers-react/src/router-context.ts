@@ -92,8 +92,8 @@ interface RouterContextInputs {
   /** How the base calls the host: `invoke` from `@tauri-apps/api/core`. */
   readonly invoke: Context.Tag.Service<TauriInvoke>
   /**
-   * The kind of device the host runs on, from the OS the app reads once:
-   * `platform()` from `@tauri-apps/plugin-os`.
+   * The kind of device the host runs on, which the app maps once from the
+   * `TAURI_ENV_PLATFORM` the Tauri CLI builds it with.
    */
   readonly platform: HostPlatform.Type
   /** How the base hears the host's events: `listen` from `@tauri-apps/api/event`. */

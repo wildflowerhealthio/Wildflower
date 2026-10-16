@@ -1,13 +1,13 @@
 import { useRouteContext } from '@tanstack/react-router'
 import { ErrorBanner, type StatusTone } from '@wildflowerhealthio/react-tundraish'
 import {
-  HostPlatform,
+  type HostPlatform,
   type ListedServer,
   RunPolicy,
   type RunPolicyChoice,
 } from '@wildflowerhealthio/servers-core-js'
-import { DateTime, Duration } from 'effect'
-import type { ChangeEvent, JSX } from 'react'
+import { DateTime, Duration, Option } from 'effect'
+import { type ChangeEvent, type JSX, useId } from 'react'
 
 import { failureText } from './failure-text.ts'
 import { useSetServerRunPolicy } from './queries.ts'
@@ -72,21 +72,30 @@ const runPolicyText = (policy: RunPolicy.Type, now: DateTime.Utc): string => {
 const asksToRunWithAppClosed = (policy: RunPolicy.Type, now: DateTime.Utc): boolean =>
   policy.kind === 'always' || (policy.kind === 'until' && !RunPolicy.hasEndedAt(policy, now))
 
-/** What a phone does to a server whose policy asks it to run with the app closed. */
-const PHONE_NOTE =
-  'On a phone, the server keeps running only while Wildflower is open, plus a short grace after you leave.'
+/**
+ * What each phone does to a server whose policy asks it to run with the app
+ * closed: Android serves for the host's 2-minute grace period after the app
+ * is left; iOS for the background time it gives the app, about 30 seconds,
+ * less the 5 the host keeps to stop cleanly, and again in the background
+ * tasks it launches later, when it chooses. A desktop keeps it running.
+ */
+const PHONE_NOTES: Readonly<Partial<Record<HostPlatform.Type, string>>> = {
+  android:
+    'On Android, the server keeps running only while Wildflower is open, and for 2 minutes after you leave.',
+  ios: 'On iOS, the server runs while Wildflower is open and for about 25 seconds after you leave; after that, only in short spells iOS allows now and then.',
+}
 
 /**
  * A server's run-policy field: on a phone, while the policy asks the server
- * to run with the app closed, a note above it that the phone stops it soon
- * after the app is left; what it says of when the server runs, outlined in
+ * to run with the app closed, a note above it, and describing its picker, of
+ * how long that phone lets it run once the app is left; what it says of when the server runs, outlined in
  * `tone`, over the native picker that changes it at once; and the host's
  * refusal of the latest change.
  *
  * @remarks
  * A live `until` says the time left, rounded up, and its deadline, and reads
  * as ended once the deadline passes, with no change of policy: the field's
- * clock ticks each minute, on the deadline's minutes. The picker is disabled
+ * clock ticks each minute, on the deadline's minutes, until it passes. The picker is disabled
  * while a change is pending. A refused change puts the previous policy back
  * (see `useSetServerRunPolicy`).
  */
@@ -109,6 +118,10 @@ const RunPolicyPicker = ({
     select: (context: RouterContext) => context.platform,
   })
   const now = useNow(Duration.minutes(1), RunPolicy.deadlineOf(server.runPolicy))
+  const noteId = useId()
+  const note = Option.fromNullable(PHONE_NOTES[platform]).pipe(
+    Option.filter(() => asksToRunWithAppClosed(server.runPolicy, now))
+  )
   const onPick = (event: ChangeEvent<HTMLSelectElement>): void => {
     const picked = RUN_POLICY_CHOICES.find((option) => option.value === event.target.value)
     if (picked === undefined) return
@@ -116,9 +129,14 @@ const RunPolicyPicker = ({
   }
   return (
     <>
-      {HostPlatform.isPhone(platform) && asksToRunWithAppClosed(server.runPolicy, now) ? (
-        <p className={`text-body-3 ${styles['run-policy-picker__note']}`}>{PHONE_NOTE}</p>
-      ) : null}
+      {note.pipe(
+        Option.map((text) => (
+          <p key="note" id={noteId} className={`text-body-3 ${styles['run-policy-picker__note']}`}>
+            {text}
+          </p>
+        )),
+        Option.getOrNull
+      )}
       <label
         className={styles['run-policy-picker']}
         data-tone={tone}
@@ -131,6 +149,7 @@ const RunPolicyPicker = ({
         <select
           className={styles['run-policy-picker__select']}
           aria-label={`When ${server.domain} runs`}
+          aria-describedby={Option.isSome(note) ? noteId : undefined}
           value={runPolicyValue(server.runPolicy)}
           disabled={setRunPolicy.isPending}
           onChange={onPick}

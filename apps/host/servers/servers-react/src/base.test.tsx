@@ -682,6 +682,39 @@ describe('the server list', () => {
     }
   })
 
+  it('should read the clock again as the page is shown, though its timers were held back', async () => {
+    // Arrange
+    const now = Date.parse('2026-10-15T17:00:00Z')
+    const deadline = DateTime.unsafeMake(now + 15 * 60_000)
+    vi.useFakeTimers({ now })
+    try {
+      renderListed(listedWithRuthPolicy({ kind: 'until', at: DateTime.formatIso(deadline) }))
+      await vi.waitFor(() => {
+        expect(runPolicyOf('ruth.relay.example.com').shown).toMatch(/^On for 15 min /)
+      })
+
+      // Act: the phone suspended the app past the deadline, its timers with it.
+      vi.setSystemTime(now + 20 * 60_000)
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+
+      // Assert
+      expect(runPolicyOf('ruth.relay.example.com').shown).toBe(
+        `Ended at ${formatInstant(deadline)}`
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  /** What the note above the run-policy field says on each phone. */
+  const PHONE_NOTES = {
+    android:
+      'On Android, the server keeps running only while Wildflower is open, and for 2 minutes after you leave.',
+    ios: 'On iOS, the server runs while Wildflower is open and for about 25 seconds after you leave; after that, only in short spells iOS allows now and then.',
+  } as const
+
   it.each([
     ['ios', { kind: 'always' }, true],
     ['android', { kind: 'always' }, true],
@@ -693,18 +726,26 @@ describe('the server list', () => {
     ['desktop', { kind: 'always' }, false],
     ['desktop', { kind: 'until', at: '2999-01-01T00:00:00Z' }, false],
   ] as const)(
-    'on %s, for the policy %j, should show the phone note above the field: %s',
+    "on %s, for the policy %j, should show the phone's note above the field, describing it: %s",
     async (platform, runPolicy, shown) => {
       // Act
       renderListed(listedWithRuthPolicy(runPolicy), fakeEvents(), platform)
 
       // Assert
       await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
-      const note = within(serverRow('ruth.relay.example.com')).queryByText(
-        'On a phone, the server keeps running only while Wildflower is open, plus a short grace after you leave.'
+      const row = within(serverRow('ruth.relay.example.com'))
+      const notes = Object.values(PHONE_NOTES).flatMap((text) => row.queryAllByText(text))
+      expect(notes.length).toBe(shown ? 1 : 0)
+      if (platform === 'desktop' || !shown) {
+        expect(runPolicyOf('ruth.relay.example.com').control.getAttribute('aria-describedby')).toBe(
+          null
+        )
+        return
+      }
+      const note = row.getByText(PHONE_NOTES[platform])
+      expect(row.getByRole('combobox', { description: PHONE_NOTES[platform] })).toBe(
+        runPolicyOf('ruth.relay.example.com').control
       )
-      expect(note !== null).toBe(shown)
-      if (note === null) return
       expect(
         note.compareDocumentPosition(runPolicyOf('ruth.relay.example.com').control) &
           Node.DOCUMENT_POSITION_FOLLOWING

@@ -89,8 +89,6 @@ catalog:
   '@tauri-apps/plugin-fs': ~2.5.2
   '@tauri-apps/plugin-log': ~2.10.0
   '@tauri-apps/plugin-opener': ^2
-  # 2.4 needs `@tauri-apps/api` 2.12, which waits on the Tauri 2.12 upgrade (#1072).
-  '@tauri-apps/plugin-os': ~2.3.2
   '@testing-library/dom': ^10.4.2
   '@testing-library/react': ^16.3.3
   '@testing-library/user-event': ^14.6.7

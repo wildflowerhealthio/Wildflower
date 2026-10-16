@@ -14,8 +14,5 @@ const HostPlatformSchema = Schema.Literal('ios', 'android', 'desktop')
 /** A decoded {@link HostPlatformSchema}. */
 type Type = typeof HostPlatformSchema.Type
 
-/** Whether `platform` is a phone's. */
-const isPhone = (platform: Type): boolean => platform !== 'desktop'
-
-export { HostPlatformSchema as Schema, isPhone }
+export { HostPlatformSchema as Schema }
 export type { Type }

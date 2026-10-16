@@ -7,4 +7,9 @@ interface ImportMetaEnv {
    * reports nothing whatever the answer.
    */
   readonly VITE_SENTRY_DSN_HOST_APP?: string
+  /**
+   * The platform the Tauri CLI builds the app for (`ios`, `android`,
+   * `darwin`, `windows`, `linux`); unset in a build outside it.
+   */
+  readonly TAURI_ENV_PLATFORM?: string
 }

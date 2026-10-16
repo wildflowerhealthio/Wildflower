@@ -2,7 +2,6 @@ import { createBrowserHistory } from '@tanstack/react-router'
 import { addPluginListener, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { platform } from '@tauri-apps/plugin-os'
 import 'tundra-css'
 import '@wildflowerhealthio/react-tundraish/styles.css'
 import { makeTauriTransport } from '@wildflowerhealthio/effect-messaging-tauri-js'
@@ -35,11 +34,11 @@ const backgroundServiceStartConfig = {
   foregroundServiceType: backgroundServiceForegroundType,
 } as const
 
-// The kind of device the app runs on, read once from the OS plugin: a phone
-// suspends or stops the servers once the user leaves the app, which the base
-// says on its run-policy field.
+// The kind of device the app runs on, fixed when the Tauri CLI builds it: a
+// phone suspends or stops the servers once the user leaves the app, which the
+// base says on its run-policy field.
 const hostPlatform = ((): HostPlatform.Type => {
-  const os = platform()
+  const os = import.meta.env.TAURI_ENV_PLATFORM
   return os === 'ios' || os === 'android' ? os : 'desktop'
 })()
 
