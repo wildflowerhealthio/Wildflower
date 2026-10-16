@@ -1,21 +1,23 @@
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
+  redirect,
   RouterProvider,
 } from '@tanstack/react-router'
 import { useState } from 'react'
-import { ItemList, RouteTabs, type RouteTab } from '@wildflowerhealthio/react-tundraish'
+import { ItemList, RouteTabs } from '@wildflowerhealthio/react-tundraish'
 
 type ServerTab = 'status' | 'access' | 'default-apps' | 'relay' | 'certificate'
 
-/** The server page's tabs (apps/host/servers/servers-react). */
-const serverTabs: readonly RouteTab<ServerTab>[] = [
-  { id: 'status', label: 'Status' },
-  { id: 'access', label: 'Access' },
-  { id: 'default-apps', label: 'Default Apps' },
-  { id: 'relay', label: 'Relay' },
-  { id: 'certificate', label: 'Certificate' },
+/** The server page's tabs (apps/host/servers/servers-react), each a child route. */
+const serverTabs: readonly { segment: ServerTab; label: string }[] = [
+  { segment: 'status', label: 'Status' },
+  { segment: 'access', label: 'Access' },
+  { segment: 'default-apps', label: 'Default Apps' },
+  { segment: 'relay', label: 'Relay' },
+  { segment: 'certificate', label: 'Certificate' },
 ]
 
 const panels: Record<ServerTab, readonly { id: string; title: string; subtitle: string }[]> = {
@@ -38,31 +40,41 @@ const panels: Record<ServerTab, readonly { id: string; title: string; subtitle: 
   ],
 }
 
-const isServerTab = (value: unknown): value is ServerTab =>
-  serverTabs.some((tab) => tab.id === value)
-
 /**
- * The server page in a memory router, so the tabs' `<Link>`s have a route to
- * set `tab` on. Each cell builds its own, opening on `initialTab`.
+ * The server page in its own memory router: the root route renders the
+ * tabs, each tab is a child route filling the panel, and the index route
+ * redirects to the first tab. Each cell builds its own, open on
+ * `initialTab`. The shape follows the cell's width (`wideFromOwnWidth`), so
+ * a cell shows the same shape at any preview viewport.
  */
 const ServerPage = ({ initialTab, width }: { initialTab: ServerTab; width: number }) => {
   const [router] = useState(() => {
     const rootRoute = createRootRoute({
-      validateSearch: (search: Record<string, unknown>) => ({
-        tab: isServerTab(search['tab']) ? search['tab'] : 'status',
-      }),
-      component: function Page() {
-        const { tab } = rootRoute.useSearch()
-        return (
-          <RouteTabs current={tab} tabs={serverTabs} aria-label="Server details">
-            <ItemList items={panels[tab]} />
-          </RouteTabs>
-        )
+      component: () => (
+        <RouteTabs
+          tabs={serverTabs.map((tab) => ({ to: `/${tab.segment}`, label: tab.label }))}
+          aria-label="Server details"
+          wideFromOwnWidth={480}
+        />
+      ),
+    })
+    const indexRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/',
+      beforeLoad: () => {
+        throw redirect({ to: '/status', replace: true })
       },
     })
+    const tabRoutes = serverTabs.map((tab) =>
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: tab.segment,
+        component: () => <ItemList items={panels[tab.segment]} />,
+      })
+    )
     return createRouter({
-      routeTree: rootRoute,
-      history: createMemoryHistory({ initialEntries: [`/?tab=${initialTab}`] }),
+      routeTree: rootRoute.addChildren([indexRoute, ...tabRoutes]),
+      history: createMemoryHistory({ initialEntries: [`/${initialTab}`] }),
     })
   })
   return (
@@ -72,14 +84,14 @@ const ServerPage = ({ initialTab, width }: { initialTab: ServerTab; width: numbe
   )
 }
 
-/** From 560px of width: a pill track above the unframed panel, the current tab raised. */
+/** Wide (from 768px of viewport in apps; 480px of its own width here): a pill track above the unframed panel. */
 export const Wide = () => <ServerPage initialTab="status" width={640} />
 
-/** Below 560px: the strip is the top edge of a card holding the panel. */
+/** Narrow: the strip is the top edge of a card holding the panel. */
 export const Narrow = () => <ServerPage initialTab="access" width={360} />
 
 /**
- * A strip too narrow for its tabs scrolls sideways, keeps the current tab in
- * view, and fades the end with tabs past it.
+ * A strip too narrow for its tabs scrolls sideways, keeps the current tab
+ * clear of the fades, and fades each end with tabs past it.
  */
 export const Overflowing = () => <ServerPage initialTab="certificate" width={300} />

@@ -53,6 +53,6 @@ ad-hoc inline styles:
   data shown anyway gets a `PartialBanner` above it.
 - An action inside prose or a compact surface is a `LinkButton`, not a
   `button-N`.
-- Tabs that switch a page's view are `RouteTabs` (a `tab` search param, so
+- Tabs that switch a page's view are `RouteTabs` (one child route per tab, so
   each tab can be linked to); `SegmentedToggle` is for a one-of-N choice that
   isn't navigation, such as a range preset.

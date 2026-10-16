@@ -1,20 +1,22 @@
 ---
 category: Navigation
-keywords: tabs, tab strip, route, navigation, search param, container query
+keywords: tabs, tab strip, route, child routes, navigation, outlet
 ---
 
 # RouteTabs
 
-A route-linked tab strip above the caller's panel. Each tab is a router
-`<Link>` that sets the current route's `tab` search param, with `replace`, so
-a tab can be linked to and Back leaves the page. Pass `current` (from the
-route's `validateSearch`), `tabs` (`{ id, label }[]`), an `aria-label` naming
-the `<nav>`, and the open tab's panel as `children`. Wire it inside a router
-context.
+A tab strip over the router's child routes. Each tab is a router `<Link>` to
+a child route of the page's route, with `replace`, so a tab can be linked to
+and Back leaves the page. Render it as (or in) the page route's component and
+pass `tabs` (each a link's options plus a `label`) and an `aria-label` naming
+the `<nav>`; the open child route fills the panel under the strip through the
+`<Outlet />` it renders. The router marks the open tab; the page's index route
+redirects to the first tab. Wire it inside a router context.
 
-From 560px of its own width it is a pill track above the panel; below that it
+From a 768px viewport it is a pill track above the panel; below that it
 becomes the top edge of a card holding the panel, scrolling sideways when the
-tabs don't fit. The current tab is a raised neutral chip, not the accent.
+tabs don't fit. `wideFromOwnWidth` switches on the component's own width
+instead. The current tab is a raised neutral chip, not the accent.
 
 For a one-of-N choice that isn't navigation (a range preset), use
 `SegmentedToggle`.
