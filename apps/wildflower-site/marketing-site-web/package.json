@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc && vp build && node ./scripts/write-app-redirects.ts",
+    "build": "tsc && vp build && node ./scripts/write-apex-pages.ts",
     "check": "vp check",
     "dev": "vp dev",
     "preview": "vp preview",

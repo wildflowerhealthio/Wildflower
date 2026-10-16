@@ -164,11 +164,12 @@ const MARKETING_PAGES_SITE: PagesSite = {
   buildDir: 'apps/wildflower-site/marketing-site-web/dist',
   // `CNAME` (from the marketing site's `public/`) has to land at the root of
   // the apex deploy or GitHub Pages drops the custom domain. The policy pages
-  // are app-store and legal requirements, and the redirect pages keep the
-  // apps' old apex paths working.
+  // are app-store and legal requirements, and the redirect pages and the
+  // `404.html` that hands them deep links keep the apps' apex paths working.
   requiredFiles: [
     'index.html',
     'CNAME',
+    '404.html',
     'privacy-policy/index.html',
     'consumer-health-data/index.html',
     'terms/index.html',

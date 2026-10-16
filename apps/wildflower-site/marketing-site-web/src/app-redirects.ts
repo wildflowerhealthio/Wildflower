@@ -5,7 +5,7 @@ import { APP_SLUGS, sectionUrl, type HostedAppId } from '@wildflowerhealthio/bra
  * hosted app's own origin: where the app was served before it had one, so
  * bookmarks and SMART launch URLs naming it keep working, and its slug for an
  * app added since. This site's build puts a redirect page at each one
- * (`scripts/write-app-redirects.ts`).
+ * (`scripts/write-apex-pages.ts`).
  */
 const APEX_REDIRECT_PATHS: Readonly<Record<HostedAppId, string>> = {
   medications: 'medications',

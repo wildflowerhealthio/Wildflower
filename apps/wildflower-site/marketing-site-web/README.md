@@ -43,6 +43,11 @@ vp build    # production build to dist/
   for Wildflower Host, so keep them true of what the apps and the relay
   actually collect, and bump the `updated` date with any change.
 - `src/mount-page.tsx` — the shared styles and `createRoot` every entry uses.
+- `src/app-redirects.ts` — the apps' old paths on the apex (`/health-viewer/`,
+  `/lifting/`, `/medications/`, …) and the page served at each, which sends
+  the visitor on to the app's own origin with the query and fragment. The
+  build's last step, `scripts/write-apex-pages.ts`, writes one into `dist/`
+  per app, so bookmarks and SMART launch URLs naming the apex keep working.
 - `src/count-up.ts` — the stats count-up animation (reads its targets from the
   rendered DOM; respects `prefers-reduced-motion`; unit- and property-tested in
   `count-up.test.ts`).
@@ -84,15 +89,19 @@ vp build    # production build to dist/
 
 ## Deployment
 
-This site is the root of the apex site, `https://wildflowerhealth.io`,
-assembled by `apps/wildflower-site/wildflower-site-web`, which
-`.github/workflows/deploy-github-pages.yml` builds and publishes on pushes to
-`main`. It is served at the custom domain in `public/CNAME`
-(`wildflowerhealth.io`) — the assembly copies that file to the apex site's
-root. Its links into the apps go to each app's own origin, or to the preview's
-build of it when the page is a PR preview's (`homepage-nav.ts`). The Vite `base` is relative
-(`./`) so the same build also works from the project URL while the domain's DNS
-propagates.
+This site is the apex, `https://wildflowerhealth.io`:
+`.github/workflows/deploy-github-pages.yml` builds it and deploys `dist/` to
+this repository's Pages on every push to `main`, after every hosted app has
+published to its own origin. It is served at the custom domain in
+`public/CNAME` (`wildflowerhealth.io`), which the build copies to the root of
+`dist/`, the only place Pages reads it from. Its links into the apps go to
+each app's published origin, from a preview too. The Vite `base` is relative
+(`./`) so the same build serves the apex and a PR preview's subpath.
+
+A PR that changes this site gets a preview at
+`https://wildflowerhealthio.github.io/staging/pr-<n>/`, published by
+`pr-preview.yml` to `pr-<n>/` of `wildflowerhealthio/staging` and removed
+when the PR closes.
 
 One-time setup: repo Settings → Pages → Source = "GitHub Actions", then set the
 custom domain to `wildflowerhealth.io`.
