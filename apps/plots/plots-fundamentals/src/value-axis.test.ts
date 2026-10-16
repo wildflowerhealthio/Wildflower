@@ -281,6 +281,54 @@ describe('ValueAxis.ticksFor', () => {
     )
     expect(Object.is(ValueAxis.ticksFor([-10, 10], 4)[2], 0)).toBe(true)
   })
+
+  const expectBoundedAscendingTicksInside = (domain: ValueAxis.Domain, count: number): void => {
+    const ticks = ValueAxis.ticksFor(domain, count)
+    // At most `MAX_TICKS + 1`, the module's unexported ceiling of 64 intervals.
+    expect(ticks.length).toBeLessThanOrEqual(65)
+    for (const tick of ticks) {
+      expect(tick).toBeGreaterThanOrEqual(domain[0])
+      expect(tick).toBeLessThanOrEqual(domain[1])
+    }
+    expect(ticks).toEqual(ticks.toSorted((left, right) => left - right))
+  }
+
+  test('any finite domain gets a bounded set of ascending ticks inside it', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ noNaN: true, noDefaultInfinity: true }),
+        fc.double({ noNaN: true, noDefaultInfinity: true }),
+        fc.integer({ min: 2, max: 10 }),
+        (first, second, count) => {
+          expectBoundedAscendingTicksInside(
+            [Math.min(first, second), Math.max(first, second)],
+            count
+          )
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('a hairline domain at large magnitude gets a bounded set of ascending ticks inside it', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: 1e8, max: 1e15, noNaN: true }),
+        fc.double({ min: 1e-16, max: 1e-12, noNaN: true }),
+        fc.integer({ min: 2, max: 10 }),
+        (low, widthFraction, count) => {
+          expectBoundedAscendingTicksInside([low, low + low * widthFraction], count)
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('a hairline domain past safe-integer step counts is labelled at its ends', () => {
+    expect(ValueAxis.ticksFor([900719925.4740982, 900719925.4740992], 10)).toEqual([
+      900719925.4740982, 900719925.4740992,
+    ])
+  })
 })
 
 describe('ValueAxis.niceDomain', () => {

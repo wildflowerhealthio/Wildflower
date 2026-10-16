@@ -192,7 +192,9 @@ const ticksFor = (domain: Domain, count: number = DEFAULT_TICK_COUNT): readonly 
   const highSteps = stepsFromZero(high, step)
   const first = Math.ceil(lowSteps)
   const last = Math.floor(highSteps)
-  if (!Number.isFinite(first) || !Number.isFinite(last) || last - first >= MAX_TICKS) {
+  // Past `Number.MAX_SAFE_INTEGER` steps (a hairline domain at large
+  // magnitude) `index + 1 === index`, so the loop below would never advance.
+  if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || last - first >= MAX_TICKS) {
     return [low, high]
   }
   const ticks: number[] = []
