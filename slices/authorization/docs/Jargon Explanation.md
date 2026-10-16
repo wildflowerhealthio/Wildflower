@@ -565,6 +565,15 @@ Enabling the client again lets sign-in work. Disabling it signs no browser
 out: a browser already signed in keeps its session until the token expires or
 is revoked.
 
+The browser the host app opens is the system's in-app browser
+(`tauri-plugin-native-page-browser`), which keeps the session out of the
+user's everyday browser on mobile: on iOS `SFSafariViewController` keeps its
+cookies per app, and on Android each view is an ephemeral Custom Tab whose
+cookies are dropped when it closes, so every view signs in again. An Android
+browser without ephemeral tabs, and a desktop's default browser, share their
+cookies with the user's browsing; see the plugin's
+[Explanation](../../../apps/host/tauri-plugin-native-page-browser/docs/Explanation.md#cookies).
+
 There is no session table: the cookie's value is the token, so a restart
 doesn't sign the browser out. One session is revoked by its token's `jti`;
 every Owner browser is signed out by revoking the `wildflower-owner-browser`

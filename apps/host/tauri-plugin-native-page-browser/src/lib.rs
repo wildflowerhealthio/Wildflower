@@ -13,6 +13,8 @@
 //! - **Android** — Kotlin `androidx.browser` Custom Tab sliding in from the
 //!   right, in the app's colours, which asks its browser to keep the app alive
 //!   under it; the default browser when no Custom Tabs provider is installed.
+//!   The tab is ephemeral where its browser supports it, so its cookies are
+//!   dropped when it closes.
 //!   A [`OpenMode::Replace`] `open` joins a `Replace` view still launching, a
 //!   [`OpenMode::Stack`] one launches its own, and either returns an error
 //!   while the app is in the background. A Custom Tab can't be closed, so

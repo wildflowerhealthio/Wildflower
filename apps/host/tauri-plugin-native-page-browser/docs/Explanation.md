@@ -14,11 +14,11 @@ It exposes two commands, `open(url, view, mode, events)` and `close(view)`, with
 
 The caller can't script the page, read it, or navigate an open view. It learns that a view opened, whether its browser keeps the app alive, and that it closed, nothing else. On iOS it can close a view; a Custom Tab (Android) and a browser tab (desktop) can't be closed by the app, so there `close` returns an error.
 
-| Platform | Backend                                    | Presentation                                                                                                                                | Close report                                                   |
-| -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| iOS      | Swift `SFSafariViewController`             | Default presentation (slides in from the right); `.close` dismiss button; bar and controls in the app's palette                             | `safariViewControllerDidFinish`, or the plugin's own dismissal |
-| Android  | Kotlin `androidx.browser` Custom Tab       | Slides in from the right and out to the right; toolbar in the app's palette, light and dark; back-arrow close icon; URL bar hides on scroll | The host activity's next resume                                |
-| Desktop  | Default browser, via `tauri-plugin-opener` | A browser tab                                                                                                                               | None                                                           |
+| Platform | Backend                                        | Presentation                                                                                                                                | Close report                                                   |
+| -------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| iOS      | Swift `SFSafariViewController`                 | Default presentation (slides in from the right); `.close` dismiss button; bar and controls in the app's palette                             | `safariViewControllerDidFinish`, or the plugin's own dismissal |
+| Android  | Kotlin `androidx.browser` ephemeral Custom Tab | Slides in from the right and out to the right; toolbar in the app's palette, light and dark; back-arrow close icon; URL bar hides on scroll | The host activity's next resume                                |
+| Desktop  | Default browser, via `tauri-plugin-opener`     | A browser tab                                                                                                                               | None                                                           |
 
 ## Why
 
@@ -28,6 +28,16 @@ Launches open in the system's in-app browser so the app can't script the pages w
 - **A native page, not a sheet.** The view slides in from the right like a pushed page and goes back with a back button, an edge swipe or system back, in the app's colours. `tauri-plugin-opener` takes no options; `tauri-plugin-in-app-browser` takes one control tint and a presentation style, and nothing on Android.
 
 `tauri-plugin-native-webview` is the other way the host shows external pages. It is the app's own web view, which injects script into the page; this plugin is for the pages the app must not be able to see into.
+
+## Cookies
+
+The host opens each view through the server's `/oauth/sign-in`, which sets the Owner browser session cookie in the view's browser. Where that cookie lives is the platform's:
+
+- **iOS**: `SFSafariViewController` keeps its cookies per app, so Safari never sees them. Views the plugin opens share them with each other.
+- **Android**: each view is an **ephemeral** Custom Tab (`CustomTabsIntent.Builder.setEphemeralBrowsingEnabled`, Chrome 137+). Its cookies, cache and history are its own and are dropped when it closes, so the user's everyday Chrome never holds the Owner's session, and every view signs in again. Pages the tab navigates to, such as an app the launcher opens, share its cookies until it closes. Two views open at once (a `stack` open over another) don't share cookies.
+  - Before each launch the plugin asks `CustomTabsClient.isEphemeralBrowsingSupported` whether the provider supports ephemeral tabs. One that doesn't (an older Chrome, or another default browser) gets a shared Custom Tab, with the provider's own cookies, as does the `ACTION_VIEW` fallback to the default browser. The first such view logs a warning (tag `NativePageBrowser`).
+  - An ephemeral tab launches like a shared one, from the Custom Tabs session with the keep-alive extra, in the app's colours with its close icon. Chrome turns off downloads in it.
+- **Desktop**: the default browser's own cookies.
 
 ## One view, or a stack
 
@@ -110,7 +120,7 @@ apps/host/tauri-plugin-native-page-browser/
       │       iOS stack: present over the top-most view
       │       Android: reject if the app is in the background; replace: join a replace view still launching;
       │                stack: launch another; wait up to 1 s for the Custom Tabs session
-      │     → present SFSafariViewController / launch the Custom Tab (with the keep-alive extra)
+      │     → present SFSafariViewController / launch the Custom Tab (ephemeral where supported, with the keep-alive extra)
       │     → Android: the browser binds KeepAliveService → channel.send({ event:"keptAlive" })
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler
       │
@@ -153,4 +163,6 @@ both are closed reports `Closed` for each. With Chrome as the
 Custom Tabs provider, `adb shell dumpsys netpolicy` shows the host's uid at
 `procState=BTOP` with `effective=NONE` (no network block) while a view is open,
 and `adb shell dumpsys activity services <package>` shows Chrome bound to
-`KeepAliveService`.
+`KeepAliveService`. With Chrome 137+, after a launch's view closes, opening
+`https://<domain>/oauth/authorize…` in Chrome reaches the wait page, not the
+consent card, and the next launch still reaches the consent card.

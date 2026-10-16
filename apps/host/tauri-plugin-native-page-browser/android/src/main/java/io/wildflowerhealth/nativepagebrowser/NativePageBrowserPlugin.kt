@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
@@ -47,6 +48,12 @@ class OpenArgs {
  * app can't script the page or read what's typed into it. It slides in from the
  * right in the app's colours with a back-arrow close button, and falls back to
  * the default browser (`ACTION_VIEW`) when no Custom Tabs provider is installed.
+ *
+ * Each tab is ephemeral where its browser supports it: its cookies and other
+ * site data are its own and are dropped when it closes, so a session a page
+ * sets in it (the Owner's, from a launch's sign-in) never reaches the user's
+ * everyday browser. A browser without ephemeral tabs, and the default-browser
+ * fallback, share the browser's cookies; the first such view logs a warning.
  *
  * A Custom Tab runs in its browser's process, so under one Android treats the
  * app as in the background and cuts its network. The plugin binds the
@@ -103,6 +110,8 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
         /** `models.rs` `OpenMode::Stack`, as [OpenArgs.mode] carries it. */
         private const val MODE_STACK = "stack"
+
+        private const val LOG_TAG = "NativePageBrowser"
     }
 
     /**
@@ -180,6 +189,9 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
     private val awaitingSession = mutableListOf<() -> Unit>()
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** A view has opened sharing its browser's cookies, and the warning about it is logged. */
+    private var sharedCookiesWarned = false
 
     private val runAwaitingSession = Runnable {
         val actions = awaitingSession.toList()
@@ -292,14 +304,22 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         invoke.reject(message)
     }
 
-    /** Launch the view for `url` over the host. Throws when nothing can open it. */
+    /**
+     * Launch the view for `url` over the host, as an ephemeral tab where the
+     * provider supports one. Throws when nothing can open it.
+     */
     private fun startView(url: Uri) {
         val provider = CustomTabsClient.getPackageName(activity, null)
         if (provider == null) {
             // No Custom Tabs provider: the default browser.
+            warnSharedCookies(
+                "no Custom Tabs provider is installed, so it opens in the default browser"
+            )
             activity.startActivity(Intent(Intent.ACTION_VIEW, url))
             return
         }
+        val ephemeral = CustomTabsClient.isEphemeralBrowsingSupported(activity, provider)
+        if (!ephemeral) warnSharedCookies("$provider doesn't support ephemeral Custom Tabs")
         val night =
             (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
@@ -324,6 +344,7 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
                     backArrowIcon(if (night) COLOR_NEUTRAL_1_DARK else COLOR_NEUTRAL_1_LIGHT)
                 )
                 .setUrlBarHidingEnabled(true)
+                .setEphemeralBrowsingEnabled(ephemeral)
                 .build()
         // Name the provider so Android doesn't offer a chooser.
         customTabsIntent.intent.setPackage(provider)
@@ -332,6 +353,17 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
             Intent().setClassName(activity.packageName, KeepAliveService::class.java.name),
         )
         customTabsIntent.launchUrl(activity, url)
+    }
+
+    /** Log, for the first view only, that a view shares its browser's cookies, and `why`. */
+    private fun warnSharedCookies(why: String) {
+        if (sharedCookiesWarned) return
+        sharedCookiesWarned = true
+        Log.w(
+            LOG_TAG,
+            "A view opens sharing the browser's cookies, not ephemeral: $why. " +
+                "A session a page sets in it stays in that browser after the view closes.",
+        )
     }
 
     private fun colorSchemeParams(colorBackground: Int): CustomTabColorSchemeParams =
