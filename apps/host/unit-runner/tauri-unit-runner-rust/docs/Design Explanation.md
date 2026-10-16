@@ -45,8 +45,8 @@ otherwise.
 
 The app builds `TauriUnitRunner` before the Tauri builder and registers its two
 plugins: `background_service_plugin()` (the background session) and
-`lifecycle_plugin()` (whether the app is present, its returns to the
-foreground, and starting and
+`lifecycle_plugin()` (whether the app is present, its departures from and
+returns to the foreground, and starting and
 ending the background session), next to `tauri-plugin-notification`. The plugin
 takes its service factory before the app's `setup()`, which is why
 `TauriUnitRunner` is built before the Tauri builder and passed to it.
@@ -82,6 +82,18 @@ The lifecycle plugin tells `UnitRunner` whether the app is present:
   `SFSafariViewController` is presented in the app's window, which stays in
   the foreground, and on a desktop the view is a default-browser tab, which
   never reports its close; neither keeps a view.
+- **Android, leaving with a view up.** An open view keeps the app present, so
+  the user going home with a view up, and coming back to it, changes nothing
+  about the app's presence, though it leaves and arrives in the foreground.
+  The browser says it instead: it lets go of the app's service as its tab
+  stops and binds it again as the tab comes back, and the app reports each
+  (`browser_view_moved_to_background`, `browser_view_returned_to_foreground`).
+  `WindowState` keeps whether the app went fully to the background, and the
+  lifecycle plugin tells `UnitRunner` the app left the foreground and came
+  back to it while present (`set_in_foreground_while_present`): coming back is
+  an arrival in the foreground, as is the app's window resuming after it left,
+  as when the user opens it from its icon. Closing a view back onto the app is
+  no arrival: the window resumes before the browser lets go.
 - **iOS, back in the foreground.** On iOS, moving to the background can break
   the app's sockets (`PlatformKind::backgrounding_breaks_sockets`): a suspended
   app's connections may be dead while its runs still report `Running`. So a

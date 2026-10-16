@@ -10,9 +10,9 @@ It exposes two commands, `open(url, view, mode, events)` and `close(view)`, with
 - `url` must be `http(s)`; anything else (`javascript:`, `file:`, `data:`, …), or a string that doesn't parse, returns `Error::InvalidUrl` before any backend sees it (`src/url_scheme.rs`). A backend gets the parsed URL, normalised (leading and trailing spaces trimmed, tabs and newlines removed), not the caller's string.
 - `view` is the caller's name for the view, unique among those it opens; `close(view)` names the view to close by it.
 - `mode` (`OpenMode`) says how the view shows beside the views already showing: `replace` or `stack` (see One view, or a stack).
-- `events` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `replace` open replaces it or `close` closes it or a view under it. On Android it may hear one `BrowserEvent::KeptAlive` (`{"event":"keptAlive"}`) before that, when the view's browser keeps the app alive under it (see Keeping the app alive on Android). Desktop never sends either.
+- `events` is a `Channel<BrowserEvent>`. On iOS and Android it hears exactly one `BrowserEvent::Closed` (`{"event":"closed"}`) per `open` that succeeds, and none after one that returns an error: when the user closes the view (close button, edge swipe, system back), or, on iOS, when a newer `replace` open replaces it or `close` closes it or a view under it. On Android it may hear one `BrowserEvent::KeptAlive` (`{"event":"keptAlive"}`) before that, when the view's browser keeps the app alive under it (see Keeping the app alive on Android), and a `BrowserEvent::MovedToBackground` (`{"event":"movedToBackground"}`) and `BrowserEvent::ReturnedToForeground` (`{"event":"returnedToForeground"}`) each time the user leaves the app for the home screen or another app with the view up, and comes back (see How Android hears the app leave under a view). Desktop sends none.
 
-The caller can't script the page, read it, or navigate an open view. It learns that a view opened, whether its browser keeps the app alive, and that it closed, nothing else. On iOS it can close a view; a Custom Tab (Android) and a browser tab (desktop) can't be closed by the app, so there `close` returns an error.
+The caller can't script the page, read it, or navigate an open view. It learns that a view opened, whether its browser keeps the app alive, when the app leaves and comes back with it up, and that it closed, nothing else. On iOS it can close a view; a Custom Tab (Android) and a browser tab (desktop) can't be closed by the app, so there `close` returns an error.
 
 | Platform | Backend                                    | Presentation                                                                                                                                | Close report                                                   |
 | -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -41,7 +41,7 @@ What an `open` does while a view is showing is its mode's, and differs by platfo
 - **Android** can't replace or close a view: a Custom Tab can't be closed programmatically, and bringing the host back over it is an activity start the system blocks while another app's activity is in front, so `close` is rejected. A showing view covers the host, so an `open` from the app can only arrive while the views it finds are still launching (a second tap before the tab slides in), or after the host came back in front, which reports the views it was under closed (as a notification tap can bring it).
   - A `replace` open whose latest view still launching is a `replace` open's joins it instead of launching another, so it doesn't open its own URL, resolves or rejects as the view's own `open` does (once the launch is issued, which may wait for the Custom Tabs session), and hears that view's events. Over a `stack` open's view still launching, it launches its own, so its URL opens.
   - A `stack` open launches its own view, over any still launching. Each tab is an activity in the host's task, so closing the top one reveals the one under it, and the host resumes, reporting every view's `Closed`, only once the last is closed.
-  - An `open` that arrives while the host activity isn't in front is rejected, since Android blocks activity starts from the background. Every other `open` launches its view before it resolves.
+  - An `open` that arrives while the app is in the background is rejected, since Android blocks activity starts from the background. The app is in front while its host activity is, or while a view of its own is up over the host and the user hasn't left it for the home screen or another app: the app's task is in front then, so a `stack` open launches its view over that one. Every other `open` launches its view before it resolves.
 
 ## How Android hears the close
 
@@ -50,6 +50,16 @@ A Custom Tab runs in the browser's process, so the plugin watches the host activ
 The plugin hears the host pause and resume through `Application.registerActivityLifecycleCallbacks`, filtered to the host activity, not through `Plugin.onPause` / `onResume`. Tauri's generated `TauriActivity` defines `TauriLifecycleObserver`, which forwards those, but never registers it, so they never run. Even registered, it would observe `ProcessLifecycleOwner`, which reports the whole process and delivers a pause about 700 ms late.
 
 The tab lives in the host's task, so switching apps from it mid-sign-in (to a password manager or an authenticator) and back returns to the tab, not the host: the host doesn't resume, and the view stays open. The host's activity is `singleTop` for the same reason: a `singleTask` one would finish the tab whenever the user taps the launcher icon.
+
+## How Android hears the app leave under a view
+
+A view up over the host keeps the app present, so the host's pause and resume can't say when the user leaves the app and comes back: the host paused as the view covered it, and resumes only once the last view closes. The browser's binding of `KeepAliveService` (see Keeping the app alive on Android) says it instead. Chrome holds the binding while a tab is started, so it lets go of it as the user leaves the tab for the home screen or another app, and binds it again as the tab comes back.
+
+So a let-go while the host isn't in front and a view is up over it sends `MovedToBackground` to every view, and the next binding sends `ReturnedToForeground`. Closing the last tab resumes the host before the tab stops, so that let-go sends nothing; the host's resume after the user left (from the launcher icon, say) ends the departure too. A browser that never binds the service, as one that ignores the keep-alive extra, sends neither.
+
+## A resume that opens its own page
+
+The host's activity can mark the resume it is about to make as one that opens a page of its own (`NativePageBrowserPlugin.markResumeOpeningItsOwnPage()`), as Wildflower's `MainActivity` does for an intent from a tapped notification, whose consent the base then opens. The host's Rust side asks once the app is back (`take_resume_opening_its_own_page`, the Kotlin `takeResumeOpeningItsOwnPage` command), which forgets the mark, so the arrival opens no page besides. A mark nothing takes is forgotten when the host next pauses. iOS and desktop never mark one.
 
 ## Keeping the app alive on Android
 
@@ -80,7 +90,7 @@ apps/host/tauri-plugin-native-page-browser/
 ├── src/
 │   ├── lib.rs                 — init(), NativePageBrowserExt, plugin wiring
 │   ├── commands.rs            — the open and close IPC commands
-│   ├── models.rs              — OpenRequest, OpenMode, CloseRequest, BrowserEvent (KeptAlive, Closed) + wire-shape tests
+│   ├── models.rs              — OpenRequest, OpenMode, CloseRequest, BrowserEvent (KeptAlive, Closed, MovedToBackground, ReturnedToForeground) + wire-shape tests
 │   ├── error.rs               — Error (InvalidUrl; PluginInvoke on mobile / OpenDefaultBrowser, CloseDefaultBrowserTab on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
 │   ├── desktop.rs             — opens the default browser through tauri-plugin-opener; close fails
@@ -108,10 +118,13 @@ apps/host/tauri-plugin-native-page-browser/
       ├─ iOS/Android: run_mobile_plugin_async("open", { url, view, mode, events }).await
       │     → iOS replace: dismiss the showing views, if any → channel.send({ event:"closed" }) on EACH one's channel
       │       iOS stack: present over the top-most view
-      │       Android: reject if the app is in the background; replace: join a replace view still launching;
+      │       Android: reject if the app is in the background (host not in front, no view up over it, or the user left it);
+      │                replace: join a replace view still launching;
       │                stack: launch another; wait up to 1 s for the Custom Tabs session
       │     → present SFSafariViewController / launch the Custom Tab (with the keep-alive extra)
       │     → Android: the browser binds KeepAliveService → channel.send({ event:"keptAlive" })
+      │     → Android: user goes home with the view up → the browser lets go → channel.send({ event:"movedToBackground" })
+      │       and comes back to it → the browser binds again → channel.send({ event:"returnedToForeground" })
       │     → user closes it → channel.send({ event:"closed" }) → Rust channel handler
       │
       └─ Desktop: tauri_plugin_opener::open_url(url) → default browser; `events` is dropped unsent
@@ -146,7 +159,10 @@ second `replace` open replaces the first and reports `Closed` for it on iOS; a
 `stack` open shows over the first, and closing it, by hand or with `close`,
 reveals the first, still on its page, and reports `Closed` for the second only;
 `close` of the first with the second over it reports `Closed` for both. On Android
-a launch after the first view closed opens a new view, and a double-tapped
+going home with a view up and back to it from the app switcher reports
+`MovedToBackground` then `ReturnedToForeground`, closing the view back onto the
+app reports neither, and a `stack` open after that return opens over the view.
+On Android a launch after the first view closed opens a new view, and a double-tapped
 launch opens one view whose close reports `Closed` to both; a `stack` open
 while a view launches opens a second tab over it, and the host's resume after
 both are closed reports `Closed` for each. With Chrome as the
