@@ -1,4 +1,3 @@
-import { useRouteContext } from '@tanstack/react-router'
 import { ErrorBanner, type StatusTone } from '@wildflowerhealthio/react-tundraish'
 import {
   type HostPlatform,
@@ -12,7 +11,7 @@ import { type ChangeEvent, type JSX, useId } from 'react'
 
 import { failureText } from './failure-text.ts'
 import { useSetServerRunPolicy } from './queries.ts'
-import type { RouterContext, RunHostCommand } from './router-context.ts'
+import { type RunHostCommand, useHostPlatform } from './router-context.ts'
 import { runPolicyText } from './run-policy-text.ts'
 import { useNow } from './use-now.ts'
 import styles from './run-policy-picker.module.css'
@@ -86,10 +85,7 @@ const RunPolicyPicker = ({
   readonly runHostCommand: RunHostCommand
 }): JSX.Element => {
   const setRunPolicy = useSetServerRunPolicy(runHostCommand)
-  const platform = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.platform,
-  })
+  const platform = useHostPlatform()
   const now = useNow(Duration.minutes(1), RunPolicy.deadlineOf(server.runPolicy))
   const noteId = useId()
   const note = Option.fromNullable(PHONE_NOTES[platform]).pipe(

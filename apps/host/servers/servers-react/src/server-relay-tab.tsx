@@ -1,4 +1,3 @@
-import { useRouteContext } from '@tanstack/react-router'
 import { ErrorBanner, ItemList, TextField } from '@wildflowerhealthio/react-tundraish'
 import {
   HostCommandFailed,
@@ -11,7 +10,7 @@ import { type JSX, useState } from 'react'
 import { failureText } from './failure-text.ts'
 import { useListedServer } from './listed-server-context.ts'
 import { useSetServerCredentials } from './queries.ts'
-import type { RouterContext, RunHostCommand } from './router-context.ts'
+import { type RunHostCommand, useRunHostCommand } from './router-context.ts'
 import styles from './server-relay-tab.module.css'
 
 /** What the Relay row says of each kind of relay. */
@@ -113,10 +112,7 @@ const CredentialsForm = ({
  */
 const ServerRelayTab = (): JSX.Element => {
   const server = useListedServer()
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
+  const runHostCommand = useRunHostCommand()
   return (
     <>
       <ItemList

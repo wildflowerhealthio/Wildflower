@@ -1,4 +1,3 @@
-import { useRouteContext } from '@tanstack/react-router'
 import { ItemList } from '@wildflowerhealthio/react-tundraish'
 import { PendingConsent, ServerStatus } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
 import { failureText } from './failure-text.ts'
 import { useListedServer } from './listed-server-context.ts'
 import { useOpenPendingConsent } from './queries.ts'
-import type { RouterContext, RunHostCommand } from './router-context.ts'
+import { type RunHostCommand, useRunHostCommand } from './router-context.ts'
 import styles from './server-access-tab.module.css'
 
 /**
@@ -58,10 +57,7 @@ const PendingRequest = ({
  */
 const ServerAccessTab = (): JSX.Element => {
   const server = useListedServer()
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
+  const runHostCommand = useRunHostCommand()
   return ServerStatus.pendingConsentOf(server.status).pipe(
     Option.map((pendingConsent) => (
       <PendingRequest

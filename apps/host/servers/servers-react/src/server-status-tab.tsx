@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { useNavigate, useRouteContext } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import {
   ConfirmDialog,
   ErrorBanner,
@@ -17,7 +17,12 @@ import { type JSX, type ReactNode, useId, useState } from 'react'
 import { failureText } from './failure-text.ts'
 import { useListedServer } from './listed-server-context.ts'
 import { type ServerHealthError, serverHealthQueryOptions, useRemoveServer } from './queries.ts'
-import type { RouterContext, RunHostCommand, RunHttpRequest } from './router-context.ts'
+import {
+  type RunHostCommand,
+  type RunHttpRequest,
+  useRunHostCommand,
+  useRunHttpRequest,
+} from './router-context.ts'
 import { formatInstant, lastStopText, PLATFORM_STOP_REASON_TEXT } from './server-status-text.ts'
 import styles from './server-status-tab.module.css'
 
@@ -287,14 +292,8 @@ const DestructiveActions = ({
  */
 const ServerStatusTab = (): JSX.Element => {
   const server = useListedServer()
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
-  const runHttpRequest = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHttpRequest,
-  })
+  const runHostCommand = useRunHostCommand()
+  const runHttpRequest = useRunHttpRequest()
   return (
     <>
       <Connection server={server} runHttpRequest={runHttpRequest} />

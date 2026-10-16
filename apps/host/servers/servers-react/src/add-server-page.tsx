@@ -1,4 +1,4 @@
-import { useNavigate, useRouteContext } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import {
   ErrorBanner,
   GateCard,
@@ -17,7 +17,7 @@ import { type JSX, type ReactNode, useId, useState } from 'react'
 
 import { failureText } from './failure-text.ts'
 import { useAddServer, useSetServerRunPolicy } from './queries.ts'
-import type { RouterContext, RunHostCommand } from './router-context.ts'
+import { type RunHostCommand, useRunHostCommand } from './router-context.ts'
 import styles from './add-server-page.module.css'
 
 /** The relay step's fields, as typed. */
@@ -620,10 +620,7 @@ const DoneStep = ({
  * mutation's (see `useAddServer`). Back from a refusal keeps every entry.
  */
 const AddServerPage = (): JSX.Element => {
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
+  const runHostCommand = useRunHostCommand()
   const addServer = useAddServer(runHostCommand)
   const [step, setStep] = useState<Step>({ kind: 'relay' })
   const [relayEntries, setRelayEntries] = useState(NO_RELAY_ENTRIES)

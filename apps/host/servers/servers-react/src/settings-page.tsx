@@ -1,5 +1,4 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { useRouteContext } from '@tanstack/react-router'
 import { POLICY_IDS, POLICY_LABELS, policyUrl } from '@wildflowerhealthio/branding-core'
 import { ItemList, type ItemListItem, PageHeader } from '@wildflowerhealthio/react-tundraish'
 import type { HostCommandError, NotificationPermission } from '@wildflowerhealthio/servers-core-js'
@@ -14,7 +13,7 @@ import {
   notificationPermissionQueryOptions,
   useRequestNotificationPermission,
 } from './queries.ts'
-import type { RouterContext } from './router-context.ts'
+import { useRunHostCommand } from './router-context.ts'
 
 /** What the Notifications row says under its title for each permission. */
 const NOTIFICATION_PERMISSION_SUBTITLE: Readonly<Record<NotificationPermission, string>> = {
@@ -29,10 +28,7 @@ const NOTIFICATION_PERMISSION_SUBTITLE: Readonly<Record<NotificationPermission, 
  * while the OS has yet to ask, a press that asks.
  */
 const useNotificationsItem = (): ItemListItem => {
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
+  const runHostCommand = useRunHostCommand()
   const permission = useQuery(notificationPermissionQueryOptions(runHostCommand))
   const requestPermission = useRequestNotificationPermission(runHostCommand)
   const item = { id: 'notifications', title: 'Notifications' } as const
@@ -89,10 +85,7 @@ const versionText = (version: UseQueryResult<string, HostCommandError>): string 
  * `TelemetryConsentGate` (`BaseGate`).
  */
 const SettingsPage = (): JSX.Element => {
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
+  const runHostCommand = useRunHostCommand()
   const notificationsItem = useNotificationsItem()
   const consentControls = useTelemetryConsentControls()
   const version = useQuery(appVersionQueryOptions(runHostCommand))

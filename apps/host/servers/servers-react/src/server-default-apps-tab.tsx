@@ -1,4 +1,3 @@
-import { useRouteContext } from '@tanstack/react-router'
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
 import type { ListedServer } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
@@ -7,7 +6,12 @@ import { type JSX, useState } from 'react'
 import { failureText } from './failure-text.ts'
 import { useListedServer } from './listed-server-context.ts'
 import { useUpdateServer } from './queries.ts'
-import type { RouterContext, RunHostCommand } from './router-context.ts'
+import {
+  type RunHostCommand,
+  useDefaultAuthorizationUrl,
+  useDefaultLauncherUrl,
+  useRunHostCommand,
+} from './router-context.ts'
 import styles from './server-default-apps-tab.module.css'
 
 /** A URL as the URL parser normalises it, or nothing when it doesn't parse. */
@@ -131,18 +135,9 @@ const PageUrlForm = ({
  */
 const ServerDefaultAppsTab = (): JSX.Element => {
   const server = useListedServer()
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
-  const defaultLauncherUrl = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.defaultLauncherUrl,
-  })
-  const defaultAuthorizationUrl = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.defaultAuthorizationUrl,
-  })
+  const runHostCommand = useRunHostCommand()
+  const defaultLauncherUrl = useDefaultLauncherUrl()
+  const defaultAuthorizationUrl = useDefaultAuthorizationUrl()
   return (
     <>
       <PageUrlForm

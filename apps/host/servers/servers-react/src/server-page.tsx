@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { useRouteContext } from '@tanstack/react-router'
 import { GateCard, PageBodyError, PageHeader, RouteTabs } from '@wildflowerhealthio/react-tundraish'
 import type { JSX } from 'react'
 
 import { ListedServerContext } from './listed-server-context.ts'
 import { serversQueryOptions, useServerStatusEvents } from './queries.ts'
-import type { RouterContext } from './router-context.ts'
+import { useListenToHostEvent, useRunHostCommand } from './router-context.ts'
 import { StatusHero } from './status-hero.tsx'
 
 /**
@@ -24,14 +23,8 @@ import { StatusHero } from './status-hero.tsx'
  * server from {@link ListedServerContext}.
  */
 const ServerPage = ({ domain }: { readonly domain: string }): JSX.Element => {
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
-  const listenToHostEvent = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.listenToHostEvent,
-  })
+  const runHostCommand = useRunHostCommand()
+  const listenToHostEvent = useListenToHostEvent()
   useServerStatusEvents(listenToHostEvent)
   const servers = useQuery(serversQueryOptions(runHostCommand))
   const header = <PageHeader title="Server" subtitle={domain} backHref="/" backLabel="Servers" />

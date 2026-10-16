@@ -1,4 +1,3 @@
-import { useRouteContext } from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { ConfirmDialog } from '@wildflowerhealthio/react-tundraish'
 import {
@@ -21,7 +20,7 @@ import {
 } from './launch-wait.ts'
 import { type PendingLaunches, usePendingLaunch, type WaitingLaunch } from './pending-launches.ts'
 import { useLaunchServer, useSetServerRunPolicy } from './queries.ts'
-import type { RouterContext, RunHostCommand } from './router-context.ts'
+import { type RunHostCommand, usePendingLaunches } from './router-context.ts'
 import { useHasPassed } from './use-has-passed.ts'
 import { useOnline } from './use-online.ts'
 import styles from './launch-button.module.css'
@@ -167,10 +166,7 @@ const LaunchButton = ({
 }): JSX.Element => {
   const reasonId = useId()
   const online = useOnline()
-  const pendingLaunches = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.pendingLaunches,
-  })
+  const pendingLaunches = usePendingLaunches()
   const launch = useLaunchServer(runHostCommand)
   const setRunPolicy = useSetServerRunPolicy(runHostCommand)
   const [confirmingStart, setConfirmingStart] = useState(false)
