@@ -7,10 +7,12 @@
  * - From 768px, a pill: `SegmentedToggle`'s rounded track on the chip
  *   background, tabs sized to their labels, above an unframed panel.
  *
- * The 768px is the viewport's, through a media query, so the strip switches
- * with the rest of the app's layout. With `wideFromOwnWidth` the component
- * measures its own width and sets `route-tabs--wide` itself, so the wide
- * rules are written out under each of the two conditions.
+ * The 768px is the viewport's, through a media query that applies under
+ * `route-tabs--sized-by-viewport` (the component's class without
+ * `wideFromOwnWidth`), so the strip switches with the rest of the app's
+ * layout. With `wideFromOwnWidth` the component measures its own width and
+ * sets `route-tabs--wide` itself, so the wide rules are written out under
+ * each of the two conditions.
  *
  * In either shape a strip whose tabs don't fit scrolls sideways, with no
  * visible scrollbar, and a fade on each end with tabs past it. The scroll

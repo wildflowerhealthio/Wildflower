@@ -199,9 +199,9 @@ function RouteTabs({
   const rowRef = useRef<HTMLDivElement>(null)
   const [hiddenEnds, setHiddenEnds] = useState<HiddenEnds>(NO_HIDDEN_ENDS)
   const shape = useRouteTabsShape(rootRef, wideFromOwnWidth)
-  // Subscribing to the location re-renders this component on every
-  // navigation, which a child route change otherwise needn't do, so the
-  // effect below sees each new current tab.
+  // A child route change needn't re-render this component on its own;
+  // subscribing to the location re-renders it on every navigation, so the
+  // effect below runs for each new current tab.
   const locationHref = useLocation({ select: (location) => location.href })
   /** The location the strip last scrolled its current tab into view for. */
   const scrolledForHrefRef = useRef<string | null>(null)
