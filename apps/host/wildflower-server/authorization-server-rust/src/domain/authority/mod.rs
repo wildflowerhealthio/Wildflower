@@ -25,7 +25,7 @@
 //!    to issue a code with no human in the loop.
 //!  - [`RedeemedSameDeviceSignInCode`] — a one-time same-device sign-in code the base minted
 //!    in-process, redeemed at `/oauth/sign-in`: the authority an Owner
-//!    browser session is started and its token minted under, as the Owner's
+//!    session is started and its token minted under, as the Owner's
 //!    client and grant.
 //!  - [`TokenEntitlement`] — the enum the minter mints under, one variant per
 //!    proof above that a token may be minted for; each carries its claims

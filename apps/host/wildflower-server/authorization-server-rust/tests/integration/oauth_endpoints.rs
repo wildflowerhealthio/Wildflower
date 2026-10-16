@@ -227,7 +227,7 @@ async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() 
         Some(NewestPendingConsent::OAuth {
             id: request_id.clone(),
             client_name: "Integration Test Client".to_owned(),
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
         }),
         "the newest must be the request the browser was just parked on, named for its client",
     );
@@ -319,7 +319,7 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
         Some(NewestPendingConsent::OAuth {
             id: newer_id,
             client_name: "Integration Test Client".to_owned(),
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
         }),
         "the newer request is still the newest",
     );

@@ -18,7 +18,7 @@ import { Schema } from 'effect'
  *   enabled. While it's set, `/oauth/authorize` and `/oauth/token` refuse the
  *   client.
  * - `essential` marks a client the Owner can't lose without being stuck — the
- *   Wildflower host app's and the Owner-browser client — which can't be
+ *   Wildflower host app's and the browser-session client — which can't be
  *   disabled.
  */
 const ClientSchema = Schema.Struct({

@@ -21,7 +21,7 @@
 //! the authorization server, which the app's `/oauth/authorize` consumes once.
 //! A visitor that starts authorization requests faster than its allowance is
 //! answered `429`, and the request log records it.
-//! The FHIR API takes an Owner browser's session cookie as its bearer, which
+//! The FHIR API takes a browser session cookie as its bearer, which
 //! HFS checks against the authorization server's keys in process.
 
 use std::path::{Path, PathBuf};
@@ -1166,10 +1166,10 @@ impl UiServer {
             .find(|cookie| {
                 cookie.starts_with(&format!(
                     "{}=",
-                    wildflowerhealthio_authorization_server::OWNER_BROWSER_SESSION_COOKIE
+                    wildflowerhealthio_authorization_server::BROWSER_SESSION_COOKIE
                 ))
             })
-            .expect("the Owner browser session cookie")
+            .expect("the browser session cookie")
     }
 
     /// A request the server's own page sends to `path`: same-origin,
@@ -1278,9 +1278,9 @@ async fn the_fhir_ui_sends_its_sign_in_through_the_authorization_server() {
     server.shut_down().await;
 }
 
-/// The same-device sign-in of an Owner browser, end to end through the
+/// The Owner's same-device sign-in, end to end through the
 /// composed server: a code the host mints signs a browser in and sends it on,
-/// and its `__Host-owner_browser_session` cookie alone then reads
+/// and its `__Host-browser_session` cookie alone then reads
 /// `GET /authorization/session` as the Owner from the server's own pages, and
 /// FHIR, which HFS checks against the authorization server's keys. A write
 /// carrying the cookie from another server's page is refused; one from the
@@ -1354,7 +1354,7 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
         signed_out.cookies_set(),
         [format!(
             "{}=",
-            wildflowerhealthio_authorization_server::OWNER_BROWSER_SESSION_COOKIE
+            wildflowerhealthio_authorization_server::BROWSER_SESSION_COOKIE
         )],
         "the ended session's cookie is cleared"
     );
@@ -1365,7 +1365,7 @@ async fn the_owner_signs_in_with_a_code_and_is_served_on_the_cookie() {
 /// A page on another server behind the same relay is same-site to this one,
 /// so its form posts carry this server's session cookies. Neither a FHIR write
 /// nor a write through the UI's own routes, which sit outside the gate, rides
-/// the Owner browser session: both are refused before they reach HFS. (The
+/// the browser session: both are refused before they reach HFS. (The
 /// FHIR web UI's own session can't be signed in here, its code redemption
 /// going out through the relay; `session_cookie_bearer`'s own tests cover it.)
 #[tokio::test(flavor = "multi_thread")]
@@ -1424,7 +1424,7 @@ async fn another_server_s_page_cannot_write_on_a_session_cookie() {
     server.shut_down().await;
 }
 
-/// The FHIR web UI's per-user settings, on the Owner browser session: a
+/// The FHIR web UI's per-user settings, on the browser session: a
 /// document put is the one got back, the gate refuses the same read without
 /// the cookie, and the document is stored in the health data's own sqlite
 /// file.
@@ -1465,7 +1465,7 @@ async fn the_fhir_ui_keeps_its_settings_in_the_health_data_file() {
 }
 
 /// The FHIR web UI's bulk export pages are its own, behind its sign-in: an
-/// Owner browser session alone, which serves FHIR, is sent to the UI's login.
+/// browser session alone, which serves FHIR, is sent to the UI's login.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_fhir_ui_s_bulk_export_pages_ask_for_its_sign_in() {
     let server = UiServer::start().await;
@@ -1487,7 +1487,7 @@ async fn the_fhir_ui_s_bulk_export_pages_ask_for_its_sign_in() {
     server.shut_down().await;
 }
 
-/// A bulk `$export` on the Owner browser session, end to end: the server
+/// A bulk `$export` on the browser session, end to end: the server
 /// accepts it, its worker runs it to a manifest, the manifest's file downloads
 /// on the same session with the Patient the session wrote, and the file is
 /// staged in the server's `fhir-exports` folder.

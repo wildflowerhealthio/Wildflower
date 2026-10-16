@@ -121,7 +121,7 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
+    let owner_session_token = signed_in_owner_session_token(&g).await;
     let authorize = format!(
         "/oauth/authorize?{}",
         authorize_query("test-app", REQUESTED_SCOPES)
@@ -131,9 +131,7 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         &g,
         Method::GET,
         &authorize,
-        Some(&format!(
-            "__Host-owner_browser_session={owner_browser_token}"
-        )),
+        Some(&format!("__Host-browser_session={owner_session_token}")),
     )
     .await;
     assert_eq!(res.status(), StatusCode::FOUND);
@@ -144,7 +142,7 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         &g,
         Method::GET,
         &authorize,
-        Some("__Host-owner_browser_session=not-a-token"),
+        Some("__Host-browser_session=not-a-token"),
     )
     .await;
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);

@@ -1,9 +1,9 @@
 //! [`SameDeviceSignIn`] — `GET /oauth/sign-in`: redeem a one-time same-device sign-in code the
-//! base minted in-process for an Owner browser's session token, and say where the
+//! base minted in-process for an Owner session's token, and say where the
 //! browser goes next. It reads top to bottom as: check `next` against the
-//! allow-list and check the Owner-browser client isn't disabled (both before
+//! allow-list and check the browser-session client isn't disabled (both before
 //! the code is touched), redeem the code for its
-//! [`RedeemedSameDeviceSignInCode`] proof, store the Owner browser session it
+//! [`RedeemedSameDeviceSignInCode`] proof, store the Owner session it
 //! starts, mint under it.
 
 use std::sync::Arc;
@@ -18,15 +18,15 @@ use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
 use crate::domain::token::TokenIssuanceError;
 use crate::domain::GrantStore;
-use crate::OWNER_BROWSER_CLIENT_ID;
+use crate::BROWSER_SESSION_CLIENT_ID;
 
-/// How long an Owner browser's session token lives: a working day, after which the
+/// How long an Owner session's token lives: a working day, after which the
 /// base signs the browser in again.
-pub(crate) const OWNER_BROWSER_SESSION_TTL: Duration = Duration::hours(8);
+pub(crate) const OWNER_SESSION_TTL: Duration = Duration::hours(8);
 
-/// What a sign-in issued: the Owner browser's session token, and where the browser
+/// What a sign-in issued: the Owner session's token, and where the browser
 /// goes with it.
-pub(crate) struct OwnerBrowserSession {
+pub(crate) struct IssuedOwnerSession {
     /// The Owner's access token, which the browser holds as its session.
     pub(crate) access_token: String,
     /// Where the browser goes next.
@@ -38,10 +38,10 @@ pub(crate) struct OwnerBrowserSession {
 pub(crate) enum SameDeviceSignInError {
     /// The request was refused: the browser is told why, on a page.
     Refused(SignInRefusal),
-    /// The Owner-browser client's row couldn't be read, or is missing though
+    /// The browser-session client's row couldn't be read, or is missing though
     /// it is seeded at boot. The code is unspent.
     Store(AuthorizationServerError),
-    /// The Owner browser session couldn't be stored. The code is spent.
+    /// The Owner session couldn't be stored. The code is spent.
     SessionNotStored(AuthorizationServerError),
     /// The token couldn't be minted (no signing key, a signing or store
     /// failure). The code is spent.
@@ -56,9 +56,9 @@ pub(crate) enum SignInRefusal {
     RedirectNotAllowed,
     /// The code is unknown, already redeemed, or expired.
     CodeNotRedeemable,
-    /// The Owner-browser client, which every Owner browser's session token is
+    /// The browser-session client, which every browser session's token is
     /// issued to, is disabled.
-    OwnerBrowserClientDisabled,
+    BrowserSessionClientDisabled,
 }
 
 /// Sign a browser in as the Owner. Generic over the store port so it's
@@ -92,18 +92,18 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         }
     }
 
-    /// Redeem `presented_code` at `now` for an Owner browser session and its
-    /// token, both lasting [`OWNER_BROWSER_SESSION_TTL`], to go on to `next`.
-    /// A `next` that isn't allowed, or a disabled Owner-browser client, is
+    /// Redeem `presented_code` at `now` for an Owner session and its
+    /// token, both lasting [`OWNER_SESSION_TTL`], to go on to `next`.
+    /// A `next` that isn't allowed, or a disabled browser-session client, is
     /// refused before the code is touched, so the code stays redeemable.
     ///
     /// # Errors
     ///
     /// [`SameDeviceSignInError::Refused`] for a `next` that isn't allowed
-    /// ([`SignInRefusal::RedirectNotAllowed`]), a disabled Owner-browser client
-    /// ([`SignInRefusal::OwnerBrowserClientDisabled`]), or a code that is
+    /// ([`SignInRefusal::RedirectNotAllowed`]), a disabled browser-session client
+    /// ([`SignInRefusal::BrowserSessionClientDisabled`]), or a code that is
     /// unknown, spent or expired ([`SignInRefusal::CodeNotRedeemable`]);
-    /// [`SameDeviceSignInError::Store`] when the Owner-browser client can't be
+    /// [`SameDeviceSignInError::Store`] when the browser-session client can't be
     /// read; [`SameDeviceSignInError::SessionNotStored`] when the session
     /// can't be stored; [`SameDeviceSignInError::Issuance`] when minting fails.
     pub(crate) fn sign_in(
@@ -111,7 +111,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         presented_code: &str,
         next: &str,
         now: DateTime<Utc>,
-    ) -> Result<OwnerBrowserSession, SameDeviceSignInError> {
+    ) -> Result<IssuedOwnerSession, SameDeviceSignInError> {
         let redirect = self
             .destinations
             .allow(next)
@@ -119,18 +119,18 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
                 SignInRefusal::RedirectNotAllowed,
             ))?;
         if self
-            .owner_browser_client_is_disabled()
+            .browser_session_client_is_disabled()
             .map_err(SameDeviceSignInError::Store)?
         {
             return Err(SameDeviceSignInError::Refused(
-                SignInRefusal::OwnerBrowserClientDisabled,
+                SignInRefusal::BrowserSessionClientDisabled,
             ));
         }
         let redeemed_sign_in_code = RedeemedSameDeviceSignInCode::redeem(
             &self.codes,
             presented_code,
             &self.owner_grant,
-            OWNER_BROWSER_SESSION_TTL,
+            OWNER_SESSION_TTL,
             now,
         )
         .ok_or(SameDeviceSignInError::Refused(
@@ -140,27 +140,27 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .start_owner_session(&redeemed_sign_in_code)
             .map_err(SameDeviceSignInError::SessionNotStored)?;
         let access_token =
-            AccessTokenMinter::new(&self.store, &self.server_origin, OWNER_BROWSER_SESSION_TTL)
+            AccessTokenMinter::new(&self.store, &self.server_origin, OWNER_SESSION_TTL)
                 .mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
                 .map_err(SameDeviceSignInError::Issuance)?;
-        Ok(OwnerBrowserSession {
+        Ok(IssuedOwnerSession {
             access_token,
             redirect,
         })
     }
 
-    /// Whether the Owner-browser client is disabled. It is an essential
+    /// Whether the browser-session client is disabled. It is an essential
     /// client, which the Owner can't disable, so only a row disabled out of
     /// band (direct SQL) is. Its row is seeded at boot, so a missing one is an
     /// error, not an enabled client.
-    fn owner_browser_client_is_disabled(&self) -> Result<bool, AuthorizationServerError> {
-        let owner_browser_client = self
+    fn browser_session_client_is_disabled(&self) -> Result<bool, AuthorizationServerError> {
+        let browser_session_client = self
             .store
-            .client_by_id(OWNER_BROWSER_CLIENT_ID)?
+            .client_by_id(BROWSER_SESSION_CLIENT_ID)?
             .ok_or_else(|| AuthorizationServerError::ClientNotFound {
-                client_id: OWNER_BROWSER_CLIENT_ID.to_owned(),
+                client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
             })?;
-        Ok(owner_browser_client.disabled_at.is_some())
+        Ok(browser_session_client.disabled_at.is_some())
     }
 }
 
@@ -199,7 +199,7 @@ mod tests {
         )
     }
 
-    /// A sign-in over a store with a signing key and the seeded Owner-browser
+    /// A sign-in over a store with a signing key and the seeded browser-session
     /// client, and one outstanding code, `code-1`, minted at `minted_at`; and
     /// the key.
     fn sign_in_with_a_code(
@@ -208,8 +208,8 @@ mod tests {
         let store = FakeGrantStore::default();
         let signing_key = seed_active_signing_key(&store);
         store
-            .upsert_client(&client(OWNER_BROWSER_CLIENT_ID, &OWNER_SCOPES))
-            .expect("seed the Owner-browser client");
+            .upsert_client(&client(BROWSER_SESSION_CLIENT_ID, &OWNER_SCOPES))
+            .expect("seed the browser-session client");
         let codes = Arc::new(SameDeviceSignInCodes::new());
         codes.insert("code-1", minted_at);
         (sign_in_over(store, codes), signing_key)
@@ -230,7 +230,7 @@ mod tests {
             },
         )
         .expect("an Owner token this server accepts");
-        assert_eq!(claims.subject, "wildflower-owner-browser");
+        assert_eq!(claims.subject, "wildflower-browser");
         assert_eq!(
             claims.scope.as_deref(),
             Some("system/*.cruds wildflower/*.cruds")
@@ -240,7 +240,7 @@ mod tests {
                 .expires_at
                 .zip(claims.issued_at)
                 .map(|(exp, iat)| exp - iat),
-            Some(OWNER_BROWSER_SESSION_TTL),
+            Some(OWNER_SESSION_TTL),
             "the token lives eight hours"
         );
     }
@@ -290,28 +290,28 @@ mod tests {
     }
 
     #[test]
-    fn a_disabled_owner_browser_client_signs_nobody_in_and_leaves_the_code_redeemable() {
+    fn a_disabled_browser_session_client_signs_nobody_in_and_leaves_the_code_redeemable() {
         let now = Utc::now();
         let (sign_in, _store) = sign_in_with_a_code(now);
-        let set_owner_browser_client_disabled_at = |disabled_at| {
+        let set_browser_session_client_disabled_at = |disabled_at| {
             assert!(sign_in
                 .store
-                .set_client_disabled(OWNER_BROWSER_CLIENT_ID, disabled_at)
+                .set_client_disabled(BROWSER_SESSION_CLIENT_ID, disabled_at)
                 .expect("set disabled_at"));
         };
-        set_owner_browser_client_disabled_at(Some(now));
+        set_browser_session_client_disabled_at(Some(now));
         assert!(matches!(
             sign_in.sign_in("code-1", "/", now),
             Err(SameDeviceSignInError::Refused(
-                SignInRefusal::OwnerBrowserClientDisabled
+                SignInRefusal::BrowserSessionClientDisabled
             ))
         ));
-        set_owner_browser_client_disabled_at(None);
+        set_browser_session_client_disabled_at(None);
         assert!(sign_in.sign_in("code-1", "/", now).is_ok());
     }
 
     #[test]
-    fn a_missing_owner_browser_client_is_a_store_error() {
+    fn a_missing_browser_session_client_is_a_store_error() {
         let now = Utc::now();
         let store = FakeGrantStore::default();
         seed_active_signing_key(&store);

@@ -32,12 +32,12 @@ pub struct PendingConsent {
     /// The client's registered name, or its `client_id` while it has no
     /// registration.
     pub client_name: String,
-    /// Whether the browser that made the request carried the Owner browser
-    /// session, so it shows the request's consent card itself. Always `false`
-    /// for a device request. Not on the wire: the base shows the request
+    /// Whether the request can be decided in the browser that made it, which
+    /// carried a browser session, so it shows the request's consent card
+    /// itself. Always `false` for a device request. Not on the wire: the base shows the request
     /// either way.
     #[serde(skip)]
-    pub requested_by_owner_browser: bool,
+    pub decidable_in_requesting_browser: bool,
 }
 
 impl PendingConsent {
@@ -63,16 +63,16 @@ impl From<NewestPendingConsent> for PendingConsent {
             } => Self {
                 key: ConsentKey::Device { user_code },
                 client_name,
-                requested_by_owner_browser: false,
+                decidable_in_requesting_browser: false,
             },
             NewestPendingConsent::OAuth {
                 id,
                 client_name,
-                requested_by_owner_browser,
+                decidable_in_requesting_browser,
             } => Self {
                 key: ConsentKey::OAuth { id },
                 client_name,
-                requested_by_owner_browser,
+                decidable_in_requesting_browser,
             },
         }
     }
@@ -92,7 +92,7 @@ mod tests {
         let oauth = PendingConsent::from(NewestPendingConsent::OAuth {
             id: "req-1".to_owned(),
             client_name: "app-client-id".to_owned(),
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
         });
         assert_eq!(
             serde_json::to_value([device, oauth]).unwrap(),

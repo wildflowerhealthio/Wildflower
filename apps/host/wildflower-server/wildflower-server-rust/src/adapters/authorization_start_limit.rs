@@ -8,8 +8,8 @@
 //! server's limit on them asks one [`AuthorizationStartLimit`] for every
 //! request to either, and answers `429 Too Many Requests` when it refuses. It
 //! asks before the request is parsed, so every attempt counts, however
-//! malformed. A request from a browser signed in as the Owner (a live Owner
-//! browser session) is never asked about, so it spends nothing.
+//! malformed. A request from a browser signed in as the Owner (a live browser
+//! session) is never asked about, so it spends nothing.
 //!
 //! The limit is two allowances, each a [`Rate`]: a burst of attempts at once,
 //! refilled one attempt per interval, [`PER_CLIENT`] for each visitor and

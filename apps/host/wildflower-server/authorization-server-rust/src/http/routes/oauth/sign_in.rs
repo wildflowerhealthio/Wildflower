@@ -1,4 +1,4 @@
-//! `GET /oauth/sign-in?code=…&next=…` — the same-device sign-in of an Owner browser. The base mints a
+//! `GET /oauth/sign-in?code=…&next=…` — the Owner's same-device sign-in. The base mints a
 //! one-time code in-process and opens this URL in a browser it can't script;
 //! redeeming the code signs that browser in as the Owner. Wildflower has no
 //! accounts or passwords, and OAuth leaves how a person signs in to the
@@ -19,11 +19,11 @@ use chrono::Utc;
 use serde::Deserialize;
 
 use crate::domain::capabilities::oauth::{
-    OwnerBrowserSession, SameDeviceSignInError, SignInRefusal,
+    IssuedOwnerSession, SameDeviceSignInError, SignInRefusal,
 };
+use crate::http::browser_session_set_cookie;
 use crate::http::errors::{sign_in_error_html, InternalError};
 use crate::http::extractors::Live;
-use crate::http::owner_browser_session_set_cookie;
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
 use crate::live_bindings::LiveSameDeviceSignIn;
@@ -46,9 +46,9 @@ struct SignInParams {
     next: String,
 }
 
-/// Redeem the code for an Owner browser's session token, hand the browser the token as
-/// its `__Host-owner_browser_session` cookie, and `303` it on to `next`. A `next` that
-/// isn't allowed, a disabled Owner-browser client, or a code that is unknown,
+/// Redeem the code for an Owner session's token, hand the browser the token as
+/// its `__Host-browser_session` cookie, and `303` it on to `next`. A `next` that
+/// isn't allowed, a disabled browser-session client, or a code that is unknown,
 /// spent or expired, gets the error page, with no cookie and no redirect.
 ///
 /// Every answer is uncached and sends no `Referer` on, since the request's own
@@ -58,7 +58,7 @@ async fn handle_sign_in(
     Query(params): Query<SignInParams>,
 ) -> Response {
     let response = match same_device_sign_in.sign_in(&params.code, &params.next, Utc::now()) {
-        Ok(OwnerBrowserSession {
+        Ok(IssuedOwnerSession {
             access_token,
             redirect,
         }) => (
@@ -67,20 +67,20 @@ async fn handle_sign_in(
                 (header::LOCATION, redirect.location().to_owned()),
                 (
                     header::SET_COOKIE,
-                    owner_browser_session_set_cookie(&access_token),
+                    browser_session_set_cookie(&access_token),
                 ),
             ],
         )
             .into_response(),
         Err(SameDeviceSignInError::Refused(refusal)) => refusal_page(refusal),
         Err(SameDeviceSignInError::Store(error)) => {
-            InternalError::new("read the Owner-browser client", error).into_response()
+            InternalError::new("read the browser-session client", error).into_response()
         }
         Err(SameDeviceSignInError::SessionNotStored(error)) => {
-            InternalError::new("store the Owner browser session", error).into_response()
+            InternalError::new("store the Owner session", error).into_response()
         }
         Err(SameDeviceSignInError::Issuance(error)) => {
-            InternalError::new("mint the Owner browser's session token", error).into_response()
+            InternalError::new("mint the Owner session's token", error).into_response()
         }
     };
     (

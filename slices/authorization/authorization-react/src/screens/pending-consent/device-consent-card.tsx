@@ -45,7 +45,7 @@ interface DeviceConsentCardProps {
 
 /**
  * The device-consent card. What sends the decision comes from its composer:
- * the authorization server's own device page, on the Owner browser's session.
+ * the authorization server's own device page, on the browser session.
  */
 const DeviceConsentCard = ({
   consent,

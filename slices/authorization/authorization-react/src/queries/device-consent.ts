@@ -56,7 +56,7 @@ type DeviceConsentDecision =
  * `ApproveDeviceConsent` / `DenyDeviceConsent` over `runAuthed`, as mutation
  * options: the decision's `mutationFn`, which resolves to the resulting
  * decision. The authorization server's device page (`authorization-server-web`)
- * runs it on the Owner browser's session.
+ * runs it on the browser session.
  */
 const deviceConsentMutationOptions = (
   runAuthed: RunAuthed

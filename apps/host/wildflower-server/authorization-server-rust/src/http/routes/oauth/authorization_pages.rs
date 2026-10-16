@@ -17,7 +17,7 @@
 //!
 //! Every file carries the wait page's security headers
 //! ([`page_security_headers`]). The pages call only the existing APIs
-//! (`/authorization/*` and FHIR `GET /Patient`), on the Owner browser
+//! (`/authorization/*` and FHIR `GET /Patient`), on the browser
 //! session's bearer, which the host's cookie→bearer layer presents for them.
 
 use std::path::Path as FilePath;

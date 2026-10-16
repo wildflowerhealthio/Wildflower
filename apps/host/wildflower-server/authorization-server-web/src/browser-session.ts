@@ -4,16 +4,16 @@ import { Effect, Layer, flow } from 'effect'
 
 /**
  * The request header, and its value, by which a page asks the server's
- * cookie→bearer layer for the Owner browser session. A browser can also hold
- * the FHIR web UI's `hfs_session`, whose bearer the layer otherwise presents
- * when both cookies ride a request. With it, the request acts as the Owner
- * signed in on this browser, or as no session if none is; never as the UI's.
+ * cookie→bearer layer for the browser session. A browser can also hold the
+ * FHIR web UI's `hfs_session`, whose bearer the layer otherwise presents when
+ * both cookies ride a request. With it, the request acts in the session this
+ * browser is signed in with, or as no session if none is; never as the UI's.
  * The server's side is `wildflowerhealthio-authorization-server`'s
- * `SESSION_HEADER` and `OWNER_BROWSER_SESSION_HEADER_VALUE`.
+ * `SESSION_HEADER` and `BROWSER_SESSION_HEADER_VALUE`.
  */
-const OWNER_BROWSER_SESSION_HEADER = {
+const BROWSER_SESSION_HEADER = {
   name: 'Wildflower-Session',
-  value: 'owner-browser',
+  value: 'browser',
 } as const
 
 /**
@@ -23,15 +23,16 @@ const OWNER_BROWSER_SESSION_HEADER = {
  * (`FetchHttpClient.layer` in the browser, a stub in tests).
  *
  * @remarks
- * No request carries an `Authorization` header. The browser sends the Owner
- * browser session's `__Host-` cookie with every same-origin request, and the
- * server's cookie→bearer layer presents the session's token as the request's
- * bearer, so a page acts with exactly the authority of the Owner signed in on
- * this browser. Every request carries {@link OWNER_BROWSER_SESSION_HEADER}, so
- * a browser also signed in to the FHIR web UI still acts as the Owner. A
- * browser with no Owner session gets the gates' `401`.
+ * No request carries an `Authorization` header. The browser sends its browser
+ * session's `__Host-` cookie with every same-origin request, and the server's
+ * cookie→bearer layer presents the session's token as the request's bearer, so
+ * a page acts with exactly the authority of the session this browser is
+ * signed in with (the Owner's, for a browser signed in as the Owner). Every
+ * request carries {@link BROWSER_SESSION_HEADER}, so a browser also signed in
+ * to the FHIR web UI still acts in its browser session. A browser with no
+ * browser session gets the gates' `401`.
  */
-const ownerBrowserSessionRunner = (
+const browserSessionRunner = (
   serverOrigin: string,
   transport: Layer.Layer<HttpClient.HttpClient>
 ): AuthorizationRouterContext.RunAuthed => {
@@ -42,10 +43,7 @@ const ownerBrowserSessionRunner = (
       HttpClient.mapRequest(
         flow(
           HttpClientRequest.prependUrl(serverOrigin),
-          HttpClientRequest.setHeader(
-            OWNER_BROWSER_SESSION_HEADER.name,
-            OWNER_BROWSER_SESSION_HEADER.value
-          )
+          HttpClientRequest.setHeader(BROWSER_SESSION_HEADER.name, BROWSER_SESSION_HEADER.value)
         )
       )
     )
@@ -57,4 +55,4 @@ const ownerBrowserSessionRunner = (
   return (effect, options) => Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
 }
 
-export { OWNER_BROWSER_SESSION_HEADER, ownerBrowserSessionRunner }
+export { BROWSER_SESSION_HEADER, browserSessionRunner }

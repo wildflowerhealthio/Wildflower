@@ -7,10 +7,7 @@ import { Effect, Layer, Option } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import {
-  OWNER_BROWSER_SESSION_HEADER,
-  ownerBrowserSessionRunner,
-} from '../owner-browser-session.ts'
+import { BROWSER_SESSION_HEADER, browserSessionRunner } from '../browser-session.ts'
 import { DevicePage } from './device-page.tsx'
 
 /**
@@ -58,7 +55,7 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       method: request.method,
       path: new URL(request.url).pathname,
       body: bodyOf(request),
-      session: request.headers[OWNER_BROWSER_SESSION_HEADER.name.toLowerCase()],
+      session: request.headers[BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
     const reply = answer(seenRequest)
@@ -92,7 +89,7 @@ const deviceConsentFor = (userCode: string): unknown => ({
 /** The path of the session read the page makes on load. */
 const SESSION_PATH = '/authorization/session'
 
-/** The scopes an Owner browser session holds. */
+/** The scopes an Owner session holds. */
 const OWNER_SCOPES = ['system/*.cruds', 'wildflower/*.cruds']
 
 /**
@@ -143,7 +140,7 @@ const renderPage = (
   render(
     <DevicePage
       initialUserCode={initialUserCode}
-      runAuthed={ownerBrowserSessionRunner(SERVER_ORIGIN, stubServer)}
+      runAuthed={browserSessionRunner(SERVER_ORIGIN, stubServer)}
       goBackOnceDecided={openedWith === 'then-back' ? Option.some(goBack) : Option.none()}
     />,
     { wrapper }
@@ -222,7 +219,7 @@ describe('DevicePage — the session read', () => {
 })
 
 describe('DevicePage — deciding', () => {
-  test('approving sends the scopes on the Owner browser session and says to return to the device', async () => {
+  test('approving sends the scopes on the browser session and says to return to the device', async () => {
     answer = serverHolding('WDJB-MJHT', { status: 'approved' })
     const { user } = renderPage('WDJB-MJHT')
 
@@ -237,11 +234,11 @@ describe('DevicePage — deciding', () => {
         method: 'POST',
         path: '/authorization/devices/WDJB-MJHT/approve',
         body: { approvedScopes: ['system/Observation.rs'] },
-        session: OWNER_BROWSER_SESSION_HEADER.value,
+        session: BROWSER_SESSION_HEADER.value,
       },
     ])
     expect(new Set(seen.map((request) => request.session))).toEqual(
-      new Set([OWNER_BROWSER_SESSION_HEADER.value])
+      new Set([BROWSER_SESSION_HEADER.value])
     )
   })
 

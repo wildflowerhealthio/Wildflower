@@ -34,8 +34,8 @@ async fn post_token(g: &AuthorizationServer, form: String) -> axum::response::Re
 #[tokio::test]
 async fn a_sign_in_starts_an_owner_session_its_token_names() {
     let (g, _owner_token, db) = spin_up();
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
-    let sid = sid_of(&owner_browser_token);
+    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let sid = sid_of(&owner_session_token);
 
     let session = store_handle(&db)
         .browser_session_by_sid(&sid)
@@ -49,7 +49,7 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
     );
     assert_eq!(session.expires_at - session.created_at, Duration::hours(8));
     assert_eq!(session.revoked_at, None);
-    let token_expires_at = decode_jwt_payload(&owner_browser_token)["exp"]
+    let token_expires_at = decode_jwt_payload(&owner_session_token)["exp"]
         .as_i64()
         .expect("exp");
     assert!(
@@ -57,7 +57,7 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
         "the token ends with its session"
     );
 
-    let other = signed_in_owner_browser_token(&g).await;
+    let other = signed_in_owner_session_token(&g).await;
     assert_ne!(sid_of(&other), sid, "each sign-in starts its own session");
 }
 
@@ -67,8 +67,8 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
 #[tokio::test]
 async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
     let (g, _owner_token, db) = spin_up();
-    let revoked = signed_in_owner_browser_token(&g).await;
-    let standing = signed_in_owner_browser_token(&g).await;
+    let revoked = signed_in_owner_session_token(&g).await;
+    let standing = signed_in_owner_session_token(&g).await;
     let grants_status = |token: String| {
         let router = g.router.clone();
         async move {
@@ -98,15 +98,15 @@ async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
     assert!(g.in_process_token_verifier.verify(&standing).is_ok());
 }
 
-/// An app authorized from an Owner browser is issued its code, tokens and
-/// refresh family under that browser's session: they all name its `sid`, and
-/// once the session is revoked the family can't be refreshed and the app's
-/// access token is refused.
+/// An app authorized from a browser signed in as the Owner is issued its code,
+/// tokens and refresh family under that browser's session: they all name its
+/// `sid`, and once the session is revoked the family can't be refreshed and
+/// the app's access token is refused.
 #[tokio::test]
 async fn an_app_authorized_in_a_session_is_ended_with_it() {
     let (g, owner_token, db) = spin_up();
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
-    let sid = sid_of(&owner_browser_token);
+    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let sid = sid_of(&owner_session_token);
 
     let res = g
         .router
@@ -118,7 +118,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
             ))
             .header(
                 "cookie",
-                format!("__Host-owner_browser_session={owner_browser_token}"),
+                format!("__Host-browser_session={owner_session_token}"),
             ),
             Body::empty(),
         ))
@@ -215,7 +215,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
 #[tokio::test]
 async fn approving_a_request_whose_session_was_revoked_denies_it() {
     let (g, owner_token, db) = spin_up();
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
+    let owner_session_token = signed_in_owner_session_token(&g).await;
 
     let res = g
         .router
@@ -227,7 +227,7 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
             ))
             .header(
                 "cookie",
-                format!("__Host-owner_browser_session={owner_browser_token}"),
+                format!("__Host-browser_session={owner_session_token}"),
             ),
             Body::empty(),
         ))
@@ -242,7 +242,7 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
         .to_owned();
 
     assert!(store_handle(&db)
-        .revoke_browser_session(&sid_of(&owner_browser_token), Utc::now())
+        .revoke_browser_session(&sid_of(&owner_session_token), Utc::now())
         .expect("revoke"));
 
     let res = approve_oauth_consent(

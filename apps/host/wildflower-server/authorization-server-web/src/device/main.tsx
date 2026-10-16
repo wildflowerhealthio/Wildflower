@@ -10,7 +10,7 @@ import { FetchHttpClient } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { addOsColorSchemeListener, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 
-import { ownerBrowserSessionRunner } from '../owner-browser-session.ts'
+import { browserSessionRunner } from '../browser-session.ts'
 import { goBackOnceDecidedOf } from '../then-query.ts'
 import { DevicePage } from './device-page.tsx'
 import { userCodeOf } from './user-code-query.ts'
@@ -29,7 +29,7 @@ if (container !== null) {
         <main className={pageLayoutStyles['page']}>
           <DevicePage
             initialUserCode={userCodeOf(window.location.search)}
-            runAuthed={ownerBrowserSessionRunner(window.location.origin, FetchHttpClient.layer)}
+            runAuthed={browserSessionRunner(window.location.origin, FetchHttpClient.layer)}
             goBackOnceDecided={goBackOnceDecidedOf(window.location.search, window)}
           />
         </main>

@@ -49,7 +49,7 @@ pub(crate) fn device_request(
         device_name: None,
         launch: None,
         launch_bound_patient: None,
-        requested_by_owner_browser: false,
+        decidable_in_requesting_browser: false,
         sid: None,
     }
 }
@@ -81,7 +81,7 @@ pub(crate) fn code_request(
         device_name: None,
         launch: None,
         launch_bound_patient: None,
-        requested_by_owner_browser: false,
+        decidable_in_requesting_browser: false,
         sid: None,
     }
 }

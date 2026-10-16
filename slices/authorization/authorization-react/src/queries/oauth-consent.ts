@@ -54,7 +54,7 @@ const foldExpiredConsent = <E, R>(
  * `ApproveOAuthConsent` / `DenyOAuthConsent` over `runAuthed`, as mutation
  * options: the decision's `mutationFn`, which resolves to the resulting
  * decision. The authorization server's consent card (`authorization-server-web`)
- * runs it on the Owner browser's session.
+ * runs it on the browser session.
  */
 const oauthConsentMutationOptions = (
   runAuthed: RunAuthed

@@ -45,9 +45,9 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// The SMART App Launch `aud`: the FHIR server the app means to call with
     /// the token, or `None` when the app doesn't declare one.
     pub(crate) aud: Option<&'a str>,
-    /// Whether the browser making the request carries the Owner browser
-    /// session, recorded on a parked request.
-    pub(crate) requested_by_owner_browser: bool,
+    /// Whether the request can be decided in the browser making it (it
+    /// carries a browser session), recorded on a parked request.
+    pub(crate) decidable_in_requesting_browser: bool,
     /// The browser session the browser making the request holds, if any,
     /// recorded on the parked request and on the code it earns.
     pub(crate) sid: Option<&'a str>,
@@ -256,7 +256,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 pre_approved_scopes: coverage.pre_approved_scopes().to_vec(),
                 ttl: AUTHORIZATION_REQUEST_TTL,
                 launch_context,
-                requested_by_owner_browser: authorize_query.requested_by_owner_browser,
+                decidable_in_requesting_browser: authorize_query.decidable_in_requesting_browser,
                 sid: authorize_query.sid.map(str::to_owned),
             });
         self.store
@@ -476,7 +476,7 @@ mod tests {
             client_state: "xyz",
             launch: None,
             aud: None,
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
             sid: None,
         }
     }

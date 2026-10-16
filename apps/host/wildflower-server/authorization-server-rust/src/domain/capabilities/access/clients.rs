@@ -151,10 +151,10 @@ mod tests {
     use crate::domain::test_fake::{client, FakeGrantStore};
 
     const HOST: &str = crate::WILDFLOWER_HOST_APP_CLIENT_ID;
-    const OWNER_BROWSER: &str = crate::OWNER_BROWSER_CLIENT_ID;
+    const BROWSER_SESSION_CLIENT: &str = crate::BROWSER_SESSION_CLIENT_ID;
 
     fn essential_client_guard() -> EssentialClientGuard {
-        EssentialClientGuard::new(HOST.into(), OWNER_BROWSER.into())
+        EssentialClientGuard::new(HOST.into(), BROWSER_SESSION_CLIENT.into())
     }
 
     /// A disabler over a fresh fake seeded with `rows`; tests reach the fake
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn list_flags_only_the_essential_clients() {
         let store = FakeGrantStore::default();
-        for id in ["b-app", HOST, OWNER_BROWSER, "a-app"] {
+        for id in ["b-app", HOST, BROWSER_SESSION_CLIENT, "a-app"] {
             store.upsert_client(&client(id, &["openid"])).unwrap();
         }
 
@@ -218,7 +218,7 @@ mod tests {
                 ("a-app", false),
                 ("b-app", false),
                 (HOST, true),
-                (OWNER_BROWSER, true)
+                (BROWSER_SESSION_CLIENT, true)
             ]
         );
     }
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn an_essential_client_cannot_be_disabled_but_can_be_enabled() {
-        for essential_client_id in [HOST, OWNER_BROWSER] {
+        for essential_client_id in [HOST, BROWSER_SESSION_CLIENT] {
             let essential_client = client(essential_client_id, &["openid"]);
             let disabler = disabler_with(std::slice::from_ref(&essential_client));
 

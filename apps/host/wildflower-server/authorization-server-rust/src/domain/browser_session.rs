@@ -42,7 +42,7 @@ pub struct BrowserSession {
     pub sid: String,
     /// How the browser came to hold the session.
     pub kind: BrowserSessionKind,
-    /// The name the browser was given; `None` for an Owner browser.
+    /// The name the browser was given; `None` for an Owner session.
     pub name: Option<String>,
     /// The session's grant.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
@@ -57,7 +57,7 @@ pub struct BrowserSession {
 }
 
 impl BrowserSession {
-    /// A fresh Owner browser session with a new `sid`, holding `owner_scopes`
+    /// A fresh Owner session with a new `sid`, holding `owner_scopes`
     /// and lasting `ttl` from `now`.
     #[must_use]
     pub fn new_owner(owner_scopes: Vec<String>, ttl: Duration, now: DateTime<Utc>) -> Self {
@@ -76,7 +76,7 @@ impl BrowserSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::capabilities::oauth::OWNER_BROWSER_SESSION_TTL;
+    use crate::domain::capabilities::oauth::OWNER_SESSION_TTL;
 
     #[test]
     fn an_owner_session_is_unnamed_and_lasts_its_ttl() {
@@ -98,6 +98,6 @@ mod tests {
     /// revoked-`jti` purge floor and session retention rely on.
     #[test]
     fn the_owner_session_is_within_the_longest_session() {
-        assert!(OWNER_BROWSER_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
+        assert!(OWNER_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
     }
 }

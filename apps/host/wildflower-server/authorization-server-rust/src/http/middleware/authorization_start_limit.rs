@@ -8,7 +8,7 @@
 //! device. The layer sits on those two routes alone, so it covers every
 //! method axum serves them on (`HEAD /oauth/authorize` too) and no other
 //! route. A request from a browser signed in as the Owner (it carries a live
-//! Owner browser session, as [`carried_owner_browser_session`] reads it)
+//! browser session, as [`carried_browser_session`] reads it)
 //! passes without asking the gate, so it spends nothing. A session the store
 //! can't vouch for doesn't pass; it asks the gate like any other request. Every other request
 //! asks the gate, before the request is parsed, so every attempt counts,
@@ -26,7 +26,7 @@ use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-use crate::http::owner_browser_session_cookie::carried_owner_browser_session;
+use crate::http::browser_session_cookie::carried_browser_session;
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
@@ -34,7 +34,7 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 /// What a request the gate refuses is answered.
 const RATE_LIMITED: &str = "too many authorization requests; try again later";
 
-/// Pass `request` on when it carries a live Owner browser session or the
+/// Pass `request` on when it carries a live browser session or the
 /// state's [`AuthorizationStartGate`](crate::AuthorizationStartGate) admits
 /// it, and answer it `429 Too Many Requests`, uncached, otherwise.
 pub(crate) async fn limit_authorization_starts(
@@ -44,7 +44,7 @@ pub(crate) async fn limit_authorization_starts(
 ) -> Response {
     let token_verifier = LiveTokenVerifier::from_state(&state);
     if matches!(
-        carried_owner_browser_session(&token_verifier, request.headers()),
+        carried_browser_session(&token_verifier, request.headers()),
         Ok(Some(_))
     ) || state.authorization_start_gate.admit(request.extensions())
     {

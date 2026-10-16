@@ -1669,6 +1669,86 @@ mod tests {
         assert_eq!(reverted, at_0036);
     }
 
+    /// An install already at `0037`, holding the browser-session client under
+    /// its old `wildflower-owner-browser` id, re-keys it when `0038` runs, and
+    /// every standing Owner session ends, so the Owner signs in again; one
+    /// already revoked keeps its time. The request column takes its new name.
+    /// Reverting `0038` restores the old id and column name.
+    #[test]
+    fn an_install_already_at_0037_rekeys_the_browser_session_client_and_ends_owner_sessions() {
+        use diesel::connection::SimpleConnection as _;
+        const REVOKED_AT: &str = "2026-10-01 00:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0037"),
+        )
+        .expect("migrate to 0037");
+        conn.batch_execute(&format!(
+            "INSERT INTO clients \
+             (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+              secret_hash, registered_at, disabled_at) \
+             VALUES ('wildflower-owner-browser', 'Wildflower (Owner browsers)', 'public', \
+                     '[]', '[\"system/*.cruds\"]', '[]', NULL, \
+                     '2024-01-01 00:00:00+00:00', NULL); \
+             INSERT INTO browser_sessions \
+             (sid, kind, name, scopes, created_at, expires_at, revoked_at) \
+             VALUES ('standing', 'owner', NULL, '[]', '2026-10-16 00:00:00+00:00', \
+                     '2026-10-16 08:00:00+00:00', NULL), \
+                    ('revoked', 'owner', NULL, '[]', '2026-10-01 00:00:00+00:00', \
+                     '2026-10-01 08:00:00+00:00', '{REVOKED_AT}')"
+        ))
+        .expect("the browser-session client and two Owner sessions at 0037");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0038");
+
+        assert!(column_for_client(&mut conn, "client_id", "wildflower-owner-browser").is_empty());
+        assert_eq!(
+            column_for_client(&mut conn, "name", "wildflower-browser")[0].name,
+            "Wildflower Browsers"
+        );
+        let revoked_at_of = |conn: &mut SqliteConnection, sid: &str| {
+            diesel::sql_query("SELECT revoked_at AS name FROM browser_sessions WHERE sid = ?")
+                .bind::<diesel::sql_types::Text, _>(sid)
+                .load::<Name>(conn)
+                .expect("read the session")
+                .remove(0)
+                .name
+        };
+        let ended_at = revoked_at_of(&mut conn, "standing");
+        assert!(
+            chrono::DateTime::parse_from_str(&ended_at, "%F %T%.f%:z").is_ok(),
+            "{ended_at} is in the diesel chrono text encoding"
+        );
+        assert_eq!(revoked_at_of(&mut conn, "revoked"), REVOKED_AT);
+        diesel::sql_query("SELECT decidable_in_requesting_browser FROM authorization_requests")
+            .execute(&mut conn)
+            .expect("the column has its new name");
+
+        let migration_0038 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0038"))
+            .expect("0038 is embedded");
+        migration_0038.revert(&mut conn).expect("revert 0038");
+        assert_eq!(
+            column_for_client(&mut conn, "client_id", "wildflower-owner-browser").len(),
+            1
+        );
+        assert!(column_for_client(&mut conn, "client_id", "wildflower-browser").is_empty());
+        diesel::sql_query("SELECT requested_by_owner_browser FROM authorization_requests")
+            .execute(&mut conn)
+            .expect("the column has its old name");
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database
