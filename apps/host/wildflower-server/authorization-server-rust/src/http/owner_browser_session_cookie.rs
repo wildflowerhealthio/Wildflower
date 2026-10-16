@@ -86,14 +86,26 @@ pub fn owner_browser_session_has_ended(
 
 /// The verified claims of the Owner browser session `headers` carry, when the
 /// browser that sent them is signed in as the Owner: its cookie holds a token
-/// the gates would accept. Its `sid` names the browser session. A store that
-/// can't be read verifies nothing, so the browser is treated as not signed in.
+/// the gates would accept. Its `sid` names the browser session. `None` when
+/// there is no cookie or its session has ended (see
+/// [`owner_browser_session_has_ended`]).
+///
+/// # Errors
+///
+/// The server-side [`VerifyError`]s, when a key, revocation or browser-session
+/// store can't be read, so whether the browser is signed in can't be told.
 pub(crate) fn carried_owner_browser_session(
     token_verifier: &LiveTokenVerifier,
     headers: &HeaderMap,
-) -> Option<VerifiedClaims> {
-    owner_browser_session_token(headers)
-        .and_then(|owner_browser_token| token_verifier.verify(&owner_browser_token).ok())
+) -> Result<Option<VerifiedClaims>, VerifyError> {
+    let Some(owner_browser_token) = owner_browser_session_token(headers) else {
+        return Ok(None);
+    };
+    match token_verifier.verify(&owner_browser_token) {
+        Ok(claims) => Ok(Some(claims)),
+        Err(VerifyError::TokenRejected | VerifyError::Revoked) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 /// The Owner browser session cookie's value among `headers`' `Cookie`s, if

@@ -196,7 +196,13 @@ pub(super) async fn handle_authorize_request(
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
-    let owner_browser_session = carried_owner_browser_session(&token_verifier, &headers);
+    let owner_browser_session =
+        carried_owner_browser_session(&token_verifier, &headers).map_err(|error| {
+            AuthorizeError::Internal(InternalError::new(
+                "verify the Owner browser session at /oauth/authorize",
+                error,
+            ))
+        })?;
     let requested_by_owner_browser = owner_browser_session.is_some();
     let owner_browser_sid = owner_browser_session
         .as_ref()

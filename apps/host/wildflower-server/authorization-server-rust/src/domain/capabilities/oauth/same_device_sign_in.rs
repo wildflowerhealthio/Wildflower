@@ -93,9 +93,9 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     }
 
     /// Redeem `presented_code` at `now` for an Owner browser session and its
-    /// token, both lasting [`OWNER_BROWSER_SESSION_TTL`], to go on to `next`. A `next` that isn't
-    /// allowed, or a disabled Owner-browser client, is refused before the code
-    /// is touched, so the code stays redeemable.
+    /// token, both lasting [`OWNER_BROWSER_SESSION_TTL`], to go on to `next`.
+    /// A `next` that isn't allowed, or a disabled Owner-browser client, is
+    /// refused before the code is touched, so the code stays redeemable.
     ///
     /// # Errors
     ///
