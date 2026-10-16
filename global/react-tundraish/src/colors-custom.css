@@ -178,6 +178,13 @@
   --color-chip-border: rgba(37, 37, 37, 0.14);
 
   /*
+   * Raised chip — the selected segment lifted off a chip-background track
+   * (`RouteTabs`' current tab): a small drop shadow plus a faint ink ring that
+   * keeps the chip's edge where its fill sits close to the track's.
+   */
+  --raised-chip-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.04);
+
+  /*
    * Success tone (green) — re-harmonized to oklch hue 156°. The live-activity
    * dot, connection-path nodes, and the "Online" StatusBadge share it.
    */
@@ -310,6 +317,10 @@
 
   --color-chip-background: #1f1f1f;
   --color-chip-border: rgba(231, 231, 231, 0.1);
+
+  /* The raised chip keeps its shadow in dark (deeper, to read on near-black)
+   * and swaps the ink ring for a light one. */
+  --raised-chip-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
 
   --color-success: #3fc07c; /* dot / node / strong */
   --color-success-background: #0e3721;
