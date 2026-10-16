@@ -144,11 +144,15 @@ changing how servers run or what the host notifies about them.
   is the card's alone), and Launch with Authorization under it, each full
   width; over five tabs on `RouteTabs`, each a child route of
   `/servers/$domain` (`status`, `access`, `default-apps`, `relay`,
-  `certificate`), the open one reading the server from
-  `ListedServerContext`. The bare `/servers/$domain` opens Access while a
-  consent waits on the server and Status otherwise, replacing itself in
-  history; a consent that arrives while the page is open leaves the tab as it
-  is. Status holds the host's last check of its connection (said to be from before, once the
+  `certificate`), each in its own route file under
+  `routes/_servers/servers/$domain/` with the parts only it uses beside it.
+  The page's `beforeLoad` reads the server from the cached server list,
+  showing a read that fails, with Retry, and a domain the list doesn't hold;
+  the page and its open tab read the server from the same cached list
+  (`useListedServer`), so `server-status` events keep them current. The bare
+  `/servers/$domain`'s `beforeLoad` redirects to Access while a consent waits
+  on the server and to Status otherwise, replacing itself in history; a
+  consent that arrives while the page is open leaves the tab as it is. Status holds the host's last check of its connection (said to be from before, once the
   tunnel has dropped or been refused since), with its tunnel's connection to
   the relay while a run reports it (a failure once the relay refused the
   tunnel), or how its latest run stopped, and

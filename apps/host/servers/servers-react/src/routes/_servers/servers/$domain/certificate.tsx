@@ -1,3 +1,4 @@
+import { createFileRoute } from '@tanstack/react-router'
 import { ItemList, type ItemListItem } from '@wildflowerhealthio/react-tundraish'
 import {
   type CertificateAuthority,
@@ -7,9 +8,9 @@ import {
 import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
-import { useListedServer } from './listed-server-context.ts'
-import { formatInstant } from './server-status-text.ts'
-import { useHasPassed } from './use-has-passed.ts'
+import { formatInstant } from '../../../../server-status-text.ts'
+import { useHasPassed } from '../../../../use-has-passed.ts'
+import { useListedServer } from './-listed-server.ts'
 
 /** What the Certificate authority row says of each CA. */
 const CERTIFICATE_AUTHORITY_TEXT: Readonly<Record<CertificateAuthority.Type, string>> = {
@@ -153,4 +154,6 @@ const ServerCertificateTab = (): JSX.Element => {
   )
 }
 
-export { ServerCertificateTab }
+export const Route = createFileRoute('/_servers/servers/$domain/certificate')({
+  component: ServerCertificateTab,
+})

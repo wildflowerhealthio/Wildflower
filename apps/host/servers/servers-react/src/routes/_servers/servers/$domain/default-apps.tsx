@@ -1,18 +1,19 @@
+import { createFileRoute } from '@tanstack/react-router'
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
 import type { ListedServer } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { failureText } from './failure-text.ts'
-import { useListedServer } from './listed-server-context.ts'
-import { useUpdateServer } from './queries.ts'
+import { failureText } from '../../../../failure-text.ts'
+import { useUpdateServer } from '../../../../queries.ts'
 import {
   type RunHostCommand,
   useDefaultAuthorizationUrl,
   useDefaultLauncherUrl,
   useRunHostCommand,
-} from './router-context.ts'
-import styles from './server-default-apps-tab.module.css'
+} from '../../../../router-context.ts'
+import { useListedServer } from './-listed-server.ts'
+import styles from './-default-apps.module.css'
 
 /** A URL as the URL parser normalises it, or nothing when it doesn't parse. */
 const normalisedUrl = (url: string): Option.Option<string> =>
@@ -86,7 +87,7 @@ const PageUrlForm = ({
   }
   return (
     <form
-      className={styles['server-default-apps-tab__form']}
+      className={styles['default-apps__form']}
       onSubmit={(event) => {
         event.preventDefault()
         save(url)
@@ -101,10 +102,10 @@ const PageUrlForm = ({
         description={description}
       />
       <ErrorBanner error={updateServer.error === null ? null : failureText(updateServer.error)} />
-      <div className={styles['server-default-apps-tab__form-actions']}>
+      <div className={styles['default-apps__form-actions']}>
         <button
           type="submit"
-          className={`button-2 outline ${styles['server-default-apps-tab__form-action']}`}
+          className={`button-2 outline ${styles['default-apps__form-action']}`}
           disabled={url === server[field] || updateServer.isPending}
         >
           {saveLabel}
@@ -112,7 +113,7 @@ const PageUrlForm = ({
         {isDefaultUrl(server[field], defaultUrl) ? null : (
           <button
             type="button"
-            className={`button-2 ghost ${styles['server-default-apps-tab__form-action']}`}
+            className={`button-2 ghost ${styles['default-apps__form-action']}`}
             disabled={updateServer.isPending}
             aria-label={resetLabel}
             onClick={() => {
@@ -156,4 +157,6 @@ const ServerDefaultAppsTab = (): JSX.Element => {
   )
 }
 
-export { ServerDefaultAppsTab }
+export const Route = createFileRoute('/_servers/servers/$domain/default-apps')({
+  component: ServerDefaultAppsTab,
+})

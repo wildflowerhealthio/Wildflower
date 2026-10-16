@@ -2259,6 +2259,31 @@ describe('the server page', () => {
     expect(await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })).toBeDefined()
   })
 
+  it("should show the host's error when it can't read the servers, and open the page on retry", async () => {
+    // Arrange
+    const user = userEvent.setup()
+    let answer: () => Promise<unknown> = () => Promise.reject(golden.commandErrors[1])
+    const host = hostWith({ servers: () => answer() })
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      path: '/servers/ruth.relay.example.com',
+    })
+
+    // Assert
+    expect(
+      await screen.findByRole('heading', { name: "The servers on this device couldn't be read" })
+    ).toBeDefined()
+    expect(screen.getByRole('link', { name: 'Servers' })).toBeDefined()
+
+    // Act
+    answer = () => Promise.resolve(golden.listedServers)
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+
+    // Assert
+    expect(await openTabName()).toBe('Status')
+  })
+
   it('should say so for a domain the device has no server at', async () => {
     // Act
     renderServerPage({ domain: 'gone.relay.example.com' })

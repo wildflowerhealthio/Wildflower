@@ -1,3 +1,4 @@
+import { createFileRoute } from '@tanstack/react-router'
 import { ErrorBanner, ItemList, TextField } from '@wildflowerhealthio/react-tundraish'
 import {
   HostCommandFailed,
@@ -7,11 +8,11 @@ import {
 import { Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { failureText } from './failure-text.ts'
-import { useListedServer } from './listed-server-context.ts'
-import { useSetServerCredentials } from './queries.ts'
-import { type RunHostCommand, useRunHostCommand } from './router-context.ts'
-import styles from './server-relay-tab.module.css'
+import { failureText } from '../../../../failure-text.ts'
+import { useSetServerCredentials } from '../../../../queries.ts'
+import { type RunHostCommand, useRunHostCommand } from '../../../../router-context.ts'
+import { useListedServer } from './-listed-server.ts'
+import styles from './-relay.module.css'
 
 /** What the Relay row says of each kind of relay. */
 const relayText = (relay: ListedServer.Relay): string => {
@@ -36,13 +37,11 @@ const isRelayIdentityChange = (error: HostCommandError): boolean =>
  * to do. It offers no retry, as a token sent again meets the same identity.
  */
 const RelayIdentityWarning = ({ message }: { readonly message: string }): JSX.Element => (
-  <div className={styles['server-relay-tab__identity-warning']} role="alert">
-    <p className={`text-label-2 ${styles['server-relay-tab__identity-warning-title']}`}>
+  <div className={styles['relay__identity-warning']} role="alert">
+    <p className={`text-label-2 ${styles['relay__identity-warning-title']}`}>
       The relay's identity has changed
     </p>
-    <p className={`text-body-3 ${styles['server-relay-tab__identity-warning-detail']}`}>
-      {message}
-    </p>
+    <p className={`text-body-3 ${styles['relay__identity-warning-detail']}`}>{message}</p>
     <p className="text-body-3">
       If whoever runs the relay confirms it changed, remove this server and add it again.
     </p>
@@ -67,7 +66,7 @@ const CredentialsForm = ({
   const [token, setToken] = useState('')
   return (
     <form
-      className={styles['server-relay-tab__form']}
+      className={styles['relay__form']}
       onSubmit={(event) => {
         event.preventDefault()
         setCredentials.mutate(
@@ -97,7 +96,7 @@ const CredentialsForm = ({
       )}
       <button
         type="submit"
-        className={`button-2 outline ${styles['server-relay-tab__form-action']}`}
+        className={`button-2 outline ${styles['relay__form-action']}`}
         disabled={token.trim() === '' || setCredentials.isPending}
       >
         Save token
@@ -128,4 +127,6 @@ const ServerRelayTab = (): JSX.Element => {
   )
 }
 
-export { ServerRelayTab }
+export const Route = createFileRoute('/_servers/servers/$domain/relay')({
+  component: ServerRelayTab,
+})

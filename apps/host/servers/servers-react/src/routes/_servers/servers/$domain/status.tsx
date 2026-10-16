@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
   ConfirmDialog,
   ErrorBanner,
@@ -14,17 +14,25 @@ import {
 import { type DateTime, Match, Option } from 'effect'
 import { type JSX, type ReactNode, useId, useState } from 'react'
 
-import { failureText } from './failure-text.ts'
-import { useListedServer } from './listed-server-context.ts'
-import { type ServerHealthError, serverHealthQueryOptions, useRemoveServer } from './queries.ts'
+import { failureText } from '../../../../failure-text.ts'
+import {
+  type ServerHealthError,
+  serverHealthQueryOptions,
+  useRemoveServer,
+} from '../../../../queries.ts'
 import {
   type RunHostCommand,
   type RunHttpRequest,
   useRunHostCommand,
   useRunHttpRequest,
-} from './router-context.ts'
-import { formatInstant, lastStopText, PLATFORM_STOP_REASON_TEXT } from './server-status-text.ts'
-import styles from './server-status-tab.module.css'
+} from '../../../../router-context.ts'
+import {
+  formatInstant,
+  lastStopText,
+  PLATFORM_STOP_REASON_TEXT,
+} from '../../../../server-status-text.ts'
+import { useListedServer } from './-listed-server.ts'
+import styles from './-status.module.css'
 
 /**
  * What the Connection row says: the host's own check of the server's
@@ -239,18 +247,18 @@ const DestructiveActions = ({
   })
   const [confirmingRemoval, setConfirmingRemoval] = useState(false)
   return (
-    <section className={styles['server-status-tab__section']} aria-labelledby={headingId}>
-      <h3 id={headingId} className={`text-label-3 ${styles['server-status-tab__section-title']}`}>
+    <section className={styles['status__section']} aria-labelledby={headingId}>
+      <h3 id={headingId} className={`text-label-3 ${styles['status__section-title']}`}>
         Destructive actions
       </h3>
-      <p className={`text-body-3 ${styles['server-status-tab__note']}`}>
+      <p className={`text-body-3 ${styles['status__note']}`}>
         Remove stops this server and deletes it from this device, with its databases and
         certificates. Apps can no longer reach it at this address. It can't be undone.
       </p>
       <ErrorBanner error={removeServer.error === null ? null : failureText(removeServer.error)} />
       <button
         type="button"
-        className={`button-2 outline accent-red ${styles['server-status-tab__remove']}`}
+        className={`button-2 outline accent-red ${styles['status__remove']}`}
         onClick={() => {
           setConfirmingRemoval(true)
         }}
@@ -302,4 +310,6 @@ const ServerStatusTab = (): JSX.Element => {
   )
 }
 
-export { ServerStatusTab }
+export const Route = createFileRoute('/_servers/servers/$domain/status')({
+  component: ServerStatusTab,
+})

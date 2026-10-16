@@ -1,13 +1,14 @@
+import { createFileRoute } from '@tanstack/react-router'
 import { ItemList } from '@wildflowerhealthio/react-tundraish'
 import { PendingConsent, ServerStatus } from '@wildflowerhealthio/servers-core-js'
 import { Option } from 'effect'
 import type { JSX } from 'react'
 
-import { failureText } from './failure-text.ts'
-import { useListedServer } from './listed-server-context.ts'
-import { useOpenPendingConsent } from './queries.ts'
-import { type RunHostCommand, useRunHostCommand } from './router-context.ts'
-import styles from './server-access-tab.module.css'
+import { failureText } from '../../../../failure-text.ts'
+import { useOpenPendingConsent } from '../../../../queries.ts'
+import { type RunHostCommand, useRunHostCommand } from '../../../../router-context.ts'
+import { useListedServer } from './-listed-server.ts'
+import styles from './-access.module.css'
 
 /**
  * The newest consent waiting on the server, `pendingConsent`: who asks, and
@@ -68,9 +69,11 @@ const ServerAccessTab = (): JSX.Element => {
       />
     )),
     Option.getOrElse(() => (
-      <p className={`text-body-3 ${styles['server-access-tab__note']}`}>No requests waiting.</p>
+      <p className={`text-body-3 ${styles['access__note']}`}>No requests waiting.</p>
     ))
   )
 }
 
-export { ServerAccessTab }
+export const Route = createFileRoute('/_servers/servers/$domain/access')({
+  component: ServerAccessTab,
+})
