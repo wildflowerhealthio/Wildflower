@@ -15,8 +15,8 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher, Authorization app and
   certificate source, and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
-  `ServerDetail`, what its runs report (the run, a `ServerRunId`, health,
-  tunnel state, certificate state and the newest consent waiting), its
+  `ServerDetail`, what its runs report (health, tunnel state, certificate
+  state and the newest consent waiting) until they are asked to stop, its
   `ServerLaunchMinter` included,
   through which the host mints a running server's launches, and its
   `ServerSignInCodeMinter`, through which it mints the codes that sign the
@@ -34,8 +34,7 @@ changing how servers run or what the host notifies about them.
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
     server changes
     (`set_run_policy` with `RunPolicyChoice`, `update_server` with
-    `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`
-    with `ServerRunId`,
+    `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, the
     certificate state's wire shape (`certificate_state_wire`),
     `PendingConsent` with `ConsentKey`, launching (`ensure_launchable`,
@@ -518,18 +517,22 @@ changing how servers run or what the host notifies about them.
   the server's page still shows it as the pending request. On a phone the
   host withdraws it once the request is no longer the server's newest
   (decided or expired, or another it notified for is newest again), or the
-  server is removed. A tap opens it on a phone. On a phone the host also
-  opens, at the app's start, the request a server reports in its run's first
-  status since then, instead of notifying for it, so a request whose
-  notification launched the app opens: once per app start, for the first
-  such server in domain order, while any other's notifies; one the Owner's
-  own browser made doesn't open, since that browser died with the app. A
-  desktop can't click a notification, so there the host also opens each
-  request it notifies for at once in the default browser, as the server's
-  page's Open does. Either open waits for the server: one that can't open it
-  then, as one not launchable yet at the app's start, opens it on a later
-  status change once it can, while it is still the server's newest request
-  (`open_consent_once_openable`). `ConsentNotificationCoalescer` decides
+  server is removed. A tap opens it on a phone. On a phone each arrival of
+  the app in the foreground, its first window and each return alike
+  (`subscribe_foreground_arrivals`), opens at most one request: the one
+  notified latest that is still its server's newest as the server last
+  reported, so coming back after seeing a notification, or after closing a
+  consent undecided, opens it; failing one, the first request a server on
+  its way up reports (one `units_to_run` names whose run isn't reporting yet),
+  instead of notifying, so a request whose notification launched the app
+  opens. A server that isn't on its way up, as one turned on later, notifies
+  as usual. A desktop can't click a notification, so there the host also
+  opens each request it notifies for at once in the default browser, as the
+  server's page's Open does. Either open waits for the server: one that can't
+  open it then, as one not launchable yet, or whose run isn't reporting, as
+  one the iOS restart stops, opens it on a later status change once it can,
+  while it is still the server's newest request
+  (`open_consent_once_openable`), each server with at most one open waiting. `ConsentNotificationCoalescer` decides
   which requests notify and which open (`ConsentOpening`). A request already notified for, as when it
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run

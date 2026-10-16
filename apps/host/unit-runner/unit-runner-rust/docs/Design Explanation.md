@@ -98,6 +98,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     pub async fn remove_unit(self: &Arc<Self>, unit_id: &UnitId);
     pub fn statuses(&self) -> UnitStatuses<D>; // BTreeMap<UnitId, UnitStatus<D>>
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>>;
+    pub fn units_to_run(&self) -> BTreeSet<UnitId>;
 
     // What the host calls.
     pub fn attach_background_session_platform<P: BackgroundSessionPlatform>(
@@ -148,17 +149,17 @@ matters to a reader that acts on stops, such as one that notifies: each run's
 stop once, as a `RunStopped` with the unit id, the `RunStop` its status now
 holds, and whether the run had announced running. It is a broadcast
 `RUN_STOPS_CAPACITY` (64) deep; a reader that falls further behind is told how
-many stops it missed. `subscribe_returns()` reports each return to the
-foreground, when the app becomes present after being absent, having been
-present before (not its first window or first time in the foreground, nor
-leaving the background on Android), as an `AppReturn`: the statuses, as of that
-moment and before any run the return starts, of the units whose run carries on
-across it, in progress and not asked to stop (`carried_on`), and of the units
-the return resumes, each that should run now but whose run doesn't carry on
-(`resumed`). A run the host restarts for the return, as the Tauri host does
-every running unit's on iOS, is resumed, its status still its old run's until
-that run stops. A unit that shouldn't run is in neither. A slow reader sees the
-latest return.
+many stops it missed. `subscribe_foreground_arrivals()` counts the app's
+arrivals in the foreground: each time it becomes present after being absent,
+its first window opening and each return to the foreground alike, though not
+leaving the background on Android. Each arrival changes the count once
+`UnitRunner` has asked for the runs it starts and stops; a slow reader sees one
+change for several arrivals. It says nothing about the units: a reader reads
+their statuses, where a run the host asked to stop for the arrival, as the
+Tauri host does every running unit's on iOS, already reports no detail, and
+`units_to_run()`, the units that should run now, each up, starting, or about
+to start: a unit whose run an arrival just asked to start is among them while
+its status still says how its last run stopped, until the run begins.
 
 A new unit is `Stopped` with no last stop until its first run.
 
