@@ -6,7 +6,7 @@ export {
   anchorHref,
   fromApp,
   navHref,
-  onMarketingSite,
+  onMarketingSiteAt,
   sectionHref,
 } from './nav.ts'
 export type {
@@ -18,17 +18,17 @@ export type {
   SectionNavLink,
 } from './nav.ts'
 export {
+  APP_SLUGS,
   POLICY_IDS,
   POLICY_LABELS,
   POLICY_PATHS,
-  SECTION_PATHS,
   SITE_ORIGIN,
   policyUrl,
-  sectionRootPath,
   sectionUrl,
+  sectionUrlIn,
   siteRootFor,
 } from './site.ts'
-export type { PolicyId, SectionId } from './site.ts'
+export type { HostedAppId, PolicyId, SectionId } from './site.ts'
 export {
   REDIRECT_PARAM,
   basenameOf,

@@ -61,15 +61,17 @@ describe('App', () => {
     const hrefs = within(nav)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
-    // Current-URL-relative — see `sectionHref` in branding-core; a preview
-    // deploy under a sub-path resolves these into sibling preview builds.
+    // Into the copy of the site the page was served from — see `sectionHref`
+    // in branding-core. The test page is not on the published origin, so,
+    // like a PR preview's homepage, it links each app's build beside it.
+    const siteRoot = new URL('./', document.baseURI).href
     expect(hrefs).toStrictEqual([
-      './medications',
-      './health-viewer',
-      './lifting',
-      './importer',
-      './server-docs',
-      './ohif-viewer',
+      `${siteRoot}medications/`,
+      `${siteRoot}plots/`,
+      `${siteRoot}strength/`,
+      `${siteRoot}importer/`,
+      `${siteRoot}server-docs/`,
+      `${siteRoot}ohif-viewer/`,
     ])
   })
 
@@ -101,28 +103,17 @@ describe('App', () => {
     // Arrange / Act
     render(<App />)
 
-    // Assert
-    expect(
-      screen.getByRole('link', { name: /Open the Medication Viewer/ }).getAttribute('href')
-    ).toBe('./medications')
-    expect(
-      screen.getByRole('link', { name: /Read the Wildflower server docs/ }).getAttribute('href')
-    ).toBe('./server-docs')
-    expect(screen.getByRole('link', { name: /Open the Importer/ }).getAttribute('href')).toBe(
-      './importer'
-    )
-    expect(
-      screen.getByRole('link', { name: /Open FHIR Sync for Pebble/ }).getAttribute('href')
-    ).toBe('./fhir-sync-pebble')
-    expect(
-      screen.getByRole('link', { name: /Open the Synthetic Data Loader/ }).getAttribute('href')
-    ).toBe('./synthetic-data')
-    expect(screen.getByRole('link', { name: /Open Plots/ }).getAttribute('href')).toBe(
-      './health-viewer'
-    )
-    expect(screen.getByRole('link', { name: /Open Strength/ }).getAttribute('href')).toBe(
-      './lifting'
-    )
+    // Assert — the apps' builds beside this (unpublished) test page
+    const siteRoot = new URL('./', document.baseURI).href
+    const hrefOf = (name: RegExp): string | null =>
+      screen.getByRole('link', { name }).getAttribute('href')
+    expect(hrefOf(/Open the Medication Viewer/)).toBe(`${siteRoot}medications/`)
+    expect(hrefOf(/Read the Wildflower server docs/)).toBe(`${siteRoot}server-docs/`)
+    expect(hrefOf(/Open the Importer/)).toBe(`${siteRoot}importer/`)
+    expect(hrefOf(/Open FHIR Sync for Pebble/)).toBe(`${siteRoot}fhir-sync-pebble/`)
+    expect(hrefOf(/Open the Synthetic Data Loader/)).toBe(`${siteRoot}synthetic-data/`)
+    expect(hrefOf(/Open Plots/)).toBe(`${siteRoot}plots/`)
+    expect(hrefOf(/Open Strength/)).toBe(`${siteRoot}strength/`)
   })
 
   it('should render Wildflower FHIR server download links pulled from versions.json', () => {

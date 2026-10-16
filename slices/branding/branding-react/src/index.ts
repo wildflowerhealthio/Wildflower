@@ -13,7 +13,7 @@ export {
   APP_SECTION_IDS,
   anchorHref,
   fromApp,
-  onMarketingSite,
+  onMarketingSiteAt,
 } from '@wildflowerhealthio/branding-core'
 export type {
   AppDescription,

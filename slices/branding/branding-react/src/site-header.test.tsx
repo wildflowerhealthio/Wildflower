@@ -1,13 +1,16 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import {
   fromApp,
-  onMarketingSite,
+  onMarketingSiteAt,
   sectionHref,
   sectionUrl,
 } from '@wildflowerhealthio/branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { SiteHeader } from './site-header.tsx'
+
+/** A PR preview's homepage, whose section links stay inside the preview. */
+const onMarketingSite = onMarketingSiteAt('https://wildflowerhealthio.github.io/staging/pr-7/')
 
 afterEach(() => {
   cleanup()
@@ -22,13 +25,12 @@ describe('SiteHeader', () => {
     expect(container.querySelector('#top')).not.toBeNull()
   })
 
-  it('should link directly into the six apps with current-URL-relative hrefs on the marketing site', () => {
+  it("should link directly into the six apps in the marketing page's copy of the site", () => {
     // Arrange / Act
     render(<SiteHeader nav={onMarketingSite} />)
 
-    // Assert — plain `./…` references so a preview deploy under a
-    // sub-path routes into sibling preview builds, not the canonical
-    // origin (see `sectionHref` in branding-core).
+    // Assert — a preview's homepage routes into the preview's own builds, not
+    // the apps' published origins (see `sectionHref` in branding-core).
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')
@@ -41,6 +43,7 @@ describe('SiteHeader', () => {
       sectionHref(onMarketingSite, 'serverDocs'),
       sectionHref(onMarketingSite, 'ohifViewer'),
     ])
+    expect(hrefs[0]).toBe('https://wildflowerhealthio.github.io/staging/pr-7/medications/')
   })
 
   it('should link into the six apps with absolute hrefs from an app', () => {

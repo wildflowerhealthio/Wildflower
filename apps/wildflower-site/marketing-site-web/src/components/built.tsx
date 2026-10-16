@@ -1,6 +1,8 @@
 import type { JSX } from 'react'
 
-import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from '@wildflowerhealthio/branding-core'
+import { APP_DESCRIPTIONS, sectionHref } from '@wildflowerhealthio/branding-core'
+
+import { homepageNav } from '../homepage-nav.ts'
 
 import { medicationsHomeImage } from '../assets/remote-images.ts'
 import { AppRow } from './app-row.tsx'
@@ -42,7 +44,7 @@ function Built(): JSX.Element {
             placeholderLabel="screenshot — meds and labs timeline"
             launcher={
               <Launcher
-                href={sectionHref(onMarketingSite, 'plots')}
+                href={sectionHref(homepageNav, 'plots')}
                 label={plots.launch.label}
                 note={plots.launch.note}
               />
@@ -55,7 +57,7 @@ function Built(): JSX.Element {
             images={[medicationsHomeImage]}
             launcher={
               <Launcher
-                href={sectionHref(onMarketingSite, 'medications')}
+                href={sectionHref(homepageNav, 'medications')}
                 label={medications.launch.label}
                 note={medications.launch.note}
               />
@@ -68,7 +70,7 @@ function Built(): JSX.Element {
             placeholderLabel="photo — Pebble steps and sleep on a FHIR record"
             launcher={
               <Launcher
-                href={sectionHref(onMarketingSite, 'fhirSyncPebble')}
+                href={sectionHref(homepageNav, 'fhirSyncPebble')}
                 label={pebble.launch.label}
                 note={pebble.launch.note}
               />
@@ -81,7 +83,7 @@ function Built(): JSX.Element {
             placeholderLabel="screenshot — today's workout, one set at a time"
             launcher={
               <Launcher
-                href={sectionHref(onMarketingSite, 'strength')}
+                href={sectionHref(homepageNav, 'strength')}
                 label={strength.launch.label}
                 note={strength.launch.note}
               />

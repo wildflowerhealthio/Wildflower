@@ -1,5 +1,5 @@
 import type { MarketingAnchor } from './nav.ts'
-import { SECTION_PATHS, type SectionId } from './site.ts'
+import { sectionUrlIn, type SectionId } from './site.ts'
 
 /**
  * The site sections with a standalone app landing page: the SMART on FHIR apps,
@@ -314,8 +314,8 @@ interface SmartAppLaunchPage {
 
 /**
  * Every described app a URL launches ({@link AppDescription.launchesFromUrl}),
- * in {@link APP_DESCRIPTIONS} order, each with its root's URL under
- * `siteRoot`: the first-party SMART on FHIR apps the site hosts that a link
+ * in {@link APP_DESCRIPTIONS} order, each with its root's URL in the copy of
+ * the site `siteRoot` names (`sectionUrlIn`): the first-party SMART on FHIR apps the site hosts that a link
  * can launch, and nothing else.
  *
  * @param siteRoot - The slash-terminated root of the copy of the site to link
@@ -324,7 +324,7 @@ interface SmartAppLaunchPage {
  * @example
  * ```ts
  * smartAppLaunchPages('https://wildflowerhealth.io/')[0]
- * // → { app: 'medications', launchPageUrl: 'https://wildflowerhealth.io/medications/' }
+ * // → { app: 'medications', launchPageUrl: 'https://medications.wildflowerhealth.io/' }
  * ```
  */
 const smartAppLaunchPages = (siteRoot: string): readonly SmartAppLaunchPage[] =>
@@ -332,8 +332,7 @@ const smartAppLaunchPages = (siteRoot: string): readonly SmartAppLaunchPage[] =>
     .filter(isAppSectionId)
     .flatMap((app) => {
       if (APP_DESCRIPTIONS[app].launchesFromUrl !== true) return []
-      const launchPageUrl = new URL(`${SECTION_PATHS[app]}/`, siteRoot).href
-      return [{ app, launchPageUrl }]
+      return [{ app, launchPageUrl: sectionUrlIn(app, siteRoot) }]
     })
 
 export { APP_DESCRIPTIONS, APP_SECTION_IDS, smartAppLaunchPages }

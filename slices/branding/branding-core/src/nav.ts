@@ -1,4 +1,4 @@
-import { SECTION_PATHS, sectionUrl, type SectionId } from './site.ts'
+import { sectionUrl, sectionUrlIn, siteRootFor, type SectionId } from './site.ts'
 
 /**
  * Hash anchors on the marketing homepage, in section order: the hero
@@ -12,22 +12,36 @@ const MARKETING_ANCHORS = ['top', 'built', 'try', 'asks', 'developers', 'note'] 
 type MarketingAnchor = (typeof MARKETING_ANCHORS)[number]
 
 /**
- * Tells the anchor-href resolver where the marketing page lives relative
+ * Tells the href resolvers where the marketing page and the apps live relative
  * to the current surface.
  *
  * @remarks
  * `marketingBase` is the empty string when the component is rendered on
- * the marketing site itself (hrefs become fragment-only, e.g. `#built`),
- * and the full marketing URL when rendered from an app (hrefs become
- * absolute, e.g. `https://wildflowerhealth.io/#built`).
+ * the marketing site itself (anchor hrefs become fragment-only, e.g. `#built`),
+ * and the full marketing URL when rendered from an app (anchor hrefs become
+ * absolute, e.g. `https://wildflowerhealth.io/#built`). `siteRoot` is the root
+ * of the copy of the site section links go into (`branding-core`'s
+ * `siteRootFor`): the published site, where each app has its own origin, or a
+ * PR preview, where every app sits under the preview's path.
  */
-type NavContext = { readonly marketingBase: string }
+type NavContext = { readonly marketingBase: string; readonly siteRoot: string }
 
-/** Use on the marketing site: anchors resolve to fragment-only hrefs. */
-const onMarketingSite: NavContext = { marketingBase: '' }
+/**
+ * Use on the marketing site: anchors resolve to fragment-only hrefs, and
+ * section links into the copy of the site the page belongs to.
+ *
+ * @param pageUrl - The marketing page's URL, e.g. `document.baseURI`.
+ */
+const onMarketingSiteAt = (pageUrl: string): NavContext => ({
+  marketingBase: '',
+  siteRoot: siteRootFor('marketing', new URL('./', pageUrl).href),
+})
 
-/** Use from any non-marketing app: anchors resolve to absolute URLs. */
-const fromApp: NavContext = { marketingBase: sectionUrl('marketing') }
+/** Use from any non-marketing app: anchors and sections resolve to the published site. */
+const fromApp: NavContext = {
+  marketingBase: sectionUrl('marketing'),
+  siteRoot: sectionUrl('marketing'),
+}
 
 /**
  * Resolves a marketing-page anchor to a full href, respecting the
@@ -57,8 +71,8 @@ type AbsoluteNavLink = {
 
 /**
  * A navigation link that points to a site section (an app or the server
- * docs). Resolved by {@link navHref} to a root-relative path on the
- * marketing site and an absolute URL from an app.
+ * docs). Resolved by {@link navHref} to the section's URL in the context's
+ * copy of the site.
  */
 type SectionNavLink = {
   readonly kind: 'section'
@@ -70,27 +84,16 @@ type SectionNavLink = {
 type NavLink = AnchorNavLink | AbsoluteNavLink | SectionNavLink
 
 /**
- * Resolves a section link to a full href, respecting the current
- * navigation context. Current-URL-relative on the marketing site (so a
- * preview deploy under `/staging/pr-N/` routes into its sibling preview
- * builds rather than the canonical origin), and absolute from an app (so
- * an app bundle served from any other origin still points at the canonical
- * site).
+ * Resolves a section link to a full href in the context's copy of the site:
+ * the app's own origin on the published site, and the preview's build of it
+ * from a PR preview's marketing page (so a reviewer clicking through stays in
+ * the preview).
  *
- * @remarks
- * The marketing-site case is a plain relative reference — the browser
- * resolves it against the document base URL, which is the page's own URL
- * (or a `<base>` if the page sets one). That is what lets one link work
- * from `wildflowerhealth.io/` and from `.../staging/pr-N/` without any
- * build-time base injection.
- *
- * @param ctx - Where the caller is rendered relative to the canonical site.
+ * @param ctx - Where the caller is rendered relative to the published site.
  * @param section - The target section.
  */
 function sectionHref(ctx: NavContext, section: SectionId): string {
-  if (ctx.marketingBase !== '') return sectionUrl(section)
-  const path = SECTION_PATHS[section]
-  return path === '' ? './' : `./${path}`
+  return sectionUrlIn(section, ctx.siteRoot)
 }
 
 /** Resolves any {@link NavLink} to an href for the given context. */
@@ -103,8 +106,7 @@ function navHref(link: NavLink, ctx: NavContext): string {
 /**
  * Primary nav links rendered in every site header — the marketing homepage
  * and each app share one bar with direct links into the six apps. The
- * hrefs resolve per context (root-relative on marketing, absolute from an
- * app); see {@link navHref}.
+ * hrefs resolve per context; see {@link navHref}.
  */
 const HEADER_NAV_LINKS: readonly NavLink[] = [
   { kind: 'section', label: 'Medications', section: 'medications' },
@@ -121,7 +123,7 @@ export {
   anchorHref,
   fromApp,
   navHref,
-  onMarketingSite,
+  onMarketingSiteAt,
   sectionHref,
 }
 export type { AbsoluteNavLink, AnchorNavLink, MarketingAnchor, NavContext, NavLink, SectionNavLink }

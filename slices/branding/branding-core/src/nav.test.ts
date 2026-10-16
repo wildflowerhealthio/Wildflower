@@ -8,13 +8,20 @@ import {
   anchorHref,
   fromApp,
   navHref,
-  onMarketingSite,
+  onMarketingSiteAt,
   sectionHref,
 } from './nav.ts'
-import { SECTION_PATHS, SITE_ORIGIN, sectionUrl } from './site.ts'
+import { APP_SLUGS, SITE_ORIGIN, sectionUrl } from './site.ts'
+
+/** The homepage on the published site. */
+const onMarketingSite = onMarketingSiteAt('https://wildflowerhealth.io/')
+
+/** The homepage of a PR preview. */
+const previewBase = 'https://wildflowerhealthio.github.io/staging/pr-607/'
+const onPreviewMarketingSite = onMarketingSiteAt(`${previewBase}index.html`)
 
 const anchorArb = fc.constantFrom(...MARKETING_ANCHORS)
-const contextArb = fc.constantFrom(onMarketingSite, fromApp)
+const contextArb = fc.constantFrom(onMarketingSite, onPreviewMarketingSite, fromApp)
 
 describe('anchorHref', () => {
   it('should produce fragment-only hrefs on the marketing site', () => {
@@ -58,33 +65,35 @@ describe('anchorHref', () => {
 })
 
 describe('sectionHref', () => {
-  it('should produce current-URL-relative paths on the marketing site', () => {
-    expect(sectionHref(onMarketingSite, 'medications')).toBe('./medications')
-    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe('./server-docs')
-  })
-
-  it('should produce absolute URLs from an app', () => {
-    expect(sectionHref(fromApp, 'medications')).toBe('https://wildflowerhealth.io/medications')
-  })
-
-  it('should resolve relative-from-marketing under a preview sub-path to sibling builds', () => {
-    // A `./medications` reference on `.../staging/pr-N/` resolves into
-    // the same preview build, not the canonical origin — that is the whole
-    // point of the marketing-context change.
-    const previewBase = 'https://wildflowerhealth.io/staging/pr-607/'
-    expect(new URL(sectionHref(onMarketingSite, 'medications'), previewBase).href).toBe(
-      `${previewBase}medications`
+  it("should link each app's own origin from the published homepage", () => {
+    expect(sectionHref(onMarketingSite, 'medications')).toBe(
+      'https://medications.wildflowerhealth.io/'
+    )
+    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe(
+      'https://server-docs.wildflowerhealth.io/'
     )
   })
 
-  it('should match SECTION_PATHS on marketing and sectionUrl from an app', () => {
+  it("should link each app's own origin from an app", () => {
+    expect(sectionHref(fromApp, 'medications')).toBe('https://medications.wildflowerhealth.io/')
+  })
+
+  it("should link a PR preview's homepage to that preview's builds", () => {
+    expect(sectionHref(onPreviewMarketingSite, 'medications')).toBe(`${previewBase}medications/`)
+    expect(sectionHref(onPreviewMarketingSite, 'plots')).toBe(`${previewBase}plots/`)
+  })
+
+  it('should match sectionUrl from the published homepage and an app, and the slug in a preview', () => {
     const sectionArb = fc.constantFrom(
-      ...(['medications', 'importer', 'serverDocs', 'ohifViewer'] as const)
+      ...(['medications', 'importer', 'serverDocs', 'ohifViewer', 'plots', 'strength'] as const)
     )
     fc.assert(
       fc.property(sectionArb, (section) => {
-        expect(sectionHref(onMarketingSite, section)).toBe(`./${SECTION_PATHS[section]}`)
+        expect(sectionHref(onMarketingSite, section)).toBe(sectionUrl(section))
         expect(sectionHref(fromApp, section)).toBe(sectionUrl(section))
+        expect(sectionHref(onPreviewMarketingSite, section)).toBe(
+          `${previewBase}${APP_SLUGS[section]}/`
+        )
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )

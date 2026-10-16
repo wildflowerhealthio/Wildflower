@@ -1,4 +1,4 @@
-import { SiteFooter, SiteHeader, onMarketingSite } from '@wildflowerhealthio/branding-react'
+import { SiteFooter, SiteHeader } from '@wildflowerhealthio/branding-react'
 import type { JSX } from 'react'
 
 import { Asks } from './components/asks.tsx'
@@ -8,6 +8,7 @@ import { Hero } from './components/hero.tsx'
 import { Infrastructure } from './components/infrastructure.tsx'
 import { RuthIntro } from './components/ruth-intro.tsx'
 import { SameLanguage } from './components/same-language.tsx'
+import { homepageNav } from './homepage-nav.ts'
 
 /**
  * The homepage, top to bottom: header, hero (`#top`) with the manifesto
@@ -21,7 +22,7 @@ import { SameLanguage } from './components/same-language.tsx'
 function App(): JSX.Element {
   return (
     <>
-      <SiteHeader nav={onMarketingSite} />
+      <SiteHeader nav={homepageNav} />
       <main>
         <Hero />
         <RuthIntro />
