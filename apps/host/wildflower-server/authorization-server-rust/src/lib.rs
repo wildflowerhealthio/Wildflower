@@ -66,8 +66,9 @@ pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
     owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
-    AuthorizationServerAuthMiddleware, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
-    OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
+    AuthorizationServerAuthMiddleware, AuthorizationServerState, AUTHORIZE_PATH,
+    DEVICE_AUTHORIZATION_PATH, OWNER_BROWSER_SESSION_COOKIE, OWNER_BROWSER_SESSION_HEADER_VALUE,
+    SESSION_HEADER,
 };
 pub use live_bindings::{
     InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,

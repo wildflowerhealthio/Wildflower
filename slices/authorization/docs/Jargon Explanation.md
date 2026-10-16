@@ -392,6 +392,10 @@ about one at a time, the newest by `requestedAt`, like a stack: a new request
 takes over from the one before it, and deciding it brings back the newest of
 those still pending.
 
+Starting a request is rate-limited on the tunnel, per visitor address and
+overall, and a request over either limit is `429` (the host's
+`authorization_start_limit`).
+
 The newest is a `NewestPendingConsent`, discriminated because the two flows
 have no shared lookup key, with the name of the client that asks (its
 registered name, or its `client_id` while it has none):

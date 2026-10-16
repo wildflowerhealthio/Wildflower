@@ -15,6 +15,9 @@ mod state;
 mod wire_representations;
 
 pub(crate) use routes::oauth::device_page_url;
+// The paths of the two routes that start an authorization request, for the
+// host's limit on how fast they are called.
+pub use routes::oauth::{AUTHORIZE_PATH, DEVICE_AUTHORIZATION_PATH};
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // host's FHIR web UI session middleware uses it.
 pub use middleware::ensure_bearer_header;
@@ -145,6 +148,29 @@ mod openapi_tests {
         env!("CARGO_MANIFEST_DIR"),
         "/openapi/authorization-server-oauth.openapi.json"
     );
+
+    /// The exported paths of the routes that start an authorization request
+    /// name the routes the router serves, with their methods.
+    #[test]
+    fn the_authorization_start_paths_name_their_routes() {
+        let spec = super::openapi_spec();
+        let authorize = spec
+            .paths
+            .paths
+            .get(super::AUTHORIZE_PATH)
+            .expect("the spec has AUTHORIZE_PATH");
+        assert!(authorize.get.is_some(), "GET {}", super::AUTHORIZE_PATH);
+        let device_authorization = spec
+            .paths
+            .paths
+            .get(super::DEVICE_AUTHORIZATION_PATH)
+            .expect("the spec has DEVICE_AUTHORIZATION_PATH");
+        assert!(
+            device_authorization.post.is_some(),
+            "POST {}",
+            super::DEVICE_AUTHORIZATION_PATH
+        );
+    }
 
     /// The generated `OpenAPI` document must match the committed snapshot. A wire
     /// type change flips this red; regenerate with

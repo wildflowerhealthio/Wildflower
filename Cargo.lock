@@ -10001,6 +10001,7 @@ dependencies = [
  "wildflowerhealthio-authorization-server",
  "wildflowerhealthio-databases",
  "wildflowerhealthio-fhir-r4",
+ "wildflowerhealthio-kitchen-sink",
  "wildflowerhealthio-ohif-server",
  "wildflowerhealthio-persistence",
  "wildflowerhealthio-rathole-settings",
