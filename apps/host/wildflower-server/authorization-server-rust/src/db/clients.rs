@@ -593,8 +593,8 @@ mod tests {
         // definition's `PlanDefinition`, a `ServiceRequest` per exercise, and
         // each workout's `Procedure` and per-set `Observation`s. There is no
         // `launch/patient`: the app picks the lifter itself (`0020`).
-        // This vector must stay element-for-element equal to `LIFTING_SCOPE` in
-        // `apps/lifting/lifting-web/src/config.ts`; `seeding.rs`'s
+        // This vector must stay element-for-element equal to `STRENGTH_SCOPE` in
+        // `apps/strength/strength-web/src/config.ts`; `seeding.rs`'s
         // `seeds_the_lifting_dev_client_with_the_apps_own_scopes` reads that
         // file and pins this client to it.
         let lifting = store
@@ -628,7 +628,7 @@ mod tests {
         );
         // The Synthesized Health Viewer carries its published-site redirect,
         // seeded by `0022` and moved by `0028`, and read-only scopes. Its
-        // scopes are pinned to `apps/health-viewer/health-viewer-web/src/config.ts` by
+        // scopes are pinned to `apps/plots/plots-web/src/config.ts` by
         // `seeding.rs`'s `seeds_the_health_viewer_dev_client_with_the_apps_own_scopes`.
         let health_viewer = store
             .client_by_id("474e103de61f9141c4b640d59bfa130e")

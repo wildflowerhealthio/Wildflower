@@ -15,7 +15,7 @@ Nothing here names a person or tells a particular story.
 
 ## Packages
 
-The folder is layered like `health-viewer`: a source-free base, with one
+The folder is layered like `plots`: a source-free base, with one
 generator package per source on top of it, the snapshot assembler over their
 importer output, and the browser layer that loads a published snapshot.
 
@@ -142,7 +142,7 @@ source's results — lab results — are filed on the same Patient.
 ## References
 
 - [Architecture / slice layering](../../slices/AGENTS.md)
-- [health-viewer AGENTS.md](../health-viewer/AGENTS.md) — the structure this
+- [plots AGENTS.md](../plots/AGENTS.md) — the structure this
   folder mirrors.
 - [http-archive AGENTS.md](../../slices/file-formats/http-archive/AGENTS.md) — the HAR
   format and DevTools vocabulary every capture is built on.

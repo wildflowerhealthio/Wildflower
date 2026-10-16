@@ -50,7 +50,7 @@ There is no `-core`: everything here is UI or DOM boot code.
     line under an app's title: `Name · born YYYY-MM-DD` (one `fetchPatient`
     read) or "All patients", and a "Change patient" link.
 
-Consumers: `apps/medications/medications-web`, `apps/health-viewer/health-viewer-web`, `apps/lifting/lifting-web`,
+Consumers: `apps/medications/medications-web`, `apps/plots/plots-web`, `apps/strength/strength-web`,
 `apps/importer-web` and `apps/synthetic-data/synthetic-data-web` mount
 `SmartAppRoot`, which an EHR launches at the app root; the first three speak
 the read-status lines, as does `synthetic-data-react`'s screen, and pick the

@@ -6,7 +6,7 @@ arithmetic. Two products build on it: the medications app (`apps/medications`),
 whose drug-interaction checking (**DDInter**), patient-support / drug-sponsorship
 programs (**innoviCares**, **RxHelp**) and calendar screens live with it — see
 [apps/medications/AGENTS.md](../../apps/medications/AGENTS.md) — and the Health
-Viewer (`apps/health-viewer`), which reads `medication-core/fhir`'s dose
+Viewer (`apps/plots`), which reads `medication-core/fhir`'s dose
 regimens. The matcher is a shared base neither feature owns; each maps its own
 catalog onto it.
 

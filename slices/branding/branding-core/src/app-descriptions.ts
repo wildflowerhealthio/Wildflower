@@ -10,9 +10,9 @@ type AppSectionId = Extract<
   | 'medications'
   | 'fhirSyncPebble'
   | 'importer'
-  | 'healthViewer'
+  | 'plots'
   | 'syntheticData'
-  | 'lifting'
+  | 'strength'
   | 'launcher'
   | 'authorization'
 >
@@ -32,9 +32,9 @@ type HomepageAppSectionId = Exclude<AppSectionId, 'launcher' | 'authorization'>
  */
 const APP_SECTION_IDS: readonly HomepageAppSectionId[] = [
   'medications',
-  'healthViewer',
+  'plots',
   'fhirSyncPebble',
-  'lifting',
+  'strength',
   'importer',
   'syntheticData',
 ]
@@ -201,7 +201,7 @@ const APP_DESCRIPTIONS: {
     },
     launchesFromUrl: true,
   },
-  healthViewer: {
+  plots: {
     name: 'Synthesized Health Viewer',
     tagline:
       "Plots labs, vitals and prescribed doses from a patient's FHIR record on one chart, " +
@@ -250,7 +250,7 @@ const APP_DESCRIPTIONS: {
     },
     launchesFromUrl: true,
   },
-  lifting: {
+  strength: {
     name: 'Lifting',
     tagline:
       'A strength-training program, the workout due today and every set you lift, ' +

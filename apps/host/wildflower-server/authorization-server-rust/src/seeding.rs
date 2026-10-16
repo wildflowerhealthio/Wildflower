@@ -210,7 +210,7 @@ const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
 
 /// The Health Viewer dev client's scopes: exactly the scope string in
-/// `apps/health-viewer/health-viewer-web/src/config.ts`, which requests the same set for an EHR
+/// `apps/plots/plots-web/src/config.ts`, which requests the same set for an EHR
 /// launch and a standalone connect, and the same set the production
 /// Health Viewer client allows (the authorization server migration
 /// `0022_seed_health_viewer_app_client`, re-keyed by `0028_rekey_site_app_clients`). A test below reads that file and pins
@@ -264,8 +264,8 @@ const MEDICATIONS_DEV_SCOPES: &[&str] = &[
     "system/Patient.rs",
 ];
 
-/// The Lifting dev client's scopes: exactly `LIFTING_SCOPE` in
-/// `apps/lifting/lifting-web/src/config.ts`, which requests the same set for an
+/// The Lifting dev client's scopes: exactly `STRENGTH_SCOPE` in
+/// `apps/strength/strength-web/src/config.ts`, which requests the same set for an
 /// EHR launch and a standalone connect, and the same set the production Lifting
 /// client allows (authorization server migrations `0019_seed_lifting_app_client` and
 /// `0020_first_party_apps_pick_the_patient`, re-keyed by
@@ -417,7 +417,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
         (
             HEALTH_VIEWER_DEV_CLIENT_ID,
             "Health Viewer (Dev)",
-            // `apps/health-viewer/health-viewer-web/src/config.ts`'s scope string — see
+            // `apps/plots/plots-web/src/config.ts`'s scope string — see
             // [`HEALTH_VIEWER_DEV_SCOPES`].
             HEALTH_VIEWER_DEV_SCOPES,
             ports.health_viewer_dev,
@@ -435,7 +435,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
         (
             LIFTING_DEV_CLIENT_ID,
             "Lifting (Dev)",
-            // `apps/lifting/lifting-web/src/config.ts`'s `LIFTING_SCOPE` — see
+            // `apps/strength/strength-web/src/config.ts`'s `STRENGTH_SCOPE` — see
             // [`LIFTING_DEV_SCOPES`].
             LIFTING_DEV_SCOPES,
             ports.lifting_dev,
@@ -486,19 +486,19 @@ mod tests {
     fn seeds_the_health_viewer_dev_client_with_the_apps_own_scopes() {
         const HEALTH_VIEWER_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../../apps/health-viewer/health-viewer-web/src/config.ts"
+            "/../../../../apps/plots/plots-web/src/config.ts"
         ));
         /// The production client `0028_rekey_site_app_clients` re-keys to.
         const HEALTH_VIEWER_CLIENT_ID: &str = "474e103de61f9141c4b640d59bfa130e";
         let scope_string = format!("'{}'", HEALTH_VIEWER_DEV_SCOPES.join(" "));
         assert!(
             HEALTH_VIEWER_CONFIG_TS.contains(&scope_string),
-            "apps/health-viewer/health-viewer-web/src/config.ts must request exactly {scope_string}",
+            "apps/plots/plots-web/src/config.ts must request exactly {scope_string}",
         );
         for client_id in [HEALTH_VIEWER_DEV_CLIENT_ID, HEALTH_VIEWER_CLIENT_ID] {
             assert!(
                 HEALTH_VIEWER_CONFIG_TS.contains(&format!("'{client_id}'")),
-                "apps/health-viewer/health-viewer-web/src/config.ts must launch as {client_id}",
+                "apps/plots/plots-web/src/config.ts must launch as {client_id}",
             );
         }
 
@@ -627,26 +627,26 @@ mod tests {
     /// The Lifting dev client is seeded on its dev server's loopback root with
     /// exactly the scopes the app requests, and the production Lifting client
     /// (authorization server migrations `0019`, `0020` and `0025`) allows the same set. The
-    /// app's `LIFTING_SCOPE` and both client ids are read out of `config.ts`
+    /// app's `STRENGTH_SCOPE` and both client ids are read out of `config.ts`
     /// itself, the one place the app writes them, so neither client can drift
     /// from it unnoticed.
     #[test]
     fn seeds_the_lifting_dev_client_with_the_apps_own_scopes() {
         const LIFTING_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../../apps/lifting/lifting-web/src/config.ts"
+            "/../../../../apps/strength/strength-web/src/config.ts"
         ));
         /// The production client `0025_rekey_lifting_app_clients` re-keys to.
         const LIFTING_CLIENT_ID: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
         let scope_string = format!("'{}'", LIFTING_DEV_SCOPES.join(" "));
         assert!(
             LIFTING_CONFIG_TS.contains(&scope_string),
-            "apps/lifting/lifting-web/src/config.ts must request exactly {scope_string}",
+            "apps/strength/strength-web/src/config.ts must request exactly {scope_string}",
         );
         for client_id in [LIFTING_DEV_CLIENT_ID, LIFTING_CLIENT_ID] {
             assert!(
                 LIFTING_CONFIG_TS.contains(&format!("'{client_id}'")),
-                "apps/lifting/lifting-web/src/config.ts must launch as {client_id}",
+                "apps/strength/strength-web/src/config.ts must launch as {client_id}",
             );
         }
 

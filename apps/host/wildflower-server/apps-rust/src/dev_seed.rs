@@ -155,7 +155,7 @@ fn dev_apps() -> [DevApp; 7] {
             id: "health-viewer-dev",
             client_id: HEALTH_VIEWER_DEV_CLIENT_ID,
             name: "Health Viewer (Dev)",
-            subtitle: "Local vite dev server for apps/health-viewer/health-viewer-web",
+            subtitle: "Local vite dev server for apps/plots/plots-web",
             url: dev_launch_url(ports.health_viewer_dev),
         },
         DevApp {
@@ -169,7 +169,7 @@ fn dev_apps() -> [DevApp; 7] {
             id: "lifting-dev",
             client_id: LIFTING_DEV_CLIENT_ID,
             name: "Lifting (Dev)",
-            subtitle: "Local vite dev server for apps/lifting/lifting-web",
+            subtitle: "Local vite dev server for apps/strength/strength-web",
             url: dev_launch_url(ports.lifting_dev),
         },
     ]
@@ -370,7 +370,7 @@ mod tests {
         assert_eq!(registration.name, "Health Viewer (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
-            Some("Local vite dev server for apps/health-viewer/health-viewer-web"),
+            Some("Local vite dev server for apps/plots/plots-web"),
         );
         assert_eq!(
             registration.url.to_string(),
@@ -410,7 +410,7 @@ mod tests {
         assert_eq!(registration.name, "Lifting (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
-            Some("Local vite dev server for apps/lifting/lifting-web"),
+            Some("Local vite dev server for apps/strength/strength-web"),
         );
         assert_eq!(
             registration.client_id.as_deref(),

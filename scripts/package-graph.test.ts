@@ -243,15 +243,18 @@ describe('packageGraphViolations', () => {
         '@wildflowerhealthio/wildflower-site-web',
         'apps/wildflower-site/wildflower-site-web'
       )
-      const entry = packageAt('@wildflowerhealthio/lifting-web', 'apps/lifting/lifting-web')
-      const core = packageAt('@wildflowerhealthio/lifting-core-js', 'apps/lifting/lifting-core-js')
+      const entry = packageAt('@wildflowerhealthio/strength-web', 'apps/strength/strength-web')
+      const core = packageAt(
+        '@wildflowerhealthio/strength-core-js',
+        'apps/strength/strength-core-js'
+      )
       expect(
         packageGraphViolations([dependingOn(site, entry, 'runtime'), entry]).map(formatViolation)
       ).toEqual([])
       expect(
         packageGraphViolations([dependingOn(site, core, 'runtime'), core]).map(formatViolation)
       ).toEqual([
-        '@wildflowerhealthio/wildflower-site-web (apps/wildflower-site/wildflower-site-web) depends on @wildflowerhealthio/lifting-core-js, which is private to apps/lifting/',
+        '@wildflowerhealthio/wildflower-site-web (apps/wildflower-site/wildflower-site-web) depends on @wildflowerhealthio/strength-core-js, which is private to apps/strength/',
       ])
     })
   })

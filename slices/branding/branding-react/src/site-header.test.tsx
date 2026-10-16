@@ -35,8 +35,8 @@ describe('SiteHeader', () => {
       .map((link) => link.getAttribute('href'))
     expect(hrefs).toStrictEqual([
       sectionHref(onMarketingSite, 'medications'),
-      sectionHref(onMarketingSite, 'healthViewer'),
-      sectionHref(onMarketingSite, 'lifting'),
+      sectionHref(onMarketingSite, 'plots'),
+      sectionHref(onMarketingSite, 'strength'),
       sectionHref(onMarketingSite, 'importer'),
       sectionHref(onMarketingSite, 'serverDocs'),
       sectionHref(onMarketingSite, 'ohifViewer'),
@@ -54,8 +54,8 @@ describe('SiteHeader', () => {
       .map((link) => link.getAttribute('href'))
     expect(hrefs).toStrictEqual([
       sectionUrl('medications'),
-      sectionUrl('healthViewer'),
-      sectionUrl('lifting'),
+      sectionUrl('plots'),
+      sectionUrl('strength'),
       sectionUrl('importer'),
       sectionUrl('serverDocs'),
       sectionUrl('ohifViewer'),

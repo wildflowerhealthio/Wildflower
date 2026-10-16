@@ -86,11 +86,11 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: '@wildflowerhealthio/health-viewer-web',
-    // The package lives in `apps/health-viewer/health-viewer-web`; its published path is
-    // `/${SECTION_PATHS.healthViewer}`.
-    sourceDir: 'apps/health-viewer/health-viewer-web/dist',
-    destPath: SECTION_PATHS.healthViewer,
+    packageName: '@wildflowerhealthio/plots-web',
+    // The package lives in `apps/plots/plots-web`; its published path is
+    // `/${SECTION_PATHS.plots}`.
+    sourceDir: 'apps/plots/plots-web/dist',
+    destPath: SECTION_PATHS.plots,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
     // visit.
@@ -108,11 +108,11 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html'],
   },
   {
-    packageName: '@wildflowerhealthio/lifting-web',
-    // The package lives in `apps/lifting/lifting-web`; its published path is
-    // `/${SECTION_PATHS.lifting}`.
-    sourceDir: 'apps/lifting/lifting-web/dist',
-    destPath: SECTION_PATHS.lifting,
+    packageName: '@wildflowerhealthio/strength-web',
+    // The package lives in `apps/strength/strength-web`; its published path is
+    // `/${SECTION_PATHS.strength}`.
+    sourceDir: 'apps/strength/strength-web/dist',
+    destPath: SECTION_PATHS.strength,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
     // visit.
