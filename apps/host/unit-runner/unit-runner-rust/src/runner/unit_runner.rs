@@ -676,8 +676,10 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         let stop_signal = RunStopSignal::default();
         let (run_finished_tx, run_finished_rx) = watch::channel(false);
         entry.current_run = Some(UnitRun {
+            unit_id: unit_id.clone(),
             generation,
             stop_signal: stop_signal.clone(),
+            status_publisher: self.status_publisher.clone(),
             run_finished_rx,
         });
         log::info!("[unit-runner] starting {unit_id}");

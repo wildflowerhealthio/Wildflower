@@ -19,8 +19,10 @@ pub struct UnitStatus<D> {
     /// [`RunContext::announce_running`](crate::RunContext::announce_running);
     /// `None` unless the run state is [`RunState::Running`].
     pub running_since: Option<DateTime<Utc>>,
-    /// The unit's own status, as the current run last set it; `None` before
-    /// the run sets one and whenever no run is in progress.
+    /// The unit's own status, as the current run last set it: what a run
+    /// reports until it is asked to stop. `None` before the run sets one,
+    /// from when the run is asked to stop, and whenever no run is in
+    /// progress.
     pub detail: Option<D>,
 }
 

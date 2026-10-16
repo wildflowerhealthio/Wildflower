@@ -200,6 +200,13 @@ pub(super) enum Script {
     /// Report running, and once asked to stop, wind down only when the test
     /// adds a permit to `allow_wind_down`.
     WindDownWhenAllowed { allow_wind_down: Arc<Semaphore> },
+    /// Report running and the detail `"up"`; once asked to stop, report the
+    /// detail `"winding down"`, set `reported`, and wind down only when the
+    /// test adds a permit to `allow_wind_down`.
+    ReportWhileWindingDown {
+        reported: Arc<AtomicBool>,
+        allow_wind_down: Arc<Semaphore>,
+    },
     /// Wait at `barrier` with the other units, then report running and wait to
     /// be asked to stop.
     MeetOthers { barrier: Arc<Barrier> },
@@ -326,6 +333,18 @@ async fn run_script(script: Script, ctx: &RunContext<Detail>) -> anyhow::Result<
         Script::WindDownWhenAllowed { allow_wind_down } => {
             ctx.announce_running();
             ctx.shutdown_token().cancelled().await;
+            let _permit = allow_wind_down.acquire().await?;
+            Ok(())
+        }
+        Script::ReportWhileWindingDown {
+            reported,
+            allow_wind_down,
+        } => {
+            ctx.announce_running();
+            ctx.set_detail("up".to_owned());
+            ctx.shutdown_token().cancelled().await;
+            ctx.set_detail("winding down".to_owned());
+            reported.store(true, Ordering::SeqCst);
             let _permit = allow_wind_down.acquire().await?;
             Ok(())
         }

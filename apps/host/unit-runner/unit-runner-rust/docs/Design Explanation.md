@@ -223,9 +223,13 @@ either way.
     recorded the end (and scheduled any restart) by then, so a
     `set_unit_policy` the app makes on seeing `Stopped` always cancels that
     restart.
-  - The detail is cleared at both ends of the run. Once `Stopped` is
-    published, nothing a leftover clone of the run's `RunContext` reports
-    lands.
+  - The detail is what a run reports until it is asked to stop. It is cleared
+    as the run begins, and again as `UnitRunner` asks the run to stop, in the
+    same call, while the run state stays until the run ends; a detail the run
+    sets after that is dropped. So a reader never
+    acts on what a stopping run reported, such as a handle into a run that is
+    about to end. Once `Stopped` is published, nothing a leftover clone of the
+    run's `RunContext` reports lands.
 
 ## Stop reasons
 

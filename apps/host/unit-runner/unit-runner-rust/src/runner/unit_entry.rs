@@ -8,10 +8,12 @@ use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::erased_unit::UnitFactory;
 use super::run_stop_signal::RunStopSignal;
+use super::status_publisher::StatusPublisher;
 use super::unit_run_gate::UnitRunGate;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::unit_plan::UnitPhase;
 use crate::status::StopReason;
+use crate::unit::UnitId;
 
 /// `UnitRunner`'s record of one unit.
 pub(crate) struct UnitEntry<D> {
@@ -21,7 +23,7 @@ pub(crate) struct UnitEntry<D> {
     /// `set_unit`, or a `remove_unit` that the app undoes with a `set_unit`.
     pub(crate) gate: UnitRunGate,
     /// The latest run, until it has ended.
-    pub(crate) current_run: Option<UnitRun>,
+    pub(crate) current_run: Option<UnitRun<D>>,
     pub(crate) pending_restart: Option<PendingRestart>,
     /// How many times in a row the unit has restarted after a run that ended
     /// on its own; the first is at once, and each after it waits twice as long
@@ -36,7 +38,7 @@ pub(crate) struct UnitEntry<D> {
     pub(crate) awaiting_removal: bool,
 }
 
-impl<D> UnitEntry<D> {
+impl<D: Clone + Send + Sync + 'static> UnitEntry<D> {
     pub(crate) fn new(policy: RunPolicy, factory: UnitFactory<D>) -> Self {
         Self {
             policy,
@@ -84,7 +86,8 @@ impl<D> UnitEntry<D> {
         self.restarts_in_a_row = 0;
     }
 
-    /// Ask the unit's run, if it has one, to stop for `reason`.
+    /// Ask the unit's run, if it has one, to stop for `reason`, its detail
+    /// cleared at once.
     pub(crate) fn stop_run(&self, reason: StopReason) {
         if let Some(run) = &self.current_run {
             run.request_stop(reason);
@@ -106,20 +109,29 @@ impl RunGeneration {
 }
 
 /// One run of a unit that has begun and not yet ended.
-pub(crate) struct UnitRun {
+pub(crate) struct UnitRun<D> {
+    /// The run's unit.
+    pub(crate) unit_id: UnitId,
     /// Tells this run's end from a later run's.
     pub(crate) generation: RunGeneration,
     pub(crate) stop_signal: RunStopSignal,
+    /// Where the run's unit's status is published, its detail cleared once
+    /// the run is asked to stop.
+    pub(crate) status_publisher: StatusPublisher<D>,
     /// `true` once the run's thread and runtime are gone and `UnitRunner` has
     /// recorded its end.
     pub(crate) run_finished_rx: watch::Receiver<bool>,
 }
 
-impl UnitRun {
-    /// Ask the run to stop for `reason`. A run that already has a stop reason
-    /// keeps it.
+impl<D: Clone + Send + Sync + 'static> UnitRun<D> {
+    /// Ask the run to stop for `reason`, and clear its unit's detail: a run
+    /// asked to stop reports none from then on. A run that already has a stop
+    /// reason keeps it.
     pub(crate) fn request_stop(&self, reason: StopReason) {
         self.stop_signal.request_stop(reason);
+        // After the shutdown token is cancelled, so a detail the run sets
+        // meanwhile either lands first and is cleared here, or is dropped.
+        self.status_publisher.publish_stop_requested(&self.unit_id);
     }
 
     pub(crate) fn stop_requested(&self) -> bool {

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use tokio::sync::{broadcast, watch};
+use tokio_util::sync::CancellationToken;
 
 use super::RUN_STOPS_CAPACITY;
 use crate::ports::wall_clock::WallClock;
@@ -122,17 +123,37 @@ impl<D: Clone + Send + Sync + 'static> StatusPublisher<D> {
         });
     }
 
-    /// The run's unit reports `detail`.
-    pub(crate) fn publish_detail(&self, unit_id: &UnitId, run_liveness: &RunLiveness, detail: D) {
+    /// The run's unit reports `detail`, while the run is in progress and not
+    /// asked to stop (`shutdown_token` not cancelled): a run asked to stop
+    /// reports no detail.
+    pub(crate) fn publish_detail(
+        &self,
+        unit_id: &UnitId,
+        run_liveness: &RunLiveness,
+        shutdown_token: &CancellationToken,
+        detail: D,
+    ) {
         self.statuses_tx.send_if_modified(|statuses| {
             let Some(status) = statuses.get_mut(unit_id) else {
                 return false;
             };
-            if !run_liveness.is_live() {
+            if !run_liveness.is_live() || shutdown_token.is_cancelled() {
                 return false;
             }
             status.detail = Some(detail);
             true
+        });
+    }
+
+    /// The current run of `unit_id` is asked to stop, its shutdown token
+    /// cancelled: its detail is cleared now, while its run state stays until
+    /// the run ends, and nothing it reports from now on lands
+    /// ([`publish_detail`](Self::publish_detail)).
+    pub(crate) fn publish_stop_requested(&self, unit_id: &UnitId) {
+        self.statuses_tx.send_if_modified(|statuses| {
+            statuses
+                .get_mut(unit_id)
+                .is_some_and(|status| status.detail.take().is_some())
         });
     }
 
