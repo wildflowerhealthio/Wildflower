@@ -704,8 +704,9 @@ mod migration_tests {
             .to_string()
     }
 
-    /// The first-party apps point at the published GitHub Pages site, under the
-    /// ids `0019` and `0023` re-keyed them to, launching at the app root (`0016`).
+    /// The first-party apps point at the published GitHub Pages sites, under the
+    /// ids `0019` and `0023` re-keyed them to, launching at the root (`0016`) of
+    /// each app's own origin (`0024`).
     #[test]
     fn first_party_apps_launch_from_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
@@ -720,7 +721,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}",
+            "https://medications.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
 
         // The old ids are fully retired.
@@ -761,7 +762,7 @@ mod migration_tests {
         let url = registration.url.to_string();
         assert_eq!(
             url,
-            "https://wildflowerhealth.io/server-docs/?server={origin}",
+            "https://server-docs.wildflowerhealth.io/?server={origin}",
         );
         assert!(
             !url.contains("{launch}") && !url.contains("iss="),
@@ -787,7 +788,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}",
+            "https://importer.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
     }
 
@@ -812,7 +813,7 @@ mod migration_tests {
         );
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
+            "https://ohif-viewer.wildflowerhealth.io/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
         );
     }
 
@@ -834,7 +835,7 @@ mod migration_tests {
         assert_eq!(registration.name, "Strength");
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}",
+            "https://strength.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
     }
 
@@ -880,7 +881,7 @@ mod migration_tests {
         assert_eq!(strength.position, before.position - 1);
         assert_eq!(
             stored_url(&store, "strength"),
-            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}",
+            "https://strength.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
         let dev = store
             .find_app("strength-dev")
@@ -971,7 +972,7 @@ mod migration_tests {
         assert_eq!(importer.position, before.position);
         assert_eq!(
             stored_url(&store, "importer"),
-            "https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}",
+            "https://importer.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
         assert_eq!(
             stored_url(&store, "server-docs"),
@@ -994,6 +995,9 @@ mod migration_tests {
             "the Synthetic Data Loader takes the tail, after the user's app",
         );
 
+        embedded_migration("0024")
+            .revert(&mut pool.get().unwrap())
+            .expect("revert 0024");
         embedded_migration("0023")
             .revert(&mut pool.get().unwrap())
             .expect("revert 0023");
@@ -1098,7 +1102,7 @@ mod migration_tests {
         assert!(registration.on_homescreen);
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}",
+            "https://synthetic-data.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
     }
 
@@ -1146,7 +1150,7 @@ mod migration_tests {
         assert!(registration.on_homescreen);
         assert_eq!(
             registration.url.to_string(),
-            "https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}",
+            "https://plots.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
     }
 
@@ -1229,11 +1233,11 @@ mod migration_tests {
         let store = SqliteAppsStore::new(pool).expect("0021 must apply");
         assert_eq!(
             stored_url(&store, "medications"),
-            "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}",
+            "https://medications.wildflowerhealth.io/?launch={launch}&iss={origin}",
         );
         assert_eq!(
             stored_url(&store, "ohif-viewer"),
-            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
+            "https://ohif-viewer.wildflowerhealth.io/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
         );
         assert_eq!(
             stored_url(&store, "strength"),
@@ -1280,14 +1284,16 @@ mod migration_tests {
         drop(conn);
 
         let store = SqliteAppsStore::new(pool).expect("0016 must apply");
-        for (id, path) in [
+        for (id, subdomain) in [
             ("medications", "medications"),
             ("importer", "importer"),
-            ("plots", "health-viewer"),
+            ("plots", "plots"),
         ] {
             assert_eq!(
                 stored_url(&store, id),
-                format!("https://wildflowerhealth.io/{path}/?launch={{launch}}&iss={{origin}}"),
+                format!(
+                    "https://{subdomain}.wildflowerhealth.io/?launch={{launch}}&iss={{origin}}"
+                ),
             );
         }
         assert_eq!(
@@ -1331,7 +1337,7 @@ mod migration_tests {
         let store = SqliteAppsStore::new(pool).expect("the later migrations must apply");
         assert_eq!(
             stored_url(&store, "ohif-viewer"),
-            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
+            "https://ohif-viewer.wildflowerhealth.io/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
         );
     }
 
@@ -1896,8 +1902,8 @@ mod migration_tests {
         assert_eq!(plots.position, positions_before[0]);
         assert_eq!(
             stored_url(&store, "plots"),
-            "https://wildflowerhealth.io/health-viewer/?launch={launch}&iss={origin}",
-            "the published path stays",
+            "https://plots.wildflowerhealth.io/?launch={launch}&iss={origin}",
+            "the launch URL stays, moved to the app's own origin by `0024`",
         );
         let strength = store
             .find_app("strength")
@@ -1911,8 +1917,8 @@ mod migration_tests {
         assert_eq!(strength.position, positions_before[1]);
         assert_eq!(
             stored_url(&store, "strength"),
-            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}",
-            "the published path stays",
+            "https://strength.wildflowerhealth.io/?launch={launch}&iss={origin}",
+            "the launch URL stays, moved to the app's own origin by `0024`",
         );
         let plots_dev = store.find_app("plots-dev").unwrap().expect("plots-dev");
         assert_eq!(plots_dev.name, "Plots (Dev)");
@@ -1947,5 +1953,72 @@ mod migration_tests {
         for new in ["plots", "plots-dev", "strength", "strength-dev"] {
             assert!(store.find_app(new).unwrap().is_none(), "{new} is reverted");
         }
+    }
+    /// An install at `0023` launches each first-party tile from its app's own
+    /// origin when `0024` runs, keeping the route and query; a launch URL the
+    /// user edited stays. Reverting `0024` restores the paths on
+    /// `wildflowerhealth.io`.
+    #[test]
+    fn an_install_already_at_0023_launches_apps_from_their_own_origins() {
+        let pool = pool_migrated_through("0023");
+        let mut conn = pool.get().unwrap();
+        let edited = "https://plots.example/?launch={launch}&iss={origin}";
+        sql_query("UPDATE app_registrations SET url = ? WHERE id = 'plots'")
+            .bind::<Text, _>(edited)
+            .execute(&mut conn)
+            .expect("the user points Plots elsewhere");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool.clone()).expect("0024 must apply");
+        for (id, url) in [
+            (
+                "medications",
+                "https://medications.wildflowerhealth.io/?launch={launch}&iss={origin}",
+            ),
+            (
+                "importer",
+                "https://importer.wildflowerhealth.io/?launch={launch}&iss={origin}",
+            ),
+            (
+                "synthetic-data",
+                "https://synthetic-data.wildflowerhealth.io/?launch={launch}&iss={origin}",
+            ),
+            (
+                "strength",
+                "https://strength.wildflowerhealth.io/?launch={launch}&iss={origin}",
+            ),
+            (
+                "ohif-viewer",
+                "https://ohif-viewer.wildflowerhealth.io/fhir-viewer?launch={launch}&iss={origin}&clientId=941de68e6b59eb9dcc32df8ede89e636",
+            ),
+            (
+                "server-docs",
+                "https://server-docs.wildflowerhealth.io/?server={origin}",
+            ),
+        ] {
+            assert_eq!(stored_url(&store, id), url, "{id}");
+        }
+        assert_eq!(stored_url(&store, "plots"), edited, "the user's edit stays");
+
+        let mut conn = pool.get().unwrap();
+        embedded_migration("0024")
+            .revert(&mut conn)
+            .expect("revert 0024");
+        let reverted_url = |conn: &mut SqliteConnection, id: &str| {
+            sql_query("SELECT url FROM app_registrations WHERE id = ?")
+                .bind::<Text, _>(id)
+                .get_result::<CloudTarget>(conn)
+                .unwrap()
+                .url
+        };
+        assert_eq!(
+            reverted_url(&mut conn, "medications"),
+            "https://wildflowerhealth.io/medications/?launch={launch}&iss={origin}",
+        );
+        assert_eq!(
+            reverted_url(&mut conn, "strength"),
+            "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}",
+        );
+        assert_eq!(reverted_url(&mut conn, "plots"), edited);
     }
 }

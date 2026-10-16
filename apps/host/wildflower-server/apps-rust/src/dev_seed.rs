@@ -3,8 +3,9 @@
 //!
 //! The first-party apps (Medications, Importer, the OHIF imaging
 //! viewer, Server Docs, Plots, the Synthetic Data Loader, Strength) ship as
-//! rows served from <https://wildflowerhealth.io> (apps migration
-//! `0005_first_party_apps_to_cloud`). That is the right production target and
+//! rows served from their own origins under <https://wildflowerhealth.io> (apps
+//! migrations `0005_first_party_apps_to_cloud` and
+//! `0024_launch_apps_from_their_own_origins`). That is the right production target and
 //! the wrong development one: a developer editing `apps/medications/medications-web` wants
 //! the homescreen tile to open the vite dev server they are running, not the
 //! last deploy of the public site.
@@ -442,7 +443,7 @@ mod tests {
                 registration
                     .url
                     .to_string()
-                    .starts_with("https://wildflowerhealth.io/"),
+                    .starts_with(&format!("https://{id}.wildflowerhealth.io/")),
                 "{id} keeps its published launch URL",
             );
         }
