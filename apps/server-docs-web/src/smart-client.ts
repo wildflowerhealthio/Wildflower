@@ -7,7 +7,7 @@
  * `apps/host/wildflower-server/authorization-server-rust/migrations/0007_seed_wildflower_server_docs_client`
  * (as `server-docs`), re-keyed to that random id by
  * `0028_rekey_site_app_clients`, and given its own origin's redirect by
- * `0036_add_app_origin_redirect_uris`.
+ * `0037_add_app_origin_redirect_uris`.
  * {@link CLIENT_ID} MUST equal that migration's row: the server clamps the
  * request to the row's `allowed_scopes`, so a value that drifts from the seed
  * fails the flow at `/oauth/authorize` rather than degrading quietly. The

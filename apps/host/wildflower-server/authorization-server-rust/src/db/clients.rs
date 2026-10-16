@@ -298,7 +298,7 @@ mod tests {
     /// Plots to random ids, as `0025` / `0026` did Strength and the
     /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble), and
     /// Wildflower Authorization by `0031` (the launcher's scopes are narrowed by
-    /// `0032`), and `0036` puts each hosted app's own origin in front of the
+    /// `0032`), and `0037` puts each hosted app's own origin in front of the
     /// redirect on `wildflowerhealth.io` it held — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
@@ -484,7 +484,7 @@ mod tests {
             ],
         );
         // Absolute entries only, each the app ROOT (`0013` replaced 0012's
-        // `/home`; `0026` moved it to `/launcher/`; `0036` added the app's own
+        // `/home`; `0026` moved it to `/launcher/`; `0037` added the app's own
         // origin in front): the web UI is a SPA on browser history, so
         // `redirectUriForRoute` derives the served root per origin (the
         // directory form would vary by whichever section the reader signed in
@@ -704,7 +704,7 @@ mod tests {
     }
 
     /// Wildflower Authorization's client (`0031`) is a public PKCE client
-    /// returning to the app's published root (its own origin, added by `0036`,
+    /// returning to the app's published root (its own origin, added by `0037`,
     /// and its path on `wildflowerhealth.io`), allowed exactly the scopes the
     /// app asks for. Its id and scope string are read out of the app's
     /// `src/config.ts`, the one place the app writes them, so the row can't

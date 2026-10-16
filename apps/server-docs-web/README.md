@@ -152,7 +152,7 @@ line asking the server how to sign in. On that restore (`pageshow` with
 The client is registered by
 `apps/host/wildflower-server/authorization-server-rust/migrations/0007_seed_wildflower_server_docs_client`
 re-keyed to that random id by `0028_rekey_site_app_clients`, and given its
-own origin's redirect by `0036_add_app_origin_redirect_uris`;
+own origin's redirect by `0037_add_app_origin_redirect_uris`;
 `src/smart-client.ts` is the browser-side reading of that row's `client_id` and
 `allowed_scopes`, and must match them. The **redirect URI is not read from
 there** — see below.

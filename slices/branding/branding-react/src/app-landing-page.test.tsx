@@ -72,7 +72,7 @@ describe('AppLandingPage', () => {
 
     // Assert — an app bundle on any origin points at the published apps
     const header = within(screen.getByRole('banner'))
-    expect(header.getByRole('link', { name: 'Medications' }).getAttribute('href')).toBe(
+    expect(header.getByRole('link', { name: 'Wildflower Medications' }).getAttribute('href')).toBe(
       'https://medications.wildflowerhealth.io/'
     )
   })

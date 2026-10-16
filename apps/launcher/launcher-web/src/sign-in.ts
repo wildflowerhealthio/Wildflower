@@ -117,7 +117,7 @@ const POST_SIGN_IN_ROUTE = '/'
 /**
  * The redirect URI of the **published** web build, on the launcher's own
  * origin, and the first entry of the seeded row
- * (`0036_add_app_origin_redirect_uris`). Every other
+ * (`0037_add_app_origin_redirect_uris`). Every other
  * copy derives its own from where it is served; this is the fallback for a page
  * whose address a sign-in must not return to at all, which is unreachable from a
  * browser actually running this build.

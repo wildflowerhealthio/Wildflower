@@ -51,12 +51,12 @@ describe('App', () => {
     expect(wordmark.getAttribute('href')).toBe('#top')
   })
 
-  it('should link the header nav to the seven app routes', () => {
+  it('should link the header nav to every app', () => {
     // Arrange / Act
     render(<App />)
 
     // Assert — every "call to action" on the page is a link into an app;
-    // the header carries all seven routes.
+    // the header carries every app, in its menu groups' order.
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')
@@ -65,10 +65,15 @@ describe('App', () => {
     expect(hrefs).toStrictEqual([
       'https://medications.wildflowerhealth.io/',
       'https://plots.wildflowerhealth.io/',
-      'https://strength.wildflowerhealth.io/',
-      'https://importer.wildflowerhealth.io/',
-      'https://server-docs.wildflowerhealth.io/',
       'https://ohif-viewer.wildflowerhealth.io/',
+      'https://importer.wildflowerhealth.io/',
+      'https://launcher.wildflowerhealth.io/',
+      'https://authorization.wildflowerhealth.io/',
+      'https://fhir-sync-pebble.wildflowerhealth.io/',
+      'https://watch-lifts.wildflowerhealth.io/',
+      'https://strength.wildflowerhealth.io/',
+      'https://server-docs.wildflowerhealth.io/',
+      'https://synthetic-data.wildflowerhealth.io/',
     ])
   })
 

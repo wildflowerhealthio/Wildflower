@@ -94,7 +94,7 @@ The Wildflower server seeds what the viewer needs:
   another migration). `0029_rekey_ohif_viewer_clients` re-keys it to a
   random id (`941de68e6b59eb9dcc32df8ede89e636`) and the dev client to another,
   and apps migration `0020_rekey_ohif_viewer_clients` points the tiles and their
-  launch URLs' `clientId` at them. `0036_add_app_origin_redirect_uris` adds
+  launch URLs' `clientId` at them. `0037_add_app_origin_redirect_uris` adds
   `https://ohif-viewer.wildflowerhealth.io/fhir-viewer` in front of that
   redirect, and apps migration `0024_launch_apps_from_their_own_origins`
   moves the tile's launch URL to the viewer's origin.

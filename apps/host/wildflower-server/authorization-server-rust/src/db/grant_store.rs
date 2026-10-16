@@ -1601,12 +1601,12 @@ mod tests {
         assert_eq!(name_of(&mut conn, STRENGTH_DEV), "My lifts");
     }
 
-    /// An install already at `0035` gains each hosted app's own origin as a
-    /// redirect when `0036` runs, in front of the redirect on
+    /// An install already at `0036` gains each hosted app's own origin as a
+    /// redirect when `0037` runs, in front of the redirect on
     /// `wildflowerhealth.io` it held; a client whose list the Owner changed
-    /// keeps it. Reverting `0036` restores the lists.
+    /// keeps it. Reverting `0037` restores the lists.
     #[test]
-    fn an_install_already_at_0035_adds_the_app_origin_redirects() {
+    fn an_install_already_at_0036_adds_the_app_origin_redirects() {
         use diesel::connection::SimpleConnection as _;
         const MEDICATIONS: &str = "9769f8b274370708d0d3ebb2e3e59b7c";
         const OHIF_VIEWER: &str = "941de68e6b59eb9dcc32df8ede89e636";
@@ -1617,28 +1617,28 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MigrationsThrough("0035"),
+            MigrationsThrough("0036"),
         )
-        .expect("migrate to 0035");
+        .expect("migrate to 0036");
         conn.batch_execute(&format!(
             "UPDATE clients SET redirect_uris = '[\"https://lifts.example/\"]' \
              WHERE client_id = '{STRENGTH}'"
         ))
-        .expect("Strength's redirects changed by the Owner at 0035");
+        .expect("Strength's redirects changed by the Owner at 0036");
         let redirects_of = |conn: &mut SqliteConnection, client_id: &str| {
             column_for_client(conn, "redirect_uris", client_id)[0]
                 .name
                 .clone()
         };
-        let at_0035 = [MEDICATIONS, OHIF_VIEWER, LAUNCHER, STRENGTH]
+        let at_0036 = [MEDICATIONS, OHIF_VIEWER, LAUNCHER, STRENGTH]
             .map(|client_id| redirects_of(&mut conn, client_id));
 
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MigrationsThrough("0036"),
+            MigrationsThrough("0037"),
         )
-        .expect("upgrade through 0036");
+        .expect("upgrade through 0037");
 
         assert_eq!(
             redirects_of(&mut conn, MEDICATIONS),
@@ -1657,16 +1657,16 @@ mod tests {
             r#"["https://lifts.example/"]"#
         );
 
-        let migration_0036 = MIGRATIONS
+        let migration_0037 = MIGRATIONS
             .migrations()
             .expect("embedded migrations")
             .into_iter()
-            .find(|migration| migration.name().version() == MigrationVersion::from("0036"))
-            .expect("0036 is embedded");
-        migration_0036.revert(&mut conn).expect("revert 0036");
+            .find(|migration| migration.name().version() == MigrationVersion::from("0037"))
+            .expect("0037 is embedded");
+        migration_0037.revert(&mut conn).expect("revert 0037");
         let reverted = [MEDICATIONS, OHIF_VIEWER, LAUNCHER, STRENGTH]
             .map(|client_id| redirects_of(&mut conn, client_id));
-        assert_eq!(reverted, at_0035);
+        assert_eq!(reverted, at_0036);
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced
