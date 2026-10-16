@@ -1,7 +1,9 @@
-import type { Series } from './series.ts'
+import type { ValueSeries } from './series.ts'
 
 /**
- * How many series the chart plots at once, which is how many value axes it has.
+ * How many value series the chart plots at once, which is how many value axes
+ * it has. Span lanes take no value axis and count against `SpanSeries.LANE_CAP`
+ * instead.
  *
  * @remarks
  * A rendering limit: each series needs its own value axis, and two per side is
@@ -16,7 +18,7 @@ type Domain = readonly [number, number]
 
 /** One series' value axis: which side it hangs on, and the scale it draws. */
 interface ValueAxis {
-  readonly series: Series
+  readonly series: ValueSeries
   readonly side: 'left' | 'right'
   /** Position among the axes on this same `side`, `0` being the one nearest the plot. */
   readonly index: number
@@ -219,7 +221,7 @@ const denormalise = (fraction: number, domain: Domain): number => {
 }
 
 /** Every value and band bound `series` plots, which its axis must contain. */
-const plottedValuesOf = (series: Series): readonly number[] =>
+const plottedValuesOf = (series: ValueSeries): readonly number[] =>
   (series.kind === 'points' ? series.points : series.levels).flatMap((mark) => [
     mark.value,
     ...(mark.low === undefined ? [] : [mark.low]),
@@ -236,7 +238,7 @@ const plottedValuesOf = (series: Series): readonly number[] =>
  * are, and a `'zero-to-one'` axis is pinned. Nothing to plot yields `[0, 1]`,
  * so the axis draws empty rather than not at all.
  */
-const domainFor = (series: Series): Domain => {
+const domainFor = (series: ValueSeries): Domain => {
   if (series.valueScale === 'zero-to-one') return [0, 1]
   const values = plottedValuesOf(series)
   if (values.length === 0) return [0, 1]
@@ -259,7 +261,7 @@ const domainFor = (series: Series): Domain => {
  * never crowd the same gutter and a series keeps its side as long as nothing
  * before it is removed.
  */
-const assign = (selected: readonly Series[]): readonly ValueAxis[] => {
+const assign = (selected: readonly ValueSeries[]): readonly ValueAxis[] => {
   if (selected.length > CAP) {
     throw new Error(`Plots draws at most ${CAP} series at once; got ${selected.length}`)
   }

@@ -10,7 +10,12 @@ import {
   type CatalogRow,
   matchesSearch,
 } from '@wildflowerhealthio/plots-core-js'
-import { type Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import {
+  type Series,
+  SeriesId,
+  SpanSeries,
+  ValueAxis,
+} from '@wildflowerhealthio/plots-fundamentals'
 
 import { SeriesPanel } from './series-panel.tsx'
 
@@ -20,6 +25,18 @@ afterEach(cleanup)
 const RUNS = numRunsFor({ base: 10 })
 
 const DAY = 86_400_000
+
+/**
+ * Ids in the spelling the viewer's sources write — an observation point
+ * series, a medication level series, an observation span series — since the
+ * panel counts its caps by the kind each selected id reads as.
+ */
+const pointId = (code: string, unit: string): string =>
+  SeriesId.fromFields('o', ['http://loinc.org', code, unit])
+const levelId = (medication: string): string =>
+  SeriesId.fromFields('m', [medication, 'mg', 'administration'])
+const spanId = (code: string): string =>
+  SeriesId.fromFields('o', ['http://loinc.org', code, null, 'span'])
 
 /** A catalogue row for a synthetic series spanning `firstDay`..`lastDay` since the epoch. */
 const catalogRow = (
@@ -40,32 +57,45 @@ const catalogRow = (
 
 /**
  * More series than `ValueAxis.CAP`, across two point-series groups and a
- * level-series group — the shape `groupForPanel` hands the panel. Ids are
- * opaque to the panel, so they are arbitrary here. No label is a prefix of
- * another, so a row can be told apart by how its text starts.
+ * level-series group — the shape `groupForPanel` hands the panel. No label is
+ * a prefix of another, so a row can be told apart by how its text starts.
  */
 const catalogGroups: readonly CatalogGroup[] = [
   {
     id: 'vitals',
     label: 'Vital signs',
     rows: [
-      catalogRow('p:systolic', 'Systolic blood pressure', 'mm[Hg]', 'points', 2, [18_000, 18_400]),
-      catalogRow('p:heart-rate', 'Heart rate', '/min', 'points', 1, [18_100, 18_100]),
+      catalogRow(
+        pointId('8480-6', 'mm[Hg]'),
+        'Systolic blood pressure',
+        'mm[Hg]',
+        'points',
+        2,
+        [18_000, 18_400]
+      ),
+      catalogRow(pointId('8867-4', '/min'), 'Heart rate', '/min', 'points', 1, [18_100, 18_100]),
     ],
   },
   {
     id: 'labs',
     label: 'Laboratory',
     rows: [
-      catalogRow('p:glucose', 'Glucose', 'mg/dL', 'points', 3, [17_000, 19_000]),
-      catalogRow('p:a1c', 'Hemoglobin A1c', '%', 'points', 2, [18_200, 18_900]),
-      catalogRow('p:cholesterol', 'Cholesterol', 'mmol/L', 'points', 1, [18_300, 18_300]),
+      catalogRow(pointId('2345-7', 'mg/dL'), 'Glucose', 'mg/dL', 'points', 3, [17_000, 19_000]),
+      catalogRow(pointId('4548-4', '%'), 'Hemoglobin A1c', '%', 'points', 2, [18_200, 18_900]),
+      catalogRow(
+        pointId('2093-3', 'mmol/L'),
+        'Cholesterol',
+        'mmol/L',
+        'points',
+        1,
+        [18_300, 18_300]
+      ),
     ],
   },
   {
     id: 'doses',
     label: 'Medications',
-    rows: [catalogRow('l:metformin', 'Metformin', 'mg', 'levels', 2, [0, 30])],
+    rows: [catalogRow(levelId('metformin'), 'Metformin', 'mg', 'levels', 2, [0, 30])],
   },
 ]
 
@@ -211,27 +241,37 @@ describe('SeriesPanel', () => {
   it('should append a checked row to the selection, keeping its order', async () => {
     // Arrange
     const user = userEvent.setup()
-    const selectedSeriesIds = ['p:a1c', 'p:systolic']
+    const selectedSeriesIds = [pointId('4548-4', '%'), pointId('8480-6', 'mm[Hg]')]
     const { onSelectionChange } = renderPanel(selectedSeriesIds)
 
     // Act
     await user.click(checkboxFor('Metformin'))
 
     // Assert
-    expect(onSelectionChange).toHaveBeenCalledExactlyOnceWith([...selectedSeriesIds, 'l:metformin'])
+    expect(onSelectionChange).toHaveBeenCalledExactlyOnceWith([
+      ...selectedSeriesIds,
+      levelId('metformin'),
+    ])
   })
 
   it('should remove an unchecked row from the selection, keeping the rest in order', async () => {
     // Arrange
     const user = userEvent.setup()
-    const { onSelectionChange } = renderPanel(['p:systolic', 'p:heart-rate', 'p:glucose'])
+    const { onSelectionChange } = renderPanel([
+      pointId('8480-6', 'mm[Hg]'),
+      pointId('8867-4', '/min'),
+      pointId('2345-7', 'mg/dL'),
+    ])
 
     // Act
     await user.click(checkboxFor('Heart rate'))
 
     // Assert
     expect(checkboxFor('Heart rate').checked).toBe(true)
-    expect(onSelectionChange).toHaveBeenCalledExactlyOnceWith(['p:systolic', 'p:glucose'])
+    expect(onSelectionChange).toHaveBeenCalledExactlyOnceWith([
+      pointId('8480-6', 'mm[Hg]'),
+      pointId('2345-7', 'mg/dL'),
+    ])
   })
 
   it('should disable only the unchecked rows, with a hint, once the cap is reached', () => {
@@ -307,5 +347,81 @@ describe('SeriesPanel', () => {
 
     // Assert
     expect(screen.getByText('No plottable series in this record.')).toBeDefined()
+  })
+})
+
+describe('SeriesPanel span lanes', () => {
+  const spanRow = (id: string, label: string, count: number): CatalogRow => ({
+    id,
+    label,
+    unit: null,
+    seriesKind: 'spans',
+    count,
+    span: [DateTime.unsafeMake(0), DateTime.unsafeMake(DAY)],
+  })
+  const laneRows = [
+    spanRow(spanId('activity'), 'Activity', 12),
+    spanRow(spanId('sleep'), 'Sleep stage', 1),
+    spanRow(spanId('workout'), 'Workout', 3),
+  ]
+  const groupsWithLanes: readonly CatalogGroup[] = [
+    ...catalogGroups,
+    { id: 'activity', label: 'Activity', rows: laneRows },
+  ]
+  const valueIds = seriesIds.slice(0, ValueAxis.CAP)
+  const laneIds = laneRows.map((row) => row.id)
+
+  const renderWithLanes = (selectedSeriesIds: readonly string[]): void => {
+    render(
+      <SeriesPanel
+        catalogGroups={groupsWithLanes}
+        selectedSeriesIds={selectedSeriesIds}
+        onSelectionChange={vi.fn()}
+      />
+    )
+  }
+
+  it('should count a span row in spans', () => {
+    renderWithLanes([])
+    expect(checkboxFor('Activity').labels?.[0]?.textContent).toContain('12 spans')
+    expect(screen.getByText('0 of 4 selected · 0 of 2 lanes')).toBeDefined()
+  })
+
+  it('should keep lanes selectable with four value series selected', () => {
+    renderWithLanes(valueIds)
+    for (const row of laneRows) expect(checkboxFor(row.label).disabled).toBe(false)
+    expect(checkboxFor('Cholesterol').disabled).toBe(true)
+    expect(screen.getByRole('status').textContent).toBe(`Up to ${ValueAxis.CAP} series at once`)
+  })
+
+  it('should disable a third lane, with a hint, once two are selected', () => {
+    renderWithLanes([...valueIds, ...laneIds.slice(0, SpanSeries.LANE_CAP)])
+    expect(checkboxFor('Activity').disabled).toBe(false)
+    expect(checkboxFor('Sleep stage').disabled).toBe(false)
+    expect(checkboxFor('Workout').disabled).toBe(true)
+    expect(screen.getByText('4 of 4 selected · 2 of 2 lanes')).toBeDefined()
+    expect(screen.getByRole('status').textContent).toBe(
+      `Up to ${ValueAxis.CAP} series at once · Up to ${SpanSeries.LANE_CAP} lanes at once`
+    )
+  })
+
+  it('should count selected ids whose rows have not loaded yet against their caps', () => {
+    const unloadedValueIds = ['8302-2', '29463-7', '39156-5'].map((code) => pointId(code, 'x'))
+    const unloadedLaneIds = [spanId('unloaded')]
+    renderWithLanes([valueIds[0], ...unloadedValueIds, laneIds[0], ...unloadedLaneIds])
+    expect(screen.getByText('4 of 4 selected · 2 of 2 lanes')).toBeDefined()
+    expect(checkboxFor('Heart rate').disabled).toBe(true)
+    expect(checkboxFor('Sleep stage').disabled).toBe(true)
+    expect(screen.getByRole('status').textContent).toBe(
+      `Up to ${ValueAxis.CAP} series at once · Up to ${SpanSeries.LANE_CAP} lanes at once`
+    )
+  })
+
+  it('should keep value rows selectable with only lanes selected', () => {
+    renderWithLanes(laneIds.slice(0, SpanSeries.LANE_CAP))
+    for (const row of allRows) expect(checkboxFor(row.label).disabled).toBe(false)
+    expect(screen.getByRole('status').textContent).toBe(
+      `Up to ${SpanSeries.LANE_CAP} lanes at once`
+    )
   })
 })

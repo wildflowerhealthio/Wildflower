@@ -18,6 +18,7 @@ const definition: SeriesSource.SeriesSource<readonly number[], string, PointSeri
   seriesIdOf: (name) => SeriesId.fromFields('n', [name]),
   parseSeriesId: (id) => SeriesId.toFields('n', id)?.[0] ?? null,
   groupIdOf: () => 'all',
+  seriesKindOf: () => 'points',
 }
 
 describe('SeriesSource.make', () => {
@@ -30,6 +31,7 @@ describe('SeriesSource.make', () => {
     expect(source.seriesIdOf).toBe(definition.seriesIdOf)
     expect(source.parseSeriesId).toBe(definition.parseSeriesId)
     expect(source.groupIdOf).toBe(definition.groupIdOf)
+    expect(source.seriesKindOf).toBe(definition.seriesKindOf)
   })
 
   test('the result is frozen and independent of the definition it was made from', () => {
@@ -45,7 +47,16 @@ describe('SeriesSource.make', () => {
     const definitionWithExtra = { ...definition, extra: true }
     const source = SeriesSource.make(definitionWithExtra)
     expect(Object.keys(source).toSorted()).toEqual(
-      ['groupIdOf', 'groups', 'idPrefix', 'name', 'parseSeriesId', 'read', 'seriesIdOf'].toSorted()
+      [
+        'groupIdOf',
+        'groups',
+        'idPrefix',
+        'name',
+        'parseSeriesId',
+        'read',
+        'seriesIdOf',
+        'seriesKindOf',
+      ].toSorted()
     )
   })
 })

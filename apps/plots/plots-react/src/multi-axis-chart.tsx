@@ -5,11 +5,12 @@ import {
   Buckets,
   ColourSlots,
   Crosshair,
+  SpanSeries,
   type TimeDomain,
   type ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
-import { FRAME_HEIGHT, MARGIN_TOP, bucketCountFor, chartOptions } from './chart-marks.ts'
+import { MARGIN_TOP, bucketCountFor, chartOptions, crosshairHeightFor } from './chart-marks.ts'
 import { CrosshairTooltip } from './crosshair-tooltip.tsx'
 import { Legend } from './legend.tsx'
 import { usePlot, usePlotContainer } from './use-plot.ts'
@@ -22,6 +23,12 @@ interface MultiAxisChartProps {
    * repaints the others; a newcomer takes the lowest colour left free.
    */
   readonly axes: readonly ValueAxis.ValueAxis[]
+  /**
+   * The span series to draw as lanes under the time axis, in selection order,
+   * at most `SpanSeries.LANE_CAP` of them. They take no value axis and no
+   * series colour: each span wears its category's lane colour.
+   */
+  readonly lanes: readonly SpanSeries.SpanSeries[]
   /** The time window the x axis spans. */
   readonly xDomain: TimeDomain.TimeDomain
   /** Told the instant the crosshair moves to, and `null` when it leaves the figure. */
@@ -64,9 +71,13 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): readonly number[] => 
  * axis' domain, and each axis maps that scale back to the series' values —
  * the domains and ticks are `ValueAxis.assign`'s, not re-derived here.
  *
+ * Span series are drawn as thin lanes under the time axis, one per series,
+ * with no value axis: a bar per span in its category's colour.
+ *
  * The crosshair snaps to the nearest `Crosshair.stops` boundary — a reading,
- * or a level starting or ending — across all series, and lists the level each
- * series holds there (`Series.levelAt`), so the pointer never has to land on
+ * a level or a span starting or ending — across all series, and lists the
+ * level each value series holds there (`Series.levelAt`) and the spans each
+ * lane has there (`SpanSeries.spansAt`), so the pointer never has to land on
  * a line. The whole plot is the hit area.
  *
  * A point series with more readings in the window than the frame has room for
@@ -76,7 +87,7 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): readonly number[] => 
  * which, once per render, and the marks, the stops and the readout all take
  * that one map; a new width decides again.
  */
-const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.Element => {
+const MultiAxisChart = ({ axes, lanes, xDomain, onHover }: MultiAxisChartProps): JSX.Element => {
   const { containerRef, container, width: figureWidth } = usePlotContainer()
   const bucketsBySeriesId = useMemo(
     () =>
@@ -89,12 +100,8 @@ const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.El
   )
   const stops = useMemo(
     () =>
-      Crosshair.stops(
-        axes.map((axis) => axis.series),
-        xDomain,
-        bucketsBySeriesId
-      ),
-    [axes, xDomain, bucketsBySeriesId]
+      Crosshair.stops([...axes.map((axis) => axis.series), ...lanes], xDomain, bucketsBySeriesId),
+    [axes, lanes, xDomain, bucketsBySeriesId]
   )
   const [hover, setHover] = useState<{
     readonly stops: readonly number[]
@@ -110,9 +117,11 @@ const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.El
   }, [hoverIsStale, onHover])
 
   const colours = useColours(axes)
+  // The legend re-renders on every crosshair move; its categories do not change with it.
+  const laneCategories = useMemo(() => lanes.map((lane) => SpanSeries.categoriesOf(lane)), [lanes])
   const options = useMemo(
-    () => chartOptions(axes, xDomain, colours, bucketsBySeriesId),
-    [axes, xDomain, colours, bucketsBySeriesId]
+    () => chartOptions(axes, lanes, xDomain, colours, bucketsBySeriesId),
+    [axes, lanes, xDomain, colours, bucketsBySeriesId]
   )
   const figure = usePlot(container, figureWidth, options)
 
@@ -141,7 +150,7 @@ const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.El
     onHover?.(null)
   }, [onHover])
 
-  if (axes.length === 0) {
+  if (axes.length === 0 && lanes.length === 0) {
     return <p className={styles.empty}>Pick up to four series</p>
   }
 
@@ -150,7 +159,7 @@ const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.El
 
   return (
     <div className={styles.chart}>
-      <Legend axes={axes} colours={colours} />
+      <Legend axes={axes} colours={colours} lanes={lanes} laneCategories={laneCategories} />
       <div
         className={styles['plot-area']}
         onPointerMove={handlePointerMove}
@@ -161,13 +170,18 @@ const MultiAxisChart = ({ axes, xDomain, onHover }: MultiAxisChartProps): JSX.El
           <>
             <div
               className={styles.crosshair}
-              style={{ left: crosshairLeft, top: MARGIN_TOP, height: FRAME_HEIGHT }}
+              style={{
+                left: crosshairLeft,
+                top: MARGIN_TOP,
+                height: crosshairHeightFor(lanes.length),
+              }}
               data-testid="crosshair-rule"
               aria-hidden="true"
             />
             <CrosshairTooltip
               axes={axes}
               colours={colours}
+              lanes={lanes}
               bucketsBySeriesId={bucketsBySeriesId}
               time={DateTime.unsafeMake(hoveredMillis)}
               left={crosshairLeft}

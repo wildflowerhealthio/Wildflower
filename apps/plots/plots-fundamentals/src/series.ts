@@ -3,6 +3,7 @@ import type { DateTime } from 'effect'
 import * as LevelSeries from './level-series.ts'
 import type * as Level from './level.ts'
 import * as PointSeries from './point-series.ts'
+import type * as SpanSeries from './span-series.ts'
 import type { TimeDomain } from './time-domain.ts'
 
 /**
@@ -16,8 +17,17 @@ import type { TimeDomain } from './time-domain.ts'
  */
 type ValueScale = 'fitted' | 'from-zero' | 'zero-to-one'
 
+/** A series of values, each drawn against the series' own value axis. */
+type ValueSeries = PointSeries.PointSeries | LevelSeries.LevelSeries
+
 /** Anything the chart plots; discriminate on `kind`. */
-type Series = PointSeries.PointSeries | LevelSeries.LevelSeries
+type Series = ValueSeries | SpanSeries.SpanSeries
+
+/** Whether `series` takes a value axis — a point or level series, not a span lane. */
+const isValueSeries = (series: Series): series is ValueSeries => series.kind !== 'spans'
+
+/** Whether `series` is a span lane — drawn under the time axis, against no value axis. */
+const isSpanSeries = (series: Series): series is SpanSeries.SpanSeries => series.kind === 'spans'
 
 /**
  * `series` as levels — a point series' readings each held until the next one
@@ -27,7 +37,7 @@ type Series = PointSeries.PointSeries | LevelSeries.LevelSeries
  * The one place a point series and a level series are told apart for the
  * crosshair and the catalogue: everything downstream reads levels.
  */
-const levelsOf = (series: Series): readonly Level.Level[] =>
+const levelsOf = (series: ValueSeries): readonly Level.Level[] =>
   series.kind === 'points' ? PointSeries.toLevels(series) : series.levels
 
 /**
@@ -37,7 +47,7 @@ const levelsOf = (series: Series): readonly Level.Level[] =>
  *   `PointSeries.levelAt` and `LevelSeries.levelAt` for the one difference
  *   (before its first reading a point series still names it)
  */
-const levelAt = (series: Series, time: DateTime.Utc): Level.Level | null =>
+const levelAt = (series: ValueSeries, time: DateTime.Utc): Level.Level | null =>
   series.kind === 'points' ? PointSeries.levelAt(series, time) : LevelSeries.levelAt(series, time)
 
 /** The earliest and latest of `instants`, or `null` when there are none. */
@@ -53,15 +63,20 @@ const extentOfInstants = (instants: readonly DateTime.Utc[]): TimeDomain | null 
   return [earliest, latest]
 }
 
-/** Every stated boundary of `series`' levels: each start, and each end that is not open. */
+/**
+ * Every stated boundary of `series`: each level's start, and each end that is
+ * not open; for a span series, each span's start and end.
+ */
 const boundariesOf = (series: Series): readonly DateTime.Utc[] =>
-  levelsOf(series).flatMap((level) =>
-    level.end === null ? [level.start] : [level.start, level.end]
-  )
+  series.kind === 'spans'
+    ? series.spans.flatMap((span) => [span.start, span.end])
+    : levelsOf(series).flatMap((level) =>
+        level.end === null ? [level.start] : [level.start, level.end]
+      )
 
 /**
- * The instants `series` spans: the earliest level start to the latest stated
- * boundary.
+ * The instants `series` spans: the earliest boundary to the latest
+ * ({@link boundariesOf}).
  *
  * @returns `null` when the series is empty
  *
@@ -84,9 +99,21 @@ const extentOf = (series: Series): TimeDomain | null => extentOfInstants(boundar
 const extentOfAll = (seriesList: readonly Series[]): TimeDomain | null =>
   extentOfInstants(seriesList.flatMap(boundariesOf))
 
-/** How many readings (for a point series) or levels (for a level series) `series` holds. */
-const sizeOf = (series: Series): number =>
-  series.kind === 'points' ? series.points.length : series.levels.length
+/** How many readings, levels or spans `series` holds, by its kind. */
+const sizeOf = (series: Series): number => {
+  if (series.kind === 'points') return series.points.length
+  if (series.kind === 'levels') return series.levels.length
+  return series.spans.length
+}
 
-export { extentOf, extentOfAll, levelAt, levelsOf, sizeOf }
-export type { Series, ValueScale }
+export {
+  boundariesOf,
+  extentOf,
+  extentOfAll,
+  isSpanSeries,
+  isValueSeries,
+  levelAt,
+  levelsOf,
+  sizeOf,
+}
+export type { Series, ValueScale, ValueSeries }

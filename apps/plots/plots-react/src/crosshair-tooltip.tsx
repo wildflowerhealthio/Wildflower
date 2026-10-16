@@ -1,10 +1,16 @@
 import type { DateTime } from 'effect'
 import type { JSX } from 'react'
 
-import { Buckets, type Level, Series, type ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import {
+  Buckets,
+  type Level,
+  Series,
+  SpanSeries,
+  type ValueAxis,
+} from '@wildflowerhealthio/plots-fundamentals'
 
-import { seriesColors } from './series-colors.ts'
-import { formatDate, formatReading } from './value-format.ts'
+import { seriesColors, spanColour } from './series-colors.ts'
+import { formatDate, formatDateTime, formatReading } from './value-format.ts'
 import styles from './crosshair-tooltip.module.css'
 
 interface CrosshairTooltipProps {
@@ -12,6 +18,8 @@ interface CrosshairTooltipProps {
   readonly axes: readonly ValueAxis.ValueAxis[]
   /** Each axis' palette index, parallel to `axes`. */
   readonly colours: readonly number[]
+  /** The chart's span lanes, in selection order. */
+  readonly lanes: readonly SpanSeries.SpanSeries[]
   /**
    * The series drawn as buckets, from `Buckets.ofDenseSeries` — the map the
    * figure and the crosshair's stops were built from. Their rows read the
@@ -47,7 +55,7 @@ interface ReadoutText {
  * empty, and a level series in a gap between its levels, where nothing was in
  * effect.
  */
-const readoutText = (series: Series.Series, level: Level.Level | null): ReadoutText => {
+const readoutText = (series: Series.ValueSeries, level: Level.Level | null): ReadoutText => {
   if (level === null) return { value: '—', detail: null }
   const value = [formatReading(level.value), series.unit, level.note]
     .filter((part) => part !== null && part !== undefined)
@@ -68,7 +76,10 @@ const readoutText = (series: Series.Series, level: Level.Level | null): ReadoutT
  * `null` is a gap — no reading fell in the slice under the crosshair — and
  * reads as one. A bucket of one reading is that reading, so it says only that.
  */
-const bucketReadoutText = (series: Series.Series, bucket: Buckets.Bucket | null): ReadoutText => {
+const bucketReadoutText = (
+  series: Series.ValueSeries,
+  bucket: Buckets.Bucket | null
+): ReadoutText => {
   if (bucket === null) return { value: '—', detail: null }
   const value = [formatReading(bucket.mean), series.unit].filter((part) => part !== null).join(' ')
   const detail =
@@ -78,9 +89,55 @@ const bucketReadoutText = (series: Series.Series, bucket: Buckets.Bucket | null)
   return { value, detail }
 }
 
+interface SpanRowsProps {
+  readonly lane: SpanSeries.SpanSeries
+  readonly time: DateTime.Utc
+}
+
+/**
+ * A lane's rows in the readout: one per span covering `time`
+ * (`SpanSeries.spansAt`), keyed in its category's colour, naming the category
+ * over the lane's label and the span's start and end — or one row of `—` in a
+ * gap, so every lane is accounted for.
+ */
+const SpanRows = ({ lane, time }: SpanRowsProps): JSX.Element => {
+  const covering = SpanSeries.spansAt(lane, time)
+  if (covering.length === 0) {
+    return (
+      <li className={styles.row} data-testid="crosshair-row">
+        <span className={styles['tooltip__span-key']} aria-hidden="true" />
+        <span className={styles.value}>—</span>
+        <span className={styles.label}>{lane.label}</span>
+      </li>
+    )
+  }
+  return (
+    <>
+      {covering.map((span) => (
+        <li
+          key={`${span.category.id}:${span.start.epochMillis}`}
+          className={styles.row}
+          data-testid="crosshair-row"
+        >
+          <span
+            className={styles['tooltip__span-key']}
+            style={{ background: spanColour(span.category.colourSlot) }}
+            aria-hidden="true"
+          />
+          <span className={styles.value}>{span.category.label}</span>
+          <span className={styles.label}>{lane.label}</span>
+          <span className={styles.detail}>
+            {`${formatDateTime(span.start)} – ${formatDateTime(span.end)}`}
+          </span>
+        </li>
+      ))}
+    </>
+  )
+}
+
 /**
  * The crosshair's readout: every axis' series read at `time`, one row each,
- * in axis order.
+ * in axis order, then each span lane's rows ({@link SpanRows}).
  *
  * @remarks
  * HTML rather than `Plot.tip`, which describes a single datum; this lists every
@@ -92,6 +149,7 @@ const bucketReadoutText = (series: Series.Series, bucket: Buckets.Bucket | null)
 const CrosshairTooltip = ({
   axes,
   colours,
+  lanes,
   bucketsBySeriesId,
   time,
   left,
@@ -124,6 +182,9 @@ const CrosshairTooltip = ({
           </li>
         )
       })}
+      {lanes.map((lane) => (
+        <SpanRows key={lane.id} lane={lane} time={time} />
+      ))}
     </ul>
   </div>
 )

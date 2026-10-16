@@ -16,10 +16,10 @@ const finite = fc.double({ min: -1e9, max: 1e9, noNaN: true })
 // would test a shape no domain maps to it.
 const magnitude = fc.double({ min: 0, max: 1e6, noNaN: true })
 
-const fromZeroSeries = (values: readonly number[]): Series.Series =>
+const fromZeroSeries = (values: readonly number[]): Series.ValueSeries =>
   levelSeriesOf(values.map((value, index) => levelFrom(index * 86_400_000, null, value)))
 
-const seriesArb: fc.Arbitrary<Series.Series> = fc.oneof(
+const seriesArb: fc.Arbitrary<Series.ValueSeries> = fc.oneof(
   fc.array(pointArb, { maxLength: 12 }).map((points) => pointSeriesOf(points)),
   fc.array(magnitude, { maxLength: 6 }).map(fromZeroSeries)
 )

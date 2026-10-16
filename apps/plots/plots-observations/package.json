@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/plots-observations",
   "version": "0.0.0",
   "private": true,
-  "description": "Plots' observation source: FHIR R4 `Observation`s read into plots-fundamentals `PointSeries` (quantities, integers, booleans, components and `valueSampledData`), the `o:` series-id grammar, and the catalogue grouping by `Observation.category` — exported as one `SeriesSource` value. No DOM, no React.",
+  "description": "Plots' observation source: FHIR R4 `Observation`s read into plots-fundamentals `PointSeries` (quantities, integers, booleans, components and `valueSampledData`) and `SpanSeries` (coded values over an `effectivePeriod`, such as FHIR Sync for Pebble's activities), the `o:` series-id grammar, and the catalogue grouping by `Observation.category` — exported as one `SeriesSource` value. No DOM, no React.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -21,6 +21,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-sync-pebble-core": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/plots-fundamentals": "workspace:*",
     "effect": "catalog:",

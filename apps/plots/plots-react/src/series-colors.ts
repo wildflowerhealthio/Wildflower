@@ -1,4 +1,4 @@
-import { ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 /** A series' colours: its mark colour and the fill behind its `low` / `high` band. */
 interface SeriesColors {
@@ -31,5 +31,29 @@ const seriesColors = (position: number): SeriesColors => {
   }
 }
 
+/** What a span in the neutral category wears: a muted text step, not a lane colour. */
+const NEUTRAL_SPAN_COLOUR = 'var(--color-neutral-5)'
+
+/**
+ * The react-tundraish lane token for a span category's `colourSlot`: slot N
+ * takes `--color-span-(N + 1)`, and `null` the neutral colour.
+ *
+ * @throws When `colourSlot` is outside `SpanSeries.COLOUR_SLOTS` — there are
+ *   exactly that many validated lane colours, never cycled
+ *
+ * @remarks
+ * Separate from the `--color-series-N` slots: a lane's colour names its
+ * category, not the series, and fills a bar rather than stroking a line.
+ */
+const spanColour = (colourSlot: number | null): string => {
+  if (colourSlot === null) return NEUTRAL_SPAN_COLOUR
+  if (!Number.isInteger(colourSlot) || colourSlot < 0 || colourSlot >= SpanSeries.COLOUR_SLOTS) {
+    throw new Error(
+      `Span colour slot ${colourSlot} is outside the ${SpanSeries.COLOUR_SLOTS} lane colours`
+    )
+  }
+  return `var(--color-span-${colourSlot + 1})`
+}
+
 export type { SeriesColors }
-export { seriesColors }
+export { seriesColors, spanColour }

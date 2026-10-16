@@ -2,7 +2,8 @@
 
 Plots' **browser layer**: one Observable Plot figure that draws
 the `PointSeries` and `LevelSeries` of `plots-fundamentals` on the value
-axes `ValueAxis.assign` gives them, and the controls around it — the series
+axes `ValueAxis.assign` gives them, and its `SpanSeries` as lanes under the
+time axis, and the controls around it — the series
 panel over `plots-core-js`'s catalogue, the range presets, and the page
 layout. It imports no domain package and no FHIR type — whatever a series
 stands for, the chart sees only points, levels, a unit, a label and the
@@ -11,8 +12,9 @@ and opaque series ids.
 
 ## Shape
 
-- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`axes`, `xDomain`,
-  `onHover`): the legend, the figure, and the crosshair. Colours come from
+- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`axes`, `lanes`, `xDomain`,
+  `onHover`): the legend, the figure, and the crosshair, whose stops and rule
+  take in the lanes too. Colours come from
   `ColourSlots.assign`, carried across renders; the crosshair snaps to
   `Crosshair.nearestStop` over `Crosshair.stops`. Which series are drawn as
   buckets is `Buckets.ofDenseSeries` at `bucketCountFor` the figure's width,
@@ -35,15 +37,26 @@ and opaque series ids.
     slices' edges, so a lone bucket still draws;
   - a level series as `step-after` lines, one per `LevelRun` — a run breaks at
     a gap and where `lineStyle` changes, and an open level runs to the end of
-    `xDomain`. `LINE_STYLE_DASH_ARRAY` is what `'dashed'` strokes with.
+    `xDomain`. `LINE_STYLE_DASH_ARRAY` is what `'dashed'` strokes with;
+  - a span series as a lane under the time axis' labels: its label, a faint
+    track, and a `Plot.rectX` bar per span (`aria-description="span lane"`) in
+    its category's `--color-span-N`, clamped to `xDomain` rather than clipped
+    (the lane sits outside the frame). Each lane grows the figure and its
+    bottom margin by `LANE_HEIGHT`, so the frame keeps its height; past
+    `SpanSeries.LANE_CAP` lanes `chartOptions` throws.
 - `src/crosshair-tooltip.tsx` — `CrosshairTooltip`: one row per axis with
   `Series.levelAt`'s value, unit and `note`; the detail line is the reading's
   date for a point series and `start – end` (or `ongoing`) for a level series.
   A bucketed series' row reads `Buckets.at` instead: the bucket mean in the
-  unit, detailed `mean of n readings, min–max`.
-- `src/legend.tsx` — `Legend`, the key above the figure.
+  unit, detailed `mean of n readings, min–max`. Each lane then lists a row per
+  span under the crosshair (`SpanSeries.spansAt`) — its category, the lane's
+  label, its start and end — or one `—` row in a gap.
+- `src/legend.tsx` — `Legend`, the key above the figure: an entry per axis,
+  then one per lane listing its categories (`laneCategories`, which
+  `MultiAxisChart` derives once per lane with `SpanSeries.categoriesOf`).
 - `src/series-colors.ts` — `seriesColors`, the `--color-series-N` /
-  `-soft` tokens for a palette index.
+  `-soft` tokens for a palette index, and `spanColour`, the `--color-span-N`
+  token for a span category's colour slot (neutral for `null`).
 - `src/value-format.ts` — tick, value and date formatting.
 - `src/use-plot.ts` — `usePlotContainer` measures the container a figure
   mounts into, and `usePlot` mounts the figure there and redraws it at that
@@ -54,8 +67,10 @@ and opaque series ids.
   (a button with `aria-expanded`) and counts its rows — "n of m" while a query
   is typed — and a react-tundraish `Checkbox` per row with its label, unit,
   count (readings for a point series, periods for a level series) and month
-  span. At `ValueAxis.CAP` the unchecked rows are disabled and a `role="status"`
-  hint says "Up to 4 series at once"; a Clear action empties the selection.
+  span. At `ValueAxis.CAP` value series the unchecked point and level rows are
+  disabled and a `role="status"` hint says "Up to 4 series at once"; span rows
+  count against `SpanSeries.LANE_CAP` on their own ("Up to 2 lanes at once"),
+  by their row's `seriesKind`. A Clear action empties the selection.
 - `src/range-presets.tsx` — `RangePresets` (`selectedPreset`,
   `onPresetChange`): react-tundraish's `SegmentedToggle` over core's
   `RANGE_PRESETS`, one `aria-pressed` button each.
@@ -73,7 +88,8 @@ and opaque series ids.
   functions. How a series is drawn — interpolation, line style, value scale,
   the readout's note — is the domain package's choice, carried on the series.
   A mark here branches only on `Series.kind` and on whether
-  `Buckets.ofDenseSeries` bucketed the series.
+  `Buckets.ofDenseSeries` bucketed the series; a lane's colours are the
+  category's `colourSlot`, never a series slot.
 - **No domain imports.** Among the slice's packages this one depends on
   `plots-fundamentals` and `plots-core-js` only — core for the
   catalogue rows, the search and the range presets. A test fixture is a
@@ -87,7 +103,9 @@ and opaque series ids.
   sides in — is the order the reader picked.
 - **Series ids are opaque to the panel.** It compares a row's `id` with the
   selected ids and never parses one, so a new domain's rows need no change
-  here.
+  here. Its caps are counted by the core's `selectionCapsOf` and `capIsFull`,
+  from the selected ids' kinds, so a selected series whose row has not loaded
+  yet still counts.
 - **The narrow-width disclosure is a button, not `<details>`.** A closed
   `<details>` hides its content whatever the CSS says, so one panel could not
   both dock on a wide viewport and fold on a narrow one; the 900px breakpoint

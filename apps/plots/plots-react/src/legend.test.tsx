@@ -45,7 +45,12 @@ describe('Legend', () => {
             entries.map(({ label, unit }, index) => seriesNamed(label, unit, index))
           )
           const { container } = render(
-            <Legend axes={axes} colours={axes.map((_, position) => position)} />
+            <Legend
+              axes={axes}
+              colours={axes.map((_, position) => position)}
+              lanes={[]}
+              laneCategories={[]}
+            />
           )
           // Structural query rather than `getAllByRole`: role queries are slow
           // enough in jsdom to time a property test out.

@@ -76,8 +76,25 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 /** The viewer-local calendar date an instant falls on, e.g. `Mar 4, 2024`. */
 const formatDate = (time: DateTime.Utc): string => dateFormat.format(time.epochMillis)
 
+/** Built once, like {@link readingFormat}. */
+const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
+/** The viewer-local date and time of an instant, e.g. `Mar 4, 2024, 10:30 PM` — a span's ends. */
+const formatDateTime = (time: DateTime.Utc): string => dateTimeFormat.format(time.epochMillis)
+
 /** A series' name with its unit, e.g. `Glucose (mmol/L)` — what its axis and legend entry say. */
-const labelWithUnit = (series: Series.Series): string =>
+const labelWithUnit = (series: Series.ValueSeries): string =>
   series.unit === null ? series.label : `${series.label} (${series.unit})`
 
-export { axisTickFormat, formatAxisValue, formatDate, formatReading, labelWithUnit, tickDecimals }
+export {
+  axisTickFormat,
+  formatAxisValue,
+  formatDate,
+  formatDateTime,
+  formatReading,
+  labelWithUnit,
+  tickDecimals,
+}

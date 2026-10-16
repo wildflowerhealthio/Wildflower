@@ -7,12 +7,18 @@ import {
 } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import type { SeriesSource } from '@wildflowerhealthio/plots-fundamentals'
 import { Arbitrary, DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { observationSeriesIdOf } from './observation-series-key.ts'
-import { EXCLUDED_STATUSES, LOINC_SYSTEM, observationsToSeries } from './observation-series.ts'
+import {
+  EXCLUDED_STATUSES,
+  LOINC_SYSTEM,
+  type ObservationPointSeries,
+  observationsToSeries,
+} from './observation-series.ts'
 
 const RUNS = numRunsFor({ base: 100 })
 
@@ -72,6 +78,23 @@ const concept = (
 
 const at = (iso: string): DateTime.Utc => DateTime.unsafeMake(iso)
 
+/**
+ * `observationsToSeries` for inputs that read only as point series, so a test
+ * can read `points` off each one — and fails the test on a span series.
+ */
+const readPointSeries = (
+  observations: readonly (typeof Observation.Schema.Type)[]
+): SeriesSource.Reading<ObservationPointSeries> => {
+  const reading = observationsToSeries(observations)
+  return {
+    ...reading,
+    series: reading.series.map((series) => {
+      if (series.kind !== 'points') throw new Error(`Expected a point series, got ${series.id}`)
+      return series
+    }),
+  }
+}
+
 const instantArb = Arbitrary.make(Schema.DateTimeUtc)
 const periodArb = Arbitrary.make(Period.Schema)
 const statusArb = Arbitrary.make(Observation.StatusSchema)
@@ -95,7 +118,7 @@ describe('observationsToSeries', () => {
             times.effectiveInstant ??
             times.issued ??
             null
-          const { series, undated } = observationsToSeries([observation])
+          const { series, undated } = readPointSeries([observation])
           if (expected === null) {
             expect(series).toEqual([])
             expect(undated).toBe(1)
@@ -110,7 +133,7 @@ describe('observationsToSeries', () => {
 
     test('a period without a start falls through to the next slot, it does not win empty', () => {
       const issued = at('2024-03-01T00:00:00Z')
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           effectivePeriod: {
@@ -131,7 +154,7 @@ describe('observationsToSeries', () => {
     test('an excluded status never produces a point, any other status always does', () => {
       fc.assert(
         fc.property(statusArb, instantArb, (status, time) => {
-          const { series, dropped } = observationsToSeries([
+          const { series, dropped } = readPointSeries([
             { ...shell, status, effectiveDateTime: time, valueQuantity: quantity(1, 'mg', null) },
           ])
           if (EXCLUDED_STATUSES.has(status)) {
@@ -195,7 +218,7 @@ describe('observationsToSeries', () => {
                 componentOf(code, `Part ${index}`, index + 1)
               ),
             }))
-            const { series } = observationsToSeries(observations)
+            const { series } = readPointSeries(observations)
             expect(series).toHaveLength(codeSet.length)
             expect(series.map((entry) => entry.key.code)).toEqual(codeSet)
             for (const entry of series) expect(entry.points).toHaveLength(times.length)
@@ -206,7 +229,7 @@ describe('observationsToSeries', () => {
     })
 
     test("a component's label names the observation and the component", () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           code: concept(null, 'panel', 'Blood pressure'),
@@ -218,7 +241,7 @@ describe('observationsToSeries', () => {
     })
 
     test('a top-level value and components both plot, neither is swallowed', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           code: concept(null, 'panel', 'Blood pressure'),
@@ -244,7 +267,7 @@ describe('observationsToSeries', () => {
       })
       fc.assert(
         fc.property(fc.array(observationArb, { maxLength: 6 }), (specs) => {
-          const { series } = observationsToSeries(
+          const { series } = readPointSeries(
             specs.map((spec) => ({
               ...shell,
               code: spec.code,
@@ -261,7 +284,7 @@ describe('observationsToSeries', () => {
     })
 
     test('the same code in two units is two series', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           code: concept(LOINC_SYSTEM, '2339-0', 'Glucose'),
@@ -288,7 +311,7 @@ describe('observationsToSeries', () => {
         ],
         text: 'Glucose',
       }
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           code,
@@ -297,6 +320,7 @@ describe('observationsToSeries', () => {
         },
       ])
       expect(series[0].key).toEqual({
+        kind: 'points',
         system: LOINC_SYSTEM,
         code: '2339-0',
         unit: 'mmol/L',
@@ -310,7 +334,7 @@ describe('observationsToSeries', () => {
         display: string
       ): (typeof CodeableConcept.Schema.Type)['coding'] =>
         concept(system, code, null).coding.map((coding) => ({ ...coding, display }))
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           code: {
@@ -330,7 +354,7 @@ describe('observationsToSeries', () => {
     })
 
     test('a concept with no coding keys off its text, with a null system', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           code: { id: null, extension: [], coding: [], text: 'Home glucose' },
@@ -339,6 +363,7 @@ describe('observationsToSeries', () => {
         },
       ])
       expect(series[0].key).toEqual({
+        kind: 'points',
         system: null,
         code: 'Home glucose',
         unit: null,
@@ -348,7 +373,7 @@ describe('observationsToSeries', () => {
 
   describe('values', () => {
     test("a quantity's unit falls back to its UCUM code", () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           effectiveDateTime: at('2024-01-01T00:00:00Z'),
@@ -361,7 +386,7 @@ describe('observationsToSeries', () => {
     })
 
     test('an integer plots as a line, a boolean as a 0 / 1 step', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           code: concept(null, 'count', 'Step count'),
@@ -394,7 +419,7 @@ describe('observationsToSeries', () => {
     })
 
     test('a non-numeric value contributes nothing and is counted as dropped', () => {
-      const { series, dropped, undated } = observationsToSeries([
+      const { series, dropped, undated } = readPointSeries([
         { ...shell, effectiveDateTime: at('2024-01-01T00:00:00Z'), valueString: 'negative' },
       ])
       expect(series).toEqual([])
@@ -403,7 +428,7 @@ describe('observationsToSeries', () => {
     })
 
     test("the first reference range's bounds ride along on the point", () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           effectiveDateTime: at('2024-01-01T00:00:00Z'),
@@ -429,7 +454,7 @@ describe('observationsToSeries', () => {
     })
 
     test('a point without a reference range carries no low/high keys at all', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           effectiveDateTime: at('2024-01-01T00:00:00Z'),
@@ -444,7 +469,7 @@ describe('observationsToSeries', () => {
     test('points are sorted by time whatever order the input arrived in', () => {
       fc.assert(
         fc.property(fc.array(instantArb, { minLength: 1, maxLength: 8 }), (times) => {
-          const { series } = observationsToSeries(
+          const { series } = readPointSeries(
             times.map((time) => ({
               ...shell,
               effectiveDateTime: time,
@@ -471,7 +496,7 @@ describe('observationsToSeries', () => {
       )
       fc.assert(
         fc.property(fc.array(variant, { maxLength: 8 }), (observations) => {
-          const { series, undated, dropped } = observationsToSeries(observations)
+          const { series, undated, dropped } = readPointSeries(observations)
           const plotted = series.reduce((total, entry) => total + entry.points.length, 0)
           expect(plotted + undated + dropped).toBe(observations.length)
         }),
@@ -480,7 +505,7 @@ describe('observationsToSeries', () => {
     })
 
     test('a category is read off the first category coding', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           category: [
@@ -497,7 +522,7 @@ describe('observationsToSeries', () => {
       expect(series[0].category).toBe('vital-signs')
     })
     test("an HL7 observation-category coding wins over a server's own leading category", () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         {
           ...shell,
           category: [
@@ -600,7 +625,7 @@ describe('observationsToSeries', () => {
                   },
                 ]
           )
-          const { series, dropped, undated } = observationsToSeries([observation])
+          const { series, dropped, undated } = readPointSeries([observation])
           expect(undated).toBe(0)
           if (expected.length === 0) {
             expect(series).toEqual([])
@@ -637,7 +662,7 @@ describe('observationsToSeries', () => {
                 { effectivePeriod: { start: new Date(start).toISOString() } }
               )
             })
-            const { series } = observationsToSeries(observations)
+            const { series } = readPointSeries(observations)
             const plottedPerHour = samples.filter((sample) => sample !== null).length
             if (plottedPerHour === 0) {
               expect(series).toEqual([])
@@ -662,7 +687,7 @@ describe('observationsToSeries', () => {
       const degrees = { unit: 'degrees', code: 'deg' }
       const start = '2026-09-27T10:00:00.000Z'
       const end = '2026-09-27T11:00:00.000Z'
-      const { series, dropped, undated } = observationsToSeries([
+      const { series, dropped, undated } = readPointSeries([
         pebbleHour(start, end, {
           category: [
             {
@@ -762,7 +787,7 @@ describe('observationsToSeries', () => {
     })
 
     test('a token that is not a FHIR decimal is skipped, and still counts toward later times', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         sampledObservation(
           { data: 'Infinity 0x1F NaN 1,5 +2 7', dimensions: 1 },
           { effectiveDateTime: '2026-09-27T10:00:00Z' }
@@ -789,7 +814,7 @@ describe('observationsToSeries', () => {
             times.effectiveDateTime ??
             times.effectiveInstant ??
             null
-          const { series, undated } = observationsToSeries([{ ...observation, ...times }])
+          const { series, undated } = readPointSeries([{ ...observation, ...times }])
           if (expected === null) {
             expect(series).toEqual([])
             expect(undated).toBe(1)
@@ -802,7 +827,7 @@ describe('observationsToSeries', () => {
     })
 
     test('more than one dimension is dropped rather than plotted as one', () => {
-      const { series, dropped, undated } = observationsToSeries([
+      const { series, dropped, undated } = readPointSeries([
         sampledObservation(
           { data: '1 2 3 4', dimensions: 2 },
           { effectivePeriod: { start: '2026-09-27T10:00:00Z' } }
@@ -814,7 +839,7 @@ describe('observationsToSeries', () => {
     test('a zero or negative period is dropped rather than stacked or run backwards', () => {
       fc.assert(
         fc.property(fc.integer({ min: -3_600_000, max: 0 }), (period) => {
-          const { series, dropped, undated } = observationsToSeries([
+          const { series, dropped, undated } = readPointSeries([
             sampledObservation(
               { data: '72 73 74', dimensions: 1, period },
               { effectivePeriod: { start: '2026-09-27T10:00:00Z' } }
@@ -827,7 +852,7 @@ describe('observationsToSeries', () => {
     })
 
     test('samples with no stated start are undated, even when the resource was issued', () => {
-      const { series, dropped, undated } = observationsToSeries([
+      const { series, dropped, undated } = readPointSeries([
         sampledObservation({ data: '72 73', dimensions: 1 }),
         sampledObservation({ data: '72 73', dimensions: 1 }, { issued: '2026-09-27T12:00:00Z' }),
       ])
@@ -849,11 +874,11 @@ describe('observationsToSeries', () => {
           },
         ],
       })
-      expect(observationsToSeries([panel])).toEqual({ series: [], undated: 1, dropped: 0 })
+      expect(readPointSeries([panel])).toEqual({ series: [], undated: 1, dropped: 0 })
     })
 
     test('every sample takes the first reference range of its slot', () => {
-      const { series } = observationsToSeries([
+      const { series } = readPointSeries([
         sampledObservation(
           { data: '72 E 110', dimensions: 1 },
           {
@@ -885,7 +910,7 @@ describe('observationsToSeries', () => {
             ...observation,
             code: concept(null, `obs-${index}`, null),
           }))
-          const { series, undated, dropped } = observationsToSeries(observations)
+          const { series, undated, dropped } = readPointSeries(observations)
           expect(series.length + undated + dropped).toBe(observations.length)
         }),
         { numRuns: RUNS }

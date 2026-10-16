@@ -6,10 +6,17 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   type CatalogGroup,
   type CatalogRow,
+  capIsFull,
   matchesSearch,
   normaliseForSearch,
+  selectionCapsOf,
 } from '@wildflowerhealthio/plots-core-js'
-import { type Series, type TimeDomain, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import {
+  type Series,
+  SpanSeries,
+  type TimeDomain,
+  ValueAxis,
+} from '@wildflowerhealthio/plots-fundamentals'
 
 import styles from './series-panel.module.css'
 
@@ -25,13 +32,20 @@ interface SeriesPanelProps {
   readonly onSelectionChange: (selectedSeriesIds: readonly string[]) => void
 }
 
-/** The hint shown once the selection is full, naming the cap `ValueAxis.assign` enforces. */
+/** The hint shown once the value series are full, naming the cap `ValueAxis.assign` enforces. */
 const CAP_REACHED_HINT = `Up to ${ValueAxis.CAP} series at once`
 
-/** What a row counts, by the kind of series it selects: a point series' readings, a level series' levels. */
+/** The hint shown once the span lanes are full, naming `SpanSeries.LANE_CAP`. */
+const LANE_CAP_REACHED_HINT = `Up to ${SpanSeries.LANE_CAP} lanes at once`
+
+/**
+ * What a row counts, by the kind of series it selects: a point series'
+ * readings, a level series' levels, a span series' spans.
+ */
 const COUNTED_NOUN: Readonly<Record<Series.Series['kind'], string>> = {
   points: 'reading',
   levels: 'period',
+  spans: 'span',
 }
 
 /** `amount` with its noun, pluralised with a plain `s`. */
@@ -152,13 +166,15 @@ const SeriesRow = ({ row, checked, disabled, onToggle }: SeriesRowProps): JSX.El
  * The selection is the caller's; this component only proposes the next one
  * through {@link SeriesPanelProps.onSelectionChange}. A toggled row's id is
  * appended to or removed from `selectedSeriesIds`, preserving the order the
- * axes are assigned in. Once `ValueAxis.CAP` series are selected every
- * unchecked row is disabled and a hint says why — the checked rows stay
- * enabled so one can be swapped out. Search filters through the core's
- * `matchesSearch`, hides groups left empty, and counts each group's matches
- * against its size while a query is typed; fold state is local, and every
- * group starts open. Ids are opaque here: the panel compares them and never
- * reads them.
+ * axes are assigned in. Once `ValueAxis.CAP` point or level series are
+ * selected every unchecked point or level row is disabled and a hint says why
+ * — the checked rows stay enabled so one can be swapped out; span rows count
+ * against `SpanSeries.LANE_CAP` the same way, on their own. Both caps are
+ * counted by the core's `selectionCapsOf`, from the selected ids themselves,
+ * so a selected series whose catalogue row has not loaded yet still counts.
+ * Search filters through the core's `matchesSearch`, hides groups left empty,
+ * and counts each group's matches against its size while a query is typed;
+ * fold state is local, and every group starts open.
  */
 const SeriesPanel = ({
   catalogGroups,
@@ -178,7 +194,14 @@ const SeriesPanel = ({
     [catalogGroups, searchQuery]
   )
   const emptyMessage = emptyMessageFor(catalogGroups, groupsWithMatches, searchQuery)
-  const selectionIsFull = selectedSeriesIds.length >= ValueAxis.CAP
+  const caps = useMemo(() => selectionCapsOf(selectedSeriesIds), [selectedSeriesIds])
+  const hasLanes = catalogGroups.some((group) =>
+    group.rows.some((row) => row.seriesKind === 'spans')
+  )
+  const capHints = [
+    ...(capIsFull(caps, 'points') ? [CAP_REACHED_HINT] : []),
+    ...(capIsFull(caps, 'spans') ? [LANE_CAP_REACHED_HINT] : []),
+  ]
   const searchIsActive = normaliseForSearch(searchQuery) !== ''
 
   return (
@@ -191,7 +214,8 @@ const SeriesPanel = ({
       />
       <div className={styles.summary}>
         <span>
-          {selectedSeriesIds.length} of {ValueAxis.CAP} selected
+          {caps.valueSeriesCount} of {ValueAxis.CAP} selected
+          {hasLanes && ` · ${caps.laneCount} of ${SpanSeries.LANE_CAP} lanes`}
         </span>
         <button
           type="button"
@@ -205,7 +229,7 @@ const SeriesPanel = ({
         </button>
       </div>
       <p className={styles.hint} role="status">
-        {selectionIsFull ? CAP_REACHED_HINT : null}
+        {capHints.length === 0 ? null : capHints.join(' · ')}
       </p>
       {emptyMessage !== null ? (
         <p className={styles.empty}>{emptyMessage}</p>
@@ -243,7 +267,7 @@ const SeriesPanel = ({
                           key={row.id}
                           row={row}
                           checked={rowIsSelected}
-                          disabled={selectionIsFull && !rowIsSelected}
+                          disabled={capIsFull(caps, row.seriesKind) && !rowIsSelected}
                           onToggle={(checked) => {
                             onSelectionChange(
                               toggleSeriesInSelection(selectedSeriesIds, row.id, checked)

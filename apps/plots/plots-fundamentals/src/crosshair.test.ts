@@ -3,10 +3,12 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
+  anySeriesArb,
   levelSeriesArb,
   pointSeriesArb,
   seriesArb,
   smallMillis,
+  spanSeriesArb,
   windowArb,
 } from './arbitraries.test-helpers.ts'
 import * as Buckets from './buckets.ts'
@@ -64,6 +66,34 @@ describe('Crosshair.stops', () => {
         )
         expect(Crosshair.stops([series], window, noBuckets)).toEqual(
           ascendingDistinct(boundaries.filter((millis) => inWindow(window, millis)))
+        )
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test("a span series' stops are its spans' starts and ends inside the window", () => {
+    fc.assert(
+      fc.property(spanSeriesArb, windowArb, (series, window) => {
+        const boundaries = series.spans.flatMap((span) => [
+          span.start.epochMillis,
+          span.end.epochMillis,
+        ])
+        expect(Crosshair.stops([series], window, noBuckets)).toEqual(
+          ascendingDistinct(boundaries.filter((millis) => inWindow(window, millis)))
+        )
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('the stops of several series are the union of each one’s own', () => {
+    fc.assert(
+      fc.property(fc.array(anySeriesArb, { maxLength: 6 }), windowArb, (plotted, window) => {
+        expect(Crosshair.stops(plotted, window, noBuckets)).toEqual(
+          ascendingDistinct(
+            plotted.flatMap((series) => Crosshair.stops([series], window, noBuckets))
+          )
         )
       }),
       { numRuns: RUNS }

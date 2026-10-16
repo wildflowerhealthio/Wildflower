@@ -1939,6 +1939,9 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4
+      '@wildflowerhealthio/fhir-sync-pebble-core':
+        specifier: workspace:*
+        version: link:../../../slices/fhir-sync-pebble-core
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
