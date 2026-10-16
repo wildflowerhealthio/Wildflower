@@ -51,7 +51,8 @@ const ServerPageNotFound = (): JSX.Element => (
  * each a child route the strip links to. Status holds its connection and its
  * `/health` report while it runs; Access, the newest consent waiting on it;
  * Default Apps, its launcher and its Authorization app; Relay, its relay and
- * tunnel, with a new tunnel token; Certificate, its certificate's state. The
+ * tunnel, with a new tunnel token; Certificate, its certificate's state;
+ * Destructive actions, its removal. The
  * `server-status` event keeps the cached server list, and so the page,
  * current while it is open.
  */
@@ -71,6 +72,7 @@ function ServerPage(): JSX.Element {
           { to: '/servers/$domain/default-apps', params, label: 'Default Apps' },
           { to: '/servers/$domain/relay', params, label: 'Relay' },
           { to: '/servers/$domain/certificate', params, label: 'Certificate' },
+          { to: '/servers/$domain/destructive-actions', params, label: 'Destructive actions' },
         ]}
         aria-label="Server details"
       />

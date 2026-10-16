@@ -1,38 +1,23 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import {
-  ConfirmDialog,
-  ErrorBanner,
-  ItemList,
-  type ItemListItem,
-} from '@wildflowerhealthio/react-tundraish'
+import { createFileRoute } from '@tanstack/react-router'
+import { ItemList, type ItemListItem } from '@wildflowerhealthio/react-tundraish'
 import {
   type HealthReport,
   type ListedServer,
   ServerStatus,
 } from '@wildflowerhealthio/servers-core-js'
 import { type DateTime, Match, Option } from 'effect'
-import { type JSX, type ReactNode, useId, useState } from 'react'
+import type { JSX, ReactNode } from 'react'
 
-import { failureText } from '../../../../failure-text.ts'
-import {
-  type ServerHealthError,
-  serverHealthQueryOptions,
-  useRemoveServer,
-} from '../../../../queries.ts'
-import {
-  type RunHostCommand,
-  type RunHttpRequest,
-  useRunHostCommand,
-  useRunHttpRequest,
-} from '../../../../router-context.ts'
+import { type ServerHealthError, serverHealthQueryOptions } from '../../../../queries.ts'
+import { useRunHttpRequest } from '../../../../router-context.ts'
 import {
   formatInstant,
   lastStopText,
   PLATFORM_STOP_REASON_TEXT,
 } from '../../../../server-status-text.ts'
+import { healthCheckTitle } from './-health-check-title.ts'
 import { useListedServer } from './-listed-server.ts'
-import styles from './-status.module.css'
 
 /**
  * What the Connection row says: the host's own check of the server's
@@ -46,33 +31,43 @@ import styles from './-status.module.css'
  * connection has dropped or been refused, a `reachable` health is from
  * before then, and says so.
  */
-const connectionText = (status: ServerStatus.Type): string => {
-  if (status.runState === 'stopped') {
-    return ServerStatus.lastStopOf(status).pipe(
-      Option.map(lastStopText),
-      Option.getOrElse(() => "It hasn't run yet.")
-    )
-  }
-  const tunnel = ServerStatus.tunnelOf(status)
-  const relayConnectionChanged = Option.exists(
-    tunnel,
-    ({ kind }) => kind !== 'connecting' && kind !== 'connected'
+const connectionText = (status: ServerStatus.Type): string =>
+  Match.value({
+    runState: status.runState,
+    lastStop: Option.getOrUndefined(ServerStatus.lastStopOf(status)),
+    health: Option.getOrUndefined(ServerStatus.healthOf(status)),
+    tunnel: Option.getOrUndefined(ServerStatus.tunnelOf(status)),
+  }).pipe(
+    Match.withReturnType<string>(),
+    Match.when({ runState: 'stopped', lastStop: Match.defined }, ({ lastStop }) =>
+      lastStopText(lastStop)
+    ),
+    Match.when({ runState: 'stopped' }, () => "It hasn't run yet."),
+    Match.when(
+      { health: { kind: 'unreachable' } },
+      ({ health }) => `Not reachable yet: ${health.error}`
+    ),
+    Match.when(
+      {
+        health: { kind: 'reachable' },
+        tunnel: { kind: Match.is('reconnecting', 'tokenRejected', 'tunnelUnknown') },
+      },
+      ({ health }) =>
+        `Reachable before its relay connection changed: its /health answered ${health.status}.`
+    ),
+    Match.when(
+      { health: { kind: 'reachable' } },
+      ({ health }) => `Reachable: its /health answers ${health.status}.`
+    ),
+    Match.when({ runState: 'starting' }, () => 'Starting.'),
+    Match.when(
+      {
+        tunnel: { kind: Match.is('connecting', 'reconnecting', 'tokenRejected', 'tunnelUnknown') },
+      },
+      () => 'Not checked until the relay connection is up.'
+    ),
+    Match.orElse(() => 'Checking it can be reached.')
   )
-  return ServerStatus.healthOf(status).pipe(
-    Option.map((health) => {
-      if (health.kind === 'unreachable') return `Not reachable yet: ${health.error}`
-      return relayConnectionChanged
-        ? `Reachable before its relay connection changed: its /health answered ${health.status}.`
-        : `Reachable: its /health answers ${health.status}.`
-    }),
-    Option.getOrElse(() => {
-      if (status.runState === 'starting') return 'Starting.'
-      return Option.exists(tunnel, ({ kind }) => kind !== 'connected')
-        ? 'Not checked until the relay connection is up.'
-        : 'Checking it can be reached.'
-    })
-  )
-}
 
 /**
  * The Relay connection row, while a run in progress has reported its
@@ -144,12 +139,12 @@ const healthReportItem = (
   }
 }
 
-/** A row for each check in `report`, by its key, with its status and when it ran. */
+/** A row for each check in `report`, titled by its key, with its status and when it ran. */
 const healthCheckItems = (report: HealthReport.Type): readonly ItemListItem[] =>
   Object.entries(report.checks).flatMap(([key, checks]) =>
     checks.map((check, index): ItemListItem => ({
       id: `check-${key}-${String(index)}`,
-      title: key,
+      title: healthCheckTitle(key),
       meta: check.status,
       subtitle: `Checked ${formatInstant(check.time)}`,
       tone: check.status === 'fail' ? 'danger' : 'neutral',
@@ -164,13 +159,11 @@ const healthCheckItems = (report: HealthReport.Type): readonly ItemListItem[] =>
 const HealthReportList = ({
   domain,
   runningSince,
-  runHttpRequest,
 }: {
   readonly domain: string
   readonly runningSince: DateTime.Utc
-  readonly runHttpRequest: RunHttpRequest
 }): JSX.Element => {
-  const report = useQuery(serverHealthQueryOptions(runHttpRequest, domain, runningSince))
+  const report = useQuery(serverHealthQueryOptions(useRunHttpRequest(), domain, runningSince))
   const refresh = (
     <button
       type="button"
@@ -196,116 +189,27 @@ const HealthReportList = ({
 }
 
 /**
- * The server's connection: as the host last checked it, with its tunnel's
- * connection to the relay while a run reports it, or how the latest run
- * stopped; and, while the server runs, its `/health` report as the webview
- * reads it.
- */
-const Connection = ({
-  server,
-  runHttpRequest,
-}: {
-  readonly server: ListedServer.Type
-  readonly runHttpRequest: RunHttpRequest
-}): JSX.Element => (
-  <>
-    <ItemList
-      title="Connection"
-      maxLines={3}
-      items={[
-        { id: 'connection', title: 'Connection', subtitle: connectionText(server.status) },
-        ...relayConnectionItems(server),
-        ...lastStopItems(server.status),
-      ]}
-    />
-    {server.status.runState === 'running' ? (
-      <HealthReportList
-        domain={server.domain}
-        runningSince={server.status.runningSince}
-        runHttpRequest={runHttpRequest}
-      />
-    ) : null}
-  </>
-)
-
-/**
- * The server's removal, said in full under its heading, behind a confirm
- * that asks for its domain to be typed; once removed, the page returns to
- * the list.
- */
-const DestructiveActions = ({
-  server,
-  runHostCommand,
-}: {
-  readonly server: ListedServer.Type
-  readonly runHostCommand: RunHostCommand
-}): JSX.Element => {
-  const headingId = useId()
-  const navigate = useNavigate()
-  const removeServer = useRemoveServer(runHostCommand, () => {
-    void navigate({ to: '/' })
-  })
-  const [confirmingRemoval, setConfirmingRemoval] = useState(false)
-  return (
-    <section className={styles['status__section']} aria-labelledby={headingId}>
-      <h3 id={headingId} className={`text-label-3 ${styles['status__section-title']}`}>
-        Destructive actions
-      </h3>
-      <p className={`text-body-3 ${styles['status__note']}`}>
-        Remove stops this server and deletes it from this device, with its databases and
-        certificates. Apps can no longer reach it at this address. It can't be undone.
-      </p>
-      <ErrorBanner error={removeServer.error === null ? null : failureText(removeServer.error)} />
-      <button
-        type="button"
-        className={`button-2 outline accent-red ${styles['status__remove']}`}
-        onClick={() => {
-          setConfirmingRemoval(true)
-        }}
-      >
-        Remove
-      </button>
-      <ConfirmDialog
-        open={confirmingRemoval}
-        title={`Remove ${server.domain}?`}
-        confirmLabel="Remove"
-        destructive
-        pending={removeServer.isPending}
-        confirmText={server.domain}
-        onConfirm={() => {
-          removeServer.mutate(
-            { domain: server.domain },
-            {
-              onSettled: () => {
-                setConfirmingRemoval(false)
-              },
-            }
-          )
-        }}
-        onCancel={() => {
-          setConfirmingRemoval(false)
-        }}
-      >
-        This stops the server and deletes it from this device, with its databases and certificates.
-        It can't be undone.
-      </ConfirmDialog>
-    </section>
-  )
-}
-
-/**
  * The server page's Status tab, `/servers/$domain/status`: the server's
- * connection, its `/health` report while it runs, and its removal under
- * Destructive actions.
+ * connection, as the host last checked it, with its tunnel's connection to
+ * the relay while a run reports it, or how the latest run stopped; and,
+ * while the server runs, its `/health` report as the webview reads it.
  */
 const ServerStatusTab = (): JSX.Element => {
   const server = useListedServer()
-  const runHostCommand = useRunHostCommand()
-  const runHttpRequest = useRunHttpRequest()
   return (
     <>
-      <Connection server={server} runHttpRequest={runHttpRequest} />
-      <DestructiveActions server={server} runHostCommand={runHostCommand} />
+      <ItemList
+        title="Connection"
+        maxLines={3}
+        items={[
+          { id: 'connection', title: 'Connection', subtitle: connectionText(server.status) },
+          ...relayConnectionItems(server),
+          ...lastStopItems(server.status),
+        ]}
+      />
+      {server.status.runState === 'running' ? (
+        <HealthReportList domain={server.domain} runningSince={server.status.runningSince} />
+      ) : null}
     </>
   )
 }

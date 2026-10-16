@@ -142,9 +142,9 @@ changing how servers run or what the host notifies about them.
   event too: its domain with Copy, its status badge, when its run started,
   under them when it runs in the run-policy field's words (the field itself
   is the card's alone), and Launch with Authorization under it, each full
-  width; over five tabs on `RouteTabs`, each a child route of
+  width; over six tabs on `RouteTabs`, each a child route of
   `/servers/$domain` (`status`, `access`, `default-apps`, `relay`,
-  `certificate`), each in its own route file under
+  `certificate`, `destructive-actions`), each in its own route file under
   `routes/_servers/servers/$domain/` with the parts only it uses beside it.
   The page's `beforeLoad` reads the server from the cached server list,
   showing a read that fails, with Retry, and a domain the list doesn't hold;
@@ -156,9 +156,10 @@ changing how servers run or what the host notifies about them.
   tunnel has dropped or been refused since), with its tunnel's connection to
   the relay while a run reports it (a failure once the relay refused the
   tunnel), or how its latest run stopped, and
-  while it runs its `/health` report with each check, read by the webview
-  itself, with Refresh; and, under Destructive actions, its removal, said in
-  full, behind a confirm that asks for the domain to be typed. Access holds,
+  while it runs its `/health` report with each check, titled by its key in
+  Title Case (`healthCheckTitle`), read by the webview itself, with Refresh.
+  Destructive actions holds its removal, said in full, behind a confirm that
+  asks for the domain to be typed. Access holds,
   while a consent waits on the server, a Pending request row, "‹client› wants
   access.", with Open (`server_open_pending_consent`), the host's refusal
   taking the row's text, and otherwise "No requests waiting.". Default Apps

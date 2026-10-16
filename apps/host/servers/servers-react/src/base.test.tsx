@@ -2222,8 +2222,8 @@ describe('the server page', () => {
     expect(await screen.findByRole('heading', { name: 'Server' })).toBeDefined()
     expect(screen.getByRole('heading', { name: 'ruth.relay.example.com' })).toBeDefined()
     expect(await openTabName()).toBe('Status')
-    expect(screen.getByRole('heading', { name: 'Destructive actions' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Connection' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
     expect(screen.queryByLabelText('Launcher')).toBeNull()
 
     // Act
@@ -2251,6 +2251,13 @@ describe('the server page', () => {
 
     // Assert
     expect(screen.getByText("Let's Encrypt")).toBeDefined()
+
+    // Act
+    await openTab('Destructive actions')
+
+    // Assert
+    expect(screen.getByRole('heading', { name: 'Destructive actions' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeDefined()
 
     // Act
     await user.click(screen.getByRole('link', { name: 'Servers' }))
@@ -2463,8 +2470,8 @@ describe('the server page', () => {
     // Assert
     expect(await screen.findByText('Its /health answers pass.')).toBeDefined()
     const checks = sectionTitled('Health checks')
-    for (const key of ['server', 'connectivity', 'fhir-r4']) {
-      expect(within(checks).getByText(key)).toBeDefined()
+    for (const title of ['Server', 'Connectivity', 'Fhir R4']) {
+      expect(within(checks).getByText(title)).toBeDefined()
     }
     expect(health.urls).toEqual(['https://ruth.relay.example.com/health'])
   })
@@ -2486,7 +2493,7 @@ describe('the server page', () => {
 
     // Assert
     expect(await screen.findByText('Its /health answers fail.')).toBeDefined()
-    const connectivity = within(sectionTitled('Health checks')).getByText('connectivity')
+    const connectivity = within(sectionTitled('Health checks')).getByText('Connectivity')
     expect(connectivity.closest('li')?.textContent).toContain('fail')
   })
 
@@ -3055,7 +3062,7 @@ describe('the server page', () => {
     renderBase({
       invoke: host.invoke,
       storage: storageAnswered({ crashReports: false, performance: false }),
-      path: '/servers/lab.rathole.example.com',
+      path: '/servers/lab.rathole.example.com/destructive-actions',
       httpClient: fakeHealth(() => Response.json(passingReport)).layer,
     })
     const remove = await screen.findByRole('button', { name: 'Remove' })
@@ -3095,6 +3102,7 @@ describe('the server page', () => {
     const user = userEvent.setup()
     renderServerPage({
       domain: 'lab.rathole.example.com',
+      tab: 'destructive-actions',
       answers: { server_remove: () => Promise.reject(golden.commandErrors[2]) },
     })
     await user.click(await screen.findByRole('button', { name: 'Remove' }))
