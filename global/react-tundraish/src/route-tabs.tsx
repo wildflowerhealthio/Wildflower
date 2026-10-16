@@ -68,11 +68,11 @@ const scrollLeftRevealing = (strip: HTMLElement, tab: HTMLElement): number => {
  *
  * The shape follows the component's own width, through a container query.
  * From 560px it is a pill track sized to its labels above an unframed panel.
- * Below that it is the top edge of a card holding the panel: the strip runs
- * the card's full width, scrolls sideways when its tabs don't fit (no
- * visible scrollbar, snapping to tabs, a fade on each end with tabs past
- * it), and keeps the current tab scrolled into view. In both shapes the
- * current tab is a raised neutral chip in the panel's surface colour.
+ * Below that it is the top edge of a card holding the panel, the strip
+ * running the card's full width. In both shapes the current tab is a raised
+ * neutral chip in the panel's surface colour, and a strip whose tabs don't
+ * fit scrolls sideways (no visible scrollbar, snapping to tabs, a fade on
+ * each end with tabs past it) and keeps the current tab scrolled into view.
  */
 const RouteTabs = <T extends string>({
   current,

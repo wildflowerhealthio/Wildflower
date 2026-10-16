@@ -5,9 +5,12 @@
  * - From 560px, a pill: `SegmentedToggle`'s rounded track on the chip
  *   background, tabs sized to their labels, above an unframed panel.
  * - Below 560px, a card: the strip is the card's top edge, running its full
- *   width and scrolling sideways when its tabs don't fit, and the panel is
- *   the card's body. The current tab takes the card's surface, so it reads
- *   as the open folder.
+ *   width, and the panel is the card's body. The current tab takes the
+ *   card's surface, so it reads as the open folder.
+ *
+ * In either shape a strip whose tabs don't fit scrolls sideways, with no
+ * visible scrollbar, snapping to tabs, and a fade on each end with tabs past
+ * it.
  *
  * The current tab is a raised neutral chip (surface fill and a small shadow),
  * not the accent, in both shapes. Tokens only, so dark mode needs no override
