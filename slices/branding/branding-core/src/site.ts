@@ -6,12 +6,10 @@ const SITE_ORIGIN = `https://${SITE_HOST}`
 
 /**
  * Each hosted app's slug: the subdomain of `wildflowerhealth.io` its own origin
- * is (`https://<slug>.wildflowerhealth.io/`), the directory a PR preview
- * assembles it into (`…/staging/pr-<n>/<slug>/`), and, with `-web` added, the
- * `wildflowerhealthio/<slug>-web` repository its published site is pushed to.
- * `apps/wildflower-site/wildflower-site-web/src/assembly.ts` lays the site out
- * from these, and `.github/workflows/deploy-github-pages.yml` mints its push
- * token for exactly these repositories.
+ * is (`https://<slug>.wildflowerhealth.io/`), and, with `-web` added, the
+ * `wildflowerhealthio/<slug>-web` repository whose `gh-pages` branch publishes
+ * it, with its PR previews under `pr-<n>/`. `scripts/ci/pages-sites.ts` names
+ * each app's site from these.
  *
  * @remarks
  * Each app has an origin to itself so that no app, or an XSS in one, can read
@@ -61,7 +59,7 @@ function sectionUrl(id: SectionId): string {
  * The marketing site's policy pages, by the directory each is served from
  * under {@link SITE_ORIGIN}. These must match the HTML entries of
  * `apps/wildflower-site/marketing-site-web` (`vite.config.ts`) and the
- * `requiredFiles` of `apps/wildflower-site/wildflower-site-web/src/assembly.ts`.
+ * marketing site's `requiredFiles` in `scripts/ci/pages-sites.ts`.
  * Google Play and the App Store link to the privacy policy and the deletion
  * page for Wildflower Host, and Washington's My Health My Data Act wants the
  * consumer health data policy linked from the homepage, so their paths are a

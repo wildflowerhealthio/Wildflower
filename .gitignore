@@ -14,7 +14,6 @@ lerna-debug.log*
 node_modules
 .pnpm-store
 dist
-dist-published
 dist-html
 dist-ssr
 *.local

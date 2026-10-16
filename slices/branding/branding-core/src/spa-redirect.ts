@@ -1,11 +1,11 @@
 /**
- * The query parameter `apps/wildflower-site/wildflower-site-web/404.html` carries an unresolved
- * deep link's path in, site-absolute.
+ * The query parameter this package's `github-pages/404.html` carries an
+ * unresolved deep link's path in, site-absolute.
  *
  * @remarks
- * `/medications/anything?iss=…` lands on
- * `/medications/?redirect=/medications/anything&iss=…` instead of an
- * error page.
+ * On an app's origin, `/anything?iss=…` lands on
+ * `/?redirect=/anything&iss=…` instead of an error page, and in a PR
+ * preview, `/pr-7/anything?iss=…` on `/pr-7/?redirect=/pr-7/anything&iss=…`.
  * Completing that redirect is the app's half of the contract
  * ({@link restoreRedirectedUrl}); both halves are described under "The 404
  * redirect" in `slices/branding/AGENTS.md`.
@@ -97,7 +97,7 @@ const restoredUrl = (location: RestorableLocation): string | undefined => {
 
 /**
  * The URL that sends a deep link to its app's root, carrying the route in
- * {@link REDIRECT_PARAM} — the redirect `apps/wildflower-site/wildflower-site-web/404.html` performs,
+ * {@link REDIRECT_PARAM} — the redirect this package's `github-pages/404.html` performs,
  * for a server that already knows the app's `basename` (a dev server). The
  * inverse of {@link restoredUrl}.
  *

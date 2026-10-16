@@ -199,20 +199,13 @@ const appOf = (workspacePackage: WorkspacePackage): string | undefined => {
 }
 
 /**
- * The one package allowed outside its app's folder: the site assembles every
- * app's `-web` entry into wildflowerhealth.io.
+ * Whether a dependency into another app's folder is allowed: only one app's
+ * dev-dependency on another, so its tests can run against the other's real
+ * code. A slice or `global/` package reaches into no app, not even from its
+ * tests.
  */
-const SITE_ASSEMBLY = '@wildflowerhealthio/wildflower-site-web'
-
-/**
- * Whether a dependency into another app's folder is allowed: the site's
- * assembly of `-web` entries, or one app's dev-dependency on another, so its
- * tests can run against the other's real code. A slice or `global/` package
- * reaches into no app, not even from its tests.
- */
-const mayReachIntoApp = ({ dependent, dependency, kind }: Dependency): boolean =>
-  (kind === 'dev' && appOf(dependent) !== undefined) ||
-  (dependent.name === SITE_ASSEMBLY && dependency.name.endsWith('-web'))
+const mayReachIntoApp = ({ dependent, kind }: Dependency): boolean =>
+  kind === 'dev' && appOf(dependent) !== undefined
 
 /** The rules a single {@link Dependency} breaks. */
 const dependencyViolations = (dependency: Dependency): readonly Violation[] => {

@@ -60,6 +60,10 @@ jobs:
               - '**/*.mjs'
               - '**/package.json'
               - '**/tsconfig*.json'
+              # Files TypeScript tests read rather than import: the Pages
+              # 404 page and the shell scripts under scripts/ci/.
+              - 'slices/branding/branding-core/github-pages/**'
+              - 'scripts/ci/*.sh'
               # scripts/package-graph.test.ts checks the crates' dependencies
               # too, so a manifest-only Rust change must still run it.
               - 'Cargo.toml'

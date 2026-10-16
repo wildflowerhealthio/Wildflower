@@ -1,215 +1,202 @@
 name: PR Preview
 
-# Builds the same assembled static site as deploy-github-pages.yml
-# (apps/wildflower-site/wildflower-site-web/dist) and publishes it as is to the
-# `wildflowerhealthio/staging` repo under `pr-<n>/` on the `main` branch, which
-# that repo serves via GitHub Pages: every app of a preview sits in its slug's
-# directory under one origin, where the production deploy gives each its own.
-# On PR close the preview is torn down.
+# Publishes a preview of each site a pull request can affect, and tears every
+# one down when the PR closes. A hosted app's preview sits in `pr-<n>/` on the
+# `gh-pages` branch of its own repository, so it is served at
+# `https://<slug>.wildflowerhealth.io/pr-<n>/`, on the app's own origin beside
+# its production build (sharing its localStorage, deliberately); the marketing
+# site's sits in `pr-<n>/` on `main` of `wildflowerhealthio/staging`, served at
+# `https://wildflowerhealthio.github.io/staging/pr-<n>/`. deploy-pages-site.yml
+# builds and publishes each one. Links between apps always go to production,
+# so a preview's links into another app open that app's production build.
 #
-# Prerequisites (one-time):
-#   - The `wildflowerhealthio/staging` repo exists and has GitHub Pages
-#     configured to serve from `main` at `/`. Serving from a branch means Pages
-#     runs Jekyll over it, which the `.nojekyll` step below turns off — see
-#     there for why the published site breaks without it.
-#   - A GitHub App exists in the `wildflowerhealthio` org and is installed on
-#     `wildflowerhealthio/staging` with `Contents: Read and write`. The App's
-#     numeric ID goes in the `STAGING_APP_ID` secret; its private key (the
-#     .pem file, contents included) goes in `STAGING_APP_PRIVATE_KEY`. The App
-#     token is minted per run and lives for one hour — no long-lived PAT sits
-#     in a secret. A fine-grained PAT was tried first and hit a GitHub quirk:
-#     JamesIves' underlying action hard-codes the `x-access-token` username in
-#     the deploy URL, and GitHub only accepts that username with an App
-#     installation token (`ghs_...`), not with a fine-grained PAT.
+# Which sites a PR affects follows the TypeScript test shards' rule
+# (scripts/ci/pages-sites.ts, `affectedSites`): every site for a root config or
+# lockfile change, or any change outside every package; otherwise the sites
+# whose package the changes reach through the workspace dependency graph, so a
+# change to a shared slice previews every app built on it.
 #
+# Prerequisites (one-time): the Pages repositories deploy-github-pages.yml
+# lists, plus `wildflowerhealthio/staging`, which serves Pages from `main` at
+# `/`, with the GitHub App behind `STAGING_APP_ID` / `STAGING_APP_PRIVATE_KEY`
+# installed on it with `Contents: Read and write`.
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
 
-# One preview build per PR. Cancelling in-progress runs is safe here (unlike
-# the production deploy): the preview is disposable, and the newest push is
-# what a reviewer wants to see.
+# One preview run per PR. Cancelling an in-progress run is safe here (unlike
+# the production deploy): the preview is disposable, and the newest push — or
+# the close that tears it down — is what counts.
 concurrency:
   group: pr-preview-${{ github.event.number }}
   cancel-in-progress: true
 
-# `pull-requests: write` lets the action post/update the preview comment on
-# this repo's PR. Contents write on the target repo comes from the App
-# installation token minted below, not `GITHUB_TOKEN`.
+# `pull-requests: write` lets the comment steps post and edit the preview
+# comment on this repo's PR. Contents write on the Pages repositories comes
+# from the App installation token deploy-pages-site.yml mints, not
+# `GITHUB_TOKEN`.
 permissions:
   contents: read
   pull-requests: write
 
 jobs:
-  deploy-preview:
-    name: Deploy PR preview
+  plan:
+    name: Plan the previews
     runs-on: ubuntu-latest
     # Fork PRs don't have access to repository secrets, so the App-token mint
-    # would fail before the deploy step even ran. Skip the job entirely on
-    # fork PRs rather than surfacing a red check for every one.
+    # would fail before any push. Skip them entirely rather than surfacing a
+    # red check for every one.
     if: github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      sites: ${{ steps.plan.outputs.sites }}
     steps:
-      - name: Mint staging-repo App token
-        id: staging-token
-        uses: actions/create-github-app-token@v3
+      - name: Checkout code
+        uses: actions/checkout@v7
         with:
-          client-id: ${{ secrets.STAGING_APP_ID }}
-          private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
-          owner: wildflowerhealthio
-          repositories: staging
+          # The preview plan diffs against the merge-base with origin/main.
+          fetch-depth: 0
+          persist-credentials: false
 
-      # persist-credentials:false is load-bearing. The default persists
-      # GITHUB_TOKEN as an extraheader on github.com, threaded into the
-      # workspace's .git/config via an includeif.gitdir entry. That
-      # extraheader is then sent on every HTTPS request git makes from the
-      # workspace, and GitHub honors it over the URL-embedded credentials
-      # JamesIves' deploy action builds. GITHUB_TOKEN has no access to
-      # `wildflowerhealthio/staging`, so with the extraheader active every
-      # `git ls-remote` inside the deploy step comes back as
-      # `Repository not found`. This workflow never pushes back to
-      # `wildflowerhealthio/Wildflower`, so we can safely drop the persisted
-      # credentials.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.2
+        with:
+          cache: true
+          cache-save: false
+
+      - name: Install dependencies
+        run: vp install
+
+      # A closed PR tears down every site's preview, whichever it deployed.
+      # Assigned first, then written: a failure inside `echo "...$(...)"`
+      # would not fail the step.
+      - name: Plan the sites
+        id: plan
+        env:
+          PLAN: ${{ github.event.action == 'closed' && 'teardown' || 'preview' }}
+        run: |
+          sites=$(node scripts/ci/pages-sites.ts plan "$PLAN")
+          echo "sites=$sites" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Preview
+    needs: plan
+    # GitHub fails a job whose matrix is empty, so a plan with no sites skips
+    # the job instead.
+    if: github.event.action != 'closed' && needs.plan.outputs.sites != '[]'
+    strategy:
+      # Every affected site publishes, so one failing build doesn't hide the
+      # others' previews.
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(needs.plan.outputs.sites) }}
+    uses: ./.github/workflows/deploy-pages-site.yml
+    with:
+      slug: ${{ matrix.site.name }}
+      package: ${{ matrix.site.packageName }}
+      build-dir: ${{ matrix.site.buildDir }}
+      sentry-dsn-variable: ${{ matrix.site.sentryDsnVariable }}
+      pages-repository: ${{ matrix.site.pagesRepository }}
+      pages-branch: ${{ matrix.site.pagesBranch }}
+      site-url: ${{ matrix.site.siteUrl }}
+      target: ${{ github.event.number }}
+    secrets: inherit
+
+  comment:
+    name: Comment the preview links
+    needs: [plan, deploy]
+    # After the previews whatever their result, so the comment says which
+    # failed; a PR whose plan has no sites only updates an earlier comment.
+    if: >-
+      !cancelled() && github.event.action != 'closed' && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Setup Vite+
-        if: github.event.action != 'closed'
-        uses: voidzero-dev/setup-vp@v1.21.2
-        with:
-          cache: true
-
-      - name: Install dependencies
-        if: github.event.action != 'closed'
-        run: vp install
-
-      # Same build as the production deploy: `vp run pack` runs in workspace
-      # dependency order so every assembled section is built before
-      # wildflower-site-web stages them into
-      # apps/wildflower-site/wildflower-site-web/dist. Same Sentry variables too,
-      # tagged `staging` so preview traffic filters apart.
-      - name: Build site
-        if: github.event.action != 'closed'
-        run: vp run pack
+      - name: Write the preview comment
         env:
-          VITE_SENTRY_DSN_MEDICATIONS_WEB: ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_WEB }}
-          VITE_SENTRY_DSN_IMPORTER_WEB: ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
-          VITE_SENTRY_DSN_PLOTS_WEB: ${{ vars.VITE_SENTRY_DSN_PLOTS_WEB }}
-          VITE_SENTRY_DSN_STRENGTH_WEB: ${{ vars.VITE_SENTRY_DSN_STRENGTH_WEB }}
-          VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB: ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
-          VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
-          VITE_SENTRY_DSN_LAUNCHER_WEB: ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
-          VITE_SENTRY_DSN_AUTHORIZATION_WEB: ${{ vars.VITE_SENTRY_DSN_AUTHORIZATION_WEB }}
-          VITE_SENTRY_ENVIRONMENT: staging
-          VITE_SENTRY_RELEASE: ${{ github.event.pull_request.head.sha }}
-
-      # Registers the release the build names, uploads the apps' source maps
-      # to it and deletes them from the site. Needs the `SENTRY_AUTH_TOKEN`
-      # secret and the `SENTRY_ORG` variable; without the token it only
-      # deletes the maps.
-      - name: Upload source maps to Sentry
-        if: github.event.action != 'closed'
-        uses: ./.github/actions/sentry-sourcemaps
-        with:
-          environment: staging
-          release: ${{ github.event.pull_request.head.sha }}
-          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          org: ${{ vars.SENTRY_ORG }}
-          dsns: |
-            ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_PLOTS_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_STRENGTH_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_AUTHORIZATION_WEB }}
-
-      # Strip the marketing site's CNAME from the preview artifact. It only
-      # exists at pr-<n>/CNAME in the target repo (Pages reads CNAME only from
-      # the branch root), so it is inert — but removing it keeps the deployed
-      # tree from claiming the production custom domain if anyone ever
-      # repoints it.
-      - name: Strip production CNAME from preview
-        if: github.event.action != 'closed'
-        run: rm -f apps/wildflower-site/wildflower-site-web/dist/CNAME
-
-      # The staging repo serves Pages **from a branch**, so GitHub builds it
-      # with Jekyll — and Jekyll drops every path whose name starts with an
-      # underscore. The assembled site ships one the app actually loads:
-      # Vite names its stub for an externalized Node builtin
-      # `__vite-browser-external-<hash>.js`, and the importer app's entry chunk
-      # imports it, so the preview 404s on it and the app never boots. (The
-      # production deploy is immune — `actions/deploy-pages` serves the uploaded
-      # artifact as-is and runs no Jekyll.)
-      #
-      # `.nojekyll` turns the Jekyll build off. Like CNAME above, Pages reads it
-      # only from the branch root, so it cannot ride along in the artifact this
-      # workflow publishes into `pr-<n>/` — it has to exist in the target repo.
-      # Creating it here rather than leaving it a one-time manual step means a
-      # rebuilt or restored staging repo cannot silently lose it. JamesIves'
-      # deploy action cleans only its target folder, so the file survives every
-      # later preview.
-      - name: Ensure .nojekyll at the staging site root
-        if: github.event.action != 'closed'
-        env:
-          GH_TOKEN: ${{ steps.staging-token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SITES: ${{ needs.plan.outputs.sites }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
         run: |
-          if gh api "repos/wildflowerhealthio/staging/contents/.nojekyll?ref=main" --silent 2>/dev/null; then
-            echo '.nojekyll already present at the staging site root'
-          else
-            echo 'Creating .nojekyll at the staging site root'
-            gh api "repos/wildflowerhealthio/staging/contents/.nojekyll" \
-              --method PUT \
-              --field message='Add .nojekyll so Pages serves underscore-prefixed assets' \
-              --field content='Cg==' \
-              --field branch=main
+          body=$(mktemp)
+          if [[ $SITES == '[]' ]]; then
+            echo "This PR changes no published site, so it has no preview as of $HEAD_SHA." > "$body"
+            scripts/ci/upsert-preview-comment.sh "$body" --update-only
+            exit 0
           fi
-
-      # GitHub Pages serves one 404.html for the whole site, read from the site
-      # root — here the staging repo root, not `pr-<n>/`. The assembled
-      # artifact's own `404.html` lands at `pr-<n>/404.html`, which Pages never
-      # consults, so without this step every deep link into a preview
-      # (`pr-<n>/launcher/authorization/…`) is GitHub's stock 404 instead of the SPA
-      # redirect. The redirect page probes ancestors site-absolutely, so the
-      # one copy at the root serves every `pr-<n>/` prefix. Synced on every
-      # run (not create-once) so a change to the redirect page reaches staging;
-      # the most recently deployed PR's copy is the one live.
-      - name: Sync 404.html to the staging site root
-        if: github.event.action != 'closed'
-        env:
-          GH_TOKEN: ${{ steps.staging-token.outputs.token }}
-        run: |
-          content=$(base64 -w0 apps/wildflower-site/wildflower-site-web/404.html)
-          # `gh api` prints the error body on stdout for a 404, so the exit
-          # status, not the output, says whether the file exists.
-          existing=$(gh api "repos/wildflowerhealthio/staging/contents/404.html?ref=main" 2>/dev/null) || existing=''
-          if [ -n "$existing" ] && [ "$(echo "$existing" | jq -r '.content' | tr -d '\n')" = "$content" ]; then
-            echo '404.html at the staging site root is already current'
-          else
-            echo 'Writing 404.html at the staging site root'
-            sha_args=()
-            if [ -n "$existing" ]; then
-              sha_args=(--field sha="$(echo "$existing" | jq -r '.sha')")
+          {
+            echo '### PR preview'
+            echo
+            echo "Built from $HEAD_SHA. Each preview sits beside its site's production build; links between apps go to production."
+            echo
+            jq -r --arg pr "pr-$PR_NUMBER/" '.[] | "- [\(.name)](\(.siteUrl)\($pr))"' <<< "$SITES"
+            if [[ $DEPLOY_RESULT != success ]]; then
+              echo
+              echo "Some previews failed to deploy; see the [run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
             fi
-            gh api "repos/wildflowerhealthio/staging/contents/404.html" \
-              --method PUT \
-              --field message='Sync the SPA redirect 404.html from wildflowerhealthio/Wildflower' \
-              --field content="$content" \
-              --field branch=main \
-              "${sha_args[@]}"
-          fi
+          } > "$body"
+          scripts/ci/upsert-preview-comment.sh "$body"
 
-      - name: Deploy preview
-        uses: rossjrw/pr-preview-action@v1.8.1
+  teardown:
+    name: Remove the ${{ matrix.site.name }} preview
+    needs: plan
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(needs.plan.outputs.sites) }}
+    # Shares the deploys' group, so a teardown never interleaves with a
+    # publish to the same preview.
+    concurrency:
+      group: pages-${{ matrix.site.pagesRepository }}-${{ github.event.number }}
+      cancel-in-progress: false
+    steps:
+      # persist-credentials:false, as in deploy-pages-site.yml: the persisted
+      # GITHUB_TOKEN extraheader would override the App token on the push.
+      - name: Checkout code
+        uses: actions/checkout@v7
         with:
-          source-dir: apps/wildflower-site/wildflower-site-web/dist
-          preview-branch: main
-          # Umbrella at the repo root (not the action default `pr-preview/`)
-          # so previews land at `wildflowerhealthio.github.io/staging/pr-<n>/`
-          # — the URL shape the staging repo is set up for.
-          umbrella-dir: '.'
-          deploy-repository: wildflowerhealthio/staging
-          token: ${{ steps.staging-token.outputs.token }}
-          pages-base-url: wildflowerhealthio.github.io/staging
+          persist-credentials: false
+
+      - name: Mint the Pages repository App token
+        id: pages-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.STAGING_APP_ID }}
+          private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
+          owner: wildflowerhealthio
+          repositories: ${{ matrix.site.pagesRepository }}
+          permission-contents: write
+
+      - name: Remove pr-${{ github.event.number }}/
+        env:
+          PAGES_REMOTE: https://x-access-token:${{ steps.pages-token.outputs.token }}@github.com/wildflowerhealthio/${{ matrix.site.pagesRepository }}.git
+          PAGES_BRANCH: ${{ matrix.site.pagesBranch }}
+          PAGES_COMMIT_MESSAGE: Remove the preview of ${{ github.repository }}#${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: scripts/ci/publish-pages-branch.sh teardown "$PR_NUMBER"
+
+  comment-teardown:
+    name: Comment the previews' removal
+    needs: teardown
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Update the preview comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          body=$(mktemp)
+          echo "The previews of this PR have been removed." > "$body"
+          scripts/ci/upsert-preview-comment.sh "$body" --update-only

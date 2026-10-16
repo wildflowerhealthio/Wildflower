@@ -64,9 +64,6 @@ workspace package (a `workspace:` spec, or a Cargo path dependency).
   enrols against the real `wildflowerhealthio-relay-server`. A slice or
   `global/` package gets no such pass, even from its tests: a test that drives
   a slice together with a host crate belongs in the host's own tests.
-- **`wildflower-site-web` may depend on other apps' `-web` packages.** It is
-  the assembly that copies every app's build to its section of
-  wildflowerhealth.io, so it depends on all of them by design.
 - **A package that depends on itself is not a cycle.** A crate lists itself
   as a dev-dependency to turn on its own test-only features
   (`wildflowerhealthio-wildflower-server`'s `test-support`), and a TS package
