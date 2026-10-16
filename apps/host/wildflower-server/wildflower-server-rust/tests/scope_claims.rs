@@ -6,6 +6,8 @@
 //! `/databases` request would 500 instead of 200 or 403, and only this test
 //! would catch it: each slice's own tests fabricate the extension.
 
+use std::sync::Arc;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tokio::sync::watch;
@@ -13,8 +15,8 @@ use tower::ServiceExt;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
-    authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    GrantStore, NewestPendingConsent, SqliteGrantStore,
+    authorization_server_auth_middleware, setup_authorization_server, AdmitEveryAuthorizationStart,
+    AuthorizationServerConfig, GrantStore, NewestPendingConsent, SqliteGrantStore,
 };
 use wildflowerhealthio_persistence::{Connection, DieselPool};
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -51,8 +53,14 @@ fn set_up_authorization_server(
         Connection::open_in_memory().expect("open revocation db"),
     )
     .expect("revocation store");
-    setup_authorization_server(pool.clone(), revocation_store, &config, pending_consent_tx)
-        .expect("set up the authorization server")
+    setup_authorization_server(
+        pool.clone(),
+        revocation_store,
+        &config,
+        pending_consent_tx,
+        Arc::new(AdmitEveryAuthorizationStart),
+    )
+    .expect("set up the authorization server")
 }
 
 /// A token carrying exactly `scopes`, signed by the authorization server's

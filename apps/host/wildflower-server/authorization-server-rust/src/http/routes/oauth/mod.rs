@@ -15,33 +15,16 @@ mod wait_page;
 use std::sync::Arc;
 
 use axum::Router;
-use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouter};
 use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
 
 pub(crate) use authorization_pages::device_page_url;
 
-/// [`OAUTH_MOUNT`] as a literal, so [`concat!`] can build a route's full path
-/// from it.
-macro_rules! oauth_mount {
-    () => {
-        "/oauth"
-    };
-}
-
 /// Where [`page_router`] and [`openapi_router`] are mounted, so a URL built
 /// for one of their routes names the same prefix the router serves it under.
-pub(crate) const OAUTH_MOUNT: &str = oauth_mount!();
-
-/// The full path of `GET /oauth/authorize`, which starts an
-/// authorization-code request ([`authorize::handle_authorize_request`]).
-pub const AUTHORIZE_PATH: &str = concat!(oauth_mount!(), "/authorize");
-
-/// The full path of `POST /oauth/device_authorization`, which starts a
-/// device-code request
-/// ([`device_authorization::handle_device_authorization_request`]).
-pub const DEVICE_AUTHORIZATION_PATH: &str = concat!(oauth_mount!(), "/device_authorization");
+pub(crate) const OAUTH_MOUNT: &str = "/oauth";
 
 /// The `/oauth/*` pages — the [`wait_page`] and its assets, the
 /// [`authorization_pages`] (the consent card) and theirs, and the Owner's
@@ -57,14 +40,27 @@ pub(crate) fn page_router() -> Router<Arc<AuthorizationServerState>> {
 /// from the same handlers that serve traffic. Mounted under `/oauth` by
 /// [`crate::http`]; `routes!` reads each handler's `#[utoipa::path]` for its
 /// method + path.
-pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+///
+/// `limit_authorization_starts` wraps the two routes that start an
+/// authorization request, `/authorize` and `/device_authorization`, in the
+/// limit on how fast they are started (see
+/// [`limit_authorization_starts`](crate::http::middleware::limit_authorization_starts)),
+/// so it covers every method axum serves them on; the spec, which serves
+/// nothing, leaves them as they are.
+pub(crate) fn openapi_router(
+    limit_authorization_starts: impl Fn(
+        UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+    ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+) -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::new()
-        .routes(routes!(authorize::handle_authorize_request))
+        .routes(limit_authorization_starts(routes!(
+            authorize::handle_authorize_request
+        )))
         .routes(routes!(
             authorization_status::handle_authorization_status_request
         ))
         .routes(routes!(token_exchange::handle_token_request))
-        .routes(routes!(
+        .routes(limit_authorization_starts(routes!(
             device_authorization::handle_device_authorization_request
-        ))
+        )))
 }

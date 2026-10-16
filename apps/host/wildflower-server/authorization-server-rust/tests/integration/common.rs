@@ -1,9 +1,11 @@
 pub use axum::body::{to_bytes, Body};
 pub use axum::http::{Request, StatusCode};
+pub use std::sync::Arc;
 pub use tokio::sync::watch;
 pub use wildflowerhealthio_authorization_server::{
-    setup_authorization_server, AuthorizationServer, AuthorizationServerConfig,
-    OWNER_BROWSER_CLIENT_ID, WILDFLOWER_HOST_APP_CLIENT_ID,
+    setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServer,
+    AuthorizationServerConfig, AuthorizationStartGate, OWNER_BROWSER_CLIENT_ID,
+    WILDFLOWER_HOST_APP_CLIENT_ID,
 };
 
 /// The server's origin: the `iss` and `aud` of every token it mints, and the
@@ -68,8 +70,17 @@ pub struct TestDb {
 }
 
 /// Set up the authorization server over a fresh in-memory database, and mint
-/// an Owner token for it (see [`mint_owner_token`]).
+/// an Owner token for it (see [`mint_owner_token`]). It admits every request
+/// that starts an authorization request.
 pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
+    spin_up_with_authorization_start_gate(Arc::new(AdmitEveryAuthorizationStart))
+}
+
+/// [`spin_up`], asking `authorization_start_gate` whether a request may start
+/// an authorization request.
+pub fn spin_up_with_authorization_start_gate(
+    authorization_start_gate: Arc<dyn AuthorizationStartGate>,
+) -> (AuthorizationServer, String, TestDb) {
     // One shared in-memory diesel pool, built once and handed to the slice —
     // mirrors how the host wires the app-wide `wildflowerhealthio_persistence::open_pool`
     // pool into each diesel-backed slice. `db.pool` is that shared handle;
@@ -98,8 +109,14 @@ pub fn spin_up() -> (AuthorizationServer, String, TestDb) {
     let revocation_store =
         wildflowerhealthio_token_revocation::RevocationStore::new(revocation_conn.clone())
             .expect("revocation store");
-    let g = setup_authorization_server(pool.clone(), revocation_store, &config, pending_consent_tx)
-        .expect("setup");
+    let g = setup_authorization_server(
+        pool.clone(),
+        revocation_store,
+        &config,
+        pending_consent_tx,
+        authorization_start_gate,
+    )
+    .expect("setup");
     let db = TestDb {
         pool,
         revocation_conn,

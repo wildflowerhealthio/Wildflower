@@ -24,13 +24,11 @@ use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 use crate::adapters::access_token_verifier::AuthorizationServerAccessTokenVerifier;
 use crate::adapters::acme_certificate::DeviceCertificate;
 use crate::adapters::app_launch_scopes::AuthorizationServerAppLaunchScopes;
+use crate::adapters::authorization_start_limit::AuthorizationStartLimit;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMinter;
 use crate::domain::reachability_monitor::ReachabilityMonitor;
 use crate::http::health::ServerHealthChecks;
-use crate::http::middleware::authorization_start_limit::{
-    limit_authorization_starts, AuthorizationStartLimiter, GLOBAL, MAX_CLIENTS, PER_CLIENT,
-};
 use crate::http::middleware::cors::api_cors_layer;
 use crate::http::middleware::forwarded_request_layer;
 use crate::http::middleware::session_cookie_bearer::present_session_cookie_bearers;
@@ -311,12 +309,17 @@ pub async fn set_up(
     }
 
     // `setup_authorization_server` publishes its newest pending consent on the
-    // host's channel.
+    // host's channel. Starting an authorization request raises the Owner's
+    // popup, so tunnel visitors may start them only so fast, each and all
+    // together (see `authorization_start_limit`); the authorization server's
+    // limit on the two routes that start one asks it, inside the
+    // forwarded-request report, so a `429` is reported.
     let authorization_server = setup_authorization_server(
         diesel_pool.clone(),
         revocation_store,
         &authorization_server_config,
         observers.pending_consent_tx,
+        Arc::new(AuthorizationStartLimit::new()),
     )
     .context("failed to set up the authorization server")?;
 
@@ -525,18 +528,6 @@ pub async fn set_up(
         &public_origin,
     );
 
-    // Starting an authorization request raises the Owner's popup, so visitors
-    // may start them only so fast, each and all together (see
-    // `authorization_start_limit`).
-    let authorization_start_limit = axum::middleware::from_fn_with_state(
-        Arc::new(AuthorizationStartLimiter::new(
-            PER_CLIENT,
-            GLOBAL,
-            MAX_CLIENTS,
-        )),
-        limit_authorization_starts,
-    );
-
     // Every forwarded request is reported to the request log once its response
     // is ready.
     let forwarded_request_report = axum::middleware::from_fn_with_state(
@@ -544,11 +535,9 @@ pub async fn set_up(
         forwarded_request_layer::report_forwarded_request,
     );
 
-    // The tunnel listener's router: the inner router behind the authorization
-    // start limit, the forwarded-request report (so a `429` from the limit is
-    // reported), the tunnel front and CORS, innermost first.
+    // The tunnel listener's router: the inner router behind the
+    // forwarded-request report, the tunnel front and CORS, innermost first.
     let tunnel_router = inner_router
-        .layer(authorization_start_limit)
         .layer(forwarded_request_report)
         // Hold the request to the server's domain (see
         // `refuse_misdirected_requests`); every layer and handler inside

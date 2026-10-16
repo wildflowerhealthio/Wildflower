@@ -15,9 +15,6 @@ mod state;
 mod wire_representations;
 
 pub(crate) use routes::oauth::device_page_url;
-// The paths of the two routes that start an authorization request, for the
-// host's limit on how fast they are called.
-pub use routes::oauth::{AUTHORIZE_PATH, DEVICE_AUTHORIZATION_PATH};
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // host's FHIR web UI session middleware uses it.
 pub use middleware::ensure_bearer_header;
@@ -33,7 +30,7 @@ pub use state::AuthorizationServerState;
 use axum::middleware as axum_middleware;
 use axum::Router;
 use utoipa::OpenApi;
-use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouter, UtoipaMethodRouterExt as _};
 use utoipa_axum::routes;
 
 use crate::domain::capabilities::oauth::ClientScopesReader;
@@ -48,11 +45,19 @@ struct ApiDoc;
 
 /// The documented **pre-auth** surface — jwks + the OAuth group — as an
 /// `OpenApiRouter`, so the spec is collected from the very routes that serve
-/// traffic.
-fn documented_public_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+/// traffic. `limit_authorization_starts` wraps the routes that start an
+/// authorization request (see [`routes::oauth::openapi_router`]).
+fn documented_public_router(
+    limit_authorization_starts: impl Fn(
+        UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+    ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+) -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(routes::well_known_jwks::handle_jwks_request))
-        .nest(routes::oauth::OAUTH_MOUNT, routes::oauth::openapi_router())
+        .nest(
+            routes::oauth::OAUTH_MOUNT,
+            routes::oauth::openapi_router(limit_authorization_starts),
+        )
 }
 
 /// The spec-only view of the whole documented surface: the pre-auth routes
@@ -61,7 +66,8 @@ fn documented_public_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
 /// mounts the `/authorization` half behind the session gate.
 #[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
-    documented_public_router().nest("/authorization", routes::clients::openapi_router())
+    documented_public_router(std::convert::identity)
+        .nest("/authorization", routes::clients::openapi_router())
 }
 
 /// Build the authorization server's public HTTP surface. Routes live at
@@ -70,7 +76,13 @@ fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
 /// `.merge()`s. The host's tunnel listener serves it to remote visitors,
 /// behind these bearer and session gates.
 pub fn router(state: Arc<AuthorizationServerState>) -> Router {
-    let (documented, _spec) = documented_public_router().split_for_parts();
+    let (documented, _spec) = documented_public_router(|routes| {
+        routes.layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::limit_authorization_starts,
+        ))
+    })
+    .split_for_parts();
     let (clients, _spec) = routes::clients::openapi_router().split_for_parts();
     let access = Router::new()
         .merge(clients)
@@ -148,29 +160,6 @@ mod openapi_tests {
         env!("CARGO_MANIFEST_DIR"),
         "/openapi/authorization-server-oauth.openapi.json"
     );
-
-    /// The exported paths of the routes that start an authorization request
-    /// name the routes the router serves, with their methods.
-    #[test]
-    fn the_authorization_start_paths_name_their_routes() {
-        let spec = super::openapi_spec();
-        let authorize = spec
-            .paths
-            .paths
-            .get(super::AUTHORIZE_PATH)
-            .expect("the spec has AUTHORIZE_PATH");
-        assert!(authorize.get.is_some(), "GET {}", super::AUTHORIZE_PATH);
-        let device_authorization = spec
-            .paths
-            .paths
-            .get(super::DEVICE_AUTHORIZATION_PATH)
-            .expect("the spec has DEVICE_AUTHORIZATION_PATH");
-        assert!(
-            device_authorization.post.is_some(),
-            "POST {}",
-            super::DEVICE_AUTHORIZATION_PATH
-        );
-    }
 
     /// The generated `OpenAPI` document must match the committed snapshot. A wire
     /// type change flips this red; regenerate with

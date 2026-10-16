@@ -25,7 +25,7 @@ use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
-use crate::ports::Revocation;
+use crate::ports::{AuthorizationStartGate, Revocation};
 
 /// Shared state threaded through every authorization server handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
@@ -102,6 +102,11 @@ pub struct AuthorizationServerState {
     /// and
     /// [`AuthorizationServerConfig::authorization_url`](crate::AuthorizationServerConfig::authorization_url).
     pub(crate) sign_in_destinations: Arc<SignInDestinations>,
+    /// The host's say over how fast authorization requests are started,
+    /// handed to [`crate::setup_authorization_server`]: asked by the limit on
+    /// `/oauth/authorize` and `/oauth/device_authorization` for each request
+    /// that carries no live Owner browser session.
+    pub(crate) authorization_start_gate: Arc<dyn AuthorizationStartGate>,
 }
 
 impl AuthorizationServerState {

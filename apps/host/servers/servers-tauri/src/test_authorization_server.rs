@@ -1,14 +1,17 @@
 //! [`TestAuthorizationServer`]: a server's authorization server over a temporary database, for
 //! the commands' tests to mint through.
 
+use std::sync::Arc;
+
 use tokio::sync::watch;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, StartCodeAuthorizationArgs,
 };
 use wildflowerhealthio_authorization_server::{
-    setup_authorization_server, AuthorizationServerConfig, GrantStore, LaunchContextMinter,
-    NewestPendingConsent, PendingConsentWatcher, SameDeviceSignInCodeMinter, SqliteGrantStore,
+    setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
+    GrantStore, LaunchContextMinter, NewestPendingConsent, PendingConsentWatcher,
+    SameDeviceSignInCodeMinter, SqliteGrantStore,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -96,6 +99,7 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
             authorization_url: Url::parse("https://authorization.test/authorization/").unwrap(),
         },
         pending_consent_tx,
+        Arc::new(AdmitEveryAuthorizationStart),
     )
     .unwrap();
     TestAuthorizationServer {

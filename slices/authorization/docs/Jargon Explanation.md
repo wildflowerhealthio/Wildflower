@@ -394,7 +394,8 @@ those still pending.
 
 Starting a request is rate-limited on the tunnel, per visitor address and
 overall, and a request over either limit is `429` (the host's
-`authorization_start_limit`).
+`authorization_start_limit`). A browser signed in as the Owner is never
+limited.
 
 The newest is a `NewestPendingConsent`, discriminated because the two flows
 have no shared lookup key, with the name of the client that asks (its

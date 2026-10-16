@@ -12,10 +12,16 @@
 //!    either consent surface);
 //!  - [`Revocation`] / [`RevocationCheck`] — denylist a token `jti` or
 //!    bulk-revoke a subject, and answer whether a token is revoked; the seams
-//!    the revoking capabilities, logout, and the token verifier go through.
+//!    the revoking capabilities, logout, and the token verifier go through;
+//!  - [`AuthorizationStartGate`] — the host's say over whether a request may
+//!    start an authorization request, which the limit on `/oauth/authorize`
+//!    and `/oauth/device_authorization` asks. Public: the host implements it.
 
+mod authorization_start_gate;
 mod owner_approval;
 mod revocation;
+
+pub use authorization_start_gate::{AdmitEveryAuthorizationStart, AuthorizationStartGate};
 
 pub(crate) use owner_approval::OwnerApproval;
 pub(crate) use revocation::{Revocation, RevocationCheck};
