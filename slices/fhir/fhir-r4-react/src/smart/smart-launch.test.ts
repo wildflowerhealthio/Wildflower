@@ -305,18 +305,18 @@ describe('appRootRedirectUri', () => {
     // Act / Assert — the EHR launch starts at the app root itself
     expect(
       appRootRedirectUri(
-        'https://wildflowerhealth.io/importer/?iss=https%3A%2F%2Fehr.example&launch=xyz'
+        'https://importer.wildflowerhealth.io/?iss=https%3A%2F%2Fehr.example&launch=xyz'
       )
-    ).toBe('https://wildflowerhealth.io/importer/')
+    ).toBe('https://importer.wildflowerhealth.io/')
   })
 
   it('should name the app root itself from a page at the root, dropping its query and fragment', () => {
     // Act / Assert — the connect menu, and a callback carrying code/state
-    expect(appRootRedirectUri('https://wildflowerhealth.io/importer/')).toBe(
-      'https://wildflowerhealth.io/importer/'
+    expect(appRootRedirectUri('https://importer.wildflowerhealth.io/')).toBe(
+      'https://importer.wildflowerhealth.io/'
     )
-    expect(appRootRedirectUri('https://wildflowerhealth.io/importer/?code=abc&state=xyz#x')).toBe(
-      'https://wildflowerhealth.io/importer/'
+    expect(appRootRedirectUri('https://importer.wildflowerhealth.io/?code=abc&state=xyz#x')).toBe(
+      'https://importer.wildflowerhealth.io/'
     )
   })
 

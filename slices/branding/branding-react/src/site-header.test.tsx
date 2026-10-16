@@ -1,10 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import {
-  fromApp,
-  onMarketingSite,
-  sectionHref,
-  sectionUrl,
-} from '@wildflowerhealthio/branding-core'
+import { fromApp, onMarketingSite, sectionUrl } from '@wildflowerhealthio/branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { SiteHeader } from './site-header.tsx'
@@ -22,43 +17,30 @@ describe('SiteHeader', () => {
     expect(container.querySelector('#top')).not.toBeNull()
   })
 
-  it('should link directly into the six apps with current-URL-relative hrefs on the marketing site', () => {
+  it.each([
+    ['the marketing site', onMarketingSite],
+    ['an app', fromApp],
+  ])("should link directly into the apps' published origins from %s", (_, nav) => {
     // Arrange / Act
-    render(<SiteHeader nav={onMarketingSite} />)
+    render(<SiteHeader nav={nav} />)
 
-    // Assert — plain `./…` references so a preview deploy under a
-    // sub-path routes into sibling preview builds, not the canonical
-    // origin (see `sectionHref` in branding-core).
-    const nav = screen.getByRole('navigation', { name: 'Apps' })
-    const hrefs = within(nav)
-      .getAllByRole('link')
-      .map((link) => link.getAttribute('href'))
-    expect(hrefs).toStrictEqual([
-      sectionHref(onMarketingSite, 'medications'),
-      sectionHref(onMarketingSite, 'plots'),
-      sectionHref(onMarketingSite, 'strength'),
-      sectionHref(onMarketingSite, 'importer'),
-      sectionHref(onMarketingSite, 'serverDocs'),
-      sectionHref(onMarketingSite, 'ohifViewer'),
-    ])
-  })
-
-  it('should link into the six apps with absolute hrefs from an app', () => {
-    // Arrange / Act
-    render(<SiteHeader nav={fromApp} />)
-
-    // Assert — an app bundle on any origin points back at the canonical origin.
-    const nav = screen.getByRole('navigation', { name: 'Apps' })
-    const hrefs = within(nav)
+    // Assert — every copy of every page, preview or not, links the apps' production builds.
+    const links = screen.getByRole('navigation', { name: 'Apps' })
+    const hrefs = within(links)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
     expect(hrefs).toStrictEqual([
       sectionUrl('medications'),
       sectionUrl('plots'),
-      sectionUrl('strength'),
-      sectionUrl('importer'),
-      sectionUrl('serverDocs'),
       sectionUrl('ohifViewer'),
+      sectionUrl('importer'),
+      sectionUrl('launcher'),
+      sectionUrl('authorization'),
+      sectionUrl('fhirSyncPebble'),
+      sectionUrl('watchLifts'),
+      sectionUrl('strength'),
+      sectionUrl('serverDocs'),
+      sectionUrl('syntheticData'),
     ])
   })
 
@@ -102,6 +84,19 @@ describe('SiteHeader', () => {
     expect(within(heading).getByRole('link', { name: 'Wildflower, home' })).toBeDefined()
   })
 
+  it('should title each group of links', () => {
+    // Arrange / Act
+    render(<SiteHeader nav={onMarketingSite} />)
+
+    // Assert
+    const yourHealth = screen.getByRole('region', { name: 'Your health' })
+    expect(
+      within(yourHealth)
+        .getAllByRole('link')
+        .map((link) => link.textContent)
+    ).toStrictEqual(['Wildflower Medications', 'Wildflower Plots', 'Wildflower Imaging'])
+  })
+
   it('should toggle the collapsed nav dropdown open and closed', () => {
     // Arrange
     const { container } = render(<SiteHeader nav={onMarketingSite} />)
@@ -134,7 +129,7 @@ describe('SiteHeader', () => {
     expect(menu?.getAttribute('data-open')).toBe('true')
 
     // Act
-    fireEvent.click(screen.getByRole('link', { name: 'Medications' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Wildflower Medications' }))
 
     // Assert
     expect(menu?.getAttribute('data-open')).toBe('false')

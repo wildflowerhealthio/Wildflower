@@ -60,7 +60,7 @@ plots-react          the Plot chart, series panel, range presets and page layout
   [AGENTS.md](./plots-react/AGENTS.md).
 
 The app is [`plots-web`](./plots-web/AGENTS.md), published at
-<https://wildflowerhealth.io/health-viewer/> (tile `plots`), which
+<https://plots.wildflowerhealth.io/> (tile `plots`), which
 composes core and react around a SMART shell. A
 new kind of record is a new package beside
 `plots-observations` that exports a

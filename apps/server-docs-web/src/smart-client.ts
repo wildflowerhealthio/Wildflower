@@ -5,8 +5,9 @@
  * The console signs in as the **public PKCE client
  * `664a01e8614050cd82ffe90350b81413`**, seeded into every Wildflower server by
  * `apps/host/wildflower-server/authorization-server-rust/migrations/0007_seed_wildflower_server_docs_client`
- * (as `server-docs`) and re-keyed to that random id, with its redirect
- * moved to `/server-docs/`, by `0028_rekey_site_app_clients`.
+ * (as `server-docs`), re-keyed to that random id by
+ * `0028_rekey_site_app_clients`, and given its own origin's redirect by
+ * `0037_add_app_origin_redirect_uris`.
  * {@link CLIENT_ID} MUST equal that migration's row: the server clamps the
  * request to the row's `allowed_scopes`, so a value that drifts from the seed
  * fails the flow at `/oauth/authorize` rather than degrading quietly. The
@@ -24,17 +25,16 @@
 const CLIENT_ID = '664a01e8614050cd82ffe90350b81413'
 
 /**
- * The redirect URI of the **published** console, and the sole entry of the
- * seeded row — the one redirect that is genuinely registered. Every other copy
- * derives its own.
+ * The redirect URI of the **published** console, on its own origin, and the
+ * first entry of the seeded row. Every other copy derives its own.
  */
-const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/server-docs/'
+const REGISTERED_REDIRECT_URI = 'https://server-docs.wildflowerhealth.io/'
 
 /**
  * The `sessionStorage` key this console's pending-authorization record lives at,
- * namespaced because the console shares both the flow in
- * `authorization-core/smart-client` and the `wildflowerhealth.io` origin with the
- * hosted launcher.
+ * namespaced because the console shares the flow in
+ * `authorization-core/smart-client` with the hosted launcher and Wildflower
+ * Authorization, so no two of them could share a key wherever they are served.
  */
 const PENDING_AUTHORIZATION_KEY = 'server-docs-web.pending-authorization'
 

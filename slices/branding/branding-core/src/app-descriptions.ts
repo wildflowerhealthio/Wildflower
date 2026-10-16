@@ -1,5 +1,5 @@
 import type { MarketingAnchor } from './nav.ts'
-import { SECTION_PATHS, type SectionId } from './site.ts'
+import { sectionUrl, type SectionId } from './site.ts'
 
 /**
  * The site sections with a standalone app landing page: the SMART on FHIR apps,
@@ -88,7 +88,7 @@ interface AppDescription {
    * reads `iss` there, and `launch` too for an EHR launch, so `?iss=` alone is a
    * standalone launch against that server. The root is then the URL an EHR
    * registers as the app's launch URL, and what a plain SMART server's Home in
-   * the launcher links each app through ({@link smartAppLaunchPages}).
+   * the launcher links each app through ({@link SMART_APP_LAUNCH_PAGES}).
    *
    * Absent for an app no URL launches: the launcher and Wildflower
    * Authorization sign in to a Wildflower server, not to any FHIR server, and FHIR
@@ -304,7 +304,7 @@ const APP_DESCRIPTIONS: {
 /** Whether `key` names a described app: a key of {@link APP_DESCRIPTIONS}. */
 const isAppSectionId = (key: string): key is AppSectionId => Object.hasOwn(APP_DESCRIPTIONS, key)
 
-/** Where one hosted SMART app is launched from, on one copy of the assembled site. */
+/** Where one hosted SMART app is launched from. */
 interface SmartAppLaunchPage {
   /** The app, keying its {@link APP_DESCRIPTIONS} entry. */
   readonly app: AppSectionId
@@ -314,27 +314,22 @@ interface SmartAppLaunchPage {
 
 /**
  * Every described app a URL launches ({@link AppDescription.launchesFromUrl}),
- * in {@link APP_DESCRIPTIONS} order, each with its root's URL under
- * `siteRoot`: the first-party SMART on FHIR apps the site hosts that a link
- * can launch, and nothing else.
- *
- * @param siteRoot - The slash-terminated root of the copy of the site to link
- *   into, from `siteRootFor`.
+ * in {@link APP_DESCRIPTIONS} order, each with its root's published URL
+ * (`sectionUrl`): the first-party SMART on FHIR apps the site hosts that a
+ * link can launch, and nothing else.
  *
  * @example
  * ```ts
- * smartAppLaunchPages('https://wildflowerhealth.io/')[0]
- * // → { app: 'medications', launchPageUrl: 'https://wildflowerhealth.io/medications/' }
+ * SMART_APP_LAUNCH_PAGES[0]
+ * // → { app: 'medications', launchPageUrl: 'https://medications.wildflowerhealth.io/' }
  * ```
  */
-const smartAppLaunchPages = (siteRoot: string): readonly SmartAppLaunchPage[] =>
-  Object.keys(APP_DESCRIPTIONS)
-    .filter(isAppSectionId)
-    .flatMap((app) => {
-      if (APP_DESCRIPTIONS[app].launchesFromUrl !== true) return []
-      const launchPageUrl = new URL(`${SECTION_PATHS[app]}/`, siteRoot).href
-      return [{ app, launchPageUrl }]
-    })
+const SMART_APP_LAUNCH_PAGES: readonly SmartAppLaunchPage[] = Object.keys(APP_DESCRIPTIONS)
+  .filter(isAppSectionId)
+  .flatMap((app) => {
+    if (APP_DESCRIPTIONS[app].launchesFromUrl !== true) return []
+    return [{ app, launchPageUrl: sectionUrl(app) }]
+  })
 
-export { APP_DESCRIPTIONS, APP_SECTION_IDS, smartAppLaunchPages }
+export { APP_DESCRIPTIONS, APP_SECTION_IDS, SMART_APP_LAUNCH_PAGES }
 export type { AppDescription, AppSectionId, SmartAppLaunchPage }

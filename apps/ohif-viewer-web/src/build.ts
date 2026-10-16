@@ -11,7 +11,7 @@ import { matchesPin, parsePrebuiltConfig, renderStubPage, sha256Hex } from './pr
  * pins, verified against its SHA-256 and extracted, with `config/app-config.js`
  * laid over the archive's own copy so the published viewer runs Wildflower's
  * runtime configuration. With no release pinned it writes the stub page from
- * `renderStubPage` instead, so `vp run pack` and the site assembly stay green.
+ * `renderStubPage` instead, so `vp run pack` and the viewer's Pages deploy stay green.
  *
  * Filesystem, network and `tar` only — the decisions (what a valid pin is,
  * whether the bytes match, what the stub says) live in `prebuilt.ts` where they

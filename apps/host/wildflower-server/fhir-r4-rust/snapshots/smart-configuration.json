@@ -3,7 +3,7 @@
   "jwks_uri": "https://ruth.wildflowerhealth.io/.well-known/jwks.json",
   "authorization_endpoint": "https://ruth.wildflowerhealth.io/oauth/authorize",
   "token_endpoint": "https://ruth.wildflowerhealth.io/oauth/token",
-  "management_endpoint": "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io",
+  "management_endpoint": "https://authorization.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.wildflowerhealth.io",
   "wildflower_authorization_api": "https://ruth.wildflowerhealth.io/authorization/",
   "scopes_supported": [
     "openid",

@@ -1,10 +1,6 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { appTileStyles } from '@wildflowerhealthio/apps-react'
-import {
-  APP_DESCRIPTIONS,
-  siteRootFor,
-  smartAppLaunchPages,
-} from '@wildflowerhealthio/branding-core'
+import { APP_DESCRIPTIONS, SMART_APP_LAUNCH_PAGES } from '@wildflowerhealthio/branding-core'
 import { appLaunchUrl, type AppLaunchServer } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { PageHeader, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
@@ -19,19 +15,13 @@ import styles from './fhir-home.module.css'
 interface FhirServerHomeProps {
   /** The server the session is for, and the patient its token put in context. */
   readonly server: AppLaunchServer
-  /**
-   * The slash-terminated root of the copy of the site the apps are linked on
-   * (`branding-core`'s `siteRootFor`): the published site, or the PR preview
-   * this launcher is part of.
-   */
-  readonly siteRoot: string
 }
 
 /**
  * Home on a plain SMART server: what the launcher shows once `main-web` has
  * signed in to a SMART on FHIR server that is not a Wildflower server. It names
  * the FHIR base the session is for and lists every first-party SMART app the
- * site hosts (`branding-core`'s `smartAppLaunchPages`), each a tile linking to
+ * site hosts (`branding-core`'s `SMART_APP_LAUNCH_PAGES`, each at its published origin), each a tile linking to
  * the app launched against that server (`fhir-r4-react`'s `appLaunchUrl`): an
  * EHR launch through SMART Health IT's launcher, with the session's patient,
  * for one of its servers, and a standalone launch for any other.
@@ -44,7 +34,7 @@ interface FhirServerHomeProps {
  * Presentational and prop-driven, like `settings/index.tsx`'s `SettingsIndex`,
  * so it mounts in a test without the app's router context.
  */
-function FhirServerHome({ server, siteRoot }: FhirServerHomeProps): JSX.Element {
+function FhirServerHome({ server }: FhirServerHomeProps): JSX.Element {
   return (
     <div className={pageLayoutStyles['page']}>
       <PageHeader title="Home" />
@@ -55,7 +45,7 @@ function FhirServerHome({ server, siteRoot }: FhirServerHomeProps): JSX.Element 
         here. You can launch any of Wildflower’s apps against it.
       </p>
       <ul className={appTileStyles['app-tiles']} aria-label="Apps">
-        {smartAppLaunchPages(siteRoot).map(({ app, launchPageUrl }) => (
+        {SMART_APP_LAUNCH_PAGES.map(({ app, launchPageUrl }) => (
           <li key={app} className={appTileStyles['app-tile']}>
             <a
               href={appLaunchUrl(launchPageUrl, server)}
@@ -79,10 +69,8 @@ function FhirServerHome({ server, siteRoot }: FhirServerHomeProps): JSX.Element 
 }
 
 /**
- * Route binding: reads the server the tree was built for and where this copy of
- * the launcher is served, and hands them to {@link FhirServerHome}. The site
- * root comes from the page's origin and the router's basepath, so a PR
- * preview's launcher links that preview's apps. `plainSmartRouteOptions` has
+ * Route binding: reads the server the tree was built for and hands it to
+ * {@link FhirServerHome}. `plainSmartRouteOptions` has
  * already redirected a Wildflower server's session to `/home`, so the
  * `Wildflower` arm is never rendered.
  */
@@ -90,10 +78,8 @@ function FhirServerHomeRoute(): JSX.Element {
   const serverKind = Route.useRouteContext({
     select: (context: RouterContext) => context.serverKind,
   })
-  const { basepath } = useRouter()
-  const siteRoot = siteRootFor('launcher', new URL(basepath, window.location.origin).href)
   return ServerKind.$match(serverKind, {
-    PlainSmart: (server) => <FhirServerHome server={server} siteRoot={siteRoot} />,
+    PlainSmart: (server) => <FhirServerHome server={server} />,
     Wildflower: () => <></>,
   })
 }

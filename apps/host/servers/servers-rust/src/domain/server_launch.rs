@@ -241,12 +241,12 @@ mod tests {
     fn the_launch_url_carries_the_server_s_fhir_base_and_the_launch() {
         assert_eq!(
             launch_url(
-                &launcher("https://wildflowerhealth.io/launcher/"),
+                &launcher("https://launcher.wildflowerhealth.io/"),
                 &ruth_origin(),
                 "nonce-1"
             )
             .as_str(),
-            "https://wildflowerhealth.io/launcher/?iss=https%3A%2F%2Fruth.relay.example.com&launch=nonce-1"
+            "https://launcher.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.relay.example.com&launch=nonce-1"
         );
     }
 
@@ -291,11 +291,11 @@ mod tests {
     fn the_authorization_app_url_carries_the_server_s_fhir_base() {
         assert_eq!(
             authorization_app_url(
-                &launcher("https://wildflowerhealth.io/authorization/"),
+                &launcher("https://authorization.wildflowerhealth.io/"),
                 &ruth_origin()
             )
             .as_str(),
-            "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.relay.example.com"
+            "https://authorization.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.relay.example.com"
         );
     }
 

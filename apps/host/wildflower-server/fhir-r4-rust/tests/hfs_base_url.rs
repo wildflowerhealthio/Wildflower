@@ -46,7 +46,7 @@ fn build_routers() -> (FhirR4Routers, TempDb) {
         public_origin: PUBLIC_ORIGIN.parse().expect("parse public origin"),
         authorization_app_base:
             wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase::parse(
-                "https://wildflowerhealth.io/authorization/",
+                "https://authorization.wildflowerhealth.io/",
             )
             .expect("parse the authorization app base"),
     };

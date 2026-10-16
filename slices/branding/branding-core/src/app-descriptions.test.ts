@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vite-plus/test'
 import {
   APP_DESCRIPTIONS,
   APP_SECTION_IDS,
-  smartAppLaunchPages,
+  SMART_APP_LAUNCH_PAGES,
   type AppSectionId,
 } from './app-descriptions.ts'
 import { MARKETING_ANCHORS } from './nav.ts'
-import { SECTION_PATHS, SITE_ORIGIN, siteRootFor } from './site.ts'
+import { APP_SLUGS, sectionUrl } from './site.ts'
 
 /**
  * Every described app: the homepage's SMART apps, and the launcher and
@@ -26,7 +26,7 @@ describe('APP_SECTION_IDS', () => {
 
   it('should only describe sections that exist in the deploy contract', () => {
     for (const id of DESCRIBED_APP_IDS) {
-      expect(Object.keys(SECTION_PATHS)).toContain(id)
+      expect(Object.keys(APP_SLUGS)).toContain(id)
     }
   })
 })
@@ -69,27 +69,18 @@ describe('APP_DESCRIPTIONS', () => {
   })
 })
 
-describe('smartAppLaunchPages', () => {
-  it('should list the five first-party SMART apps, at their roots on the canonical site', () => {
+describe('SMART_APP_LAUNCH_PAGES', () => {
+  it('should list the five first-party SMART apps, at their own origins on the published site', () => {
     // Act
-    const launchPages = smartAppLaunchPages(`${SITE_ORIGIN}/`)
+    const launchPages = SMART_APP_LAUNCH_PAGES
 
     // Assert
     expect(launchPages).toStrictEqual([
-      {
-        app: 'medications',
-        launchPageUrl: 'https://wildflowerhealth.io/medications/',
-      },
-      { app: 'importer', launchPageUrl: 'https://wildflowerhealth.io/importer/' },
-      {
-        app: 'plots',
-        launchPageUrl: 'https://wildflowerhealth.io/health-viewer/',
-      },
-      {
-        app: 'syntheticData',
-        launchPageUrl: 'https://wildflowerhealth.io/synthetic-data/',
-      },
-      { app: 'strength', launchPageUrl: 'https://wildflowerhealth.io/lifting/' },
+      { app: 'medications', launchPageUrl: 'https://medications.wildflowerhealth.io/' },
+      { app: 'importer', launchPageUrl: 'https://importer.wildflowerhealth.io/' },
+      { app: 'plots', launchPageUrl: 'https://plots.wildflowerhealth.io/' },
+      { app: 'syntheticData', launchPageUrl: 'https://synthetic-data.wildflowerhealth.io/' },
+      { app: 'strength', launchPageUrl: 'https://strength.wildflowerhealth.io/' },
     ])
   })
 
@@ -100,7 +91,7 @@ describe('smartAppLaunchPages', () => {
     )
 
     // Act
-    const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
+    const listedApps = SMART_APP_LAUNCH_PAGES.map(({ app }) => app)
 
     // Assert
     expect(listedApps.toSorted()).toStrictEqual(launchedApps.toSorted())
@@ -110,34 +101,15 @@ describe('smartAppLaunchPages', () => {
   })
 
   it('should leave out the launcher, Wildflower Authorization and FHIR Sync for Pebble, which no URL launches', () => {
-    const listedApps = smartAppLaunchPages(`${SITE_ORIGIN}/`).map(({ app }) => app)
+    const listedApps = SMART_APP_LAUNCH_PAGES.map(({ app }) => app)
     expect(listedApps).not.toContain('launcher')
     expect(listedApps).not.toContain('authorization')
     expect(listedApps).not.toContain('fhirSyncPebble')
   })
 
-  it("should resolve every launch page under the site root it is given, in the app's own section", () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom(
-          'https://wildflowerhealth.io/launcher/',
-          'https://wildflowerhealthio.github.io/staging/pr-7/launcher/',
-          'http://localhost:5173/'
-        ),
-        (launcherBaseUrl) => {
-          // Arrange
-          const siteRoot = siteRootFor('launcher', launcherBaseUrl)
-
-          // Act
-          const launchPages = smartAppLaunchPages(siteRoot)
-
-          // Assert
-          for (const { app, launchPageUrl } of launchPages) {
-            expect(launchPageUrl).toBe(`${siteRoot}${SECTION_PATHS[app]}/`)
-          }
-        }
-      ),
-      { numRuns: numRunsFor({ base: 10 }) }
-    )
+  it("should resolve every launch page to the app's own origin", () => {
+    for (const { app, launchPageUrl } of SMART_APP_LAUNCH_PAGES) {
+      expect(launchPageUrl).toBe(sectionUrl(app))
+    }
   })
 })

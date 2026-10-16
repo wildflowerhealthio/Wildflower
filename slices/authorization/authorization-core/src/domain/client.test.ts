@@ -32,7 +32,7 @@ const medicationViewer = Schema.decodeUnknownSync(Client.Schema)({
   clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
   name: 'Medication Viewer',
   kind: 'public',
-  redirectUris: ['https://wildflowerhealth.io/medications/'],
+  redirectUris: ['https://medications.wildflowerhealth.io/'],
   allowedScopes: ['system/MedicationRequest.rs'],
   allowedGrantTypes: ['authorization_code'],
   registeredAt: '2026-01-15T09:30:00.000Z',

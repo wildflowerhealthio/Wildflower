@@ -6,7 +6,7 @@
 
 import { PhoneSettings } from '@wildflowerhealthio/watch-lifts-core-js/pkjs'
 
-const CONFIGURATION_URL = 'https://wildflowerhealth.io/watch-lifts/'
+const CONFIGURATION_URL = 'https://watch-lifts.wildflowerhealth.io/'
 
 /** Where the weights the page last saved are kept on the phone (`PhoneSettings.toStored`). */
 const STORAGE_KEY = 'settings'

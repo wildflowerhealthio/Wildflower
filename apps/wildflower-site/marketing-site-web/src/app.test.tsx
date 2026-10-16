@@ -51,25 +51,29 @@ describe('App', () => {
     expect(wordmark.getAttribute('href')).toBe('#top')
   })
 
-  it('should link the header nav to the seven app routes', () => {
+  it('should link the header nav to every app', () => {
     // Arrange / Act
     render(<App />)
 
     // Assert — every "call to action" on the page is a link into an app;
-    // the header carries all seven routes.
+    // the header carries every app, in its menu groups' order.
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
-    // Current-URL-relative — see `sectionHref` in branding-core; a preview
-    // deploy under a sub-path resolves these into sibling preview builds.
+    // Each app's published origin, wherever the homepage itself is served.
     expect(hrefs).toStrictEqual([
-      './medications',
-      './health-viewer',
-      './lifting',
-      './importer',
-      './server-docs',
-      './ohif-viewer',
+      'https://medications.wildflowerhealth.io/',
+      'https://plots.wildflowerhealth.io/',
+      'https://ohif-viewer.wildflowerhealth.io/',
+      'https://importer.wildflowerhealth.io/',
+      'https://launcher.wildflowerhealth.io/',
+      'https://authorization.wildflowerhealth.io/',
+      'https://fhir-sync-pebble.wildflowerhealth.io/',
+      'https://watch-lifts.wildflowerhealth.io/',
+      'https://strength.wildflowerhealth.io/',
+      'https://server-docs.wildflowerhealth.io/',
+      'https://synthetic-data.wildflowerhealth.io/',
     ])
   })
 
@@ -101,28 +105,22 @@ describe('App', () => {
     // Arrange / Act
     render(<App />)
 
-    // Assert
-    expect(
-      screen.getByRole('link', { name: /Open the Medication Viewer/ }).getAttribute('href')
-    ).toBe('./medications')
-    expect(
-      screen.getByRole('link', { name: /Read the Wildflower server docs/ }).getAttribute('href')
-    ).toBe('./server-docs')
-    expect(screen.getByRole('link', { name: /Open the Importer/ }).getAttribute('href')).toBe(
-      './importer'
+    // Assert — each app's published origin
+    const hrefOf = (name: RegExp): string | null =>
+      screen.getByRole('link', { name }).getAttribute('href')
+    expect(hrefOf(/Open the Medication Viewer/)).toBe('https://medications.wildflowerhealth.io/')
+    expect(hrefOf(/Read the Wildflower server docs/)).toBe(
+      'https://server-docs.wildflowerhealth.io/'
     )
-    expect(
-      screen.getByRole('link', { name: /Open FHIR Sync for Pebble/ }).getAttribute('href')
-    ).toBe('./fhir-sync-pebble')
-    expect(
-      screen.getByRole('link', { name: /Open the Synthetic Data Loader/ }).getAttribute('href')
-    ).toBe('./synthetic-data')
-    expect(screen.getByRole('link', { name: /Open Plots/ }).getAttribute('href')).toBe(
-      './health-viewer'
+    expect(hrefOf(/Open the Importer/)).toBe('https://importer.wildflowerhealth.io/')
+    expect(hrefOf(/Open FHIR Sync for Pebble/)).toBe(
+      'https://fhir-sync-pebble.wildflowerhealth.io/'
     )
-    expect(screen.getByRole('link', { name: /Open Strength/ }).getAttribute('href')).toBe(
-      './lifting'
+    expect(hrefOf(/Open the Synthetic Data Loader/)).toBe(
+      'https://synthetic-data.wildflowerhealth.io/'
     )
+    expect(hrefOf(/Open Plots/)).toBe('https://plots.wildflowerhealth.io/')
+    expect(hrefOf(/Open Strength/)).toBe('https://strength.wildflowerhealth.io/')
   })
 
   it('should render Wildflower FHIR server download links pulled from versions.json', () => {

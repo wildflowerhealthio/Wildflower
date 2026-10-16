@@ -52,7 +52,7 @@ fn build_router() -> (Router, TempDb) {
             .expect("parse public origin"),
         authorization_app_base:
             wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase::parse(
-                "https://wildflowerhealth.io/authorization/",
+                "https://authorization.wildflowerhealth.io/",
             )
             .expect("parse the authorization app base"),
     };

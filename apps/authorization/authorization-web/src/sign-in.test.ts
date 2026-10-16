@@ -21,11 +21,7 @@ describe('startSignIn', () => {
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
 
     // Act
-    const started = await startSignIn(
-      SERVER_URL,
-      undefined,
-      signInEnvironment(page, '/authorization/')
-    )
+    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page, '/'))
 
     // Assert
     expect(started.tag).toBe('Ok')
@@ -36,7 +32,7 @@ describe('startSignIn', () => {
     expect(authorizationUrl.searchParams.get('client_id')).toBe(AUTHORIZATION_CLIENT_ID)
     expect(authorizationUrl.searchParams.get('scope')).toBe(AUTHORIZATION_SCOPE)
     expect(authorizationUrl.searchParams.get('redirect_uri')).toBe(
-      'https://wildflowerhealth.io/authorization/'
+      'https://authorization.wildflowerhealth.io/'
     )
     expect(authorizationUrl.searchParams.get('aud')).toBe(SERVER_URL)
     expect(page.store.has(PENDING_AUTHORIZATION_KEY)).toBe(true)
@@ -48,11 +44,7 @@ describe('startSignIn', () => {
     const page = stubPage({ smartConfiguration: plainSmartConfiguration })
 
     // Act
-    const started = await startSignIn(
-      SERVER_URL,
-      undefined,
-      signInEnvironment(page, '/authorization/')
-    )
+    const started = await startSignIn(SERVER_URL, undefined, signInEnvironment(page, '/'))
 
     // Assert
     expect(started).toEqual({ tag: 'Failed', reason: NOT_A_WILDFLOWER_SERVER })
@@ -65,7 +57,7 @@ describe('finishSignIn', () => {
   it('redeems the code into a session with the server’s authorization API', async () => {
     // Arrange — a sign-in started from a deep link, now back with its code.
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
-    const environment = signInEnvironment(page, '/authorization/')
+    const environment = signInEnvironment(page, '/')
     const started = await startSignIn(SERVER_URL, '/approved/grant-1', environment)
     const state = new URL(started.tag === 'Ok' ? started.value : '').searchParams.get('state')
 
@@ -88,7 +80,7 @@ describe('finishSignIn', () => {
   it('is no sign-in on an ordinary load', async () => {
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
 
-    const finished = await finishSignIn('?iss=x', signInEnvironment(page, '/authorization/'))
+    const finished = await finishSignIn('?iss=x', signInEnvironment(page, '/'))
 
     expect(finished).toEqual({ tag: 'Ok', value: Option.none() })
   })
@@ -96,7 +88,7 @@ describe('finishSignIn', () => {
   it('names the server a refused sign-in was to', async () => {
     // Arrange
     const page = stubPage({ smartConfiguration: wildflowerConfiguration })
-    const environment = signInEnvironment(page, '/authorization/')
+    const environment = signInEnvironment(page, '/')
     await startSignIn(SERVER_URL, undefined, environment)
 
     // Act
@@ -132,7 +124,7 @@ const wildflowerConfiguration = {
   issuer: SERVER_URL,
   authorization_endpoint: `${SERVER_URL}/oauth/authorize`,
   token_endpoint: `${SERVER_URL}/oauth/token`,
-  management_endpoint: `https://wildflowerhealth.io/authorization/?iss=${encodeURIComponent(SERVER_URL)}`,
+  management_endpoint: `https://authorization.wildflowerhealth.io/?iss=${encodeURIComponent(SERVER_URL)}`,
   wildflower_authorization_api: `${SERVER_URL}/authorization/`,
   code_challenge_methods_supported: ['S256'],
   capabilities: ['launch-ehr', 'client-public', 'wildflower-server'],
@@ -147,7 +139,7 @@ const plainSmartConfiguration = {
 }
 
 /**
- * The published page at `/authorization/`, over a `fetch` that answers the
+ * The published page at its origin's root, over a `fetch` that answers the
  * SMART configuration with `smartConfiguration` and the token endpoint with a
  * bearer, and a `sessionStorage` kept in `store`.
  */
@@ -179,6 +171,6 @@ const stubPage = (options: {
         store.delete(key)
       },
     },
-    location: { href: 'https://wildflowerhealth.io/authorization/', protocol: 'https:' },
+    location: { href: 'https://authorization.wildflowerhealth.io/', protocol: 'https:' },
   }
 }

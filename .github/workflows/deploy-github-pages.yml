@@ -1,49 +1,115 @@
 name: Deploy GitHub Pages
 
-# Builds the published static site (apps/wildflower-site/wildflower-site-web,
-# which assembles the marketing site at /, the medications app at /medications,
-# the server-docs API console at /server-docs, the Importer at /importer, FHIR
-# Sync for Pebble at /fhir-sync-pebble, Plots at /health-viewer, the
-# Synthetic Data Loader at /synthetic-data, Strength at /lifting, the
-# WatchLifts settings page at /watch-lifts, the prebuilt OHIF viewer at
-# /ohif-viewer, the launcher at /launcher and Wildflower Authorization at
-# /authorization) and publishes it to GitHub Pages.
-# Runs on every push to main and on manual dispatch: the assembled apps
-# depend on much of the workspace, so a path filter would only ever be wrong
-# about which changes can alter the published site.
+# Publishes the production sites. Every hosted app is published on an origin
+# of its own (`https://<slug>.wildflowerhealth.io/`, `APP_SLUGS` in
+# slices/branding/branding-core/src/site.ts), so no app can read another's
+# localStorage: deploy-pages-site.yml builds each app on its own and pushes it
+# to the root of the `gh-pages` branch of its repository,
+# `wildflowerhealthio/<slug>-web`, keeping the PR previews beside it. Then the
+# marketing site is deployed to the apex, `https://wildflowerhealth.io`,
+# through this repository's Pages; its build carries a redirect page at each
+# app's old apex path, so those only ever redirect to an app that is already
+# live.
 #
-# Prerequisites (one-time, in repo Settings → Pages):
-#   - Source: "GitHub Actions".
-#   - Custom domain: wildflowerhealth.io. The CNAME file in
+# Runs on every push to main and on manual dispatch, and deploys every app
+# each time: the apps depend on much of the workspace, so a path filter would
+# only ever be wrong about which changes can alter a published site.
+#
+# Prerequisites (one-time):
+#   - This repository's Settings → Pages: source "GitHub Actions", custom
+#     domain wildflowerhealth.io. The CNAME file in
 #     apps/wildflower-site/marketing-site-web/public carries that domain into
-#     the marketing build, which the assembly step copies to the root of the
-#     uploaded artifact — the only place GitHub Pages reads it from — so the
-#     setting survives each deploy.
+#     the marketing build, whose root is the root of the apex site — the only
+#     place GitHub Pages reads it from — so the setting survives each deploy.
+#   - Each app's repository, `wildflowerhealthio/<slug>-web`, publishes Pages
+#     from its `gh-pages` branch at `/`, with the custom domain
+#     `<slug>.wildflowerhealth.io` and HTTPS enforced. Its `main` holds only a
+#     README; the deploy writes the `CNAME`, `.nojekyll` and `404.html` Pages
+#     reads from the branch root.
+#   - The GitHub App behind the `STAGING_APP_ID` / `STAGING_APP_PRIVATE_KEY`
+#     secrets is installed on every app repository with
+#     `Contents: Read and write`.
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Least privilege for the build; the deploy job needs pages + id-token to
-# publish via the GitHub Pages deployment API.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# One live site: let an in-flight deploy finish instead of cancelling it, so a
-# half-published artifact never goes live.
+# One production deploy at a time: let an in-flight deploy finish instead of
+# cancelling it, so a half-published set of sites never stays live.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build
+  plan:
+    name: Plan the sites
     runs-on: ubuntu-latest
+    outputs:
+      sites: ${{ steps.plan.outputs.sites }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.2
+        with:
+          cache: true
+          cache-save: false
+
+      - name: Install dependencies
+        run: vp install
+
+      # Assigned first, then written: a failure inside `echo "...$(...)"` would
+      # not fail the step.
+      - name: Plan every app
+        id: plan
+        run: |
+          sites=$(node scripts/ci/pages-sites.ts plan production)
+          echo "sites=$sites" >> "$GITHUB_OUTPUT"
+
+  apps:
+    name: App
+    needs: plan
+    strategy:
+      # Every app publishes, so one failing build doesn't hold the others back
+      # (or the apex, which deploys after them regardless).
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(needs.plan.outputs.sites) }}
+    uses: ./.github/workflows/deploy-pages-site.yml
+    with:
+      slug: ${{ matrix.site.name }}
+      package: ${{ matrix.site.packageName }}
+      build-dir: ${{ matrix.site.buildDir }}
+      sentry-dsn-variable: ${{ matrix.site.sentryDsnVariable }}
+      pages-repository: ${{ matrix.site.pagesRepository }}
+      pages-branch: ${{ matrix.site.pagesBranch }}
+      site-url: ${{ matrix.site.siteUrl }}
+      target: production
+    secrets: inherit
+
+  # After every app, whether or not each one published: the apex deploys
+  # even when an app's build fails, so a broken app never holds back the
+  # homepage or the policy pages.
+  marketing:
+    name: Build the marketing site
+    needs: apps
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # configure-pages reads this repository's Pages settings.
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
@@ -52,65 +118,34 @@ jobs:
         uses: voidzero-dev/setup-vp@v1.21.2
         with:
           cache: true
+          cache-save: false
 
       - name: Install dependencies
         run: vp install
 
-      # The workspace build: `vp run pack` is `vp run --cache -r build`, which
-      # runs in workspace dependency order, so each assembled section (marketing
-      # site, medications app, server-docs console) builds before
-      # wildflower-site-web (it depends on them) runs its own build — the
-      # assemble step that stages the sections, including the CNAME, into
-      # apps/wildflower-site/wildflower-site-web/dist.
-      #
-      # Each app reads only its own `VITE_SENTRY_DSN_<APP>` (a public
-      # identifier, so a repository variable rather than a secret) and
-      # reports nothing without one. The shared `VITE_SENTRY_DSN` is left
-      # unset: it is what the Tauri entry's unconsented init reads.
-      - name: Build site
-        run: vp run pack
-        env:
-          VITE_SENTRY_DSN_MEDICATIONS_WEB: ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_WEB }}
-          VITE_SENTRY_DSN_IMPORTER_WEB: ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
-          VITE_SENTRY_DSN_PLOTS_WEB: ${{ vars.VITE_SENTRY_DSN_PLOTS_WEB }}
-          VITE_SENTRY_DSN_STRENGTH_WEB: ${{ vars.VITE_SENTRY_DSN_STRENGTH_WEB }}
-          VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB: ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
-          VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB: ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
-          VITE_SENTRY_DSN_LAUNCHER_WEB: ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
-          VITE_SENTRY_DSN_AUTHORIZATION_WEB: ${{ vars.VITE_SENTRY_DSN_AUTHORIZATION_WEB }}
-          VITE_SENTRY_ENVIRONMENT: production
-          VITE_SENTRY_RELEASE: ${{ github.sha }}
+      # The homepage, the policy pages and the apps' old-path redirect pages,
+      # with its workspace dependencies built first.
+      - name: Build the marketing site
+        run: vp run --filter '@wildflowerhealthio/marketing-site-web...' build
 
-      # Registers the release the build names, uploads the apps' source maps
-      # to it and deletes them from the site. Needs the `SENTRY_AUTH_TOKEN`
-      # secret and the `SENTRY_ORG` variable; without the token it only
-      # deletes the maps.
-      - name: Upload source maps to Sentry
-        uses: ./.github/actions/sentry-sourcemaps
-        with:
-          environment: production
-          release: ${{ github.sha }}
-          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          org: ${{ vars.SENTRY_ORG }}
-          dsns: |
-            ${{ vars.VITE_SENTRY_DSN_MEDICATIONS_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_IMPORTER_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_PLOTS_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_STRENGTH_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_FHIR_SYNC_PEBBLE_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_SYNTHETIC_DATA_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
-            ${{ vars.VITE_SENTRY_DSN_AUTHORIZATION_WEB }}
+      - name: Check the build holds its required files
+        run: node scripts/ci/pages-sites.ts check marketing
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: apps/wildflower-site/wildflower-site-web/dist
+          path: apps/wildflower-site/marketing-site-web/dist
 
   deploy:
-    name: Deploy
-    needs: build
+    name: Deploy the apex
+    needs: marketing
+    if: ${{ !cancelled() && needs.marketing.result == 'success' }}
     runs-on: ubuntu-latest
+    # Only the job that publishes needs pages + id-token, to deploy through
+    # the GitHub Pages deployment API.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

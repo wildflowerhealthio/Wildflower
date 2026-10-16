@@ -1,7 +1,7 @@
 # AGENTS.md — apps/synthetic-data/synthetic-data-web
 
 The Synthetic Data Loader, a SMART-on-FHIR app published to
-<https://wildflowerhealth.io/synthetic-data/> (package
+<https://synthetic-data.wildflowerhealth.io/> (package
 `synthetic-data-web`), with a `synthetic-data-dev` row in debug builds. It
 loads a published synthetic data snapshot — by default the one
 [`wildflowerhealthio/synthetic-data`](https://github.com/wildflowerhealthio/synthetic-data)
@@ -60,11 +60,11 @@ its authed runner from route context. Like the Importer, **this app writes.**
 
 The production `synthetic-data` registry row (apps migration
 `0019_rekey_site_apps`) launches
-`https://wildflowerhealth.io/synthetic-data/?launch={launch}&iss={origin}`,
+`https://synthetic-data.wildflowerhealth.io/?launch={launch}&iss={origin}`,
 and its public OAuth client,
 `225ba6af034a3acec6be7ff8010df67f` (the authorization server migration
 `0028_rekey_site_app_clients`), redirects to
-`https://wildflowerhealth.io/synthetic-data/` and allows exactly
+`https://synthetic-data.wildflowerhealth.io/` and allows exactly
 `SYNTHETIC_DATA_SCOPE`. In development, debug builds of the host seed a
 `synthetic-data-dev` row on the port
 `dev-app-ports.json` pins (5198) and its OAuth client

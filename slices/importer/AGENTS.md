@@ -17,7 +17,7 @@ before adding a format.
 
 The Importer web app that mounts the shell is
 [`apps/importer-web`](../../apps/importer-web/AGENTS.md), published at
-<https://wildflowerhealth.io/importer/>. The Synthetic Data Loader proves its
+<https://importer.wildflowerhealth.io/>. The Synthetic Data Loader proves its
 generators through the same `importer-fundamentals` and format bindings.
 
 Part of the offline FHIR HAR importer epic (#489).

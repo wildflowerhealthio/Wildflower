@@ -19,9 +19,8 @@ product, `apps/<product>/`: [`authorization`](./authorization/AGENTS.md),
 [`medications`](./medications/AGENTS.md),
 [`plots`](./plots/AGENTS.md) and
 [`synthetic-data`](./synthetic-data/AGENTS.md).
-[`wildflower-site`](./wildflower-site/AGENTS.md) is a product folder for
-grouping alone: the site assembly and the marketing homepage share no package
-built only for them, but they ship together as wildflowerhealth.io. An app with
+[`wildflower-site`](./wildflower-site/AGENTS.md) holds the marketing
+homepage, which ships at the apex of wildflowerhealth.io. An app with
 no packages of its own sits directly under `apps/` under its product's name:
 `server-docs-web`, `ohif-viewer-web` and `importer-web`, whose importer and
 anonymizer packages are slices (`slices/importer`, `slices/anonymizer`).
@@ -82,7 +81,7 @@ unscoped name:
 | Rust crate (and binary)                    | `wildflowerhealthio-` + its folder's name, less a trailing `-rust`                                                                       | `wildflowerhealthio-relay-server`     |
 | A folded `-core` package                   | `<name>-core-js`                                                                                                                         | `medication-interaction-core-js`      |
 | Other folded packages                      | keep their names (`-react`, `-pkjs`, `-test`)                                                                                            | `medication-calendar-react`           |
-| Published path on the site                 | `/<product>/` (`SECTION_PATHS` in `branding-core`)                                                                                       | `/medications/`                       |
+| Published origin                           | `https://<product>.wildflowerhealth.io/` (`APP_SLUGS` in `branding-core`)                                                                | `medications.wildflowerhealth.io`     |
 | Homescreen tile id                         | `<product>`                                                                                                                              | `medications`                         |
 | Dev tile id and `dev-app-ports.json` key   | `<product>-dev`                                                                                                                          | `medications-dev`                     |
 | OAuth client id                            | random, from `openssl rand -hex 16`                                                                                                      | `9769f8b2…`                           |
@@ -105,9 +104,10 @@ names the iOS Xcode project and scheme, `gen/apple/host-app.xcodeproj`, the
 binary and the Linux AppImage after the package). No crate is published: the
 workspace sets `publish = false`.
 
-Two products are off the table's published paths: Plots is published at
-`/health-viewer/` and Strength at `/lifting/`, and their OAuth clients are
-named "Synthesized Health Viewer" and "Lifting". Their tile ids follow it.
+An app's path on the apex, `https://wildflowerhealth.io/<product>/`, serves
+only a redirect to its origin (`APEX_REDIRECT_PATHS` in `marketing-site-web`).
+Two are off the pattern: Plots' is `/health-viewer/` and Strength's
+`/lifting/`.
 
 ### Moving a product in
 
@@ -117,7 +117,7 @@ named "Synthesized Health Viewer" and "Lifting". Their tile ids follow it.
    `node_modules` still holds.
 2. Rename the packages, then every import, `vp run -F` filter and path:
    `pnpm-workspace.yaml` (`apps/<product>/*`), the root `vite.config.ts`
-   test projects, `.github/workflows/*`, `apps/wildflower-site/wildflower-site-web/src/assembly.ts`,
+   test projects, `.github/workflows/*`, `scripts/ci/pages-sites.ts`,
    and every relative path inside a package that moved deeper.
 3. The slice's AGENTS.md becomes the folder's umbrella `apps/<product>/AGENTS.md`,
    with a `CLAUDE.md` symlink beside it; `slices/AGENTS.md` notes that the

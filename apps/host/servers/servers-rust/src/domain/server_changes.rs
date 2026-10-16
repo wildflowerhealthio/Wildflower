@@ -469,8 +469,8 @@ mod tests {
             update_server(
                 registry.as_ref(),
                 "ruth.relay.wildflowerhealth.io",
-                "https://wildflowerhealth.io/launcher",
-                "https://wildflowerhealth.io/authorization/",
+                "https://launcher.wildflowerhealth.io/",
+                "https://authorization.wildflowerhealth.io/",
                 CertificateAuthority::LetsEncrypt,
             ),
             Err(ServerChangeError::Registry(

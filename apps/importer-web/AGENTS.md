@@ -1,7 +1,7 @@
 # AGENTS.md — apps/importer-web
 
-The Importer, shipped as a SMART-on-FHIR app served from the published
-GitHub Pages site (`/importer`), with a debug-only dev row for local
+The Importer, shipped as a SMART-on-FHIR app served from its own
+origin on GitHub Pages (<https://importer.wildflowerhealth.io/>), with a debug-only dev row for local
 development. It pairs
 [`importer-react`](../../slices/importer/importer-react/AGENTS.md)'s
 `ImporterScreen` with
@@ -40,7 +40,7 @@ Two facts about an app served off its own origin drive everything in that
 runtime:
 
 - **It is served from a different origin than the API** — the published Pages
-  site (`https://wildflowerhealth.io/importer/`) in production, or the
+  site (`https://importer.wildflowerhealth.io/`) in production, or the
   loopback dev origin (`http://localhost:5193/`) under the debug-only
   `importer-dev` row. The typed FHIR client emits _relative_ paths
   (`/DocumentReference`), which would resolve against the app's own
@@ -190,13 +190,13 @@ registered client cannot launch:
 
 - `apps/host/wildflower-server/apps-rust/migrations/0006_seed_wildflower_importer_app/` — the
   registration and its launch URL
-  (`https://wildflowerhealth.io/importer/?launch={launch}&iss={origin}`
+  (`https://importer.wildflowerhealth.io/?launch={launch}&iss={origin}`
   since `0016_launch_first_party_apps_at_root`, and under the tile id
   `importer` since `0019_rekey_site_apps`).
 - `apps/host/wildflower-server/authorization-server-rust/migrations/0008_seed_wildflower_importer_client/`
   — the OAuth client, re-keyed to `165cd26573e5ac72378e6ad2d2198330` by
   `0028_rekey_site_app_clients`. Its one registered redirect is
-  `https://wildflowerhealth.io/importer/`, the page it launches from.
+  `https://importer.wildflowerhealth.io/`, the page it launches from.
 
 The `clientId` in `src/config.ts` must equal the registration's `client_id`,
 the client's id in both.
@@ -211,9 +211,10 @@ the port.
 
 ## Published on GitHub Pages
 
-`apps/wildflower-site/wildflower-site-web` stages this app's `dist/` at `/importer` on
-<https://wildflowerhealth.io>, alongside the other first-party apps. The
-relative `base: './'` in `vite.config.ts` is the whole subpath mechanism. No SPA
+`.github/workflows/deploy-pages-site.yml` publishes this app's `dist/` at
+<https://importer.wildflowerhealth.io/>, and a PR preview's under
+`https://importer.wildflowerhealth.io/pr-<n>/`. The relative `base: './'` in
+`vite.config.ts` is the whole subpath mechanism. No SPA
 fallback is needed: the router is a memory history, so the site has no deep links
 into it. The marketing site links there from its infrastructure section
 (`apps/wildflower-site/marketing-site-web/src/components/infrastructure.tsx`,

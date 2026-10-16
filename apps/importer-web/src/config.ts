@@ -41,7 +41,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * is served are two different registrations:
  *
  * - A **production** build is published to
- *   `https://wildflowerhealth.io/importer/` and launches as the `importer`
+ *   `https://importer.wildflowerhealth.io/` and launches as the `importer`
  *   tile's client, `165cd26573e5ac72378e6ad2d2198330` (seeded by
  *   `0008_seed_wildflower_importer_client`, re-keyed by
  *   `0028_rekey_site_app_clients`), which registers that absolute Pages URL as

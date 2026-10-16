@@ -295,7 +295,7 @@ describe('Landing', () => {
 
   test('keeps the served subpath when a server is chosen', async () => {
     // Arrange — the hosted build is served under a subpath, not the origin root.
-    const appBase = '/staging/pr-719/launcher/'
+    const appBase = '/pr-719/'
     await mountLanding(appBase, { basepath: appBase, signIn: recordingSignIn(pendingStart).stub })
 
     // Act — picking a server records `?server=` in the address bar, before
@@ -791,7 +791,7 @@ const discoveringStart = (): {
         pending.delete(key)
       },
     },
-    location: { href: 'https://wildflowerhealth.io/launcher/', protocol: 'https:' },
+    location: { href: 'https://launcher.wildflowerhealth.io/', protocol: 'https:' },
   })
   return { start: (target) => startSignIn(target, undefined, environment), requested }
 }

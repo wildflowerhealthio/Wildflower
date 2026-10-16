@@ -1,7 +1,7 @@
 # AGENTS.md — apps/launcher/launcher-web
 
 The launcher: the web app that manages a Wildflower server, published at
-`/launcher/`. Its entry, `main-web` (`src/main-web.tsx`), hands
+<https://launcher.wildflowerhealth.io/>. Its entry, `main-web` (`src/main-web.tsx`), hands
 `session/consented-entry-root.tsx`'s `ConsentedEntryRoot` a `bootApp` that
 redeems any sign-in and then calls `app-root.tsx`'s `buildAppTree`
 (`RenderAppOptions`). It runs cross-origin to its API server and signs in by
@@ -81,10 +81,9 @@ the base opens a server's launcher.
   calls a Wildflower-only endpoint. `/fhir-home` redirects a Wildflower session to
   `/home` the same way (`session/auth-gated-route-options.ts`).
 - **That Home launches every hosted SMART app against the server.** Its list
-  is `branding-core`'s `smartAppLaunchPages`: every `APP_DESCRIPTIONS` entry
-  that `launchesFromUrl`, at its root under the site root
-  `siteRootFor('launcher', …)` derives from the page's origin and router basepath
-  (a PR preview's own root, the canonical site otherwise). Each tile is a plain link to
+  is `branding-core`'s `SMART_APP_LAUNCH_PAGES`: every `APP_DESCRIPTIONS` entry
+  that `launchesFromUrl`, at its published origin, from a PR preview's
+  launcher too. Each tile is a plain link to
   `fhir-r4-react/smart`'s `appLaunchUrl`: SMART Health IT's launcher EHR launch
   (with the session's patient) for one of the launcher's FHIR bases, a
   standalone `?iss=` launch for any other. The list is static; the page calls

@@ -237,26 +237,6 @@ describe('packageGraphViolations', () => {
         { numRuns: numRunsFor({ base: 30 }) }
       )
     })
-
-    it("is open to the site assembly for an app's -web entry only", () => {
-      const site = packageAt(
-        '@wildflowerhealthio/wildflower-site-web',
-        'apps/wildflower-site/wildflower-site-web'
-      )
-      const entry = packageAt('@wildflowerhealthio/strength-web', 'apps/strength/strength-web')
-      const core = packageAt(
-        '@wildflowerhealthio/strength-core-js',
-        'apps/strength/strength-core-js'
-      )
-      expect(
-        packageGraphViolations([dependingOn(site, entry, 'runtime'), entry]).map(formatViolation)
-      ).toEqual([])
-      expect(
-        packageGraphViolations([dependingOn(site, core, 'runtime'), core]).map(formatViolation)
-      ).toEqual([
-        '@wildflowerhealthio/wildflower-site-web (apps/wildflower-site/wildflower-site-web) depends on @wildflowerhealthio/strength-core-js, which is private to apps/strength/',
-      ])
-    })
   })
 
   describe('cycles', () => {

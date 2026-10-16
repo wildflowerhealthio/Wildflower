@@ -220,10 +220,11 @@ outbound-equals-callback property `redirectUriForPage` gets from the directory.
 
 `basePath` is the slash-suffixed directory the build is served from
 (`branding-core`'s `basenameOf(location.pathname)`), defaulting to `/` — so a
-root-served copy is unchanged. A copy under `/launcher/` (or a PR preview's
-`/staging/pr-<n>/launcher/`) passes that directory, so the route returns under it —
-the hosted launcher's `/` route returns to `/launcher/`, the registered value, rather
-than to `<origin>/` off the app. The
+root-served copy is unchanged — the published launcher, at the root of
+`https://launcher.wildflowerhealth.io`, returns to that root, the registered
+value. A copy under a PR preview's `/pr-<n>/` passes that
+directory, so the route returns under it rather than to `<origin>/` off the
+app. The
 caller derives `basePath` at the served root on both legs — the hosted launcher
 can, because its sign-in is reachable only from that root.
 

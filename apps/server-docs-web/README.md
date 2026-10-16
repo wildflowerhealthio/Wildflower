@@ -1,7 +1,7 @@
 # server-docs-web
 
 The static API console published at
-<https://wildflowerhealth.io/server-docs>: an interactive
+<https://server-docs.wildflowerhealth.io>: an interactive
 [Scalar](https://scalar.com) reference for the Wildflower server's HTTP API,
 pointed at whichever running server the reader chooses.
 
@@ -151,8 +151,8 @@ line asking the server how to sign in. On that restore (`pageshow` with
 
 The client is registered by
 `apps/host/wildflower-server/authorization-server-rust/migrations/0007_seed_wildflower_server_docs_client`
-and re-keyed to that random id, with its redirect moved to `/server-docs/`, by
-`0028_rekey_site_app_clients`;
+re-keyed to that random id by `0028_rekey_site_app_clients`, and given its
+own origin's redirect by `0037_add_app_origin_redirect_uris`;
 `src/smart-client.ts` is the browser-side reading of that row's `client_id` and
 `allowed_scopes`, and must match them. The **redirect URI is not read from
 there** — see below.
@@ -211,7 +211,7 @@ It **derives** its `redirect_uri` from where the page is being served, with
 URL, which is what the fhirclient-based apps (`apps/medications/medications-web`,
 `apps/importer-web`) have always done. One build
 therefore signs in from the published site, from a PR preview under
-`https://wildflowerhealthio.github.io/staging/pr-<n>/server-docs/`,
+`https://server-docs.wildflowerhealth.io/pr-<n>/`,
 and from `vp run -F @wildflowerhealthio/server-docs-web dev`, with nothing to keep in step.
 
 `/oauth/authorize` still matches `redirect_uri` by exact string equality, and
@@ -260,6 +260,7 @@ vp run -F @wildflowerhealthio/server-docs-web build   # bundle into dist/
 vp test                                  # unit tests for the parsing/transforms
 ```
 
-`apps/wildflower-site/wildflower-site-web` copies `dist/` to `/server-docs` in the published
-artifact; the build uses a relative `base` so the assets resolve from that
-sub-path.
+`.github/workflows/deploy-pages-site.yml` publishes `dist/` at
+<https://server-docs.wildflowerhealth.io/>, and a PR preview's under
+`https://server-docs.wildflowerhealth.io/pr-<n>/`; the build uses a relative
+`base` so the assets resolve from either.

@@ -1,10 +1,9 @@
 name: Upload Sentry source maps
 description: >-
-  Creates the Sentry release a site build reports under, uploads the source
-  maps of every app that reports to Sentry, and then deletes those maps from the
-  assembled site so they are never published. Runs between `vp run pack` and
-  the step that publishes apps/wildflower-site/wildflower-site-web/dist, in both
-  deploy-github-pages.yml and pr-preview.yml.
+  Creates the Sentry release an app's build reports under and uploads the
+  build's source maps to the app's Sentry project. The maps stay in the build
+  and are published with it. Runs in deploy-pages-site.yml between the app's
+  build and the push that publishes it.
 
 inputs:
   environment:
@@ -24,43 +23,39 @@ inputs:
     description: The Sentry organization slug.
     required: false
     default: ''
-  dsns:
+  dsn:
     description: >-
-      The apps' `VITE_SENTRY_DSN_<APP>` values, one per line. Each DSN ends in
-      its Sentry project's ID, which names the project to upload to; an empty
-      line is an app without a project and is skipped.
+      The app's `VITE_SENTRY_DSN_<APP>` value. It ends in its Sentry project's
+      ID, which names the project to upload to; empty skips the upload.
+    required: false
+    default: ''
+  site-dir:
+    description: The app's build output, repo-root-relative.
     required: true
 
 runs:
   using: composite
   steps:
     # A DSN's path is its project's numeric ID, which sentry-cli takes in place
-    # of a slug, so the projects come from the same variables the build reads
+    # of a slug, so the project comes from the same variable the build reads
     # and an app whose project does not exist yet simply has no DSN.
-    - name: Collect Sentry project IDs from the DSNs
-      id: projects
+    - name: Collect the Sentry project ID from the DSN
+      id: project
       shell: bash
       env:
-        DSNS: ${{ inputs.dsns }}
+        DSN: ${{ inputs.dsn }}
       run: |
-        ids=()
-        while IFS= read -r dsn; do
-          if [ -n "$dsn" ]; then
-            ids+=("${dsn##*/}")
-          fi
-        done <<< "$DSNS"
-        echo "Sentry projects: ${ids[*]:-none}"
-        echo "ids=${ids[*]}" >> "$GITHUB_OUTPUT"
+        id=${DSN##*/}
+        echo "Sentry project: ${id:-none}"
+        echo "id=$id" >> "$GITHUB_OUTPUT"
 
-    # The paths are the apps' sections in the assembled site (branding-core's
-    # SECTION_PATHS). The upload works on the assembled site rather than each
-    # app's own dist because injecting debug IDs rewrites the JavaScript: the
-    # files that get published must be the ones that carry them. Debug IDs
-    # also make the files' URLs irrelevant, so no `url_prefix` is needed.
-    # Every project gets every app's bundle; a stack trace only ever matches
-    # its own app's debug IDs.
+    # Uploads from the build that is about to be published: injecting debug
+    # IDs rewrites the JavaScript, so the files that get published must be the
+    # ones that carry them. Debug IDs also make the files' URLs irrelevant, so
+    # no `url_prefix` is needed, and one upload serves the app's production
+    # origin and its previews alike.
     - name: Create Sentry release and upload source maps
-      if: inputs.auth-token != '' && steps.projects.outputs.ids != ''
+      if: inputs.auth-token != '' && steps.project.outputs.id != ''
       uses: getsentry/action-release@v3.7.1
       env:
         SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
@@ -68,33 +63,9 @@ runs:
       with:
         environment: ${{ inputs.environment }}
         release: ${{ inputs.release }}
-        sourcemaps: >-
-          apps/wildflower-site/wildflower-site-web/dist/medications
-          apps/wildflower-site/wildflower-site-web/dist/importer
-          apps/wildflower-site/wildflower-site-web/dist/health-viewer
-          apps/wildflower-site/wildflower-site-web/dist/lifting
-          apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble
-          apps/wildflower-site/wildflower-site-web/dist/synthetic-data
-          apps/wildflower-site/wildflower-site-web/dist/launcher
-          apps/wildflower-site/wildflower-site-web/dist/authorization
-        projects: ${{ steps.projects.outputs.ids }}
+        sourcemaps: ${{ inputs.site-dir }}
+        projects: ${{ steps.project.outputs.id }}
         # Sentry's GitHub integration is not installed and the checkout is
         # shallow, so there are no commits to associate.
         set_commits: skip
         disable_telemetry: true
-
-    # The apps build with `sourcemap: 'hidden'`: maps are emitted for this
-    # upload but nothing in the bundle points at them. Delete them so the
-    # site never serves the original source.
-    - name: Delete source maps from the site
-      shell: bash
-      run: |
-        find apps/wildflower-site/wildflower-site-web/dist/medications \
-          apps/wildflower-site/wildflower-site-web/dist/importer \
-          apps/wildflower-site/wildflower-site-web/dist/health-viewer \
-          apps/wildflower-site/wildflower-site-web/dist/lifting \
-          apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble \
-          apps/wildflower-site/wildflower-site-web/dist/synthetic-data \
-          apps/wildflower-site/wildflower-site-web/dist/launcher \
-          apps/wildflower-site/wildflower-site-web/dist/authorization \
-          -name '*.map' -type f -print -delete

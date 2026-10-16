@@ -25,7 +25,7 @@ const SYNTHETIC_DATA_SCOPE =
  * The OAuth client the build launches as, which depends on how it is served:
  *
  * - A **production** build is published to
- *   `https://wildflowerhealth.io/synthetic-data/` and launches as the
+ *   `https://synthetic-data.wildflowerhealth.io/` and launches as the
  *   `synthetic-data` tile's client, `225ba6af034a3acec6be7ff8010df67f`.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/synthetic-data-web dev`, on the port
  *   `dev-app-ports.json` pins) launches as the `synthetic-data-dev`

@@ -44,7 +44,7 @@ addOsColorSchemeListener()
 // The directory this build is served from, captured as the router's `basepath`.
 //
 // `base: './'` in `vite.config.web.ts` makes the bundle path-independent, so one
-// build serves both `/launcher/` and a PR preview's `/staging/pr-<n>/launcher/`; the
+// build serves both its origin's root and a PR preview's `/pr-<n>/`; the
 // router still has to be told which, or its root-absolute routes miss under the
 // subpath and the app renders its own not-found (what #719's preview hit).
 //

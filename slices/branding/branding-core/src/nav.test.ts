@@ -3,15 +3,14 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
-  HEADER_NAV_LINKS,
+  HEADER_NAV_GROUPS,
   MARKETING_ANCHORS,
   anchorHref,
   fromApp,
   navHref,
   onMarketingSite,
-  sectionHref,
 } from './nav.ts'
-import { SECTION_PATHS, SITE_ORIGIN, sectionUrl } from './site.ts'
+import { SITE_ORIGIN, sectionUrl } from './site.ts'
 
 const anchorArb = fc.constantFrom(...MARKETING_ANCHORS)
 const contextArb = fc.constantFrom(onMarketingSite, fromApp)
@@ -57,40 +56,6 @@ describe('anchorHref', () => {
   })
 })
 
-describe('sectionHref', () => {
-  it('should produce current-URL-relative paths on the marketing site', () => {
-    expect(sectionHref(onMarketingSite, 'medications')).toBe('./medications')
-    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe('./server-docs')
-  })
-
-  it('should produce absolute URLs from an app', () => {
-    expect(sectionHref(fromApp, 'medications')).toBe('https://wildflowerhealth.io/medications')
-  })
-
-  it('should resolve relative-from-marketing under a preview sub-path to sibling builds', () => {
-    // A `./medications` reference on `.../staging/pr-N/` resolves into
-    // the same preview build, not the canonical origin — that is the whole
-    // point of the marketing-context change.
-    const previewBase = 'https://wildflowerhealth.io/staging/pr-607/'
-    expect(new URL(sectionHref(onMarketingSite, 'medications'), previewBase).href).toBe(
-      `${previewBase}medications`
-    )
-  })
-
-  it('should match SECTION_PATHS on marketing and sectionUrl from an app', () => {
-    const sectionArb = fc.constantFrom(
-      ...(['medications', 'importer', 'serverDocs', 'ohifViewer'] as const)
-    )
-    fc.assert(
-      fc.property(sectionArb, (section) => {
-        expect(sectionHref(onMarketingSite, section)).toBe(`./${SECTION_PATHS[section]}`)
-        expect(sectionHref(fromApp, section)).toBe(sectionUrl(section))
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-})
-
 describe('navHref', () => {
   it('should resolve an anchor link like anchorHref', () => {
     expect(navHref({ kind: 'anchor', label: 'Top', anchor: 'top' }, onMarketingSite)).toBe('#top')
@@ -101,27 +66,34 @@ describe('navHref', () => {
     expect(navHref({ kind: 'absolute', label: 'Contact', href }, fromApp)).toBe(href)
   })
 
-  it('should resolve a section link like sectionHref', () => {
-    const link = { kind: 'section', label: 'Medications', section: 'medications' } as const
-    expect(navHref(link, onMarketingSite)).toBe(sectionHref(onMarketingSite, 'medications'))
-    expect(navHref(link, fromApp)).toBe(sectionHref(fromApp, 'medications'))
+  it("should resolve a section link to the section's published URL from every context", () => {
+    const sectionArb = fc.constantFrom(
+      ...(['medications', 'importer', 'serverDocs', 'ohifViewer', 'plots', 'strength'] as const)
+    )
+    fc.assert(
+      fc.property(contextArb, sectionArb, (ctx, section) => {
+        const link = { kind: 'section', label: 'App', section } as const
+        expect(navHref(link, ctx)).toBe(sectionUrl(section))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 
-describe('HEADER_NAV_LINKS', () => {
-  it('should link directly into the six apps, in design order', () => {
-    expect(HEADER_NAV_LINKS.map((link) => link.label)).toStrictEqual([
-      'Medications',
-      'Plots',
-      'Strength',
-      'Importer',
-      'Server docs',
-      'Imaging',
+describe('HEADER_NAV_GROUPS', () => {
+  it('should group the apps under their menu headings, in design order', () => {
+    expect(
+      HEADER_NAV_GROUPS.map((group) => [group.label, group.links.map((link) => link.label)])
+    ).toStrictEqual([
+      ['Your health', ['Wildflower Medications', 'Wildflower Plots', 'Wildflower Imaging']],
+      ['Your data', ['Wildflower Importer', 'Wildflower Launcher', 'Wildflower Authorization']],
+      ['Fitness', ['FHIR Sync for Pebble', 'WatchLifts', 'Wildflower Strength']],
+      ['Developer', ['Wildflower Server Docs', 'Wildflower Synthetic Data Loader']],
     ])
   })
 
-  it('should be section links so the same bar resolves per context', () => {
-    for (const link of HEADER_NAV_LINKS) {
+  it('should be section links, so every bar links the published apps', () => {
+    for (const link of HEADER_NAV_GROUPS.flatMap((group) => group.links)) {
       expect(link.kind).toBe('section')
     }
   })

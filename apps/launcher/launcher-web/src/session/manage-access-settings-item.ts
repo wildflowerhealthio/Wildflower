@@ -32,7 +32,7 @@ const ManageAccessSourceContext = createContext<ManageAccessSource>({
  * The `management_endpoint` the SMART configuration of `serverUrl` advertises,
  * or `null` when it advertises none. A Wildflower server's is the hosted
  * Wildflower Authorization app pointed at itself
- * (`https://wildflowerhealth.io/authorization/?iss=…`). The configuration does
+ * (`https://authorization.wildflowerhealth.io/?iss=…`). The configuration does
  * not change while the page is open, so it is read once. Skipped while no
  * server is signed in to.
  */

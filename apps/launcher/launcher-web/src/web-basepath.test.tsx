@@ -12,8 +12,8 @@ import { underBasepath } from './web-entry.ts'
 
 /**
  * The hosted `main-web` build is path-independent (`base: './'`) and is
- * published under a subpath — `/launcher/` for the live copy, `/staging/pr-<n>/launcher/`
- * for a PR preview. `main-web.tsx` passes that served directory to
+ * published at its origin's root for the live copy and under `/pr-<n>/` for a
+ * PR preview. `main-web.tsx` passes that served directory to
  * `createRouter` as its `basepath` (via `basenameOf(location.pathname)`); these
  * pin the two halves of the contract that keeps the app off its own not-found
  * there:
@@ -28,7 +28,7 @@ import { underBasepath } from './web-entry.ts'
  * trims the slash internally).
  */
 describe('main-web router basepath', () => {
-  const previewDir = '/staging/pr-719/launcher/'
+  const previewDir = '/pr-719/'
   // The value `main-web.tsx` computes at boot, for both a direct load of the
   // preview root and its `index.html`.
   const basepath = basenameOf(`${previewDir}index.html`)
@@ -67,7 +67,7 @@ describe('main-web router basepath', () => {
 
   test('a deep route under the subpath resolves its route', async () => {
     // The address a 404 redirect restores before the router mounts (see
-    // `restoreRedirectedUrl`): `/staging/pr-719/launcher/` + the carried `/home`.
+    // `restoreRedirectedUrl`): `/pr-719/` + the carried `/home`.
     const router = routerAt(`${previewDir}home`)
     await router.load()
 
@@ -91,9 +91,7 @@ describe('main-web router basepath', () => {
  */
 describe('underBasepath', () => {
   test('prefixes a root-absolute route with the served subpath', () => {
-    expect(underBasepath('/staging/pr-719/launcher/', '/home')).toBe(
-      '/staging/pr-719/launcher/home'
-    )
+    expect(underBasepath('/pr-719/', '/home')).toBe('/pr-719/home')
     expect(underBasepath('/launcher/', '/settings/databases')).toBe('/launcher/settings/databases')
   })
 

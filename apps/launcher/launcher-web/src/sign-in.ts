@@ -109,35 +109,35 @@ const LAUNCHER_SCOPE = 'launch launch/patient wildflower/launch system/*.cruds w
  *
  * Resolved under the **served base** the caller passes to {@link
  * signInEnvironment} (the router's basepath), not the bare origin: on a subpath
- * deploy the route returns to `/launcher/` (or a PR preview's
- * `/staging/pr-<n>/launcher/`) the same way the router resolves it — see {@link
- * REGISTERED_REDIRECT_URI}.
+ * deploy (a PR preview's `/pr-<n>/`) the route returns there
+ * the same way the router resolves it — see {@link REGISTERED_REDIRECT_URI}.
  */
 const POST_SIGN_IN_ROUTE = '/'
 
 /**
- * The redirect URI of the **published** web build, and the sole entry of the
- * seeded row (`0026_rekey_launcher_client`). Every other
+ * The redirect URI of the **published** web build, on the launcher's own
+ * origin, and the first entry of the seeded row
+ * (`0037_add_app_origin_redirect_uris`). Every other
  * copy derives its own from where it is served; this is the fallback for a page
  * whose address a sign-in must not return to at all, which is unreachable from a
  * browser actually running this build.
  *
  * It MUST equal the row's entry, which is matched by exact string equality. The
- * row names `/launcher/`, and the production copy is served under `/launcher/`,
+ * production copy is served at the root of `https://launcher.wildflowerhealth.io`,
  * so its base-aware derivation (see {@link POST_SIGN_IN_ROUTE}) yields exactly
  * this value and the sign-in returns silently. A PR preview served under
- * `/staging/pr-<n>/launcher/` derives its own `…/launcher/` — correct for where
+ * `/pr-<n>/` derives its own `…/pr-<n>/` — correct for where
  * it is, but unregistered, so it completes through the consent prompt's "this
  * app is asking to return somewhere new" warning instead.
  */
-const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/launcher/'
+const REGISTERED_REDIRECT_URI = 'https://launcher.wildflowerhealth.io/'
 
 /**
  * The `sessionStorage` key this entry's pending-authorization record lives at,
- * namespaced because this build shares both the flow and the
- * `wildflowerhealth.io` origin with the server-docs console. A key chosen
- * without the namespace would be one key for both, and one tab's return leg
- * could consume a record the other was waiting on.
+ * namespaced because this build shares the flow with the server-docs console
+ * and Wildflower Authorization. A key chosen without the namespace would be
+ * one key for all of them on any origin that served two, and one tab's return
+ * leg could consume a record the other was waiting on.
  */
 const PENDING_AUTHORIZATION_KEY = 'launcher-web.pending-authorization'
 

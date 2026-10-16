@@ -71,9 +71,9 @@ describe('config/app-config.js', () => {
   })
 
   it('should launch into the FHIR data source from the worklist as the published client', () => {
-    const config = evaluateConfig({ src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' })
+    const config = evaluateConfig({ src: 'https://ohif-viewer.wildflowerhealth.io/app-config.js' })
     expect(config).toMatchObject({
-      routerBasename: '/ohif-viewer/',
+      routerBasename: '/',
       showStudyList: true,
       defaultDataSourceName: 'fhir',
       dataSources: [
@@ -121,39 +121,39 @@ describe('config/app-config.js', () => {
     )
   })
 
-  it('should restore a redirect path from 404.html into the browser URL', () => {
+  it('should restore a redirect path from 404.html into the browser URL on its own origin', () => {
     lastReplaceState = undefined
     evaluateConfig(
-      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
+      { src: 'https://ohif-viewer.wildflowerhealth.io/app-config.js' },
       { search: '?redirect=/fhir-viewer&iss=https%3A%2F%2Fexample.com', hash: '' }
     )
     expect(lastReplaceState).toEqual({
-      url: '/ohif-viewer/fhir-viewer?iss=https%3A%2F%2Fexample.com',
+      url: '/fhir-viewer?iss=https%3A%2F%2Fexample.com',
     })
   })
 
-  it('should strip the basename prefix from the redirect path', () => {
+  it("should strip a PR preview's basename prefix from the redirect path", () => {
     lastReplaceState = undefined
     evaluateConfig(
-      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
-      { search: '?redirect=/ohif-viewer/fhir-viewer', hash: '' }
+      { src: 'https://ohif-viewer.wildflowerhealth.io/pr-7/app-config.js' },
+      { search: '?redirect=/pr-7/fhir-viewer', hash: '' }
     )
-    expect(lastReplaceState).toEqual({ url: '/ohif-viewer/fhir-viewer' })
+    expect(lastReplaceState).toEqual({ url: '/pr-7/fhir-viewer' })
   })
 
   it('should preserve the hash fragment through the redirect', () => {
     lastReplaceState = undefined
     evaluateConfig(
-      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
+      { src: 'https://ohif-viewer.wildflowerhealth.io/app-config.js' },
       { search: '?redirect=/fhir-viewer', hash: '#study=1' }
     )
-    expect(lastReplaceState).toEqual({ url: '/ohif-viewer/fhir-viewer#study=1' })
+    expect(lastReplaceState).toEqual({ url: '/fhir-viewer#study=1' })
   })
 
   it('should not call replaceState when there is no redirect param', () => {
     lastReplaceState = undefined
     evaluateConfig(
-      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
+      { src: 'https://ohif-viewer.wildflowerhealth.io/app-config.js' },
       { search: '?iss=https%3A%2F%2Fexample.com', hash: '' }
     )
     expect(lastReplaceState).toBeUndefined()

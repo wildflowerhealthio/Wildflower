@@ -37,8 +37,8 @@ import { chosenServerUrl } from '../web-entry.ts'
  * its bearer, in the tab's `sessionStorage`, leaving `?server=` out of the
  * settled URL.
  *
- * The current `pathname` is kept, not replaced with `/`: this build is served
- * under a subpath (`/launcher/`, or a PR preview's `/staging/pr-<n>/launcher/`), so a
+ * The current `pathname` is kept, not replaced with `/`: this build may be
+ * served under a subpath (a PR preview's `/pr-<n>/`), so a
  * hardcoded root would move the reader off the app onto the origin root and
  * point `?server=` at a page that is not this app.
  */

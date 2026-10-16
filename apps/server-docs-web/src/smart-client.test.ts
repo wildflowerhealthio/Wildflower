@@ -14,7 +14,7 @@ describe('the seeded client registration', () => {
     // `/authorize` clamps the request to `allowed_scopes`, so drift between
     // these constants and the seed fails the flow outright.
     expect(CLIENT_ID).toBe('664a01e8614050cd82ffe90350b81413')
-    expect(REGISTERED_REDIRECT_URI).toBe('https://wildflowerhealth.io/server-docs/')
+    expect(REGISTERED_REDIRECT_URI).toBe('https://server-docs.wildflowerhealth.io/')
     expect([...STANDALONE_LAUNCH_SCOPES]).toEqual([
       'openid',
       'profile',

@@ -31,14 +31,20 @@
       }
     </style>
     <script>
-      // GitHub Pages SPA redirect.  Probes for the deepest ancestor path
-      // that serves an index.html and redirects there, passing the full
-      // requested path as ?redirect= so the SPA can complete the navigation
-      // client-side.  Works for both a standalone single-SPA Pages site and
-      // a multi-SPA host where each app lives in its own sub-directory.
-      // The path goes over site-absolute: an app-relative route named like
-      // the app's own directory (`/launcher` below `/launcher/`) would read as the app
-      // root.
+      // GitHub Pages SPA redirect, served for every path a Pages site has no
+      // file for: each app's site, at the root of its `gh-pages` branch, and
+      // the PR previews in that branch's `pr-<n>/` directories. Probes for
+      // the deepest ancestor path that serves an index.html and redirects
+      // there, passing the full requested path as ?redirect= so the SPA can
+      // complete the navigation client-side (branding-core's
+      // `restoreRedirectedUrl`). The path goes over site-absolute: an
+      // app-relative route named like the app's own directory (`pr-7` below
+      // `/pr-7/`) would read as the app root.
+      //
+      // The first `pr-<n>` segment is a floor: a deep link into a preview
+      // never falls back to the app above it, so a link into a closed preview
+      // is not found rather than landing on production with a route it does
+      // not have.
       //
       // When nothing answers — no ancestor serves an index.html, or the
       // deepest one is the requested directory itself — the page turns into a
@@ -54,6 +60,14 @@
 
         if (!segments.length) return showNotFound()
 
+        var floor = 0
+        for (var k = 0; k < segments.length; k++) {
+          if (/^pr-[0-9]+$/.test(segments[k])) {
+            floor = k + 1
+            break
+          }
+        }
+
         function probe(depth) {
           var base = depth ? '/' + segments.slice(0, depth).join('/') + '/' : '/'
           return fetch(base + 'index.html', { method: 'HEAD' })
@@ -67,7 +81,7 @@
 
         // Probe every candidate ancestor in parallel; pick the deepest match.
         var probes = []
-        for (var i = segments.length - 1; i >= 0; i--) probes.push(probe(i))
+        for (var i = segments.length - 1; i >= floor; i--) probes.push(probe(i))
         var results = await Promise.all(probes)
 
         for (var j = 0; j < results.length; j++) {

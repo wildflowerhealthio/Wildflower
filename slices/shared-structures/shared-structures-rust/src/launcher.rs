@@ -1,7 +1,7 @@
 //! Where the hosted launcher lives, and the URLs that send a browser there.
 //!
 //! The launcher (`apps/launcher/launcher-web`'s `main-web` build) is published at a
-//! fixed address — `https://wildflowerhealth.io/launcher/` — and runs **cross-origin**
+//! fixed address — `https://launcher.wildflowerhealth.io/` — and runs **cross-origin**
 //! to whichever Wildflower server its `?server=` query parameter names. Apart
 //! from the authorization server's own pages (the wait page, the consent card,
 //! the device page), a server serves no UI of its own, so every other
@@ -25,7 +25,7 @@ const SERVER_PARAM: &str = "server";
 /// equal to it by the same test.
 const RETURN_TO_PARAM: &str = "returnTo";
 
-/// The root URL of the hosted launcher, e.g. `https://wildflowerhealth.io/launcher/`.
+/// The root URL of the hosted launcher, e.g. `https://launcher.wildflowerhealth.io/`.
 ///
 /// Always stored with a trailing slash, so a launcher route resolves *under*
 /// the base (`…/launcher/` + `settings/requests`) rather than replacing its last
@@ -106,10 +106,16 @@ mod tests {
     #[test]
     fn parse_adds_the_trailing_slash_and_drops_query_and_fragment() {
         assert_eq!(
-            base("https://wildflowerhealth.io/launcher?x=1#y")
+            base("https://launcher.wildflowerhealth.io/pr-7?x=1#y")
                 .as_url()
                 .as_str(),
-            "https://wildflowerhealth.io/launcher/"
+            "https://launcher.wildflowerhealth.io/pr-7/"
+        );
+        assert_eq!(
+            base("https://launcher.wildflowerhealth.io?x=1#y")
+                .as_url()
+                .as_str(),
+            "https://launcher.wildflowerhealth.io/"
         );
         assert_eq!(
             base("http://localhost:5200").as_url().as_str(),
@@ -124,23 +130,26 @@ mod tests {
 
     #[test]
     fn route_url_resolves_under_the_base_with_server_first() {
-        let url = base("https://wildflowerhealth.io/launcher").route_url(
+        let url = base("https://launcher.wildflowerhealth.io").route_url(
             "/settings/requests",
             SERVER,
             &[("client", "lifting")],
         );
         assert_eq!(
             url.as_str(),
-            "https://wildflowerhealth.io/launcher/settings/requests\
+            "https://launcher.wildflowerhealth.io/settings/requests\
              ?server=http%3A%2F%2F127.0.0.1%3A8080&client=lifting"
         );
     }
 
     #[test]
     fn route_url_keeps_percent_encoded_segments() {
-        let url =
-            base("https://wildflowerhealth.io/launcher/").route_url("/settings/a%20b", SERVER, &[]);
-        assert_eq!(url.path(), "/launcher/settings/a%20b");
+        let url = base("https://launcher.wildflowerhealth.io/pr-7/").route_url(
+            "/settings/a%20b",
+            SERVER,
+            &[],
+        );
+        assert_eq!(url.path(), "/pr-7/settings/a%20b");
         assert_eq!(
             url.path_segments().and_then(|mut s| s.next_back()),
             Some("a%20b")
@@ -150,8 +159,8 @@ mod tests {
     #[test]
     fn open_url_round_trips_server_and_return_to() {
         let return_to = "/settings/requests?tab=a&b=c#frag";
-        let url = base("https://wildflowerhealth.io/launcher").open_url(SERVER, return_to);
-        assert_eq!(url.path(), "/launcher/");
+        let url = base("https://launcher.wildflowerhealth.io").open_url(SERVER, return_to);
+        assert_eq!(url.path(), "/");
         let pairs: Vec<(String, String)> = url.query_pairs().into_owned().collect();
         assert_eq!(
             pairs,

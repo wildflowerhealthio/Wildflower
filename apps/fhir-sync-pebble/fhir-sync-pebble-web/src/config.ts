@@ -30,7 +30,7 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  * `clientId` depends on how this build is being served:
  *
  * - A **production** build is published to
- *   `https://wildflowerhealth.io/fhir-sync-pebble/` and authorizes as the
+ *   `https://fhir-sync-pebble.wildflowerhealth.io/` and authorizes as the
  *   `6847df97d54c31936d54ca1b36b3bb09` client (the authorization server migration
  *   `0017_seed_fhir_sync_pebble_client`, scopes widened by `0018`, re-keyed
  *   by `0030_rekey_fhir_sync_pebble_clients`), which registers that absolute

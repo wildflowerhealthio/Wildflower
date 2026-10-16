@@ -104,7 +104,7 @@ importer output, and the browser layer that loads a published snapshot.
   [AGENTS.md](./synthetic-data-react/AGENTS.md).
 - **[`synthetic-data-web`](./synthetic-data-web/AGENTS.md)** — the Synthetic
   Data Loader, the SMART app that mounts `SyntheticDataScreen`, published at
-  <https://wildflowerhealth.io/synthetic-data/> (tile `synthetic-data`).
+  <https://synthetic-data.wildflowerhealth.io/> (tile `synthetic-data`).
 
 A generator for a source is a `synthetic-data-<source>` package on top of
 `synthetic-data-fundamentals`: it reads `Story` values, plus the person's

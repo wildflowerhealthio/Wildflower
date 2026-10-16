@@ -27,7 +27,7 @@ const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> =>
   jwks_uri: `${origin}/.well-known/jwks.json`,
   authorization_endpoint: `${origin}/oauth/authorize`,
   token_endpoint: `${origin}/oauth/token`,
-  management_endpoint: `https://wildflowerhealth.io/authorization/?iss=${encodeURIComponent(origin)}`,
+  management_endpoint: `https://authorization.wildflowerhealth.io/?iss=${encodeURIComponent(origin)}`,
   wildflower_authorization_api: `${origin}/authorization/`,
   grant_types_supported: ['authorization_code', 'refresh_token'],
   response_types_supported: ['code'],
@@ -189,7 +189,7 @@ describe('smartIssuerFrom', () => {
           tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
         },
         managementEndpoint: Option.some(
-          'https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io'
+          'https://authorization.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.wildflowerhealth.io'
         ),
         wildflowerAuthorizationApi: Option.some('https://ruth.wildflowerhealth.io/authorization/'),
       })
@@ -270,7 +270,7 @@ describe('smartIssuerFrom', () => {
     ).toEqual(
       Either.right({
         managementEndpoint: Option.some(
-          'https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io'
+          'https://authorization.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.wildflowerhealth.io'
         ),
         wildflowerAuthorizationApi: Option.some('https://ruth.wildflowerhealth.io/authorization/'),
       })

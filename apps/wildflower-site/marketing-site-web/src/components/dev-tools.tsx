@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from '@wildflowerhealthio/branding-core'
+import { APP_DESCRIPTIONS, sectionUrl } from '@wildflowerhealthio/branding-core'
 
 import { Launcher } from './launcher.tsx'
 import styles from './dev-tools.module.css'
@@ -27,7 +27,7 @@ function DevTools(): JSX.Element {
           ))}
           <div className={styles['dev-tools__launcher']}>
             <Launcher
-              href={sectionHref(onMarketingSite, 'syntheticData')}
+              href={sectionUrl('syntheticData')}
               label={syntheticData.launch.label}
               note={syntheticData.launch.note}
             />

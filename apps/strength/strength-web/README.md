@@ -159,11 +159,12 @@ and the debug-only `strength-dev` tile's client (`seed_dev_app_clients` in
 
 `vp build` writes this package's default `dist/`, and that build is served in
 one place: **the published site**, at
-[`/lifting`](https://wildflowerhealth.io/lifting/). `wildflower-site-web`
-copies `dist/` into the Pages artifact
-([../../wildflower-site/wildflower-site-web/README.md](../../wildflower-site/wildflower-site-web/README.md)), and each pull
-request's `pr-preview.yml` build publishes the same tree under
-`https://wildflowerhealthio.github.io/staging/pr-<n>/lifting/`. The
+<https://strength.wildflowerhealth.io/>.
+`.github/workflows/deploy-pages-site.yml` publishes `dist/` to the root of the
+`gh-pages` branch of `wildflowerhealthio/strength-web`, which Pages serves at
+that origin ([apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md)), and
+each pull request that changes it previews the same build under
+`https://strength.wildflowerhealth.io/pr-<n>/`. The
 published page launches standalone against any SMART server that lets it write
 these four resource types. Nothing ships on device.
 
@@ -180,12 +181,12 @@ equal the client's allowed scopes.
 - **`strength`** is a row (apps migration `0010_seed_lifting_app`, its URL as
   `0016_launch_first_party_apps_at_root` left it, re-keyed by
   `0017_rekey_lifting_app` and `0023_rekey_plots_strength_apps`) launching
-  `https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}`.
+  `https://strength.wildflowerhealth.io/?launch={launch}&iss={origin}`.
   Its public
   OAuth client (the authorization server migration `0019_seed_lifting_app_client`, its
   scopes as `0020_first_party_apps_pick_the_patient` left them, re-keyed by
   `0025_rekey_lifting_app_clients`) redirects to
-  `https://wildflowerhealth.io/lifting/`.
+  `https://strength.wildflowerhealth.io/`.
 - **`strength-dev`** is seeded in debug builds only, at runtime rather than
   by a migration: a row on the dev server's port
   (`apps-rust/src/dev_seed.rs`) and its client, redirecting to

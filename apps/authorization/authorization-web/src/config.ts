@@ -21,19 +21,20 @@ const AUTHORIZATION_CLIENT_ID = '7277e898bee8ac81ea44788236e619a5'
 const AUTHORIZATION_SCOPE = 'openid wildflower/Grant.rd wildflower/Client.ru wildflower/Token.d'
 
 /**
- * The redirect URI of the published build, and the sole entry of the seeded
- * row. A copy served anywhere else (a PR preview, the dev server) derives its
- * own from where it is served, which the row doesn't hold, so its sign-in goes
+ * The redirect URI of the published build, on the app's own origin, and the
+ * first entry of the seeded row. A copy served anywhere else (a PR preview,
+ * the dev server) derives its own from where it is served, which the row
+ * doesn't hold, so its sign-in goes
  * through the consent prompt's "this app is asking to return somewhere new"
  * warning. This is the fallback for a page whose address no sign-in may return
  * to.
  */
-const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/authorization/'
+const REGISTERED_REDIRECT_URI = 'https://authorization.wildflowerhealth.io/'
 
 /**
  * The `sessionStorage` key the pending sign-in record lives at, namespaced
- * because the app shares the `wildflowerhealth.io` origin with the launcher
- * and the server-docs console, which run the same flow.
+ * because the launcher and the server-docs console run the same flow, so no
+ * two of them could share a key wherever they are served.
  */
 const PENDING_AUTHORIZATION_KEY = 'authorization-web.pending-authorization'
 

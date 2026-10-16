@@ -26,7 +26,7 @@ describe('Landing', () => {
   })
 
   it('offers the connect menu with no ?iss=, and a pick sets ?iss= and signs in', async () => {
-    // Arrange — a bare visit to `https://wildflowerhealth.io/authorization/`.
+    // Arrange — a bare visit to `https://authorization.wildflowerhealth.io/`.
     const signIn = recordingSignIn(() =>
       Promise.resolve({ tag: 'Ok', value: `${SERVER_URL}/oauth/authorize?x=1` })
     )

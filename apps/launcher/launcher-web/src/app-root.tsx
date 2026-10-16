@@ -110,8 +110,8 @@ interface RenderAppOptions {
    * The directory this build is served from, as a router `basepath`, when the
    * copy is published under a subpath rather than at the origin root.
    *
-   * `main-web` passes the served directory (e.g. `/staging/pr-42/launcher/` for a PR
-   * preview, `/launcher/` for the hosted build) so the router strips it before
+   * `main-web` passes the served directory (e.g. `/pr-42/` for a PR
+   * preview; `/` for the hosted build, at its origin's root) so the router strips it before
    * matching and re-adds it when it writes the address bar — otherwise every
    * root-absolute route (`/`, `/home`, …) misses under the subpath and the app
    * renders its own not-found. Omitted, it is `/`.
@@ -236,7 +236,7 @@ const buildAppTree = ({
   const router = createRouter({
     routeTree,
     history,
-    // A copy served under a subpath (a PR preview, or the hosted `/launcher/`) sets
+    // A copy served under a subpath (a PR preview) sets
     // this to its served directory so root-absolute routes resolve there. See
     // `RenderAppOptions.basepath`.
     basepath,

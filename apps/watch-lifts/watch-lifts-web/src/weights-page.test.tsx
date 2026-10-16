@@ -100,7 +100,7 @@ describe('WeightsPage', () => {
 
 // Helpers
 
-const PAGE_URL = 'https://wildflowerhealth.io/watch-lifts/'
+const PAGE_URL = 'https://watch-lifts.wildflowerhealth.io/'
 
 const SAVED: LiftSettings.Type = {
   weights: [

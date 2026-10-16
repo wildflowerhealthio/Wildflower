@@ -1,7 +1,7 @@
 # AGENTS.md — apps/strength/strength-web
 
 Strength, a SMART-on-FHIR strength-training app published to
-<https://wildflowerhealth.io/lifting/> (package `strength-web`), launched
+<https://strength.wildflowerhealth.io/> (package `strength-web`), launched
 from the `strength-dev` tile under the vite dev server. See [README.md](./README.md)
 for the boot structure, the reads, the tabs, the writes and the scopes.
 

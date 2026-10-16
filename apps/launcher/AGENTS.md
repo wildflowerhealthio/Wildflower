@@ -1,7 +1,7 @@
 # AGENTS.md — apps/launcher
 
 The **launcher**: the web app that manages a Wildflower server, published at
-<https://wildflowerhealth.io/launcher/>, and the packages beside it that only
+<https://launcher.wildflowerhealth.io/>, and the packages beside it that only
 the launcher uses: the TypeScript halves of the server features it manages
 (databases, the request log, the app registry). The app itself is
 [`launcher-web`](./launcher-web/AGENTS.md).
@@ -13,7 +13,7 @@ the host runs, in
 ## Packages
 
 - [`launcher-web`](./launcher-web/AGENTS.md) — the app, published at
-  `/launcher/`: cross-origin to the server it signs in to, signing in by SMART
+  <https://launcher.wildflowerhealth.io/>: cross-origin to the server it signs in to, signing in by SMART
   redirect and holding its session (the server and its bearer) for every
   request. It boots only after the telemetry consent dialog is answered, and
   mounts the settings and route fragments of the packages it composes

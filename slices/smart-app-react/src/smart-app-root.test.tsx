@@ -201,11 +201,12 @@ describe('SmartAppRoot', () => {
     expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer/`)
   })
 
-  it('should resolve every header nav link as an absolute marketing-site URL', () => {
+  it('should resolve every header nav link as an absolute published-site URL', () => {
     // Arrange / Act
     renderShell({ launched: false })
 
-    // Assert — the brand link and every nav link leave the app for the marketing site
+    // Assert — the brand link leaves for the marketing site, and every nav link
+    // for an app's own origin under it
     const brandLink = screen.getByRole('link', { name: 'Wildflower, home' })
     expect(brandLink.getAttribute('href')).toBe(MARKETING_ORIGIN)
 
@@ -213,7 +214,7 @@ describe('SmartAppRoot', () => {
     const hrefs = navLinks.map((link) => link.getAttribute('href'))
     expect(hrefs).not.toHaveLength(0)
     for (const href of hrefs) {
-      expect(href).toMatch(/^https:\/\/wildflowerhealth\.io\//)
+      expect(href).toMatch(/^https:\/\/[a-z-]+\.wildflowerhealth\.io\/$/)
     }
   })
 

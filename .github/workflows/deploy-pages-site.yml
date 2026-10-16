@@ -1,0 +1,168 @@
+name: Deploy Pages site
+
+# Builds one site and publishes it to its GitHub Pages branch: production at
+# the branch root, or a PR preview in its `pr-<n>/` directory. Called once per
+# site, as a matrix over `scripts/ci/pages-sites.ts plan …`, by
+# deploy-github-pages.yml (every hosted app, on `gh-pages` of
+# `wildflowerhealthio/<slug>-web`) and pr-preview.yml (the sites a PR affects,
+# the marketing site's on `main` of `wildflowerhealthio/staging`).
+#
+# The branch carries production and every open PR's preview side by side, so
+# scripts/ci/publish-pages-branch.sh rewrites only its own part of it: a
+# production publish keeps every `pr-<n>/`, and a preview touches only its own
+# directory. Its push holds a lease on the tip it read and retries when
+# another deploy moved the branch first.
+on:
+  workflow_call:
+    inputs:
+      slug:
+        description: The site's name in `pages-sites.ts` (the app's slug, or `marketing`).
+        type: string
+        required: true
+      package:
+        description: The workspace package whose `build` produces `build-dir`.
+        type: string
+        required: true
+      build-dir:
+        description: The package's build output, repo-root-relative.
+        type: string
+        required: true
+      sentry-dsn-variable:
+        description: >-
+          The repository variable holding the app's Sentry DSN, which its build
+          reads under the same name; empty for a site that reports nothing.
+        type: string
+        default: ''
+      pages-repository:
+        description: The repository, under wildflowerhealthio, whose branch Pages serves the site from.
+        type: string
+        required: true
+      pages-branch:
+        description: The branch Pages serves.
+        type: string
+        required: true
+      site-url:
+        description: >-
+          The slash-terminated URL the branch root is served at. Its host is
+          the custom domain the production `CNAME` names.
+        type: string
+        required: true
+      target:
+        description: '`production`, or the PR number whose preview this is.'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.slug }}
+    runs-on: ubuntu-latest
+    # One publish at a time per Pages branch and target: the newest
+    # production deploy, or the newest push to a PR, is the one to keep. A
+    # group per repository alone would let a queued production deploy and a
+    # queued preview replace each other (GitHub keeps one pending run per
+    # group), so deploys to different parts of the branch run side by side
+    # and rely on the publish script's lease instead.
+    concurrency:
+      group: pages-${{ inputs.pages-repository }}-${{ inputs.target }}
+      cancel-in-progress: false
+    steps:
+      # persist-credentials:false is load-bearing. The default persists
+      # GITHUB_TOKEN as an extraheader on github.com, which git then sends on
+      # every HTTPS request from the workspace — including the push to the
+      # Pages repository — and GitHub honors it over the App token in the
+      # push URL. GITHUB_TOKEN has no access to the Pages repositories, so the
+      # push would come back `Repository not found`. Nothing here pushes to
+      # this repository.
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.2
+        with:
+          cache: true
+          cache-save: false
+
+      - name: Install dependencies
+        run: vp install
+
+      # `<package>...` builds the package and every workspace package it
+      # depends on, in dependency order, as `vp run pack` would for the whole
+      # workspace. The app reads only its own `VITE_SENTRY_DSN_<APP>` (a public
+      # identifier, so a repository variable rather than a secret) and reports
+      # nothing without one; the shared `VITE_SENTRY_DSN` is left unset, as it
+      # is what the Tauri entry's unconsented init reads. Previews report as
+      # `staging`, so their traffic filters apart.
+      - name: Build ${{ inputs.package }}
+        env:
+          PACKAGE: ${{ inputs.package }}
+          SENTRY_DSN_VARIABLE: ${{ inputs.sentry-dsn-variable }}
+          SENTRY_DSN: ${{ vars[inputs.sentry-dsn-variable] }}
+          VITE_SENTRY_ENVIRONMENT: ${{ inputs.target == 'production' && 'production' || 'staging' }}
+          VITE_SENTRY_RELEASE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ -n $SENTRY_DSN_VARIABLE ]]; then
+            export "$SENTRY_DSN_VARIABLE=$SENTRY_DSN"
+          fi
+          vp run --filter "$PACKAGE..." build
+
+      - name: Check the build holds its required files
+        env:
+          SLUG: ${{ inputs.slug }}
+        run: node scripts/ci/pages-sites.ts check "$SLUG"
+
+      # Registers the release the build names and uploads the app's source
+      # maps to it; the maps are published with the build either way. Needs
+      # the `SENTRY_AUTH_TOKEN` secret and the `SENTRY_ORG` variable; without
+      # the token it does nothing.
+      - name: Upload source maps to Sentry
+        if: inputs.sentry-dsn-variable != ''
+        uses: ./.github/actions/sentry-sourcemaps
+        with:
+          environment: ${{ inputs.target == 'production' && 'production' || 'staging' }}
+          release: ${{ github.event.pull_request.head.sha || github.sha }}
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          org: ${{ vars.SENTRY_ORG }}
+          dsn: ${{ vars[inputs.sentry-dsn-variable] }}
+          site-dir: ${{ inputs.build-dir }}
+
+      # Minted after the build rather than at the start of the job: the token
+      # lives for one hour. Scoped to this site's one repository and to
+      # contents, all the push needs. The App behind `STAGING_APP_ID` /
+      # `STAGING_APP_PRIVATE_KEY` is installed on every Pages repository with
+      # `Contents: Read and write`; an App token rather than a PAT because a
+      # push as `x-access-token` accepts only an installation token.
+      - name: Mint the Pages repository App token
+        id: pages-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.STAGING_APP_ID }}
+          private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
+          owner: wildflowerhealthio
+          repositories: ${{ inputs.pages-repository }}
+          permission-contents: write
+
+      # The 404 page is branding-core's: the SPA redirect each app completes
+      # with `restoreRedirectedUrl`. Pages reads it, `CNAME` and `.nojekyll`
+      # only from the branch root, which the production publish writes and a
+      # preview leaves alone.
+      - name: Publish to ${{ inputs.pages-repository }}
+        env:
+          PAGES_REMOTE: https://x-access-token:${{ steps.pages-token.outputs.token }}@github.com/wildflowerhealthio/${{ inputs.pages-repository }}.git
+          PAGES_BRANCH: ${{ inputs.pages-branch }}
+          PAGES_COMMIT_MESSAGE: Deploy ${{ github.repository }}@${{ github.event.pull_request.head.sha || github.sha }} (${{ inputs.target == 'production' && 'production' || format('pr-{0}', inputs.target) }})
+          BUILD_DIR: ${{ inputs.build-dir }}
+          SITE_URL: ${{ inputs.site-url }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          not_found_page=slices/branding/branding-core/github-pages/404.html
+          if [[ $TARGET == production ]]; then
+            domain=${SITE_URL#https://}
+            scripts/ci/publish-pages-branch.sh production "$BUILD_DIR" "${domain%%/*}" "$not_found_page"
+          else
+            scripts/ci/publish-pages-branch.sh preview "$TARGET" "$BUILD_DIR" "$not_found_page"
+          fi

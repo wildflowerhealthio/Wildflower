@@ -298,7 +298,8 @@ mod tests {
     /// Plots to random ids, as `0025` / `0026` did Strength and the
     /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble), and
     /// Wildflower Authorization by `0031` (the launcher's scopes are narrowed by
-    /// `0032`) — so a
+    /// `0032`), and `0037` puts each hosted app's own origin in front of the
+    /// redirect on `wildflowerhealth.io` it held — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -388,8 +389,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             medications.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/medications/")
-                .expect("a valid absolute redirect")],
+            vec![
+                url::Url::parse("https://medications.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
+                url::Url::parse("https://wildflowerhealth.io/medications/")
+                    .expect("a valid absolute redirect"),
+            ],
         );
         // Its scopes are `system/` reads only, with no `launch/patient`: the app
         // picks the patient itself, reading `Patient` for the picker (`0020`).
@@ -421,8 +426,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             docs.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/server-docs/")
-                .expect("a valid absolute redirect")],
+            vec![
+                url::Url::parse("https://server-docs.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
+                url::Url::parse("https://wildflowerhealth.io/server-docs/")
+                    .expect("a valid absolute redirect"),
+            ],
         );
         assert_eq!(
             docs.allowed_scopes,
@@ -474,17 +483,22 @@ mod tests {
                 AllowedGrantType::RefreshToken,
             ],
         );
-        // One absolute entry, and it is the app ROOT (`0013` replaced 0012's
-        // `/home`; `0026` moved it to `/launcher/`): the web UI is a SPA on browser history, so
+        // Absolute entries only, each the app ROOT (`0013` replaced 0012's
+        // `/home`; `0026` moved it to `/launcher/`; `0037` added the app's own
+        // origin in front): the web UI is a SPA on browser history, so
         // `redirectUriForRoute` derives the served root per origin (the
         // directory form would vary by whichever section the reader signed in
         // from), and the reader's destination rides the client's pending record.
         // Any other origin the build runs at is trusted on first use through the
-        // consent prompt, so this single entry is the published address only.
+        // consent prompt, so these entries are the published addresses only.
         assert_eq!(
             web_client.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/launcher/")
-                .expect("a valid absolute redirect")],
+            vec![
+                url::Url::parse("https://launcher.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
+                url::Url::parse("https://wildflowerhealth.io/launcher/")
+                    .expect("a valid absolute redirect"),
+            ],
         );
 
         // The Importer carries the published-site redirect it
@@ -507,8 +521,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             importer.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/importer/")
-                .expect("a valid absolute redirect")],
+            vec![
+                url::Url::parse("https://importer.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
+                url::Url::parse("https://wildflowerhealth.io/importer/")
+                    .expect("a valid absolute redirect"),
+            ],
         );
         assert_eq!(
             importer.allowed_scopes,
@@ -544,8 +562,10 @@ mod tests {
         assert_eq!(
             ohif.redirect_uris,
             vec![
+                url::Url::parse("https://ohif-viewer.wildflowerhealth.io/fhir-viewer")
+                    .expect("a valid absolute redirect"),
                 url::Url::parse("https://wildflowerhealth.io/ohif-viewer/fhir-viewer")
-                    .expect("a valid absolute redirect")
+                    .expect("a valid absolute redirect"),
             ],
         );
         assert_eq!(
@@ -574,8 +594,10 @@ mod tests {
         assert_eq!(
             pebble.redirect_uris,
             vec![
+                url::Url::parse("https://fhir-sync-pebble.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
                 url::Url::parse("https://wildflowerhealth.io/fhir-sync-pebble/")
-                    .expect("a valid absolute redirect")
+                    .expect("a valid absolute redirect"),
             ],
         );
         assert_eq!(
@@ -603,8 +625,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             strength.redirect_uris,
-            vec![url::Url::parse("https://wildflowerhealth.io/lifting/")
-                .expect("a valid absolute redirect")],
+            vec![
+                url::Url::parse("https://strength.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
+                url::Url::parse("https://wildflowerhealth.io/lifting/")
+                    .expect("a valid absolute redirect"),
+            ],
         );
         assert_eq!(
             strength.allowed_scopes,
@@ -637,8 +663,10 @@ mod tests {
         assert_eq!(
             plots.redirect_uris,
             vec![
+                url::Url::parse("https://plots.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
                 url::Url::parse("https://wildflowerhealth.io/health-viewer/")
-                    .expect("a valid absolute redirect")
+                    .expect("a valid absolute redirect"),
             ],
         );
         assert_eq!(
@@ -660,8 +688,10 @@ mod tests {
         assert_eq!(
             synthetic_data.redirect_uris,
             vec![
+                url::Url::parse("https://synthetic-data.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
                 url::Url::parse("https://wildflowerhealth.io/synthetic-data/")
-                    .expect("a valid absolute redirect")
+                    .expect("a valid absolute redirect"),
             ],
         );
         assert_eq!(
@@ -674,7 +704,8 @@ mod tests {
     }
 
     /// Wildflower Authorization's client (`0031`) is a public PKCE client
-    /// returning to the app's published root, allowed exactly the scopes the
+    /// returning to the app's published root (its own origin, added by `0037`,
+    /// and its path on `wildflowerhealth.io`), allowed exactly the scopes the
     /// app asks for. Its id and scope string are read out of the app's
     /// `src/config.ts`, the one place the app writes them, so the row can't
     /// drift from it unnoticed: a scope the app asks for that the row doesn't
@@ -708,8 +739,10 @@ mod tests {
         assert_eq!(
             client.redirect_uris,
             vec![
+                url::Url::parse("https://authorization.wildflowerhealth.io/")
+                    .expect("a valid absolute redirect"),
                 url::Url::parse("https://wildflowerhealth.io/authorization/")
-                    .expect("a valid absolute redirect")
+                    .expect("a valid absolute redirect"),
             ],
         );
         assert_eq!(

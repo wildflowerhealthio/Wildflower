@@ -73,8 +73,8 @@ const redirectUriForPage = (href: string): string | undefined => {
  * `basePath` is the slash-suffixed directory the build is served from
  * (`branding-core`'s `basenameOf(location.pathname)`); it defaults to `/`, the
  * origin root, so a root-served copy behaves exactly as before. A copy under
- * `/launcher/` (or a PR preview's `/staging/pr-<n>/launcher/`) passes that directory so
- * the route returns **under it** — a `/home` route becomes `/launcher/home` — rather
+ * a subpath (a PR preview's `/pr-<n>/`) passes that directory so the route
+ * returns **under it** — a `/home` route becomes `/pr-7/home` — rather
  * than at `<origin>/home`, off the app. The caller must derive `basePath` at
  * the served root on both legs (so the two derivations agree), which the hosted
  * launcher does: its sign-in is reachable only from that root.

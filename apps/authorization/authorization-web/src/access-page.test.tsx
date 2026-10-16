@@ -213,7 +213,7 @@ const medicationsGrant = {
   clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
   scopes: ['system/MedicationRequest.rs'],
   grantType: 'authorization_code',
-  redirectUri: 'https://wildflowerhealth.io/medications/',
+  redirectUri: 'https://medications.wildflowerhealth.io/',
   grantedAt: '2026-09-01T12:00:00.000Z',
   lastUsedAt: null,
   patient: null,
@@ -231,7 +231,7 @@ const ownGrant = {
   ...medicationsGrant,
   id: 'grant-own',
   clientId: AUTHORIZATION_CLIENT_ID,
-  redirectUri: 'https://wildflowerhealth.io/authorization/',
+  redirectUri: 'https://authorization.wildflowerhealth.io/',
 } as const
 
 const pebbleGrant = {
@@ -249,7 +249,7 @@ const medicationsClient = {
   clientId: medicationsGrant.clientId,
   name: 'Medication Viewer',
   kind: 'public',
-  redirectUris: ['https://wildflowerhealth.io/medications/'],
+  redirectUris: ['https://medications.wildflowerhealth.io/'],
   allowedScopes: ['system/MedicationRequest.rs'],
   allowedGrantTypes: ['authorization_code'],
   registeredAt: '2026-01-15T09:30:00.000Z',

@@ -1,4 +1,4 @@
-import { SECTION_PATHS, sectionUrl, type SectionId } from './site.ts'
+import { sectionUrl, type SectionId } from './site.ts'
 
 /**
  * Hash anchors on the marketing homepage, in section order: the hero
@@ -57,8 +57,8 @@ type AbsoluteNavLink = {
 
 /**
  * A navigation link that points to a site section (an app or the server
- * docs). Resolved by {@link navHref} to a root-relative path on the
- * marketing site and an absolute URL from an app.
+ * docs). Resolved by {@link navHref} to the section's published URL
+ * (`sectionUrl`), from the marketing site and from every app alike.
  */
 type SectionNavLink = {
   readonly kind: 'section'
@@ -69,59 +69,65 @@ type SectionNavLink = {
 /** A navigation link: an anchor reference, a fixed URL, or a site section. */
 type NavLink = AnchorNavLink | AbsoluteNavLink | SectionNavLink
 
-/**
- * Resolves a section link to a full href, respecting the current
- * navigation context. Current-URL-relative on the marketing site (so a
- * preview deploy under `/staging/pr-N/` routes into its sibling preview
- * builds rather than the canonical origin), and absolute from an app (so
- * an app bundle served from any other origin still points at the canonical
- * site).
- *
- * @remarks
- * The marketing-site case is a plain relative reference — the browser
- * resolves it against the document base URL, which is the page's own URL
- * (or a `<base>` if the page sets one). That is what lets one link work
- * from `wildflowerhealth.io/` and from `.../staging/pr-N/` without any
- * build-time base injection.
- *
- * @param ctx - Where the caller is rendered relative to the canonical site.
- * @param section - The target section.
- */
-function sectionHref(ctx: NavContext, section: SectionId): string {
-  if (ctx.marketingBase !== '') return sectionUrl(section)
-  const path = SECTION_PATHS[section]
-  return path === '' ? './' : `./${path}`
-}
-
 /** Resolves any {@link NavLink} to an href for the given context. */
 function navHref(link: NavLink, ctx: NavContext): string {
   if (link.kind === 'anchor') return anchorHref(ctx, link.anchor)
-  if (link.kind === 'section') return sectionHref(ctx, link.section)
+  if (link.kind === 'section') return sectionUrl(link.section)
   return link.href
 }
 
+/** A titled group of links in the header's menu. */
+type NavGroup = {
+  readonly label: string
+  readonly links: readonly NavLink[]
+}
+
 /**
- * Primary nav links rendered in every site header — the marketing homepage
- * and each app share one bar with direct links into the six apps. The
- * hrefs resolve per context (root-relative on marketing, absolute from an
- * app); see {@link navHref}.
+ * The header menu rendered in every site header — the marketing homepage and
+ * each app share one hamburger menu of grouped links into the apps, each at
+ * its published origin; see {@link navHref}.
  */
-const HEADER_NAV_LINKS: readonly NavLink[] = [
-  { kind: 'section', label: 'Medications', section: 'medications' },
-  { kind: 'section', label: 'Plots', section: 'plots' },
-  { kind: 'section', label: 'Strength', section: 'strength' },
-  { kind: 'section', label: 'Importer', section: 'importer' },
-  { kind: 'section', label: 'Server docs', section: 'serverDocs' },
-  { kind: 'section', label: 'Imaging', section: 'ohifViewer' },
+const HEADER_NAV_GROUPS: readonly NavGroup[] = [
+  {
+    label: 'Your health',
+    links: [
+      { kind: 'section', label: 'Wildflower Medications', section: 'medications' },
+      { kind: 'section', label: 'Wildflower Plots', section: 'plots' },
+      { kind: 'section', label: 'Wildflower Imaging', section: 'ohifViewer' },
+    ],
+  },
+  {
+    label: 'Your data',
+    links: [
+      { kind: 'section', label: 'Wildflower Importer', section: 'importer' },
+      { kind: 'section', label: 'Wildflower Launcher', section: 'launcher' },
+      { kind: 'section', label: 'Wildflower Authorization', section: 'authorization' },
+    ],
+  },
+  {
+    label: 'Fitness',
+    links: [
+      { kind: 'section', label: 'FHIR Sync for Pebble', section: 'fhirSyncPebble' },
+      { kind: 'section', label: 'WatchLifts', section: 'watchLifts' },
+      { kind: 'section', label: 'Wildflower Strength', section: 'strength' },
+    ],
+  },
+  {
+    label: 'Developer',
+    links: [
+      { kind: 'section', label: 'Wildflower Server Docs', section: 'serverDocs' },
+      { kind: 'section', label: 'Wildflower Synthetic Data Loader', section: 'syntheticData' },
+    ],
+  },
 ]
 
-export {
-  HEADER_NAV_LINKS,
-  MARKETING_ANCHORS,
-  anchorHref,
-  fromApp,
-  navHref,
-  onMarketingSite,
-  sectionHref,
+export { HEADER_NAV_GROUPS, MARKETING_ANCHORS, anchorHref, fromApp, navHref, onMarketingSite }
+export type {
+  AbsoluteNavLink,
+  AnchorNavLink,
+  MarketingAnchor,
+  NavContext,
+  NavGroup,
+  NavLink,
+  SectionNavLink,
 }
-export type { AbsoluteNavLink, AnchorNavLink, MarketingAnchor, NavContext, NavLink, SectionNavLink }

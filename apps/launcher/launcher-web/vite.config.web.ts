@@ -11,9 +11,10 @@ export default defineConfig({
   plugins: [...(baseConfig.plugins ?? []), devDeepLinkRedirect()],
   build: {
     outDir: 'dist-web',
-    // Emitted for the deploy's Sentry upload, unreferenced from the bundle;
-    // the deploy deletes them before publishing (.github/actions/sentry-sourcemaps).
-    sourcemap: 'hidden',
+    // Published beside the bundle and referenced from it, so devtools show the
+    // original source in production; the deploy also uploads them to Sentry
+    // (.github/actions/sentry-sourcemaps).
+    sourcemap: true,
     rolldownOptions: { input: 'index.html' },
   },
   // The hosted dev server binds `launcher-dev`'s port from

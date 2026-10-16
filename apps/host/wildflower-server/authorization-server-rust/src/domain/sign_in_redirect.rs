@@ -134,6 +134,42 @@ mod tests {
             .map(|redirect| redirect.location().to_owned())
     }
 
+    /// The published launcher and Authorization app each sit at the root of
+    /// an origin of their own: everything on that origin is under them, and
+    /// nothing on a sibling origin or the parent domain is.
+    #[test]
+    fn a_base_at_an_origin_root_allows_that_origin_only() {
+        let destinations = SignInDestinations::new(
+            Url::parse(SERVER_ORIGIN).expect("server origin"),
+            LauncherBase::parse("https://launcher.site.example").expect("launcher"),
+            AuthorizationAppBase::parse("https://authorization.site.example/")
+                .expect("authorization app"),
+            Url::parse("https://launcher.site.example/").expect("launcher URL"),
+            Url::parse("https://authorization.site.example/").expect("authorization URL"),
+        );
+        let allowed = |next: &str| {
+            destinations
+                .allow(next)
+                .map(|redirect| redirect.location().to_owned())
+        };
+        for next in [
+            "https://launcher.site.example/?server=https%3A%2F%2Fruth.relay.example",
+            "https://launcher.site.example/settings/requests",
+            "https://authorization.site.example/grants",
+        ] {
+            assert_eq!(allowed(next).as_deref(), Some(next), "{next:?}");
+        }
+        for next in [
+            "https://site.example/",
+            "https://medications.site.example/",
+            "https://launcher.site.example.evil/",
+            "https://evil.launcher.site.example/",
+            "http://launcher.site.example/",
+        ] {
+            assert_eq!(allowed(next), None, "{next:?}");
+        }
+    }
+
     #[test]
     fn a_path_on_this_server_is_allowed_as_a_path() {
         assert_eq!(

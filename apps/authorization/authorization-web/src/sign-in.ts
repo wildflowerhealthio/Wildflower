@@ -105,7 +105,7 @@ type FinishedSignIn =
  * The impure edges, and the app's registered values, the flow runs against.
  *
  * `basePath` is the served directory (the router's basepath) a sign-in
- * returns to: the app root, under `/authorization/` on the published site.
+ * returns to: the app root, `/` on the published site's own origin.
  * Both legs pass the same value, so the outbound `redirect_uri` and the one
  * re-derived on the callback match.
  */

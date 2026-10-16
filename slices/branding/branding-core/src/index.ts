@@ -1,34 +1,32 @@
-export { APP_DESCRIPTIONS, APP_SECTION_IDS, smartAppLaunchPages } from './app-descriptions.ts'
+export { APP_DESCRIPTIONS, APP_SECTION_IDS, SMART_APP_LAUNCH_PAGES } from './app-descriptions.ts'
 export type { AppDescription, AppSectionId, SmartAppLaunchPage } from './app-descriptions.ts'
 export {
-  HEADER_NAV_LINKS,
+  HEADER_NAV_GROUPS,
   MARKETING_ANCHORS,
   anchorHref,
   fromApp,
   navHref,
   onMarketingSite,
-  sectionHref,
 } from './nav.ts'
 export type {
   AbsoluteNavLink,
   AnchorNavLink,
   MarketingAnchor,
   NavContext,
+  NavGroup,
   NavLink,
   SectionNavLink,
 } from './nav.ts'
 export {
+  APP_SLUGS,
   POLICY_IDS,
   POLICY_LABELS,
   POLICY_PATHS,
-  SECTION_PATHS,
   SITE_ORIGIN,
   policyUrl,
-  sectionRootPath,
   sectionUrl,
-  siteRootFor,
 } from './site.ts'
-export type { PolicyId, SectionId } from './site.ts'
+export type { HostedAppId, PolicyId, SectionId } from './site.ts'
 export {
   REDIRECT_PARAM,
   basenameOf,
