@@ -61,7 +61,7 @@ mutually incomplete target directories.
 re-resolves the lockfile without compiling anything. It needs the registry
 index, not a multi-GB `target/` download.
 
-The `deny` job in `ci-rust.yml` and `advisories-rust.yml` configure no cache at
+The `rust-deny` job in `ci.yml` and `advisories-rust.yml` configure no cache at
 all: `cargo-deny-action` runs in its own container and compiles nothing.
 
 ## Why the default branch has to warm the cache

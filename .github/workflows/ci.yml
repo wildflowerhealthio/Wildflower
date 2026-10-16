@@ -27,7 +27,7 @@ concurrency:
 jobs:
   # Which areas this PR touches. Each filter is the list of paths that area's
   # checks depend on; a new check area adds a filter here, a job below, and an
-  # entry in `Required`'s `needs`.
+  # entry in `Required`'s `needs` (unless, like `rust-deny`, it only reports).
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
@@ -175,6 +175,29 @@ jobs:
       contents: read
       pull-requests: read
     uses: ./.github/workflows/ci-rust.yml
+
+  # Supply-chain report for Rust PRs. Deliberately left out of `Required`'s
+  # `needs`: an advisory or yanked release filed against an unchanged
+  # dependency would otherwise block every Rust PR until someone triages it.
+  # It still shows as a failed check on the PR. cargo-deny-action runs in its
+  # own container and compiles nothing, so this job configures no Rust cache.
+  rust-deny:
+    name: Rust Dependency Check
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' && github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: cargo-deny — advisories + sources
+        # Security advisories (RustSec) and source pinning (crates.io only).
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories sources
+      - name: cargo-deny — licenses + bans
+        # License allowlist + duplicate/banned-crate policy from deny.toml.
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans
 
   pebble:
     name: Pebble

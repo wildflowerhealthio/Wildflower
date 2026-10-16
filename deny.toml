@@ -43,6 +43,16 @@ ignore = [
   # `advisory-not-detected` once these stop matching, which is the cue to drop.
   "RUSTSEC-2026-0194",
   "RUSTSEC-2026-0195",
+  # zip — upstream yanked every release but the latest 9.x ahead of publishing
+  # security advisories (zip-rs/zip2#1075), so no semver-compatible version is
+  # left for helios 0.2.4 (the newest release), which asks for `zip = "0.6"`
+  # and `zip = "2.2"`. helios-fhir's 0.6 is a build-dependency whose build
+  # script only touches it with the `R6` feature, which we don't enable.
+  # helios-sof's 2.x only *writes* zips (`ZipWriter` over bulk-export Parquet
+  # buffers it built itself) and never parses an archive. Reviewed, low-risk,
+  # temporary until helios moves to zip 9.
+  { crate = "zip@0.6.6", reason = "yanked; helios-fhir R6-only build-dependency, unused for R4" },
+  { crate = "zip@2.4.2", reason = "yanked; helios-sof only writes zips from its own buffers" },
 ]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and
