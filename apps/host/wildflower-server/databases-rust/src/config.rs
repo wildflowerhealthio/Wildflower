@@ -42,8 +42,7 @@ impl DatabaseDescriptor {
     /// filename resolved beneath the data dir — this charset keeps both uses free
     /// of quote-escaping, control characters, and path separators, and refusing
     /// `.` and `..` keeps `data_dir.join(id)` from naming the data dir itself or
-    /// its parent. Enforced when
-    /// the host catalogue enters the slice (see
+    /// its parent. Enforced when the host catalogue enters the slice (see
     /// [`DatabasesState::new`](crate::DatabasesState)).
     #[must_use]
     pub fn has_header_safe_id(&self) -> bool {
@@ -110,8 +109,8 @@ mod tests {
 
     /// Anything with a quote, a control byte, a path separator, non-ASCII, an
     /// empty id, or the bare `.` / `..` is rejected — those are exactly the cases
-    /// that would break the verbatim `Content-Disposition` header or resolve
-    /// outside a file beneath the data dir.
+    /// that would break the verbatim `Content-Disposition` header or stop the id
+    /// naming a file beneath the data dir.
     #[test]
     fn unsafe_ids_are_rejected() {
         for id in [
