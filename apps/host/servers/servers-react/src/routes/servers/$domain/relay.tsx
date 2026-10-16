@@ -10,7 +10,7 @@ import { type JSX, useState } from 'react'
 
 import { failureText } from '../../../failure-text.ts'
 import { useSetServerCredentials } from '../../../queries.ts'
-import { type RunHostCommand, useRunHostCommand } from '../../../router-context.ts'
+import { useRunHostCommand } from '../../../router-context.ts'
 import { useListedServer } from './-listed-server.ts'
 import styles from './-relay.module.css'
 
@@ -48,56 +48,98 @@ const RelayIdentityWarning = ({ message }: { readonly message: string }): JSX.El
   </div>
 )
 
+/** Why the host refused a new token. */
+interface TokenRefusal {
+  /** The host's message. */
+  readonly message: string
+  /**
+   * Whether the relay no longer presents the identity the server was added
+   * with, a warning rather than a failure to retry.
+   */
+  readonly relayIdentityChanged: boolean
+}
+
+/** A {@link CredentialsForm}'s state and what it can do. */
+interface TokenFormState {
+  /** The token in the field, which starts empty. */
+  readonly token: string
+  readonly setToken: (token: string) => void
+  /** Whether there is a token to send and no send is in flight. */
+  readonly canSave: boolean
+  /** The host's refusal of the latest token. */
+  readonly refusal: Option.Option<TokenRefusal>
+  /** Sends the token, clearing the field once the host accepts it. */
+  readonly save: () => void
+}
+
+/** The state of the form that replaces the token of the server `domain`'s tunnel. */
+const useTokenForm = (domain: string): TokenFormState => {
+  const setCredentials = useSetServerCredentials(useRunHostCommand())
+  const [token, setToken] = useState('')
+  return {
+    token,
+    setToken,
+    canSave: token.trim() !== '' && !setCredentials.isPending,
+    refusal: Option.fromNullable(setCredentials.error).pipe(
+      Option.map((error) => ({
+        message: failureText(error),
+        relayIdentityChanged: isRelayIdentityChange(error),
+      }))
+    ),
+    save: () => {
+      setCredentials.mutate(
+        { domain, token },
+        {
+          onSuccess: () => {
+            setToken('')
+          },
+        }
+      )
+    },
+  }
+}
+
 /**
  * The form that replaces the token the server's tunnel signs in to its
- * relay with. The field starts empty and the stored token is never shown;
- * it clears once the host accepts the new one, and the host's refusal shows
- * under it, or, when the relay's identity has changed, a warning that says
- * so.
+ * relay with (see {@link useTokenForm}). The field starts empty and the
+ * stored token is never shown; it clears once the host accepts the new one,
+ * and the host's refusal shows under it, or, when the relay's identity has
+ * changed, a warning that says so.
  */
-const CredentialsForm = ({
-  domain,
-  runHostCommand,
-}: {
-  readonly domain: string
-  readonly runHostCommand: RunHostCommand
-}): JSX.Element => {
-  const setCredentials = useSetServerCredentials(runHostCommand)
-  const [token, setToken] = useState('')
+const CredentialsForm = ({ domain }: { readonly domain: string }): JSX.Element => {
+  const form = useTokenForm(domain)
   return (
     <form
       className={styles['relay__form']}
       onSubmit={(event) => {
         event.preventDefault()
-        setCredentials.mutate(
-          { domain, token },
-          {
-            onSuccess: () => {
-              setToken('')
-            },
-          }
-        )
+        form.save()
       }}
     >
       <TextField
         label="New tunnel token"
         type="password"
-        value={token}
-        onChange={setToken}
+        value={form.token}
+        onChange={form.setToken}
         autoComplete="off"
         description="The relay checks it before it is saved, and the server starts again with it."
       />
-      {setCredentials.error !== null && isRelayIdentityChange(setCredentials.error) ? (
-        <RelayIdentityWarning message={failureText(setCredentials.error)} />
-      ) : (
-        <ErrorBanner
-          error={setCredentials.error === null ? null : failureText(setCredentials.error)}
-        />
+      {form.refusal.pipe(
+        Option.filter(({ relayIdentityChanged }) => relayIdentityChanged),
+        Option.map(({ message }) => <RelayIdentityWarning key="identity" message={message} />),
+        Option.getOrNull
       )}
+      <ErrorBanner
+        error={form.refusal.pipe(
+          Option.filter(({ relayIdentityChanged }) => !relayIdentityChanged),
+          Option.map(({ message }) => message),
+          Option.getOrNull
+        )}
+      />
       <button
         type="submit"
         className={`button-2 outline ${styles['relay__form-action']}`}
-        disabled={token.trim() === '' || setCredentials.isPending}
+        disabled={!form.canSave}
       >
         Save token
       </button>
@@ -111,7 +153,6 @@ const CredentialsForm = ({
  */
 const ServerRelayTab = (): JSX.Element => {
   const server = useListedServer()
-  const runHostCommand = useRunHostCommand()
   return (
     <>
       <ItemList
@@ -122,7 +163,7 @@ const ServerRelayTab = (): JSX.Element => {
           { id: 'tunnel-name', title: 'Tunnel name', subtitle: server.tunnelName },
         ]}
       />
-      <CredentialsForm domain={server.domain} runHostCommand={runHostCommand} />
+      <CredentialsForm domain={server.domain} />
     </>
   )
 }

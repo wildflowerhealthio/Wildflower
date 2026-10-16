@@ -7,7 +7,6 @@ import { type JSX, useState } from 'react'
 import { failureText } from '../../../failure-text.ts'
 import { useUpdateServer } from '../../../queries.ts'
 import {
-  type RunHostCommand,
   useDefaultAuthorizationUrl,
   useDefaultLauncherUrl,
   useRunHostCommand,
@@ -53,30 +52,38 @@ const PAGE_URL_COPY: Readonly<
   },
 }
 
+/** A {@link PageUrlForm}'s state and what it can do. */
+interface PageUrlFormState {
+  /** The URL in the field. */
+  readonly url: string
+  readonly setUrl: (url: string) => void
+  /** Whether the field differs from the saved URL, so there is something to save. */
+  readonly changed: boolean
+  /** Whether the saved URL is the default, compared as URLs, so there is nothing to reset. */
+  readonly isDefault: boolean
+  /** Whether a save is in flight. */
+  readonly isSaving: boolean
+  /** The host's refusal of the latest save. */
+  readonly failure: Option.Option<string>
+  /** Saves the URL in the field. */
+  readonly save: () => void
+  /** Puts the default in the field and saves it at once. */
+  readonly resetToDefault: () => void
+}
+
 /**
- * One of the pages the server opens, its launcher or its Authorization app:
- * a field starting at the saved URL, Save once it is changed, and, while the
- * saved URL isn't `defaultUrl`, the one the host gives a new server, compared
- * as URLs, Reset to default, which saves the default at once, named for its
- * field (`resetLabel`) so the tab's two resets are told apart. The server's
- * other page and its certificate authority are saved unchanged, and the
- * host's refusal shows under the field.
+ * The state of the form that edits `server`'s `field`, starting at the saved
+ * URL, and its saves: each sends the server's other page and its certificate
+ * authority unchanged.
  */
-const PageUrlForm = ({
-  server,
-  field,
-  defaultUrl,
-  runHostCommand,
-}: {
-  readonly server: ListedServer.Type
-  readonly field: PageUrlField
-  readonly defaultUrl: string
-  readonly runHostCommand: RunHostCommand
-}): JSX.Element => {
-  const updateServer = useUpdateServer(runHostCommand)
+const usePageUrlForm = (
+  server: ListedServer.Type,
+  field: PageUrlField,
+  defaultUrl: string
+): PageUrlFormState => {
+  const updateServer = useUpdateServer(useRunHostCommand())
   const [url, setUrl] = useState(server[field])
-  const { label, description, saveLabel, resetLabel } = PAGE_URL_COPY[field]
-  const save = (saved: string): void => {
+  const saveUrl = (saved: string): void => {
     updateServer.mutate({
       domain: server.domain,
       launcherUrl: server.launcherUrl,
@@ -85,41 +92,74 @@ const PageUrlForm = ({
       [field]: saved,
     })
   }
+  return {
+    url,
+    setUrl,
+    changed: url !== server[field],
+    isDefault: isDefaultUrl(server[field], defaultUrl),
+    isSaving: updateServer.isPending,
+    failure: Option.fromNullable(updateServer.error).pipe(Option.map(failureText)),
+    save: () => {
+      saveUrl(url)
+    },
+    resetToDefault: () => {
+      setUrl(defaultUrl)
+      saveUrl(defaultUrl)
+    },
+  }
+}
+
+/**
+ * One of the pages the server opens, its launcher or its Authorization app
+ * (see {@link usePageUrlForm}): a field starting at the saved URL, Save once
+ * it is changed, and, while the saved URL isn't `defaultUrl`, the one the
+ * host gives a new server, Reset to default, which saves the default at
+ * once, named for its field (`resetLabel`) so the tab's two resets are told
+ * apart. The host's refusal shows under the field.
+ */
+const PageUrlForm = ({
+  server,
+  field,
+  defaultUrl,
+}: {
+  readonly server: ListedServer.Type
+  readonly field: PageUrlField
+  readonly defaultUrl: string
+}): JSX.Element => {
+  const form = usePageUrlForm(server, field, defaultUrl)
+  const { label, description, saveLabel, resetLabel } = PAGE_URL_COPY[field]
   return (
     <form
       className={styles['default-apps__form']}
       onSubmit={(event) => {
         event.preventDefault()
-        save(url)
+        form.save()
       }}
     >
       <TextField
         label={label}
         type="url"
         inputMode="url"
-        value={url}
-        onChange={setUrl}
+        value={form.url}
+        onChange={form.setUrl}
         description={description}
       />
-      <ErrorBanner error={updateServer.error === null ? null : failureText(updateServer.error)} />
+      <ErrorBanner error={Option.getOrNull(form.failure)} />
       <div className={styles['default-apps__form-actions']}>
         <button
           type="submit"
           className={`button-2 outline ${styles['default-apps__form-action']}`}
-          disabled={url === server[field] || updateServer.isPending}
+          disabled={!form.changed || form.isSaving}
         >
           {saveLabel}
         </button>
-        {isDefaultUrl(server[field], defaultUrl) ? null : (
+        {form.isDefault ? null : (
           <button
             type="button"
             className={`button-2 ghost ${styles['default-apps__form-action']}`}
-            disabled={updateServer.isPending}
+            disabled={form.isSaving}
             aria-label={resetLabel}
-            onClick={() => {
-              setUrl(defaultUrl)
-              save(defaultUrl)
-            }}
+            onClick={form.resetToDefault}
           >
             Reset to default
           </button>
@@ -136,22 +176,13 @@ const PageUrlForm = ({
  */
 const ServerDefaultAppsTab = (): JSX.Element => {
   const server = useListedServer()
-  const runHostCommand = useRunHostCommand()
-  const defaultLauncherUrl = useDefaultLauncherUrl()
-  const defaultAuthorizationUrl = useDefaultAuthorizationUrl()
   return (
     <>
-      <PageUrlForm
-        server={server}
-        field="launcherUrl"
-        defaultUrl={defaultLauncherUrl}
-        runHostCommand={runHostCommand}
-      />
+      <PageUrlForm server={server} field="launcherUrl" defaultUrl={useDefaultLauncherUrl()} />
       <PageUrlForm
         server={server}
         field="authorizationUrl"
-        defaultUrl={defaultAuthorizationUrl}
-        runHostCommand={runHostCommand}
+        defaultUrl={useDefaultAuthorizationUrl()}
       />
     </>
   )

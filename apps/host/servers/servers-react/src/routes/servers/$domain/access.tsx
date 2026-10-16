@@ -111,10 +111,8 @@ const authorizationAppItem = ({
     </button>
   ),
   ...failure.pipe(
-    Option.match({
-      onNone: () => ({ subtitle: 'Lists the apps and devices with access to this server.' }),
-      onSome: (text) => ({ subtitle: text, tone: 'danger' as const }),
-    })
+    Option.map((text) => ({ subtitle: text, tone: 'danger' as const })),
+    Option.getOrElse(() => ({ subtitle: 'Lists the apps and devices with access to this server.' }))
   ),
 })
 
