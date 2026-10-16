@@ -487,6 +487,10 @@ client's callback (`code` + `state`, or `error=access_denied` + `state`), and
 the page leaves for it with `location.replace`, only for an `http:`/`https:`
 URL. A browser that can't read the request (`401`, `403`, or `404` once it is
 no longer pending) goes to the wait page instead.
+The FHIR server doesn't yet limit a `patient/` scope to the token's patient
+(it checks it like a `system/` one, #416), so while the draft grants any
+`patient/` scope the card warns, above Allow and Deny, that the app can read
+those records for every patient.
 
 The host app opens the card as `/oauth/authorize/{id}/consent?then=back` in a
 browser signed in as the Owner (the desktop's default browser, an in-app

@@ -448,7 +448,7 @@ describe('OAuthConsentCard — empty grant', () => {
 describe('OAuthConsentCard — registration warning', () => {
   test('a registered app shows no callout and no checkbox, and Approve works as before', async () => {
     const { user } = renderCard(
-      makeConsent({ scopes: ['patient/Observation.r'], registration: { status: 'registered' } }),
+      makeConsent({ scopes: ['system/Observation.r'], registration: { status: 'registered' } }),
       vi.fn()
     )
 
@@ -456,7 +456,7 @@ describe('OAuthConsentCard — registration warning', () => {
     expect(screen.queryByRole('checkbox', { name: /recognise/ })).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
-    expect(lastApprovedScopes()).toEqual(['patient/Observation.r'])
+    expect(lastApprovedScopes()).toEqual(['system/Observation.r'])
     const lastCall = mutate.mock.calls.at(-1)?.[0]
     expect(lastCall).toMatchObject({
       kind: 'approve',
@@ -467,7 +467,7 @@ describe('OAuthConsentCard — registration warning', () => {
   test('a new app names the client id and redirect origin, and blocks Approve until acknowledged', async () => {
     const { user } = renderCard(
       makeConsent({
-        scopes: ['patient/Observation.r'],
+        scopes: ['system/Observation.r'],
         clientId: 'unknown-app.example',
         redirectUri: 'https://unknown-app.example/callback',
         registration: { status: 'new' },
@@ -498,7 +498,7 @@ describe('OAuthConsentCard — registration warning', () => {
   test('a changed redirect shows the new origin and full uri', () => {
     renderCard(
       makeConsent({
-        scopes: ['patient/Observation.r'],
+        scopes: ['system/Observation.r'],
         redirectUri: 'https://app.example/new-callback',
         registration: {
           status: 'changed',
@@ -518,11 +518,11 @@ describe('OAuthConsentCard — registration warning', () => {
   test('changed scopes render as a list, falling back to the raw string for a resource scope', () => {
     renderCard(
       makeConsent({
-        scopes: ['patient/Observation.r', 'openid'],
+        scopes: ['system/Observation.r', 'openid'],
         registration: {
           status: 'changed',
           redirectUriIsNew: false,
-          newScopes: ['patient/Observation.r', 'openid'],
+          newScopes: ['system/Observation.r', 'openid'],
         },
       }),
       vi.fn()
@@ -532,7 +532,7 @@ describe('OAuthConsentCard — registration warning', () => {
     // has no single-line label outside the picker grid, so it falls back to raw.
     const callout = within(screen.getByRole('note'))
     expect(callout.getByText('Confirm who you are')).toBeDefined()
-    expect(callout.getByText('patient/Observation.r')).toBeDefined()
+    expect(callout.getByText('system/Observation.r')).toBeDefined()
   })
 
   test('unticking the checkbox after approving re-disables Approve', async () => {
@@ -698,6 +698,44 @@ describe('OAuthConsentCard — launch patient', () => {
       payload: { patient: null },
     })
     expect(lastApprovedScopes()).toEqual(['launch/patient'])
+  })
+})
+
+describe('OAuthConsentCard — patient-scope warning', () => {
+  const warning = /can't yet limit an app to one patient/
+
+  test('a patient-context scope shows the warning above the buttons', () => {
+    renderCard(makeConsent({ scopes: ['patient/Observation.rs'] }), vi.fn())
+
+    const note = screen.getByText(warning)
+    expect(note.getAttribute('role')).toBe('note')
+    // Messages sit above the actions: the warning precedes the Allow button.
+    const allow = screen.getByRole('button', { name: 'Allow access' })
+    expect(note.compareDocumentPosition(allow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  test('a system-only request shows no warning', () => {
+    renderCard(makeConsent({ scopes: ['system/Observation.rs'] }), vi.fn())
+
+    expect(screen.queryByText(warning)).toBeNull()
+  })
+
+  test('unticking every patient-context interaction removes the warning', async () => {
+    // Arrange — a patient-context read alongside a system-context search.
+    const { user } = renderCard(
+      makeConsent({ scopes: ['patient/Observation.r', 'system/Condition.s'] }),
+      vi.fn()
+    )
+    expect(screen.getByText(warning)).toBeDefined()
+
+    // Act — untick the patient-context statement's only interaction.
+    await user.click(screen.getByRole('button', { name: /^Read$/ }))
+    await user.click(screen.getByRole('checkbox', { name: /Read/ }))
+
+    // Assert — the draft grants no patient-context scope, so the warning is gone.
+    expect(screen.queryByText(warning)).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+    expect(lastApprovedScopes()).toEqual(['system/Condition.s'])
   })
 })
 
