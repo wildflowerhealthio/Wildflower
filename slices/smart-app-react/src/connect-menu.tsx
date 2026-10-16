@@ -1,4 +1,5 @@
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
+import { Match } from 'effect'
 import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 
 import {
@@ -6,6 +7,7 @@ import {
   normalizeServerUrl,
   startStandaloneLaunch,
   withLocalNetworkAccessHint,
+  type SmartSupport,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
@@ -99,7 +101,7 @@ type ConnectOrigin = 'chosen-server' | 'pick'
  * @remarks
  * A plain `useState` discriminated union — the repo's local-state-machine
  * pattern (see `synthetic-data-react`'s `LoadState`). `error` covers an
- * `unreachable` probe, a failed connect and a problem the caller's sign-in
+ * `unreachable` or `unusable` probe, a failed connect and a problem the caller's sign-in
  * reports; all stay retryable because the menu is still rendered underneath
  * the banner. A rejected entry is not a connect state: it is the entry's own,
  * shown beside its form. `from` places the error beside the control it came
@@ -129,6 +131,27 @@ const MENU_COPY = {
   },
 } as const satisfies Record<ConnectTarget, Record<string, string>>
 
+/**
+ * The problem to show for a standalone launch's probe outcome against
+ * `serverUrl`, or `undefined` when there is none: `smart`/`open` redirect the
+ * page away, so only `unreachable` and `unusable` are left to report.
+ */
+const standaloneLaunchProblem =
+  (serverUrl: string) =>
+  (support: SmartSupport): string | undefined =>
+    Match.value(support).pipe(
+      Match.withReturnType<string | undefined>(),
+      Match.when(
+        { kind: 'unreachable' },
+        ({ message }) =>
+          `Could not reach ${serverUrl}. Check the URL and that the server allows this app. (${message})`
+      ),
+      Match.when({ kind: 'unusable' }, ({ reason }) => `Cannot sign in to ${serverUrl}. ${reason}`),
+      Match.when({ kind: 'smart' }, () => undefined),
+      Match.when({ kind: 'open' }, () => undefined),
+      Match.exhaustive
+    )
+
 /** The heading (and form name) of the group that connects by relay name. */
 const RELAY_GROUP_NAME = 'Official Wildflower Relay'
 
@@ -153,6 +176,8 @@ const RELAY_NAME_DESCRIPTION = `This server is found at https://[Name]${RELAY_DO
  * validation that blocks the submit handler before it runs, which would mask our
  * own message. An `unreachable` probe (CORS/network) surfaces as an error with
  * the menu still available to retry — never a silent open-access connection.
+ * An `unusable` probe (a SMART configuration whose endpoints this page will not
+ * use) surfaces the same way, with its reason.
  * On an https page, a pick of a plain-http server that is not loopback is
  * refused before connecting, with `insecureTargetReason`'s explanation in the
  * banner beside it: the browser would block every request to it.
@@ -222,13 +247,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
           clientId: props.clientId,
           scope: props.scope,
           redirectUri: props.redirectUri,
-        }).then((support) =>
-          // `smart`/`open` redirect the page away, so only `unreachable` (or
-          // the rare case a redirect did not navigate) is left to report.
-          support.kind === 'unreachable'
-            ? `Could not reach ${serverUrl}. Check the URL and that the server allows this app. (${support.message})`
-            : undefined
-        )
+        }).then(standaloneLaunchProblem(serverUrl))
       : props.connect(serverUrl)
 
   const connectTo = (serverUrl: string, from: ConnectOrigin = 'pick'): void => {

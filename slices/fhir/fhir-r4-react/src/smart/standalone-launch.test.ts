@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   insecureTargetReason as sharedInsecureTargetReason,
@@ -16,9 +16,10 @@ import {
 // lazy `(await import('fhirclient')).default`, so the module boundary is where
 // we stub — the same seam `smart-launch.test.ts` uses. `detectSmartSupport`'s
 // tests never touch it (they inject `fetchFn`).
-const { authorizeMock, readyMock } = vi.hoisted(() => ({
-  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<void>>(() => Promise.resolve()),
+const { authorizeMock, readyMock, assignMock } = vi.hoisted(() => ({
+  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
   readyMock: vi.fn(),
+  assignMock: vi.fn<(url: string) => void>(),
 }))
 
 vi.mock('fhirclient', () => ({
@@ -27,6 +28,14 @@ vi.mock('fhirclient', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Asked with `noRedirect`, fhirclient answers the URL it would have gone to;
+  // the page is an https one whose `assign` records where it was sent.
+  authorizeMock.mockResolvedValue('https://ehr.example/authorize?state=xyz')
+  vi.stubGlobal('location', { protocol: 'https:', assign: assignMock })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 // Helpers
@@ -51,6 +60,16 @@ const fetchReturning = (body: Response, seenUrls: string[] = []): typeof fetch =
 const fetchRejecting = (error: unknown): typeof fetch =>
   vi.fn<typeof fetch>(() => Promise.reject(error))
 
+/**
+ * A SMART configuration whose endpoints are usable from an https page, shaped
+ * like the SmartHealthIT sandbox's: https endpoints, and S256.
+ */
+const SMART_CONFIGURATION = {
+  authorization_endpoint: 'https://ehr.example/authorize',
+  token_endpoint: 'https://ehr.example/token',
+  code_challenge_methods_supported: ['S256'],
+}
+
 const jsonResponse = (body: unknown, init?: ResponseInit): Response =>
   new Response(JSON.stringify(body), {
     status: 200,
@@ -59,19 +78,84 @@ const jsonResponse = (body: unknown, init?: ResponseInit): Response =>
   })
 
 describe('detectSmartSupport', () => {
-  it('is `smart` when the config names an authorization_endpoint', async () => {
+  it('is `smart` when the config names usable endpoints', async () => {
     const support = await detectSmartSupport(
       'https://ehr.example/fhir',
-      fetchReturning(jsonResponse({ authorization_endpoint: 'https://ehr.example/authorize' }))
+      fetchReturning(jsonResponse(SMART_CONFIGURATION))
     )
     expect(support).toEqual({ kind: 'smart' })
+  })
+
+  it.each([
+    {
+      case: 'a javascript: authorization_endpoint',
+      configuration: { ...SMART_CONFIGURATION, authorization_endpoint: 'javascript:alert(1)' },
+    },
+    {
+      case: 'an authorization_endpoint with userinfo',
+      configuration: {
+        ...SMART_CONFIGURATION,
+        authorization_endpoint: 'https://user:pw@ehr.example/authorize',
+      },
+    },
+    {
+      case: 'a plain-http token_endpoint off loopback',
+      configuration: { ...SMART_CONFIGURATION, token_endpoint: 'http://ehr.example/token' },
+    },
+  ])('is `unusable`, with the discovery reason, for $case', async ({ configuration }) => {
+    const support = await detectSmartSupport(
+      'https://ehr.example/fhir',
+      fetchReturning(jsonResponse(configuration)),
+      true
+    )
+    expect(support).toEqual({
+      kind: 'unusable',
+      reason:
+        'The server’s SMART configuration does not advertise a usable ' +
+        'authorization_endpoint and token_endpoint over https (or loopback).',
+    })
+  })
+
+  it('is `unusable` when the config names an authorization_endpoint but no token_endpoint', async () => {
+    const support = await detectSmartSupport(
+      'https://ehr.example/fhir',
+      fetchReturning(jsonResponse({ authorization_endpoint: 'https://ehr.example/authorize' })),
+      true
+    )
+    expect(support).toMatchObject({ kind: 'unusable' })
+  })
+
+  it('is `smart` for a plain-http endpoint when the page is itself http', async () => {
+    const support = await detectSmartSupport(
+      'http://ehr.example/fhir',
+      fetchReturning(
+        jsonResponse({
+          ...SMART_CONFIGURATION,
+          authorization_endpoint: 'http://ehr.example/authorize',
+          token_endpoint: 'http://ehr.example/token',
+        })
+      ),
+      false
+    )
+    expect(support).toEqual({ kind: 'smart' })
+  })
+
+  it('reads whether the page is secure off the page by default', async () => {
+    // The https page stubbed above: a plain-http endpoint off loopback is unusable
+    const support = await detectSmartSupport(
+      'https://ehr.example/fhir',
+      fetchReturning(
+        jsonResponse({ ...SMART_CONFIGURATION, authorization_endpoint: 'http://ehr.example/a' })
+      )
+    )
+    expect(support).toMatchObject({ kind: 'unusable' })
   })
 
   it('probes the well-known path with the trailing slash trimmed', async () => {
     const seenUrls: string[] = []
     await detectSmartSupport(
       'https://ehr.example/fhir/',
-      fetchReturning(jsonResponse({ authorization_endpoint: 'x' }), seenUrls)
+      fetchReturning(jsonResponse(SMART_CONFIGURATION), seenUrls)
     )
     expect(seenUrls).toEqual(['https://ehr.example/fhir/.well-known/smart-configuration'])
   })
@@ -118,10 +202,7 @@ describe('startStandaloneLaunch', () => {
   }
 
   it('takes the SMART OAuth path when the probe is `smart`', async () => {
-    await startStandaloneLaunch(
-      config,
-      fetchReturning(jsonResponse({ authorization_endpoint: 'x' }))
-    )
+    await startStandaloneLaunch(config, fetchReturning(jsonResponse(SMART_CONFIGURATION)))
     expect(authorizeMock).toHaveBeenCalledTimes(1)
     // The SMART variant carries the client and iss; it never names fhirServiceUrl.
     const arg = authorizeArg()
@@ -132,6 +213,7 @@ describe('startStandaloneLaunch', () => {
       iss: 'https://ehr.example/fhir',
     })
     expect(arg).not.toHaveProperty('fhirServiceUrl')
+    expect(assignMock).toHaveBeenCalledWith('https://ehr.example/authorize?state=xyz')
   })
 
   it('takes the open (no-auth) path when the probe is `open`', async () => {
@@ -147,6 +229,27 @@ describe('startStandaloneLaunch', () => {
     expect(arg).not.toHaveProperty('clientId')
     expect(arg).not.toHaveProperty('scope')
     expect(arg).not.toHaveProperty('iss')
+  })
+
+  it('does not authorize at all when the probe is `unusable`, returning it for the UI', async () => {
+    const support = await startStandaloneLaunch(
+      config,
+      fetchReturning(
+        jsonResponse({ ...SMART_CONFIGURATION, authorization_endpoint: 'javascript:alert(1)' })
+      )
+    )
+    expect(authorizeMock).not.toHaveBeenCalled()
+    expect(assignMock).not.toHaveBeenCalled()
+    expect(support).toMatchObject({ kind: 'unusable' })
+  })
+
+  it('rejects, without navigating, when the authorize URL fhirclient builds is unusable', async () => {
+    // The probe saw a clean configuration; fhirclient's own fetch of it did not.
+    authorizeMock.mockResolvedValue('javascript:alert(1)//?state=xyz')
+    await expect(
+      startStandaloneLaunch(config, fetchReturning(jsonResponse(SMART_CONFIGURATION)))
+    ).rejects.toThrow('It is a javascript: URL')
+    expect(assignMock).not.toHaveBeenCalled()
   })
 
   it('does not authorize at all when the probe is `unreachable`, returning it for the UI', async () => {

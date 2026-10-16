@@ -249,9 +249,13 @@ page drive a desktop host.
 
 This is **not** the fhirclient-based standalone launch in
 `slices/fhir/fhir-r4-react/src/smart/*`, which the React SMART apps use.
-The two share `normalizeServerUrl` — this package owns the one implementation
-and `fhir-r4-react` re-exports it — but nothing else: the launch here is
-hand-rolled and Effect-native, and the one there delegates to `fhirclient`.
+The two share this package's helpers — `normalizeServerUrl`,
+`insecureTargetReason` and `arrivingSmartLaunchFrom`, which `fhir-r4-react`
+re-exports, and the endpoint checks: its probe runs a configuration through
+`smartIssuerFrom`, and its authorize navigation runs fhirclient's authorize URL
+through `endpointUrlFrom`, the reason-carrying form of `usableEndpointUrl` —
+but not the launch itself: the launch here is hand-rolled and Effect-native,
+and the one there delegates to `fhirclient`.
 
 ## Bootstrap URL (dev-mode workaround)
 

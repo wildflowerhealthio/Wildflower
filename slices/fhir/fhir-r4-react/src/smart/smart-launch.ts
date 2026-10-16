@@ -1,7 +1,9 @@
 import {
   arrivingSmartLaunchFrom,
+  endpointUrlFrom,
   type ArrivingSmartLaunch,
 } from '@wildflowerhealthio/authorization-core/smart-client'
+import { Either } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 import type { fhirclient } from 'fhirclient/lib/types'
 
@@ -32,18 +34,46 @@ interface SmartLaunchConfig {
 const loadFhir = async (): Promise<FhirClientModule> => (await import('fhirclient')).default
 
 /**
- * Begin the SMART App Launch. Redirects the browser to the EHR's authorize
+ * Begin the SMART App Launch. Sends the browser to the EHR's authorize
  * endpoint (discovered from `iss`'s `.well-known/smart-configuration`), so the
- * returned promise usually never resolves — the page navigates away.
+ * page usually navigates away once the returned promise resolves.
+ *
+ * @remarks
+ * fhirclient builds the authorize URL from whatever endpoint the server
+ * advertises and checks only that one is named. So it is asked for the URL
+ * (`noRedirect`), with its launch state already stored, and this function
+ * makes the navigation itself, after `endpointUrlFrom` accepts the URL for
+ * this page (`pageIsSecure` read from `window.location` at the call). A
+ * `javascript:` URL, one carrying userinfo or a fragment, and plain http off
+ * loopback from an https page are each refused: the promise rejects naming
+ * the reason, and the page stays where it is.
+ *
+ * The check is on the URL fhirclient navigates to, not on a configuration
+ * fetched beforehand, because fhirclient fetches the configuration again
+ * itself. When the server names no authorize endpoint, fhirclient's URL is
+ * the app's own redirect target, and it goes through the same check.
  */
 const authorizeSmartLaunch = async (config: SmartLaunchConfig): Promise<void> => {
   const FHIR = await loadFhir()
-  await FHIR.oauth2.authorize({
+  const authorizeUrl = await FHIR.oauth2.authorize({
     clientId: config.clientId,
     scope: config.scope,
     ...(config.redirectUri === undefined ? {} : { redirectUri: config.redirectUri }),
     ...(config.iss === undefined ? {} : { iss: config.iss }),
+    noRedirect: true,
   })
+  if (typeof authorizeUrl !== 'string') {
+    throw new Error('fhirclient returned no authorize URL to navigate to.')
+  }
+  const usableAuthorizeUrl = endpointUrlFrom(authorizeUrl, {
+    pageIsSecure: window.location.protocol === 'https:',
+  })
+  if (Either.isLeft(usableAuthorizeUrl)) {
+    throw new Error(
+      `The server’s authorization endpoint is not one this app will go to. ${usableAuthorizeUrl.left.reason}`
+    )
+  }
+  window.location.assign(usableAuthorizeUrl.right)
 }
 
 /**
@@ -62,8 +92,9 @@ interface OpenServerConfig {
 /**
  * Begin an open-server connection. `oauth2.authorize({ fhirServiceUrl })` skips
  * discovery and the code/token exchange entirely and redirects straight to
- * `redirectUri`, so — like {@link authorizeSmartLaunch} — the returned promise
- * usually never resolves because the page navigates away.
+ * `redirectUri`, so the returned promise usually never resolves because the
+ * page navigates away. fhirclient navigates itself here: the URL is the app's
+ * own redirect target, not one a server advertised.
  */
 const authorizeOpenServer = async (config: OpenServerConfig): Promise<void> => {
   const FHIR = await loadFhir()

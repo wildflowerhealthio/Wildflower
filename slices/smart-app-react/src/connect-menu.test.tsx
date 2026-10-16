@@ -217,6 +217,40 @@ describe('ConnectMenu', () => {
     expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
   })
 
+  it('surfaces an unusable configuration as an error banner with its reason, still allowing a retry', async () => {
+    const reason =
+      'The server’s SMART configuration does not advertise a usable authorization_endpoint ' +
+      'and token_endpoint over https (or loopback).'
+    startStandaloneLaunchMock.mockResolvedValue({ kind: 'unusable', reason })
+    const user = userEvent.setup()
+    render(<ConnectMenu {...PROPS} />)
+
+    await user.click(demoPresetButton())
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(`Cannot sign in to ${DEMO_PRESET.url}. ${reason}`, { exact: false })
+      ).toBeDefined()
+    })
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
+  })
+
+  it('surfaces a launch refused for its authorize URL as an error banner, still allowing a retry', async () => {
+    const refusal =
+      'The server’s authorization endpoint is not one this app will go to. ' +
+      'It carries a user name or password.'
+    startStandaloneLaunchMock.mockRejectedValue(new Error(refusal))
+    const user = userEvent.setup()
+    render(<ConnectMenu {...PROPS} />)
+
+    await user.click(demoPresetButton())
+
+    await waitFor(() => {
+      expect(screen.getByText(refusal, { exact: false })).toBeDefined()
+    })
+    expect(demoPresetButton().hasAttribute('disabled')).toBe(false)
+  })
+
   it('launches against a relay name’s origin, its FHIR base, trimmed and lower-cased', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
