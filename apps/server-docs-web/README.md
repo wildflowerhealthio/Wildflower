@@ -26,7 +26,7 @@ Nothing loads from a CDN: the Scalar reference comes from its npm package and
 the specs are imported as modules, so the whole console is one self-contained
 bundle.
 
-A static brand bar above the server form links back to the Wildflower home
+A static brand bar above the server bar links back to the Wildflower home
 page. The icon (`public/app-icon.png`, copied from `apps/wildflower-site/marketing-site-web`)
 and "Wildflower" wordmark match the look of `branding-react`'s `BrandBar`,
 styled with the same palette the server bar already uses — no `branding-react`
@@ -38,21 +38,39 @@ The console is a static page, so the API it documents is never its own origin.
 The target lives in the URL:
 
 ```text
-/server-docs                                      → no target; asks for a server
+/server-docs                                      → no target; shows the connect choices
 /server-docs?server=https://my-server.example.com → that origin
 ```
 
 - There is no default. A load whose URL names no usable server has no target:
-  the reference is not mounted, the **Sign in** button is hidden, and the
-  status line asks for the server's URL, as the hosted launcher's landing does.
+  the reference is not mounted and the page shows the connect choices, the
+  ones `smart-app-react`'s `ConnectMenu` offers for a Wildflower server, from
+  the same `smart-app-core` data and copy (`src/connect-choices.ts`):
+  1. an **Official Wildflower Relay** name entry, for a server at
+     `https://<name>.relay.wildflowerhealth.io`;
+  2. a free entry for any other Wildflower server's URL;
+  3. **Launch without a server**.
+
+  The menu's demo-server presets are left out: the demo server is a plain
+  SMART server, with none of the API this console documents.
+
+- A relay or free-entry pick writes the canonical target into the URL as
+  `?server=`, so a configured console is shareable as a link, and signs in to
+  it straight away, as **Sign in** does. An entry that names no server is
+  refused beside its field, with `ConnectMenu`'s wording.
+- **Launch without a server** mounts the reference with no target, to browse
+  it: the specs name no server, there is no **Sign in** button and no token,
+  and Scalar's send button is hidden (`hideTestRequestButton`), since with no
+  server Scalar would send to the page's own origin. Nothing is written to the
+  URL, so a reload shows the connect choices again.
+- With a target, the server bar shows it beside **Change server** and
+  **Sign in**. **Change server** takes `?server=` out of the URL, unmounts the
+  reference and shows the connect choices. A signed-in session stays in
+  memory; it is only offered to the server it was issued for.
 - Only absolute `http:` / `https:` URLs are accepted. A `?server=` carrying
   anything else — `javascript:`, `data:`, protocol-relative `//host`, a bare
-  hostname — names no server. Entered in the header bar, it is refused with
-  "Enter a valid http(s) server URL, e.g. `https://my-server.example.com`." (the
-  wording `smart-app-react`'s `ConnectMenu` uses), and the target stays as it
-  was.
-- The header bar's input writes the canonical target back into the URL, so a
-  configured console is shareable as a link.
+  hostname — names no server.
+- A `?server=` link targets that server without signing in on its own.
 - Each spec is served to Scalar with that origin as its only `server` entry and
   with a bearer HTTP security scheme declared, so the UI offers a token field.
   The running host gates its admin surface on that bearer; the snapshots
@@ -69,9 +87,8 @@ The target lives in the URL:
 The document transforms and the Scalar configuration are pure functions in
 `src/spec.ts` and `src/configuration.ts`, unit-tested beside them; the `?server=`
 parsing itself lives in `authorization-core/smart-client` (every static Wildflower
-page that targets a reader-chosen server needs it), and `src/server-target.ts`
-holds only this console's wording for asking for a server and refusing an
-unusable one.
+page that targets a reader-chosen server needs it), and `src/connect-choices.ts`
+holds the connect choices and what each entry names, or why it names none.
 `src/arrival.ts` holds how a load settles what it arrived with: the query it
 leaves in the address bar after a launch or a return leg, and the sign-in
 controls it resets when the back-forward cache restores it.
@@ -86,9 +103,11 @@ in `configuration.test.ts`.
 
 ## Signing in
 
-The header bar's **Sign in** button runs a SMART standalone launch against the
-chosen server, so "send request" works with a real token instead of one pasted
-in by hand.
+The server bar's **Sign in** button runs a SMART standalone launch against the
+target, so "send request" works with a real token instead of one pasted in by
+hand. A pick from the connect choices runs the same sign-in once it has written
+`?server=`, unless this page cannot reach the server (see the end of "Sign-in
+works from wherever the console is served").
 
 ### The flow
 
@@ -101,7 +120,7 @@ in by hand.
    authorization server and listing the `wildflower-server` capability, whether it is
    served at an origin or behind a path prefix. A target that is unreachable,
    answers 404 or with something else fails here, and the reason is shown in
-   the header bar.
+   the server bar.
 2. **Authorization.** The console redirects to the `authorization_endpoint` as
    the public PKCE client `664a01e8614050cd82ffe90350b81413` — S256 challenge, random
    `state`, `aud` the FHIR base discovery read (the server's origin for a
@@ -212,9 +231,10 @@ Because the derived redirect URI carries no query string, `?server=` cannot ride
 back in the URL: it travels in the stashed pending record and is restored when
 the console returns.
 
-One consequence worth knowing when using a preview: the console warns, at the
-point the server address is entered, when a page served over https is pointed at
-a plaintext non-loopback server, because the browser blocks that.
+One consequence worth knowing when using a preview: a page served over https
+pointed at a plaintext non-loopback server does not sign in, and the status
+line says why as soon as the server is chosen, because the browser blocks
+every request to it.
 
 ## The CORS caveat
 

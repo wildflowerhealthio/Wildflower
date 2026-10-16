@@ -8,7 +8,10 @@ package is where the two meet, so neither has to know about the other.
 
 ## Exports
 
-There is no `-core`: everything here is UI or DOM boot code.
+Everything here is UI or DOM boot code. What the connect menu offers, as
+pure data (the relay entry, the preset groups, the menu's copy), is
+`smart-app-core`'s, so a page that is not React (the server-docs console)
+offers the same choices; this package re-exports its preset groups.
 
 - `SmartAppRoot({ app, registration, telemetry, launched?, replaceLocation?, children })`
   — the app root, and the app's one page: it starts a SMART launch its URL
@@ -149,7 +152,7 @@ import `branding-react/styles.css` itself.
   Wildflower Relay" entry, whose relay name field is subtitled with where the
   server is found (`https://[Name].relay.wildflowerhealth.io`), then launch
   buttons grouped under each known server's name and address
-  (`server-presets.ts`'s `serverPresetGroupsFor`; the demo server, with no
+  (`smart-app-core`'s `serverPresetGroupsFor`; the demo server, with no
   local server) as hairline-separated blocks in the landing page's
   vocabulary, then a free-URL form. Every URL is a FHIR base, the same
   under either `target`: a Wildflower server's origin (it serves FHIR at its

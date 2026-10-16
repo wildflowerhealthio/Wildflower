@@ -4,12 +4,12 @@ import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
-import { ConnectMenu } from './connect-menu.tsx'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
   DEFAULT_SERVER_PRESETS,
   serverPresetGroupsFor,
-} from './server-presets.ts'
+} from '@wildflowerhealthio/smart-app-core'
+import { ConnectMenu } from './connect-menu.tsx'
 
 // Stub only the launch seam; keep the real `normalizeServerUrl` so the
 // validation path under test is the production one, not a mock.

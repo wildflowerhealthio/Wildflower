@@ -23,7 +23,7 @@ Slices may also carry slice-specific packages (e.g. `fhir-r4` / `fhir-r4-react` 
 
 A slice of one package is not a folder: the package sits directly in `slices/`, as `slices/<package>/`, and keeps its own name and layer suffix. Its AGENTS.md (if any) is the package's. When a second package joins it, it becomes a `slices/<name>/` folder again.
 
-Current slices: `anonymizer`, `authorization`, `branding`, `browser-sniffer`, `file-formats`, `fhir`, `http-extraction`, `importer`, `medication`, `scopes`, `shared-structures`, `telemetry`. Lone packages: `fhir-sync-pebble-core`, `navigation-core`, `ohif-server-rust`, `persistence-rust`, `rathole-settings-rust`, `smart-app-react`, `web-trace-core`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `authorization`, `branding`, `browser-sniffer`, `file-formats`, `fhir`, `http-extraction`, `importer`, `medication`, `scopes`, `shared-structures`, `telemetry`. Lone packages: `fhir-sync-pebble-core`, `navigation-core`, `ohif-server-rust`, `persistence-rust`, `rathole-settings-rust`, `smart-app-core`, `smart-app-react`, `web-trace-core`. Verify with `ls slices/` — this list can go stale.
 
 The databases, the request log and the app registry are not slices: each was used by the launcher alone in TypeScript and by the host alone in Rust, so their TypeScript packages live in `apps/launcher/` (`databases/`, `request-log/`, `apps-core-js`, `apps-react`) and their crates in `apps/host/wildflower-server/` — see [apps/AGENTS.md](../apps/AGENTS.md#what-folds-in). The same folder holds the Rust halves of slices whose TypeScript other products share: `authorization-server-rust` and `token-revocation-rust` (from `authorization`), `fhir-r4-rust` (from `fhir`) and `tunnel-rust`, whose settings the relay shares as `slices/rathole-settings-rust`. The Recorder is not a slice either: the host is its only consumer in both languages, so all of it lives in [`apps/host/recorder/`](../apps/host/recorder/AGENTS.md). The dev servers' ports, `dev-app-ports.json`, sit at the repo root.
 
@@ -143,6 +143,8 @@ decoded by Effect Schema) and the `server-status` event, never the
 effect-messaging bridge.
 
 `smart-app-react` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app-react/AGENTS.md](./smart-app-react/AGENTS.md). It joins `fhir`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
+
+`smart-app-core` is what `ConnectMenu` offers as pure data (the Official Wildflower Relay entry, the server preset groups per connect target, the menu's copy), with no React and no DOM, so `apps/server-docs-web`, which is not React, offers the same connect choices.
 
 `web-trace-core` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace-core/AGENTS.md](./web-trace-core/AGENTS.md). It sits below the HAR packages (`http-archive`, `har-importer-core`, `recorder-core-js`, `har-anonymizer-core`), which is why it stands on its own rather than as a package inside any of them.
 

@@ -51,7 +51,14 @@ interface ConsoleConfiguration {
    */
   persistAuth: false
   darkMode: boolean
-  authentication: ConsoleAuthentication
+  /** The shared bearer prefill; absent with no target, which has nowhere to send it. */
+  authentication?: ConsoleAuthentication
+  /**
+   * Set with no target only. Scalar sends a request to the page's own origin
+   * when a document names no server, so without a target there is no
+   * "send request" button at all.
+   */
+  hideTestRequestButton?: true
 }
 
 /**
@@ -61,9 +68,12 @@ interface ConsoleConfiguration {
  * `accessToken` prefills the bearer field every source shares, so a reader who
  * has signed in can send an authorised request without pasting anything. Signed
  * out it is empty, and the field is theirs to fill by hand.
+ *
+ * With no `serverUrl` (the reader is browsing without a server) the documents
+ * name no server, there is no bearer prefill, and no request can be sent.
  */
 const consoleConfiguration = (
-  serverUrl: string,
+  serverUrl: string | undefined,
   options: { readonly prefersDarkMode: boolean; readonly accessToken?: string }
 ): ConsoleConfiguration => ({
   sources: docSources.map((source, index) => ({
@@ -77,10 +87,14 @@ const consoleConfiguration = (
   withDefaultFonts: false,
   persistAuth: false,
   darkMode: options.prefersDarkMode,
-  authentication: {
-    preferredSecurityScheme: BEARER_SCHEME_NAME,
-    securitySchemes: { [BEARER_SCHEME_NAME]: { token: options.accessToken ?? '' } },
-  },
+  ...(serverUrl === undefined
+    ? { hideTestRequestButton: true as const }
+    : {
+        authentication: {
+          preferredSecurityScheme: BEARER_SCHEME_NAME,
+          securitySchemes: { [BEARER_SCHEME_NAME]: { token: options.accessToken ?? '' } },
+        },
+      }),
 })
 
 export {

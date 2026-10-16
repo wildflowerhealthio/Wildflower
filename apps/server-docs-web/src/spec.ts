@@ -73,9 +73,11 @@ const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
 
 /**
  * A snapshot made sendable: pointed at `serverUrl` and offering a bearer token
- * field. Composition of {@link withServer} and {@link withBearerAuth}.
+ * field. Composition of {@link withServer} and {@link withBearerAuth}. With no
+ * `serverUrl` (the reader is browsing without a server) it gets no server
+ * entry, so it names nowhere to send a request.
  */
-const preparedSpec = (spec: OpenApiDocument, serverUrl: string): OpenApiDocument =>
-  withBearerAuth(withServer(spec, serverUrl))
+const preparedSpec = (spec: OpenApiDocument, serverUrl: string | undefined): OpenApiDocument =>
+  withBearerAuth(serverUrl === undefined ? spec : withServer(spec, serverUrl))
 
 export { BEARER_SCHEME_NAME, preparedSpec, withBearerAuth, withServer, type OpenApiDocument }

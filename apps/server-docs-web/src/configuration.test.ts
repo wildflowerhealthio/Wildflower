@@ -69,15 +69,47 @@ describe('consoleConfiguration', () => {
       prefersDarkMode: false,
       accessToken: 'header.payload.signature',
     })
-    expect(signedIn.authentication.securitySchemes[BEARER_SCHEME_NAME].token).toBe(
+    expect(signedIn.authentication?.securitySchemes[BEARER_SCHEME_NAME].token).toBe(
       'header.payload.signature'
     )
     expect(signedIn.sources).toHaveLength(5)
+  })
+
+  it('leaves the send button on, as Scalar has it, while there is a target', () => {
+    expect(configuration).not.toHaveProperty('hideTestRequestButton')
   })
 
   it('follows the reader’s colour-scheme preference', () => {
     expect(consoleConfiguration('http://127.0.0.1:8080', { prefersDarkMode: true }).darkMode).toBe(
       true
     )
+  })
+})
+
+describe('consoleConfiguration with no target', () => {
+  const withoutServer = consoleConfiguration(undefined, { prefersDarkMode: false })
+
+  it('names no server in any source', () => {
+    expect(withoutServer.sources).toHaveLength(docSources.length)
+    for (const source of withoutServer.sources) {
+      expect(source.content).not.toHaveProperty('servers')
+    }
+  })
+
+  it('has no bearer prefill, even with a token to hand', () => {
+    expect(withoutServer).not.toHaveProperty('authentication')
+    expect(
+      consoleConfiguration(undefined, { prefersDarkMode: false, accessToken: 'a.b.c' })
+    ).not.toHaveProperty('authentication')
+  })
+
+  it('offers no send button, so nothing goes to the page’s own origin', () => {
+    expect(withoutServer.hideTestRequestButton).toBe(true)
+  })
+
+  it('keeps the third-party and storage guards of a targeted console', () => {
+    expect(withoutServer.proxyUrl).toBe('')
+    expect(withoutServer.withDefaultFonts).toBe(false)
+    expect(withoutServer.persistAuth).toBe(false)
   })
 })
