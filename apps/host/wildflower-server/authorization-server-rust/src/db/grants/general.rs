@@ -351,6 +351,7 @@ mod tests {
             expires_at: Utc::now() + chrono::Duration::days(90),
             authorization_code_hash: None,
             grant_id: Some(id.clone()),
+            sid: None,
         };
         let live = RefreshToken {
             token_hash: "live-token".to_owned(),

@@ -76,6 +76,9 @@ async fn handle_sign_in(
         Err(SameDeviceSignInError::Store(error)) => {
             InternalError::new("read the Owner-browser client", error).into_response()
         }
+        Err(SameDeviceSignInError::SessionNotStored(error)) => {
+            InternalError::new("store the Owner browser session", error).into_response()
+        }
         Err(SameDeviceSignInError::Issuance(error)) => {
             InternalError::new("mint the Owner browser's session token", error).into_response()
         }

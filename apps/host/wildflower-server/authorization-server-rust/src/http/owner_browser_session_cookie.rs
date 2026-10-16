@@ -1,8 +1,8 @@
 //! The cookie an Owner browser holds its session in once it has signed in at
 //! `/oauth/sign-in`: `__Host-owner_browser_session`, whose value is the Owner
-//! browser's access token itself. The server keeps no session table, so a
-//! restart doesn't sign the browser out; revoking the token's `jti`, or the
-//! Owner-browser client's subject, does.
+//! browser's access token itself, naming its browser session as its `sid`. A
+//! restart doesn't sign the browser out; revoking the token's `jti`, the
+//! Owner-browser client's subject, or the browser session, does.
 //!
 //! The authorization server sets it, and says whether the session it holds has
 //! ended. The host's cookie→bearer layer (`wildflower-server-rust`'s
@@ -11,7 +11,7 @@
 //! bearer gates check it like any other token, and clears an ended one.
 //! `/oauth/authorize` reads it too, on the navigation a client starts, to send
 //! a browser signed in as the Owner to the consent card rather than the wait
-//! page.
+//! page, and to issue the request's code under that browser session.
 //!
 //! A browser can hold the FHIR web UI's `hfs_session` beside it, and the layer
 //! presents `hfs_session`'s token when both ride a request. A page that acts
@@ -26,7 +26,7 @@ use axum::http::{header, HeaderMap};
 use cookie::Cookie;
 
 use crate::domain::capabilities::oauth::OWNER_BROWSER_SESSION_TTL;
-use crate::domain::token::VerifyError;
+use crate::domain::token::{VerifiedClaims, VerifyError};
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
 
@@ -72,27 +72,59 @@ fn owner_browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
 
 /// Whether the session an Owner browser cookie holds has ended: the gates
 /// would refuse `owner_browser_token` as a bad, expired or revoked token (by
-/// its `jti` or its subject), checked by the same
+/// its `jti`, its subject or its browser session), checked by the same
 /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier) the
-/// gates run. A store that can't be read says nothing about the token, so it
-/// hasn't ended; the gate then fails closed on it the same way.
-#[must_use]
+/// gates run.
+///
+/// # Errors
+///
+/// The server-side [`VerifyError`]s, when a key, revocation or browser-session
+/// store can't be read, so the session can't be checked.
 pub fn owner_browser_session_has_ended(
     state: &Arc<AuthorizationServerState>,
     owner_browser_token: &str,
-) -> bool {
-    has_ended(&LiveTokenVerifier::from_state(state), owner_browser_token)
+) -> Result<bool, VerifyError> {
+    Ok(
+        standing_session_claims(&LiveTokenVerifier::from_state(state), owner_browser_token)?
+            .is_none(),
+    )
 }
 
-/// Whether `headers` carry an Owner browser session that hasn't ended (see
-/// [`owner_browser_session_has_ended`]): the browser that sent them is signed
-/// in as the Owner.
-pub(crate) fn carries_owner_browser_session(
+/// The verified claims of the Owner browser session `headers` carry, when the
+/// browser that sent them is signed in as the Owner: its cookie holds a token
+/// the gates would accept. Its `sid` names the browser session. `None` when
+/// there is no cookie or its session has ended (see
+/// [`owner_browser_session_has_ended`]).
+///
+/// # Errors
+///
+/// The server-side [`VerifyError`]s, when a key, revocation or browser-session
+/// store can't be read, so the session can't be checked.
+pub(crate) fn carried_owner_browser_session(
     token_verifier: &LiveTokenVerifier,
     headers: &HeaderMap,
-) -> bool {
-    owner_browser_session_token(headers)
-        .is_some_and(|owner_browser_token| !has_ended(token_verifier, &owner_browser_token))
+) -> Result<Option<VerifiedClaims>, VerifyError> {
+    let Some(owner_browser_token) = owner_browser_session_token(headers) else {
+        return Ok(None);
+    };
+    standing_session_claims(token_verifier, &owner_browser_token)
+}
+
+/// The verified claims of `owner_browser_token`, or `None` when
+/// `token_verifier` refuses it for good: bad, expired or revoked.
+///
+/// # Errors
+///
+/// The server-side [`VerifyError`]s, when a store can't be read.
+fn standing_session_claims(
+    token_verifier: &LiveTokenVerifier,
+    owner_browser_token: &str,
+) -> Result<Option<VerifiedClaims>, VerifyError> {
+    match token_verifier.verify(owner_browser_token) {
+        Ok(claims) => Ok(Some(claims)),
+        Err(VerifyError::TokenRejected | VerifyError::Revoked) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 /// The Owner browser session cookie's value among `headers`' `Cookie`s, if
@@ -106,21 +138,6 @@ fn owner_browser_session_token(headers: &HeaderMap) -> Option<String> {
         .filter_map(Result::ok)
         .find(|cookie| cookie.name() == OWNER_BROWSER_SESSION_COOKIE)
         .map(|cookie| cookie.value().to_owned())
-}
-
-/// Whether `token_verifier` would refuse `owner_browser_token` for good: bad,
-/// expired or revoked. An unreadable store says nothing about the token.
-fn has_ended(token_verifier: &LiveTokenVerifier, owner_browser_token: &str) -> bool {
-    match token_verifier.verify(owner_browser_token) {
-        Ok(_) => false,
-        Err(VerifyError::TokenRejected | VerifyError::Revoked) => true,
-        Err(
-            VerifyError::NoSigningKeysConfigured
-            | VerifyError::KeyStoreUnavailable(_)
-            | VerifyError::SigningKeyUnreadable(_)
-            | VerifyError::RevocationStoreUnavailable(_),
-        ) => false,
-    }
 }
 
 #[cfg(test)]

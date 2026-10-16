@@ -74,6 +74,7 @@ mod tests {
             issued_at: None,
             scope: None,
             patient: None,
+            sid: None,
         }
     }
 

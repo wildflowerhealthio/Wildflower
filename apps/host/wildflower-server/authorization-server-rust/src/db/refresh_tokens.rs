@@ -19,6 +19,7 @@ diesel::table! {
         expires_at -> TimestamptzSqlite,
         authorization_code_hash -> Nullable<Text>,
         grant_id -> Nullable<Text>,
+        sid -> Nullable<Text>,
     }
 }
 

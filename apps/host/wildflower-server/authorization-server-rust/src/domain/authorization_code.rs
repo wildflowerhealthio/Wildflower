@@ -42,6 +42,10 @@ pub struct IssuedAuthorizationCode {
     pub issued_at: DateTime<Utc>,
     /// Instant after which `/token` redemption is rejected as expired.
     pub expires_at: DateTime<Utc>,
+    /// The browser session the code was issued under — the one the
+    /// `/authorize` request was made in — or `None` when there was none.
+    /// The tokens and refresh family the code earns record it too.
+    pub sid: Option<String>,
 }
 
 /// A pending authorization-code request that is known to be well formed: it's

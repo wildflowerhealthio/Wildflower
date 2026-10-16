@@ -4,6 +4,7 @@ use url::Url;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
@@ -304,6 +305,52 @@ pub trait GrantTx {
         now: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError>;
 
+    // ----- browser sessions ----------------------------------------------
+
+    /// Persist a freshly started browser session.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the insert fails (for example a
+    /// unique-constraint violation on the `sid`).
+    fn insert_browser_session(
+        &mut self,
+        session: &BrowserSession,
+    ) -> Result<(), AuthorizationServerError>;
+
+    /// Load the browser session `sid`, or `None` when no session has it.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails or the returned row
+    /// cannot be mapped to a [`BrowserSession`].
+    fn browser_session_by_sid(
+        &mut self,
+        sid: &str,
+    ) -> Result<Option<BrowserSession>, AuthorizationServerError>;
+
+    /// Whether the browser session `sid` has been revoked, without loading
+    /// it. A `sid` that names no session counts as revoked: a session is
+    /// pruned only once nothing it minted can still be live, so a missing row
+    /// fails closed.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails.
+    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError>;
+
+    /// Stamp the browser session `sid` revoked at `now`, returning `true` iff a
+    /// session that wasn't already revoked was transitioned. The row is kept.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn revoke_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
+
     // ----- retention ------------------------------------------------------
     //
     // The three reclaiming deletes, each taking an already-computed *cutoff*
@@ -345,6 +392,18 @@ pub trait GrantTx {
     /// [`AuthorizationServerError::Infrastructure`] if the transaction or either delete
     /// fails.
     fn delete_refresh_token_families_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError>;
+
+    /// Delete every browser session that expired or was revoked before
+    /// `cutoff` and that no refresh-token family alive at `cutoff` names,
+    /// returning how many went.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
+    fn delete_browser_sessions_ended_before(
         &mut self,
         cutoff: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError>;

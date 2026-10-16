@@ -13,20 +13,24 @@
 //!    a `TokenEntitlement` proof).
 //!  - [`RefreshFamilyWriter`] — start a refresh-token family or rotate a token
 //!    into its successor (under a redemption proof).
+//!  - [`BrowserSessionWriter`] — start a browser session (under a
+//!    `RedeemedSameDeviceSignInCode`).
 //!
 //! A writer is a borrowed view over a store, not a gate in itself; the gate is
 //! the proof each method demands. The source-guard test below keeps the
 //! privileged store methods from being called *around* the writers.
 
 mod access_token_minter;
+mod browser_session_writer;
 mod grant_recorder;
 mod refresh_family_writer;
 mod request_approver;
 
 pub(crate) use access_token_minter::AccessTokenMinter;
+pub(crate) use browser_session_writer::BrowserSessionWriter;
 pub(crate) use grant_recorder::GrantRecorder;
 pub(crate) use refresh_family_writer::RefreshFamilyWriter;
-pub(crate) use request_approver::{CodeAuthority, RequestApprover};
+pub(crate) use request_approver::{CodeApproval, CodeAuthority, RequestApprover};
 
 #[cfg(test)]
 mod tests {
@@ -35,7 +39,7 @@ mod tests {
     /// The store methods that grant authority — approving a request, issuing a
     /// code, recording or widening a grant, widening a client registration,
     /// reading private key material to sign with, seeding a key, issuing a
-    /// refresh token. Each is written
+    /// refresh token, starting a browser session. Each is written
     /// with a leading `.` so `store.x(` and `tx.x(` match while a differently
     /// named method that merely ends the same way (`has_active_signing_key(`)
     /// does not.
@@ -51,6 +55,7 @@ mod tests {
         ".insert_signing_key(",
         ".insert_refresh_token_family_row(",
         ".insert_refresh_token(",
+        ".insert_browser_session(",
     ];
 
     /// Where a privileged call may legitimately appear: the writers themselves,

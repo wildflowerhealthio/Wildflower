@@ -295,6 +295,7 @@ fn park_device_requests(server_dir: &std::path::Path, count: usize) -> Vec<Strin
                     launch: None,
                     launch_bound_patient: None,
                     requested_by_owner_browser: false,
+                    sid: None,
                 })
                 .expect("park a device request");
             user_code

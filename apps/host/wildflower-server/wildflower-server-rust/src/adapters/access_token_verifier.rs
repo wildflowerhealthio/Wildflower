@@ -23,7 +23,8 @@ impl AccessTokenVerifier for AuthorizationServerAccessTokenVerifier {
             VerifyError::NoSigningKeysConfigured
             | VerifyError::KeyStoreUnavailable(_)
             | VerifyError::SigningKeyUnreadable(_)
-            | VerifyError::RevocationStoreUnavailable(_) => {
+            | VerifyError::RevocationStoreUnavailable(_)
+            | VerifyError::BrowserSessionStoreUnavailable(_) => {
                 AccessTokenVerifyError::VerifierFailed(format!("{:#}", anyhow::Error::from(error)))
             }
         })?;

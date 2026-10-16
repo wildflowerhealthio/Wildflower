@@ -34,8 +34,9 @@ use crate::domain::capabilities::oauth::SignInRefusal;
 use crate::domain::token::VerifyError;
 
 /// Map a token-[`VerifyError`] to its HTTP response, shared by the auth
-/// middlewares. Server-side failures (no keys configured, the key store can't
-/// be read, a configured key's material is corrupt) are operator problems, so
+/// middlewares. Server-side failures (no keys configured, the key, revocation
+/// or browser-session store can't be read, a configured key's material is
+/// corrupt) are operator problems, so
 /// they log and return 500; only a genuinely rejected or revoked token is a
 /// 401, stamped with the matching [`RequestRefusal`]. Written as an exhaustive
 /// match so a new `VerifyError` variant forces a deliberate status choice
@@ -45,6 +46,7 @@ pub(crate) fn verify_error_response(context: &str, err: VerifyError) -> Response
         VerifyError::NoSigningKeysConfigured
         | VerifyError::KeyStoreUnavailable(_)
         | VerifyError::RevocationStoreUnavailable(_)
+        | VerifyError::BrowserSessionStoreUnavailable(_)
         | VerifyError::SigningKeyUnreadable(_) => internal_error(context, err),
         VerifyError::TokenRejected => unauthorized(RequestRefusal::TokenRejected),
         VerifyError::Revoked => unauthorized(RequestRefusal::Revoked),
@@ -421,6 +423,11 @@ mod tests {
         // A store read failure fails closed: we can't prove the token is live,
         // so it's an operator-facing 500, never a silent pass.
         let err = VerifyError::RevocationStoreUnavailable("query returned no rows".to_owned());
+        let response = verify_error_response("test", err);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let err = VerifyError::BrowserSessionStoreUnavailable(
+            AuthorizationServerError::infrastructure("browser_session_by_sid failed", "locked"),
+        );
         let response = verify_error_response("test", err);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }

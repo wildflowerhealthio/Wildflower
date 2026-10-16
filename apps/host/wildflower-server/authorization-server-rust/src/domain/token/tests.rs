@@ -19,6 +19,7 @@ proptest! {
         origin in "https://[a-z]{3,16}\\.[a-z]{2,8}",
         audience_suffix in prop::option::of("/[a-z]{2,16}"),
         patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
+        sid in prop::option::of("[a-zA-Z0-9-]{1,36}"),
     ) {
         let key = shared_key();
         let audience: Option<String> = audience_suffix.map(|s| format!("{origin}{s}"));
@@ -34,6 +35,7 @@ proptest! {
                 issuer: &origin,
                 audience: audience.as_deref(),
                 patient: patient.as_deref(),
+                sid: sid.as_deref(),
             },
         ).expect("mint");
 
@@ -53,6 +55,7 @@ proptest! {
             audience: vec![expected_aud],
             scope: Some(scopes.join(" ")),
             patient: patient.clone(),
+            sid: sid.clone(),
             // `jti` is a fresh random id we can't predict, so mirror what
             // was minted; asserted non-empty separately below. Cloned (not
             // spread) because `Option<String>` isn't `Copy` — a bare
@@ -89,6 +92,7 @@ fn verify_rejects_wrong_issuer() {
             issuer: "tauri://localhost",
             audience: None,
             patient: None,
+            sid: None,
         },
     )
     .expect("mint");
@@ -141,6 +145,7 @@ fn owner_args<'a>(client_id: &'a str, origin: &'a str) -> NewJwtArgs<'a> {
         issuer: origin,
         audience: None,
         patient: None,
+        sid: None,
     }
 }
 

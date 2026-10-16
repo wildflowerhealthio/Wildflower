@@ -18,6 +18,7 @@
 
 pub(crate) mod authorization_codes;
 mod authorization_requests;
+pub(crate) mod browser_sessions;
 pub(crate) mod clients;
 mod grant_store;
 pub(crate) mod grants;

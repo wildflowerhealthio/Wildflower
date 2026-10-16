@@ -5,6 +5,7 @@ use super::GrantTx;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::pending_consent::NewestPendingConsent;
@@ -310,6 +311,52 @@ pub trait GrantStore {
         code: &IssuedAuthorizationCode,
     ) -> Result<(), AuthorizationServerError> {
         self.with_connection(|tx| tx.issue_authorization_code(code))
+    }
+
+    /// See [`GrantTx::insert_browser_session`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::insert_browser_session`]'s error.
+    fn insert_browser_session(
+        &self,
+        session: &BrowserSession,
+    ) -> Result<(), AuthorizationServerError> {
+        self.with_connection(|tx| tx.insert_browser_session(session))
+    }
+
+    /// See [`GrantTx::browser_session_by_sid`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::browser_session_by_sid`]'s error.
+    fn browser_session_by_sid(
+        &self,
+        sid: &str,
+    ) -> Result<Option<BrowserSession>, AuthorizationServerError> {
+        self.with_connection(|tx| tx.browser_session_by_sid(sid))
+    }
+
+    /// See [`GrantTx::browser_session_is_revoked`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::browser_session_is_revoked`]'s error.
+    fn browser_session_is_revoked(&self, sid: &str) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.browser_session_is_revoked(sid))
+    }
+
+    /// See [`GrantTx::revoke_browser_session`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::revoke_browser_session`]'s error.
+    fn revoke_browser_session(
+        &self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.revoke_browser_session(sid, now))
     }
 
     /// See [`GrantTx::insert_refresh_token_family_row`].

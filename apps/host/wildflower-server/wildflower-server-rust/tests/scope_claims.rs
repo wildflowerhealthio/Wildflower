@@ -81,6 +81,7 @@ fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
             issuer: SERVER_ORIGIN,
             audience: Some(SERVER_ORIGIN),
             patient: None,
+            sid: None,
         },
     )
     .expect("mint token")

@@ -6,34 +6,39 @@
 //! Owner's, issued to the Owner-browser client
 //! ([`OWNER_BROWSER_CLIENT_ID`]) and holding the Owner's grant
 //! ([`OWNER_SCOPES`](crate::OWNER_SCOPES)), with which the Owner decides
-//! consents on the server's own consent pages.
+//! consents on the server's own consent pages. Redeeming a code starts an
+//! Owner browser session, which the token names as its `sid`.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use wildflowerhealthio_scopes::Grant;
 
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::OWNER_BROWSER_CLIENT_ID;
 
 /// A sign-in code taken out of the outstanding codes, unexpired. Carries the
-/// Owner's grant, which the minter records verbatim.
+/// Owner browser session the sign-in starts, holding the Owner's grant, which
+/// the minter records verbatim.
 pub(crate) struct RedeemedSameDeviceSignInCode {
-    token_scopes: Vec<String>,
+    session: BrowserSession,
 }
 
 impl RedeemedSameDeviceSignInCode {
     /// Take `presented` out of `codes` at `now`. When it was outstanding and
-    /// unexpired, the proof holds `owner_grant`; an unknown, spent or expired
-    /// code is `None`, the three alike.
+    /// unexpired, the proof holds a new Owner browser session with
+    /// `owner_grant`, lasting `session_ttl`; an unknown, spent or expired code
+    /// is `None`, the three alike.
     pub(crate) fn redeem(
         codes: &SameDeviceSignInCodes,
         presented: &str,
         owner_grant: &Grant,
+        session_ttl: Duration,
         now: DateTime<Utc>,
     ) -> Option<Self> {
         codes
             .take(presented, now)
             .then(|| RedeemedSameDeviceSignInCode {
-                token_scopes: owner_grant.render(),
+                session: BrowserSession::new_owner(owner_grant.render(), session_ttl, now),
             })
     }
 
@@ -44,13 +49,22 @@ impl RedeemedSameDeviceSignInCode {
 
     /// The Owner's grant, the token's `scope`.
     pub(super) fn token_scopes(&self) -> &[String] {
-        &self.token_scopes
+        &self.session.scopes
+    }
+
+    /// The Owner browser session the sign-in starts: the token's `sid`, and
+    /// the row the session writer stores.
+    pub(crate) fn session(&self) -> &BrowserSession {
+        &self.session
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::browser_session::BrowserSessionKind;
+
+    const SESSION_TTL: Duration = Duration::hours(8);
 
     fn owner_grant() -> Grant {
         Grant::parse(["system/*.cruds", "wildflower/*.cruds"])
@@ -61,13 +75,25 @@ mod tests {
         let codes = SameDeviceSignInCodes::new();
         let now = Utc::now();
         codes.insert("code-1", now);
-        let redeemed = RedeemedSameDeviceSignInCode::redeem(&codes, "code-1", &owner_grant(), now)
-            .expect("an outstanding code redeems");
+        let redeemed = RedeemedSameDeviceSignInCode::redeem(
+            &codes,
+            "code-1",
+            &owner_grant(),
+            SESSION_TTL,
+            now,
+        )
+        .expect("an outstanding code redeems");
         assert_eq!(redeemed.client_id(), "wildflower-owner-browser");
         assert_eq!(
             redeemed.token_scopes(),
             ["system/*.cruds".to_owned(), "wildflower/*.cruds".to_owned()]
         );
+        let session = redeemed.session();
+        assert_eq!(session.kind, BrowserSessionKind::Owner);
+        assert_eq!(session.name, None);
+        assert_eq!(session.scopes, redeemed.token_scopes());
+        assert_eq!(session.created_at, now);
+        assert_eq!(session.expires_at, now + SESSION_TTL);
     }
 
     #[test]
@@ -75,11 +101,21 @@ mod tests {
         let codes = SameDeviceSignInCodes::new();
         let now = Utc::now();
         codes.insert("code-1", now);
-        assert!(
-            RedeemedSameDeviceSignInCode::redeem(&codes, "code-1", &owner_grant(), now).is_some()
-        );
-        assert!(
-            RedeemedSameDeviceSignInCode::redeem(&codes, "code-1", &owner_grant(), now).is_none()
-        );
+        assert!(RedeemedSameDeviceSignInCode::redeem(
+            &codes,
+            "code-1",
+            &owner_grant(),
+            SESSION_TTL,
+            now
+        )
+        .is_some());
+        assert!(RedeemedSameDeviceSignInCode::redeem(
+            &codes,
+            "code-1",
+            &owner_grant(),
+            SESSION_TTL,
+            now
+        )
+        .is_none());
     }
 }

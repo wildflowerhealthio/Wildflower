@@ -32,6 +32,9 @@ pub(crate) mod test_fake;
 
 pub mod authorization_code;
 pub mod authorization_request;
+// The browsers the server has signed in, keyed by the `sid` everything minted
+// under one records.
+pub mod browser_session;
 pub mod client;
 // The `client_id` / `client_secret` pair a client presents (RFC 6749 §2.3.1),
 // zeroized on drop; how it arrived is the HTTP layer's `PresentedCredentials`.
@@ -69,7 +72,7 @@ pub(crate) mod sign_in_redirect;
 // page reads by.
 pub mod pending_consent;
 pub mod refresh_token;
-// The retention windows for the three accumulating tables plus the sweep that
+// The retention windows for the four accumulating tables plus the sweep that
 // applies them — the policy half of the startup/daily reaper `setup_authorization_server`
 // spawns. Lives here (not in `db`) because the windows are a domain decision;
 // the store only takes cutoffs.

@@ -46,6 +46,9 @@ pub(crate) enum InvalidGrantReason {
     },
     /// The family's absolute deadline passed, or it was revoked.
     RefreshTokenExpired,
+    /// The browser session the family was minted under has been revoked, or
+    /// no longer exists.
+    RefreshTokenSessionRevoked { family_id: String },
     /// A consumed refresh token was presented again — theft signal; the whole
     /// family has been revoked.
     RefreshTokenReplayed {

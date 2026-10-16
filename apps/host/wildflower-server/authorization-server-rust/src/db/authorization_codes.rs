@@ -23,6 +23,7 @@ diesel::table! {
         patient -> Nullable<Text>,
         issued_at -> TimestamptzSqlite,
         expires_at -> TimestamptzSqlite,
+        sid -> Nullable<Text>,
     }
 }
 
@@ -135,6 +136,7 @@ mod tests {
                     patient,
                     issued_at,
                     expires_at,
+                    sid: None,
                 },
             )
     }
@@ -170,6 +172,7 @@ mod tests {
             patient: None,
             issued_at: now,
             expires_at: now + chrono::Duration::seconds(60),
+            sid: None,
         };
         store.issue_authorization_code(&code).expect("issue");
         let first = store
@@ -204,6 +207,7 @@ mod tests {
             patient: None,
             issued_at: now - chrono::Duration::minutes(1),
             expires_at,
+            sid: None,
         };
         for code in [
             sample("old", now - chrono::Duration::days(8)),
@@ -251,6 +255,7 @@ mod tests {
             patient: None,
             issued_at: now,
             expires_at: now + chrono::Duration::seconds(60),
+            sid: None,
         };
         store.issue_authorization_code(&code).expect("issue");
         let mut conn = store.pool().get().expect("check out a connection");

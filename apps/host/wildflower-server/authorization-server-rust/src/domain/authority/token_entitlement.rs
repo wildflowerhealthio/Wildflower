@@ -72,4 +72,21 @@ impl TokenEntitlement<'_> {
             }
         }
     }
+
+    /// The browser session the token is minted under, the token's `sid`:
+    /// the session a same-device sign-in started, or the one a redeemed code
+    /// or refreshed family records. `None` when there is none, as for every
+    /// device-code token.
+    pub(crate) fn sid(&self) -> Option<&str> {
+        match self {
+            TokenEntitlement::SameDeviceSignIn(redeemed_sign_in_code) => {
+                Some(redeemed_sign_in_code.session().sid.as_str())
+            }
+            TokenEntitlement::AuthorizationCode(redeemed_code) => redeemed_code.sid(),
+            TokenEntitlement::DeviceCode(_) => None,
+            TokenEntitlement::RefreshToken(validated_refresh_token) => {
+                validated_refresh_token.sid()
+            }
+        }
+    }
 }

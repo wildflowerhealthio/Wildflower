@@ -11,7 +11,9 @@ use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::capabilities::writers::{CodeAuthority, GrantRecorder, RequestApprover};
+use crate::domain::capabilities::writers::{
+    CodeApproval, CodeAuthority, GrantRecorder, RequestApprover,
+};
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
 use crate::domain::oauth_error_code::OAuthErrorCode;
@@ -62,7 +64,8 @@ pub(crate) fn load_pending_code_request(
 /// [`DelegatedScopes`] proof, issue the code, record the standing grant and,
 /// for a client trusted on first use, its registration, republish the popup
 /// head, and return the client callback URL.
-/// An approval that grants nothing is applied as a **deny**.
+/// An approval that grants nothing is applied as a **deny**, and so is one
+/// for a request whose browser session has been revoked since it was made.
 ///
 /// A request the
 /// [registration verdict](crate::domain::client_registration::ClientRegistrationVerdict)
@@ -124,15 +127,21 @@ pub(crate) fn approve_oauth_consent(
             .map(|()| denial_outcome(&pending_request));
     };
 
-    let Some(issued_code) = RequestApprover::over(store).approve_for_code(
+    let code_approval = RequestApprover::over(store).approve_for_code(
         CodeAuthority::OwnerDelegated(&delegated_scopes),
         &pending_request,
         input.patient.as_deref(),
         generate_code(),
         now,
-    )?
-    else {
-        return Err(make_consent_not_found());
+    )?;
+    let issued_code = match code_approval {
+        CodeApproval::Issued(issued_code) => issued_code,
+        CodeApproval::RequestNotPending => return Err(make_consent_not_found()),
+        // The approver denied the request instead: tell the client so.
+        CodeApproval::BrowserSessionRevoked => {
+            owner_approval.republish_active();
+            return Ok(denial_outcome(&pending_request));
+        }
     };
 
     // Persist the (possibly brand-new) registration with the grant it justifies:
