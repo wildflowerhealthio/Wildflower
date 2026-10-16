@@ -7,18 +7,28 @@ import type * as Consented from './consented.ts'
 // The Sentry SDK is the collaborator: the module boundary is where we stub it,
 // so each test reads back the options `initConsentedTelemetry` handed
 // `Sentry.init` and drives the real hooks in them.
-const { initMock, setTagsMock, setTagMock, browserTracingIntegration } = vi.hoisted(() => ({
-  initMock: vi.fn<(options: BrowserOptions) => void>(),
-  setTagsMock: vi.fn<(tags: Readonly<Record<string, string | undefined>>) => void>(),
-  setTagMock: vi.fn<(key: string, value: string) => void>(),
-  browserTracingIntegration: { name: 'BrowserTracing', setupOnce: (): void => {} },
-}))
+const {
+  initMock,
+  setTagsMock,
+  setTagMock,
+  browserTracingIntegration,
+  browserTracingIntegrationMock,
+} = vi.hoisted(() => {
+  const integration = { name: 'BrowserTracing', setupOnce: (): void => {} }
+  return {
+    initMock: vi.fn<(options: BrowserOptions) => void>(),
+    setTagsMock: vi.fn<(tags: Readonly<Record<string, string | undefined>>) => void>(),
+    setTagMock: vi.fn<(key: string, value: string) => void>(),
+    browserTracingIntegration: integration,
+    browserTracingIntegrationMock: vi.fn((_options?: { enableInp?: boolean }) => integration),
+  }
+})
 
 vi.mock('@sentry/react', () => ({
   init: initMock,
   getClient: (): undefined => undefined,
   getGlobalScope: () => ({ setTags: setTagsMock, setTag: setTagMock }),
-  browserTracingIntegration: () => browserTracingIntegration,
+  browserTracingIntegration: browserTracingIntegrationMock,
 }))
 
 type TransactionEvent = Parameters<NonNullable<BrowserOptions['beforeSendTransaction']>>[0]
@@ -137,6 +147,7 @@ describe('initConsentedTelemetry', () => {
     const options = sentryInitOptions()
     expect(options.tracesSampleRate).toBe(0.5)
     expect(options.integrations).toStrictEqual([browserTracingIntegration])
+    expect(browserTracingIntegrationMock).toHaveBeenCalledWith({ enableInp: false })
   })
 
   test('sends scrubbed errors and transactions for both switches', async () => {
@@ -182,6 +193,7 @@ describe('initConsentedTelemetry', () => {
 
     const options = sentryInitOptions()
     expect(options.integrations).toStrictEqual([browserTracingIntegration])
+    expect(browserTracingIntegrationMock).toHaveBeenCalledWith({ enableInp: false })
     expect(await options.beforeSend?.(errorEvent, {})).toBeNull()
     const sentTransactionEvent = await options.beforeSendTransaction?.(transactionEvent, {})
     expect(sentTransactionEvent?.transaction).toBe('/r4/Patient/{id}')

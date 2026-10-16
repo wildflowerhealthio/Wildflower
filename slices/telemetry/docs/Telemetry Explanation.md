@@ -9,7 +9,7 @@ The consent model, the URL anonymizer and the event scrubber are pure functions 
 The visitor answers two independent questions, and each is an opt-in:
 
 - **Crash reports** send errors: the exception, its stack, and the breadcrumbs leading up to it. An error can carry whatever data the app had loaded, so this switch is the one that may send record contents. The apps are early-stage and unaudited, and the dialog asks visitors to use their own judgement about which records they connect.
-- **Performance** sends page loads, request timings and route names through Sentry's browser tracing, sampled at the build's `tracesSampleRate`, together with the app's own OpenTelemetry spans, which reach Sentry through its span processor. It sends no record contents.
+- **Performance** sends page loads, request timings and route names through Sentry's browser tracing, sampled at the build's `tracesSampleRate`, together with the app's own OpenTelemetry spans, which reach Sentry through its span processor. Browser tracing runs with INP off, because INP spans are sent outside transactions and would skip the performance switch and URL scrubbing. It sends no record contents.
 
 Both switches report to the same Sentry project, so the DSN stays while either is on. With only performance on, the SDK's `beforeSend` hook drops every error event; with only crash reports on, the trace sample rate is 0 and `beforeSendTransaction` drops every transaction. Profiling and session replay belong to neither switch, so they never run. The dialog names Sentry as where reports go, so no answer turns on the OTLP exporter, whose spans would pass no scrubbing hook. The SDK's `dataCollection` is turned off for user fields, cookies, headers, bodies and query parameters whatever the answer.
 

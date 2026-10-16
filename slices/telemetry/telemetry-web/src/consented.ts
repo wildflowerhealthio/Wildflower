@@ -122,15 +122,20 @@ let consentedEffectTracerLayer: Layer.Layer<never> | undefined
  *
  * @remarks
  * {@link PERSONAL_DATA_OFF} applies whatever the answer. Browser tracing is
- * added only when `initialConsent` has `performance`; nothing adds session
- * replay or profiling. Each hook drops the events its switch does not cover in
- * {@link latestConsent} — error events without `crashReports`, transactions
- * without `performance` — and anonymizes the URLs in the ones it sends, with
- * the hosts {@link hostsToRedact} names as they stand when the event is sent.
+ * added only when `initialConsent` has `performance`, with INP off: INP is
+ * sent as a standalone span, which bypasses `beforeSendTransaction`, so
+ * neither the consent check nor `scrubEvent` would see it. Nothing adds
+ * session replay or profiling. Each hook drops the events its switch does not
+ * cover in {@link latestConsent} — error events without `crashReports`,
+ * transactions without `performance` — and anonymizes the URLs in the ones it
+ * sends, with the hosts {@link hostsToRedact} names as they stand when the
+ * event is sent.
  */
 const sentryOptionsFor = (initialConsent: TelemetryConsent): InitSentryWebOptions => ({
   dataCollection: PERSONAL_DATA_OFF,
-  integrations: initialConsent.performance ? [Sentry.browserTracingIntegration()] : [],
+  integrations: initialConsent.performance
+    ? [Sentry.browserTracingIntegration({ enableInp: false })]
+    : [],
   beforeSend: (errorEvent) =>
     latestConsent?.crashReports === true ? scrubEvent(errorEvent, currentHostRedactor()) : null,
   beforeSendTransaction: (transactionEvent) =>
