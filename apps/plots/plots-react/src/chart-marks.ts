@@ -598,7 +598,7 @@ const valueAxisMarks = (
  * @remarks
  * The crosshair is not a mark: it moves on every pointer move, and drawing it
  * here would rebuild the whole figure each time it does. The chart overlays it
- * in HTML over {@link FRAME_HEIGHT} instead.
+ * in HTML instead, as tall as {@link crosshairHeightFor} says for the lanes drawn.
  */
 const chartOptions = (
   axes: readonly ValueAxis.ValueAxis[],
@@ -642,7 +642,6 @@ const chartOptions = (
 export type { BucketVertex, LevelRun, PlottedVertex }
 export {
   BUCKET_WIDTH,
-  FRAME_HEIGHT,
   MARGIN_TOP,
   bucketCountFor,
   bucketVertices,
