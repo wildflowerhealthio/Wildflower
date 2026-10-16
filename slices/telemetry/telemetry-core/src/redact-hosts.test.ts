@@ -31,7 +31,7 @@ describe('makeHostRedactor', () => {
 
   test.each([
     'relay.wildflowerhealth.io',
-    'https://wildflowerhealth.io/launcher/',
+    'https://launcher.wildflowerhealth.io/',
     'http://tauri.localhost/assets/index.js',
     'http://localhost:5173/src/main.tsx',
   ])('leaves %s as written', (text) => {

@@ -30,15 +30,37 @@ const VERSION_ID_PLACEHOLDER = '{vid}'
 const HOST_PLACEHOLDER = '{host}'
 
 /**
+ * The slug of each hosted web app, whose own origin is
+ * `https://<slug>.wildflowerhealth.io/`. `branding-core`'s `APP_SLUGS` is the
+ * source; `anonymize-url.test.ts` holds this copy to it (this package is
+ * published and `branding-core` is not, so it cannot import it).
+ */
+const HOSTED_APP_SLUGS = [
+  'medications',
+  'importer',
+  'server-docs',
+  'ohif-viewer',
+  'fhir-sync-pebble',
+  'plots',
+  'synthetic-data',
+  'strength',
+  'watch-lifts',
+  'launcher',
+  'authorization',
+] as const
+
+/**
  * The hostnames reported as written: the loopback names a dev server and the
- * Tauri webview load from, and the apex `wildflowerhealth.io`, which serves the
- * hosted web apps. Its subdomains name a user's server or tunnel, so they are
- * replaced like any other host.
+ * Tauri webview load from, the apex `wildflowerhealth.io`, which serves the
+ * marketing site, and each hosted web app's own subdomain of it. Any other
+ * subdomain names a user's server or tunnel, so it is replaced like any other
+ * host.
  */
 const KEPT_HOSTNAMES: ReadonlySet<string> = new Set([
   'localhost',
   'tauri.localhost',
   'wildflowerhealth.io',
+  ...HOSTED_APP_SLUGS.map((slug) => `${slug}.wildflowerhealth.io`),
 ])
 
 /**
@@ -202,9 +224,10 @@ const asPathRelativeReference = (relativePath: string): string =>
  * @remarks
  * The query string, the fragment and any credentials are dropped.
  *
- * The host and port stay only when the hostname is `localhost`,
- * `tauri.localhost` or `wildflowerhealth.io` itself; any other host, its
- * subdomains included, becomes {@link HOST_PLACEHOLDER} and its port is
+ * The host and port stay only when the hostname is one of
+ * {@link KEPT_HOSTNAMES}: `localhost`, `tauri.localhost`, `wildflowerhealth.io`
+ * itself or a hosted app's subdomain of it; any other host, any other
+ * subdomain included, becomes {@link HOST_PLACEHOLDER} and its port is
  * dropped.
  *
  * In the path, the segment after a FHIR resource type becomes
@@ -263,9 +286,8 @@ const parseHost = (host: string): URL | undefined => {
 /**
  * The hostname of `host` (see `parseHost`), lower-cased and without a
  * trailing dot (`ruth.example.` names `ruth.example`), when telemetry
- * replaces it; `undefined` for a kept hostname (`localhost`,
- * `tauri.localhost`, `wildflowerhealth.io`), which telemetry reports as
- * written, and for input that names no host.
+ * replaces it; `undefined` for a kept hostname ({@link KEPT_HOSTNAMES}),
+ * which telemetry reports as written, and for input that names no host.
  */
 const redactableHostname = (host: string): string | undefined => {
   const hostname = parseHost(host)?.hostname.replace(/\.$/, '')

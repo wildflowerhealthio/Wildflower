@@ -1,3 +1,4 @@
+import { APP_SLUGS, sectionUrl, type HostedAppId } from '@wildflowerhealthio/branding-core'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
@@ -38,13 +39,33 @@ const basePathSegmentArb = fc.oneof(
   fc.constantFrom('R4', 'r4', 'FHIR', 'STU3', 'api', 'baseR4')
 )
 
+/** Every hosted app, by its `branding-core` id. */
+const HOSTED_APP_IDS = Object.keys(APP_SLUGS).filter((id): id is HostedAppId =>
+  Object.hasOwn(APP_SLUGS, id)
+)
+
+/** Each hosted app's own origin, as `branding-core` publishes it. */
+const HOSTED_APP_ORIGINS: readonly string[] = HOSTED_APP_IDS.map(
+  (id) => new URL(sectionUrl(id)).origin
+)
+
 /** The hostnames reported as written; every other host becomes {@link HOST_PLACEHOLDER}. */
-const KEPT_HOSTNAMES: readonly string[] = ['localhost', 'tauri.localhost', 'wildflowerhealth.io']
+const KEPT_HOSTNAMES: readonly string[] = [
+  'localhost',
+  'tauri.localhost',
+  'wildflowerhealth.io',
+  ...HOSTED_APP_ORIGINS.map((origin) => new URL(origin).hostname),
+]
 
 /** An origin a request can go to: a web origin, or one of the kept hosts. */
 const originArb = fc.oneof(
   fc.webUrl().map((url) => new URL(url).origin),
-  fc.constantFrom('http://localhost:5173', 'http://tauri.localhost', 'https://wildflowerhealth.io')
+  fc.constantFrom(
+    'http://localhost:5173',
+    'http://tauri.localhost',
+    'https://wildflowerhealth.io',
+    ...HOSTED_APP_ORIGINS
+  )
 )
 
 /** `origin` as anonymizeUrl reports it: kept for a kept host, `{host}` behind the scheme otherwise. */
@@ -311,13 +332,13 @@ describe('anonymizeUrl', () => {
     },
     {
       label: 'an approved grant',
-      url: 'https://wildflowerhealth.io/authorization/approved/6f1c9a2e-3b4d-4c5e-8f60-718293a4b5c6',
-      expected: 'https://wildflowerhealth.io/authorization/approved/{id}',
+      url: 'https://authorization.wildflowerhealth.io/approved/6f1c9a2e-3b4d-4c5e-8f60-718293a4b5c6',
+      expected: 'https://authorization.wildflowerhealth.io/approved/{id}',
     },
     {
       label: 'an app launch by a 32-hex client id',
-      url: 'https://wildflowerhealth.io/launcher/home/launch/0123456789abcdef0123456789abcdef',
-      expected: 'https://wildflowerhealth.io/launcher/home/launch/{id}',
+      url: 'https://launcher.wildflowerhealth.io/home/launch/0123456789abcdef0123456789abcdef',
+      expected: 'https://launcher.wildflowerhealth.io/home/launch/{id}',
     },
     {
       label: 'an app settings page by a numeric id',
@@ -326,13 +347,13 @@ describe('anonymizeUrl', () => {
     },
     {
       label: 'a device authorization by its user code',
-      url: 'https://wildflowerhealth.io/authorization/devices/WDJB-MJHT',
-      expected: 'https://wildflowerhealth.io/authorization/devices/{id}',
+      url: 'https://authorization.wildflowerhealth.io/devices/WDJB-MJHT',
+      expected: 'https://authorization.wildflowerhealth.io/devices/{id}',
     },
     {
       label: 'an OAuth consent by its id',
-      url: 'https://wildflowerhealth.io/authorization/oauth-consent/6f1c9a2e-3b4d-4c5e-8f60-718293a4b5c6',
-      expected: 'https://wildflowerhealth.io/authorization/oauth-consent/{id}',
+      url: 'https://authorization.wildflowerhealth.io/oauth-consent/6f1c9a2e-3b4d-4c5e-8f60-718293a4b5c6',
+      expected: 'https://authorization.wildflowerhealth.io/oauth-consent/{id}',
     },
     {
       label: 'a file name',
@@ -398,8 +419,12 @@ describe('anonymizeUrl', () => {
     expect(anonymizeUrl(url)).toBe(expected)
   })
 
+  test.each(HOSTED_APP_ORIGINS)("keeps the hosted app's own host %s", (origin) => {
+    expect(anonymizeUrl(`${origin}/settings`)).toBe(`${origin}/settings`)
+  })
+
   test.each([
-    'https://wildflowerhealth.io/launcher/',
+    'https://launcher.wildflowerhealth.io/',
     'http://localhost:5173/servers',
     'http://tauri.localhost/',
     '//localhost:5173/fhir',

@@ -5520,6 +5520,9 @@ importers:
       '@types/node':
         specifier: ^26
         version: 26.1.0
+      '@wildflowerhealthio/branding-core':
+        specifier: workspace:*
+        version: link:../../branding/branding-core
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink

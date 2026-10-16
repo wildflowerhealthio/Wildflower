@@ -374,7 +374,7 @@ describe('server host redaction', () => {
   })
 
   test.each([
-    'https://wildflowerhealth.io/launcher/assets/index-abc.js',
+    'https://launcher.wildflowerhealth.io/assets/index-abc.js',
     'https://other.example/assets/index-abc.js',
   ])('keeps a stack frame on %s, a kept host or one it was not told about', async (scriptUrl) => {
     await startCrashReports()
