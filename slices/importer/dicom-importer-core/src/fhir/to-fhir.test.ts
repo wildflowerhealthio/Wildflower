@@ -11,8 +11,10 @@ import {
   accessionNumbers,
   fhirDate,
   fhirDateTime,
+  imagingStudyOriginalId,
   orderedInstances,
   patientOriginalId,
+  serviceRequestOriginalId,
   studySeries,
   toFhirResources,
   type StudyInstance,
@@ -93,6 +95,22 @@ describe('toFhirResources', () => {
           const run1 = Effect.runSync(toFhirResources(oneFileStudy(header), SETTINGS))
           const run2 = Effect.runSync(toFhirResources(oneFileStudy(header), SETTINGS))
           expect(run1.map((r) => r.id)).toEqual(run2.map((r) => r.id))
+        }
+      ),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
+  it('gives two patients of one study and accession distinct ids (property)', () => {
+    fc.assert(
+      fc.property(
+        dicomHeaderArb().filter((h) => h.accessionNumber !== undefined),
+        fc.uniqueArray(fc.string({ minLength: 1, maxLength: 20 }), { minLength: 2, maxLength: 2 }),
+        (header, [firstPatientId, secondPatientId]) => {
+          const first = { ...header, patientId: firstPatientId }
+          const second = { ...header, patientId: secondPatientId }
+          expect(imagingStudyOriginalId(first)).not.toBe(imagingStudyOriginalId(second))
+          expect(serviceRequestOriginalId(first)).not.toBe(serviceRequestOriginalId(second))
         }
       ),
       { numRuns: numRunsFor({ base: 40 }) }

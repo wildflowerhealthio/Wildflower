@@ -158,8 +158,14 @@ const patientWire = (header: DicomHeader.Type): Wire | undefined => {
 // ServiceRequest — emitted only when AccessionNumber is present
 // ---------------------------------------------------------------------------
 
+/**
+ * The `ServiceRequest` id: the accession together with the patient identity,
+ * since two patients' files can state one `AccessionNumber` and each is filed
+ * as its own request. `toFhirResources` emits nothing without a patient
+ * identity, so the empty component never names a stored request.
+ */
 const serviceRequestOriginalId = (header: DicomHeader.Type): string =>
-  sourceId(['accession', header.accessionNumber!])
+  sourceId(['accession', header.accessionNumber!, patientOriginalId(header) ?? ''])
 
 const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire | undefined => {
   if (header.accessionNumber === undefined || header.accessionNumber === '') return undefined
@@ -225,8 +231,14 @@ interface StudySeries<T extends StudyInstance = StudyInstance> {
   readonly instances: readonly T[]
 }
 
+/**
+ * The `ImagingStudy` id: the `StudyInstanceUID` together with the patient
+ * identity — the same pair `studyKey` splits a pick on, so each file set
+ * names its own study. `toFhirResources` emits nothing without a patient
+ * identity, so the empty component never names a stored study.
+ */
 const imagingStudyOriginalId = (header: DicomHeader.Type): string =>
-  sourceId(['study', header.studyInstanceUid])
+  sourceId(['study', header.studyInstanceUid, patientOriginalId(header) ?? ''])
 
 /**
  * Where an absent `SeriesNumber` / `InstanceNumber` sorts: after every stated

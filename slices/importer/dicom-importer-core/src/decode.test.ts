@@ -417,10 +417,35 @@ describe('the DICOM batch decode', () => {
       file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),
       file('2', { PatientID: 'P002', SOPInstanceUID: 'I2' }),
     ])
-    // Same StudyInstanceUID, so the studies share an id — but they are two
-    // reviewable file sets under two patients, never one silently merged study.
-    expect(studiesOf(result)).toHaveLength(2)
+    // Two reviewable file sets under two patients, never one silently merged
+    // study — and two ids, so storing the second never overwrites the first.
+    const studies = studiesOf(result)
+    expect(studies).toHaveLength(2)
     expect(new Set(of(result, 'Patient').map((one) => one.id)).size).toBe(2)
+    expect(new Set(studies.map((one) => one.id)).size).toBe(2)
+    expect(new Set(studies.map((one) => one.subject.reference)).size).toBe(2)
+
+    const studyById = new Map(studies.map((one) => [`ImagingStudy/${one.id}`, one]))
+    for (const sourceFile of sourceFilesOf(result)) {
+      const [related] = sourceFile.context?.related.map((one) => one.reference) ?? []
+      expect(studyById.get(related ?? '')?.subject.reference).toBe(sourceFile.subject?.reference)
+    }
+  })
+
+  it('gives each patient of one shared accession their own ServiceRequest', async () => {
+    const result = await run([
+      file('1', { PatientID: 'P001', SOPInstanceUID: 'I1', AccessionNumber: 'ACC001' }),
+      file('2', { PatientID: 'P002', SOPInstanceUID: 'I2', AccessionNumber: 'ACC001' }),
+    ])
+    const requests = of(result, 'ServiceRequest')
+    expect(requests).toHaveLength(2)
+    expect(new Set(requests.map((one) => one.id)).size).toBe(2)
+
+    const requestById = new Map(requests.map((one) => [`ServiceRequest/${one.id}`, one]))
+    for (const study of studiesOf(result)) {
+      const [basedOn] = study.basedOn.map((one) => one.reference)
+      expect(requestById.get(basedOn ?? '')?.subject.reference).toBe(study.subject.reference)
+    }
   })
 
   it('reports an unparsable file on its own, leaving the study readable', async () => {

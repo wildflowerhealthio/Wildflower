@@ -58,8 +58,12 @@ carrying the one `ImagingStudy` its files make up.
   (`{ url: 'gridfsFileId', valueString: sourceFileId }`) — per instance, so a
   study spanning files keeps per-file provenance that one `meta.source` could
   not. Ids are deterministic via `sourceId` (FNV-1a 64-bit of length-prefixed
-  components), and **every ordering is a function of the files alone**
-  (`compareInstances`), so the same study picked in any order synthesizes
+  components); the `ImagingStudy` and `ServiceRequest` ids hash the patient
+  identity (`patientOriginalId`) together with the `StudyInstanceUID` /
+  `AccessionNumber` — the identity `studyKey` splits on — so two patients'
+  files sharing a UID or accession store two studies and two requests rather
+  than one overwriting the other. **Every ordering is a function of the files
+  alone** (`compareInstances`), so the same study picked in any order synthesizes
   identical resources. Files that disagree on `AccessionNumber` are not
   merged: the first in study order builds the one `ServiceRequest` and
   `accessionNumbers` is what the decode reports the disagreement from.
