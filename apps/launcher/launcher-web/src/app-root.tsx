@@ -110,7 +110,7 @@ interface RenderAppOptions {
    * The directory this build is served from, as a router `basepath`, when the
    * copy is published under a subpath rather than at the origin root.
    *
-   * `main-web` passes the served directory (e.g. `/staging/pr-42/launcher/` for a PR
+   * `main-web` passes the served directory (e.g. `/pr-42/` for a PR
    * preview; `/` for the hosted build, at its origin's root) so the router strips it before
    * matching and re-adds it when it writes the address bar — otherwise every
    * root-absolute route (`/`, `/home`, …) misses under the subpath and the app

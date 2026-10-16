@@ -24,14 +24,13 @@ const eventsShim = createRequire(import.meta.url).resolve('events/')
 
 /**
  * A SMART-on-FHIR app built as a static bundle into this package's default
- * `dist/`, which `apps/wildflower-site/wildflower-site-web` publishes. One HTML entry, `index.html`:
+ * `dist/`, which `.github/workflows/deploy-pages-site.yml` publishes. One HTML entry, `index.html`:
  * the app root, which starts a SMART launch its URL carries (an EHR's `iss` and
  * `launch`, or a lone `iss`), completes the handshake and renders the app when
  * a callback is in the URL, and shows the standalone connect menu otherwise.
  * A relative `base` so the built assets
- * resolve from whatever origin / path the app is served at — on the GitHub
- * Pages site that is the `/importer` subpath `apps/wildflower-site/wildflower-site-web` stages this
- * build into.
+ * resolve from whatever path the app is served at: its origin's root, or a PR
+ * preview's `/pr-<n>/`.
  */
 export default defineConfig({
   ...base,

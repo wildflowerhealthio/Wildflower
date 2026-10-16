@@ -56,20 +56,18 @@ describe('signInEnvironment', () => {
 
   it('returns under the served base, the origin root in production', () => {
     // Arrange / Act — the hosted build runs at the root of its own origin in
-    // production and under a PR preview's `/staging/pr-<n>/launcher/`; the
+    // production and under a PR preview's `/pr-<n>/`; the
     // caller passes that served base.
     const production = signInEnvironment(pageAt('https://launcher.wildflowerhealth.io/'), '/')
     const preview = signInEnvironment(
-      pageAt('https://wildflowerhealthio.github.io/staging/pr-719/launcher/'),
-      '/staging/pr-719/launcher/'
+      pageAt('https://launcher.wildflowerhealth.io/pr-719/'),
+      '/pr-719/'
     )
 
     // Assert — production derives exactly the seeded row (so the sign-in returns
     // silently); the preview derives its own base, correct for where it is served.
     expect(production.redirectUri).toBe(REGISTERED_REDIRECT_URI)
-    expect(preview.redirectUri).toBe(
-      'https://wildflowerhealthio.github.io/staging/pr-719/launcher/'
-    )
+    expect(preview.redirectUri).toBe('https://launcher.wildflowerhealth.io/pr-719/')
   })
 
   it('falls back to the published URI from an address a sign-in must not return to', () => {

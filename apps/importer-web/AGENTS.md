@@ -211,10 +211,10 @@ the port.
 
 ## Published on GitHub Pages
 
-`apps/wildflower-site/wildflower-site-web` publishes this app's `dist/` at
+`.github/workflows/deploy-pages-site.yml` publishes this app's `dist/` at
 <https://importer.wildflowerhealth.io/>, and a PR preview's under
-`…/staging/pr-<n>/importer/`. The relative `base: './'` in `vite.config.ts` is
-the whole subpath mechanism. No SPA
+`https://importer.wildflowerhealth.io/pr-<n>/`. The relative `base: './'` in
+`vite.config.ts` is the whole subpath mechanism. No SPA
 fallback is needed: the router is a memory history, so the site has no deep links
 into it. The marketing site links there from its infrastructure section
 (`apps/wildflower-site/marketing-site-web/src/components/infrastructure.tsx`,

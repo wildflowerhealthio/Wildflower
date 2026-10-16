@@ -8,7 +8,7 @@ type AuthorizationRouter = Router<typeof routeTree, 'never', false>
 
 /**
  * The signed-in app's router, at `basepath` (the served directory: one build
- * serves its origin's root and a PR preview's `/staging/pr-<n>/authorization/`)
+ * serves its origin's root and a PR preview's `/pr-<n>/`)
  * over `history`, giving every route `context`.
  */
 const buildRouter = (options: {

@@ -135,10 +135,10 @@ describe('config/app-config.js', () => {
   it("should strip a PR preview's basename prefix from the redirect path", () => {
     lastReplaceState = undefined
     evaluateConfig(
-      { src: 'https://wildflowerhealthio.github.io/staging/pr-7/ohif-viewer/app-config.js' },
-      { search: '?redirect=/staging/pr-7/ohif-viewer/fhir-viewer', hash: '' }
+      { src: 'https://ohif-viewer.wildflowerhealth.io/pr-7/app-config.js' },
+      { search: '?redirect=/pr-7/fhir-viewer', hash: '' }
     )
-    expect(lastReplaceState).toEqual({ url: '/staging/pr-7/ohif-viewer/fhir-viewer' })
+    expect(lastReplaceState).toEqual({ url: '/pr-7/fhir-viewer' })
   })
 
   it('should preserve the hash fragment through the redirect', () => {

@@ -33,8 +33,8 @@ const REGISTERED_REDIRECT_URI = 'https://authorization.wildflowerhealth.io/'
 
 /**
  * The `sessionStorage` key the pending sign-in record lives at, namespaced
- * because a PR preview serves the app on one origin with the launcher and the
- * server-docs console, which run the same flow.
+ * because the launcher and the server-docs console run the same flow, so no
+ * two of them could share a key wherever they are served.
  */
 const PENDING_AUTHORIZATION_KEY = 'authorization-web.pending-authorization'
 

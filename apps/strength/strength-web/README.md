@@ -159,11 +159,12 @@ and the debug-only `strength-dev` tile's client (`seed_dev_app_clients` in
 
 `vp build` writes this package's default `dist/`, and that build is served in
 one place: **the published site**, at
-<https://strength.wildflowerhealth.io/>. `wildflower-site-web`
-publishes `dist/` as that origin's Pages site
-([../../wildflower-site/wildflower-site-web/README.md](../../wildflower-site/wildflower-site-web/README.md)), and each pull
-request's `pr-preview.yml` build publishes the same tree under
-`https://wildflowerhealthio.github.io/staging/pr-<n>/strength/`. The
+<https://strength.wildflowerhealth.io/>.
+`.github/workflows/deploy-pages-site.yml` publishes `dist/` to the root of the
+`gh-pages` branch of `wildflowerhealthio/strength-web`, which Pages serves at
+that origin ([apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md)), and
+each pull request that changes it previews the same build under
+`https://strength.wildflowerhealth.io/pr-<n>/`. The
 published page launches standalone against any SMART server that lets it write
 these four resource types. Nothing ships on device.
 

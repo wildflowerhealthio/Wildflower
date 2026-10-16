@@ -106,10 +106,10 @@ mod tests {
     #[test]
     fn parse_adds_the_trailing_slash_and_drops_query_and_fragment() {
         assert_eq!(
-            base("https://wildflowerhealthio.github.io/staging/pr-7/launcher?x=1#y")
+            base("https://launcher.wildflowerhealth.io/pr-7?x=1#y")
                 .as_url()
                 .as_str(),
-            "https://wildflowerhealthio.github.io/staging/pr-7/launcher/"
+            "https://launcher.wildflowerhealth.io/pr-7/"
         );
         assert_eq!(
             base("https://launcher.wildflowerhealth.io?x=1#y")
@@ -144,12 +144,12 @@ mod tests {
 
     #[test]
     fn route_url_keeps_percent_encoded_segments() {
-        let url = base("https://wildflowerhealthio.github.io/staging/pr-7/launcher/").route_url(
+        let url = base("https://launcher.wildflowerhealth.io/pr-7/").route_url(
             "/settings/a%20b",
             SERVER,
             &[],
         );
-        assert_eq!(url.path(), "/staging/pr-7/launcher/settings/a%20b");
+        assert_eq!(url.path(), "/pr-7/settings/a%20b");
         assert_eq!(
             url.path_segments().and_then(|mut s| s.next_back()),
             Some("a%20b")

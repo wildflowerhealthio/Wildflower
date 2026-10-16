@@ -33,8 +33,8 @@ const REGISTERED_REDIRECT_URI = 'https://server-docs.wildflowerhealth.io/'
 /**
  * The `sessionStorage` key this console's pending-authorization record lives at,
  * namespaced because the console shares the flow in
- * `authorization-core/smart-client` with the hosted launcher, and a PR preview
- * serves both on one origin.
+ * `authorization-core/smart-client` with the hosted launcher and Wildflower
+ * Authorization, so no two of them could share a key wherever they are served.
  */
 const PENDING_AUTHORIZATION_KEY = 'server-docs-web.pending-authorization'
 

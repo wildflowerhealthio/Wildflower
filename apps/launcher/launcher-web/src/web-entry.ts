@@ -86,11 +86,11 @@ const searchAfterReturnLeg = (
  * A router navigation (`router.navigate`, `<Link>`) applies the basepath on its
  * own, but a write straight to the history object or the location does not, so
  * the logout's reload of `/` on a build served under a PR preview's
- * `/staging/pr-<n>/launcher/` would land at the origin root, off the app. `basepath`
+ * `/pr-<n>/` would land at the origin root, off the app. `basepath`
  * is the slash-suffixed served directory (`basenameOf(location.pathname)`); at
  * the origin root it is `/`, and the prefix is a no-op.
  *
- * @example underBasepath('/staging/pr-7/launcher/', '/home') // '/staging/pr-7/launcher/home'
+ * @example underBasepath('/pr-7/', '/home') // '/pr-7/home'
  * @example underBasepath('/', '/home') // '/home'
  */
 const underBasepath = (basepath: string, route: string): string =>

@@ -90,8 +90,11 @@ The header toggle switches `<App />` between views over the same loaded
 `vp build` writes this package's default `dist/`, and that build is served in
 one place: **the published site**, at
 <https://medications.wildflowerhealth.io/>.
-`wildflower-site-web` publishes `dist/` as that origin's Pages site
-([wildflower-site-web's README](../../wildflower-site/wildflower-site-web/README.md)). This is the
+`.github/workflows/deploy-pages-site.yml` publishes `dist/` to the root of the
+`gh-pages` branch of `wildflowerhealthio/medications-web`, which Pages serves at
+that origin ([apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md)), and
+each pull request that changes it previews the same build under
+`https://medications.wildflowerhealth.io/pr-<n>/`. This is the
 **production** launch target: the `medications` registry row points at that
 URL. Nothing ships on device — in development the
 `medications-dev` row launches the vite dev server instead (below).

@@ -98,10 +98,11 @@ alike; the page components do not change.
 `vp build` writes this package's default `dist/`, and that build is served in
 one place: **the published site**, at
 <https://plots.wildflowerhealth.io/>.
-`wildflower-site-web` publishes `dist/` as that origin's Pages site
-([wildflower-site-web's README](../../wildflower-site/wildflower-site-web/README.md)), and each pull request's
-`pr-preview.yml` build publishes the same tree under
-`https://wildflowerhealthio.github.io/staging/pr-<n>/plots/`.
+`.github/workflows/deploy-pages-site.yml` publishes `dist/` to the root of the
+`gh-pages` branch of `wildflowerhealthio/plots-web`, which Pages serves at
+that origin ([apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md)), and
+each pull request that changes it previews the same build under
+`https://plots.wildflowerhealth.io/pr-<n>/`.
 The published page launches standalone against any SMART server, such as the
 [SMART Health IT sandbox](https://launch.smarthealthit.org/). Nothing ships on
 device.

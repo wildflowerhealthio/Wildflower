@@ -134,7 +134,7 @@ describe('logoutSettingsItem', () => {
     const bearerStore = makeBearerAuthStateStore(page.sessionStorage, SIGNED_IN_SERVER_KEY)
     bearerStore.writeSession({ serverUrl: RUTH_SERVER_URL, bearer: 'eyJ.owner.token' })
     page.sessionStorage.setItem(PENDING_AUTHORIZATION_KEY, '{"state":"abc"}')
-    const logout = logoutSettingsItem(page, '/staging/pr-7/launcher/', bearerStore)
+    const logout = logoutSettingsItem(page, '/pr-7/', bearerStore)
 
     // Act
     if (!('onClick' in logout) || logout.onClick === undefined) {
@@ -144,7 +144,7 @@ describe('logoutSettingsItem', () => {
 
     // Assert — the landing at the served base, with no server, in the URL or
     // the tab, to sign back in to, and nothing else left behind.
-    expect(await page.assigned).toBe('/staging/pr-7/launcher/')
+    expect(await page.assigned).toBe('/pr-7/')
     expect(page.sessionStorage.getItem(SIGNED_IN_SERVER_KEY)).toBeNull()
     expect(page.sessionStorage.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
   })

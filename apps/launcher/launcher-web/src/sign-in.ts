@@ -109,7 +109,7 @@ const LAUNCHER_SCOPE = 'launch launch/patient wildflower/launch system/*.cruds w
  *
  * Resolved under the **served base** the caller passes to {@link
  * signInEnvironment} (the router's basepath), not the bare origin: on a subpath
- * deploy (a PR preview's `/staging/pr-<n>/launcher/`) the route returns there
+ * deploy (a PR preview's `/pr-<n>/`) the route returns there
  * the same way the router resolves it — see {@link REGISTERED_REDIRECT_URI}.
  */
 const POST_SIGN_IN_ROUTE = '/'
@@ -126,7 +126,7 @@ const POST_SIGN_IN_ROUTE = '/'
  * production copy is served at the root of `https://launcher.wildflowerhealth.io`,
  * so its base-aware derivation (see {@link POST_SIGN_IN_ROUTE}) yields exactly
  * this value and the sign-in returns silently. A PR preview served under
- * `/staging/pr-<n>/launcher/` derives its own `…/launcher/` — correct for where
+ * `/pr-<n>/` derives its own `…/pr-<n>/` — correct for where
  * it is, but unregistered, so it completes through the consent prompt's "this
  * app is asking to return somewhere new" warning instead.
  */
@@ -134,10 +134,10 @@ const REGISTERED_REDIRECT_URI = 'https://launcher.wildflowerhealth.io/'
 
 /**
  * The `sessionStorage` key this entry's pending-authorization record lives at,
- * namespaced because this build shares the flow with the server-docs console,
- * and a PR preview serves both on one origin. A key chosen
- * without the namespace would be one key for both, and one tab's return leg
- * could consume a record the other was waiting on.
+ * namespaced because this build shares the flow with the server-docs console
+ * and Wildflower Authorization. A key chosen without the namespace would be
+ * one key for all of them on any origin that served two, and one tab's return
+ * leg could consume a record the other was waiting on.
  */
 const PENDING_AUTHORIZATION_KEY = 'launcher-web.pending-authorization'
 

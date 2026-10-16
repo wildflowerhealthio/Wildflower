@@ -27,8 +27,9 @@ Medications (`medications`), the Server Docs
 console (`server-docs`), Importer (`importer`), the OHIF imaging viewer
 (`ohif-viewer`), Strength (`strength`), Plots (`plots`) and the
 Synthetic Data Loader (`synthetic-data`) — are
-published by `apps/wildflower-site/wildflower-site-web`, each on its own
-origin, `https://<app>.wildflowerhealth.io/`, and launched from there.
+published on GitHub Pages by `.github/workflows/deploy-github-pages.yml`,
+each on its own origin, `https://<app>.wildflowerhealth.io/`, and launched
+from there.
 Serving the deployed copy means a shipped app updates when the site deploys
 rather than when the user installs a new desktop build.
 

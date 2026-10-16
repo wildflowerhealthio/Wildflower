@@ -30,7 +30,7 @@ type Boot =
  * `route` (an in-app path such as `/approved/abc`) under the served
  * `basepath`, as the address bar needs it.
  *
- * @example underBasepath('/staging/pr-7/authorization/', '/approved/abc') // '/staging/pr-7/authorization/approved/abc'
+ * @example underBasepath('/pr-7/', '/approved/abc') // '/pr-7/approved/abc'
  */
 const underBasepath = (basepath: string, route: string): string =>
   `${basepath.replace(/\/$/, '')}${route}`

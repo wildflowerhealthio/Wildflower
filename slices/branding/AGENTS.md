@@ -4,16 +4,15 @@ Shared Wildflower chrome for every web surface — the marketing homepage and th
 apps alike: the full site header and footer, a slim brand bar for SMART-launched
 apps and the Tauri desktop shell, the app icon, and the layout tokens that
 position them. The homepage and the apps render the **same** `SiteHeader` /
-`SiteFooter`; only the `NavContext` differs, so links stay in the homepage's
-own copy of the site (the published one or a PR preview) and go to the
-published site from an app.
+`SiteFooter`; only the `NavContext` differs, so marketing anchors stay on the
+homepage and go to the published homepage from an app. Links into the apps
+go to their published origins from everywhere.
 
 ## Package roles
 
 - **`branding-core`** — the pure layer: the site origin, each hosted app's
-  slug (`APP_SLUGS`: its origin `https://<slug>.wildflowerhealth.io/`, its
-  directory in a PR preview, and its `wildflowerhealthio/<slug>-web` Pages
-  repository), navigation link data
+  slug (`APP_SLUGS`: its origin `https://<slug>.wildflowerhealth.io/` and its
+  `wildflowerhealthio/<slug>-web` Pages repository), navigation link data
   as discriminated unions (anchor, absolute, and section links), the `NavContext`
   type that lets the same header/footer resolve hrefs differently on the
   marketing site vs. from an app, the `anchorHref` / `navHref`
@@ -38,13 +37,18 @@ published site from an app.
 
 ## The 404 redirect
 
-GitHub Pages serves one `404.html` for every path it has no file for, and
-every published site (the apex, each app's own origin, the staging site of
-the PR previews) carries the same one.
-`apps/wildflower-site/wildflower-site-web/404.html` probes ancestor directories for an `index.html`,
-redirects to the deepest one that answers, and passes the requested path along,
-site-absolute, as `?redirect=<path>` (an app-relative route named like the
-app's own directory, `/launcher` below `/launcher/`, would read as the app root).
+GitHub Pages serves one `404.html` for every path it has no file for, read
+from the root of the site, and every published site (the apex, each app's own
+origin, the staging site of the marketing previews) carries the same one:
+`branding-core/github-pages/404.html`, which the deploys copy to each site's
+root. It probes ancestor directories for an `index.html`, redirects to the
+deepest one that answers, and passes the requested path along, site-absolute,
+as `?redirect=<path>` (an app-relative route named like the app's own
+directory, `pr-7` below a preview's `/pr-7/`, would read as the app root). A
+PR preview sits in `pr-<n>/` beside its app's production build, so the first
+`pr-<n>` segment is a floor the probe never climbs past: a link into a closed
+preview is not found rather than handed to production with a route it lacks.
+`not-found-page.test.ts` runs the page's script against both.
 `restoreRedirectedUrl(window)` is the other half: each
 first-party SPA entry (`apps/medications/medications-web`, `apps/importer-web`,
 `apps/fhir-sync-pebble/fhir-sync-pebble-web`, `apps/strength/strength-web`, `apps/watch-lifts/watch-lifts-web`, `apps/server-docs-web`, `apps/authorization/authorization-web`) calls it as its first statement,
@@ -117,12 +121,11 @@ importing them (the first-party SMART apps rely on this).
 
 ## Deploy contract
 
-`APP_SLUGS` in `branding-core/src/site.ts` names each hosted app's origin, its
-directory in the assembled site
-(`apps/wildflower-site/wildflower-site-web/src/assembly.ts`, whose tests hold
-every `destPath` to it), and its Pages repository, `wildflowerhealthio/<slug>-web`,
-whose push token `deploy-github-pages.yml` mints. The core tests pin the
-slugs.
+`APP_SLUGS` in `branding-core/src/site.ts` names each hosted app's origin and
+its Pages repository, `wildflowerhealthio/<slug>-web`, whose `gh-pages` branch
+holds its production build at the root and its PR previews in `pr-<n>/`.
+`scripts/ci/pages-sites.ts` derives each app's site from it, and its tests
+hold the sites to it. The core tests pin the slugs.
 
 ## Guardrails
 

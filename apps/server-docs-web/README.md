@@ -211,7 +211,7 @@ It **derives** its `redirect_uri` from where the page is being served, with
 URL, which is what the fhirclient-based apps (`apps/medications/medications-web`,
 `apps/importer-web`) have always done. One build
 therefore signs in from the published site, from a PR preview under
-`https://wildflowerhealthio.github.io/staging/pr-<n>/server-docs/`,
+`https://server-docs.wildflowerhealth.io/pr-<n>/`,
 and from `vp run -F @wildflowerhealthio/server-docs-web dev`, with nothing to keep in step.
 
 `/oauth/authorize` still matches `redirect_uri` by exact string equality, and
@@ -260,7 +260,7 @@ vp run -F @wildflowerhealthio/server-docs-web build   # bundle into dist/
 vp test                                  # unit tests for the parsing/transforms
 ```
 
-`apps/wildflower-site/wildflower-site-web` publishes `dist/` at
+`.github/workflows/deploy-pages-site.yml` publishes `dist/` at
 <https://server-docs.wildflowerhealth.io/>, and a PR preview's under
-`…/staging/pr-<n>/server-docs/`; the build uses a relative `base` so the assets
-resolve from either.
+`https://server-docs.wildflowerhealth.io/pr-<n>/`; the build uses a relative
+`base` so the assets resolve from either.

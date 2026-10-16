@@ -9,7 +9,7 @@
   // so its own URL says where the viewer lives. Deriving the router basename
   // from it lets one path-agnostic bundle serve its own origin's root
   // (ohif-viewer.wildflowerhealth.io/) and a PR preview at
-  // .../staging/pr-N/ohif-viewer/ alike.
+  // ohif-viewer.wildflowerhealth.io/pr-N/ alike.
   var script = document.currentScript
   var basename = '/'
   var loopback = false

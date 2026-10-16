@@ -6,11 +6,11 @@ import base, { devAppServer } from '../../../vite.config.base.ts'
 
 /**
  * Wildflower Authorization, built as a static bundle into this package's
- * default `dist/`, which `apps/wildflower-site/wildflower-site-web` publishes
+ * default `dist/`, which `.github/workflows/deploy-pages-site.yml` publishes
  * at `https://authorization.wildflowerhealth.io/`. One HTML entry, `index.html`: the connect menu, the
  * OAuth redirect target, and the signed-in access pages. A relative `base` so
  * the built assets resolve from whatever origin / path the bundle is served
- * at (its origin's root, or a PR preview's `/staging/pr-<n>/authorization/`).
+ * at (its origin's root, or a PR preview's `/pr-<n>/`).
  *
  * `tanstackRouter` must run before `react()` so the generated route tree is
  * in place before the React transform. It reads the route files under

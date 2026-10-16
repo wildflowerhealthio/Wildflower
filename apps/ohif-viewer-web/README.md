@@ -42,14 +42,15 @@ vp test                       # unit tests
 pin, extracts it into `dist/` (`tar` must be on `PATH`), checks `index.html`
 arrived, and writes `config/app-config.js` over the archive's `app-config.js`.
 With `"pin": null` it writes a one-page stub saying the viewer is not pinned,
-so `vp run pack` and the wildflower-site-web assembly stay green.
+so `vp run pack` and the viewer's Pages deploy stay green.
 
 ## SMART launch
 
 The published viewer is path-agnostic: the prebuilt bundle is built with a
 relative `PUBLIC_URL`, and `app-config.js` derives `routerBasename` from its
 own script URL. The same build therefore serves its own origin's root,
-`ohif-viewer.wildflowerhealth.io/`, and a PR preview under `…/staging/pr-N/ohif-viewer/`.
+`ohif-viewer.wildflowerhealth.io/`, and a PR preview under
+`ohif-viewer.wildflowerhealth.io/pr-N/`.
 
 The worklist at the basename is the launch entry point. An EHR launches
 
@@ -64,7 +65,7 @@ worklist then navigates client-side into the `fhir-viewer` mode.
 
 GitHub Pages serves a site-wide `404.html` for unknown paths. That page probes
 ancestor directories for an `index.html`, finds the viewer's (`/index.html` on
-its origin, `/staging/pr-N/ohif-viewer/index.html` in a preview), and
+its origin, `/pr-N/index.html` in a preview), and
 redirects there with the requested path in `?redirect=`. The redirect restoration block
 in `config/app-config.js` reads that parameter and rewrites the URL with
 `history.replaceState` before the OHIF router initialises, so deep links like
@@ -126,5 +127,6 @@ the preview is running.
    release.
 2. Copy the release's asset URL and the contents of `ohif-viewer.tar.gz.sha256`
    into `prebuilt.json`.
-3. `vp run -F @wildflowerhealthio/ohif-viewer-web build`, then `vp run -F @wildflowerhealthio/wildflower-site-web build` to see it
-   assembled; the PR preview shows it live.
+3. `vp run -F @wildflowerhealthio/ohif-viewer-web build`, then
+   `vp run -F @wildflowerhealthio/ohif-viewer-web dev` to look at it; the PR
+   preview, `https://ohif-viewer.wildflowerhealth.io/pr-<n>/`, shows it live.

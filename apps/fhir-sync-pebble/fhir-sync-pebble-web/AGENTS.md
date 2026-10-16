@@ -170,5 +170,5 @@ jsdom.
   app boots through
 - [slices/fhir/AGENTS.md](../../../slices/fhir/AGENTS.md) — the SMART primitives
   (`useSmartHandshake`, `buildSmartRouterContext`)
-- [apps/wildflower-site/wildflower-site-web README](../../wildflower-site/wildflower-site-web/README.md) — how the site is
-  assembled
+- [apps/wildflower-site AGENTS.md](../../wildflower-site/AGENTS.md) — how the sites are
+  published
