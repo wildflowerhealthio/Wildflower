@@ -5,7 +5,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SECTION_PATHS } from '@wildflowerhealthio/branding-core'
+import { APP_SLUGS } from '@wildflowerhealthio/branding-core'
 
 import type { SiteSection } from './assembly.ts'
 import {
@@ -56,13 +56,13 @@ const escapingSectionArb: fc.Arbitrary<SiteSection> = fc.record({
 })
 
 describe('site layout', () => {
-  it('serves the marketing site from the root of the artifact', () => {
+  it('places the marketing site at the root of the assembled site', () => {
     const [marketing] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/marketing-site-web'),
     ])
     expect(marketing?.to).toBe(outDir)
     // GitHub Pages only honours the custom domain when CNAME is at the root of
-    // the uploaded artifact.
+    // the published apex site, which `stage-published.ts` takes this root for.
     expect(marketing?.requiredPaths).toContain(join(outDir, 'CNAME'))
     expect(marketing?.requiredPaths).toContain(join(outDir, 'index.html'))
     // The app stores link to the policy pages by these URLs.
@@ -72,7 +72,7 @@ describe('site layout', () => {
     expect(marketing?.requiredPaths).toContain(join(outDir, 'deletion', 'index.html'))
   })
 
-  it('serves the medications app from /medications with its one SMART entry', () => {
+  it('places the medications app in /medications with its one SMART entry', () => {
     const [medication] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/medications-web'),
     ])
@@ -80,7 +80,7 @@ describe('site layout', () => {
     expect(medication?.requiredPaths).toEqual([join(outDir, 'medications', 'index.html')])
   })
 
-  it('serves the importer app from /importer with its one SMART entry', () => {
+  it('places the importer app in /importer with its one SMART entry', () => {
     const [importer] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/importer-web'),
     ])
@@ -88,7 +88,7 @@ describe('site layout', () => {
     expect(importer?.requiredPaths).toEqual([join(outDir, 'importer', 'index.html')])
   })
 
-  it('serves the Pebble settings app from /fhir-sync-pebble with its one SMART entry', () => {
+  it('places the Pebble settings app in /fhir-sync-pebble with its one SMART entry', () => {
     const [pebble] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/fhir-sync-pebble-web'),
     ])
@@ -96,7 +96,7 @@ describe('site layout', () => {
     expect(pebble?.requiredPaths).toEqual([join(outDir, 'fhir-sync-pebble', 'index.html')])
   })
 
-  it('serves the server-docs console from /server-docs', () => {
+  it('places the server-docs console in /server-docs', () => {
     const [serverDocs] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/server-docs-web'),
     ])
@@ -104,7 +104,7 @@ describe('site layout', () => {
     expect(serverDocs?.requiredPaths).toEqual([join(outDir, 'server-docs', 'index.html')])
   })
 
-  it('serves the OHIF viewer from /ohif-viewer', () => {
+  it('places the OHIF viewer in /ohif-viewer', () => {
     const [ohif] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/ohif-viewer-web'),
     ])
@@ -112,23 +112,23 @@ describe('site layout', () => {
     expect(ohif?.requiredPaths).toEqual([join(outDir, 'ohif-viewer', 'index.html')])
   })
 
-  it('serves Plots from /health-viewer with its one SMART entry', () => {
+  it('places Plots in /plots with its one SMART entry', () => {
     const [plots] = resolveSections(repoRoot, outDir, [sectionFor('@wildflowerhealthio/plots-web')])
     expect(plots?.from).toBe(join(repoRoot, 'apps', 'plots', 'plots-web', 'dist'))
-    expect(plots?.to).toBe(join(outDir, 'health-viewer'))
-    expect(plots?.requiredPaths).toEqual([join(outDir, 'health-viewer', 'index.html')])
+    expect(plots?.to).toBe(join(outDir, 'plots'))
+    expect(plots?.requiredPaths).toEqual([join(outDir, 'plots', 'index.html')])
   })
 
-  it('serves the lifting app from /lifting with its one SMART entry', () => {
+  it('places Strength in /strength with its one SMART entry', () => {
     const [strength] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/strength-web'),
     ])
     expect(strength?.from).toBe(join(repoRoot, 'apps', 'strength', 'strength-web', 'dist'))
-    expect(strength?.to).toBe(join(outDir, 'lifting'))
-    expect(strength?.requiredPaths).toEqual([join(outDir, 'lifting', 'index.html')])
+    expect(strength?.to).toBe(join(outDir, 'strength'))
+    expect(strength?.requiredPaths).toEqual([join(outDir, 'strength', 'index.html')])
   })
 
-  it('serves the WatchLifts settings page from /watch-lifts with its one entry', () => {
+  it('places the WatchLifts settings page in /watch-lifts with its one entry', () => {
     const [watchLifts] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/watch-lifts-web'),
     ])
@@ -136,7 +136,7 @@ describe('site layout', () => {
     expect(watchLifts?.requiredPaths).toEqual([join(outDir, 'watch-lifts', 'index.html')])
   })
 
-  it('serves the synthetic data loader from /synthetic-data with its one SMART entry', () => {
+  it('places the synthetic data loader in /synthetic-data with its one SMART entry', () => {
     const [loader] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/synthetic-data-web'),
     ])
@@ -147,7 +147,7 @@ describe('site layout', () => {
     expect(loader?.requiredPaths).toEqual([join(outDir, 'synthetic-data', 'index.html')])
   })
 
-  it('serves the hosted launcher from /launcher with its SPA entry', () => {
+  it('places the hosted launcher in /launcher with its SPA entry', () => {
     const [launcher] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/launcher-web'),
     ])
@@ -155,7 +155,7 @@ describe('site layout', () => {
     expect(launcher?.requiredPaths).toEqual([join(outDir, 'launcher', 'index.html')])
   })
 
-  it('serves Wildflower Authorization from /authorization with its SPA entry', () => {
+  it('places Wildflower Authorization in /authorization with its SPA entry', () => {
     const [authorization] = resolveSections(repoRoot, outDir, [
       sectionFor('@wildflowerhealthio/authorization-web'),
     ])
@@ -210,26 +210,26 @@ describe('site layout', () => {
     )
   })
 
-  it('should derive every destPath from SECTION_PATHS', () => {
-    // Sorted arrays, not Sets: a new SECTION_PATHS key whose value collides
+  it('should place the marketing site at the root and every app in its APP_SLUGS directory', () => {
+    // Sorted arrays, not Sets: a new APP_SLUGS key whose value collides
     // with an existing path would leave the Set unchanged but must still fail.
     const destPaths = siteSections.map((s) => s.destPath).toSorted()
-    const sectionPathValues = Object.values(SECTION_PATHS).toSorted()
-    expect(destPaths).toEqual(sectionPathValues)
+    const expected = ['', ...Object.values(APP_SLUGS)].toSorted()
+    expect(destPaths).toEqual(expected)
   })
 
-  it('should pin the deploy-contract paths as literal values', () => {
+  it('should pin the assembled directories as literal values', () => {
     const destPaths = siteSections.map((s) => s.destPath).toSorted()
     expect(destPaths).toEqual(
       [
         '',
         'authorization',
         'fhir-sync-pebble',
-        'health-viewer',
         'importer',
         'launcher',
-        'lifting',
         'medications',
+        'plots',
+        'strength',
         'ohif-viewer',
         'synthetic-data',
         'watch-lifts',

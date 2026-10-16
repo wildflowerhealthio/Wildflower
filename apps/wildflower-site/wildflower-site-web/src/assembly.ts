@@ -1,11 +1,13 @@
 import { join, relative, sep } from 'node:path'
 
-import { SECTION_PATHS } from '@wildflowerhealthio/branding-core'
+import { APP_SLUGS } from '@wildflowerhealthio/branding-core'
 
 /**
- * One already-built tree that gets copied into the assembled GitHub Pages
- * site. The build of each section is owned by its own package; this package
- * only places the outputs at their public URLs.
+ * One already-built tree that gets copied into the assembled site: the
+ * marketing site at its root, and each hosted app in its slug's directory —
+ * the layout a PR preview publishes as is, and the one `stage-published.ts`
+ * splits into the published sites. The build of each section is owned by its
+ * own package; this package only places the outputs.
  */
 interface SiteSection {
   /** Workspace package whose `build` script produces {@link sourceDir}. */
@@ -26,17 +28,17 @@ interface SiteSection {
 }
 
 /**
- * The published layout of https://wildflowerhealth.io.
- *
- * `docs/` (generated HTML documentation) joins this list in a later change.
+ * The assembled site's layout: the marketing site at the root, and each
+ * hosted app under its `APP_SLUGS` directory.
  */
 const siteSections: readonly SiteSection[] = [
   {
     packageName: '@wildflowerhealthio/marketing-site-web',
     sourceDir: 'apps/wildflower-site/marketing-site-web/dist',
-    destPath: SECTION_PATHS.marketing,
+    destPath: '',
     // `CNAME` (copied from the marketing site's `public/`) has to land at the
-    // artifact root or GitHub Pages drops the custom-domain setting on deploy.
+    // published apex site's root or GitHub Pages drops the custom-domain
+    // setting on deploy.
     // The policy pages are app-store and legal requirements, so their entries are too.
     requiredFiles: [
       'index.html',
@@ -50,7 +52,7 @@ const siteSections: readonly SiteSection[] = [
   {
     packageName: '@wildflowerhealthio/medications-web',
     sourceDir: 'apps/medications/medications-web/dist',
-    destPath: SECTION_PATHS.medications,
+    destPath: APP_SLUGS.medications,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
     // visit.
@@ -58,10 +60,10 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: '@wildflowerhealthio/importer-web',
-    // The package lives in `apps/importer-web`; its published path is
-    // `/${SECTION_PATHS.importer}`.
+    // The package lives in `apps/importer-web`; its directory is
+    // `/${APP_SLUGS.importer}`.
     sourceDir: 'apps/importer-web/dist',
-    destPath: SECTION_PATHS.importer,
+    destPath: APP_SLUGS.importer,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
     // visit.
@@ -70,16 +72,16 @@ const siteSections: readonly SiteSection[] = [
   {
     packageName: '@wildflowerhealthio/server-docs-web',
     sourceDir: 'apps/server-docs-web/dist',
-    destPath: SECTION_PATHS.serverDocs,
+    destPath: APP_SLUGS.serverDocs,
     // A single-page console; the bundled assets hang off it.
     requiredFiles: ['index.html'],
   },
   {
     packageName: '@wildflowerhealthio/fhir-sync-pebble-web',
     // The package lives in `apps/fhir-sync-pebble/fhir-sync-pebble-web`; its
-    // published path is `/${SECTION_PATHS.fhirSyncPebble}`.
+    // directory is `/${APP_SLUGS.fhirSyncPebble}`.
     sourceDir: 'apps/fhir-sync-pebble/fhir-sync-pebble-web/dist',
-    destPath: SECTION_PATHS.fhirSyncPebble,
+    destPath: APP_SLUGS.fhirSyncPebble,
     // One entry: the app is launched standalone only (from the Pebble phone
     // app), so `index.html` is both the connect menu and the OAuth redirect
     // target.
@@ -87,10 +89,10 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: '@wildflowerhealthio/plots-web',
-    // The package lives in `apps/plots/plots-web`; its published path is
-    // `/${SECTION_PATHS.plots}`.
+    // The package lives in `apps/plots/plots-web`; its directory is
+    // `/${APP_SLUGS.plots}`.
     sourceDir: 'apps/plots/plots-web/dist',
-    destPath: SECTION_PATHS.plots,
+    destPath: APP_SLUGS.plots,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
     // visit.
@@ -98,10 +100,10 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: '@wildflowerhealthio/synthetic-data-web',
-    // The package lives in `apps/synthetic-data/synthetic-data-web`; its published path is
-    // `/${SECTION_PATHS.syntheticData}`.
+    // The package lives in `apps/synthetic-data/synthetic-data-web`; its directory is
+    // `/${APP_SLUGS.syntheticData}`.
     sourceDir: 'apps/synthetic-data/synthetic-data-web/dist',
-    destPath: SECTION_PATHS.syntheticData,
+    destPath: APP_SLUGS.syntheticData,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
     // visit.
@@ -109,10 +111,10 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: '@wildflowerhealthio/strength-web',
-    // The package lives in `apps/strength/strength-web`; its published path is
-    // `/${SECTION_PATHS.strength}`.
+    // The package lives in `apps/strength/strength-web`; its directory is
+    // `/${APP_SLUGS.strength}`.
     sourceDir: 'apps/strength/strength-web/dist',
-    destPath: SECTION_PATHS.strength,
+    destPath: APP_SLUGS.strength,
     // One entry: the app root starts a SMART launch its URL carries, is the
     // OAuth redirect target, and serves the standalone connect menu on a bare
     // visit.
@@ -120,10 +122,10 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: '@wildflowerhealthio/watch-lifts-web',
-    // The package lives in `apps/watch-lifts/watch-lifts-web`; its published
-    // path is `/${SECTION_PATHS.watchLifts}`.
+    // The package lives in `apps/watch-lifts/watch-lifts-web`; its directory
+    // is `/${APP_SLUGS.watchLifts}`.
     sourceDir: 'apps/watch-lifts/watch-lifts-web/dist',
-    destPath: SECTION_PATHS.watchLifts,
+    destPath: APP_SLUGS.watchLifts,
     // One entry: the WatchLifts watchapp's settings page, opened from the
     // Pebble phone app with the weights in its query. Not a SMART app.
     requiredFiles: ['index.html'],
@@ -134,7 +136,7 @@ const siteSections: readonly SiteSection[] = [
     // the stub page while nothing is pinned), with Wildflower's runtime
     // app-config.js laid over it by that package's build.
     sourceDir: 'apps/ohif-viewer-web/dist',
-    destPath: SECTION_PATHS.ohifViewer,
+    destPath: APP_SLUGS.ohifViewer,
     // The worklist page doubles as the SMART launch entry point; the bundled
     // assets hang off it.
     requiredFiles: ['index.html'],
@@ -144,26 +146,25 @@ const siteSections: readonly SiteSection[] = [
     // The hosted, cross-origin copy of the launcher (#694): its `web` build
     // (`vite.config.web.ts`, `base: './'`, `outDir: 'dist-web'`, input
     // `index.html`) holds the in-memory bearer, the `?server=` picker, and the
-    // `?redirect=` consumption the Pages 404.html hands back. The section places
-    // that build at `/launcher/`.
+    // `?redirect=` consumption the Pages 404.html hands back.
     sourceDir: 'apps/launcher/launcher-web/dist-web',
-    destPath: SECTION_PATHS.launcher,
+    destPath: APP_SLUGS.launcher,
     // A single SPA entry; the router derives its basepath from the page's base,
-    // so the same build serves `/launcher/` and a preview's
+    // so the same build serves its origin's root and a preview's
     // `/staging/pr-<n>/launcher/`.
     requiredFiles: ['index.html'],
   },
   {
     packageName: '@wildflowerhealthio/authorization-web',
     // The package lives in `apps/authorization/authorization-web`; its
-    // published path is `/${SECTION_PATHS.authorization}`, which every
-    // Wildflower server's SMART configuration advertises as its
+    // directory is `/${APP_SLUGS.authorization}`. Its published origin is what
+    // every Wildflower server's SMART configuration advertises as its
     // `management_endpoint`.
     sourceDir: 'apps/authorization/authorization-web/dist',
-    destPath: SECTION_PATHS.authorization,
+    destPath: APP_SLUGS.authorization,
     // A single SPA entry: the connect menu, the OAuth redirect target, and the
     // signed-in access pages. The router derives its basepath from the page's
-    // base, so the same build serves `/authorization/` and a preview's
+    // base, so the same build serves its origin's root and a preview's
     // `/staging/pr-<n>/authorization/`.
     requiredFiles: ['index.html'],
   },

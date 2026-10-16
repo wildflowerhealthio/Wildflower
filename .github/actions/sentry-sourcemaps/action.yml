@@ -3,8 +3,8 @@ description: >-
   Creates the Sentry release a site build reports under, uploads the source
   maps of every app that reports to Sentry, and then deletes those maps from the
   assembled site so they are never published. Runs between `vp run pack` and
-  the step that publishes apps/wildflower-site/wildflower-site-web/dist, in both
-  deploy-github-pages.yml and pr-preview.yml.
+  the steps that publish apps/wildflower-site/wildflower-site-web/dist: as is in
+  pr-preview.yml, and split into the published sites in deploy-github-pages.yml.
 
 inputs:
   environment:
@@ -52,10 +52,12 @@ runs:
         echo "Sentry projects: ${ids[*]:-none}"
         echo "ids=${ids[*]}" >> "$GITHUB_OUTPUT"
 
-    # The paths are the apps' sections in the assembled site (branding-core's
-    # SECTION_PATHS). The upload works on the assembled site rather than each
+    # The paths are the apps' directories in the assembled site (branding-core's
+    # APP_SLUGS). The upload works on the assembled site rather than each
     # app's own dist because injecting debug IDs rewrites the JavaScript: the
-    # files that get published must be the ones that carry them. Debug IDs
+    # files that get published must be the ones that carry them, and the
+    # production deploy stages each app's own site from these directories
+    # afterwards. Debug IDs
     # also make the files' URLs irrelevant, so no `url_prefix` is needed.
     # Every project gets every app's bundle; a stack trace only ever matches
     # its own app's debug IDs.
@@ -71,8 +73,8 @@ runs:
         sourcemaps: >-
           apps/wildflower-site/wildflower-site-web/dist/medications
           apps/wildflower-site/wildflower-site-web/dist/importer
-          apps/wildflower-site/wildflower-site-web/dist/health-viewer
-          apps/wildflower-site/wildflower-site-web/dist/lifting
+          apps/wildflower-site/wildflower-site-web/dist/plots
+          apps/wildflower-site/wildflower-site-web/dist/strength
           apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble
           apps/wildflower-site/wildflower-site-web/dist/synthetic-data
           apps/wildflower-site/wildflower-site-web/dist/launcher
@@ -91,8 +93,8 @@ runs:
       run: |
         find apps/wildflower-site/wildflower-site-web/dist/medications \
           apps/wildflower-site/wildflower-site-web/dist/importer \
-          apps/wildflower-site/wildflower-site-web/dist/health-viewer \
-          apps/wildflower-site/wildflower-site-web/dist/lifting \
+          apps/wildflower-site/wildflower-site-web/dist/plots \
+          apps/wildflower-site/wildflower-site-web/dist/strength \
           apps/wildflower-site/wildflower-site-web/dist/fhir-sync-pebble \
           apps/wildflower-site/wildflower-site-web/dist/synthetic-data \
           apps/wildflower-site/wildflower-site-web/dist/launcher \

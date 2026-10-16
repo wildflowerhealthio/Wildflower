@@ -1,24 +1,38 @@
 name: Deploy GitHub Pages
 
-# Builds the published static site (apps/wildflower-site/wildflower-site-web,
-# which assembles the marketing site at /, the medications app at /medications,
-# the server-docs API console at /server-docs, the Importer at /importer, FHIR
-# Sync for Pebble at /fhir-sync-pebble, Plots at /health-viewer, the
-# Synthetic Data Loader at /synthetic-data, Strength at /lifting, the
-# WatchLifts settings page at /watch-lifts, the prebuilt OHIF viewer at
-# /ohif-viewer, the launcher at /launcher and Wildflower Authorization at
-# /authorization) and publishes it to GitHub Pages.
+# Builds the published sites and deploys them. Every hosted app is published on
+# an origin of its own (`https://<slug>.wildflowerhealth.io/`, `APP_SLUGS` in
+# slices/branding/branding-core/src/site.ts), so no app can read another's
+# localStorage; the marketing site stays on the apex,
+# `https://wildflowerhealth.io`.
+#
+# The workspace build assembles one site (apps/wildflower-site/wildflower-site-web,
+# the marketing site at its root and each app in its slug's directory, the same
+# layout a PR preview publishes); `stage-published` splits it into the apex
+# site, with a redirect stub at each app's old path, and one site per app. Each
+# app's site is pushed to the `gh-pages` branch of its own repository,
+# `wildflowerhealthio/<slug>-web`, which publishes it; then the apex site is
+# deployed to this repository's Pages, so an old path only ever redirects to an
+# app that is already live.
+#
 # Runs on every push to main and on manual dispatch: the assembled apps
 # depend on much of the workspace, so a path filter would only ever be wrong
-# about which changes can alter the published site.
+# about which changes can alter the published sites.
 #
-# Prerequisites (one-time, in repo Settings → Pages):
-#   - Source: "GitHub Actions".
-#   - Custom domain: wildflowerhealth.io. The CNAME file in
+# Prerequisites (one-time):
+#   - This repository's Settings → Pages: source "GitHub Actions", custom
+#     domain wildflowerhealth.io. The CNAME file in
 #     apps/wildflower-site/marketing-site-web/public carries that domain into
-#     the marketing build, which the assembly step copies to the root of the
-#     uploaded artifact — the only place GitHub Pages reads it from — so the
-#     setting survives each deploy.
+#     the marketing build, which lands at the root of the apex site — the only
+#     place GitHub Pages reads it from — so the setting survives each deploy.
+#   - Each app's repository, `wildflowerhealthio/<slug>-web`, publishes Pages
+#     from its `gh-pages` branch at `/`, with the custom domain
+#     `<slug>.wildflowerhealth.io` and HTTPS enforced. Its `main` holds only a
+#     README; this workflow replaces `gh-pages` on every run, writing the
+#     `CNAME` and `.nojekyll` Pages reads from the branch root.
+#   - The GitHub App behind the `STAGING_APP_ID` / `STAGING_APP_PRIVATE_KEY`
+#     secrets (see pr-preview.yml) is installed on every app repository with
+#     `Contents: Read and write`.
 on:
   push:
     branches: [main]
@@ -42,8 +56,14 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
+      # persist-credentials:false, as in pr-preview.yml: the persisted
+      # GITHUB_TOKEN extraheader would be sent on the pushes to the apps'
+      # repositories below and override the App token they carry, and
+      # GITHUB_TOKEN has no access to them.
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
@@ -102,10 +122,62 @@ jobs:
             ${{ vars.VITE_SENTRY_DSN_LAUNCHER_WEB }}
             ${{ vars.VITE_SENTRY_DSN_AUTHORIZATION_WEB }}
 
+      # Splits the assembled site into the apex site and one site per app
+      # (apps/wildflower-site/wildflower-site-web/dist-published), after the
+      # Sentry step so the staged JavaScript carries its debug IDs and no maps.
+      - name: Stage the published sites
+        run: vp run -F @wildflowerhealthio/wildflower-site-web stage-published
+
+      # Minted here rather than at the start of the job: the token lives for one
+      # hour, and the build before this can take a good part of that. The
+      # repositories are every `APP_SLUGS` slug plus `-web`;
+      # wildflower-site-web's `published-sites.test.ts` holds this list to them.
+      - name: Mint the apps' Pages repositories App token
+        id: pages-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.STAGING_APP_ID }}
+          private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
+          owner: wildflowerhealthio
+          repositories: |
+            medications-web
+            importer-web
+            server-docs-web
+            ohif-viewer-web
+            fhir-sync-pebble-web
+            plots-web
+            synthetic-data-web
+            strength-web
+            watch-lifts-web
+            launcher-web
+            authorization-web
+
+      # Each app's staged site becomes the single commit of its repository's
+      # `gh-pages` branch, force-pushed: the branch is a build output with no
+      # history worth keeping, and the push replaces whatever was there.
+      - name: Publish each app to its Pages repository
+        working-directory: apps/wildflower-site/wildflower-site-web/dist-published/apps
+        env:
+          PAGES_TOKEN: ${{ steps.pages-token.outputs.token }}
+        run: |
+          for site in */; do
+            slug="${site%/}"
+            repo="wildflowerhealthio/${slug}-web"
+            git -C "$slug" init -q -b gh-pages
+            git -C "$slug" add -A
+            git -C "$slug" \
+              -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "Deploy wildflowerhealthio/Wildflower@${GITHUB_SHA}"
+            git -C "$slug" push -q --force \
+              "https://x-access-token:${PAGES_TOKEN}@github.com/${repo}.git" gh-pages
+            echo "Published ${repo}"
+          done
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: apps/wildflower-site/wildflower-site-web/dist
+          path: apps/wildflower-site/wildflower-site-web/dist-published/apex
 
   deploy:
     name: Deploy
