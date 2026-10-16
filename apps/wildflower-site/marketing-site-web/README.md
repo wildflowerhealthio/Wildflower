@@ -47,7 +47,9 @@ vp build    # production build to dist/
   `/lifting/`, `/medications/`, …) and the page served at each, which sends
   the visitor on to the app's own origin with the query and fragment. The
   build's last step, `scripts/write-apex-pages.ts`, writes one into `dist/`
-  per app, so bookmarks and SMART launch URLs naming the apex keep working.
+  per app, beside branding-core's `404.html`, which hands a deep link under
+  one of those paths to its page, so bookmarks and SMART launch URLs naming
+  the apex keep working.
 - `src/count-up.ts` — the stats count-up animation (reads its targets from the
   rendered DOM; respects `prefers-reduced-motion`; unit- and property-tested in
   `count-up.test.ts`).

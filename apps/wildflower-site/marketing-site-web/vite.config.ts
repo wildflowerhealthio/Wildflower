@@ -15,11 +15,9 @@ import base from '../../../vite.config.base.ts'
  */
 export default defineConfig({
   ...base,
-  // Relative base so the built assets resolve from any path. The site is
-  // served at the root of its custom domain (wildflowerhealth.io), but
-  // until that domain's DNS is live GitHub Pages serves it from the project
-  // sub-path (…/wildflower/); a relative base works for both with no repo
-  // name baked into the build.
+  // Relative base so the built assets resolve from any path: the root of the
+  // custom domain (wildflowerhealth.io), and a PR preview's
+  // `…/staging/pr-<n>/`, with no path baked into the build.
   base: './',
   plugins: [react()],
   build: {
