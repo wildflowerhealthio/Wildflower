@@ -2,7 +2,7 @@ import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
- * The scopes the health viewer asks for, the same for an EHR launch and a
+ * The scopes Plots asks for, the same for an EHR launch and a
  * standalone connect: EHR launch, then read Patients, Observations and
  * MedicationRequests. `system/` scopes only, with no `launch/patient`: the
  * reader picks the patient in the app (`smart-app-react`'s `PatientPicker`),

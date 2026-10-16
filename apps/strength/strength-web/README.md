@@ -1,6 +1,6 @@
 # strength-web
 
-The first-party Lifting SMART-on-FHIR app: a lifter's strength-training program,
+The first-party Strength SMART-on-FHIR app: a lifter's strength-training program,
 the workout due today, and every set they lift, kept on their own FHIR record.
 One HTML entry, `index.html`: the app root, which starts a SMART launch its URL
 carries (an EHR's `iss` and `launch`, or a lone `iss`), completes the handshake

@@ -112,7 +112,7 @@ describe('site layout', () => {
     expect(ohif?.requiredPaths).toEqual([join(outDir, 'ohif-viewer', 'index.html')])
   })
 
-  it('serves the health viewer from /health-viewer with its one SMART entry', () => {
+  it('serves Plots from /health-viewer with its one SMART entry', () => {
     const [plots] = resolveSections(repoRoot, outDir, [sectionFor('@wildflowerhealthio/plots-web')])
     expect(plots?.from).toBe(join(repoRoot, 'apps', 'plots', 'plots-web', 'dist'))
     expect(plots?.to).toBe(join(outDir, 'health-viewer'))

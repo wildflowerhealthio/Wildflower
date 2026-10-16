@@ -13,7 +13,7 @@ catalog onto it.
 ## Packages
 
 - `medication-core` — the pure matching layer **plus the FHIR R4 adapters**,
-  shared by the medications app's features and the Health Viewer. The root export is the matcher: the minimal
+  shared by the medications app's features and Plots. The root export is the matcher: the minimal
   `Medication` value type adapters map their resources onto, `normalizeName` /
   `tokenize` (markup, marks, diacritics and dosage tokens stripped), `scoreName`
   — the exact / strong / partial containment scoring every consumer's matcher is
@@ -43,7 +43,7 @@ catalog onto it.
   scaled by the Medication's single per-unit ingredient strength when it has
   one; `regimen-period.ts` places it from `validityPeriod.start` or
   `authoredOn` to the validity end or `dispense-request.ts`'s authorized-supply
-  end; `dose-regimen.ts` assembles the regimen for the health viewer's dose
+  end; `dose-regimen.ts` assembles the regimen for Plots' dose
   lines, a stated dose always winning over an amortized one. Every `Dose`
   records its `derivation`: `stated` or `amortized`. No DOM, no platform
   imports.

@@ -416,7 +416,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
         ),
         (
             PLOTS_DEV_CLIENT_ID,
-            "Health Viewer (Dev)",
+            "Plots (Dev)",
             // `apps/plots/plots-web/src/config.ts`'s scope string — see
             // [`PLOTS_DEV_SCOPES`].
             PLOTS_DEV_SCOPES,
@@ -434,7 +434,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
         ),
         (
             STRENGTH_DEV_CLIENT_ID,
-            "Lifting (Dev)",
+            "Strength (Dev)",
             // `apps/strength/strength-web/src/config.ts`'s `STRENGTH_SCOPE` — see
             // [`STRENGTH_DEV_SCOPES`].
             STRENGTH_DEV_SCOPES,

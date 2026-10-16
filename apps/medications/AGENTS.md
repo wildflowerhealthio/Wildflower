@@ -7,7 +7,7 @@ two features only it uses — drug-interaction checking (**DDInter**) and
 patient-support / drug-sponsorship programs (**innoviCares**, **RxHelp**) — and
 its calendar screen. They build on the shared matching base and calendar
 arithmetic in [`slices/medication`](../../slices/medication/AGENTS.md)
-(`medication-core`, `medication-calendar-core`), which the Health Viewer reads
+(`medication-core`, `medication-calendar-core`), which Plots reads
 too.
 
 ## Packages

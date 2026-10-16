@@ -2,7 +2,7 @@ import type { SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
 
 /**
- * The scopes the lifting app asks for, the same for an EHR launch and a
+ * The scopes Strength asks for, the same for an EHR launch and a
  * standalone connect: EHR launch, then read Patients, and read and write the
  * four resource types a lifter's program is stored as —
  * the training plan definition (`PlanDefinition`), the `ServiceRequest` per

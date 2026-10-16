@@ -10,8 +10,8 @@ import layout from './layout.module.css'
 
 /**
  * "Building on an open personal health record" — the patient-facing apps,
- * presented as things that exist rather than products being sold. The
- * Synthesized Health Viewer leads because it's the more evocative
+ * presented as things that exist rather than products being sold. Plots
+ * leads because it's the more evocative
  * "many-sources-on-one-chart" demo. Each row's copy is the shared
  * `APP_DESCRIPTIONS` entry the app's own landing page renders, and its
  * `Launcher` opens that landing page.

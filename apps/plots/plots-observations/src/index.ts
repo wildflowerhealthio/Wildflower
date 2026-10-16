@@ -1,5 +1,5 @@
 /**
- * The health viewer's observation source: FHIR R4 `Observation`s read into
+ * Plots' observation source: FHIR R4 `Observation`s read into
  * `plots-fundamentals` point series, exported as one `SeriesSource`
  * value (`observationSource`) — the reading, the `o:` series-id grammar, and
  * the catalogue grouping by `Observation.category`.

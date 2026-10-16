@@ -1,6 +1,6 @@
 # AGENTS.md — apps/plots/plots-observations
 
-The health viewer's **observation source**: how FHIR R4 `Observation`s become
+Plots' **observation source**: how FHIR R4 `Observation`s become
 plottable point series, exported as one `SeriesSource` value —
 `observationSource`. Everything that knows what an observation _means_ lives
 here; the chart math it feeds lives in `plots-fundamentals`.

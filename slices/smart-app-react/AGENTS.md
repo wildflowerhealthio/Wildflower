@@ -212,7 +212,7 @@ import `branding-react/styles.css` itself.
 - **Changing the patient only reopens the picker.** The URL keeps the last
   choice until another is made, so a reload mid-change returns to it.
 - **An app decides what "All patients" means for it.** The readers take
-  `null` and read unscoped; an app that writes (Lifting) keeps its write
+  `null` and read unscoped; an app that writes (Strength) keeps its write
   screens behind a chosen patient.
 
 ## References

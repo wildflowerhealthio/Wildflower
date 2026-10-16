@@ -52,7 +52,7 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): readonly number[] => 
 }
 
 /**
- * The health viewer's chart: every selected series on one time axis, each
+ * Plots' chart: every selected series on one time axis, each
  * against its own colour-matched value axis — two on the left, two on the
  * right — with each series' `low` / `high` band shaded behind the lines and a
  * crosshair that reads every series at the pointer's time.

@@ -1,6 +1,6 @@
 # AGENTS.md — apps/plots/plots-web
 
-The Synthesized Health Viewer, a SMART-on-FHIR app published to
+Plots, a SMART-on-FHIR app published to
 <https://wildflowerhealth.io/health-viewer/> (package `plots-web`),
 with a `plots-dev` row in debug builds. See [README.md](./README.md)
 for the boot structure, the page and how to run it.

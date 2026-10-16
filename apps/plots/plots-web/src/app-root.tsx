@@ -5,7 +5,7 @@ import { App } from './app.tsx'
 import { smartAppTelemetry, smartRegistration } from './config.ts'
 
 /**
- * The Synthesized Health Viewer's root: the shared `SmartAppRoot` around `App`.
+ * Plots' root: the shared `SmartAppRoot` around `App`.
  * `App` completes the SMART handshake and loads the patient's Observations and
  * MedicationRequests as queries on the shell's one `QueryClient`.
  *

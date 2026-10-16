@@ -5,7 +5,7 @@ import { App } from './app.tsx'
 import { smartAppTelemetry, smartRegistration } from './config.ts'
 
 /**
- * The lifting app's root: the shared `SmartAppRoot` around `App`. `App`
+ * Strength's root: the shared `SmartAppRoot` around `App`. `App`
  * completes the SMART handshake, reads the lifter's program, workouts and sets
  * as queries on the shell's one `QueryClient`, and writes what they submit.
  *

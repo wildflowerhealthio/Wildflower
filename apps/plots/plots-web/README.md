@@ -1,6 +1,6 @@
 # plots-web
 
-The first-party Synthesized Health Viewer SMART-on-FHIR app: a patient's
+The first-party Plots SMART-on-FHIR app: a patient's
 Observations and prescribed medication doses on one time axis, with up to four
 value axes, so a dose change can be read against the numbers it is meant to
 move. One HTML entry, `index.html`: the app root, which starts a SMART launch

@@ -88,7 +88,7 @@ function PrivacyPolicy(): JSX.Element {
           <PolicyDataCard
             title="Health records you connect to"
             where="On the FHIR server you connect the app to. Your browser holds them only while the app is open."
-            when="Whenever you use an app. Records an app writes, such as Lifting's workouts, are saved to that server."
+            when="Whenever you use an app. Records an app writes, such as Strength's workouts, are saved to that server."
             keptFor="Whatever that server's own policies say."
             delete="On that server, or by asking whoever runs it."
           />

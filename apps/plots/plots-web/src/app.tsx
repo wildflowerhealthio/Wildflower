@@ -73,7 +73,7 @@ export const App = (): JSX.Element => {
   return (
     <main className={styles.app}>
       <header className={styles.header}>
-        <h1 className="text-heading-3">Synthesized Health Viewer</h1>
+        <h1 className="text-heading-3">Plots</h1>
         {client !== undefined && Option.isSome(patientChoice) && (
           <PatientChoiceLine
             client={client}

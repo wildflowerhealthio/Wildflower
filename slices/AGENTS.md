@@ -29,9 +29,9 @@ The databases, the request log and the app registry are not slices: each was use
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `rexall-be-well-source`, `shoppers-drugmart-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). `importer` — the per-file-format import pipelines — builds on it without owning it: it runs the vocabulary over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md). The importer slice holds the fundamentals and format bindings the Synthetic Data Loader also runs, and the core, shell and format screens the Importer app mounts; the anonymizer it pairs with is its own slice, `anonymizer` — see [anonymizer/AGENTS.md](./anonymizer/AGENTS.md). The app itself is [`apps/importer-web`](../apps/importer-web/AGENTS.md).
 
-`medication` is the shared base of a patient's medication list — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values, which the Health Viewer reads too, and `medication-calendar-core` the fill-date arithmetic. Two features build on it, neither owning the base, and live with the medications app in `apps/medications` — see [apps/medications/AGENTS.md](../apps/medications/AGENTS.md): `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
+`medication` is the shared base of a patient's medication list — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values, which Plots reads too, and `medication-calendar-core` the fill-date arithmetic. Two features build on it, neither owning the base, and live with the medications app in `apps/medications` — see [apps/medications/AGENTS.md](../apps/medications/AGENTS.md): `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
 
-The Health Viewer is not a slice: it plots a patient's own observations and
+Plots is not a slice: it plots a patient's own observations and
 medications on one time axis, and its packages live with the app in
 `apps/plots` — see [apps/plots/AGENTS.md](../apps/plots/AGENTS.md). Like
 `http-extraction`, it layers a domain-free vocabulary under per-domain packages:
@@ -72,7 +72,7 @@ the recent-activity card, the filtered log and its CSV export.
 
 Synthetic data is not a slice either: the tooling for synthetic health data
 lives with the Synthetic Data Loader in `apps/synthetic-data` — see
-[apps/synthetic-data/AGENTS.md](../apps/synthetic-data/AGENTS.md). Like the Health Viewer, it
+[apps/synthetic-data/AGENTS.md](../apps/synthetic-data/AGENTS.md). Like Plots, it
 layers a source-free base under per-source packages:
 `synthetic-data-fundamentals` holds three roles as sub-entries: the story model
 (`/story`: people, prescriptions, lab draws, every date relative to one as-of
@@ -92,7 +92,7 @@ entries' files and an `index.json` header, and reads them back;
 by `apps/synthetic-data/synthetic-data-web`.
 The stories themselves live in `wildflowerhealthio/synthetic-data`.
 
-Lifting is not a slice either: a person's strength-training plan, its screens
+Strength is not a slice either: a person's strength-training plan, its screens
 and the SMART app around them live together in `apps/strength` — see
 [apps/strength/AGENTS.md](../apps/strength/AGENTS.md). Its `strength-core-js` is
 the plan as FHIR R4 resources (a `PlanDefinition`, the `ServiceRequest` the

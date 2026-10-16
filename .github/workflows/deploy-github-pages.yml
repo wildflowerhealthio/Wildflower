@@ -3,8 +3,8 @@ name: Deploy GitHub Pages
 # Builds the published static site (apps/wildflower-site/wildflower-site-web,
 # which assembles the marketing site at /, the medications app at /medications,
 # the server-docs API console at /server-docs, the Importer at /importer, FHIR
-# Sync for Pebble at /fhir-sync-pebble, the Health Viewer at /health-viewer, the
-# Synthetic Data Loader at /synthetic-data, the lifting app at /lifting, the
+# Sync for Pebble at /fhir-sync-pebble, Plots at /health-viewer, the
+# Synthetic Data Loader at /synthetic-data, Strength at /lifting, the
 # WatchLifts settings page at /watch-lifts, the prebuilt OHIF viewer at
 # /ohif-viewer, the launcher at /launcher and Wildflower Authorization at
 # /authorization) and publishes it to GitHub Pages.

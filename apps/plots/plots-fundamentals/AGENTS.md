@@ -1,6 +1,6 @@
 # AGENTS.md — apps/plots/plots-fundamentals
 
-The health viewer's plot vocabulary, free of any medical domain: what a chart
+Plots' plot vocabulary, free of any medical domain: what a chart
 draws (readings and held values), how its value axes are fitted, where its
 crosshair snaps, which colour a series keeps, and "a domain source" as one
 value. Domain packages (`plots-observations`) read their records into

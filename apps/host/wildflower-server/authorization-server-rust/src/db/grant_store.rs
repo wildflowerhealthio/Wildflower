@@ -1507,6 +1507,66 @@ mod tests {
         assert!(column_for_client(&mut conn, "client_id", HOST_APP).is_empty());
     }
 
+    /// An install already at `0034` renames the Plots and Strength clients
+    /// when `0035` runs: each client still holding its seeded name takes its
+    /// product's, and one whose name is anything else keeps it. Reverting
+    /// `0035` restores the seeded names.
+    #[test]
+    fn an_install_already_at_0034_renames_the_plots_and_strength_clients() {
+        use diesel::connection::SimpleConnection as _;
+        const PLOTS: &str = "474e103de61f9141c4b640d59bfa130e";
+        const PLOTS_DEV: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+        const STRENGTH: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
+        const STRENGTH_DEV: &str = "8467e680a05f1e92e22864e923144e5a";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0034"),
+        )
+        .expect("migrate to 0034");
+        conn.batch_execute(
+            "INSERT INTO clients \
+             (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+              secret_hash, registered_at, disabled_at) \
+             VALUES ('e7efc7c805f5f8f640bb3b3d48a2d7aa', 'Health Viewer (Dev)', 'public', \
+                     '[\"http://localhost:5196/\"]', '[\"launch\"]', \
+                     '[\"authorization_code\"]', NULL, '2024-01-01 00:00:00+00:00', NULL), \
+                    ('8467e680a05f1e92e22864e923144e5a', 'My lifts', 'public', \
+                     '[\"http://localhost:5199/\"]', '[\"launch\"]', \
+                     '[\"authorization_code\"]', NULL, '2024-01-01 00:00:00+00:00', NULL)",
+        )
+        .expect("the dev clients at 0034, Strength's under another name");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0035");
+
+        let name_of = |conn: &mut SqliteConnection, client_id: &str| {
+            column_for_client(conn, "name", client_id)[0].name.clone()
+        };
+        assert_eq!(name_of(&mut conn, PLOTS), "Plots");
+        assert_eq!(name_of(&mut conn, PLOTS_DEV), "Plots (Dev)");
+        assert_eq!(name_of(&mut conn, STRENGTH), "Strength");
+        assert_eq!(name_of(&mut conn, STRENGTH_DEV), "My lifts");
+
+        let migration_0035 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0035"))
+            .expect("0035 is embedded");
+        migration_0035.revert(&mut conn).expect("revert 0035");
+        assert_eq!(name_of(&mut conn, PLOTS), "Synthesized Health Viewer");
+        assert_eq!(name_of(&mut conn, PLOTS_DEV), "Health Viewer (Dev)");
+        assert_eq!(name_of(&mut conn, STRENGTH), "Lifting");
+        assert_eq!(name_of(&mut conn, STRENGTH_DEV), "My lifts");
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

@@ -292,10 +292,10 @@ mod tests {
     /// redirect by `0006`), the server-docs API console by
     /// `0007`, the Importer by `0008`, the OHIF imaging viewer by `0009`
     /// (re-seeded by `0016` on an install that skipped it), FHIR Sync for
-    /// Pebble by `0017` (its Observation scope widened by `0018`), Lifting by
-    /// `0019`, the Synthesized Health Viewer by `0022`, and the Synthetic Data
+    /// Pebble by `0017` (its Observation scope widened by `0018`), Strength by
+    /// `0019`, Plots by `0022` (both renamed by `0035`), and the Synthetic Data
     /// Loader by `0028` (which re-keys Medications, the console, the Importer and
-    /// the Health Viewer to random ids, as `0025` / `0026` did Lifting and the
+    /// Plots to random ids, as `0025` / `0026` did Strength and the
     /// launcher, `0029` does the OHIF viewer and `0030` FHIR Sync for Pebble), and
     /// Wildflower Authorization by `0031` (the launcher's scopes are narrowed by
     /// `0032`) — so a

@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/strength-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI for Lifting: the planned workout the lifter enters reps for and submits, the outcome of a submitted workout, starting a training plan definition at chosen loads, the training plan definition editor, and the workout history. Plain props and callbacks over strength-core-js's narrowed FHIR resources; nothing here fetches, mints ids or decides a progression.",
+  "description": "Browser UI for Strength: the planned workout the lifter enters reps for and submits, the outcome of a submitted workout, starting a training plan definition at chosen loads, the training plan definition editor, and the workout history. Plain props and callbacks over strength-core-js's narrowed FHIR resources; nothing here fetches, mints ids or decides a progression.",
   "type": "module",
   "exports": {
     ".": {
