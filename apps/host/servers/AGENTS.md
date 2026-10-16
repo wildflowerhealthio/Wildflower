@@ -26,7 +26,8 @@ changing how servers run or what the host notifies about them.
   certificate state its run reported or its cache holds; `PendingConsent`,
   the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the stop notification for each new stop of a server's run, and the consent
-  notification for each new request waiting on a server.
+  notification for each new request waiting on a server, with the count of
+  servers with a request pending that the app icon's badge shows.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
@@ -35,8 +36,7 @@ changing how servers run or what the host notifies about them.
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, the
     certificate state's wire shape (`certificate_state_wire`),
-    `PendingConsent` with `ConsentKey`, `pending_consent_server_count`,
-    launching (`ensure_launchable`,
+    `PendingConsent` with `ConsentKey`, launching (`ensure_launchable`,
     `launch_url`, `authorization_app_url`, `sign_in_url`,
     `consent_sign_in_url`, `LaunchError`), and `notifications/`
     (`LocalNotification` with its `fnv1a` id hash,
@@ -58,7 +58,8 @@ changing how servers run or what the host notifies about them.
   `ServerUnits::push`, emits the `server-status` event, posts the stop
   and consent notifications, opening each consent's request in the
   default browser on the desktop, sets the app icon's badge to how many
-  servers have a consent waiting (`pending_consent_badge`), and manages the
+  servers have a consent request pending, as the consent notifications'
+  coalescer counts them (`pending_consent_badge`), and manages the
   commands' `ServersState`. The base's Tauri commands: `servers_list`, `server_add`,
   `server_set_credentials`, `server_set_run_policy`, `server_update` and
   `server_remove`, each writing the registry and then pushing what it wrote;
