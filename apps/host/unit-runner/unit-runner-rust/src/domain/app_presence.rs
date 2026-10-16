@@ -39,9 +39,12 @@ impl Presence {
 /// How the app's presence changed with an update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PresenceChange {
-    /// The app was absent and is [`Presence::Present`] now: it returned to the
-    /// foreground, or its first window opened.
-    BecamePresent,
+    /// The app had never been present and is [`Presence::Present`] now: its
+    /// first window opened, or it came to the foreground for the first time.
+    FirstBecamePresent,
+    /// The app was absent, after being present, and is [`Presence::Present`]
+    /// now: it returned to the foreground.
+    ReturnedToTheForeground,
     /// The app was [`Presence::PresentInBackground`] and is
     /// [`Presence::Present`] now: on Android, the in-app browser views over it
     /// closed, or their browsers keep it alive under them.
@@ -75,6 +78,9 @@ impl AppPresence {
     /// Record the app's `presence` as of the wall-clock instant `now`.
     pub fn update(&mut self, presence: Presence, now: DateTime<Utc>) -> PresenceChange {
         let previous_presence = std::mem::replace(&mut self.presence, presence);
+        // A grace period starts each time the app becomes absent, so an absent
+        // app with one has been present before.
+        let had_been_present = self.entered_grace_period_at.is_some();
         match (previous_presence.is_present(), presence.is_present()) {
             (false, true) => self.entered_grace_period_at = None,
             (true, false) => {
@@ -84,7 +90,10 @@ impl AppPresence {
             (true, true) | (false, false) => {}
         }
         match (previous_presence, presence) {
-            (Presence::Absent, Presence::Present) => PresenceChange::BecamePresent,
+            (Presence::Absent, Presence::Present) if had_been_present => {
+                PresenceChange::ReturnedToTheForeground
+            }
+            (Presence::Absent, Presence::Present) => PresenceChange::FirstBecamePresent,
             (Presence::PresentInBackground, Presence::Present) => PresenceChange::LeftTheBackground,
             _ => PresenceChange::Unchanged,
         }
@@ -136,7 +145,8 @@ mod tests {
         let mut presence = AppPresence::new();
         assert_eq!(
             presence.update(Presence::Present, instant(0)),
-            PresenceChange::BecamePresent
+            PresenceChange::FirstBecamePresent,
+            "the first window opens, no return"
         );
         assert_eq!(
             presence.update(Presence::Present, instant(1)),
@@ -152,7 +162,7 @@ mod tests {
 
         assert_eq!(
             presence.update(Presence::Present, instant(20)),
-            PresenceChange::BecamePresent
+            PresenceChange::ReturnedToTheForeground
         );
         assert_eq!(presence.grace_ends_at(), None);
         assert!(presence.present_or_in_grace(instant(10_000)));

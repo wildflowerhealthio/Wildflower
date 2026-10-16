@@ -7,8 +7,8 @@ use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig
 use tokio::sync::{broadcast, watch};
 
 use wildflowerhealthio_unit_runner::{
-    BackgroundSessionLength, RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner,
-    UnitStatuses,
+    AppReturn, BackgroundSessionLength, RunPolicy, RunStopped, SystemClock, Unit, UnitId,
+    UnitRunner, UnitStatuses,
 };
 
 use crate::tauri_bindings::TauriBindings;
@@ -140,13 +140,13 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     }
 
     /// The app's returns to the foreground: each time it becomes present
-    /// after being absent, the statuses, as of that moment, of the units whose
-    /// run carries on across the return. A run the return restarts, as every
-    /// running unit's on iOS, doesn't carry on. The receiver holds no units
-    /// until the first return; a slow reader sees the latest return, not
-    /// every one.
+    /// after being absent, having been present before, an [`AppReturn`]: the
+    /// units whose run carries on across the return, and those it resumes. A
+    /// run the return restarts, as every running unit's on iOS, doesn't carry
+    /// on. The receiver holds no units until the first return; a slow reader
+    /// sees the latest return, not every one.
     #[must_use]
-    pub fn subscribe_returns(&self) -> watch::Receiver<UnitStatuses<D>> {
+    pub fn subscribe_returns(&self) -> watch::Receiver<AppReturn<D>> {
         self.unit_runner.subscribe_returns()
     }
 }

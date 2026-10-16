@@ -713,7 +713,7 @@ mod tests {
     use wildflowerhealthio_rathole_settings::TunnelName;
     use wildflowerhealthio_servers::{
         CertificateAuthority, JsonServerRegistry, RelayKind, RunPolicy, ServerConsentWatcher,
-        ServerRecord, TunnelToken,
+        ServerRecord, ServerRunId, TunnelToken,
     };
     use wildflowerhealthio_shared_structures::health_check::HealthReport;
     use wildflowerhealthio_tauri_unit_runner::RunState;
@@ -986,6 +986,7 @@ mod tests {
         change: impl FnOnce(&mut ServerDetail),
     ) -> UnitStatuses<ServerDetail> {
         let mut detail = ServerDetail {
+            run: ServerRunId::next(),
             health: Some(ServerHealth::Reachable(HealthReport::pass())),
             tunnel: Some(TunnelState::Connected),
             certificate: Some(CertificateState {

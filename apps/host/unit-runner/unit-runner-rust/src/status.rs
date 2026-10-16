@@ -24,6 +24,35 @@ pub struct UnitStatus<D> {
     pub detail: Option<D>,
 }
 
+/// A return of the app to the foreground, as
+/// [`UnitRunner::subscribe_returns`](crate::UnitRunner::subscribe_returns)
+/// reports it: the statuses, as the app returned and before any run the return
+/// starts, of the units whose run carries on across it and of the units it
+/// resumes. A unit that shouldn't run, as one whose policy is off, is in
+/// neither.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppReturn<D> {
+    /// The units whose run carries on across the return: in progress and not
+    /// asked to stop.
+    pub carried_on: UnitStatuses<D>,
+    /// The units that should run now that the app is present, but whose run
+    /// doesn't carry on: one stopped while the app was away, or one whose run
+    /// was asked to stop for a restart, as the Tauri host asks every running
+    /// unit's on iOS before it reports the return, which still holds that
+    /// run's status.
+    pub resumed: UnitStatuses<D>,
+}
+
+impl<D> Default for AppReturn<D> {
+    /// No return yet: no units.
+    fn default() -> Self {
+        Self {
+            carried_on: UnitStatuses::new(),
+            resumed: UnitStatuses::new(),
+        }
+    }
+}
+
 impl<D> UnitStatus<D> {
     /// The status of a unit that has never run.
     #[must_use]

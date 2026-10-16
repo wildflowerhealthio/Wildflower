@@ -5,12 +5,12 @@
 //! statuses; and [`server_of_consent_notification`], the server a tapped
 //! notification is for, by [`consent_notification_id_for_plugin`].
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
-use wildflowerhealthio_unit_runner::{UnitId, UnitStatuses};
+use wildflowerhealthio_unit_runner::{AppReturn, UnitId, UnitStatuses};
 
 use crate::domain::notifications::local_notification::LocalNotification;
-use crate::domain::{ConsentKey, PendingConsent, ServerDetail};
+use crate::domain::{ConsentKey, PendingConsent, ServerDetail, ServerRunId};
 
 /// The start of a server's consent notification id, which its domain
 /// completes, so a server's next request replaces its last one's notification
@@ -114,33 +114,47 @@ const NOTIFIED_PER_SERVER: usize = 32;
 /// the app's start, which opens instead of notifying, and one request at each
 /// return to the foreground ([`returned_to_foreground`](Self::returned_to_foreground)).
 ///
-/// A server remembers the requests it notified for until its run reports
-/// nothing pending, since then each of them is decided or expired and none
-/// can come back, keeping at most [`NOTIFIED_PER_SERVER`] meanwhile. A run
-/// that isn't reporting, as while it stops or starts, leaves them, and its
-/// notification, as they are. A server that is removed is forgotten.
-///
-/// The servers it remembers requests for are the ones with a request
-/// pending, as their run last reported:
-/// [`pending_server_count`](Self::pending_server_count), what the app icon's
-/// badge shows.
+/// A server remembers the requests it notified for or opened until its run
+/// reports nothing pending, since then each of them is decided or expired and
+/// none can come back, keeping at most [`NOTIFIED_PER_SERVER`] meanwhile. A
+/// run that isn't reporting, as while it stops or starts, leaves them, and
+/// its notification, as they are. A server that is removed is forgotten.
 #[derive(Debug)]
 pub struct ConsentNotificationCoalescer {
     /// Which requests open.
     opening: ConsentOpening,
-    /// The servers whose run has reported since the app started, less those
-    /// whose run didn't carry on across a return to the foreground since.
-    reported: BTreeSet<UnitId>,
-    /// Whether a request opened at the app's start, or at its latest return
-    /// to the foreground, already ([`ConsentOpening::FirstAtStart`]).
+    /// The run each server last reported from, for each server whose run has
+    /// reported since the app started.
+    reporting_runs: BTreeMap<UnitId, ServerRunId>,
+    /// Whether a request opened at the app's start already
+    /// ([`ConsentOpening::FirstAtStart`]).
     opened_at_start: bool,
-    /// The keys of the requests each server notified for, or opened, earliest
-    /// first, for each server with a request pending as its run last
-    /// reported.
-    notified: BTreeMap<UnitId, VecDeque<ConsentKey>>,
+    /// The servers whose first report since the latest return to the
+    /// foreground opens its request, each with the run it reported from as
+    /// the app returned, whose reports don't count, if any; a server leaves
+    /// once a later run reports, and all leave once one opens a request
+    /// ([`ConsentOpening::FirstAtStart`]).
+    awaiting_first_report_since_return: BTreeMap<UnitId, Option<ServerRunId>>,
+    /// The requests each server notified for or opened, and those the
+    /// Owner's own browser made, earliest first.
+    notified: BTreeMap<UnitId, VecDeque<NotifiedRequest>>,
+    /// How many requests every server has notified for, opened, or seen the
+    /// Owner's own browser make, which orders them across servers.
+    requests_seen: u64,
     /// The key of the request each server's notification announces, for each
     /// server with one posted and not withdrawn.
     announced: BTreeMap<UnitId, ConsentKey>,
+}
+
+/// A request a server notified for, opened, or saw the Owner's own browser
+/// make.
+#[derive(Debug)]
+struct NotifiedRequest {
+    /// The request.
+    key: ConsentKey,
+    /// How many requests every server had seen before it, so the latest seen
+    /// has the highest.
+    seen_after: u64,
 }
 
 /// Which consent requests open, besides notifying.
@@ -179,9 +193,11 @@ impl ConsentNotificationCoalescer {
     pub fn new(opening: ConsentOpening) -> Self {
         Self {
             opening,
-            reported: BTreeSet::new(),
+            reporting_runs: BTreeMap::new(),
             opened_at_start: false,
+            awaiting_first_report_since_return: BTreeMap::new(),
             notified: BTreeMap::new(),
+            requests_seen: 0,
             announced: BTreeMap::new(),
         }
     }
@@ -191,6 +207,8 @@ impl ConsentNotificationCoalescer {
     pub fn record(&mut self, statuses: &UnitStatuses<ServerDetail>) -> ConsentNotificationChanges {
         let mut changes = ConsentNotificationChanges::default();
         self.notified
+            .retain(|unit_id, _| statuses.contains_key(unit_id));
+        self.awaiting_first_report_since_return
             .retain(|unit_id, _| statuses.contains_key(unit_id));
         self.announced.retain(|unit_id, _| {
             let kept = statuses.contains_key(unit_id);
@@ -203,7 +221,17 @@ impl ConsentNotificationCoalescer {
             let Some(detail) = unit_status.detail.as_ref() else {
                 continue;
             };
-            let first_report = self.reported.insert(unit_id.clone());
+            let first_report_since_start = self
+                .reporting_runs
+                .insert(unit_id.clone(), detail.run)
+                .is_none();
+            let first_report_since_return = self
+                .awaiting_first_report_since_return
+                .get(unit_id)
+                .is_some_and(|run_at_return| *run_at_return != Some(detail.run));
+            if first_report_since_return {
+                self.awaiting_first_report_since_return.remove(unit_id);
+            }
             let Some(newest) = detail.pending_consent.clone() else {
                 self.notified.remove(unit_id);
                 if self.announced.remove(unit_id).is_some() {
@@ -213,7 +241,9 @@ impl ConsentNotificationCoalescer {
             };
             let pending_consent = PendingConsent::from(newest);
             let notified = self.notified.entry(unit_id.clone()).or_default();
-            let notified_before = notified.contains(&pending_consent.key);
+            let notified_before = notified
+                .iter()
+                .any(|notified_request| notified_request.key == pending_consent.key);
             if notified_before {
                 if self
                     .announced
@@ -227,7 +257,11 @@ impl ConsentNotificationCoalescer {
                 if notified.len() == NOTIFIED_PER_SERVER {
                     notified.pop_front();
                 }
-                notified.push_back(pending_consent.key.clone());
+                notified.push_back(NotifiedRequest {
+                    key: pending_consent.key.clone(),
+                    seen_after: self.requests_seen,
+                });
+                self.requests_seen += 1;
                 if pending_consent.requested_by_owner_browser
                     && self.announced.remove(unit_id).is_some()
                 {
@@ -241,13 +275,18 @@ impl ConsentNotificationCoalescer {
                 domain: unit_id.as_str().to_owned(),
                 pending_consent,
             };
-            // A first report since a return to the foreground opens its
-            // request even when it notified before the run stopped.
-            if self.opening == ConsentOpening::FirstAtStart && first_report && !self.opened_at_start
-            {
-                self.opened_at_start = true;
-                changes.opened.push(request);
-                continue;
+            if self.opening == ConsentOpening::FirstAtStart {
+                if first_report_since_start && !self.opened_at_start {
+                    self.opened_at_start = true;
+                    changes.opened.push(request);
+                    continue;
+                }
+                // Even a request it notified for before its run stopped.
+                if first_report_since_return {
+                    self.awaiting_first_report_since_return.clear();
+                    changes.opened.push(request);
+                    continue;
+                }
             }
             if notified_before {
                 continue;
@@ -263,50 +302,75 @@ impl ConsentNotificationCoalescer {
         changes
     }
 
-    /// The request that opens as the app returns to the foreground, under
-    /// [`ConsentOpening::FirstAtStart`]; `carried_on` holds the statuses, as
-    /// the app returned, of the servers whose run carried on across the
-    /// return. A return counts as a new start: at most one request opens for
-    /// it, the first server's in domain order.
+    /// The request that opens as the app returns to the foreground
+    /// (`app_return`), under [`ConsentOpening::FirstAtStart`]: at most one
+    /// per return. On the desktop ([`ConsentOpening::AsNotified`]) a return
+    /// opens nothing.
     ///
-    /// A server whose run carried on and reports the request its notification
-    /// announces as its newest opens it now: the Owner saw the notification
-    /// and came back to decide it. Failing that, each server whose run didn't
-    /// carry on, or isn't reporting, has its next report count as its first
-    /// since the start, and the first of those to report a request opens it,
-    /// even one it notified for before its run stopped. A request the Owner's
-    /// own browser made opens neither way, as it never notifies. On the
-    /// desktop ([`ConsentOpening::AsNotified`]) a return opens nothing.
+    /// Of the servers whose run carried on across the return, each whose
+    /// newest request is one it notified for or opened, and so still pending,
+    /// is a candidate, and the request seen latest opens now: the Owner saw
+    /// it and came back to decide it, or closed its view undecided and came
+    /// back to it. Failing one, each server the return resumed, or whose run
+    /// carried on without reporting yet, has its next run's first report open
+    /// its request, even one it notified for before its run stopped: the
+    /// first of those servers to report a request opens it, and none after.
+    /// A server whose policy doesn't run it at the return, as one the Owner
+    /// turns on later, notifies as usual. A request the Owner's own browser
+    /// made opens neither way, as it never notifies.
     pub fn returned_to_foreground(
         &mut self,
-        carried_on: &UnitStatuses<ServerDetail>,
+        app_return: &AppReturn<ServerDetail>,
     ) -> ConsentNotificationChanges {
         let mut changes = ConsentNotificationChanges::default();
+        self.awaiting_first_report_since_return.clear();
         if self.opening != ConsentOpening::FirstAtStart {
             return changes;
         }
-        self.reported.retain(|unit_id| {
-            carried_on
-                .get(unit_id)
-                .is_some_and(|unit_status| unit_status.detail.is_some())
-        });
-        let announced = carried_on.iter().find_map(|(unit_id, unit_status)| {
-            let announced = self.announced.get(unit_id)?;
-            let pending_consent =
-                PendingConsent::of_run(unit_status).filter(|newest| newest.key == *announced)?;
-            Some(ConsentRequest {
-                domain: unit_id.as_str().to_owned(),
-                pending_consent,
+        let reopened = app_return
+            .carried_on
+            .iter()
+            .filter_map(|(unit_id, unit_status)| {
+                let pending_consent = PendingConsent::of_run(unit_status)
+                    .filter(|newest| !newest.requested_by_owner_browser)?;
+                let seen_after = self
+                    .notified
+                    .get(unit_id)?
+                    .iter()
+                    .find(|notified_request| notified_request.key == pending_consent.key)?
+                    .seen_after;
+                let request = ConsentRequest {
+                    domain: unit_id.as_str().to_owned(),
+                    pending_consent,
+                };
+                Some((seen_after, request))
             })
-        });
-        self.opened_at_start = announced.is_some();
-        changes.opened.extend(announced);
+            .max_by_key(|(seen_after, _)| *seen_after);
+        if let Some((_, request)) = reopened {
+            changes.opened.push(request);
+            return changes;
+        }
+        let not_reporting = app_return
+            .carried_on
+            .iter()
+            .filter(|(_, unit_status)| unit_status.detail.is_none());
+        self.awaiting_first_report_since_return = app_return
+            .resumed
+            .iter()
+            .chain(not_reporting)
+            .map(|(unit_id, unit_status)| {
+                let run_at_return = unit_status.detail.as_ref().map(|detail| detail.run);
+                (unit_id.clone(), run_at_return)
+            })
+            .collect();
         changes
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::OnceLock;
+
     use wildflowerhealthio_authorization_server::NewestPendingConsent;
     use wildflowerhealthio_unit_runner::{RunState, UnitStatus};
 
@@ -321,11 +385,24 @@ mod tests {
         coalescer
     }
 
+    /// A status reporting from the run every [`running_with`] status
+    /// reports from, `pending_consent` the newest request waiting.
     fn running_with(pending_consent: Option<NewestPendingConsent>) -> UnitStatus<ServerDetail> {
+        static THE_RUN: OnceLock<ServerRunId> = OnceLock::new();
+        reporting(*THE_RUN.get_or_init(ServerRunId::next), pending_consent)
+    }
+
+    /// A status reporting from `run`, `pending_consent` the newest request
+    /// waiting.
+    fn reporting(
+        run: ServerRunId,
+        pending_consent: Option<NewestPendingConsent>,
+    ) -> UnitStatus<ServerDetail> {
         UnitStatus {
             run_state: RunState::Running,
             running_since: None,
             detail: Some(ServerDetail {
+                run,
                 health: None,
                 tunnel: None,
                 certificate: None,
@@ -629,13 +706,25 @@ mod tests {
         assert_eq!(summary(&later.opened), [(RUTH, oauth_key("c"))]);
     }
 
+    /// A return to the foreground across which the runs in `carried_on`
+    /// carried on, and that resumed the servers in `resumed`.
+    fn app_return(
+        carried_on: UnitStatuses<ServerDetail>,
+        resumed: UnitStatuses<ServerDetail>,
+    ) -> AppReturn<ServerDetail> {
+        AppReturn {
+            carried_on,
+            resumed,
+        }
+    }
+
     #[test]
     fn on_a_phone_a_return_with_the_run_carried_on_opens_the_announced_request() {
         let mut coalescer = notifying();
         let running = statuses([(RUTH, running_with(Some(oauth("a"))))]);
         coalescer.record(&running);
 
-        let returned = coalescer.returned_to_foreground(&running);
+        let returned = coalescer.returned_to_foreground(&app_return(running.clone(), statuses([])));
         assert_eq!(summary(&returned.opened), [(RUTH, oauth_key("a"))]);
         assert!(returned.posted.is_empty() && returned.withdrawn.is_empty());
         let still = coalescer.record(&running);
@@ -651,28 +740,40 @@ mod tests {
         let mut coalescer = notifying();
         let running = statuses([(RUTH, running_with(Some(oauth("a"))))]);
         coalescer.record(&running);
-        coalescer.returned_to_foreground(&running);
+        coalescer.returned_to_foreground(&app_return(running.clone(), statuses([])));
 
         // The Owner closed its view without deciding, and left again.
-        let again = coalescer.returned_to_foreground(&running);
+        let again = coalescer.returned_to_foreground(&app_return(running, statuses([])));
         assert_eq!(summary(&again.opened), [(RUTH, oauth_key("a"))]);
     }
 
     #[test]
-    fn on_a_phone_a_return_opens_one_request_the_first_server_s() {
+    fn on_a_phone_a_request_opened_at_start_and_closed_undecided_opens_again_at_a_return() {
+        let mut coalescer = ConsentNotificationCoalescer::new(ConsentOpening::FirstAtStart);
+        let running = statuses([(RUTH, running_with(Some(oauth("a"))))]);
+        let start = coalescer.record(&running);
+        assert_eq!(summary(&start.opened), [(RUTH, oauth_key("a"))]);
+
+        let returned = coalescer.returned_to_foreground(&app_return(running, statuses([])));
+        assert_eq!(summary(&returned.opened), [(RUTH, oauth_key("a"))]);
+    }
+
+    #[test]
+    fn on_a_phone_a_return_opens_one_request_the_one_seen_latest() {
         let mut coalescer = notifying();
+        coalescer.record(&statuses([(LAB, running_with(Some(oauth("b"))))]));
         let running = statuses([
             (RUTH, running_with(Some(oauth("a")))),
             (LAB, running_with(Some(oauth("b")))),
         ]);
         coalescer.record(&running);
 
-        let returned = coalescer.returned_to_foreground(&running);
-        assert_eq!(summary(&returned.opened), [(LAB, oauth_key("b"))]);
+        let returned = coalescer.returned_to_foreground(&app_return(running, statuses([])));
+        assert_eq!(summary(&returned.opened), [(RUTH, oauth_key("a"))]);
     }
 
     #[test]
-    fn on_a_phone_a_return_with_nothing_announced_opens_nothing() {
+    fn on_a_phone_a_return_with_nothing_surfaced_opens_nothing() {
         let mut coalescer = notifying();
         let running = statuses([
             (RUTH, running_with(None)),
@@ -680,7 +781,7 @@ mod tests {
         ]);
         coalescer.record(&running);
 
-        let returned = coalescer.returned_to_foreground(&running);
+        let returned = coalescer.returned_to_foreground(&app_return(running.clone(), statuses([])));
         assert_eq!(returned, ConsentNotificationChanges::default());
         assert_eq!(
             coalescer.record(&running),
@@ -689,29 +790,34 @@ mod tests {
     }
 
     #[test]
-    fn on_a_phone_a_return_opens_no_announced_request_the_run_no_longer_has_newest() {
+    fn on_a_phone_a_return_opens_no_request_the_run_no_longer_has_newest() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
 
         // "b" arrived as the app returned, before the coalescer saw it.
-        let returned =
-            coalescer.returned_to_foreground(&statuses([(RUTH, running_with(Some(oauth("b"))))]));
+        let returned = coalescer.returned_to_foreground(&app_return(
+            statuses([(RUTH, running_with(Some(oauth("b"))))]),
+            statuses([]),
+        ));
         assert!(returned.opened.is_empty());
     }
 
     #[test]
-    fn on_a_phone_a_notified_request_opens_on_the_first_report_after_a_return_whose_run_had_stopped(
-    ) {
+    fn on_a_phone_a_notified_request_opens_on_the_first_report_of_a_run_a_return_resumed() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
-        coalescer.record(&statuses([(RUTH, UnitStatus::never_run())]));
+        let stopped = statuses([(RUTH, UnitStatus::never_run())]);
+        coalescer.record(&stopped);
 
-        let returned = coalescer.returned_to_foreground(&statuses([]));
+        let returned = coalescer.returned_to_foreground(&app_return(statuses([]), stopped.clone()));
         assert_eq!(returned, ConsentNotificationChanges::default());
-        let starting = coalescer.record(&statuses([(RUTH, UnitStatus::never_run())]));
+        let starting = coalescer.record(&stopped);
         assert!(starting.opened.is_empty(), "not reporting yet");
 
-        let restarted = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        let restarted = coalescer.record(&statuses([(
+            RUTH,
+            reporting(ServerRunId::next(), Some(oauth("a"))),
+        )]));
         assert_eq!(summary(&restarted.opened), [(RUTH, oauth_key("a"))]);
         assert!(restarted.posted.is_empty() && restarted.withdrawn.is_empty());
         let later = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("b"))))]));
@@ -720,7 +826,31 @@ mod tests {
     }
 
     #[test]
-    fn on_a_phone_a_return_that_opens_at_once_opens_nothing_on_a_restarted_run() {
+    fn on_a_phone_a_run_restarted_for_a_return_opens_on_its_new_run_s_first_report_only() {
+        let mut coalescer = notifying();
+        let old_run = statuses([(RUTH, running_with(Some(oauth("a"))))]);
+        coalescer.record(&old_run);
+
+        // As on iOS: the old run was asked to stop, and still reports until
+        // it has.
+        coalescer.returned_to_foreground(&app_return(statuses([]), old_run.clone()));
+        let stopping = coalescer.record(&old_run);
+        assert_eq!(
+            stopping,
+            ConsentNotificationChanges::default(),
+            "the old run's report isn't the new run's"
+        );
+        coalescer.record(&statuses([(RUTH, UnitStatus::never_run())]));
+
+        let new_run = coalescer.record(&statuses([(
+            RUTH,
+            reporting(ServerRunId::next(), Some(oauth("a"))),
+        )]));
+        assert_eq!(summary(&new_run.opened), [(RUTH, oauth_key("a"))]);
+    }
+
+    #[test]
+    fn on_a_phone_a_return_that_opens_at_once_opens_nothing_on_a_resumed_run() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),
@@ -728,25 +858,81 @@ mod tests {
         ]));
 
         // LAB's run stopped while the app was away; RUTH's carried on.
-        let returned =
-            coalescer.returned_to_foreground(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        let returned = coalescer.returned_to_foreground(&app_return(
+            statuses([(RUTH, running_with(Some(oauth("a"))))]),
+            statuses([(LAB, UnitStatus::never_run())]),
+        ));
         assert_eq!(summary(&returned.opened), [(RUTH, oauth_key("a"))]);
         let restarted = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),
-            (LAB, running_with(Some(oauth("b")))),
+            (LAB, reporting(ServerRunId::next(), Some(oauth("b")))),
         ]));
         assert_eq!(restarted, ConsentNotificationChanges::default());
+    }
+
+    #[test]
+    fn on_a_phone_a_server_a_return_didn_t_resume_notifies_once_it_runs() {
+        let mut coalescer = notifying();
+        let running = statuses([(RUTH, running_with(None)), (LAB, UnitStatus::never_run())]);
+        coalescer.record(&running);
+
+        // LAB is off at the return; the Owner turns it on later.
+        coalescer.returned_to_foreground(&app_return(
+            statuses([(RUTH, running_with(None))]),
+            statuses([]),
+        ));
+        let turned_on = coalescer.record(&statuses([
+            (RUTH, running_with(None)),
+            (LAB, running_with(Some(oauth("b")))),
+        ]));
+        assert_eq!(summary(&turned_on.posted), [(LAB, oauth_key("b"))]);
+        assert!(turned_on.opened.is_empty());
+    }
+
+    #[test]
+    fn on_a_phone_a_resumed_run_reporting_nothing_first_leaves_its_later_request_notifying() {
+        let mut coalescer = notifying();
+        let stopped = statuses([(RUTH, UnitStatus::never_run())]);
+        coalescer.record(&stopped);
+        coalescer.returned_to_foreground(&app_return(statuses([]), stopped));
+
+        let run = ServerRunId::next();
+        coalescer.record(&statuses([(RUTH, reporting(run, None))]));
+        let later = coalescer.record(&statuses([(RUTH, reporting(run, Some(oauth("a"))))]));
+        assert_eq!(summary(&later.posted), [(RUTH, oauth_key("a"))]);
+        assert!(later.opened.is_empty());
+    }
+
+    #[test]
+    fn on_a_phone_a_return_never_rearms_the_open_at_start() {
+        let mut coalescer = ConsentNotificationCoalescer::new(ConsentOpening::FirstAtStart);
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        coalescer.record(&statuses([(RUTH, running_with(None))]));
+
+        coalescer.returned_to_foreground(&app_return(
+            statuses([(RUTH, running_with(None))]),
+            statuses([]),
+        ));
+        let added = coalescer.record(&statuses([
+            (RUTH, running_with(None)),
+            (LAB, running_with(Some(oauth("b")))),
+        ]));
+        assert_eq!(summary(&added.posted), [(LAB, oauth_key("b"))]);
+        assert!(added.opened.is_empty());
     }
 
     #[test]
     fn on_a_phone_a_request_the_owner_s_browser_made_does_not_open_after_a_return() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
-        coalescer.returned_to_foreground(&statuses([]));
+        coalescer.returned_to_foreground(&app_return(
+            statuses([]),
+            statuses([(RUTH, UnitStatus::never_run())]),
+        ));
 
         let restarted = coalescer.record(&statuses([(
             RUTH,
-            running_with(Some(oauth_from_owner_browser("b"))),
+            reporting(ServerRunId::next(), Some(oauth_from_owner_browser("b"))),
         )]));
         assert!(restarted.opened.is_empty() && restarted.posted.is_empty());
         assert_eq!(restarted.withdrawn, [RUTH], "a's notification goes");
@@ -759,12 +945,18 @@ mod tests {
         coalescer.record(&running);
 
         assert_eq!(
-            coalescer.returned_to_foreground(&running),
+            coalescer.returned_to_foreground(&app_return(running, statuses([]))),
             ConsentNotificationChanges::default()
         );
-        coalescer.returned_to_foreground(&statuses([]));
+        coalescer.returned_to_foreground(&app_return(
+            statuses([]),
+            statuses([(RUTH, UnitStatus::never_run())]),
+        ));
         assert_eq!(
-            coalescer.record(&running),
+            coalescer.record(&statuses([(
+                RUTH,
+                reporting(ServerRunId::next(), Some(oauth("a")))
+            )])),
             ConsentNotificationChanges::default()
         );
     }

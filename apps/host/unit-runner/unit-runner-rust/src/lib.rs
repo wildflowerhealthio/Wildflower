@@ -42,6 +42,7 @@ pub use runner::{
     RUN_STOPS_CAPACITY, STABLE_UNIT_UPTIME, START_AND_STOP_RUNS_PER_POLICY_INTERVAL,
 };
 pub use status::{
-    PlatformStopReason, RunState, RunStop, RunStopped, StopReason, UnitStatus, UnitStatuses,
+    AppReturn, PlatformStopReason, RunState, RunStop, RunStopped, StopReason, UnitStatus,
+    UnitStatuses,
 };
 pub use unit::{Unit, UnitId};

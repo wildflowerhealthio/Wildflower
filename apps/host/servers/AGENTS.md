@@ -15,8 +15,9 @@ changing how servers run or what the host notifies about them.
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher, Authorization app and
   certificate source, and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
-  `ServerDetail`, what its runs report (health, tunnel state, certificate
-  state and the newest consent waiting), its `ServerLaunchMinter` included,
+  `ServerDetail`, what its runs report (the run, a `ServerRunId`, health,
+  tunnel state, certificate state and the newest consent waiting), its
+  `ServerLaunchMinter` included,
   through which the host mints a running server's launches, and its
   `ServerSignInCodeMinter`, through which it mints the codes that sign the
   browser in as the server's Owner; launching (`ensure_launchable`,
@@ -33,7 +34,8 @@ changing how servers run or what the host notifies about them.
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
     server changes
     (`set_run_policy` with `RunPolicyChoice`, `update_server` with
-    `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
+    `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`
+    with `ServerRunId`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, the
     certificate state's wire shape (`certificate_state_wire`),
     `PendingConsent` with `ConsentKey`, launching (`ensure_launchable`,

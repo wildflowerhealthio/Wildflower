@@ -47,7 +47,7 @@ pub use registry_error::RegistryError;
 pub use run_policy_choice::RunPolicyChoice;
 pub use server_change_error::ServerChangeError;
 pub use server_changes::{remove_server, set_run_policy, update_server, ServerUpdate};
-pub use server_detail::ServerDetail;
+pub use server_detail::{ServerDetail, ServerRunId};
 pub use server_launch::{
     authorization_app_url, consent_sign_in_url, ensure_launchable, launch_url, sign_in_url,
 };
